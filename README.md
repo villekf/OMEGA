@@ -58,7 +58,7 @@ The following features are currently present:
 You're going to need C++ compiler in order to compile the MEX-files and use this toolkit. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically Visual Studio 2015 and 2017 have been tested to work as well as GCC 5.4.0 on Windows 7/10 and Ubuntu 16.04.
 
 To install the toolkit, either simply extract the package or obtain the source code through git:  
-git clone URL  
+git clone https://github.com/villekf/OMEGA  
 and then add the toolkit folder and subfolders to MATLAB path. Finally, run install_mex in the source folder to build the necessary MEX-files without OpenCL or Root support. Use install_mex(1) to install also OpenCL support, but no Root support, install_mex(0,1) for Root support, but no OpenCL support, and lastly install_mex(1,1) for both.
 
 In order to enable OpenCL support you're going to need an OpenCL SDK and ArrayFire (see below). The SDK can be any (or all) of the following CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows) or Intel SDK (Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to install_mex-file by adding -I/path/to/CL and -L/path/to/OpenCLlib before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command "find / -iname cl.hpp 2>/dev/null" to find the required cl.hpp file and "find / -iname libOpenCL.so 2>/dev/null" to find the required library file. See install_mex.m-file for further details.
