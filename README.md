@@ -32,7 +32,7 @@ A GATE example with GATE macros is available in exampleGATE-folder. Simply run t
 
 Example MAT-files for non-GATE situation can be found from example-folder. These files are based on the above GATE-example.
 
-For more information see the [wiki](https://github.com/villekf/OMEGA/wiki) or [how_to_use.txt](how_to_use.txt).
+For more information see the [wiki](https://github.com/villekf/OMEGA/wiki) or [how_to_use.txt](docs/how_to_use.txt).
 
 
 
