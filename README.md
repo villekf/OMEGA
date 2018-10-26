@@ -20,7 +20,7 @@ The algorithms implemented so far are:
 - Median Root Prior (MRP) [13]
 - L-filter (MRP-L) prior [14]
 - Finite Impulse Response Median Hybrid (MRP-FMH) prior [14,15]
-- Weighted mean prior
+- Weighted mean prior [16,17]
 
 
 
@@ -61,16 +61,16 @@ To install the software, either simply extract the package or obtain the source 
 git clone https://github.com/villekf/OMEGA  
 and then add the software folder and subfolders to MATLAB path. Finally, run install_mex in the source folder to build the necessary MEX-files without OpenCL or Root support. Use install_mex(1) to install also OpenCL support, but no Root support, install_mex(0,1) for Root support, but no OpenCL support, and lastly install_mex(1,1) for both.
 
-In order to enable OpenCL support you're going to need an OpenCL SDK and ArrayFire (see below). The SDK can be any (or all) of the following CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows) or Intel SDK (Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to install_mex-file by adding -I/path/to/CL and -L/path/to/OpenCLlib before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command "find / -iname cl.hpp 2>/dev/null" to find the required cl.hpp file and "find / -iname libOpenCL.so 2>/dev/null" to find the required library file. See install_mex.m-file for further details.
+In order to enable OpenCL support you're going to need an OpenCL SDK and ArrayFire (see below). The SDK can be any (or all) of the following CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows) or Intel SDK (Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to install_mex-file by adding -I/path/to/CL and -L/path/to/OpenCLlib before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command "find / -iname cl.h 2>/dev/null" to find the required cl.h file and "find / -iname libOpenCL.so 2>/dev/null" to find the required library file. See install_mex.m-file for further details.
 
 Links:  
 https://software.intel.com/en-us/intel-opencl  
 https://developer.nvidia.com/cuda-toolkit  
 https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases  
 
-On Linux you can alternatively just install the OpenCL headers  
+On Linux you can alternatively just install the OpenCL headers:  
 sudo apt-get install opencl-headers  
-and then the library  
+and then the library:  
 sudo apt-get install ocl-icd-libopencl1
 
 
@@ -211,3 +211,7 @@ This work was supported by a grant from Jane and Aatos Erkko foundation.
 14. S. Alenius and U. Ruotsalainen, "Improving the visual quality of median root prior images in PET and SPECT   reconstruction," 2000 IEEE Nuclear Science Symposium. Conference Record (Cat. No.00CH37149), Lyon, France, 2000, pp. 15/216-15/223 vol.2. doi: 10.1109/NSSMIC.2000.950105
      
 15. J. Astola and P. Kuosmanen, "Fundamentals of nonlinear digital filtering," CRC Press, Boca Raton, 1997.
+
+16. K. Lange, "Convergence of EM image reconstruction algorithms with Gibbs smoothing," in IEEE Transactions on Medical Imaging, vol. 9, no. 4, pp. 439-446, Dec. 1990. doi: 10.1109/42.61759
+
+17. S. Alenius and U. Ruotsalainen, "Generalization of median root prior reconstruction," in IEEE Transactions on Medical Imaging, vol. 21, no. 11, pp. 1413-1420, Nov. 2002. doi: 10.1109/TMI.2002.806415
