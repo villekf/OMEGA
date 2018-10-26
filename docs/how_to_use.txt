@@ -1,0 +1,345 @@
+How to Use
+
+
+Getting Started
+
+GATE users should use the gate_main.m file to reconstruct GATE data. For non-GATE users, the file you should start with 
+is main_nongate.m.
+
+A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation and 
+then run the gate_main_example-file to reconstruct the data. By default ASCII data is used in the reconstruction. This 
+example is based on both benchPET and the cylindrical PET example found from 
+http://wiki.opengatecollaboration.org/index.php/Users_Guide:Defining_a_system#CylindricalPET
+
+Example MAT-files for non-GATE situation can be found from example-folder. These files are based on the above 
+GATE-example.
+
+
+
+Function list and how to use them
+
+
+
+gate_main.m and nongate_main.m:
+
+This file contains all the device, sinogram, GATE output data and reconstruction properties.
+
+The first section contains the device parameters and is included in both files. These include (name in parenthesis is 
+the MATLAB variable name):
+
+Number of rings (rings) = The physical number of rings on your machine. If your machine contains pseudo rings, they are 
+not counted here.
+
+Blocks per ring (blocks_per_ring) = This is the number of "blocks" in your machine on each ring. If you have cylindrical 
+PET geometry then this should be the amount of R-sectors/modules per ring. For ECAT it is the amount of blocks/R-sectors. 
+If you need more help, see the included example. (# R E P E A T R S E C T O R)
+
+Linear multiply (linear_multip) = The repeater number in GATE. See the example on how this compares with the GATE 
+macros (# R E P E A T M O D U L E). For non-GATE it is the number of blocks in axial direction.
+
+Crystals per block (cryst_per_block) = The number of crystals on the side of each block. In the example the crystals 
+are in 8x8 grids meaning this value is 8. Blocks need to contain square crystal grids.
+
+Crystal pitch x/y-direction (cr_p) = Crystal pitch in the x- and y-directions. I.e. the distance between the centers 
+of adjacent crystals.
+
+Crystal pitch z-direction (cr_pz) = Same as above, but in z-direction.
+
+Bore diameter (diameter) = Diameter of the machine bore. I.e. distance between perpendicular crystals.
+
+Transaxial field-of-view (FOVa) = Transaxial field-of-view (x- and y-direction), i.e. the reconstructed image location.
+
+Axial FOV (axial_fov) = Same as above, but in axial (z) direction.
+
+Pseudo detectors (pseudot) = The location of the pseudo rings. E.g. if you have 9 physical rings and 2 pseudo rings, 
+and the pseudo rings are after every third ring then pseudot = [4,8]. If you have no pseudo rings, simply use empty 
+vector. Do not use 0.
+
+Detectors per ring (det_per_ring) = Number of detectors per ring without pseudo detectors. Can be automatically 
+determined as in the example.
+
+Detectors per ring w/ pseudo detectors (det_w_pseudo) = Same as above, but with pseudo detectors included.
+
+Total number of detectors (detectors) = Can be automatically determined.
+
+Machine name = The name of your machine. Used for naming purposes.
+
+
+ASCII data format settings (only gate_main.m):
+
+use ASCII (use_ASCII) = True if you want to use GATE ASCII files as input data, false if you want to use LMF or root.
+
+R-sector indices (rsector_ind1/2) = Since the ASCII data is organized in columns this refers to the columns that 
+correspond to the R-sector numbers. ind1 refers to the first single and ind2 to the second single.
+
+Module and crystal indices (module_ind1/2, crs_ind1/2) = Same as above, but with modules and crystals. If you use ECAT 
+geometry then for modules use either 0 or empty vector.
+
+Time index (time_index) = Column corresponding to the time stamp of either the first or second single. Used for dynamic 
+imaging only.
+
+Source indices (source_index1/2) = Columns corresponding to the source indices. Use empty vector or 0 if not used.
+
+
+LMF data format settings (only gate_main.m):
+
+use LMF (use_LMF) = True if you want to use GATE LMF files as input data, false if you want to use ASCII or root.
+
+Number of header bytes (header_bytes) = How many bytes are dedicated for LMF header.
+
+Number of event bytes (data_bytes) = How many bytes are at each event packet. Currently this can be at most 16 (time + 
+detector indices + source indices) and has to be at least 10 (time + detector indices).
+
+Number of bits used for R-sectors (R_bits) = How many bits in the 16-bit index packet are dedicated for R-sectors. This 
+can be seen when the simulation starts.
+
+Number of bits used for modules, submodules, crystal and layers (M_bits, etc.) = Same as above. Although submodules are 
+not supported or used they should use at least 1 bit.
+
+Coincidence window length (coincidence_window) = Length of the coincidence window in seconds.
+
+Source coordinates (source_LMF) = Are source coordinates obtained? Set to true if you want to save the "true" image. 
+data_bytes needs to be 16 if this is set to true. data_bytes can be 16 even if this is false if source coordinates were 
+saved during the simulation.
+
+Clock time step (clock_time_step) = What is the clock time step. This should be a value that when multiplied with the 
+clock time step from the cch-files equals 1. E.g. if clock time step is 1 ps (1e-12) in cch-files then this would (1e12).
+
+
+Root data format settings (only gate_main.m):
+
+use Root (use_root) = True if you want to use GATE Root files as input data, false if you want to use ASCII or LMF.
+
+Source coordinates (source) = Are source coordinates obtained? Set to true if you want to save the "true" image.
+
+
+Reconstructed image properties (applicable to both):
+
+Image size in x-direction (Nx) = If the total image size is 128x128x63 then this is 128. This has to be equal to Ny.
+
+Image size in y-direction (Ny) = If the total image size is 128x128x63 then this is 128. This has to be equal to Nx.
+
+Image size in z-direction (Nz) = If the total image size is 128x128x63 then this is 63.
+
+
+Sinogram properties (applicable to both): 
+
+Span (span) = The span factor (also called axial compression). The higher the number, the greater the compression of 
+oblique LORs).
+
+Maximum ring difference (ring_difference) = The maximum distance (in rings) from which oblique LORs are included.
+
+Number of angles (Nang) = How many different angles are in the sinogram. The angles depict the angle between the LOR 
+and x-axis.
+
+Number of different distances (Ndist) = How many different distances are in the sinogram. The distances are the shortest 
+distance between the LOR and the origin.
+
+Segment table (segment_table) = Oblique sinograms are divided into groups specified by the segment table. This value 
+depends on the span value and can be automatically computed.
+
+Arc correction (arc_corrected) = At the moment does nothing.
+
+Total number of sinograms (TotSinos) = The total number of sinograms. Can be obtained from the segment table.
+
+Number of sinograms used in reconstruction (NSinos) = Less sinograms can be used in the reconstruction process itself 
+(e.g. only parallel LORs). This is an experimental feature.
+
+Distance side (ndist_side) = When Ndist value is even, then one extra distance value has to be taken either from the 
+"negative" or "positive" side. With this you can specific whether this is from the "negative" (+1) or "positive" (-1).
+
+Sinogram rotation (offangle) = How much is the sinogram rotated? Should be based on the total number of all detectors.
+
+
+Dynamic imaging properties (applies to both), experimental feature:
+
+Total time (tot_time) = The total time of the experiment.
+
+Number of time step (partitions) = How many time steps there are in the dynamic case.
+
+
+Miscellanous properties (applies to both):
+
+Name (name) = Name of the experiment/simulation/whatever. Used for naming purposes.
+
+Precompute necessary data (precompute) = If this is true, then some of the obligatory mat-files are computed. These 
+include detector coordinates. Optionally also sinogram coordinates (if sinogram data is used) and how many pixels each 
+LOR traverses. This step has to be completed every time a new machine is implemented, if the image size is altered, if 
+the sinogram dimensions change or if sinogram or raw data is used for the first time. 
+
+Form only sinograms (only_sinos) = If this is set to true, then running the m-file only performs steps up to the sinogram 
+formation. I.e. precompute step is done if it is set to true, data is loaded and then the sinogram is formed. No 
+reconstructions will be done.
+
+Precompute the observation/system matrix (precompute_obs_matrix) = Experimental feature. This computes the entire system 
+matrix on one go and will most likely require a significant amount of memory. Supports only MLEM reconstruction. If set 
+to false, then the system matrix is calculated on-the-fly (recommended).
+
+Only reconstructions (only_reconstruction) = This skips all other steps except the reconstruction phase. Precompute 
+step is also skipped even if set to true. All necessary data is loaded from the previously computed mat-files.
+
+Use raw data (use_raw_data) = Set this to true if you want to use raw list-mode data. I.e. data that has not been 
+compressed at all. This step requires its own precompute phase. In order to use raw list-mode data with non-GATE data, 
+the data has to be formatted such that the measurement matrix has a size of total number of detectors X total number of 
+detectors. This matrix should contain counts for all possible LOR combinations (e.g. element on row 5 and column 20 would 
+have coincidences detected by detectors 5 and 20).
+
+How many pixels a LOR traverses (precompute_lor) = This option changes the reconstruction process quite radically. First, 
+it requires its own precompute phase. Secondly, it affects greatly on how the system matrix is formed. With this option 
+set to true, the number of pixels each LOR traverses is determined beforehand. This allows for more efficient memory 
+management. This option also has to be set to true if you want to use OpenCL reconstruction. It is highly recommended to 
+use this option. The only reason not to use this would be, if you know you will only do a single reconstruction ever. The 
+precompute step has to be repeated if the image or sinogram dimensions are changed.
+
+Precompute everything (precompute_all) = This option causes the prepass phase to compute all mat-files even if they were
+not selected. E.g. if you use sinogram data, also all precomputations for raw list-mode data are done.
+
+Status messages (verbose) = If this is set to true, then you will receive occasional status messages and also elapsed 
+time of functions.
+
+
+Reconstruction properties (applies to both):
+
+Reconstruction method (reconstruction_method) = This option determines how the reconstructions and the system matrix are 
+done. In all cases the system matrix is done through a mex-file. If set to 1, then all reconstructions will be done 
+purely in MATLAB using nothing, but MATLAB commands. Method 1 also has the most amount of algorithms available. Method 2 
+is OpenCL/ArrayFire reconstruction and everything is done in a mex-file. In method 2 both the system matrix creation and 
+reconstruction are performed on the device. With method 2, the system matrix is created by using single precision numbers, 
+meaning that it can be slightly inaccurate when compared to the methods 1 and 3. If set to 3, then all the computations are 
+done sequentially. This is basically a matrix-free method that allows reconstruction of larger systems and image sizes 
+without significant memory usage. However, this method is also most likely slower. Method 4 is similar to method 3, as it 
+is a matrix-free method, but the computations are done by using OpenCL/ArrayFire. 
+
+Method 1 should be used when you want to use algorithms other than OSEM or MLEM. Or if you don't want to use any 
+additional dependencies like OpenCL and ArrayFire. Method 2 should be used when you just need OSEM and want speed. 
+Method 3 if you need MLEM or have very large dimensions (e.g. using raw data), but for some reason can't use method 4. 
+
+Device (use_device) = This determines the device used in methods 2 and 4. On OpenCL this should include your GPUs and 
+CPUs. Usually GPUs are first and then CPUs. I.e. if you have two GPUs and a CPU, then device 0 should be the "primary" 
+GPU, device 1 the "secondary" GPU and device 2 the CPU.
+
+Use MLEM/OSEM/etc. = When any of these are set to true, the specific algorithm is computed. This is dependent on the 
+reconstruction method used though. I.e. if method 2 is selected only OSEM has any effect.
+
+Number of iterations (Niter) = The number of iterations.
+
+Number of subsets (subsets) = In subset methods, this value determines that in how many subsets is the sinogram/raw data 
+divided. If you are using sinogram data, then subsets are taken along the angle dimension. For raw data, the subsets are 
+selected randomly.
+
+Initial value (x0) = The initial value of all of the reconstruction methods.
+
+Epsilon value (epps) = This small value is added to divisions to prevent division by zero.
+
+Attenuation correction = If true, then attenuation correction is applied. The attenuation datafile has to be found.
+
+Name of attenuation datafile (attenuation_datafile) = The name of the file that contains the attenuation data. The file 
+has to be a mat-file found in path and contain only the attenuation data. The attenuation data also has to be in the form 
+of attenuation images (no LOR attenuation data). Dimensions also have to match that of the image size and the values need 
+to have been scaled already for 511 keV.
+
+Use Shuffle (use_Shuffle) = Whether the MATLAB file exchange code Shuffle is used. Applies only to raw data. Speeds up 
+the pre-process a bit and also uses less memory.
+
+Use FSparse (use_fsparse) = Whether FSparse is used. Only used if precompute_lor is set to false.
+
+Various image reconstruction parameters = These parameters affect the reconstruction of all the other algorithms except 
+MLEM and OSEM. See gate_main, nongate_main or the corresponding articles for more information on these.
+
+
+
+
+
+precompute_data.m and precompute_data_nongate.m:
+
+These files compute the necessary files required for the reconstruction or sinogram formation processes. These include 
+detector coordinates, sinogram coordinates and how many pixels each LOR traverses. 
+
+detector_coordinates computes the actual detector coordinates. Moves one block at a time.
+
+sinogram_coordinates calculates the detector locations of the sinogram "detectors".
+
+detector_pair_formation is a bit similar to above, but used for raw list-mode data.
+
+lor_pixel_prepass_opencl computes the number of pixels each LOR traverses. Doesn't actually use OpenCL, but was rather 
+first created exclusively for OpenCL implementation. Currently all precompute_lor methods need this.
+
+
+
+load_GATE_data.m:
+
+This file loads either the ASCII, LMF or Root data into MATLAB. First goes through all the files and then saves them in 
+different formats depending on whether sinogram or raw data was selected. Raw data can be used immediately after this step.
+Source images are saved if the corresponding values were set to true.
+
+
+
+form_sinograms.m:
+
+This file creates the sinograms. First the Michelogram is created and later the final sinograms. Lines 50 to 67 form the 
+Michelograms.
+
+
+
+reconstruction_main.m:
+
+The main reconstruction file. Handles all the reconstruction methods for all types of data.
+
+
+
+observation_matrix_formation_nongate.m:
+
+This function outputs the system/observation matrix. Optionally in subset format. This matrix can then be used anywhere. 
+For non-GATE data only.
+
+
+
+observation_matrix_formation.m:
+
+Same as above, but for GATE data and used when precompute_obs_matrix is set to true. Untested.
+
+
+Various algorithm functions:
+
+All the algorithms implemented in method 1 are also available as separate functions and can be found from the bottom of 
+nongate_main-file. These functions include the system matrix computation as well. These can be computed either manually 
+or by setting singe_reconstructions to true and running the nongate_main-file.
+
+
+visualize_pet.m:
+
+This file contains some optional visualization options. You can plot a single reconstruction. Iterations from a single 
+reconstruction. A group of different algorithms. The "true" image and a single reconstruction.  The "true" image and 
+several different reconstruction algorithms. 3D volume of one reconstruction by using the file exchange file vol3d v2.
+
+
+
+
+
+
+
+
+Additional files that are included, but not used:
+
+siddon_atten.m:
+
+The regular Siddon's algorithm written purely in MATLAB. Slow, but if you want some specific variables or just study the 
+code, this might be useful. Includes attenuation correction.
+
+
+improved_siddon_atten.m:
+
+The improved Siddon's algorithm written purely in MATLAB. Otherwise same as above.
+
+
+Siddon_algorithm.cpp:
+
+C++ mex code implementing the regular Siddon's algorithm.
+
+
+system_matrix_openCL.cpp & system_matrix_kernel.cl
+
+C++ mex code for purely calculating the system matrix in OpenCL. Currently not included in the install_mex-file. Needs to 
+be manually run from observation_matrix_formation_nongate.m though the current implementation is not that efficient 
+memorywise (on host). Currently also hardcoded to use CPU. This is the only pure OpenCL code (i.e. no ArrayFire additions). 
+Currently no version available for raw data.

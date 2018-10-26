@@ -1,0 +1,73 @@
+# C Y L I N D R I C A L 
+/gate/world/daughters/name cylindricalPET 
+/gate/world/daughters/insert cylinder 
+/gate/cylindricalPET/setMaterial Water 
+/gate/cylindricalPET/geometry/setRmax 145 mm 
+/gate/cylindricalPET/geometry/setRmin 130 mm 
+/gate/cylindricalPET/geometry/setHeight 80 mm 
+/gate/cylindricalPET/vis/forceWireframe
+
+# R S E C T O R 
+/gate/cylindricalPET/daughters/name rsector 
+/gate/cylindricalPET/daughters/insert box 
+/gate/rsector/placement/setTranslation 135 0 0 mm 
+/gate/rsector/geometry/setXLength 10. mm 
+/gate/rsector/geometry/setYLength 19. mm 
+/gate/rsector/geometry/setZLength 76.6 mm 
+/gate/rsector/setMaterial Water 
+/gate/rsector/vis/forceWireframe
+
+# M O D U L E 
+/gate/rsector/daughters/name module 
+/gate/rsector/daughters/insert box 
+/gate/module/geometry/setXLength 10. mm 
+/gate/module/geometry/setYLength 19. mm 
+/gate/module/geometry/setZLength 19. mm 
+/gate/module/setMaterial Water 
+/gate/module/vis/forceWireframe 
+/gate/module/vis/setColor gray
+
+# C R Y S T A L 
+/gate/module/daughters/name crystal 
+/gate/module/daughters/insert box 
+/gate/crystal/geometry/setXLength 10. mm 
+/gate/crystal/geometry/setYLength 2.2 mm 
+/gate/crystal/geometry/setZLength 2.2 mm 
+/gate/crystal/setMaterial Water 
+/gate/crystal/vis/forceWireframe 
+/gate/crystal/vis/setColor magenta
+
+# L A Y E R 
+/gate/crystal/daughters/name LSO 
+/gate/crystal/daughters/insert box 
+/gate/LSO/geometry/setXLength 10. mm 
+/gate/LSO/geometry/setYLength 2.2 mm 
+/gate/LSO/geometry/setZLength 2.2 mm 
+/gate/LSO/placement/setTranslation 0 0 0 mm 
+/gate/LSO/setMaterial LSO 
+/gate/LSO/vis/setColor yellow
+
+# R E P E A T C R Y S T A L 
+/gate/crystal/repeaters/insert cubicArray 
+/gate/crystal/cubicArray/setRepeatNumberX 1 
+/gate/crystal/cubicArray/setRepeatNumberY 8 
+/gate/crystal/cubicArray/setRepeatNumberZ 8 
+/gate/crystal/cubicArray/setRepeatVector 10. 2.4 2.4 mm
+
+# R E P E A T M O D U L E 
+/gate/module/repeaters/insert cubicArray 
+/gate/module/cubicArray/setRepeatNumberZ 4 
+/gate/module/cubicArray/setRepeatVector 0. 0. 19.2 mm
+
+# R E P E A T R S E C T O R 
+/gate/rsector/repeaters/insert ring 
+/gate/rsector/ring/setRepeatNumber 42
+
+# A T T A C H S Y S T E M 
+/gate/systems/cylindricalPET/rsector/attach rsector 
+/gate/systems/cylindricalPET/module/attach module 
+/gate/systems/cylindricalPET/crystal/attach crystal 
+/gate/systems/cylindricalPET/layer0/attach LSO
+
+# A T T A C H L A Y E R SD 
+/gate/LSO/attachCrystalSD 
