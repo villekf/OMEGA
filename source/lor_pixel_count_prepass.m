@@ -53,12 +53,7 @@ z_det = double(z);
 etaisyys=(R-FOVa)/2;
 xx=linspace(etaisyys,R-etaisyys,pikselikoko+1);
 yy=linspace(etaisyys,R-etaisyys,pikselikoko+1);
-% zz=linspace(double(0),double(axial_fow),Nz+1);
-%         if use_raw_data == false
 zz=linspace(double(0),double(axial_fow),Nz+1);
-%         else
-%             zz=linspace(double((z_length-axial_fow)/2),double(axial_fow + (z_length-axial_fow)/2),Nz+1);
-%         end
 zz=zz(2*block1-1:2*blocks);
 
 % Pikselien et�isyys toisistaan
@@ -89,7 +84,6 @@ end
 % Determine which LORs go through the FOV
 [ discard, lor] = improved_Siddon_algorithm_discard( TotSinos, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, size_x, zmax);
 clear mex
-% lor = lor(discard);
 
 save([machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard','-v7.3')
 

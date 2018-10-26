@@ -147,7 +147,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	}
 
 	/* Create a matrix for the return argument */
-	//int * outsize2 = (int *)mxGetData(prhs[1]);
 	double vali = (double)mxGetScalar(prhs[1]);
 	double alku = (double)mxGetScalar(prhs[2]);
 	double loppu = (double)mxGetScalar(prhs[3]);

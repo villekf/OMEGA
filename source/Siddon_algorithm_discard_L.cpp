@@ -114,8 +114,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		int loop1 = 1 + ((detektorit1 - 1) / det_per_ring);
 		int loop2 = 1 + ((detektorit2 - 1) / det_per_ring);
 
-		//mexPrintf("min = %d\n", loop2);
-
 
 		
 
@@ -211,8 +209,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 			double tmin = max(txmin, tymin);
 			double tmax = min(txmax, tymax);
-
-			//mexPrintf("min = %f\n", tmin);
 
 			if (tmin >= tmax) {
 				continue;
@@ -666,17 +662,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 			double tmin = max(max(txmin, tzmin), tymin);
 			double tmax = min(min(txmax, tzmax), tymax);
-
-			//if (detektorit1 == 7069 && detektorit2 == 24603) {
-			//	mexPrintf("tymin = %f\n", tymin);
-			//	mexPrintf("tymax = %f\n", tymax);
-			//	mexPrintf("tmin = %f\n", tmin);
-			//	mexPrintf("tmax = %f\n", tmax);
-			//	mexPrintf("txmin = %f\n", txmin);
-			//	mexPrintf("txmax = %f\n", txmax);
-			//	mexPrintf("tzmin = %f\n", tzmin);
-			//	mexPrintf("tzmax = %f\n", tzmax);
-			//}
 
 			if (tmin >= tmax) {
 				continue;

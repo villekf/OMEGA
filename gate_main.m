@@ -1,22 +1,15 @@
-%% MATLAB codes for PET reconstruction using sinogram input from any machine
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% This is an example file on how to specify the necessary parameters for
-%%% your own machine. Note that the reconstruction parameters have not been
-%%% optimized.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+%% MATLAB codes for GATE PET reconstruction using ASCII or LMF output
 
 clear
 
 %%%%%%%%%%%%%%%%%%%% Specify the below machine properties %%%%%%%%%%%%%%%%%%%%
 % Number of real rings (possible pseudo rings are not included here)
 options.rings = (32);
-% Blocks in transaxial direction
+% R-sectors in transaxial direction
 options.blocks_per_ring = (42);
-% Blocks in axial direction
+% R-sectors/modules in axial directions
 options.linear_multip = (4);
-% number of detectors on the side of block (e.g. 13 if 13x13)
+% number of detectors on the side of R-sector(block) (e.g. 13 if 13x13)
 options.cryst_per_block = (8);
 % crystal pitch in x- and y-directions (mm)
 options.cr_p = 2.4;
@@ -28,7 +21,7 @@ options.diameter = 130*2;
 % side of the square FOV)
 options.FOVa = 151;
 % Axial FOV (mm)
-options.axial_fov = round(76.8 - options.cr_pz/2);
+options.axial_fov = floor(76.8 - options.cr_pz/2);
 % Ring numbers of pseudo rings (use empty vector if none), use MATLAB
 % numbering (starting from 1)
 options.pseudot = [];
@@ -40,6 +33,76 @@ options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
 options.detectors = options.det_per_ring*options.rings;
 % machine name
 options.machine_name = 'Cylindrical_PET_example';
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%% ASCII data format settings %%%%%%%%%%%%%%%%%%%%
+% Is ASCII data used? (Only one data type can be used at a time)
+options.use_ASCII = true;
+% Columns corresponding to the R-sectors (or blocks) (see GATE wiki on ASCII file
+% format)
+% Corresponds to (from GATE Wiki): Column 12 to 17 : volume IDs* (first single)
+options.rsector_ind1 = (6);
+options.rsector_ind2 = (16);
+% Module indices (columns)
+% if no modules present use 0 (i.e. ECAT geometry)
+options.module_ind1 = (7);
+options.module_ind2 = (17);
+% Crystal indices (columns)
+options.crs_ind1 = (9);
+options.crs_ind2 = (19);
+% Time index (column), use either the first single or second
+% Corresponds to (from GATE Wiki): Column 7 : Time stamp (first single)
+options.time_index = (4);
+% index of the source location of the first single (X-dimension, first column of the three)
+% Corresponds to (from GATE Wiki): Column 4 to 6 : XYZ position of the source in world referential (first single)
+% Use 0 or [] to skip this step
+options.source_index1 = 1;
+% index of the source location of the second single (X-dimension, first column of the three)
+% Corresponds to (from GATE Wiki): Column 27 to 29 : XYZ position of the source in world referential (second single)
+% Use 0 or [] to skip this step
+options.source_index2 = 11;
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%% LFM data format settings %%%%%%%%%%%%%%%%%%%%
+% Is LMF data used? (Only one data type can be used at a time)
+options.use_LMF = false;
+% How many bytes are in the LMF header part?
+options.header_bytes = (16);
+% How many bytes at each event packet?
+options.data_bytes = (8 + 2 + 6);
+% How many bits dedicated to R-sectors?
+options.R_bits = 7;
+% How many bits dedicated to modules?
+options.M_bits = 2;
+% How many bits dedicated to submodules?
+options.S_bits = 1;
+% How many bits dedicated to crystals?
+options.C_bits = 6;
+% How many bits dedicated to layers?
+options.L_bits = 0;
+% What is the coincidence window (in seconds)?
+options.coincidence_window = 120e-9;
+% Obtain source coordinates? (used in forming the "true" image)
+options.source = true;
+% What is the clock time step? (see the .cch files)
+% If e.g. 1 ps then use 1e12, if 1 ns use 1e9, etc.
+options.clock_time_step = 1e12;
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%% Root data format settings %%%%%%%%%%%%%%%%%%%%
+% Is root data used? (Only one data type can be used at a time)
+options.use_root = false;
+% Obtain source coordinates? (used in forming the "true" image)
+options.source = false;
 
 
 
@@ -71,16 +134,20 @@ options.Ndist = 200;
 % (this should total the total number of sinograms)
 options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:options.span];
 options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
+% is the data arc corrected? (NOTE: arc correction is not applied to the
+% data even if it is not arc corrected)
+% NOTE: At the moment this option does nothing
+options.arc_corrected = false;
 % Total number of sinograms
 options.TotSinos = sum(options.segment_table);
 % number of sinograms used in reconstruction
 options.NSinos = options.TotSinos;
 % If Ndist value is even, take one extra out of the negative side (+1) or
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
-% interval is [-99,100].
-% This option has almost no effect, default value can be used unless you
-% know the value the device uses
+% interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = 1;
+% How much is the sinogram "rotated"?
+options.offangle = options.det_w_pseudo * (3/4);
 
 
 
@@ -103,6 +170,17 @@ options.name = 'cylpet_example';
 % This includes e.g. detector coordinates, sinogram coordinates, etc.
 options.precompute = true;
 
+% path: folder for the data (.dat, ASCII) files (must include / at end [or
+% \ on Windows])
+if isunix % Unix
+    options.fpath = '/path/to/GATE/output/';
+elseif ispc % Windows
+    options.fpath = 'C:\path\to\GATE\output\';
+end
+
+% Form only sinograms (no reconstructions)
+options.only_sinos = false;
+
 % Precompute the observation matrix for the reconstruction (this might require a
 % lot of memory), if false then the observation matrix is calculated on the
 % fly (slower)
@@ -113,17 +191,10 @@ options.precompute_obs_matrix = false;
 % option)
 options.only_reconstructions = false;
 
-% Compute all the algorithms individually
-options.single_reconstructions = false;
-
 % Use raw list mode data
 % This means that the data is used as is without any sinogramming and thus
 % without any "compression"
 options.use_raw_data = false;
-
-% Compute only the system matrix (this option overwrites the only
-% reconstructions option)
-options.only_system_matrix = false;
 
 % Use precomputed geometrical matrix information
 % During the precompute-phase the number of pixels each LOR traverse is
@@ -152,7 +223,7 @@ options.verbose = true;
 % 2 = Everything done in OpenCL (CPU or GPU)
 % 3 = Reconstructions done sequentially (matrix-free method)
 % 4 = Matrix-free reconstruction with OpenCL (parallel)
-options.reconstruction_method = 1;
+options.reconstruction_method = 3;
 % Device used (this is applicable to methods 2 and 4)
 % In methods 2 and 4 this determines the device used for both system matrix
 % formation and image reconstruction
@@ -164,54 +235,54 @@ options.use_device = 0;
 % method
 % Maximum-Likelihood Expectation Maximization (MLEM)
 % Supported by methods 1, 2 and 4
-options.mlem = false;
+options.mlem = true;
 % Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all methods
-options.osem = true;
+options.osem = false;
 % Modified Row-Action Maximum Likelihood Algorithm (MRAMLA, modified BSREM)
 % Supported by method 1 only
-options.mramla = true;
+options.mramla = false;
 % Row-Action Maximum Likelihood Algorithm (RAMLA)
 % Supported by method 1 only
-options.ramla = true;
-% Enhanced Convergent OSEM (ECOSEM)
+options.ramla = false;
+% Enhanced COSEM (ECOSEM)
 % Supported by method 1 only
-options.ecosem = true;
+options.ecosem = false;
 % Complete data OSEM (COSEM)
 % Supported by method 1 only
-options.cosem = true;
+options.cosem = false;
 % Accelerated COSEM (ACOSEM)
 % Supported by method 1 only
-options.acosem = true;
+options.acosem = false;
 % Median root prior (MRP) with One Step Late (OSL) algorithm
 % Supported by method 1 only
-options.mrp_osl = true;
+options.mrp_osl = false;
 % Median root prior with Block Sequential Regularized Expectation
-% Supported by method 1 only
 % Maximization (BSREM)
-options.mrp_bsrem = true;
+% Supported by method 1 only
+options.mrp_bsrem = false;
 % Quadratic prior with OSL
 % Supported by method 1 only
-options.quad_osl = true;
+options.quad_osl = false;
 % Quadratic prior with BSREM
 % Supported by method 1 only
-options.quad_bsrem = true;
+options.quad_bsrem = false;
 % L-filter with OSL
 % Supported by method 1 only
-options.L_osl = true;
+options.L_osl = false;
 % L-filter with BSREM
 % Supported by method 1 only
-options.L_bsrem = true;
+options.L_bsrem = false;
 % Finite impulse response (FIR) Median Hybrid (FMH) with OSL
 % Supported by method 1 only
-options.FMH_osl = true;
+options.FMH_osl = false;
 % Weighted mean with OSL
 % Supported by method 1 only
-options.weighted_mean_osl = true;
+options.weighted_mean_osl = false;
 % number of iterations
-options.Niter = 2;
-% number of subsets (all excluding MLEM, use 1 if MLEM is selected)
-options.subsets = 8;
+options.Niter = 12;
+% number of subsets (all excluding MLEM)
+options.subsets = 1;
 % Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % epsilon value (small value to prevent division by zero)
@@ -222,17 +293,17 @@ options.attenuation_correction = false;
 % Attenuation image data file (specify the path (if not in MATLAB path) and filename)
 % NOTE: the attenuation data has to be the only variable in the file and have the
 % dimensions of the final reconstructed image
-options.attenuation_datafile = '';
+options.attenuation_datafile = 'GATE_xcat_vaimennus_129.mat';
 % Use Shuffle? (recommended)
 % NOTE: Applies only when using raw data
 % Download from: https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
 options.use_Shuffle = true;
-% use fast sparse? (recommended)
+% Use fast sparse? (recommended)
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to method 1 when precompute_lor is false
-options.use_fsparse = false;
+options.use_fsparse = true;
 % accleration parameter for ACOSEM
-options.h = 2;
+options.h = 1;
 % relaxation parameter for RAMLA
 options.b0 = 1;
 % Upper bound for MRAMLA
@@ -246,7 +317,7 @@ options.medx = 3;
 options.medy = 3;
 options.medz = 3;
 % regularization parameter for quadratic prior with OSL
-options.beta_quad_osl = 0.005;
+options.beta_quad_osl = 0.05;
 % regularization parameter for quadratic prior with BSREM
 options.beta_quad_bsrem = 0.05;
 % how many neighboring pixels are taken into account (with quadratic, MRP, L, FMH and weighted)
@@ -291,48 +362,27 @@ options.weighted_weights = [];
 % In other words it multiplies the maximum value of all other weights
 options.weighted_center_weight = 1;
 
-
-if options.only_system_matrix == false
-    % Load the sinogram/raw data
-    [options.file, options.fpath] = uigetfile('*.mat','Select PET Sinogram or list-mode data');
-    
-    FileName = fullfile(options.fpath, options.file);
-    
-    storedStructure = load(FileName);
-    variables = fields(storedStructure);
-    
-    if options.use_raw_data == false
-        options.SinM = storedStructure.(variables{1});
-    else
-        options.coincidences = storedStructure.(variables{1});
-    end
-    
-end
-
-
 %% Precompute the necessary data
 
 if options.precompute && options.only_reconstructions == false
-    precompute_data_nongate(options);
+    precompute_data(options);
+end
+
+%% Load the ASCII/LMF coindicence data
+
+if options.only_reconstructions == false && options.only_sinos == false
+    options.coincidences = load_GATE_data(options);
+end
+
+%% Form the sinograms
+
+if options.only_reconstructions == false && options.use_raw_data == false
+    options.SinM = form_sinograms(options);
 end
 
 %% Reconstructions
 
-if options.only_system_matrix == false
-    
-    if options.use_raw_data
-        load([options.machine_name '_detector_locations_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_raw.mat'],'discard')
-        if iscell(options.coincidences)
-            if numel(options.coincidences{1}) == numel(discard)
-                options.SinM = options.coincidences(discard);
-            end
-        else
-            if numel(options.coincidences{1}) == numel(discard)
-                options.coincidences = options.coincidences(discard);
-            end
-        end
-        clear discard
-    end
+if options.only_sinos == false
     
     tStart = tic;
     pz = reconstructions_main(options);
@@ -342,158 +392,3 @@ if options.only_system_matrix == false
 end
 
 save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations.mat'], 'pz');
-
-%% System matrix formation
-
-if options.only_system_matrix
-    %%
-    LL = [];
-    index = [];
-    pituus = [];
-    lor = [];
-    
-    if options.use_raw_data == false && options.subsets > 1
-        if options.precompute_lor || options.reconstruction_method == 3
-            load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
-            if length(discard) ~= options.TotSinos*options.Nang*options.Ndist
-                error('Error: Size mismatch between sinogram and LORs to be removed')
-            end
-            if options.use_raw_data == false && options.NSinos ~= options.TotSinos
-                discard = discard(1:options.NSinos*options.Nang*options.Ndist);
-            end
-            ind_apu = uint32(find(discard));
-            port = ceil((options.Nang-options.subsets+1)/options.subsets);
-            over = options.Nang - port*options.subsets;
-            index = cell(options.subsets,1);
-            pituus = zeros(options.subsets, 1, 'uint32');
-            for i=1:options.subsets
-                if over>0
-                    index1 = uint32(sort(sub2ind([options.Nang options.Ndist options.NSinos],repmat(repelem(i:options.subsets:(port + 1)*options.subsets,options.Ndist)',options.NSinos,1),repmat((1:options.Ndist)',(port+1)*options.NSinos,1),repelem((1:options.NSinos)',options.Ndist*(port+1),1))));
-                    over = over - 1;
-                else
-                    index1 = uint32(sort(sub2ind([options.Nang options.Ndist options.NSinos],repmat(repelem(i:options.subsets:port*options.subsets,options.Ndist)',options.NSinos,1),repmat((1:options.Ndist)',port*options.NSinos,1),repelem((1:options.NSinos)',options.Ndist*port,1))));
-                end
-                index{i} = index1(ismember(index1, ind_apu));
-                pituus(i) = int32(length(index{i}));
-            end
-            index = cell2mat(index);
-            index = index(ismember(index, ind_apu));
-            clear index1 ind_apu
-        else
-            port = ceil((options.Nang-options.subsets+1)/options.subsets);
-            over = options.Nang - port*options.subsets;
-            index = cell(options.subsets,1);
-            pituus = zeros(options.subsets, 1, 'uint32');
-            for i=1:options.subsets
-                if over>0
-                    index1 = uint32(sort(sub2ind([options.Nang options.Ndist options.NSinos],repmat(repelem(i:options.subsets:(port + 1)*options.subsets,options.Ndist)',options.NSinos,1),repmat((1:options.Ndist)',(port+1)*options.NSinos,1),repelem((1:options.NSinos)',options.Ndist*(port+1),1))));
-                    over = over - 1;
-                else
-                    index1 = uint32(sort(sub2ind([options.Nang options.Ndist options.NSinos],repmat(repelem(i:options.subsets:port*options.subsets,options.Ndist)',options.NSinos,1),repmat((1:options.Ndist)',port*options.NSinos,1),repelem((1:options.NSinos)',options.Ndist*port,1))));
-                end
-                index{i} = uint32(index1);
-                pituus(i) = int32(length(index1));
-            end
-            clear index1
-        end
-    elseif options.subsets > 1
-        % for raw list-mode data, take the options.subsets randomly
-        % last subset has all the spare indices
-        if options.precompute_lor || options.reconstruction_method == 3 || options.reconstruction_method == 2
-            load([options.machine_name '_detector_locations_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_raw.mat'],'LL','lor')
-            indices = uint32(length(LL));
-            index = cell(options.subsets, 1);
-            port = uint32(floor(length(LL)/options.subsets));
-            if options.use_Shuffle
-                apu = Shuffle(indices(end), 'index')';
-            else
-                apu = uint32(randperm(indices(end)))';
-            end
-            pituus = zeros(options.subsets, 1, 'uint32');
-            for i = 1 : options.subsets
-                if i == options.subsets
-                    index{i} = apu(port*(i-1)+1:end);
-                else
-                    index{i} = apu(port*(i-1)+1:(port*(i)));
-                end
-                pituus(i) = int32(length(index{i}));
-            end
-            clear apu
-        else
-            load([options.machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'],'LL')
-            indices = uint32(length(LL));
-            index = cell(options.subsets, 1);
-            port = uint32(floor(length(LL)/options.subsets));
-            if options.use_Shuffle
-                apu = Shuffle(indices(end), 'index')';
-            else
-                apu = uint32(randperm(indices(end)))';
-            end
-            for i = 1 : options.subsets
-                if i == options.subsets
-                    index{i} = apu(port*(i-1)+1:end);
-                else
-                    index{i} = apu(port*(i-1)+1:(port*(i)));
-                end
-            end
-            clear apu
-        end
-    end
-    
-    %%
-    for kk = 1 : options.subsets
-        A = observation_matrix_formation_nongate(options, kk, index, LL, pituus, lor);
-        % Use A here (y = Ax)
-        % index-vector contains the measurement numbers used in subset kk
-        
-    end
-    
-end
-
-%% Separate reconstruction algorithms
-
-if options.single_reconstructions
-    
-    % OSEM
-    x_osem = OSEM(options);
-    
-    % RAMLA
-    x_ramla = RAMLA(options);
-    
-    % MRAMLA
-    x_mramla = MRAMLA(options);
-    
-    % COSEM
-    x_cosem = COSEM(options);
-    
-    % ECOSEM
-    x_ecosem = ECOSEM(options);
-    
-    % ACOSEM
-    x_acosem = ACOSEM(options);
-    
-    % OSL MRP
-    x_oslmrp = OSL_MRP(options);
-    
-    % BSREM MRP
-    x_bsremmrp = BSREM_MRP(options);
-    
-    % OSL Quadratic
-    x_oslquad = OSL_quad(options);
-    
-    % BSREM Quadratic
-    x_bsremquad = BSREM_quad(options);
-    
-    % OSL L-filter
-    x_oslL = OSL_L(options);
-    
-    % BSREM L-filter
-    x_bsremL = BSREM_L(options);
-    
-    % OSL FMH
-    x_oslFMH = OSL_FMH(options);
-    
-    % OSL weighted mean
-    x_oslwmean = OSL_weightedmean(options);
-    
-end

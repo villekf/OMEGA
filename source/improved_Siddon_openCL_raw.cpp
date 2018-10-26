@@ -122,10 +122,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	const int attenuation_correction, const float* atten, const int size_atten, const int subsets, const float epps, const int* pseudos, 
 	const int det_per_ring, const int prows, const char* k_path) {
 
-	//if (verbose) {
-	//	mexPrintf("Copying arrays\n");
-	//	mexEvalString("pause(.0001);");
-	//}
 
 	array lor(koko_l, lor1, afHost);
 
@@ -137,21 +133,12 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 	array x00(Nx*Ny*Nz, x0, afHost);
 
-	//if (verbose) {
-	//	mexPrintf("Array copy complete\n");
-	//	mexEvalString("pause(.0001);");
-	//}
-
-	//array index_array(mxGetNumberOfElements(prhs[24]), index, afHost);
 
 	pz_osem(span, 0) = x00;
 
 	array pz_osem_apu;
 
 
-	//float tottime;
-
-	//try {
 
 	static cl_context af_context = afcl::getContext();
 	static cl_device_id af_device_id = afcl::getDeviceId();
@@ -161,8 +148,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 	std::string kernel_path;
 
-	//cl_program program = clCreateProgramWithSource(af_context, 1, (const char **)&programSource, NULL, &status);
-
 	kernel_path = k_path;
 	std::fstream sourceFile(kernel_path.c_str());
 	std::string content((std::istreambuf_iterator<char>(sourceFile)),std::istreambuf_iterator<char>());
@@ -170,14 +155,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	sourceCode = content.c_str();
 	cl_program program = clCreateProgramWithSource(af_context, 1, (const char **)&sourceCode, NULL, &status);
 
-	//mexPrintf(sourceCode);
-	//mexPrintf("%d\n", content.size());
-
-	//std::ifstream sourceFile("siddon_kernel.cl");
-	//std::string sourceCode(std::istreambuf_iterator<char>(sourceFile), (std::istreambuf_iterator<char>()));
-	//cl::Program::Sources programSource(1, std::make_pair(sourceCode.c_str(), sourceCode.length()));
-
-	//cl_program program = clCreateProgramWithSource(af_context, 1, (const char **)&programSource, NULL, &status);
 
 	if (status != CL_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
@@ -259,9 +236,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 		mexPrintf("Buffers created\n");
 		mexEvalString("pause(.0001);");
 	}
-	//cl_mem d_z_det = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float)*mxGetNumberOfElements(prhs[9]), NULL, &status);
-	//cl_mem d_x = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float)*mxGetNumberOfElements(prhs[10]), NULL, &status);
-	//cl_mem d_y = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float)*mxGetNumberOfElements(prhs[11]), NULL, &status);
 
 	status = clEnqueueWriteBuffer(af_queue, d_Nx, CL_FALSE, 0, sizeof(int), &Nx, 0, NULL, NULL);
 	status = clEnqueueWriteBuffer(af_queue, d_Ny, CL_FALSE, 0, sizeof(int), &Ny, 0, NULL, NULL);
@@ -294,12 +268,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	status = clEnqueueWriteBuffer(af_queue, d_det_per_ring, CL_FALSE, 0, sizeof(int), &det_per_ring, 0, NULL, NULL);
 	status = clEnqueueWriteBuffer(af_queue, d_pseudos, CL_FALSE, 0, sizeof(int) * prows, pseudos, 0, NULL, NULL);
 
-	//int osa_iter = 0;
-
-	//pz_osem_apu = pz_osem(span, 0);
-
-	//int32_t zero = 0;
-	//float zerof = 0.f;
 
 	int im_dim = Nx * Ny * Nz;
 
@@ -309,43 +277,21 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 		for (int osa_iter = 0; osa_iter < subsets; osa_iter++) {
 
-			//clFinish(af_queue);
-
-			//if (verbose) {
-			//	mexPrintf("Next iteration started\n");
-			//	mexEvalString("pause(.0001);");
-			//}
-
 			size_t length = pituus[osa_iter + 1] - pituus[osa_iter];
 
 			size_t outputSize1 = sizeof(int) * summa[osa_iter];
 			size_t outputSize2 = sizeof(float) * summa[osa_iter];
 
-			//array sub_index_array = seq(pituus[5], pituus[5 + 1] - 1., 1.);
 
 			array sub_index_array = range(dim4(length), 0, u32) + pituus[osa_iter];
-
-			//array sub_index_array2 = seq(pituus[0], pituus[0 + 1] - 1., 1.);
 
 			array apu_lor = lor(sub_index_array);
 
 			array row_csr = accum(apu_lor.as(s32));
-			//array row_csr = accum(lor(sub_index_array2));
 
 			row_csr = join(0, constant(0, 1, s32), row_csr);
 
 			array Lo = LL(range(dim4(length * 2), 0, u32) + 2 * pituus[osa_iter]);
-
-			//if (verbose) {
-				//mexPrintf("outputsize1 %d\n", outputSize1);
-				//mexPrintf("outputsize2 %d\n", outputSize2);
-				//mexPrintf("length %d\n", length);
-			//	mexEvalString("pause(.0001);");
-			//}
-			//sync();
-
-			//elements = constant(0, summa[osa_iter], f32);
-			//indices = constant(0, summa[osa_iter], s32);
 
 			cl_mem d_indices = clCreateBuffer(af_context, CL_MEM_READ_WRITE, outputSize1, NULL, &status);
 
@@ -353,10 +299,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 				std::cerr << getErrorString(status) << std::endl;
 				mexPrintf("Failed to create buffer for system matrix indices. Check that you have sufficient memory available\n");
 			}
-			//else if (verbose) {
-			//	mexPrintf("Buffer for system matrix indices created\n");
-			//	mexEvalString("pause(.0001);");
-			//}
 
 			cl_mem d_elements = clCreateBuffer(af_context, CL_MEM_READ_WRITE, outputSize2, NULL, &status);
 
@@ -364,47 +306,15 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 				std::cerr << getErrorString(status) << std::endl;
 				mexPrintf("Failed to create buffer for system matrix elements. Check that you have sufficient memory available\n");
 			}
-			//else if (verbose) {
-			//	mexPrintf("Buffer for system matrix elements created\n");
-			//	mexEvalString("pause(.0001);");
-			//}
 
-			//clFinish(af_queue);
-			//status = clEnqueueFillBuffer(af_queue, d_indices, &zero, sizeof(int32_t), 0, outputSize, 0, NULL, NULL);
-
-			//if (status != CL_SUCCESS) {
-			//	std::cerr << getErrorString(status) << std::endl;
-			//	mexPrintf("Failed to fill the buffer for system matrix elements\n");
-			//}
-			//else if (verbose)
-			//	mexPrintf("Buffer for system matrix elements filled\n");
-
-			//status = clEnqueueFillBuffer(af_queue, d_elements, &zerof, sizeof(float), 0, outputSize, 0, NULL, NULL);
-
-			//if (status != CL_SUCCESS) {
-			//	std::cerr << getErrorString(status) << std::endl;
-			//	mexPrintf("Failed to fill the buffer for system matrix indices\n");
-			//}
-			//else if (verbose)
-			//	mexPrintf("Buffer for system matrix indices filled\n");
-
-			//cl_mem * d_elements = elements.device<cl_mem>();
-			//cl_mem * d_indices = indices.device<cl_mem>();
 			cl_mem * d_lor = apu_lor.device<cl_mem>();
 			cl_mem * d_row = row_csr.device<cl_mem>();
 
 			cl_mem * d_L = Lo.device<cl_mem>();
-			//cl_mem * d_y = yo.device<cl_mem>();
-			//cl_mem * d_zindex = zo.device<cl_mem>();
-			//cl_mem * d_xlength = x_length.device<cl_mem>();
-
-			//clFinish(af_queue);
-			//sync();
 
 			clSetKernelArg(kernel, 0, sizeof(cl_mem), &d_indices);
 			clSetKernelArg(kernel, 1, sizeof(cl_mem), &d_elements);
 			clSetKernelArg(kernel, 2, sizeof(cl_mem), d_lor);
-			//clSetKernelArg(kernel, 2, sizeof(int) * summa[osa_iter], &lor2[0]);
 			clSetKernelArg(kernel, 3, sizeof(cl_mem), &d_Nx);
 			clSetKernelArg(kernel, 4, sizeof(cl_mem), &d_Ny);
 			clSetKernelArg(kernel, 5, sizeof(cl_mem), &d_Nz);
@@ -441,11 +351,8 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			clSetKernelArg(kernel, 36, sizeof(cl_mem), &d_atten);
 			clSetKernelArg(kernel, 37, sizeof(cl_mem), &d_pseudos);
 			clSetKernelArg(kernel, 38, sizeof(int), &prows);
-			//clFinish(af_queue);
 			status = clEnqueueNDRangeKernel(af_queue, kernel, 1, NULL, &length, NULL, 0, NULL, NULL);
 
-			//clFinish(af_queue);
-			//sync();
 
 			if (status != CL_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
@@ -458,92 +365,24 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 			Lo.unlock();
 			apu_lor.unlock();
-			//zo.unlock();
 			row_csr.unlock();
 
-			//clFinish(af_queue);
 
 
 			array s_elements = afcl::array(summa[osa_iter], d_elements, f32, true);
 			array s_indices = afcl::array(summa[osa_iter], d_indices, s32, true);
 
-			//////sync();
 
 			array H = sparse(row_csr.dims(0) - 1, im_dim, s_elements, row_csr, s_indices);
 
-			////if (verbose) {
-				//mexPrintf("Sparse matrix created %d\n", H.dims(0));
-				//mexPrintf("Sparse matrix created %d\n", H.dims(1));
-			////	mexPrintf("Sparse matrix created %d\n", sparseGetNNZ(H));
-			////	mexEvalString("pause(.0001);");
-			////}
-			//sync();
-			//eval(H);
-
-			//array testi = matmul(s_elements, s_elements, AF_MAT_TRANS);
-			////Summ = matmul(constant(1, 100, H.dims(1), f32), constant(1, H.dims(1), 1, f32));
-			//array Summ = H * constant(1, H.dims(0), 1, f32);
-
 			array Summ = matmul(H, constant(1, H.dims(0), 1, f32), AF_MAT_TRANS);
-
-			//array testi = matmul(H, pz_osem_apu);
-			////if (osa_iter != 5)
-			//array Summ = matmul(H, constant(1, H.dims(1), 1, f32));
-			//	//eval(Summ);
 
 			pz_osem_apu = (pz_osem_apu / (Summ + epps)) * (matmul(H, (Sino(sub_index_array) / (matmul(H, pz_osem_apu) + epps)), AF_MAT_TRANS));
 
-			//eval(Summ);
-			//sync();
 
 			mexPrintf("OSEM sub-iteration %d complete\n", osa_iter + 1);
 			mexEvalString("pause(.0001);");
-
-			//sync();
-			//if (osa_iter == 2)
-			//	(s_indices).host(ele);
-
-			//clFinish(af_queue);
-			//if (osa_iter == 2) {
-			//	status = clEnqueueReadBuffer(af_queue, d_indices, CL_TRUE, 0, outputSize1, ele, 0, NULL, NULL);
-			//	//array L1 = Lo(range(dim4(outputSize1), 0, s32)).as(s32);
-			//	//int* L1 = new int[Lo.dims(0)];
-			//	//array L2 = Lo.as(s32);
-			//	//L2.host(L1);
-			//	////mexPrintf("L1 = %d\n", L1.dims(0));
-			//	//mexPrintf("Lo = %d\n", Lo.dims(0));
-			//	//mexPrintf("outputSize1 = %d\n", outputSize1);
-			//	//for (int kk = 0; kk < Lo.dims(0); kk++)
-			//	//	ele[kk] = L1[kk];
-			//	//delete[] L1;
-			//	//L1.host(ele);
-			//	//for (int kk = 0; kk < outputSize1; kk++) {
-			//	//	if (ele[kk] < 0 || ele[kk] > Nx * Ny * Nz)
-			//	//		mexPrintf("ele[kk] = %d\n", ele[kk]);
-			//	//}
-			//}
-
-			//if (status != CL_SUCCESS) {
-			//	std::cerr << getErrorString(status) << std::endl;
-			//	mexPrintf("Failed to copy the output indices to host\n");
-			//}
-			//else if (verbose)
-			//	mexPrintf("Output indices successfully copied to host\n");
-
-			//if (osa_iter == 2) {
-			//	status = clEnqueueReadBuffer(af_queue, d_elements, CL_TRUE, 0, outputSize, ele, 0, NULL, NULL);
-			//}
-
-			//if (status != CL_SUCCESS) {
-			//	std::cerr << getErrorString(status) << std::endl;
-			//	mexPrintf("Failed to copy the output elements to host\n");
-			//}
-			//else if (verbose)
-			//	mexPrintf("Output elements successfully copied to host\n");
-
-
 			
-
 			clFinish(af_queue);
 
 			status = clReleaseMemObject(d_indices);
@@ -556,12 +395,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 				std::cerr << getErrorString(status) << std::endl;
 				mexPrintf("Failed to release the memory of elements\n");
 			}
-
-
-			//if (verbose) {
-			//	mexPrintf("Memory released\n");
-			//	mexEvalString("pause(.0001);");
-			//}
 
 		}
 
@@ -613,24 +446,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 		std::cerr << getErrorString(status) << std::endl;
 		mexPrintf("Failed to release kernel\n");
 	}
-
-	//int32_t* output = (int32_t*)std::malloc(outputSize);
-	//float* output = (float*)std::malloc(outputSize);
-
-	//status = clEnqueueReadBuffer(af_queue, d_indices, CL_TRUE, 0, outputSize, output, 0, NULL, NULL);
-	//status = clEnqueueReadBuffer(af_queue, d_elements, CL_TRUE, 0, outputSize, output, 0, NULL, NULL);
-
-
-	//for (int kk = 0; kk < summa[0]; kk++) {
-	//	if (output[kk] > 0)
-	//		mexPrintf("output %d\n", output[kk]);
-	//}
-
-	//free(sourceCode);
-
-	//}
-	//return indices;
-	//return output;
 }
 
 
@@ -643,12 +458,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	if (nlhs != 1)
 		mexErrMsgTxt("Invalid number of output arguments.  There must be exactly one.");
-
-	//if (nlhs != 2)
-	//	mexErrMsgTxt("Invalid number of output arguments.  There must be exactly two.");
-
-
-	//int pixelsize = (int)mxGetScalar(prhs[0]);
 
 	int Ny = (int)mxGetScalar(prhs[1]);
 
@@ -686,16 +495,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	float NSlices = (float)mxGetScalar(prhs[18]);
 
-	//vector<float> iij_vec(iij, iij + mxGetNumberOfElements(prhs[12]));
-
-	//vector<float> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[13]));
-
-	//vector<float> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[14]));
-
-	//vector<float> yy_vec(yy, yy + mxGetNumberOfElements(prhs[15]) - 1);
-
-	//vector<float> xx_vec(xx, xx + mxGetNumberOfElements(prhs[16]) - 1);
-
 	float yyv = yy[1] - yy[0];
 
 	float xxv = xx[1] - xx[0];
@@ -716,8 +515,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	int size_atten = mxGetNumberOfElements(prhs[23]);
 
 	int *index = (int*)mxGetData(prhs[24]);
-
-	//vector<int> indeksit(index, index + mxGetNumberOfElements(prhs[24]) - 1);
 
 	uint32_t *pituus = (uint32_t*)mxGetData(prhs[25]);
 
@@ -750,37 +547,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	bool verbose = (bool)mxGetScalar(prhs[38]);
 
 	int device = (int)mxGetScalar(prhs[39]);
-
-	//int device = 2;
-	//af::setDevice(1);
+	
 	af::setDevice(device);
-
-	//int loop_var_par = 1;
-
-	//vector<int> lor;
-
-	//vector<int> indices;
-
-	//vector<float> elements;
-
-	//clock_t time = clock();
-
-	//vector<vector<int32_t>> rows;
-
-	//rows.assign(subsets, vector<int32_t>(ind_size, 0));
-
-	//for (int ii = 0; ii < subsets; ii++) {
-	//	int oo = 1;
-	//	for (int kk = pituus[ii]; kk < pituus[ii + 1]; kk++) {
-	//		int32_t apu = static_cast<int32_t>(lor1[kk]);
-	//		rows[ii][oo] = (oo > 1) ? apu + rows[ii][oo - 1] : apu;
-	//		oo++;
-	//	}
-	//}
-
-	//time = clock() - time;
-
-	//mexPrintf("Function elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 
 	char *k_path = mxArrayToString(prhs[0]);
 
@@ -799,14 +567,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	size_t koko = mxGetNumberOfElements(prhs[35]);
 	size_t koko_l = mxGetNumberOfElements(prhs[33]);
-
-	//mexPrintf("bxb %f\n", bxb);
-	//mexPrintf("koko_l %f\n", iij[mxGetNumberOfElements(prhs[12]) - 1]);
-
-	//size_t outSize = summa[2];
-	//size_t outSize2 = 1;
-	//size_t outSize = pituus[3] - pituus[2];
-	//size_t outSize2 = 1;
+	
 	size_t outSize = Nx * Ny * Nz;
 	size_t outSize2 = Niter + 1;
 
@@ -814,40 +575,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	float* elements = (float*)mxGetData(plhs[0]);
 
-	//plhs[0] = mxCreateNumericMatrix(outSize, outSize2, mxINT32_CLASS, mxREAL);
-
-	//int* elements = (int*)mxGetData(plhs[0]);
-
 	reconstruction(koko, lor1, z_det, x, y, Sin, Nx, Ny, Nz, Niter, x0, d, dz, bxf, byf, bzf, bxb, byb, bzb, bx, by, bz, maxxx, maxyy, minxx, minyy, zmax, 
 		xxv, yyv, xxa, yya, NSlices, pituus, summa, koko_l, L, size_x, TotSinos, elements, verbose, attenuation_correction, atten, size_atten, subsets, 
 		epps, pseudos, det_per_ring, pRows, k_path);
 	
-	//float* out = Siddon(koko, lor1, z_det, x, y, Sin, Nx, Ny, Nz, Niter, x0, d, dz, bxf, byf, bzf, bxb, byb, bzb, bx, by, bz, maxxx, maxyy, minxx, minyy, zmax, xxv, yyv, xxa, yya, NSlices, pituus, summa, koko_l, xy_index, z_index, size_x, TotSinos);
-
-
-	//size_t outSize1 = indices.dims(0);
-	//size_t outSize2 = indices.dims(1);
-
-	//mexPrintf("testi10 %d\n", out[598]);
-
-	//for (int kk = 0; kk < summa[0]; kk++) {
-	//	if (out[kk] > 0)
-	//		mexPrintf("out %d\n", out[kk]);
-	//}
-
-	//size_t outSize1 = summa[0];
-	//size_t outSize2 = 1;
-
-	//plhs[1] = mxCreateNumericMatrix(outSize1, outSize2, mxUINT32_CLASS, mxREAL);
-	//plhs[0] = mxCreateNumericMatrix(outSize1, outSize2, mxSINGLE_CLASS, mxREAL);
-
-	//int32_t *out = indices.host<int32_t>();
-	//std::memcpy(mxGetData(plhs[1]), out, (outSize1)*(outSize2) * sizeof(int32_t));
-	//std::memcpy(mxGetData(plhs[0]), out, (outSize1)*(outSize2) * sizeof(float));
-
-	//time = clock() - time;
-	//mexPrintf("Total time of %f seconds\n", time);
-	//free(out);
 
 	sync();
 	deviceGC();

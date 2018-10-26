@@ -85,16 +85,8 @@ void improved_siddon(const int loop_var_par, const int size_x, const double zmax
 
 
 			if (tmin >= tmax) {
-				//mexPrintf("tmin = %f\n", tmin);
-				//mexPrintf("tmax = %f\n", tmax);
 				continue;
 			}
-
-			//if (luu < 5000) {
-			//	mexPrintf("tmin = %f\n", tmin);
-			//	mexPrintf("tmax = %f\n", tmax);
-			//	luu++;
-			//}
 
 
 			int imin, imax, jmin, jmax;
@@ -187,22 +179,9 @@ void improved_siddon(const int loop_var_par, const int size_x, const double zmax
 
 			int z_loop = static_cast<int>((zs / zmax)*(static_cast<double>(NSlices) - 1.));
 
-			//if (ys > 285.47 && ys < 285.49 && yd < 854.96 && yd > 854.94 && xs < 829.95 && xs > 829.93 && xd < 453.56 && xd > 453.54) {
-			//	mexPrintf("tempi = %d\n", tempi);
-			//	mexPrintf("tempj = %d\n", tempj);
-			//	mexPrintf("tempj = %f\n", ((ys + pt * y_diff) - by) / d);
-			//	mexPrintf("tmin = %f\n", tmin);
-			//	mexPrintf("tmax = %f\n", tmax);
-			//}
-
 			for (int ii = 0; ii < Np; ii++) {
 
 				temp_koko++;
-
-				//if (ys > 285.47 && ys < 285.49 && yd < 854.96 && yd > 854.94 && xs < 829.95 && xs > 829.93 && xd < 453.56 && xd > 453.54 && z_loop == 108) {
-				//	mexPrintf("tempi = %d\n", tempi);
-				//	mexPrintf("tempj = %d\n", tempj);
-				//}
 
 				if (tx0 < ty0) {
 
@@ -221,13 +200,6 @@ void improved_siddon(const int loop_var_par, const int size_x, const double zmax
 					break;
 
 			}
-
-			//if (ys > 285.47 && ys < 285.49 && yd < 854.96 && yd > 854.94 && xs < 829.95 && xs > 829.93 && xd < 453.56 && xd > 453.54 && z_loop == 108) {
-			//	mexPrintf("temp_koko = %d\n", temp_koko);
-			//	mexPrintf("lor[lj - 1] = %d\n", lor[lj - 1]);
-			//	mexPrintf("lor[lj - 2] = %d\n", lor[lj - 2]);
-			//	mexPrintf("lj = %d\n", lj);
-			//}
 
 			discard[lj] = true;
 			lor[lj] = temp_koko;
@@ -736,7 +708,6 @@ void improved_siddon(const int loop_var_par, const int size_x, const double zmax
 		}
 
 	}
-	//return lj;
 }
 
 void mexFunction(int nlhs, mxArray *plhs[],

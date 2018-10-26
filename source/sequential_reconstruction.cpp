@@ -28,19 +28,11 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 	vector<double> elements(maksimi, 0.);
 
 	for (int lo = 1; lo <= loop_var_par; lo++) {
-
-		//mexPrintf("lo = %d\n", lo);
 			
 		oo++;
 
 		pass = false;
 
-		//double xs = x[oo];
-		//double xd = x[oo + size_x];
-		//double ys = y[oo];
-		//double yd = y[oo + size_x];
-		//double zs = z_det[oo];
-		//double zd = z_det[oo + size_x];
 		double xs, xd, ys, yd, zs, zd;
 		if (xy_index[oo] >= size_x) {
 			xs = x[xy_index[oo]];
@@ -68,24 +60,14 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 		double x_diff = (xd - xs);
 		double z_diff = (zd - zs);
 
-		//if (oo < 100) {
-		//	mexPrintf("zd =% f\n", zd);
-		//	mexPrintf("zs =% f\n", zs);
-		//}
-
 		unsigned int Np = static_cast<int>(lor1[oo]);
-		//unsigned int N2 = lor2[oo];
 		
 
 		if (fabs(z_diff) < 1e-8) {
 
 			int z_loop = static_cast<int>((zs / zmax)*(static_cast<double>(NSlices) - 1.));
 
-			//mexPrintf("lo2 = %d\n", lo);
-
 			if (fabs(y_diff) < 1e-8) {
-
-				//mexPrintf("lo = %d\n", lo);
 
 				if (yd <= maxyy && yd >= minyy) {
 					double minvalue = maxyy * 1e5;
@@ -117,15 +99,12 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						indices[ii] = tempk + ii;
 						elements[ii] = element;
-						//lor[ii] = lo;
 					}
 					pass = true;
-					//lor[lo] = lor2[lo];
 				}
 			}
 			else if (fabs(x_diff) < 1e-8) {
 
-				//mexPrintf("lo = %d\n", lo);
 				if (xd <= maxxx && xd >= minxx) {
 					double minvalue = maxxx * 1e5;
 					int apu;
@@ -157,10 +136,8 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						indices[ii] = tempk + ii * Ny;
 						elements[ii] = element;
-						//lor[ii] = lo;
 					}
 					pass = true;
-					//lor[lo] = lor2[lo];
 				}
 			}
 			else {
@@ -176,25 +153,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 				double tmin = max(txmin, tymin);
 				double tmax = min(txmax, tymax);
-
-				//if (txback < 0) {
-				//	mexPrintf("txback = %f\n", txback);
-				//	mexPrintf("tx0 = %f\n", tx0);
-				//	mexPrintf("x_diff = %f\n", x_diff);
-				//}
-
-				//if (txmax < 0)
-				//	mexPrintf("txmax = %f\n", txmax);
-
-				//if (lo == 5) {
-				//	mexPrintf("txback = %f\n", txback);
-				//	mexPrintf("tx0 = %f\n", tx0);
-				//	mexPrintf("x_diff = %f\n", x_diff);
-				//	mexPrintf("xd = %f\n", xd);
-				//	mexPrintf("xs = %f\n", xs);
-				//	mexPrintf("bxb = %f\n", bxb);
-				//	mexPrintf("bxf = %f\n", bxf);
-				//}
 
 				int imin, imax, jmin, jmax;
 				double pxt, pyt;
@@ -334,26 +292,16 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 				}
 
-				//mexPrintf("lo5 = %d\n", lo);
-
 				for (unsigned int ii = 0; ii < Np; ii++) {
 					elements[ii] = elements[ii] * (temp);
-					//lor[ii] = lo;
 				}
-				//lor[lo] = lor2[lo];
 				pass = true;
 			}
 		}
 		else {
 
-			//if (lo == 1028572)
-			//	mexPrintf("lo1 = %d\n", lo);
-
 			if (fabs(y_diff) < 1e-8) {
 				if (yd <= maxyy && yd >= minyy) {
-
-					//if (lo == 1028572)
-					//	mexPrintf("lo2 = %d\n", lo);
 
 					double tx0 = (bxf - xs) / (x_diff);
 					double tz0 = (bzf - zs) / (z_diff);
@@ -512,22 +460,15 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						temp = exp(jelppi) * temp;
 					}
 
-					//mexPrintf("lo5 = %d\n", lo);
-
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						elements[ii] = (elements[ii] * temp);
-						//lor[ii] = lo;
 					}
-					//lor[lo] = lor2[lo];
 					pass = true;
 
 				}
 			}
 			else if (fabs(x_diff) < 1e-8) {
 				if (xd <= maxxx && xd >= minxx) {
-
-					//if (lo == 1028572)
-					//	mexPrintf("lo3 = %d\n", lo);
 
 					double ty0 = (byf - ys) / (y_diff);
 					double tyback = (byb - ys) / (y_diff);
@@ -685,17 +626,12 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						elements[ii] = (elements[ii] * temp);
-						//lor[ii] = lo;
 					}
-					//lor[lo] = lor2[lo];
 					pass = true;
 
 				}
 			}
 			else {
-
-				//if (lo == 1028572)
-				//	mexPrintf("lo4 = %d\n", lo);
 
 				double tx0 = (bxf - xs) / (x_diff);
 				double tz0 = (bzf - zs) / (z_diff);
@@ -1018,23 +954,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	size_t N = Nx * Ny * Nz;
 
-	//mexPrintf("loop_var_par = %d\n", loop_var_par);
-
-	//mexEvalString("pause(.001);");
-
 	double maxyy = *max_element(yy, yy + Ny + 1);
 	double minyy = *min_element(yy, yy + Ny + 1);
 
 	double maxxx = *max_element(xx, xx + Nx + 1);
 	double minxx = *min_element(xx, xx + Nx + 1);
-
-	//plhs[0] = mxCreateNumericMatrix(summa, 1, mxINT32_CLASS, mxREAL);
-
-	//int32_t* lor = (int32_t*)mxGetData(plhs[0]);
-
-	//plhs[1] = mxCreateNumericMatrix(summa, 1, mxINT32_CLASS, mxREAL);
-
-	//int32_t* indices = (int32_t*)mxGetData(plhs[1]);
 
 	plhs[0] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
@@ -1043,19 +967,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
 	double* rhs = (double*)mxGetData(plhs[1]);
-
-	//plhs[2] = mxCreateNumericMatrix(loop_var_par, 1, mxDOUBLE_CLASS, mxREAL);
-
-	//double* lhs = (double*)mxGetData(plhs[2]);
-
-	//plhs[0] = mxCreateSparse(N, rows, nzmax, mxREAL);
-	//double* elements = (double*)mxGetData(plhs[0]);
-	//mwIndex* indices = mxGetIr(plhs[0]);
-	//mwIndex* lor = mxGetJc(plhs[0]);
-
-	//mexPrintf("Nx = %d\n", Nx);
-	//mexPrintf("Ny = %d\n", Ny);
-	//mexPrintf("Nz = %d\n", Nz);
 
 	clock_t time = clock();
 
@@ -1068,9 +979,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		mexPrintf("Improved Siddon took %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 		mexEvalString("pause(.001);");
 	}
-
-	//for (int kk = 0; kk < 10; kk++)
-		//mexPrintf("elements = %f\n", elements[kk]);
 
 	return;
 }

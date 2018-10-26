@@ -720,7 +720,7 @@ for llo = 1 : partitions
                 if rekot(6) || rekot(5) || rekot(3)
                     
                     if verbose
-                        disp('Prepass phase for MRAMLA, COSEM and ECOSEM started')
+                        disp('Prepass phase for MRAMLA, COSEM, ACOSEM and ECOSEM started')
                     end
                     for osa_iter = 1 : subsets
                         if options.precompute_lor == false
@@ -783,11 +783,17 @@ for llo = 1 : partitions
                                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                             end
                         end
-                        if rekot(15)
-                            C_aco(:,osa_iter) = full(sum(spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',(options.x0(:)')).^(1/options.h)))');
-                        end
                         if rekot(6) || rekot(5)
-                            C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',(options.x0(:)'))))');
+%                             C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',(options.x0(:)'))))');
+                            if osa_iter > 1
+                                C_co(:,osa_iter) = full(sum((spdiags(options.x0(:),0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2)),2));
+                            end
+                        end
+                        if rekot(15)
+%                             C_aco(:,osa_iter) = full(sum(spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',(options.x0(:)')).^(1/options.h)))');
+                            if osa_iter > 1
+                                C_aco(:,osa_iter) = full(sum(power(spdiags(options.x0(:),0,size(A,1),size(A,1))*A,1/options.h)*spdiags(uu./(A'*options.x0(:)+epps),0,size(A,2),size(A,2)),2));
+                            end
                         end
                         if rekot(3)
                             %%%% This particular piece of code was taken from:
@@ -1065,7 +1071,8 @@ for llo = 1 : partitions
                         if verbose
                             tStart = tic;
                         end
-                        C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_cosem_apu')))');
+%                         C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_cosem_apu')))');
+                        C_co(:,osa_iter) = full(sum((spdiags(pz_cosem_apu,0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2)),2));
                         apu = (sum(C_co,2)./D);
                         pz_cosem_apu = (apu)*sum(uu)/sum(A'*apu+epps);
                         if verbose
@@ -1079,9 +1086,11 @@ for llo = 1 : partitions
                         if verbose
                             tStart = tic;
                         end
-                        C_aco(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_acosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_acosem_apu').^(1/options.h)))');
+%                         C_aco(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_acosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_acosem_apu').^(1/options.h)))');
+                        C_aco(:,osa_iter) = full(sum((spdiags(pz_acosem_apu,0,size(A,1),size(A,1))*A).^(1/options.h)*spdiags(uu./(A'*pz_acosem_apu+epps),0,size(A,2),size(A,2)),2));
                         apu = (sum(C_aco,2)./D).^options.h;
                         pz_acosem_apu = (apu)*sum(uu)/sum(A'*apu+epps);
+                        pz_acosem_apu(pz_acosem_apu < 0) = 0;
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ACOSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1099,7 +1108,8 @@ for llo = 1 : partitions
                             pz_osem_apu=(pz_osem_apu./(Summ+epps)).*((A*(uu./(A'*pz_osem_apu+epps))));
                         end
                         if rekot(6) == false
-                            C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_cosem_apu')))');
+%                             C_co(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_cosem_apu')))');
+                            C_co(:,osa_iter) = full(sum((spdiags(pz_cosem_apu,0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*pz_cosem_apu+epps),0,size(A,2),size(A,2)),2));
                             apu = (sum(C_co,2)./D);
                             pz_cosem_apu = (apu)*sum(uu)/sum(A'*apu+epps);
                         end

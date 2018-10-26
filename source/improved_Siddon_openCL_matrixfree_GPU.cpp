@@ -241,8 +241,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 		mexEvalString("pause(.0001);");
 	}
 
-	//int N = Nx * Ny * Nz;
-
 	int im_dim = Nx * Ny * Nz;
 
 	status = clEnqueueWriteBuffer(af_queue, d_Nx, CL_FALSE, 0, sizeof(int), &Nx, 0, NULL, NULL);
@@ -288,15 +286,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 		mexEvalString("pause(.0001);");
 	}
 
-	//cl_ulong size;
-	//cl_device_id *devices;
-	//cl_platform_id *platforms;
-	//clGetPlatformIDs(2, platforms, NULL);
-	//clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 1, devices, NULL);
-	//clGetDeviceInfo(devices[0], CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &size, 0);
-
-	//mexPrintf("Local mem size %u\n", size);
-	//mexEvalString("pause(.0001);");
 
 	for (int iter = 0; iter < Niter; iter++) {
 
@@ -308,7 +297,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 		for (int osa_iter = 0; osa_iter < subsets; osa_iter++) {
 
-			//clFinish(af_queue);
 
 			if (verbose) {
 				mexPrintf("Next iteration started\n");
@@ -319,9 +307,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			array rhs = constant(0, im_dim, 1);
 
 			size_t length = pituus[osa_iter + 1] - pituus[osa_iter];
-
-			//size_t outputSize1 = sizeof(int) * summa[osa_iter];
-			//size_t outputSize2 = sizeof(float) * summa[osa_iter];
 
 			array sub_index_array, apu_lor, xo, zo, uu;
 
@@ -343,9 +328,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 				zo = zindex;
 				uu = Sino;
 			}
-
-			//cl_mem d_rhs = clCreateBuffer(af_context, CL_MEM_READ_WRITE, im_dim, NULL, &status);
-			//cl_mem d_Summ = clCreateBuffer(af_context, CL_MEM_READ_WRITE, im_dim, NULL, &status);
 
 			cl_mem * d_lor = apu_lor.device<cl_mem>();
 
@@ -435,10 +417,6 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			
 
 			clFinish(af_queue);
-			//clReleaseMemObject(d_rhs);
-			//clReleaseMemObject(d_Summ);
-			//if (iter == Niter - 1)
-			//	pz_ml(span, iter + 1) = Summ;
 		}
 
 		if (rekot[1])
@@ -513,12 +491,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	if (nlhs != 1)
 		mexErrMsgTxt("Invalid number of output arguments.  There must be exactly one.");
 
-	//if (nlhs != 2)
-	//	mexErrMsgTxt("Invalid number of output arguments.  There must be exactly two.");
-
-
-	//int pixelsize = (int)mxGetScalar(prhs[0]);
-
 	int Ny = (int)mxGetScalar(prhs[1]);
 
 	int Nx = (int)mxGetScalar(prhs[2]);
@@ -555,16 +527,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	float NSlices = (float)mxGetScalar(prhs[18]);
 
-	//vector<float> iij_vec(iij, iij + mxGetNumberOfElements(prhs[12]));
-
-	//vector<float> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[13]));
-
-	//vector<float> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[14]));
-
-	//vector<float> yy_vec(yy, yy + mxGetNumberOfElements(prhs[15]) - 1);
-
-	//vector<float> xx_vec(xx, xx + mxGetNumberOfElements(prhs[16]) - 1);
-
 	float yyv = yy[1] - yy[0];
 
 	float xxv = xx[1] - xx[0];
@@ -581,8 +543,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	float *atten = (float*)mxGetData(prhs[22]);
 	int size_atten = mxGetNumberOfElements(prhs[22]);
-
-	//vector<int> indeksit(index, index + mxGetNumberOfElements(prhs[24]) - 1);
 
 	uint32_t *pituus = (uint32_t*)mxGetData(prhs[23]);
 
@@ -615,39 +575,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	int device = (int)mxGetScalar(prhs[36]);
 
-	//int device = 2;
-	//af::setDevice(1);
 	af::setDevice(device);
-
-	//mexPrintf("size_atten %d\n", size_atten);
-	//mexEvalString("pause(.0001);");
-
-	//int loop_var_par = 1;
-
-	//vector<int> lor;
-
-	//vector<int> indices;
-
-	//vector<float> elements;
-
-	//clock_t time = clock();
-
-	//vector<vector<int32_t>> rows;
-
-	//rows.assign(subsets, vector<int32_t>(ind_size, 0));
-
-	//for (int ii = 0; ii < subsets; ii++) {
-	//	int oo = 1;
-	//	for (int kk = pituus[ii]; kk < pituus[ii + 1]; kk++) {
-	//		int32_t apu = static_cast<int32_t>(lor1[kk]);
-	//		rows[ii][oo] = (oo > 1) ? apu + rows[ii][oo - 1] : apu;
-	//		oo++;
-	//	}
-	//}
-
-	//time = clock() - time;
-
-	//mexPrintf("Function elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 
 	char *k_path = mxArrayToString(prhs[0]);
 
@@ -663,20 +591,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	float bxb = bx + iij[mxGetNumberOfElements(prhs[12]) - 1] * d;
 	float byb = by + jji[mxGetNumberOfElements(prhs[13]) - 1] * d;
 	float bzb = bz + kkj[mxGetNumberOfElements(prhs[14]) - 1] * dz;
-
-	//mexPrintf("bxb %f\n", bxb);
-	//mexPrintf("koko_l %f\n", iij[mxGetNumberOfElements(prhs[12]) - 1]);
-
-	//size_t outSize = summa[2];
-	//size_t outSize2 = 1;
-	//size_t outSize = pituus[3] - pituus[2];
-	//size_t outSize2 = 1;
+	
 	size_t outSize = Nx * Ny * Nz;
 	size_t outSize2 = Niter + 1;
-
-	//plhs[0] = mxCreateNumericMatrix(outSize, outSize2, mxSINGLE_CLASS, mxREAL);
-
-	//float* elements = (float*)mxGetData(plhs[0]);
 
 	mxArray *cell_array_ptr;
 	cell_array_ptr = mxCreateCellMatrix(size_reko + 1, 1);
@@ -701,10 +618,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		ele_ml = (float*)mxGetData(mlem);
 	if (rekot[1])
 		ele_os = (float*)mxGetData(osem);
-
-	//plhs[0] = mxCreateNumericMatrix(outSize, outSize2, mxINT32_CLASS, mxREAL);
-
-	//int* elements = (int*)mxGetData(plhs[0]);
 
 	reconstruction(koko, lor1, z_det, x, y, Sin, Nx, Ny, Nz, Niter, x0, d, dz, bxf, byf, bzf, bxb, byb, bzb, bx, by, bz, maxxx, maxyy, minxx, minyy, zmax, xxv, 
 		yyv, xxa, yya, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, ele_ml, ele_os, verbose, attenuation_correction, atten, size_atten, 

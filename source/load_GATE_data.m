@@ -106,8 +106,6 @@ if options.use_LMF
     % Go through all the files
     for lk=1:length(fnames)
         
-        %     M = dlmread([path fnames(i).name]);
-        
         pituus = int64((fnames(lk).bytes - header_bytes) / data_bytes);
         
         nimi = [fpath fnames(lk).name];
@@ -228,11 +226,6 @@ if options.use_LMF
     % a value at [25100 325] on the other hand tells the number of events when
     % 25100 is detector 1 and 325 detector 2
     if partitions == 1
-        %     if length(unique(LL1))*8*2 < detectors^2*2
-        %         prompts = accumarray([LL1 LL2],1,[detectors detectors],[],[],true);
-        %     else
-        %         prompts = accumarray([LL1 LL2],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %     end
         prompts = LL1;
         clear LL1 LL2
     else
@@ -253,10 +246,8 @@ if options.use_LMF
             
             if partitions > 1
                 P = uint16(full(prompts{llo}));
-                %         P = prompts{llo};
             else
                 P = uint16(full(prompts));
-                %         P = prompts;
             end
             
             %     tic
@@ -265,7 +256,6 @@ if options.use_LMF
             P = P(discard);
             
             coincidences{partitions, 1} = sparse(double(P));
-            %     coincidences{partitions, 1} = P;
             toc
             
         end
@@ -408,7 +398,6 @@ elseif options.use_ASCII
         % Compare_Phantom_vs_Reconstructions.m
         % Takes the columns containing the source locations for both singles
         if source_index1 ~= 0 || ~isempty(source_index1) || source_index2 ~= 0 || ~isempty(source_index2)
-%             C = [C;single(M(:,[source_index1:source_index1+2 source_index2:source_index2+2]))];
             
             S = [single(M(:,[source_index1:source_index1+2 source_index2:source_index2+2]))];
             
@@ -534,11 +523,7 @@ elseif options.use_ASCII
     % a value at [25100 325] on the other hand tells the number of events when
     % 25100 is detector 1 and 325 detector 2
     if partitions == 1
-        %     if length(unique(LL1))*8*2 < detectors^2*2
-        %         prompts = accumarray([LL1 LL2],1,[detectors detectors],[],[],true);
-        %     else
         prompts = accumarray([LL1 LL2],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %     end
     else
         prompts = cell(partitions,1);
         ll = 1;
@@ -703,8 +688,6 @@ elseif options.use_root
     % Go through all the files
     for lk=1:length(fnames)
         
-        %     M = dlmread([path fnames(i).name]);
-        
         
         nimi = [fpath fnames(lk).name];
         
@@ -824,11 +807,6 @@ elseif options.use_root
     % a value at [25100 325] on the other hand tells the number of events when
     % 25100 is detector 1 and 325 detector 2
     if partitions == 1
-        %     if length(unique(LL1))*8*2 < detectors^2*2
-        %         prompts = accumarray([LL1 LL2],1,[detectors detectors],[],[],true);
-        %     else
-        %         prompts = accumarray([LL1 LL2],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %     end
         prompts = LL1;
         clear LL1 LL2
     else
@@ -849,10 +827,8 @@ elseif options.use_root
             
             if partitions > 1
                 P = uint16(full(prompts{llo}));
-                %         P = prompts{llo};
             else
                 P = uint16(full(prompts));
-                %         P = prompts;
             end
             
             %     tic
@@ -861,7 +837,6 @@ elseif options.use_root
             P = P(discard);
             
             coincidences{partitions, 1} = sparse(double(P));
-            %     coincidences{partitions, 1} = P;
             toc
             
         end

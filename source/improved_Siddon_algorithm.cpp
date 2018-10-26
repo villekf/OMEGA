@@ -1,5 +1,6 @@
 #include "mex.h"
 #include <vector>
+#include <cmath>
 #include <algorithm>
 #include <numeric>
 #include <time.h>
@@ -43,20 +44,14 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 	for (int lo = 1; lo <= loop_var_par; lo++) {
 
-		//mexPrintf("lo = %d\n", lo);
-
-		//aa++;
 		if ((lo - 1) % size_x == 0) {
 			ll = -1;
 			lz++;
 		}
 
-		//mexPrintf("aa = %d\n", aa);
-
 		ll++;
 
 		if (pituus > 1) {
-			//mexPrintf("lo = %d\n", lo);
 			if (lo != index[oo + 1]) {
 				continue;
 			}
@@ -64,25 +59,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 			
 
 		oo++;
-
-		//if (oo >= 7170302) {
-		////if (oo % 100000 == 0) {
-		//	mexPrintf("oo = %d\n", oo);
-		//	mexPrintf("lo = %d\n", lo);
-		//	mexEvalString("pause(.001);");
-		//}
-		//else if (oo > pituus - 1) {
-			//mexPrintf("lo = %d\n", lo);
-
-			//mexEvalString("pause(.001);");
-		//}
-
-		//}
-
-
-
-// 		if (discard[lo - 1] == false)
-// 			continue;
 
 		double xs = x[ll];
 		double xd = x[ll + size_x];
@@ -96,31 +72,12 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 		double x_diff = (xd - xs);
 		double z_diff = (zd - zs);
 
-		//mexPrintf("zs = %f\n", zs);
-		//if (lo == 68) {
-		//	mexPrintf("yd = %f\n", yd);
-		//	mexPrintf("ys = %f\n", ys);
-		//	mexPrintf("xd = %f\n", xd);
-		//	mexPrintf("xs = %f\n", xs);
-		//	//mexPrintf("zd = %f\n", z_diff);
-		//}
-		
-
 		if (fabs(z_diff) < 1e-8) {
 
 			int z_loop = static_cast<int>((zs / zmax)*(static_cast<double>(NSlices) - 1.));
 
-			//if (lz == 0) {
-			//	mexPrintf("z_loop = %d\n", z_loop);
-			//	//mexPrintf("zd = %f\n", zd);
-			//}
-
-			//mexPrintf("erotus = %f\n", fabs(y_diff));
-			//mexPrintf("lo2 = %d\n", lo);
 
 			if (fabs(y_diff) < 1e-8) {
-
-				//mexPrintf("lo = %d\n", lo);
 
 				if (yd <= maxyy && yd >= minyy) {
 					double minvalue = maxyy * 100.;
@@ -132,19 +89,10 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 							apu = ii;
 						}
 					}
-					//vector<double> templ_ijk(pixelsize, d);
 					double templ_ijk = d;
 					vector<int> tempk(Nx, apu * Ny + z_loop * Nx * Ny);
 					double temp = d * static_cast<double>(Nx);
-					//if (lo == 1315)
-					//	mexPrintf("pixelsize = %d\n", pixelsize);
-					//for_each(templ_ijk.begin(), templ_ijk.end(), [&](int n) {
-					//	temp += n;
-					//});
 					temp = 1. / temp;
-
-					//if (lo == 1315)
-					//	mexPrintf("temp = %f\n", temp);
 
 					if (attenuation_correction) {
 
@@ -152,42 +100,29 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 						for (int iii = 0; iii < tempk.size(); iii++) {
 							jelppi += templ_ijk * -atten[tempk[iii] + iii];
-							//if (lo == 7259089)
-								//mexPrintf("atten = %f\n", -atten[tempk[iii] + iii]);
-							//if (lo == 1315)
-								//mexPrintf("tempk = %d\n", tempk[iii] + iii);
 						}
-						//if (lo == 7259089)
-							//mexPrintf("jelppi = %f\n", jelppi);
 						temp = exp(jelppi) * temp;
 
 					}
 
-					//if (lo == 1315)
-					//	mexPrintf("jelppi = %f\n", jelppi);
 
 					float element = static_cast<float>(templ_ijk * temp);
 
 					for (int ii = 0; ii < tempk.size(); ii++) {
 						indices.emplace_back((tempk[ii] + ii));
 						lh++;
-						elements.emplace_back(element);
-						//if (elements.back() > 1.)
-							//mexPrintf("lo = %d\n", lo);
+						elements.emplace_back(fabs(element));
 					}
 					lj++;
 
 					lor[oo][0] = oo + 1;
 					lor[oo][1] = Nx;
-					//mexPrintf("lor = %d\n", lor[oo][0]);
 					continue;
 				}
-				//mexPrintf("lo1 = %d\n", lo);
 				continue;
 			}
 			else if (fabs(x_diff) < 1e-8) {
 
-				//mexPrintf("lo = %d\n", lo);
 				if (xd <= maxxx && xd >= minxx) {
 					double minvalue = maxxx * 100.;
 					int apu;
@@ -198,14 +133,9 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 							apu = ii;
 						}
 					}
-					//vector<double> templ_ijk(pixelsize, d);
 					double templ_ijk = d;
 					vector<int> tempk(Ny, apu + z_loop * Nx * Ny);
-					//double temp;
 					double temp = d * static_cast<double>(Ny);
-					//for_each(templ_ijk.begin(), templ_ijk.end(), [&](int n) {
-					//	temp += n;
-					//});
 					temp = 1. / temp;
 
 					if (attenuation_correction) {
@@ -214,34 +144,24 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 						for (int iii = 0; iii < tempk.size(); iii++) {
 							jelppi += templ_ijk * -atten[tempk[iii] + iii * Ny];
-							//if (lo == 7259089)
-								//mexPrintf("atten = %f\n", -atten[tempk[iii] + iii]);
-							//if (lo == 7259089)
-								//mexPrintf("templ_ijk = %f\n", templ_ijk[iii]);
 						}
 						temp = exp(jelppi) * temp;
 
 					}
-					//if (lo == 7259089)
-						//mexPrintf("jelppi = %f\n", jelppi);
 
 					float element = static_cast<float>(templ_ijk * temp);
 
 					for (int ii = 0; ii < tempk.size(); ii++) {
 						indices.emplace_back((tempk[ii] + ii * Ny));
-						elements.emplace_back(element);
+						elements.emplace_back(fabs(element));
 						lh++;
-						//if (elements.back() > 1.)
-							//mexPrintf("lo = %d\n", lo);
 					}
 					lj++;
 
 					lor[oo][0] = oo + 1;
 					lor[oo][1] = Ny;
-					//mexPrintf("lor = %d\n", lor[oo][0]);
 					continue;
 				}
-				//mexPrintf("lo2 = %d\n", lo);
 				continue;
 			}
 			double tx0 = (bxf - xs) / (x_diff);
@@ -257,26 +177,13 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 			double tmin = max(txmin, tymin);
 			double tmax = min(txmax, tymax);
 
-			//mexPrintf("lo = %d\n", lo);
 
 			if (tmin >= tmax) {
-				//mexPrintf("tmin = %f\n", tmin);
-				//mexPrintf("tmax = %f\n", tmax);
-				//mexPrintf("lo3 = %d\n", lo);
 				continue;
 			}
 
-			//if (lo == 342)
-			//	mexPrintf("tmin = %f\n", tmin);
-
-			//if (lo == 342)
-			//	mexPrintf("tmax = %f\n", tmax);
-
 			int imin, imax, jmin, jmax;
 			double pxt, pyt;
-
-			//vector<double> tx_n;
-			//vector<double> ty_n;
 
 			int iu, ju;
 
@@ -293,7 +200,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					pxt = xs + tmax*(x_diff);
 					imax = static_cast<int>(floor((pxt - bx) / d));
 				}
-				//apu = (imin:1 : imax) + 1;
 				tx0 = (bx + static_cast<double>(imin) * d - xs) / (x_diff);
 				iu = 1;
 			}
@@ -312,25 +218,7 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 				}
 				tx0 = (bx + static_cast<double>(imax) * d - xs) / (x_diff);
 				iu = -1;
-				//vector<double> tx_n(tx.begin() + imin, tx.begin() + imax);
 			}
-
-			//if (lo == 342)
-			//	mexPrintf("imin = %d\n", imin);
-
-			//if (lo == 342)
-			//	mexPrintf("imax = %d\n", imax);
-			//mexPrintf("lo = %f\n", pxt);
-			//mexPrintf("tmin = %f\n", tmin);
-			//mexPrintf("tmax = %f\n", tmax);
-			//if (imax > imin) {
-			//	tx_n.reserve(imax + imin);
-			//	tx_n.insert(tx_n.end(), tx.begin() + imin, tx.begin() + imax);
-			//}
-			//else if (imax == imin)
-			//	tx_n.emplace_back(tx[imax]);
-
-			//mexPrintf("lo2 = %d\n", lo);
 
 			if (ys < yd) {
 				if (tmin == tymin)
@@ -366,12 +254,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 				ju = -1;
 			}
 
-			//if (lo == 342)
-			//	mexPrintf("jmin = %d\n", jmin);
-
-			//if (lo == 342)
-			//	mexPrintf("jmax = %d\n", jmax);
-
 			int Np = (imax - imin + 1) + (jmax - jmin + 1);
 
 			int tempi, tempj, tempk;
@@ -406,23 +288,11 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					
 					templ_ijk.emplace_back((tx0 - tc) * L);
 
-					//if (ii == 0) {
-					//	indices[lo][ii] = (tempj + tempi + tempk);
-					//	templ_ijk[ii] = (tx0 - tc) * L;
-					//}
-					//else {
-					//	indices[lo].emplace_back((tempj + tempi + tempk));
-					//	templ_ijk.emplace_back((tx0 - tc) * L);
-					//}
-
 					tempi += iu;
 					tc = tx0;
 					tx0 += txu;
 
 					temp += templ_ijk[ii];
-
-					//mexPrintf("ii = %d\n", (tempj * Ny + tempi + tempk * Ny * Nx));
-
 
 				}
 				else {
@@ -430,40 +300,25 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					templ_ijk.emplace_back((ty0 - tc) * L);
 
 					tempj += ju;
-					//tempj *= Nx;
 					tc = ty0;
 					ty0 += tyu;
 
 					temp += templ_ijk[ii];
 				}
-				//mexPrintf("temp-koko = %d\n", temp_koko[ii]);
-				//if (lo == 7319201) {
-				//	mexPrintf("tempk = %d\n", tempk);
-				//	mexPrintf("tempj = %d\n", tempj);
-				//	mexPrintf("tempi = %d\n", tempi);
-				//}
 				if (tempj < 0 || tempi < 0 || tempi >= Nx || tempj >= Ny)
 					break;
 
 
 			}
 
-			//mexPrintf("lo4 = %d\n", lo);
-
 			temp = 1. / temp;
-
-			//if (lo == 68)
-			//	mexPrintf("temp = %f\n", temp);
 
 			if (attenuation_correction) {
 
 				double jelppi = 0.;
 
 				for (int iii = 0; iii < templ_ijk.size(); iii++) {
-					//if (lo == 7319201)
-					//	mexPrintf("temp_koko = %d\n", temp_koko[iii]);
 					jelppi += templ_ijk[iii] * -atten[temp_koko[iii]];
-					//jelppi += temp_all.at(iii).templ_ijk.front() * -atten[temp_all.at(iii).temp_koko.front()];
 				}
 				temp = exp(jelppi) * temp;
 
@@ -471,40 +326,19 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 			auto i = sort_indexes(temp_koko);
 
-			//mexPrintf("lo5 = %d\n", lo);
-
 			for (int ii = 0; ii < templ_ijk.size(); ii++) {
-				//if (lo == 121)
-				//	mexPrintf("element = %f\n", templ_ijk[i[ii]]);
-				elements.emplace_back(static_cast<float>(templ_ijk[i[ii]] * temp));
+				elements.emplace_back(static_cast<float>(fabs(templ_ijk[i[ii]]) * temp));
 				indices.emplace_back(temp_koko[i[ii]]);
 				lh++;
-				//if (temp_koko[i[ii]] < (-(int)2147483647))
-				//	mexPrintf("lo5 = %d\n", lo);
-				//if (lo == 342) {
-				//	mexPrintf("temp_koko = %d\n", temp_koko[i[ii]]);
-				//	mexPrintf("templ_ijk = %f\n", templ_ijk[i[ii]]);
-				//}
-				
-				//if (elements.back() > 1.)
-				//	mexPrintf("lo = %d\n", lo);
 			}
-
-			//if (indices[lh - 3] == 16127 && indices[lh - 2] == 16255 && indices[lh - 1] == 16382 && indices[lh] == 16383)
-			//	mexPrintf("lo5 = %d\n", lo);
 
 
 			lor[oo][0] = oo + 1;
 			lor[oo][1] = static_cast<int>(templ_ijk.size());
 			lj++;
-			//mexPrintf("lo = %d\n", lor[oo][0]);
-			//mexPrintf("lo6 = %d\n", lo);
 			continue;
 		}
 		else {
-
-			//if (lo > 41730900)
-				//mexPrintf("lo1 = %d\n", lo);
 			if (fabs(y_diff) < 1e-8) {
 				if (yd <= maxyy && yd >= minyy) {
 
@@ -522,9 +356,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					double tmax = min(txmax, tzmax);
 
 					if (tmin >= tmax) {
-						//mexPrintf("tmin = %f\n", tmin);
-						//mexPrintf("tmax = %f\n", tmax);
-						//mexPrintf("lo4 = %d\n", lo);
 						continue;
 					}
 
@@ -532,9 +363,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					double pxt, pzt;
 
 					int iu, ku;
-
-					//vector<double> tx_n;
-					//vector<double> tz_n;
 
 					if (xs < xd) {
 						if (tmin == txmin)
@@ -640,8 +468,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 					for (int ii = 0; ii < Np; ii++) {
 
-						//mexPrintf("ii = %d\n", (tempj * Ny + tempi + tempk * Ny * Nx));
-
 						if (tx0 < tz0) {
 
 							temp_koko.emplace_back(tempj + tempi + Nx * Ny * tempk);
@@ -660,7 +486,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 							templ_ijk.emplace_back((tz0 - tc) * L);
 
 							tempk += ku;
-							//tempk *= (Nx * Ny);
 							tc = tz0;
 							tz0 += tzu;
 
@@ -679,10 +504,7 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 						double jelppi = 0.;
 
 						for (int iii = 0; iii < templ_ijk.size(); iii++) {
-							//if (lo == 7319201)
-							//	mexPrintf("temp_koko = %d\n", temp_koko[iii]);
 							jelppi += templ_ijk[iii] * -atten[temp_koko[iii]];
-							//jelppi += temp_all.at(iii).templ_ijk.front() * -atten[temp_all.at(iii).temp_koko.front()];
 						}
 						temp = exp(jelppi) * temp;
 
@@ -690,14 +512,10 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 					auto i = sort_indexes(temp_koko);
 
-					//mexPrintf("lo5 = %d\n", lo);
-
 					for (int ii = 0; ii < templ_ijk.size(); ii++) {
-						elements.emplace_back(static_cast<float>(templ_ijk[i[ii]] * temp));
+						elements.emplace_back(static_cast<float>(fabs(templ_ijk[i[ii]]) * temp));
 						indices.emplace_back(temp_koko[i[ii]]);
 						lh++;
-						//if (temp_koko[i[ii]] < (-(int)2147483647))
-							//mexPrintf("lo5 = %d\n", lo);
 					}
 
 
@@ -708,7 +526,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					continue;
 
 				}
-				//mexPrintf("lo5 = %d\n", lo);
 				continue;
 			}
 			else if (fabs(x_diff) < 1e-8) {
@@ -728,9 +545,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					double tmax = min(tymax, tzmax);
 
 					if (tmin >= tmax) {
-						//mexPrintf("tmin = %f\n", tmin);
-						//mexPrintf("tmax = %f\n", tmax);
-						//mexPrintf("lo6 = %d\n", lo);
 						continue;
 					}
 
@@ -842,9 +656,7 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 						}
 
 					}
-
-					//tempi = tempi * Ny;
-
+					
 					for (int ii = 0; ii < Np; ii++) {
 
 
@@ -854,7 +666,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 							templ_ijk.emplace_back((tz0 - tc) * L);
 
 							tempk += ku;
-							//tempk *= (Nx * Ny);
 							tc = tz0;
 							tz0 += tzu;
 
@@ -867,7 +678,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 							templ_ijk.emplace_back((ty0 - tc) * L);
 
 							tempj += ju;
-							//tempj *= Nx;
 							tc = ty0;
 							ty0 += tyu;
 
@@ -885,10 +695,7 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 						double jelppi = 0.;
 
 						for (int iii = 0; iii < templ_ijk.size(); iii++) {
-							//if (lo == 7319201)
-							//	mexPrintf("temp_koko = %d\n", temp_koko[iii]);
 							jelppi += templ_ijk[iii] * -atten[temp_koko[iii]];
-							//jelppi += temp_all.at(iii).templ_ijk.front() * -atten[temp_all.at(iii).temp_koko.front()];
 						}
 						temp = exp(jelppi) * temp;
 
@@ -896,14 +703,10 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 					auto i = sort_indexes(temp_koko);
 
-					//mexPrintf("lo5 = %d\n", lo);
-
 					for (int ii = 0; ii < templ_ijk.size(); ii++) {
-						elements.emplace_back(static_cast<float>(templ_ijk[i[ii]] * temp));
+						elements.emplace_back(static_cast<float>(fabs(templ_ijk[i[ii]]) * temp));
 						indices.emplace_back(temp_koko[i[ii]]);
 						lh++;
-						//if (temp_koko[i[ii]] < (-(int)2147483647))
-							//mexPrintf("lo5 = %d\n", lo);
 					}
 
 
@@ -914,7 +717,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					continue;
 
 				}
-				//mexPrintf("lo7 = %d\n", lo);
 				continue;
 			}
 
@@ -936,9 +738,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 			double tmax = min(min(txmax, tzmax), tymax);
 
 			if (tmin >= tmax) {
-				//mexPrintf("tmin = %f\n", tmin);
-				//mexPrintf("tmax = %f\n", tmax);
-				//mexPrintf("lo8 = %d\n", lo);
 				continue;
 			}
 
@@ -1049,15 +848,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 				ku = -1;
 			}
 
-			/*if (lo == 87693440) {
-				mexPrintf("z_diff = %f\n", z_diff);
-				mexPrintf("kmax = %d\n", kmax);
-				mexPrintf("dz = %f\n", dz);
-				mexPrintf("zs = %f\n", zs);
-				mexPrintf("zd = %f\n", zd);
-				mexPrintf("bz = %f\n", bz);
-			}*/
-
 			int Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 
 			double L = sqrt(x_diff*x_diff + z_diff*z_diff + y_diff*y_diff);
@@ -1085,16 +875,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 			temp_koko.reserve(Np);
 			templ_ijk.reserve(Np);
 
-			//if (lo == 29668657) {
-			//	mexPrintf("tz0 = %f\n", tz0);
-			//	mexPrintf("z_diff = %f\n", z_diff);
-			//	mexPrintf("zs = %f\n", zs);
-			//	mexPrintf("bz = %f\n", bz);
-			//	mexPrintf("dz = %f\n", dz);
-			//	mexPrintf("kmax = %d\n", kmax);
-			//	mexPrintf("kmin = %d\n", kmin);
-			//}
-
 
 			for (int ii = 0; ii < Np; ii++) {
 
@@ -1105,7 +885,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					templ_ijk.emplace_back((tz0 - tc) * L);
 
 					tempk += ku;
-					//tempk *= (Nx * Ny);
 					tc = tz0;
 					tz0 += tzu;
 
@@ -1117,7 +896,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 					templ_ijk.emplace_back((ty0 - tc) * L);
 
 					tempj += ju;
-					//tempj *= Nx;
 					tc = ty0;
 					ty0 += tyu;
 
@@ -1134,11 +912,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 					temp += templ_ijk[ii];
 				}
-				//if (lo == 87693440) {
-				//	mexPrintf("tempj = %d\n", tempj);
-				//	mexPrintf("tempi= %d\n", tempi);
-				//	mexPrintf("tempk = %d\n", tempk);
-				//}
 				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz)
 					break;
 
@@ -1153,29 +926,19 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 				double jelppi = 0.;
 
 				for (int iii = 0; iii < templ_ijk.size(); iii++) {
-					//if (lo == 7319201)
-					//	mexPrintf("temp_koko = %d\n", temp_koko[iii]);
 					jelppi += templ_ijk[iii] * -atten[temp_koko[iii]];
-					//jelppi += temp_all.at(iii).templ_ijk.front() * -atten[temp_all.at(iii).temp_koko.front()];
 				}
 				temp = exp(jelppi) * temp;
 
 			}
 
 			auto i = sort_indexes(temp_koko);
-
-			//mexPrintf("lo5 = %d\n", lo);
-
+			
 			for (int ii = 0; ii < templ_ijk.size(); ii++) {
-				elements.emplace_back(static_cast<float>(templ_ijk[i[ii]] * temp));
+				elements.emplace_back(static_cast<float>(fabs(templ_ijk[i[ii]]) * temp));
 				indices.emplace_back(temp_koko[i[ii]]);
 				lh++;
-				//if (temp_koko[i[ii]] < (-(int)2147483647))
-					//mexPrintf("lo5 = %d\n", lo);
 			}
-
-			//if (indices[lh - 3] == 382211 && indices[lh -2] == 386176 && indices[lh - 1] == 386240 && indices[lh] == 386241)
-			//	mexPrintf("lo5 = %d\n", lo);
 
 
 			lor[oo][0] = oo + 1;
@@ -1184,7 +947,6 @@ int improved_siddon(const int loop_var_par, const int size_x, const double zmax,
 
 			continue;
 		}
-		//mexPrintf("lo9 = %d\n", lo);
 	}
 	return lj;
 }
@@ -1238,18 +1000,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	int NSlices = (int)mxGetScalar(prhs[18]);
 
-	//int NSlices = (int)mxGetScalar(prhs[18]);
-
 	vector<double> z_det_vec(z_det, z_det + mxGetNumberOfElements(prhs[9]));
 
-	//vector<double> x_vec(x, x + mxGetNumberOfElements(prhs[10]));
-
-	//vector<double> y_vec(y, y + mxGetNumberOfElements(prhs[11]));
-
 	vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[12]));
-
-	//for (int kk = 0; kk < mxGetNumberOfElements(prhs[13]); kk++)
-		//mexPrintf("jji = %f\n", jji[kk]);
 
 	vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[13]));
 
@@ -1276,13 +1029,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	bool attenuation_correction = (bool)mxGetScalar(prhs[26]);
 
-// 	bool *discard = (bool*)mxGetData(prhs[24]);
-
 	int loop_var_par = 1;
-
-	//mexPrintf("pituus = %d\n", pituus);
-
-	//mexEvalString("pause(.001);");
 
 	vector<vector<int>> lor;
 
@@ -1295,22 +1042,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		lor.assign(loop_var_par, vector<int>(2, 0));
 	}
 
-	//mexPrintf("loop_var_par = %d\n", loop_var_par);
-
-	//mexEvalString("pause(.001);");
-
-	//mexPrintf("lor.size() = %d\n", lor.size());
-
-	//mexEvalString("pause(.001);");
-
-	//mexPrintf("lor[0].size() = %d\n", lor[0].size());
-
-	//mexEvalString("pause(.001);");
-
 	vector<int> indices;
-	//vector<vector<int>> indices;
-
-	//indices.resize(loop_var_par);
 
 	vector<float> elements;
 
@@ -1318,19 +1050,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	elements.reserve(ind_size);
 
 
-	
-	//vector<vector<int>> lor;
-
 	double maxyy = *max_element(yy, yy + Ny + 1);
 	double minyy = *min_element(yy, yy + Ny + 1);
 
 	double maxxx = *max_element(xx, xx + Nx + 1);
 	double minxx = *min_element(xx, xx + Nx + 1);
-
-	//mexPrintf("max = %f\n", maxyy);
-
-	//mexEvalString("pause(.001);");
-	//mexPrintf("min = %f\n", minyy);
 
 	clock_t time = clock();
 
@@ -1343,19 +1067,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		mexPrintf("Function elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 		mexEvalString("pause(.001);");
 	}
-	//vector<int> global_vector;
-
-	//mexPrintf("lo = %d\n", lor[2][0]);
-	//mexPrintf("lo = %d\n", lor[loop_var_par - 1][1]);
-
-	//mexPrintf("lj = %d\n", lj);
-
-	//mexEvalString("pause(.001);");
 
 	size_t outSize1 = lj * 2;
 	size_t outSize2 = 1;
 
-	//plhs[0] = mxCreateNumericMatrix(outSize1, outSize2, mxINT32_CLASS, mxREAL);
 	plhs[0] = mxCreateNumericMatrix(lor.size() * 2, outSize2, mxINT32_CLASS, mxREAL);
 
 	int* outputMatrix = (int *)mxGetData(plhs[0]);
@@ -1368,35 +1083,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	float* outputMatrix3 = (float *)mxGetData(plhs[2]);
 
-	//plhs[3] = mxCreateLogicalMatrix(loop_var_par, outSize2);
-
-	//bool* discard = (bool*)mxGetLogicals(plhs[3]);
-
-	//plhs[0] = mxCreateNumericMatrix(outSize1, outSize2, mxSINGLE_CLASS, mxREAL);
-
-	//double* outputMatrix = (double *)mxGetData(plhs[0]);
-
-	//int* outputMatrix = lor.data();
-
-	//mexPrintf("lor.size() = %d\n", lor.size());
-
-	//mexEvalString("pause(.001);");
-
 	time = clock();
 
 
 	int lb = 0;
 	for (int col = 0; col < 2; col++) {
 		int la = col*lor.size();
-		//int il = col*lor.size();
 		for (int row = 0; row < lor.size(); row++) {
-			//if (lor[row][0] == 0) {
-			//	lb++;
-			//	continue;
-			//}
-			//if (col == 0)
-			//	lor[row][0] -= lb;
-			//outputMatrix[la + col*lj] = lor[row][col];
 			outputMatrix[la] = lor[row][col];
 			la++;
 		}
@@ -1409,7 +1102,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	time = clock();
 
-	//lor.~vector();
 	lor.erase(lor.begin(), lor.end());
 	lor.shrink_to_fit();
 
@@ -1417,10 +1109,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	if (verbose)
 		mexPrintf("lor erase elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 
-	//outputMatrix2 = indices.data();
-	//outputMatrix3 = elements.data();
-
-	//std::memcpy(mxGetData(plhs[1]), &indices[0], (indices.size())*(outSize2) * sizeof(int));
 
 	time = clock();
 
@@ -1431,7 +1119,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	time = clock() - time;
 	if (verbose)
 		mexPrintf("indices copy and erase elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
-	//indices.~vector();
 	time = clock();
 
 	copy(elements.begin(), elements.end(), outputMatrix3);
@@ -1439,17 +1126,4 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	time = clock() - time;
 	if (verbose)
 		mexPrintf("elements copy elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
-
-	//for (int row = 0; row < indices.size(); row++) {
-	//	outputMatrix2[row] = indices[row];
-	//	outputMatrix3[row] = elements[row];
-	//}
-
-	//for (auto & buffer : lor) {
-	//	move(buffer.begin(), buffer.end(), back_inserter(global_vector));
-	//}
-
-	
-
-	//std::memcpy(mxGetData(plhs[0]), &lor[0][0], (outSize1)*(outSize2) * sizeof(int));
 }

@@ -1,12 +1,5 @@
 %% MATLAB codes for PET reconstruction using sinogram input from any machine
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% This is an example file on how to specify the necessary parameters for
-%%% your own machine. Note that the reconstruction parameters have not been
-%%% optimized.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 clear
 
 %%%%%%%%%%%%%%%%%%%% Specify the below machine properties %%%%%%%%%%%%%%%%%%%%

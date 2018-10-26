@@ -1,5 +1,6 @@
 #include "mex.h"
 #include <vector>
+#include <cmath>
 #include <algorithm>
 #include <time.h>
 
@@ -25,16 +26,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 	for (int lo = 1; lo <= loop_var_par; lo++) {
 
-		//mexPrintf("lo = %d\n", lo);
 			
 		oo++;
-
-		//double xs = x[oo];
-		//double xd = x[oo + size_x];
-		//double ys = y[oo];
-		//double yd = y[oo + size_x];
-		//double zs = z_det[oo];
-		//double zd = z_det[oo + size_x];
+		
 		double xs, xd, ys, yd, zs, zd;
 		if (xy_index[oo] >= size_x) {
 			xs = x[xy_index[oo]];
@@ -62,10 +56,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 		double x_diff = (xd - xs);
 		double z_diff = (zd - zs);
 
-		//if (oo < 100) {
-		//	mexPrintf("zd =% f\n", zd);
-		//	mexPrintf("zs =% f\n", zs);
-		//}
 
 		unsigned int Np = static_cast<int>(lor1[oo]);
 		unsigned int N2 = lor2[oo];
@@ -75,11 +65,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 			int z_loop = static_cast<int>((zs / zmax)*(static_cast<double>(NSlices) - 1.));
 
-			//mexPrintf("lo2 = %d\n", lo);
 
 			if (fabs(y_diff) < 1e-8) {
 
-				//mexPrintf("lo = %d\n", lo);
 
 				if (yd <= maxyy && yd >= minyy) {
 					double minvalue = maxyy * 1e5;
@@ -110,8 +98,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						indices[N2 + ii] = tempk + ii;
-						elements[N2 + ii] = element;
-						//lor[N2 + ii] = lo;
+						elements[N2 + ii] = fabs(element);
 					}
 					lor[lo] = lor2[lo];
 					continue;
@@ -120,7 +107,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 			}
 			else if (fabs(x_diff) < 1e-8) {
 
-				//mexPrintf("lo = %d\n", lo);
 				if (xd <= maxxx && xd >= minxx) {
 					double minvalue = maxxx * 1e5;
 					int apu;
@@ -151,8 +137,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 					for (unsigned int ii = 0; ii < Np; ii++) {
 						indices[N2 + ii] = tempk + ii * Ny;
-						elements[N2 + ii] = element;
-						//lor[N2 + ii] = lo;
+						elements[N2 + ii] = fabs(element);
 					}
 					lor[lo] = lor2[lo];
 					continue;
@@ -172,25 +157,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 			double tmin = max(txmin, tymin);
 			double tmax = min(txmax, tymax);
-
-			//if (txback < 0) {
-			//	mexPrintf("txback = %f\n", txback);
-			//	mexPrintf("tx0 = %f\n", tx0);
-			//	mexPrintf("x_diff = %f\n", x_diff);
-			//}
-
-			//if (txmax < 0)
-			//	mexPrintf("txmax = %f\n", txmax);
-
-			//if (lo == 5) {
-			//	mexPrintf("txback = %f\n", txback);
-			//	mexPrintf("tx0 = %f\n", tx0);
-			//	mexPrintf("x_diff = %f\n", x_diff);
-			//	mexPrintf("xd = %f\n", xd);
-			//	mexPrintf("xs = %f\n", xs);
-			//	mexPrintf("bxb = %f\n", bxb);
-			//	mexPrintf("bxf = %f\n", bxf);
-			//}
 
 			int imin, imax, jmin, jmax;
 			double pxt, pyt;
@@ -295,8 +261,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 				if (tx0 < ty0) {
 
 					if (iu > 0) {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 1001);
 
 						apu = (tx0 - tc) * L;
 						elements[N2 + ii] = (apu);
@@ -309,28 +273,20 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						temp += apu;
 					}
 					else {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 1002);
 						if (nnn == 0) {
 							apu_var = true;
 						}
-						//if (lo == 1028572)
-						//	mexPrintf("apu = %f\n", (tx0 - tc) * L);
 						tempi += iu;
 						tx0 += txu;
 						nnn++;
 					}
 
-					//mexPrintf("ii = %d\n", (tempj * Ny + tempi + tempk * Ny * Nx));
 
 
 				}
 				else {
 
 					if (apu_var) {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 1003);
-						//	mexPrintf("nnn = %d\n", nnn);
 							apu_tempi = tempi;
 							tx0_apu = tx0;
 							tc_apu = tx0 - txu;
@@ -347,9 +303,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							elements[N2 + ii - nl] = (apu);
 							temp += apu;
 
-							//if (lo == 1028572)
-							//	mexPrintf("apu = %f\n", apu);
-
 							apu_tempi -= iu;
 							tx0_apu -= txu;
 							tc_apu -= txu;
@@ -362,15 +315,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						ty0 += tyu;
 					}
 					else {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 1004);
 						apu = (ty0 - tc) * L;
 						elements[N2 + ii] = (apu);
 						indices[N2 + ii] = tempj*Nx + tempi + tempk;
-						//indices[N2 + ii] = tempj;
-
-						//if (lo == 1028572)
-						//	mexPrintf("apu = %f\n", apu);
 
 						tempj += ju;
 						tc = ty0;
@@ -381,8 +328,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 				}
 
 				if (ii == Np - 1 && apu_var) {
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 1005);
 						apu_tempi = tempi - iu;
 						tx0_apu = tx0 - txu;
 						tc_apu = tx0_apu - txu;
@@ -407,8 +352,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 			}
 
-			//mexPrintf("lo4 = %d\n", lo);
-
 			temp = 1. / temp;
 
 			if (attenuation_correction) {
@@ -422,11 +365,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 			}
 
-			//mexPrintf("lo5 = %d\n", lo);
 
 			for (unsigned int ii = 0; ii < Np; ii++) {
-				elements[N2 + ii] = elements[N2 + ii] * (temp);
-				//lor[N2 + ii] = lo;
+				elements[N2 + ii] = fabs(elements[N2 + ii]) * (temp);
 			}
 			lor[lo] = lor2[lo];
 			continue;
@@ -434,14 +375,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 		else {
 
-			//if (lo == 1028572)
-			//	mexPrintf("lo1 = %d\n", lo);
-
 			if (fabs(y_diff) < 1e-8) {
 				if (yd <= maxyy && yd >= minyy) {
 
-					//if (lo == 1028572)
-					//	mexPrintf("lo2 = %d\n", lo);
 
 					double tx0 = (bxf - xs) / (x_diff);
 					double tz0 = (bzf - zs) / (z_diff);
@@ -582,7 +518,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 									apu_var = true;
 								}
 								tempi += iu;
-								//tc = tx0;
 								tx0 += txu;
 								nnn++;
 							}
@@ -590,8 +525,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 						}
 						else {
-
-							//apu = (tz0 - tc) * L;
 
 							if (apu_var) {
 								apu_tempi = tempi;
@@ -670,11 +603,8 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						temp = exp(jelppi) * temp;
 					}
 
-					//mexPrintf("lo5 = %d\n", lo);
-
 					for (unsigned int ii = 0; ii < Np; ii++) {
-						elements[N2 + ii] = (elements[N2 + ii] * temp);
-						//lor[N2 + ii] = lo;
+						elements[N2 + ii] = (fabs(elements[N2 + ii]) * temp);
 					}
 					lor[lo] = lor2[lo];
 					continue;
@@ -685,8 +615,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 			else if (fabs(x_diff) < 1e-8) {
 				if (xd <= maxxx && xd >= minxx) {
 
-					//if (lo == 1028572)
-					//	mexPrintf("lo3 = %d\n", lo);
 
 					double ty0 = (byf - ys) / (y_diff);
 					double tyback = (byb - ys) / (y_diff);
@@ -808,17 +736,12 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					for (unsigned int ii = 0; ii < Np; ii++) {
 
 						if (tz0 < ty0) {
-							//apu = ((tz0 - tc) * L);
 							if (apu_var) {
-								//if (lo == 1028572)
-								//	mexPrintf("lo = %d\n", 1);
 								apu_tempj = tempj;
 								ty0_apu = ty0;
 								tc_apu = ty0 - tyu;
 								for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 									indices[N2 + ii - nl] = apu_tempj * Nx + tempi + Nx * Ny * tempk;
-									//if (lo == 1028572)
-									//		mexPrintf("nnx = %d\n", apu_tempj * Nx + tempi + Nx * Ny * tempk);
 									if (nl == static_cast<int>(nnn)) {
 										apu = (tz0 - tc_apu) * L;
 									}
@@ -842,14 +765,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								tz0 += tzu;
 							}
 							else {
-								//if (lo == 1028572)
-								//	mexPrintf("lo = %d\n", 2);
 								apu = (tz0 - tc) * L;
 								elements[N2 + ii] = (apu);
 								indices[N2 + ii] = tempj * Nx + tempi + Nx * Ny * tempk;
 
-								//if (lo == 1028572)
-								//	mexPrintf("nnx = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
 
 								tempk += ku;
 								tc = tz0;
@@ -864,8 +783,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						else {
 
 							if (ju > 0) {
-								//if (lo == 1028572)
-								//	mexPrintf("lo = %d\n", 3);
 								apu = (ty0 - tc) * L;
 								elements[N2 + ii] = (apu);
 								indices[N2 + ii] = tempj * Nx + tempi + Nx * Ny * tempk;
@@ -877,28 +794,21 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								temp += apu;
 							}
 							else {
-								//if (lo == 1028572)
-								//	mexPrintf("lo = %d\n", 4);
 								if (nnn == 0) {
 									apu_var = true;
 								}
 								tempj += ju;
-								//tc = ty0;
 								ty0 += tyu;
 								nnn++;
 							}
 						}
 
 						if (ii == Np - 1 && apu_var) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 14);
 							apu_tempj = tempj - ju;
 							ty0_apu = ty0 - tyu;
 							tc_apu = ty0_apu - tyu;
 							for (int nl = static_cast<int>(nnn) - 1; nl >= 0; nl--) {
 								indices[N2 + ii - nl] = apu_tempj * Nx + tempi + Nx * Ny * tempk;
-								//if (lo == 1028572)
-									//mexPrintf("nnx = %d\n", apu_tempj * Nx + tempi + Nx * Ny * tempk);
 								if (nl == 0)
 									apu = (ty0_apu - tc) * L;
 								else {
@@ -930,8 +840,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					}
 
 					for (unsigned int ii = 0; ii < Np; ii++) {
-						elements[N2 + ii] = (elements[N2 + ii] * temp);
-						//lor[N2 + ii] = lo;
+						elements[N2 + ii] = (fabs(elements[N2 + ii]) * temp);
 					}
 					lor[lo] = lor2[lo];
 					continue;
@@ -939,9 +848,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 				}
 				continue;
 			}
-
-			//if (lo == 1028572)
-			//	mexPrintf("lo4 = %d\n", lo);
 
 			double tx0 = (bxf - xs) / (x_diff);
 			double tz0 = (bzf - zs) / (z_diff);
@@ -1099,25 +1005,15 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 			for (unsigned int ii = 0; ii < Np; ii++) {
 
-				//if (lo == 1028572)
-				//	mexPrintf("lo = %d\n", lo);
-
-
 				if (tz0 < ty0 && tz0 < tx0) {
 
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 500);
 
 					if (apu_varx && apu_vary == false) {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 1);
 						apu_tempi = tempi;
 						tx0_apu = tx0;
 						tc_apu = tx0 - txu;
 						for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 							indices[N2 + ii - nl] = tempj*Nx + apu_tempi + Nx * Ny * tempk;
-							//if (lo == 1028572)
-							//	mexPrintf("nnx = %d\n", tempj*Nx + apu_tempi + Nx * Ny * tempk);
 							if (nl == static_cast<int>(nnn))
 								apu = (tz0 - tc_apu) * L;
 							else if (nl == 0)
@@ -1137,10 +1033,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					}
 					else if (apu_vary && apu_varx == false) {
 						if (apu_varx2) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 2);
 							if (final_x) {
-								//tc_apu = tc;
 								apu_tempi = tempi;
 								tx0_apu = tx0;
 								apu_tempj = tempj;
@@ -1149,7 +1042,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							else {
 								apu_tempj = tempj - ju;
 								ty0_apu = ty0 - tyu;
-								//tc_apu = tc - tyu;
 								apu_tempi = tempi;
 								tx0_apu = tx0;
 								tc_apu = ty0_apu;
@@ -1158,8 +1050,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								indices[N2 + ii - nnn - nnx] = tempj*Nx + tempi + Nx * Ny * tempk;
 								temp += apu;
 								nnn--;
-								//if (lo == 1028572)
-								//	mexPrintf("ind = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
 							}
 							
 							double tx0_apu2 = tx0_apu;
@@ -1168,37 +1058,22 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 
 							for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 								unsigned int nnnx = 0;
-								//bool nxn = false;
 								
-								//if (lo == 1028572)
-								//	mexPrintf("ty0_apu = %f\n", ty0_apu - tyu);
-								//if (lo == 1028572)
-								//	mexPrintf("tx0_apu = %f\n", tx0_apu2 - txu);
 								while (tx0_apu2 - txu >= ty0_apu - tyu && nnnx < nnx) {
 									nnnx++;
 									tx0_apu2 -= txu;
-									//tc_apu2 -= txu;
 									apu_tempi2 -= iu;
 								}
 								if (nl == 0 && first_x)
 									tc_apu2 = tc;
 								else if (nnnx > 0)
 									tc_apu2 = ty0_apu - tyu;
-								//else {
-								//	if (tx0_apu2 - txu >= ty0_apu - 2*tyu)
-								//		tc_apu2 = tx0_apu2;
-								//	else
-								//		tc_apu2 = ty0_apu;
-								//}
-
+								
 								double tx0_apu3 = tx0_apu2;
-								//double tc_apu3 = tc_apu2;
 								int apu_tempi3 = apu_tempi2;
 								if (nnnx > 0) {
 									for (unsigned int nlx = 0; nlx < (nnnx); nlx++) {
 										indices[N2 + ii - nl - (nnx - nlx)] = apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk;
-										//if (lo == 1028572)
-										//	mexPrintf("nnx = %d\n", apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk);
 										apu = (tx0_apu2 - tc_apu2) * L;
 										elements[N2 + ii - nl - (nnx - nlx)] = (apu);
 										temp += apu;
@@ -1209,14 +1084,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 										}
 									}
 									nnx -= nnnx;
-									//nxn = true;
 									tx0_apu2 = tx0_apu3;
-									//tc_apu2 = tc_apu3;
 									apu_tempi2 = apu_tempi3;
 									apu_tempi3 += nnnx * iu;
 								}
-								//if (lo == 1028572)
-								//	mexPrintf("ind = %d\n", apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk);
 								if (nnnx > 0)
 									indices[N2 + ii - nl - nnx] = apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk;
 								else
@@ -1228,25 +1099,13 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 										tc_apu2 = ty0_apu - tyu;
 								}
 								else if (nl > 0 && nnnx > 0 || nl == 0 && nnnx > 0) {
-									//tc_apu2 = tx0_apu3 + nnnx * txu;
-
-									//if (lo == 1028572)
-									//	mexPrintf("nl1 = %d\n", nl);
 								}
 								else if (nl > 0) {
 									tc_apu2 = ty0_apu - tyu;
-									//if (lo == 1028572)
-									//	mexPrintf("nl2 = %d\n", nl);
 								}
 								else if (first_y) {
 									tc_apu2 = tc;
-									//if (lo == 1028572)
-									//	mexPrintf("nl3 = %d\n", nl);
 								}
-								//if (lo == 1028572)
-								//	mexPrintf("ty0_apu = %f\n", ty0_apu);
-								//if (lo == 1028572)
-								//	mexPrintf("tc_apu2 = %f\n", tc_apu2);
 								if (nl == static_cast<int>(nnn) && final_x)
 									apu = (tz0 - tc_apu2) * L;
 								else
@@ -1255,9 +1114,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								temp += apu;
 
 								apu_tempj -= ju;
-								//apu_tempj -= ju;
 								ty0_apu -= tyu;
-								//tc_apu -= tyu;
 							}
 							apu_vary = false;
 							nnn = 0;
@@ -1267,8 +1124,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							first_x = false;
 						}
 						else {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 3);
 							apu_tempj = tempj;
 							ty0_apu = ty0;
 							tc_apu = ty0 - tyu;
@@ -1295,60 +1150,32 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						}
 					}
 					else if (apu_varx && apu_vary) {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 4);
 						bool apu_bool = false;
 						if (final_x) {
-							//tc_apu = tc - txu;
 							apu_tempi = tempi;
 							tx0_apu = tx0;
 							apu_tempj = tempj;
 							ty0_apu = ty0;
 							tc_apu = tx0_apu - txu;
-							//if (tx0_apu - txu >= ty0_apu - tyu && nnn > 1) {
-							//	apu_bool = true;
-							//}
 							apu_bool = true;
-							//apu = (tz0 - tc_apu) * L;
-							//if (lo == 1028572)
-							//	mexPrintf("tempj = %d\n", tempj);
 						}
 						else {
 							apu_tempj = tempj;
 							ty0_apu = ty0;
-							//tc_apu = tc - tyu;
 							apu_tempi = tempi;
 							tx0_apu = tx0;
 							tc_apu = ty0_apu - tyu;
-							//if (tx0_apu - txu >= ty0_apu - tyu && nnn > 1) {
-							//	apu_bool = true;
-							//}
-							//apu_bool = true;
-							//apu = (tz0 - tc_apu) * L;
-							//if (lo == 1028572)
-							//	mexPrintf("tempi = %d\n", tempi);
 						}
 						apu = (tz0 - tc_apu) * L;
 						elements[N2 + ii - nnn] = (apu);
 						indices[N2 + ii - nnn] = tempj*Nx + tempi + Nx * Ny * tempk;
 						temp += apu;
-						//if (lo == 1028572)
-						//	mexPrintf("ind = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
-						//if (lo == 1028572)
-						//	mexPrintf("apu = %f\n", apu);
 						nnn--;
 						for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
-							//if (lo == 1028572)
-							//	mexPrintf("ind = %d\n", apu_tempj*Nx + apu_tempi + Nx * Ny * tempk);
-							//if (lo == 1028572)
-							//	mexPrintf("tx0_apu = %f\n", tx0_apu - txu);
-							//if (lo == 1028572)
-							//	mexPrintf("ty0_apu = %f\n", ty0_apu - tyu);
 
 							
 							if (apu_bool) {
 								tx0_apu -= txu;
-								//tc_apu -= txu;
 								apu_tempi -= iu;
 								if (tx0_apu - txu >= ty0_apu - tyu && nl > 0) {
 									tc_apu = tx0_apu - txu;
@@ -1360,12 +1187,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								else
 									tc_apu = tc;
 								apu = (tx0_apu - tc_apu) * L;
-								//if (lo == 1028572)
-								//	mexPrintf("tx0_apu = %f\n", tx0_apu);
 							}
 							else {
 								ty0_apu -= tyu;
-								//tc_apu -= tyu;
 								apu_tempj -= ju;
 								if (tx0_apu - txu >= ty0_apu - tyu && nl > 0) {
 									tc_apu = tx0_apu - txu;
@@ -1377,14 +1201,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								else
 									tc_apu = tc;
 								apu = (ty0_apu - tc_apu) * L;
-								//if (lo == 1028572)
-								//	mexPrintf("ty0_apu = %f\n", ty0_apu);
 							}
 							indices[N2 + ii - nl] = apu_tempj*Nx + apu_tempi + Nx * Ny * tempk;
 							elements[N2 + ii - nl] = (apu);
 							temp += apu;
-							//if (lo == 1028572)
-							//	mexPrintf("apu = %f\n", apu);
 						}
 						apu_varx = false;
 						apu_vary = false;
@@ -1392,14 +1212,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						first_y = false;
 					}
 					else {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 5);
 						double tc_apu2 = tc;
 						if (apu_varx2) {
 							apu_tempi = tempi;
 							tx0_apu = tx0;
-							//double tx0_apu2 = tx0_apu;
-							//int apu_tempi2 = tempi;
 							for (unsigned int kk = 0; kk < (nnx); kk++) {
 								tx0_apu -= txu;
 								//tc_apu2 -= txu;
@@ -1407,19 +1223,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							}
 							for (unsigned int nlx = 0; nlx < (nnx); nlx++) {
 								indices[N2 + ii - (nnx - nlx)] = tempj*Nx + apu_tempi + Nx * Ny * tempk;
-								//if (lo == 1028572)
-								//		mexPrintf("ind = %d\n", tempj*Nx + apu_tempi + Nx * Ny * tempk);
 								apu_tempi += iu;
-								//if (nlx == static_cast<int>(nnx) - 1) {
-								//	apu = (tz0 - tc) * L;
-								//}
-								//else {
 								apu = (tx0_apu - tc_apu2) * L;
-								//}
 								elements[N2 + ii - (nnx - nlx)] = (apu);
 								temp += apu;
-								//if (lo == 1028572)
-								//	mexPrintf("apu = %f\n", apu);
 								tc_apu2 = tx0_apu;
 								tx0_apu += txu;
 							}
@@ -1429,35 +1236,24 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							first_x = false;
 						}
 						indices[N2 + ii] = tempj*Nx + tempi + Nx * Ny * tempk;
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
 						apu = ((tz0 - tc_apu2) * L);
 						elements[N2 + ii] = apu;
 						temp += apu;
-						//if (lo == 1028572)
-						//	mexPrintf("apu = %f\n", apu);
 					}
 					tempk += ku;
 					tc = tz0;
 					tz0 += tzu;
 				}
 				else if (ty0 < tx0) {
-
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 600);
 					
 					if (ju > 0) {
 
 						if (apu_varx) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 6);
 							apu_tempi = tempi;
 							tx0_apu = tx0;
 							tc_apu = tx0 - txu;
 							for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 								indices[N2 + ii - nl] = tempj*Nx + apu_tempi + Nx * Ny * tempk;
-								//if (lo == 1028572)
-								//	mexPrintf("ind = %d\n", tempj*Nx + apu_tempi + Nx * Ny * tempk);
 								if (nl == nnn)
 									apu = (ty0 - tc_apu) * L;
 								else if (nl == 0)
@@ -1477,54 +1273,34 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							tc = ty0;
 						}
 						else {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 7);
 
 							indices[N2 + ii] = tempj*Nx + tempi + Nx * Ny * tempk;
 							apu = ((ty0 - tc) * L);
 							elements[N2 + ii] = apu;
 							temp += apu;
 							tc = ty0;
-							//if (lo == 1028572)
-							//	mexPrintf("elements = %d\n", N2 + ii);
 						}
 					}
 					else {
 						if (nnn == 0 || apu_varx && apu_vary == false) {
 							apu_vary = true;
 						}
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 8);
 						final_y = true;
 						final_x = false;
 						nnn++;
 						nyy++;
 						if (first_y == false && first_x == false)
 							first_y = true;
-						//if (lo == 1028572)
-						//	mexPrintf("nnx = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
-						//if (lo == 1028572) {
-						//	mexPrintf("ty0 = %f\n", ty0);
-						//	mexPrintf("tx0 = %f\n", tx0);
-						//}
 					}
 
 					tempj += ju;
 					ty0 += tyu;
 				}
 				else {
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 700);
 
 					if (iu > 0) {
 
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 701);
-
 						if (ju < 0 && ii < Np - 1) {
-						//if (ju < 0) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 10);
 							apu_varx2 = true;
 							nnx++;
 							final_x = true;
@@ -1533,21 +1309,16 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								first_x = true;
 						}
 						else if (ii == Np - 1 && apu_varx2) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 102);
 							if (final_x) {
 								tc_apu = tc;
 								apu_tempi = tempi;
 								tx0_apu = tx0;
 								apu_tempj = tempj;
 								ty0_apu = ty0;
-								//if (lo == 1028572)
-								//	mexPrintf("tempj = %d\n", tempj);
 							}
 							else {
 								apu_tempj = tempj - ju;
 								ty0_apu = ty0 - tyu;
-								//tc_apu = ty0_apu;
 								apu_tempi = tempi;
 								tx0_apu = tx0;
 								apu = (tx0 - ty0_apu) * L;
@@ -1555,10 +1326,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								indices[N2 + ii - nnn - nnx] = tempj*Nx + tempi + Nx * Ny * tempk;
 								nnn--;
 								temp += apu;
-								//if (lo == 1028572)
-								//	mexPrintf("nnx = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
-								//if (lo == 1028572)
-								//	mexPrintf("apu = %f\n", apu);
 							}
 
 							double tx0_apu2 = tx0_apu;
@@ -1568,10 +1335,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 								unsigned int nnnx = 0;
 								bool nxn = false;
-								//if (lo == 1028572)
-								//	mexPrintf("tx0_apu2 = %f\n", tx0_apu2);
-								//if (lo == 1028572)
-								//	mexPrintf("ty0_apu = %f\n", ty0_apu - tyu);
 								while (tx0_apu2 - txu > ty0_apu - tyu && nnnx < nnx) {
 									nnnx++;
 									tx0_apu2 -= txu;
@@ -1579,19 +1342,14 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								}
 								if (nl == 0 && first_x) {
 									tc_apu2 = tc;
-									//if (lo == 1028572)
-									//	mexPrintf("tc = %f\n", tc);
 								}
 								else if (nnnx > 0)
 									tc_apu2 = ty0_apu - tyu;
 								double tx0_apu3 = tx0_apu2;
-								//double tc_apu3 = tc_apu2;
 								int apu_tempi3 = apu_tempi2;
 								if (nnnx > 0) {
 									for (int nlx = 0; nlx < static_cast<int>(nnnx); nlx++) {
 										indices[N2 + ii - nl - (nnx - nlx)] = apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk;
-										//if (lo == 1028572)
-										//	mexPrintf("nnx = %d\n", apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk);
 										apu = (tx0_apu2 - tc_apu2) * L;
 										elements[N2 + ii - nl - (nnx - nlx)] = (apu);
 										temp += apu;
@@ -1600,41 +1358,24 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 											apu_tempi2 += iu;
 											tx0_apu2 += txu;
 										}
-										//if (lo == 1028572)
-										//	mexPrintf("apu = %f\n", apu);
 									}
 									nnx -= nnnx;
 									nxn = true;
 									tx0_apu2 = tx0_apu3;
-									//tc_apu2 = tc_apu3;
 									apu_tempi2 = apu_tempi3;
 									apu_tempi3 += nnnx * iu;
 								}
-								//if (final_y && nl == static_cast<int>(nnn)) {
-								//	continue;
-								//}
-
-								//if (lo == 1028572)
-								//	mexPrintf("ind = %d\n", apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk);
 								if (nxn)
 									indices[N2 + ii - nl - nnx] = apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk;
 								else
 									indices[N2 + ii - nl - nnx] = apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk;
 								if (nnnx > 0 && nl > 0 || nl == 0 && nnnx > 0) {
-									//tc_apu2 = tx0_apu3 - txu;
-
-									//if (lo == 1028572)
-									//	mexPrintf("nl1 = %d\n", nl);
 								}
 								else if (nl > 0) {
 									tc_apu2 = ty0_apu - tyu;
-									//if (lo == 1028572)
-									//	mexPrintf("nl2 = %d\n", nl);
 								}
 								else if (first_y) {
 									tc_apu2 = tc;
-									//if (lo == 1028572)
-									//	mexPrintf("nl3 = %d\n", nl);
 								}
 								if (nl == static_cast<int>(nnn) && final_x)
 									apu = (tx0_apu - tc_apu2) * L;
@@ -1644,9 +1385,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								temp += apu;
 								apu_tempj -= ju;
 								ty0_apu -= tyu;
-								//if (lo == 1028572)
-								//	mexPrintf("apu = %f\n", apu);
-								//tc_apu -= tyu;
 							}
 							apu_vary = false;
 							nnn = 0;
@@ -1656,23 +1394,17 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							first_y = false;
 						}
 						else if (ii == Np - 1 && apu_varx2 == false && apu_vary == false) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 101);
 							indices[N2 + ii] = tempj*Nx + tempi + Nx * Ny * tempk;
 							apu = ((tx0 - tc) * L);
 							elements[N2 + ii] = apu;
 							temp += apu;
 						}
 						else if (apu_vary && apu_varx2 == false) {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 9);
 							apu_tempj = tempj;
 							ty0_apu = ty0;
 							tc_apu = ty0_apu - tyu;
 							for (int nl = static_cast<int>(nnn); nl >= 0; nl--) {
 								indices[N2 + ii - nl] = apu_tempj*Nx + tempi + Nx * Ny * tempk;
-								//if (lo == 1028572)
-								//	mexPrintf("ind = %d\n", apu_tempj*Nx + tempi + Nx * Ny * tempk);
 								if (nl == nnn) {
 									apu = (tx0 - tc_apu) * L;
 								}
@@ -1694,8 +1426,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							first_y = false;
 						}
 						else {
-							//if (lo == 1028572)
-							//	mexPrintf("lo = %d\n", 103);
 							indices[N2 + ii] = tempj*Nx + tempi + Nx * Ny * tempk;
 							apu = ((tx0 - tc) * L);
 							elements[N2 + ii] = apu;
@@ -1704,8 +1434,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						}
 					}
 					else {
-						//if (lo == 1028572)
-						//	mexPrintf("lo = %d\n", 11);
 						if (nnn == 0 || apu_vary && apu_varx == false) {
 							apu_varx = true;
 						}
@@ -1713,12 +1441,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						final_x = true;
 						nnn++;
 						nxx++;
-						//if (lo == 1028572)
-						//	mexPrintf("nnx = %d\n", tempj*Nx + tempi + Nx * Ny * tempk);
-						//if (lo == 1028572) {
-						//	mexPrintf("ty0 = %f\n", ty0);
-						//	mexPrintf("tx0 = %f\n", tx0);
-						//}
 					}
 
 					tempi += iu;
@@ -1727,8 +1449,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 				}
 
 				if (ii == Np - 1 && apu_varx && apu_vary == false) {
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 12);
 					apu_tempi = tempi - iu;
 					tx0_apu = tx0 - txu;
 					tc_apu = tx0_apu - txu;
@@ -1753,25 +1473,11 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					nnn = 0;
 				}
 				else if (ii == Np - 1 && apu_vary && apu_varx == false) {
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 13);
 					if (apu_varx2) {
 						apu_tempj = tempj - ju;
 						ty0_apu = ty0 - tyu;
-						//tc_apu = tc - tyu;
 						apu_tempi = tempi;
 						tx0_apu = tx0;
-						//if (tx0_apu - txu >= ty0_apu - tyu)
-						//	tc_apu = tx0_apu - txu;
-						//else
-						//	tc_apu = ty0_apu - tyu;
-						//apu = (ty0 - tc_apu) * L;
-						//elements[N2 + ii - nnn - nnx] = (apu);
-						//indices[N2 + ii - nnn - nnx] = tempj*Nx + tempi + Nx * Ny * tempk;
-						//temp += apu;
-						//nnn--;
-						//if (lo == 1028572)
-						//	mexPrintf("tempi = %d\n", tempi);
 
 						double tx0_apu2 = tx0_apu;
 						double tc_apu2 = tc_apu;
@@ -1780,14 +1486,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						for (int nl = static_cast<int>(nnn) - 1; nl >= 0; nl--) {
 							unsigned int nnnx = 0;
 							bool nxn = false;
-							//if (lo == 1028572)
-							//	mexPrintf("tx0_apu2 = %f\n", tx0_apu2);
-							//if (lo == 1028572)
-							//	mexPrintf("ty0_apu = %f\n", ty0_apu - tyu);
 							while (tx0_apu2 - txu > ty0_apu - tyu && nnnx < nnx) {
 								nnnx++;
 								tx0_apu2 -= txu;
-								//tc_apu2 -= txu;
 								apu_tempi2 -= iu;
 							}
 							if (nl == 0 && first_x)
@@ -1795,20 +1496,13 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 							else if (nnnx > 0)
 								tc_apu2 = ty0_apu - tyu;
 							double tx0_apu3 = tx0_apu2;
-							//double tc_apu3 = tc_apu2;
 							int apu_tempi3 = apu_tempi2;
 							if (nnnx > 0) {
 								for (int nlx = 0; nlx < static_cast<int>(nnnx); nlx++) {
 									indices[N2 + ii - nl - (nnx - nlx)] = apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk;
-									//if (lo == 1028572)
-									//	mexPrintf("nnx = %d\n", apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk);
-									//if (lo == 1028572)
-									//	mexPrintf("nnx = %d\n", (nnx - nlx));
 									apu = (tx0_apu2 - tc_apu2) * L;
 									elements[N2 + ii - nl - (nnx - nlx)] = (apu);
 									temp += apu;
-									//if (lo == 1028572)
-									//	mexPrintf("apu = %f\n", apu);
 									tc_apu2 = tx0_apu2;
 									if (nlx < static_cast<int>(nnnx) -1) {
 										apu_tempi2 += iu;
@@ -1818,12 +1512,9 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								nnx -= nnnx;
 								nxn = true;
 								tx0_apu2 = tx0_apu3;
-								//tc_apu2 = tc_apu3;
 								apu_tempi2 = apu_tempi3;
 								apu_tempi3 += nnnx * iu;
 							}
-							//if (lo == 1028572)
-							//	mexPrintf("ind = %d\n", apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk);
 							if (nxn) {
 								indices[N2 + ii - nl - nnx] = apu_tempj*Nx + apu_tempi3 + Nx * Ny * tempk;
 							}
@@ -1831,29 +1522,18 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 								indices[N2 + ii - nl - nnx] = apu_tempj*Nx + apu_tempi2 + Nx * Ny * tempk;
 							}
 							if (nnnx > 0 && nl > 0 || nl == 0 && nnnx > 0) {
-								//tc_apu2 = tx0_apu3 - txu;
-								//if (lo == 1028572)
-								//	mexPrintf("nl1 = %d\n", nl);
 							}
 							else if (nl > 0) {
 								tc_apu2 = ty0_apu - tyu;
-								//if (lo == 1028572)
-								//	mexPrintf("nl2 = %d\n", nl);
 							}
 							else if (first_y) {
 								tc_apu2 = tc;
-								//if (lo == 1028572)
-								//	mexPrintf("nl3 = %d\n", nl);
 							}
 							apu = (ty0_apu - tc_apu2) * L;
 
 							elements[N2 + ii - nl - nnx] = (apu);
 							temp += apu;
-							//if (lo == 1028572)
-							//	mexPrintf("apu = %f\n", apu);
-							//apu_tempj -= ju;
 							ty0_apu -= tyu;
-							//tc_apu -= tyu;
 							apu_tempj -= ju;
 						}
 						apu_vary = false;
@@ -1887,11 +1567,8 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 					}
 				}
 				else if (ii == Np - 1 && apu_varx && apu_vary) {
-					//if (lo == 1028572)
-					//	mexPrintf("lo = %d\n", 14);
 					bool apu_bool = false;
 					if (final_x) {
-						//tc_apu = tc - txu;
 						apu_tempi = tempi - iu;
 						tx0_apu = tx0 - txu;
 						apu_tempj = tempj;
@@ -1905,13 +1582,10 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						else
 							tc_apu = tc;
 						apu = (tx0_apu - tc_apu) * L;
-						//if (lo == 1028572)
-						//	mexPrintf("tempj = %d\n", tempj);
 					}
 					else {
 						apu_tempj = tempj - ju;
 						ty0_apu = ty0 - tyu;
-						//tc_apu = tc - tyu;
 						apu_tempi = tempi;
 						tx0_apu = tx0;
 						if (tx0_apu - txu >= ty0_apu - tyu && nnn > 1) {
@@ -1923,21 +1597,14 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						else
 							tc_apu = tc;
 						apu = (ty0_apu - tc_apu) * L;
-						//if (lo == 1028572)
-						//	mexPrintf("tempi = %d\n", tempi);
 					}
 					for (int nl = static_cast<int>(nnn) - 1; nl >= 0; nl--) {
 						
 						indices[N2 + ii - nl] = apu_tempj*Nx + apu_tempi + Nx * Ny * tempk;
-						//if (lo == 1028572)
-						//	mexPrintf("ind = %d\n", apu_tempj*Nx + apu_tempi + Nx * Ny * tempk);
 						elements[N2 + ii - nl] = (apu);
 						temp += apu;
-						//if (lo == 1028572)
-						//	mexPrintf("apu = %f\n", apu);
 						if (apu_bool && nl > 0) {
 							tx0_apu -= txu;
-							//tc_apu -= txu;
 							apu_tempi -= iu;
 							if (tx0_apu - txu >= ty0_apu - tyu && nl > 1) {
 								tc_apu = tx0_apu - txu;
@@ -1952,7 +1619,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 						}
 						else if (nl > 0) {
 							ty0_apu -= tyu;
-							//tc_apu -= tyu;
 							apu_tempj -= ju;
 							if (tx0_apu - txu >= ty0_apu - tyu && nl > 1) {
 								tc_apu = tx0_apu - txu;
@@ -1971,9 +1637,6 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 				
 			}
 
-			//if (lo > 552458 && elements[67382811] == 0)
-			//	mexPrintf("ele = %d\n", lo);
-
 			temp = 1. / temp;
 
 			if (attenuation_correction) {
@@ -1988,8 +1651,7 @@ void improved_siddon(const size_t loop_var_par, const int size_x, const double z
 			}
 
 			for (unsigned int ii = 0; ii < Np; ii++) {
-				elements[N2 + ii] = (elements[N2 + ii] * temp);
-				//lor[N2 + ii] = lo;
+				elements[N2 + ii] = (fabs(elements[N2 + ii]) * temp);
 			}
 			lor[lo] = lor2[lo];
 			continue;
@@ -2002,8 +1664,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		  int nrhs, const mxArray*prhs[])
 
 {
-	//if (nrhs != 26)
-	//	mexErrMsgTxt("Invalid number of input arguments.  There must be exactly 26.");
 
 	if (nrhs != 30)
 		mexErrMsgTxt("Invalid number of input arguments.  There must be exactly 30.");
@@ -2084,27 +1744,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	size_t loop_var_par = pituus;
 
-	//mexPrintf("loop_var_par = %d\n", loop_var_par);
-
-	//mexEvalString("pause(.001);");
-
 	double maxyy = *max_element(yy, yy + Ny + 1);
 	double minyy = *min_element(yy, yy + Ny + 1);
 
 	double maxxx = *max_element(xx, xx + Nx + 1);
 	double minxx = *min_element(xx, xx + Nx + 1);
-
-	//plhs[0] = mxCreateNumericMatrix(summa, 1, mxINT32_CLASS, mxREAL);
-
-	//int32_t* lor = (int32_t*)mxGetData(plhs[0]);
-
-	//plhs[1] = mxCreateNumericMatrix(summa, 1, mxINT32_CLASS, mxREAL);
-
-	//int32_t* indices = (int32_t*)mxGetData(plhs[1]);
-
-	//plhs[2] = mxCreateNumericMatrix(summa, 1, mxDOUBLE_CLASS, mxREAL);
-
-	//double* elements = (double*)mxGetData(plhs[2]);
 
 	mwSize N = Nx*Ny*Nz;
 	mwSize nzmax = summa;

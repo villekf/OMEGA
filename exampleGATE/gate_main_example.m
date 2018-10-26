@@ -160,7 +160,7 @@ options.offangle = options.det_w_pseudo * (3/4);
 
 
 %%%%%%%%%%%%%%%%%%%% Dynamic imaging properties %%%%%%%%%%%%%%%%%%%%
-options.tot_time = 288; % Total time of the measurement (s)
+options.tot_time = 1800; % Total time of the measurement (s)
 options.partitions = 1;% how many time points (if a static measurement, use 1)
 
 
@@ -178,9 +178,11 @@ options.precompute = true;
 
 % path: folder for the data (.dat, ASCII) files (must include / at end [or
 % \ on Windows])
-% options.fpath = '/home/villewe/PET/GATE/data/';
-% options.fpath = 'C:\Users\villewe\OneDrive - University of Eastern Finland\MAT-tiedostot\PET\GATE\example\';
-options.fpath = 'I:\Väikkäri\MAT-tiedostot\PET\example\';
+if isunix % Unix
+    options.fpath = '/path/to/GATE/output/';
+elseif ispc % Windows
+    options.fpath = 'C:\path\to\GATE\output\';
+end
 
 % Form only sinograms (no reconstructions)
 options.only_sinos = false;
@@ -227,19 +229,19 @@ options.verbose = true;
 % 2 = Everything done in OpenCL (CPU or GPU)
 % 3 = Reconstructions done sequentially (matrix-free method)
 % 4 = Matrix-free reconstruction with OpenCL (parallel)
-options.reconstruction_method = 2;
+options.reconstruction_method = 1;
 % Device used (this is applicable to methods 2 and 4)
 % In methods 2 and 4 this determines the device used for both system matrix
 % formation and image reconstruction
 % NOTE: On OpenCL the first devices are your GPUs (if you have only 1 GPU,
 % then device number 0 is your GPU and 1 your CPU)
-options.use_device = 1;
+options.use_device = 0;
 % Reconstruction algorithms to use (you can choose several):
 % NOTE: MLEM requires precomputed observation matrix or a matrix-free
 % method
 % Maximum-Likelihood Expectation Maximization (MLEM)
 % Supported by methods 1, 2 and 4
-options.mlem = true;
+options.mlem = false;
 % Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all methods
 options.osem = true;
@@ -257,7 +259,7 @@ options.ecosem = true;
 options.cosem = true;
 % Accelerated COSEM (ACOSEM)
 % Supported by method 1 only
-options.acosem = false;
+options.acosem = true;
 % Median root prior (MRP) with One Step Late (OSL) algorithm
 % Supported by method 1 only
 options.mrp_osl = true;
@@ -284,9 +286,9 @@ options.FMH_osl = true;
 % Supported by method 1 only
 options.weighted_mean_osl = true;
 % number of iterations
-options.Niter = 12;
+options.Niter = 1;
 % number of subsets (all excluding MLEM, use 1 if MLEM is selected)
-options.subsets = 1;
+options.subsets = 8;
 % Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % epsilon value (small value to prevent division by zero)
