@@ -28,7 +28,7 @@ The algorithms implemented so far are:
 
 GATE users should use the gate_main.m file to reconstruct GATE data. For non-GATE users, the file you should start with is main_nongate.m.
 
-A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation and then run the gate_main_example-file to reconstruct the data. By default ASCII data is used.
+A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the gate_main_example-file to reconstruct the data. By default ASCII data is used.
 
 Example MAT-files for non-GATE situation can be found from example-folder. These files are based on the above GATE-example.
 
