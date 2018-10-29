@@ -27,7 +27,7 @@
 
   <meta name="viewport" content="width=device-width">
   
-  <title>OMEGA/README.md at 0.9 · villekf/OMEGA</title>
+  <title>OMEGA/README.md at master · villekf/OMEGA</title>
     <meta name="description" content="Open-source MATLAB Emission Tomography Software. Contribute to villekf/OMEGA development by creating an account on GitHub.">
     <link rel="search" type="application/opensearchdescription+xml" href="/opensearch.xml" title="GitHub">
   <link rel="fluid-icon" href="https://github.com/fluidicon.png" title="GitHub">
@@ -37,10 +37,10 @@
     <meta property="og:image" content="https://avatars1.githubusercontent.com/u/22394626?s=400&amp;v=4" /><meta property="og:site_name" content="GitHub" /><meta property="og:type" content="object" /><meta property="og:title" content="villekf/OMEGA" /><meta property="og:url" content="https://github.com/villekf/OMEGA" /><meta property="og:description" content="Open-source MATLAB Emission Tomography Software. Contribute to villekf/OMEGA development by creating an account on GitHub." />
 
   <link rel="assets" href="https://assets-cdn.github.com/">
-  <link rel="web-socket" href="wss://live.github.com/_sockets/VjI6MzI0NTk2NDAxOjdkZjE5MTI3MDJiMjE3OWVlYTZmMmU3NTUyZTEyODE0Mjc3MDI3YzY3YTg3NjkyNTkxNDA4YzQ3Mjk4NTMwNWI=--9c0d76aa47caf3bacc1ce44d439b6347715d0f05">
+  <link rel="web-socket" href="wss://live.github.com/_sockets/VjI6MzI0NTk2NDAxOmQ0N2FiNjI4YTg4ZDAxMjViYjE2NzRhODMzMzM4MzNiMmRmYmYyZDE2ODhlZDg3MGUyNzI0NTc4OWU4NWIyZjU=--5e0cd237f76483fdeff1a67238a5000fc603fcfd">
   <meta name="pjax-timeout" content="1000">
   <link rel="sudo-modal" href="/sessions/sudo_modal">
-  <meta name="request-id" content="C9D3:27B1:1E1A9E2:37FEC58:5BD70034" data-pjax-transient>
+  <meta name="request-id" content="C69F:27AF:11A9EE9:22892E3:5BD709DD" data-pjax-transient>
 
 
   
@@ -51,7 +51,7 @@
     <meta name="google-site-verification" content="ZzhVyEFwb7w3e0-uOTltm8Jsck2F5StVihD0exw2fsA">
     <meta name="google-site-verification" content="GXs5KoUUkNCoaAZn7wPN-t01Pywp9M3sEjnt_3_ZWPc">
 
-  <meta name="octolytics-host" content="collector.githubapp.com" /><meta name="octolytics-app-id" content="github" /><meta name="octolytics-event-url" content="https://collector.githubapp.com/github-external/browser_event" /><meta name="octolytics-dimension-request_id" content="C9D3:27B1:1E1A9E2:37FEC58:5BD70034" /><meta name="octolytics-dimension-region_edge" content="iad" /><meta name="octolytics-dimension-region_render" content="iad" /><meta name="octolytics-actor-id" content="22394626" /><meta name="octolytics-actor-login" content="villekf" /><meta name="octolytics-actor-hash" content="1b934b9d157ebce867177b8e9247bd7f86df2e24083688dfccb94900d5e29a19" />
+  <meta name="octolytics-host" content="collector.githubapp.com" /><meta name="octolytics-app-id" content="github" /><meta name="octolytics-event-url" content="https://collector.githubapp.com/github-external/browser_event" /><meta name="octolytics-dimension-request_id" content="C69F:27AF:11A9EE9:22892E3:5BD709DD" /><meta name="octolytics-dimension-region_edge" content="iad" /><meta name="octolytics-dimension-region_render" content="iad" /><meta name="octolytics-actor-id" content="22394626" /><meta name="octolytics-actor-login" content="villekf" /><meta name="octolytics-actor-hash" content="1b934b9d157ebce867177b8e9247bd7f86df2e24083688dfccb94900d5e29a19" />
 <meta name="analytics-location" content="/&lt;user-name&gt;/&lt;repo-name&gt;/blob/show" data-pjax-transient="true" />
 
 
@@ -69,7 +69,7 @@
     <meta name="user-login" content="villekf">
 
       <meta name="expected-hostname" content="github.com">
-    <meta name="js-proxy-site-detection-payload" content="MzM5Y2JkNTM2M2RiMmI1NjM0ODI2NTU1OWFkZWFkNDA3Y2EzZDI2ZjA4ODA1NzdkZDVkYzAzY2M1YTgxMTQ1NHx7InJlbW90ZV9hZGRyZXNzIjoiMTkzLjE2Ny4yMjguMTgwIiwicmVxdWVzdF9pZCI6IkM5RDM6MjdCMToxRTFBOUUyOjM3RkVDNTg6NUJENzAwMzQiLCJ0aW1lc3RhbXAiOjE1NDA4MTY5NTEsImhvc3QiOiJnaXRodWIuY29tIn0=">
+    <meta name="js-proxy-site-detection-payload" content="NDkzODY4NzZlMjJjM2QyNTVhZjVlNTEwNzYyZWE2ZWYwZDYxYjNjYTM4ZGFiOTQ4NzA4ZDMyOWU4NmQ0YzE0ZHx7InJlbW90ZV9hZGRyZXNzIjoiMTkzLjE2Ny4yMjguMTgwIiwicmVxdWVzdF9pZCI6IkM2OUY6MjdBRjoxMUE5RUU5OjIyODkyRTM6NUJENzA5REQiLCJ0aW1lc3RhbXAiOjE1NDA4MTk0MjQsImhvc3QiOiJnaXRodWIuY29tIn0=">
 
     <meta name="enabled-features" content="DASHBOARD_V2_LAYOUT_OPT_IN,EXPLORE_DISCOVER_REPOSITORIES,UNIVERSE_BANNER,MARKETPLACE_PLAN_RESTRICTION_EDITOR,NOTIFY_ON_BLOCK,SUGGESTED_CHANGES_UX_TEST">
 
@@ -78,14 +78,14 @@
   <meta http-equiv="x-pjax-version" content="3ccd987877829de97461fb1b8bdbe9bf">
   
 
-      <link href="https://github.com/villekf/OMEGA/commits/0.9.atom" rel="alternate" title="Recent Commits to OMEGA:0.9" type="application/atom+xml">
+      <link href="https://github.com/villekf/OMEGA/commits/master.atom" rel="alternate" title="Recent Commits to OMEGA:master" type="application/atom+xml">
 
   <meta name="go-import" content="github.com/villekf/OMEGA git https://github.com/villekf/OMEGA.git">
 
   <meta name="octolytics-dimension-user_id" content="22394626" /><meta name="octolytics-dimension-user_login" content="villekf" /><meta name="octolytics-dimension-repository_id" content="154792509" /><meta name="octolytics-dimension-repository_nwo" content="villekf/OMEGA" /><meta name="octolytics-dimension-repository_public" content="true" /><meta name="octolytics-dimension-repository_is_fork" content="false" /><meta name="octolytics-dimension-repository_network_root_id" content="154792509" /><meta name="octolytics-dimension-repository_network_root_nwo" content="villekf/OMEGA" /><meta name="octolytics-dimension-repository_explore_github_marketplace_ci_cta_shown" content="true" />
 
 
-    <link rel="canonical" href="https://github.com/villekf/OMEGA/blob/0.9/README.md" data-pjax-transient>
+    <link rel="canonical" href="https://github.com/villekf/OMEGA/blob/master/README.md" data-pjax-transient>
 
 
   <meta name="browser-stats-url" content="https://api.github.com/_private/browser/stats">
@@ -153,7 +153,7 @@
           autocapitalize="off"
           aria-autocomplete="list"
           aria-controls="jump-to-results"
-          data-jump-to-suggestions-path="/_graphql/GetSuggestedNavigationDestinations#csrf-token=by/X+vibtGcmeIfBjUQvvQseMvL555FPUCkcUyuh1jC1UgOArLJwURVCeTbgHNwlgDL8wddyJGrz2usAT9zWSg=="
+          data-jump-to-suggestions-path="/_graphql/GetSuggestedNavigationDestinations#csrf-token=8mnSHSJ4mMfU5tntr/ZJZHUlGBkLcfd5epjKZJAlx68oFAZndlFc8efcJxrCrrr8/gnWKiXkQlzZaz039FjH1Q=="
           spellcheck="false"
           autocomplete="off"
           >
@@ -307,7 +307,7 @@
           <li><a role="menuitem" class="dropdown-item" href="https://help.github.com" data-ga-click="Header, go to help, text:help">Help</a></li>
           <li><a role="menuitem" class="dropdown-item" href="/settings/profile" data-ga-click="Header, go to settings, icon:settings">Settings</a></li>
           <li>
-            <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="logout-form" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="Lz7QzYuO4m6fLZl/Mf09z51qHgu89t6r7JjhDThodtwHypBiX6TA7XiEve2iiABM8sdcS/zhMrNCG68sys0nNQ==" />
+            <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="logout-form" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="z1+X8W6huubu1Yfa3EKG9aPEx6efydicOw5XELG7/7vnq9deuouYZQl8o0hPN7t2zGmF59/eNISVjRkxQx6uUg==" />
               <button type="submit" class="dropdown-item dropdown-signout" data-ga-click="Header, sign out, icon:logout" role="menuitem">
                 Sign out
               </button>
@@ -320,7 +320,7 @@
 
 
 
-        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="sr-only right-0" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="WUJiojclegjrhJLkmrYBnlVWuhOIeketQ/JS5RAnah1xtiIN4w9YiwwttnYJwzwdOvv4U8htq7XtcRzE4oI79A==" />
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="sr-only right-0" action="/logout" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="gtISiDAs2g5s5iIgrM7ISyo5iPGmwj/3YrFssNpc7OaqJlIn5Ab4jYtPBrI/u/XIRZTKsebV0+/MMiKRKPm9Dw==" />
           <button type="submit" class="dropdown-item dropdown-signout" data-ga-click="Header, sign out, icon:logout">
             Sign out
           </button>
@@ -358,7 +358,7 @@
 
       <ul class="pagehead-actions">
   <li>
-        <!-- '"` --><!-- </textarea></xmp> --></option></form><form data-remote="true" class="js-social-form js-social-container" action="/notifications/subscribe" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="JaBq5or9jBKZkdCHol6gtgMHv0c7ZcMqj9hVR9F2Tj6Ctpua4mQark9dbkN3FvX2zC43W1DskLmsDP5+q0RMwQ==" />      <input type="hidden" name="repository_id" id="repository_id" value="154792509" class="form-control" />
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form data-remote="true" class="js-social-form js-social-container" action="/notifications/subscribe" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="I62cbMZezjEIxJ6zn9Hr4SKVNyTVubA4KGVOQJses7KEu20QrsdYjd4IIHdKmb6h7by/OL4w46sLseV54SyxTQ==" />      <input type="hidden" name="repository_id" id="repository_id" value="154792509" class="form-control" />
 
       <details class="details-reset details-overlay select-menu float-left">
         <summary class="btn btn-sm btn-with-count select-menu-button" data-ga-click="Repository, click Watch settings, action:blob#show">
@@ -421,7 +421,7 @@
   <li>
     
   <div class="js-toggler-container js-social-container starring-container ">
-    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="starred js-social-form" action="/villekf/OMEGA/unstar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="ZCrWLggvOi05CymBnv+ihcJnJuRhZtS7BVAPe2eAhoZ3PEX85YuvL5f1CKzWah9NQRLYLCmv4SP37+H0iu4E9g==" />
+    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="starred js-social-form" action="/villekf/OMEGA/unstar" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="UY1CywFY8BgvC4afTNwPDTIO+O0RHW/VtJjYEk/Py6FCm9EZ7PxlGoH1p7IESbLFsXsGJVnUWk1GJzadoqFJ0Q==" />
       <input type="hidden" name="context" value="repository"></input>
       <button
         type="submit"
@@ -436,7 +436,7 @@
           0
         </a>
 </form>
-    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="unstarred js-social-form" action="/villekf/OMEGA/star" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="7I4GtU7ttKqoAwZjId2dk0AB3L7VqwftellMf8LGvFWQd38YHiglwW63K/Bd56His7j7wLVp0RrFqcIdDx8w1Q==" />
+    <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="unstarred js-social-form" action="/villekf/OMEGA/star" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="AUsNCNjgtKOBVoj7eKn86OIeePh1bJslMb/r0Sgev599snSliCUlyEfipWgEk8CZEadfhhWuTdKOT2Wz5cczHw==" />
       <input type="hidden" name="context" value="repository"></input>
       <button
         type="submit"
@@ -483,7 +483,7 @@
      data-pjax="#js-repo-pjax-container">
 
   <span itemscope itemtype="http://schema.org/ListItem" itemprop="itemListElement">
-    <a class="js-selected-navigation-item selected reponav-item" itemprop="url" data-hotkey="g c" data-selected-links="repo_source repo_downloads repo_commits repo_releases repo_tags repo_branches repo_packages /villekf/OMEGA/tree/0.9" href="/villekf/OMEGA/tree/0.9">
+    <a class="js-selected-navigation-item selected reponav-item" itemprop="url" data-hotkey="g c" data-selected-links="repo_source repo_downloads repo_commits repo_releases repo_tags repo_branches repo_packages /villekf/OMEGA" href="/villekf/OMEGA">
       <svg class="octicon octicon-code" viewBox="0 0 14 16" version="1.1" width="14" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M9.5 3L8 4.5 11.5 8 8 11.5 9.5 13 14 8 9.5 3zm-5 0L0 8l4.5 5L6 11.5 2.5 8 6 4.5 4.5 3z"/></svg>
       <span itemprop="name">Code</span>
       <meta itemprop="position" content="1">
@@ -535,9 +535,9 @@
     
 
   
-    <a class="d-none js-permalink-shortcut" data-hotkey="y" href="/villekf/OMEGA/blob/4cdc8a5994a74061b207d1bf93c2cd8c9ee643be/README.md">Permalink</a>
+    <a class="d-none js-permalink-shortcut" data-hotkey="y" href="/villekf/OMEGA/blob/946b36615e5e737e16ff9cfd94867973ea1b35a0/README.md">Permalink</a>
 
-    <!-- blob contrib key: blob_contributors:v21:c7dfca1cf9ced4964fc8aec73ce5bc5e -->
+    <!-- blob contrib key: blob_contributors:v21:947e2d20068d4a0f20ee0412f3db05d8 -->
 
     
 
@@ -547,8 +547,8 @@
   <button class=" btn btn-sm select-menu-button js-menu-target css-truncate" data-hotkey="w"
     
     type="button" aria-label="Switch branches or tags" aria-expanded="false" aria-haspopup="true">
-      <i>Tag:</i>
-      <span class="js-select-button css-truncate-target">0.9</span>
+      <i>Branch:</i>
+      <span class="js-select-button css-truncate-target">master</span>
   </button>
 
   <div class="select-menu-modal-holder js-menu-content js-navigation-container" data-pjax>
@@ -580,7 +580,7 @@
         <div data-filterable-for="context-commitish-filter-field" data-filterable-type="substring">
 
 
-            <a class="select-menu-item js-navigation-item js-navigation-open "
+            <a class="select-menu-item js-navigation-item js-navigation-open selected"
                href="/villekf/OMEGA/blob/master/README.md"
                data-name="master"
                data-skip-pjax="true"
@@ -592,16 +592,16 @@
             </a>
         </div>
 
-          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="select-menu-new-item-form js-new-item-form" action="/villekf/OMEGA/branches" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="rVn8kshlLRJZ4z0wmftWk91sc4u3xTUE2l0SPKHNiCGKscrBI/Z1Z3JUmIM3CFdSaCCM3jWyHl+0Ou4m8lr0kA==" />
+          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="select-menu-new-item-form js-new-item-form" action="/villekf/OMEGA/branches" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="H3AG4q7mtPGNMDoTqKl5aztUJNBdN/beUk+vP/kj/ug4mDCxRXXshKaHn6AGWniqjhjbhd9A3YU8KFMlqrSCWQ==" />
             <input type="hidden" name="name" id="name" class="js-new-item-value">
-            <input type="hidden" name="branch" id="branch" value="0.9">
+            <input type="hidden" name="branch" id="branch" value="master">
             <input type="hidden" name="path_binary" id="path_binary" value="UkVBRE1FLm1k">
 
             <button type="submit" class="width-full select-menu-item js-navigation-open js-navigation-item">
               <svg class="octicon octicon-git-branch select-menu-item-icon" viewBox="0 0 10 16" version="1.1" width="10" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M10 5c0-1.11-.89-2-2-2a1.993 1.993 0 0 0-1 3.72v.3c-.02.52-.23.98-.63 1.38-.4.4-.86.61-1.38.63-.83.02-1.48.16-2 .45V4.72a1.993 1.993 0 0 0-1-3.72C.88 1 0 1.89 0 3a2 2 0 0 0 1 1.72v6.56c-.59.35-1 .99-1 1.72 0 1.11.89 2 2 2 1.11 0 2-.89 2-2 0-.53-.2-1-.53-1.36.09-.06.48-.41.59-.47.25-.11.56-.17.94-.17 1.05-.05 1.95-.45 2.75-1.25S8.95 7.77 9 6.73h-.02C9.59 6.37 10 5.73 10 5zM2 1.8c.66 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2C1.35 4.2.8 3.65.8 3c0-.65.55-1.2 1.2-1.2zm0 12.41c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2zm6-8c-.66 0-1.2-.55-1.2-1.2 0-.65.55-1.2 1.2-1.2.65 0 1.2.55 1.2 1.2 0 .65-.55 1.2-1.2 1.2z"/></svg>
               <div class="select-menu-item-text">
                 <span class="select-menu-item-heading">Create branch: <span class="js-new-item-name"></span></span>
-                <span class="description">from ‘0.9’</span>
+                <span class="description">from ‘master’</span>
               </div>
             </button>
 </form>
@@ -611,16 +611,6 @@
         <div data-filterable-for="context-commitish-filter-field" data-filterable-type="substring">
 
 
-            <a class="select-menu-item js-navigation-item js-navigation-open selected"
-              href="/villekf/OMEGA/tree/0.9/README.md"
-              data-name="0.9"
-              data-skip-pjax="true"
-              rel="nofollow">
-              <svg class="octicon octicon-check select-menu-item-icon" viewBox="0 0 12 16" version="1.1" width="12" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M12 5l-8 8-4-4 1.5-1.5L4 10l6.5-6.5L12 5z"/></svg>
-              <span class="select-menu-item-text css-truncate-target" title="0.9">
-                0.9
-              </span>
-            </a>
         </div>
 
         <div class="select-menu-no-results">Nothing to show</div>
@@ -631,7 +621,7 @@
 </div>
 
       <div class="BtnGroup float-right">
-        <a href="/villekf/OMEGA/find/0.9"
+        <a href="/villekf/OMEGA/find/master"
               class="js-pjax-capture-input btn btn-sm BtnGroup-item"
               data-pjax
               data-hotkey="t">
@@ -642,21 +632,54 @@
         </clipboard-copy>
       </div>
       <div id="blob-path" class="breadcrumb">
-        <span class="repo-root js-repo-root"><span class="js-path-segment"><a data-pjax="true" href="/villekf/OMEGA/tree/0.9"><span>OMEGA</span></a></span></span><span class="separator">/</span><strong class="final-path">README.md</strong>
+        <span class="repo-root js-repo-root"><span class="js-path-segment"><a data-pjax="true" href="/villekf/OMEGA"><span>OMEGA</span></a></span></span><span class="separator">/</span><strong class="final-path">README.md</strong>
       </div>
     </div>
 
 
-    <include-fragment src="/villekf/OMEGA/contributors/0.9/README.md" class="commit-tease commit-loader">
+    
+  <div class="commit-tease">
+      <span class="float-right">
+        <a class="commit-tease-sha" href="/villekf/OMEGA/commit/946b36615e5e737e16ff9cfd94867973ea1b35a0" data-pjax>
+          946b366
+        </a>
+        <relative-time datetime="2018-10-29T12:41:12Z">Oct 29, 2018</relative-time>
+      </span>
       <div>
-        Fetching contributors&hellip;
+        <a rel="author" data-skip-pjax="true" data-hovercard-type="user" data-hovercard-url="/hovercards?user_id=22394626" data-octo-click="hovercard-link-click" data-octo-dimensions="link_type:self" href="/villekf"><img class="avatar" src="https://avatars0.githubusercontent.com/u/22394626?s=40&amp;v=4" width="20" height="20" alt="@villekf" /></a>
+        <a class="user-mention" rel="author" data-hovercard-type="user" data-hovercard-url="/hovercards?user_id=22394626" data-octo-click="hovercard-link-click" data-octo-dimensions="link_type:self" href="/villekf">villekf</a>
+          <a data-pjax="true" title="Update README.md" class="message" href="/villekf/OMEGA/commit/946b36615e5e737e16ff9cfd94867973ea1b35a0">Update README.md</a>
       </div>
 
-      <div class="commit-tease-contributors">
-          <img alt="" class="loader-loading float-left" src="https://assets-cdn.github.com/images/spinners/octocat-spinner-32-EAF2F5.gif" width="16" height="16" />
-        <span class="loader-error">Cannot retrieve contributors at this time</span>
-      </div>
-</include-fragment>
+    <div class="commit-tease-contributors">
+      
+<details class="details-reset details-overlay details-overlay-dark lh-default text-gray-dark float-left mr-2" id="blob_contributors_box">
+  <summary class="btn-link" aria-haspopup="dialog"  >
+    
+    <span><strong>1</strong> contributor</span>
+  </summary>
+  <details-dialog class="Box Box--overlay d-flex flex-column anim-fade-in fast " aria-label="Users who have contributed to this file">
+    <div class="Box-header">
+      <button class="Box-btn-octicon btn-octicon float-right" type="button" aria-label="Close dialog" data-close-dialog>
+        <svg class="octicon octicon-x" viewBox="0 0 12 16" version="1.1" width="12" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M7.48 8l3.75 3.75-1.48 1.48L6 9.48l-3.75 3.75-1.48-1.48L4.52 8 .77 4.25l1.48-1.48L6 6.52l3.75-3.75 1.48 1.48L7.48 8z"/></svg>
+      </button>
+      <h3 class="Box-title">Users who have contributed to this file</h3>
+    </div>
+    
+        <ul class="list-style-none overflow-auto">
+            <li class="Box-row">
+              <a class="link-gray-dark no-underline" href="/villekf">
+                <img class="avatar mr-2" alt="" src="https://avatars0.githubusercontent.com/u/22394626?s=40&amp;v=4" width="20" height="20" />
+                villekf
+</a>            </li>
+        </ul>
+
+  </details-dialog>
+</details>
+      
+    </div>
+  </div>
+
 
 
     <div class="file ">
@@ -664,32 +687,35 @@
   <div class="file-actions">
 
     <div class="BtnGroup">
-      <a id="raw-url" class="btn btn-sm BtnGroup-item" href="/villekf/OMEGA/raw/0.9/README.md">Raw</a>
-        <a class="btn btn-sm js-update-url-with-hash BtnGroup-item" data-hotkey="b" href="/villekf/OMEGA/blame/0.9/README.md">Blame</a>
-      <a rel="nofollow" class="btn btn-sm BtnGroup-item" href="/villekf/OMEGA/commits/0.9/README.md">History</a>
+      <a id="raw-url" class="btn btn-sm BtnGroup-item" href="/villekf/OMEGA/raw/master/README.md">Raw</a>
+        <a class="btn btn-sm js-update-url-with-hash BtnGroup-item" data-hotkey="b" href="/villekf/OMEGA/blame/master/README.md">Blame</a>
+      <a rel="nofollow" class="btn btn-sm BtnGroup-item" href="/villekf/OMEGA/commits/master/README.md">History</a>
     </div>
 
-        <button class="btn-octicon disabled tooltipped tooltipped-nw"
-           type="button"
-           disabled
-           aria-label="You must be on a branch to open this file in GitHub Desktop">
+        <a class="btn-octicon tooltipped tooltipped-nw"
+           href="https://desktop.github.com"
+           aria-label="Open this file in GitHub Desktop"
+           data-ga-click="Repository, open with desktop, type:windows">
             <svg class="octicon octicon-device-desktop" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M15 2H1c-.55 0-1 .45-1 1v9c0 .55.45 1 1 1h5.34c-.25.61-.86 1.39-2.34 2h8c-1.48-.61-2.09-1.39-2.34-2H15c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm0 9H1V3h14v8z"/></svg>
-        </button>
+        </a>
 
-        <button type="button" class="btn-octicon disabled tooltipped tooltipped-nw"
-          aria-label="You must be on a branch to make or propose changes to this file">
-          <svg class="octicon octicon-pencil" viewBox="0 0 14 16" version="1.1" width="14" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M0 12v3h3l8-8-3-3-8 8zm3 2H1v-2h1v1h1v1zm10.3-9.3L12 6 9 3l1.3-1.3a.996.996 0 0 1 1.41 0l1.59 1.59c.39.39.39 1.02 0 1.41z"/></svg>
-        </button>
-        <button type="button" class="btn-octicon btn-octicon-danger disabled tooltipped tooltipped-nw"
-          aria-label="You must be on a branch to make or propose changes to this file">
-          <svg class="octicon octicon-trashcan" viewBox="0 0 12 16" version="1.1" width="12" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M11 2H9c0-.55-.45-1-1-1H5c-.55 0-1 .45-1 1H2c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1v9c0 .55.45 1 1 1h7c.55 0 1-.45 1-1V5c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm-1 12H3V5h1v8h1V5h1v8h1V5h1v8h1V5h1v9zm1-10H2V3h9v1z"/></svg>
-        </button>
-  </div>
+          <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form js-update-url-with-hash" action="/villekf/OMEGA/edit/master/README.md" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="ApJbDwtaw4Qjl+KKEz8Rdb6iiU4n/bWFhcqpuZrwJYrdhg+KozY7HF48Cxye9aXYY0uNJmX5iqzqPYw1u6R94Q==" />
+            <button class="btn-octicon tooltipped tooltipped-nw" type="submit"
+              aria-label="Edit this file" data-hotkey="e" data-disable-with>
+              <svg class="octicon octicon-pencil" viewBox="0 0 14 16" version="1.1" width="14" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M0 12v3h3l8-8-3-3-8 8zm3 2H1v-2h1v1h1v1zm10.3-9.3L12 6 9 3l1.3-1.3a.996.996 0 0 1 1.41 0l1.59 1.59c.39.39.39 1.02 0 1.41z"/></svg>
+            </button>
+</form>
+        <!-- '"` --><!-- </textarea></xmp> --></option></form><form class="inline-form" action="/villekf/OMEGA/delete/master/README.md" accept-charset="UTF-8" method="post"><input name="utf8" type="hidden" value="&#x2713;" /><input type="hidden" name="authenticity_token" value="HGjXnPd1tmgfpTA0sQ/YjbSKczWvQ41g7BTDRtKn5eH0h3vXARosMSlZmWH9kdwys3++53fLBJ56X+r1VPo16Q==" />
+          <button class="btn-octicon btn-octicon-danger tooltipped tooltipped-nw" type="submit"
+            aria-label="Delete this file" data-disable-with>
+            <svg class="octicon octicon-trashcan" viewBox="0 0 12 16" version="1.1" width="12" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M11 2H9c0-.55-.45-1-1-1H5c-.55 0-1 .45-1 1H2c-.55 0-1 .45-1 1v1c0 .55.45 1 1 1v9c0 .55.45 1 1 1h7c.55 0 1-.45 1-1V5c.55 0 1-.45 1-1V3c0-.55-.45-1-1-1zm-1 12H3V5h1v8h1V5h1v8h1V5h1v8h1V5h1v9zm1-10H2V3h9v1z"/></svg>
+          </button>
+</form>  </div>
 
   <div class="file-info">
       218 lines (123 sloc)
       <span class="file-info-divider"></span>
-    14.6 KB
+    14.7 KB
   </div>
 </div>
 
@@ -719,9 +745,9 @@
 </ul>
 <h2><a id="user-content-getting-started" class="anchor" aria-hidden="true" href="#getting-started"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Getting Started</h2>
 <p>GATE users should use the gate_main.m file to reconstruct GATE data. For non-GATE users, the file you should start with is main_nongate.m.</p>
-<p>A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation and then run the gate_main_example-file to reconstruct the data. By default ASCII data is used.</p>
+<p>A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the gate_main_example-file to reconstruct the data. By default ASCII data is used.</p>
 <p>Example MAT-files for non-GATE situation can be found from example-folder. These files are based on the above GATE-example.</p>
-<p>For more information see the <a href="https://github.com/villekf/OMEGA/wiki">wiki</a> or <a href="/villekf/OMEGA/blob/0.9/docs/how_to_use.txt">how_to_use.txt</a>.</p>
+<p>For more information see the <a href="https://github.com/villekf/OMEGA/wiki">wiki</a> or <a href="/villekf/OMEGA/blob/master/docs/how_to_use.txt">how_to_use.txt</a>.</p>
 <h2><a id="user-content-features" class="anchor" aria-hidden="true" href="#features"><svg class="octicon octicon-link" viewBox="0 0 16 16" version="1.1" width="16" height="16" aria-hidden="true"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Features</h2>
 <p>The following features are currently present:</p>
 <ul>
@@ -890,7 +916,7 @@ and the source code from here:<br>
 <div class="footer container-lg px-3" role="contentinfo">
   <div class="position-relative d-flex flex-justify-between pt-6 pb-2 mt-6 f6 text-gray border-top border-gray-light ">
     <ul class="list-style-none d-flex flex-wrap ">
-      <li class="mr-3">&copy; 2018 <span title="0.21009s from unicorn-76fcd955ff-z4j5n">GitHub</span>, Inc.</li>
+      <li class="mr-3">&copy; 2018 <span title="0.38653s from unicorn-6b979865ff-rh8zj">GitHub</span>, Inc.</li>
         <li class="mr-3"><a data-ga-click="Footer, go to terms, text:terms" href="https://github.com/site/terms">Terms</a></li>
         <li class="mr-3"><a data-ga-click="Footer, go to privacy, text:privacy" href="https://github.com/site/privacy">Privacy</a></li>
         <li class="mr-3"><a href="https://help.github.com/articles/github-security/" data-ga-click="Footer, go to security, text:security">Security</a></li>
