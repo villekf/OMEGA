@@ -176,7 +176,7 @@ If you wish to use this software in your work, at the moment cite the Github pag
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean and quadratic prior codes were written by Samuli Summala. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites, the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation codes were written by Samuli Summala. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (stackoverflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from Jane and Aatos Erkko foundation.
 
