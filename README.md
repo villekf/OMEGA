@@ -159,6 +159,7 @@ Here is a list of features that should appear in future releases:
 - All/most algorithms from method 1 to all/most other methods
 - Support for SPECT data
 - TV prior
+- Support for Siemens Inveon PET list-mode data
 
 
 ## Reporting Bugs and Feature Requests
