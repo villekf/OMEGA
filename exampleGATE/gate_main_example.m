@@ -195,7 +195,7 @@ options.precompute_obs_matrix = false;
 
 % Compute only the reconstructions (this option overwrites the precompute
 % option)
-options.only_reconstructions = true;
+options.only_reconstructions = false;
 
 % Use raw list mode data
 % This means that the data is used as is without any sinogramming and thus
