@@ -25,7 +25,7 @@ elseif options.use_ASCII && options.use_LMF
 elseif options.use_ASCII && options.use_root
     disp('Both ASCII and root selected, using only ASCII')
     options.use_root = false;
-elseif options.use_LMF && options.root
+elseif options.use_LMF && options.use_root
     disp('Both LMF and root selected, using only LMF')
     options.use_root = false;
 elseif options.use_ASCII == false && options.use_LMF == false && options.use_root == false
