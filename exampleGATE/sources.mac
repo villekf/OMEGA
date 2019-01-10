@@ -29,10 +29,10 @@
 /gate/source/F18LineSource/gps/energytype Fluor18
 /gate/source/F18LineSource/gps/type Volume
 /gate/source/F18LineSource/gps/shape Cylinder
-/gate/source/F18LineSource/gps/radius .5 mm
+/gate/source/F18LineSource/gps/radius 10 mm
 /gate/source/F18LineSource/gps/halfz 34.0 mm
 /gate/source/F18LineSource/gps/angtype iso
-/gate/source/F18LineSource/gps/centre 0. -5.0 0. mm
+/gate/source/F18LineSource/gps/centre 0. -20.0 0. mm
 
 /gate/source/addSource O15LineSource
 /gate/source/O15LineSource/setActivity 1000000. becquerel
@@ -42,10 +42,10 @@
 /gate/source/O15LineSource/gps/energytype Oxygen15
 /gate/source/O15LineSource/gps/type Volume
 /gate/source/O15LineSource/gps/shape Cylinder
-/gate/source/O15LineSource/gps/radius .5 mm
+/gate/source/O15LineSource/gps/radius 10 mm
 /gate/source/O15LineSource/gps/halfz 34.0 mm
 /gate/source/O15LineSource/gps/angtype iso
-/gate/source/O15LineSource/gps/centre 0. 5.0 0. mm
+/gate/source/O15LineSource/gps/centre 20. 20.0 0. mm
 
 /gate/source/list
 
