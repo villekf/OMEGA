@@ -12,9 +12,9 @@ The algorithms implemented so far are:
 - Complete-data Ordered Subsets Expectation Maximization (COSEM) [6]
 - Enhanced COSEM (ECOSEM) [7]
 - Accelerated COSEM (ACOSEM) [8]
-- Row-Action Maximum Likelihood Algorithm (RAMLA) [9]
-- Modified RAMLA (MRAMLA), aka modified BSREM [10]
-- Block Sequential Regularized Expectation Maximization (BSREM) [11]
+- Row-Action Maximum Likelihood Algorithm (RAMLA) [9] (Current implementation is incorrect)
+- Modified RAMLA (MRAMLA), aka modified BSREM [10] (Current implementation is incorrect)
+- Block Sequential Regularized Expectation Maximization (BSREM) [11] (Current implementation is incorrect)
 - One-step-late algorithm (OSL) [12]
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Median Root Prior (MRP) [13]
