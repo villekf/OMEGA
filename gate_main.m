@@ -223,7 +223,7 @@ options.verbose = true;
 % 2 = Everything done in OpenCL (CPU or GPU)
 % 3 = Reconstructions done sequentially (matrix-free method)
 % 4 = Matrix-free reconstruction with OpenCL (parallel)
-options.reconstruction_method = 3;
+options.reconstruction_method = 1;
 % Device used (this is applicable to methods 2 and 4)
 % In methods 2 and 4 this determines the device used for both system matrix
 % formation and image reconstruction
@@ -235,10 +235,10 @@ options.use_device = 0;
 % method
 % Maximum-Likelihood Expectation Maximization (MLEM)
 % Supported by methods 1, 2 and 4
-options.mlem = true;
+options.mlem = false;
 % Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all methods
-options.osem = false;
+options.osem = true;
 % Modified Row-Action Maximum Likelihood Algorithm (MRAMLA, modified BSREM)
 % Supported by method 1 only
 options.mramla = false;
@@ -280,9 +280,9 @@ options.FMH_osl = false;
 % Supported by method 1 only
 options.weighted_mean_osl = false;
 % number of iterations
-options.Niter = 12;
+options.Niter = 3;
 % number of subsets (all excluding MLEM)
-options.subsets = 1;
+options.subsets = 8;
 % Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % epsilon value (small value to prevent division by zero)
