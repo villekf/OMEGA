@@ -163,44 +163,44 @@ options.mlem = false;
 options.osem = true;
 % Modified Row-Action Maximum Likelihood Algorithm (MRAMLA, modified BSREM)
 % Supported by method 1 only
-options.mramla = true;
+options.mramla = false;
 % Row-Action Maximum Likelihood Algorithm (RAMLA)
 % Supported by method 1 only
-options.ramla = true;
+options.ramla = false;
 % Enhanced Convergent OSEM (ECOSEM)
 % Supported by method 1 only
-options.ecosem = true;
+options.ecosem = false;
 % Complete data OSEM (COSEM)
 % Supported by method 1 only
-options.cosem = true;
+options.cosem = false;
 % Accelerated COSEM (ACOSEM)
 % Supported by method 1 only
-options.acosem = true;
+options.acosem = false;
 % Median root prior (MRP) with One Step Late (OSL) algorithm
 % Supported by method 1 only
-options.mrp_osl = true;
+options.mrp_osl = false;
 % Median root prior with Block Sequential Regularized Expectation
 % Supported by method 1 only
 % Maximization (BSREM)
-options.mrp_bsrem = true;
+options.mrp_bsrem = false;
 % Quadratic prior with OSL
 % Supported by method 1 only
-options.quad_osl = true;
+options.quad_osl = false;
 % Quadratic prior with BSREM
 % Supported by method 1 only
-options.quad_bsrem = true;
+options.quad_bsrem = false;
 % L-filter with OSL
 % Supported by method 1 only
-options.L_osl = true;
+options.L_osl = false;
 % L-filter with BSREM
 % Supported by method 1 only
-options.L_bsrem = true;
+options.L_bsrem = false;
 % Finite impulse response (FIR) Median Hybrid (FMH) with OSL
 % Supported by method 1 only
-options.FMH_osl = true;
+options.FMH_osl = false;
 % Weighted mean with OSL
 % Supported by method 1 only
-options.weighted_mean_osl = true;
+options.weighted_mean_osl = false;
 % number of iterations
 options.Niter = 2;
 % number of subsets (all excluding MLEM, use 1 if MLEM is selected)
