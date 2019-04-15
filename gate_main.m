@@ -170,8 +170,8 @@ options.name = 'cylpet_example';
 % This includes e.g. detector coordinates, sinogram coordinates, etc.
 options.precompute = true;
 
-% path: folder for the data (.dat, ASCII) files (must include / at end [or
-% \ on Windows])
+% folder for the data (.dat ASCII, .ccs LMF, .root ROOT) files
+% (must include / at end [or \ on Windows])
 if isunix % Unix
     options.fpath = '/path/to/GATE/output/';
 elseif ispc % Windows
