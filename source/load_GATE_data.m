@@ -72,6 +72,9 @@ if options.use_LMF
     
     % Take coincidence data
     fnames = dir([fpath '*.ccs']);
+    if size(fnames,1) == 0
+        error('No LMF (.ccs) files were found. Check your filepath (options.fpath)')
+    end
     C = [];
     LL1 = [];
     LL2 = [];
@@ -381,6 +384,9 @@ elseif options.use_ASCII
     
     % Take coincidence data
     fnames = dir([fpath '*Coincidences*.dat']);
+    if size(fnames,1) == 0
+        error('No ASCII (.dat) files were found. Check your filepath (options.fpath)')
+    end
 %     C = [];
     LL1 = [];
     LL2 = [];
@@ -673,6 +679,9 @@ elseif options.use_root
     
     % Take coincidence data
     fnames = dir([fpath '*.root']);
+    if size(fnames,1) == 0
+        error('No Root (.root) files were found. Check your filepath (options.fpath)')
+    end
     
     
     if partitions == 1
