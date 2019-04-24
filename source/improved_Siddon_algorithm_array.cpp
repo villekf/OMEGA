@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <time.h>
+#include <cstdint>
 
 
 using namespace std;
