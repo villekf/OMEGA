@@ -1,4 +1,4 @@
-﻿#include "arrayfire.h"
+#include "arrayfire.h"
 #include "mex.h"
 #include <algorithm>
 #include <vector>
@@ -6,7 +6,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <CL/cl.hpp>
+#include <CL/cl.h>
+#include <cstdint>
 
 using namespace af;
 using std::vector;
