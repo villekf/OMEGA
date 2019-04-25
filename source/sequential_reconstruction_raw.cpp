@@ -2,6 +2,7 @@
 #include <vector>
 #include <algorithm>
 #include <time.h>
+#include <cmath>
 
 
 using namespace std;
