@@ -498,6 +498,9 @@ elseif options.use_ASCII
         if options.module_ind1 == 0 || options.module_ind2 == 0
             ring_number1 = uint16(floor(M(:,rsector_ind1)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
             ring_number2 = uint16(floor(M(:,rsector_ind2)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
+        elseif options.linear_multip == 1
+            ring_number1 = uint16(M(:,options.module_ind1));
+            ring_number2 = uint16(M(:,options.module_ind2));
         else
             ring_number1 = uint16(mod(M(:,options.module_ind1),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
             ring_number2 = uint16(mod(M(:,options.module_ind2),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
