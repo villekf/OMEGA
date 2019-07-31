@@ -1,6 +1,8 @@
 # OMEGA
 Open-source MATLAB Emission Tomography Software
 
+!!! This branch contains beta software that has been only partially tested. !!!
+
 ## Introduction
 
 OMEGA is a software for MATLAB to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or Root  data obtained from GATE simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations.
