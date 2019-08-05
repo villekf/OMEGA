@@ -1,6 +1,9 @@
 #
 #       P H Y S I C S
 #
+
+/gate/physics/addPhysicsList emstandard
+
 /gate/physics/addProcess PhotoElectric
 /gate/physics/processes/PhotoElectric/setModel StandardModel
 
@@ -18,11 +21,13 @@
 /gate/physics/processes/Bremsstrahlung/setModel StandardModel e-
 /gate/physics/processes/Bremsstrahlung/setModel StandardModel e+
 
-/gate/physics/addProcess PositronAnnihilation
+/gate/physics/addProcess PositronAnnihilation e+
 
-/gate/physics/addProcess eMultipleScattering
-/gate/physics/processes/eMultipleScattering/setGeometricalStepLimiterType e- distanceToBoundary
-/gate/physics/processes/eMultipleScattering/setGeometricalStepLimiterType e+ distanceToBoundary
+/gate/physics/addProcess eMultipleScattering e-
+/gate/physics/addProcess eMultipleScattering e+
+#/gate/physics/addProcess eMultipleScattering
+#/gate/physics/processes/eMultipleScattering/setGeometricalStepLimiterType e- distanceToBoundary
+#/gate/physics/processes/eMultipleScattering/setGeometricalStepLimiterType e+ distanceToBoundary
 
 /gate/physics/addProcess RadioactiveDecay
 
@@ -40,9 +45,9 @@
 
 
 # Cuts for particle in NEMACylinder
-/gate/physics/Gamma/SetCutInRegion      NEMACylinder 0.5 cm
-/gate/physics/Electron/SetCutInRegion   NEMACylinder 0.5 cm
-/gate/physics/Positron/SetCutInRegion   NEMACylinder 0.5 cm
+#/gate/physics/Gamma/SetCutInRegion      NEMACylinder 0.5 cm
+#/gate/physics/Electron/SetCutInRegion   NEMACylinder 0.5 cm
+#/gate/physics/Positron/SetCutInRegion   NEMACylinder 0.5 cm
 
 # Cuts for particle in NEMACylinder
 /gate/physics/Gamma/SetCutInRegion      LSO 0.5 cm

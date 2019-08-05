@@ -1,6 +1,5 @@
-function [ lor, indices, alkiot, discard] = improved_siddon_atten_for_KYS( pikselikoko, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, vaimennus)
-%
-%SIDDON Function to calculate the Siddon's algorithm
+function [ lor, indices, alkiot, discard] = improved_siddon_atten( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, yy, xx , NSinos, NSlices, vaimennus, index, pituus, attenuation_correction)
+%IMPROVED_SIDDON_ATTEN Function to calculate the Siddon's algorithm
 %   This function calculates the line intersections in a pixel space by
 %   using the Siddon's algorithm and converts them to probabilities. This
 %   function also determines the LORs that are not in the desired slices.
@@ -13,83 +12,67 @@ function [ lor, indices, alkiot, discard] = improved_siddon_atten_for_KYS( pikse
 % INPUTS: 
 %
 % LL contains the detector numbers of each LOR in the measurement vector
-%
 % LOOP_VAR_PAR is the length of the subset used for the current
 % subiteration
-%
 % PIKSELIKOKO defines the size of the image matrix in x and y directions
-% 
 % NY is the length of the y direction
-% 
 % NX same for x
-%
 % NZ same for z
-% 
 % D defines the square (pixel) length, that is the distance between pixel
 % boundaries in x and y directions
-% 
 % DZ same for z direction
-%
 % BY the distance from the origin to the pixel space in y direction
-%
 % BX same for x
-% 
 % BZ same for z
-%
 % OSAJOUKOT the subset intervals used for OSEM reconstruction
-%
 % TEST current subiteration (subset)
-%
 % Z_DET detector ring locations in z dimension (axial)
-%
 % X detector ring locations in x direction (radial)
-% 
 % Y same for y
-% 
 % IIJ pixel boundaries in x directon (iij=0:Nx)
-% 
 % JJI same for y
-%
 % KKJ same for z
-% 
 % YY 
+bxb = bx + double(Nx) * d;
+byb = by + double(Ny) * d;
+bzb = bz + double(Nz) * dz;
 z_det = z_det(1:NSinos,:);
-loop_var_par = NSinos*size(x,1);
-indices=cell((loop_var_par),1);
-alkiot=cell((loop_var_par),1);
+size_x = size(x,1);
+% loop_var_par = NSinos*size(x,1);
+indices=cell((pituus),1);
+alkiot=cell((pituus),1);
 % indices=zeros(100,(loop_var_par)/100,'int32');
 % alkiot=zeros(100,(loop_var_par)/100,'int32');
-lor=zeros((loop_var_par),2,'int32');
-discard=true((loop_var_par),1);
+lor=zeros((pituus),2,'int32');
+discard=true((pituus),1);
 % apu_var=osajoukot(test);
+vaimennuskuva = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %vaimennusasiat:
-vaimennuskuva = vaimennus(:,:,1:NSlices);
-vaimennuskuva=vaimennuskuva(:);
+if attenuation_correction
+    vaimennuskuva = vaimennus(:,:,1:NSlices);
+    vaimennuskuva = vaimennuskuva(:);
+end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % 436142
 %1587419
-ll=int32(1:size(x,1));
-ll = repmat(ll,1,NSinos);
-lz = int16(1:NSinos);
-lz = repelem(lz,size(x,1));
+% ll=int32(1:size(x,1));
+% ll = repmat(ll,1,NSinos);
+% lz = int16(1:NSinos);
+% lz = repelem(lz,size(x,1));
 zmax = max(max(z_det));
 if zmax==0
     zmax = 1;
 end
-parfor lo=int32(1:loop_var_par)
-%     if lo > 1 && ~isempty((indices{lo-1})) && min(indices{lo-1})<1
-%         lo
-%         return
-%     elseif lo > 1 && ~isempty((indices{lo-1})) && max(indices{lo-1})>N
-%         lo
-%         return
-%     end
-%       lo
+parfor lo=int32(1:pituus)
     imax=int32(0);
     imin=int32(0);
     jmax=int32(0);
     jmin=int32(0);
+    
+    ju = 0;
+    iu = 0;
+    ku = 0;
 
     % Jos detektorit vastakkaiset niin laskeminen ei onnistu Siddonin
     % algoritmilla
@@ -129,12 +112,17 @@ parfor lo=int32(1:loop_var_par)
 %         zd=z_det(loop(2));
 %     end
     
-    xs=x(ll(lo),1);
-    xd=x(ll(lo),2);
-    ys=y(ll(lo),1);
-    yd=y(ll(lo),2);
-    zs = z_det(lz(lo),1);
-    zd = z_det(lz(lo),2);
+    ll = mod(index(lo), uint32(size_x));
+    if ll == 0
+        ll = size_x;
+    end
+    lz = idivide(index(lo), uint32(size_x), 'ceil');
+    xs=x(ll,1);
+    xd=x(ll,2);
+    ys=y(ll,1);
+    yd=y(ll,2);
+    zs = z_det(lz,1);
+    zd = z_det(lz,2);
     z_loop=int32((zs/zmax)*(NSlices-1)+1);
     x_diff = xd-xs;
     y_diff = yd-ys;
@@ -148,21 +136,21 @@ parfor lo=int32(1:loop_var_par)
         if abs(y_diff)<1e-8
             
             if yd<= max(yy) && yd>=min(yy)
-                tempi=(1:pikselikoko)';
-                [~,apu]=min(abs(yy(1:pikselikoko)-yd));
-                tempj=ones(size(tempi),'int32')*(int32(apu));
-                templ_ijk=ones(size(tempi),'single')*d;
-                tempk=(z_loop)*ones(size(tempi),'int32');
+                tempi=(1:Ny)';
+                [~,apu]=min(abs(yy(1:Ny)-yd));
+                tempj = ones(Ny,1,'int32')*(int32(apu));
+                templ_ijk = ones(Ny,1,'double')*d;
+                tempk = (z_loop)*ones(size(tempi),'int32');
                 temp=sum(templ_ijk);
                 [tempk, tempi] = sort(((tempj-1).*Ny+tempi+(Nx.*Ny.*(tempk-1))));
+                
                 indices{lo}=tempk;
-                alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                if attenuation_correction
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                else
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+                end
                 lor(lo,:)=[lo,int32(int32(length(alkiot{lo})))];
-%                 if lo == 1315
-%                     (1/temp)
-%                     (1/temp)*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi))
-%                     tempk
-%                 end
                 continue
             end
             % Jos aiemmat ehdot ei t�yty (LOR ei mene
@@ -172,15 +160,20 @@ parfor lo=int32(1:loop_var_par)
             continue
         elseif abs(x_diff)<1e-8
             if xd<= max(xx) && xd>=min(xx)
-                tempj=(1:pikselikoko)';
-                [~,apu]=min(abs(xx(1:pikselikoko)-xd));
-                tempi=ones(size(tempj),'int32')*(int32(apu));
-                templ_ijk=ones(size(tempj),'single')*d;
+                tempj=(1:Nx)';
+                [~,apu]=min(abs(xx(1:Nx)-xd));
+                tempi=ones(Nx,1,'int32')*(int32(apu));
+                templ_ijk = ones(Nx,1,'double')*d;
                 tempk=(z_loop)*ones(size(tempj),'int32');
                 temp=sum(templ_ijk);
                 [tempk, tempi] = sort(((tempj-1).*Ny+tempi+(Nx.*Ny.*(tempk-1))));
+                
                 indices{lo}=tempk;
-                alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                if attenuation_correction
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                else
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+                end
                 lor(lo,:)=[lo,int32(length(alkiot{lo}))];
                 continue
             end
@@ -189,13 +182,13 @@ parfor lo=int32(1:loop_var_par)
         end
         % Parametriesitykseen tarvittavat t-arvot
         
-        tx0=((bx+iij(1)*d)-xs)/x_diff;
-        txback=((bx+iij(end)*d)-xs)/x_diff;
+        tx0=(bx-xs)/x_diff;
+        txback=(bxb-xs)/x_diff;
         
         % Sama y:lle
         
-        ty0=((by+jji(1)*d)-ys)/y_diff;
-        tyback=((by+jji(end)*d)-ys)/y_diff;
+        ty0=(by-ys)/y_diff;
+        tyback=(byb-ys)/y_diff;
         txmin=min(tx0,txback);
         txmax=max(tx0,txback);
         tymin=min(ty0,tyback);
@@ -204,11 +197,6 @@ parfor lo=int32(1:loop_var_par)
         % Yhteiset arvot
         tmin=max(txmin,tymin);
         tmax=min(txmax,tymax);
-        
-        if lo == 1315
-            tmin
-            tmax
-        end
         
         if tmin >= tmax
            %disp('skip')
@@ -273,8 +261,6 @@ parfor lo=int32(1:loop_var_par)
             end
             ju = 1;
             ty0=((by+double(jmin)*d)-ys)/y_diff;
-%             apu=(jmin:1:jmax)+1;
-%             ty_n=ty((apu));
         elseif ys>yd
             if tmin==tymin
                 jmax=int32(Ny-1);
@@ -290,18 +276,7 @@ parfor lo=int32(1:loop_var_par)
             end
             ju = -1;
             ty0=((by+double(jmax)*d)-ys)/y_diff;
-%             apu=(jmax:-1:jmin)+1;
-%             ty_n=ty((apu));
         end
-        
-%         if lo == 1315
-%             tmin
-%             tmax
-%             imax
-%             imin
-%             jmax
-%             jmin
-%         end
         
         Np = (imax - imin + 1) + (jmax - jmin + 1);
         
@@ -330,64 +305,47 @@ parfor lo=int32(1:loop_var_par)
         
         % Lasketaan kuljettu matka jokaisessa pikseliss�
         
-        templ_ijk=zeros(Np,1,'single');
+        templ_ijk=zeros(Np,1,'double');
         idx=zeros(Np,1,'int32');
+        hpk = 0;
        
         
         for ii = 1 : Np
             
             if tx0 < ty0
                 apu = (tx0 - tc);
-                if apu > 0
                 idx(ii) = (tempj)*Ny+tempi+tempk;
                 templ_ijk(ii) = apu * L;
-                end
                 tempi = tempi + iu;
                 tc = tx0;
                 tx0 = tx0 + txu;
             elseif ty0 <= tx0
                 apu = (ty0 - tc);
-                if apu > 0
                 idx(ii) = (tempj)*Ny+tempi+tempk;
                 templ_ijk(ii) = apu * L;
-                end
                 tempj = tempj + ju;
                 tc = ty0;
                 ty0 = ty0 + tyu;
             end
+            hpk = hpk + 1;
             if tempj < 0 || tempi < 1
                 break
             end
             
         end
-        
-        
             
-        templ_ijk(templ_ijk==0)=[];
-        idx(idx==0)=[];
-%         if length(idx) > 1 && idx(1) > idx(2)
-%             idx = flip(idx);
-%             templ_ijk = flip(templ_ijk);
-%         end
+        templ_ijk = templ_ijk(1:hpk);
+        idx = idx(1:hpk);
         
         [idx, tempi] = sort(idx);
-%         length(idx)
-%         length(templ_ijk)
-        
         temp=sum(templ_ijk);
         indices{lo}=idx;
-        alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(idx)'*templ_ijk(tempi));
+        if attenuation_correction
+            alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(idx)'*templ_ijk(tempi));
+        else
+            alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+        end
         lor(lo,:)=[lo,int32(length(idx))];
-        
-%         lo
-        
-%         if lo > 291
-%             break
-%         end
-%         if sum(tempk>4096)>0
-%             lo
-%             break
-%         end
         
     else
 
@@ -409,13 +367,13 @@ parfor lo=int32(1:loop_var_par)
         if abs(y_diff)<1e-8
             if yd<= max(yy) && yd>=min(yy)
 
-                tx0=((bx+iij(1)*d)-xs)/x_diff;
-                txback=((bx+iij(end)*d)-xs)/x_diff;
+                tx0=(bx-xs)/x_diff;
+                txback=(bxb-xs)/x_diff;
         
                 % Sama y:lle
         
-                tz0=((bz+kkj(1)*dz)-zs)/z_diff;
-                tzback=((bz+kkj(end)*dz)-zs)/z_diff;
+                tz0=(bz-zs)/z_diff;
+                tzback=(bzb-zs)/z_diff;
                 txmin=min(tx0,txback);
                 txmax=max(tx0,txback);
                 tzmin=min(tz0,tzback);
@@ -504,19 +462,20 @@ parfor lo=int32(1:loop_var_par)
                 
                 % Pisteet joiden l�pi s�de kulkee (riste�� akselien kanssa)
                 
-                tempi = floor(((xs + pt * x_diff) - bx) / d) + 1;
-                tempk = floor(((zs + pt * z_diff) - bz) / dz);
+                tempi = int32(floor(((xs + pt * x_diff) - bx) / d) + 1);
+                tempk = int32(floor(((zs + pt * z_diff) - bz) / dz));
                 
                 txu = d / abs(x_diff);
                 tzu = dz / abs(z_diff);
 
                 tc = tmin;
                 
-                [~,apu]=min(abs(yy(1:pikselikoko)-yd));
+                [~,apu]=min(abs(yy(1:Ny)-yd));
                 tempj=int32((apu - 1)*Ny);
                 
-                templ_ijk=zeros(Np,1,'single');
+                templ_ijk=zeros(Np,1,'double');
                 idx=zeros(Np,1,'int32');
+                hpk = 0;
                 
                 for ii = 1 : Np
                     if tx0 < tz0
@@ -532,25 +491,24 @@ parfor lo=int32(1:loop_var_par)
                         tc = tz0;
                         tz0 = tz0 + tzu;
                     end
-                    
+                    hpk = hpk + 1;
                     if tempk < 0 || tempi < 1
                         break
                     end
                 end
                 
-                templ_ijk(templ_ijk==0)=[];
-                idx(idx==0)=[];
+                templ_ijk = templ_ijk(1:hpk);
+                idx = idx(1:hpk);
                 
                 [idx, tempi] = sort(idx);
                 
-%                 if length(idx) > 1 && idx(1) > idx(2)
-%                     idx = flip(idx);
-%                     templ_ijk = flip(templ_ijk);
-%                 end
-                
                 temp=sum(templ_ijk);
                 indices{lo}=idx;
-                alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                if attenuation_correction
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(idx)'*templ_ijk(tempi));
+                else
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+                end
                 lor(lo,:)=[lo,int32(length(idx))];
                 
                 continue
@@ -561,13 +519,13 @@ parfor lo=int32(1:loop_var_par)
         elseif abs(x_diff)<1e-8
             if xd<= max(xx) && xd>=min(xx)
                 
-                ty0=((by+jji(1)*d)-ys)/y_diff;
-                tyback=((by+jji(end)*d)-ys)/y_diff;
+                ty0=(by-ys)/y_diff;
+                tyback=(byb-ys)/y_diff;
         
                 % Sama y:lle
         
-                tz0=((bz+kkj(1)*dz)-zs)/z_diff;
-                tzback=((bz+kkj(end)*dz)-zs)/z_diff;
+                tz0=(bz-zs)/z_diff;
+                tzback=(bzb-zs)/z_diff;
                 tymin=min(ty0,tyback);
                 tymax=max(ty0,tyback);
                 tzmin=min(tz0,tzback);
@@ -655,19 +613,20 @@ parfor lo=int32(1:loop_var_par)
                 
                 % Pisteet joiden l�pi s�de kulkee (riste�� akselien kanssa)
                 
-                tempj = floor(((ys + pt * y_diff) - by) / d);
-                tempk = floor(((zs + pt * z_diff) - bz) / dz);
+                tempj = int32(floor(((ys + pt * y_diff) - by) / d));
+                tempk = int32(floor(((zs + pt * z_diff) - bz) / dz));
                 
                 tyu = d / abs(y_diff);
                 tzu = dz / abs(z_diff);
 
                 tc = tmin;
                 
-                [~,apu]=min(abs(xx(1:pikselikoko)-xd));
+                [~,apu]=min(abs(xx(1:Nx)-xd));
                 tempi=int32(apu);
                 
-                templ_ijk=zeros(Np,1,'single');
+                templ_ijk=zeros(Np,1,'double');
                 idx=zeros(Np,1,'int32');
+                hpk = 0;
                 
                 for ii = 1 : Np
                     if ty0 < tz0
@@ -683,25 +642,24 @@ parfor lo=int32(1:loop_var_par)
                         tc = tz0;
                         tz0 = tz0 + tzu;
                     end
-                    
+                    hpk = hpk + 1;
                     if tempi < 1 || tempj < 0 || tempk < 0
                         break
                     end
                 end
                 
-                templ_ijk(templ_ijk==0)=[];
-                idx(idx==0)=[];
+                templ_ijk = templ_ijk(1:hpk);
+                idx = idx(1:hpk);
                 
                 [idx, tempi] = sort(idx);
                 
-%                 if length(idx) > 1 && idx(1) > idx(2)
-%                     idx = flip(idx);
-%                     templ_ijk = flip(templ_ijk);
-%                 end
-                
                 temp=sum(templ_ijk);
                 indices{lo}=idx;
-                alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+                if attenuation_correction
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(idx)'*templ_ijk(tempi));
+                else
+                    alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+                end
                 lor(lo,:)=[lo,int32(length(idx))];
                 
                 continue
@@ -713,15 +671,15 @@ parfor lo=int32(1:loop_var_par)
         
         % Parametriesitykseen tarvittavat t-arvot
         
-        ty0=((by+jji(1)*d)-ys)/y_diff;
-        tyback=((by+jji(end)*d)-ys)/y_diff;
-        tx0=((bx+iij(1)*d)-xs)/x_diff;
-        txback=((bx+iij(end)*d)-xs)/x_diff;
+        ty0=(by-ys)/y_diff;
+        tyback=(byb-ys)/y_diff;
+        tx0=(bx-xs)/x_diff;
+        txback=(bxb-xs)/x_diff;
         
         % Sama y:lle
         
-        tz0=((bz+kkj(1)*dz)-zs)/z_diff;
-        tzback=((bz+kkj(end)*dz)-zs)/z_diff;
+        tz0=(bz-zs)/z_diff;
+        tzback=(bzb-zs)/z_diff;
         
         txmin=min(tx0,txback);
         txmax=max(tx0,txback);
@@ -843,17 +801,6 @@ parfor lo=int32(1:loop_var_par)
             ku = -1;
         end
         
-%         if lo == 7325142
-%             tmin
-%             tmax
-%             imax
-%             imin
-%             jmax
-%             jmin
-%             kmin
-%             kmax
-%         end
-        
         Np = (imax - imin + 1) + (jmax - jmin + 1)+ (kmax - kmin + 1);
         
         % Koko s�teen pituus
@@ -873,8 +820,9 @@ parfor lo=int32(1:loop_var_par)
         
         tc = tmin;
         
-        templ_ijk=zeros(Np,1,'single');
+        templ_ijk=zeros(Np,1,'double');
         idx=zeros(Np,1,'int32');
+        hpk = 0;
         
         for ii = 1 : Np
             if ty0 < tz0 && ty0 < tx0
@@ -896,28 +844,26 @@ parfor lo=int32(1:loop_var_par)
                 tc = tx0;
                 tx0 = tx0 + txu;
             end
+            hpk = hpk + 1;
             if tempi < 1 || tempj < 0 || tempk < 0
                 break
             end
         end
         
-        templ_ijk(templ_ijk==0)=[];
-        idx(idx==0)=[];
         
-%         if length(idx) > 1 && idx(1) > idx(2)
-%             idx = flip(idx);
-%             templ_ijk = flip(templ_ijk);
-%         end
+        templ_ijk = templ_ijk(1:hpk);
+        idx = idx(1:hpk);
 
         [idx, tempi] = sort(idx);
         
         temp=sum(templ_ijk);
         indices{lo}=idx;
-        alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(indices{lo})'*templ_ijk(tempi));
+        if attenuation_correction
+            alkiot{lo}=double(templ_ijk(tempi).*(1/temp))*exp(-vaimennuskuva(idx)'*templ_ijk(tempi));
+        else
+            alkiot{lo}=double(templ_ijk(tempi).*(1/temp));
+        end
         lor(lo,:)=[lo,int32(length(idx))];
-%         if length(indices{lo})>3
-%         return
-%         end
     end
 end
 

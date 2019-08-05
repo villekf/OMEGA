@@ -12,9 +12,26 @@ function [A] = observation_matrix_formation_nongate(options, current_subset, ind
 % TotSinos, attenuation_datafile, verbose, precompute_lor, Ndist, Nang,
 % subsets, span, ring difference
 %
-% Outputs the system matrix for PET reconstruction.
+% Outputs the transposed system matrix for PET reconstruction.
 %
 % Requires prepass phase.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 use_openCL = false;
@@ -157,7 +174,7 @@ if options.use_raw_data == false && options.precompute_lor || options.use_raw_da
     if subsets > 1
         for kk = 1 : subsets
             summa(kk) = sum(int64(lor_a(pituus(kk)+1:pituus(kk+1))));
-            koko(kk) = -(pituus(kk))+pituus(kk+1);
+%             koko(kk) = -(pituus(kk))+pituus(kk+1);
         end
     end
     
@@ -182,7 +199,7 @@ elseif options.use_raw_data && options.precompute_lor || options.use_raw_data &&
         apu(idx,:) = apu2;
         LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
         summa(kk) = sum(int64(lor_a(pituus(kk)+1:pituus(kk+1))));
-        koko(kk) = -(pituus(kk))+pituus(kk+1);
+%         koko(kk) = -(pituus(kk))+pituus(kk+1);
     end
     
     clear apu apu2 idx ind yt y_i index discard
@@ -200,7 +217,8 @@ yy = double(linspace(etaisyys,R-etaisyys,pikselikoko+1));
 zz=zz(2*block1+1:2*blocks+2);
 
 % Pikselien et?isyys toisistaan
-d=diff(xx(1:2));
+dx=diff(xx(1:2));
+dy=diff(yy(1:2));
 dz=diff(zz(1:2));
 
 % Kuvan et?isyys origosta
@@ -214,9 +232,9 @@ Nx=int32(Nx);
 Nz=int32(Nz);
 
 
-iij=double(0:Nx);
-jji=double(0:Ny);
-kkj=double(0:Nz);
+% iij=double(0:Nx);
+% jji=double(0:Ny);
+% kkj=double(0:Nz);
 
 N=(Nx)*(Ny)*(Nz);
 det_per_ring = int32(det_per_ring);
@@ -246,14 +264,20 @@ if use_openCL
 else
     if options.precompute_lor == false
         if options.use_raw_data == false
-            [ lor, indices, alkiot] = improved_Siddon_algorithm( pikselikoko, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, size_x, ...
-                zmax, NSinos, ind_size, vaimennus, index{current_subset}, pituus(current_subset), attenuation_correction, options.verbose);
+%             [ lor, indices, alkiot] = improved_Siddon_algorithm( pikselikoko, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, size_x, ...
+%                 zmax, NSinos, ind_size, vaimennus, index{current_subset}, pituus(current_subset), attenuation_correction, options.verbose);
+            [ lor, indices, alkiot] = improved_Siddon_algorithm( options.verbose, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx ,...
+                NSinos, NSlices, size_x, zmax, NSinos, ind_size, vaimennus, index{current_subset}, pituus(current_subset), attenuation_correction, use_raw_data,...
+                uint16(0), pseudot, block1, blocks, det_per_ring);
         else
             L = LL(index{current_subset},:);
             L = L';
             L = L(:);
-            [ lor, indices, alkiot] = improved_Siddon_algorithm_raw( pikselikoko, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, ...
-                size_x, zmax, NSinos, ind_size, vaimennus, L, pseudot, block1, blocks, det_per_ring, attenuation_correction, options.verbose);
+%             [ lor, indices, alkiot] = improved_Siddon_algorithm_raw( pikselikoko, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, ...
+%                 size_x, zmax, NSinos, ind_size, vaimennus, L, pseudot, block1, blocks, det_per_ring, attenuation_correction, options.verbose);
+            [ lor, indices, alkiot] = improved_Siddon_algorithm( options.verbose, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx ,...
+                NSinos, NSlices, size_x, zmax, NSinos, ind_size, vaimennus, uint32(0), int32(0), attenuation_correction, use_raw_data,...
+                L, pseudot, block1, blocks, det_per_ring);
         end
         lor = reshape(lor,[],2);
         lor=repelem(int32((lor(:,1))),lor(:,2));
@@ -268,6 +292,7 @@ else
         else
             A = fsparse(lor,indices,double(alkiot),[A_length double(N) length(alkiot)]);
         end
+        A = A';
         clear indices alkiot lor
         if verbose
             tElapsed = toc(tStart);
@@ -276,18 +301,24 @@ else
     else
         lor2 = [0; cumsum(uint32(lor_a(pituus(current_subset)+1:pituus(current_subset + 1))))];
         if options.use_raw_data == false
-            [A] = improved_Siddon_algorithm_array( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, size_x, zmax, vaimennus, lor2, ...
-                pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
-                summa(current_subset), xy_index(pituus(current_subset)+1:pituus(current_subset + 1)), z_index(pituus(current_subset)+1:pituus(current_subset + 1)), NSinos, ...
-                options.verbose);
+%             [A] = improved_Siddon_algorithm_array( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , NSinos, NSlices, size_x, zmax, vaimennus, lor2, ...
+%                 pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
+%                 summa(current_subset), xy_index(pituus(current_subset)+1:pituus(current_subset + 1)), z_index(pituus(current_subset)+1:pituus(current_subset + 1)), NSinos, ...
+%                 options.verbose);
+            [A] = improved_Siddon_algorithm_array( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, vaimennus, ...
+                lor2, pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
+                summa(current_subset), xy_index(pituus(current_subset)+1:pituus(current_subset + 1)), z_index(pituus(current_subset)+1:pituus(current_subset + 1)), ...
+                NSinos, uint16(0), pseudot, det_per_ring, options.verbose, use_raw_data);
         else
-            [A] = improved_Siddon_algorithm_array_raw( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , size_x, zmax, vaimennus, lor2, ...
-                pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
-                summa(current_subset), LL(pituus(current_subset) * 2 + 1 : pituus(current_subset + 1) * 2), pseudot, det_per_ring, options.verbose);
+%             [A] = improved_Siddon_algorithm_array_raw( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, iij, jji, kkj, yy, xx , size_x, zmax, vaimennus, lor2, ...
+%                 pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
+%                 summa(current_subset), LL(pituus(current_subset) * 2 + 1 : pituus(current_subset + 1) * 2), pseudot, det_per_ring, options.verbose);
+            [A] = improved_Siddon_algorithm_array( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, vaimennus, ...
+                lor2, pituus(current_subset + 1) - pituus(current_subset), attenuation_correction, lor_a(pituus(current_subset)+1:pituus(current_subset + 1)), ...
+                summa(current_subset), uint32(0), uint32(0), NSinos, LL(pituus(current_subset) * 2 + 1 : pituus(current_subset + 1) * 2), pseudot, ...
+                det_per_ring, options.verbose, use_raw_data);
         end
         clear lor2
-        A = A';
     end
 end
-clear mex
 end

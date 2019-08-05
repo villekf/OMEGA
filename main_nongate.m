@@ -3,11 +3,9 @@
 clear
 
 %%%%%%%%%%%%%%%%%%%% Specify the below machine properties %%%%%%%%%%%%%%%%%%%%
-% Number of real rings (possible pseudo rings are not included here)
-options.rings = (32);
 % Blocks in transaxial direction
 options.blocks_per_ring = (42);
-% Blocks in axial direction
+% Blocks in axial direction (i.e.  number of physical machine rings)
 options.linear_multip = (4);
 % number of detectors on the side of block (e.g. 13 if 13x13)
 options.cryst_per_block = (8);
@@ -15,20 +13,21 @@ options.cryst_per_block = (8);
 options.cr_p = 2.4;
 % crystal pitch in z-direction (mm)
 options.cr_pz = 2.4;
-% diameter of the bore (distance between perpendicular detectors) in mm
+% ring diameter (distance between perpendicular detectors) in mm
 options.diameter = 130*2;
 % Transaxial FOV size (mm), assuming square FOV (this is the length of one
 % side of the square FOV)
 options.FOVa = 151;
 % Axial FOV (mm)
 options.axial_fov = round(76.8 - options.cr_pz/2);
-% Ring numbers of pseudo rings (use empty vector if none), use MATLAB
-% numbering (starting from 1)
+% Number of pseudo rings between physical rings (use 0 or [] if none)
 options.pseudot = [];
 % Number of detectors per ring (without pseudo detectors)
 options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
 % Number of detectors per ring (with pseudo detectors)
 options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
+% number of crystal rings
+options.rings = options.linear_multip * options.cryst_per_block;
 % number of detectors
 options.detectors = options.det_per_ring*options.rings;
 % machine name
@@ -163,44 +162,44 @@ options.mlem = false;
 options.osem = true;
 % Modified Row-Action Maximum Likelihood Algorithm (MRAMLA, modified BSREM)
 % Supported by method 1 only
-options.mramla = false;
+options.mramla = true;
 % Row-Action Maximum Likelihood Algorithm (RAMLA)
 % Supported by method 1 only
-options.ramla = false;
+options.ramla = true;
 % Enhanced Convergent OSEM (ECOSEM)
 % Supported by method 1 only
-options.ecosem = false;
+options.ecosem = true;
 % Complete data OSEM (COSEM)
 % Supported by method 1 only
-options.cosem = false;
+options.cosem = true;
 % Accelerated COSEM (ACOSEM)
 % Supported by method 1 only
-options.acosem = false;
+options.acosem = true;
 % Median root prior (MRP) with One Step Late (OSL) algorithm
 % Supported by method 1 only
-options.mrp_osl = false;
+options.mrp_osl = true;
 % Median root prior with Block Sequential Regularized Expectation
 % Supported by method 1 only
 % Maximization (BSREM)
-options.mrp_bsrem = false;
+options.mrp_bsrem = true;
 % Quadratic prior with OSL
 % Supported by method 1 only
-options.quad_osl = false;
+options.quad_osl = true;
 % Quadratic prior with BSREM
 % Supported by method 1 only
-options.quad_bsrem = false;
+options.quad_bsrem = true;
 % L-filter with OSL
 % Supported by method 1 only
-options.L_osl = false;
+options.L_osl = true;
 % L-filter with BSREM
 % Supported by method 1 only
-options.L_bsrem = false;
+options.L_bsrem = true;
 % Finite impulse response (FIR) Median Hybrid (FMH) with OSL
 % Supported by method 1 only
-options.FMH_osl = false;
+options.FMH_osl = true;
 % Weighted mean with OSL
 % Supported by method 1 only
-options.weighted_mean_osl = false;
+options.weighted_mean_osl = true;
 % number of iterations
 options.Niter = 2;
 % number of subsets (all excluding MLEM, use 1 if MLEM is selected)

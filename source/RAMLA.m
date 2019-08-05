@@ -6,6 +6,23 @@ function x_ramla = RAMLA(options)
 %   x_ramla = RAMLA(options) returns the RAMLA reconstructions for all
 %   iterations, including the initial value.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 if iscell(options.SinM)
     Sino = options.SinM{1};
     Sino = Sino(:);
@@ -118,8 +135,8 @@ x_ramla = reshape(x_ramla, options.Nx*options.Ny*options.Nz, options.Niter + 1);
 
 lam = zeros(options.Niter,1);
 lam(1) = options.b0;
-for i=1:options.Niter
-    lam(i+1) = 0.5*lam(i);
+for i=1:options.Niter-1
+    lam(i+1) = lam(1)/i;
 end
 
 for ii = 1 : options.Niter
@@ -133,7 +150,7 @@ for ii = 1 : options.Niter
             uu = double(Sino(pituus2(kk)+1:pituus2(kk + 1)));
         end
         tStart = tic;
-        rm_apu = rm_apu + lam(ii).*rm_apu./(full(sum(A,1)')+options.epps).*(A'*(uu./(A*rm_apu+options.epps))-full(sum(A,1)'));
+        rm_apu = BSREM_subiter(rm_apu, lam, A, uu, options.epps, ii);
         tElapsed = toc(tStart);
         disp(['RAMLA sub-iteration ' num2str(kk) ' took ' num2str(tElapsed) ' seconds'])
         disp(['RAMLA sub-iteration ' num2str(kk) ' finished'])
