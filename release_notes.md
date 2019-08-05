@@ -168,7 +168,7 @@
 
 - Install_mex now tries to build both the ROOT mex-files as well as the OpenCL/ArrayFire mex-files. If the building process is not successful a warning is shown, but the process is not halted. Install_mex(1) now shows the error logs if an error is encountered and end the building process on error. 
 
-- Previously known reconstruction method 5 has been deprecated; the codes still exist (and the mex-files are built if OpenCL is found) and it can be used by selected implementation 5, but it has not been tested and will mostly likely fail 
+- Previously known reconstruction method 5 has been deprecated; the codes still exist (and the mex-files are built if OpenCL is found) and it can be used by selecting implementation 5, but it has not been tested and will mostly likely fail 
 
 - 64-bit atomic operations are used if the device used supports them (OpenCL only) 
 
@@ -180,4 +180,4 @@
 
 - Implementations 2, 3 and 4 are now faster on subsequent iterations due to precomputation done on the first iteration. With OpenCL, this is only the case if there is sufficient memory available on the device 
 
-  - Previously only MATLAB 2015a and up were supported, now older versions should work as well 
+- Previously only MATLAB 2015a and up were supported, now older versions should work as well 
