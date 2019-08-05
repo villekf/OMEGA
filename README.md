@@ -28,7 +28,9 @@ The algorithms implemented so far are:
 
 ## Getting Started
 
-GATE users should use the gate_main.m file to reconstruct GATE data. For non-GATE users, the file you should start with is main_nongate.m.
+First you need to put the OMEGA-folder and all its subfolders to MATLAB path and then run install_mex. 
+
+GATE users should use the gate_main.m file to reconstruct GATE data. For non-GATE users, the file you should start with is main_nongate.m. For computing the forward and/or backward projections use forward_backward_projections_example.m. For custom (gradient-based) priors, use custom_prior_test_main.m. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in gate_main_simple.m
 
 A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the gate_main_example-file to reconstruct the data. By default ASCII data is used.
 
