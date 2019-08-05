@@ -2,6 +2,7 @@
 Open-source MATLAB Emission Tomography Software
 
 !!! This branch contains beta software that has been only partially tested. !!!
+!!! Implementation 2 does not work !!!
 
 ## Introduction
 
@@ -9,20 +10,29 @@ OMEGA is a software for MATLAB to reconstruct data obtained with a positron emis
 
 The algorithms implemented so far are:
 - Improved Siddon's algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
+- Orthogonal distance based ray tracer
 - Maximum Likelihood Expectation Maximization (MLEM) [3,4]
 - Ordered Subsets Expectation Maximization (OSEM) [5]
 - Complete-data Ordered Subsets Expectation Maximization (COSEM) [6]
 - Enhanced COSEM (ECOSEM) [7]
 - Accelerated COSEM (ACOSEM) [8]
-- Row-Action Maximum Likelihood Algorithm (RAMLA) [9] (Current implementation is incorrect)
-- Modified RAMLA (MRAMLA), aka modified BSREM [10] (Current implementation is incorrect)
-- Block Sequential Regularized Expectation Maximization (BSREM) [11] (Current implementation is incorrect)
+- Row-Action Maximum Likelihood Algorithm (RAMLA) [9]
+- Relaxed OSEM (ROSEM)
+- Rescaled Block-Iterative EM (RBI)
+- Dynamic RAMLA (DRAMA)
+- Modified RAMLA (MRAMLA), aka modified BSREM [10] 
+- Block Sequential Regularized Expectation Maximization (BSREM) [11]
 - One-step-late algorithm (OSL) [12]
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Median Root Prior (MRP) [13]
 - L-filter (MRP-L) prior [14]
 - Finite Impulse Response Median Hybrid (MRP-FMH) prior [14,15]
 - Weighted mean prior [16,17]
+- Total variation (TV)
+- Total generalized variation (TGV)
+- Anisotropic diffusion (AD) Median Root Prior
+- Asymmetric parallel levels sets prior (APLS)
+- Experimental non-local means prior (NLM)
 
 
 
@@ -45,12 +55,12 @@ For more information see the [wiki](https://github.com/villekf/OMEGA/wiki) or [h
 The following features are currently present:
 
 - Reconstruct any PET sinogram/raw list-mode data
-- Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, MRP, Quadratic prior, L-filter, FMH and weighted mean algorithms in MATLAB (no OpenCL/GPU support)
-- Reconstruction with OSEM with GPU/OpenCL
-- Import GATE LMF, ASCII or Root (experimental) data into MATLAB and either reconstruct them in their raw list-mode format or in the user specified sinogram format (see Known issues and limitations for LMF and Root limitations)
+- Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in MATLAB (OpenCL support, except for NLM)
+- Import GATE LMF, ASCII or ROOT data into MATLAB and either reconstruct them in their raw list-mode format or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
+- Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
 - Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)
-- Sequential (matrix-free) OSEM or MLEM reconstruction possible, both a pure CPU version and (experimental) OpenCL version (less memory intensive than the matrix versions)
-- Include attenuation correction into the reconstruction
+- Sequential (matrix-free) OSEM or MLEM reconstruction possible, both a pure CPU version (OpenMP parallelization) and OpenCL version (multidevice support, e.g. multiple GPUs or heteregenous computing)
+- Include attenuation correction, normalization, scatter correction and/or randoms correction into the reconstruction
 - Optionally allows to obtain only the system/observation matrix used in PET reconstruction
 - All the data (e.g. sinograms, system matrix) can be used with your own algorithms
 - Supports machines with pseudo detectors
@@ -59,26 +69,26 @@ The following features are currently present:
 
 ## Installation
 
-You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically Visual Studio 2015 and 2017 have been tested to work as well as GCC 5.4.0 on Windows 7/10 and Ubuntu 16.04.
+You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically Visual Studio 2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04.
 
 To install the software, either simply extract the package or obtain the source code through git:  
 git clone https://github.com/villekf/OMEGA  
-and then add the software folder and subfolders to MATLAB path. Finally, run install_mex in the source folder to build the necessary MEX-files without OpenCL or Root support. Use install_mex(1) to install also OpenCL support, but no Root support, install_mex(0,1) for Root support, but no OpenCL support, and lastly install_mex(1,1) for both.
+and then add the OMEGA folder and subfolders to MATLAB path. Finally, run install_mex in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with install_mex(1).
 
-In order to enable OpenCL support you're going to need an OpenCL SDK and ArrayFire (see below). The SDK can be any (or all) of the following CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows) or Intel SDK (Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to install_mex-file by adding -I/path/to/CL and -L/path/to/OpenCLlib before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command "find / -iname cl.h 2>/dev/null" to find the required cl.h file and "find / -iname libOpenCL.so 2>/dev/null" to find the required library file. See install_mex.m-file for further details.
+In order to enable OpenCL support you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). The SDK can be any (or all) of the following CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows) AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to install_mex-file by adding -I/path/to/CL and -L/path/to/OpenCLlib before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command "find / -iname cl.h 2>/dev/null" to find the required cl.h file and "find / -iname libOpenCL.so 2>/dev/null" to find the required library file. See install_mex.m-file for further details.
 
 Links:  
 https://software.intel.com/en-us/intel-opencl  
 https://developer.nvidia.com/cuda-toolkit  
 https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases  
 
-On Linux you can alternatively just install the OpenCL headers:  
+On Linux you can alternatively just install the OpenCL headers (NOTE: UNTESTED):  
 sudo apt-get install opencl-headers  
 and then the library:  
 sudo apt-get install ocl-icd-libopencl1
 
 
-Once you have the header and library files, you need drivers/OpenCL runtimes for your device(s). If you have GPUs then simply having the vendor drivers should be enough. For Intel CPUs without an integrated GPU you need CPU runtimes. For AMD CPUs it seems that the AMD drivers released around this summer (2018) no longer support CPUs so you need an older driver in order to get CPU support. Intel runtimes can be found here:  
+Once you have the header and library files, you need drivers/OpenCL runtimes for your device(s). If you have GPUs/APUs then simply having the vendor drivers should be enough. For Intel CPUs without an integrated GPU you need CPU runtimes. For AMD CPUs it seems that the AMD drivers released around the summer 2018 and after no longer support CPUs so you need an older driver in order to get CPU support. Intel runtimes can be found here:  
 https://software.intel.com/en-us/articles/opencl-drivers
 
 
@@ -91,15 +101,13 @@ https://github.com/arrayfire/arrayfire
 
 ## System Requirements
 
-MATLAB R2015a or later is mandatory since this software uses the repelem function that was introduced in 2015a. Older versions can be used if repelem is replaced with some other function. If you need to use MATLAB versions prior to 2015a, please either post an issue on the Github page or send me an e-mail. Following versions are guaranteed to work: 2017a, 2017b and 2018b.
+MATLAB R2009a or later is mandatory. Following versions are guaranteed to work: 2017a, 2017b, 2018b and 2019a.
 
-Median root prior reconstruction requires Image Processing Toolbox.
-
-C++ compiler is required.
+C++11 compiler is required.
 
 OpenCL SDK/headers are required for OpenCL functionality.
 
-ArrayFire is required for GPU/OpenCL reconstruction.
+ArrayFire is required for implementation 2.
 
 The following third-party MATLAB codes are NOT required, but can be useful as they can be optionally used:  
 https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle)  
@@ -110,23 +118,19 @@ https://github.com/stefanengblom/stenglib (FSPARSE)
 
 ## Known Issues and Limitations
 
-Submodules are not yet supported.
+Submodules are not supported.
 
-Root data is still experimental. On Windows, compiling doesn't work at the moment due to a bug in VS 2017. On Linux you might experience a crash either when the Root data is being imported or after it has been imported. Any actions on the GUI (e.g. inputting text in the command window, plotting, viewing variables) seems to cause the crash. Due to this, the Root import part is less verbose than the other methods (there is only notification when the job has been finished). If you are experiencing crashes, I also suggest not to take any actions in MATLAB until the job is finished (this includes the editor).
+ROOT data import is unstable due to a bug in either MATLAB and/or ROOT. On Linux you might experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the nodesktop mode (e.g `matlab -nodesktop`), though you will likely get a segmentation faul on MATLAB exit. ROOT is also not supported on Windows, though it should, theoretically, work if you can compile 64-bit ROOT. 32-bit ROOT should work with 32-bit MATLAB, but this is untested.
 
 Raw list-mode data with non-GATE data is still experimental.
 
-OpenCL matrix reconstruction on Nvidia GPUs is currently very slow. This is caused by a bug in ArrayFire that should be fixed in the next version. Matrix-free version is not affected by the slowdown.
-
-GPU/OpenCL reconstruction only supports OSEM. Matrix-free reconstructions only support OSEM and MLEM.
+Multi-device and OpenMP reconstructions only support OSEM and MLEM.
 
 LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices as well as the source location if it was selected in the main-file. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations can be deselected.
 
-LMF source information is a lot more unreliable than the ASCII or Root version.
+LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
-Dynamic imaging/reconstruction is only partially supported. This means that it MIGHT work as there are code elements in place for it, but this has not yet been tested. ASCII output is needed in order to use the experimental dynamic support.
-
-Only square image sizes are supported (e.g. 128x128, 64x64, 256x256, etc.). Z-direction is not affected.
+Non-square images are untested.
 
 Only machines with a total number of detectors of up to 65536 are supported. I.e. if you have a machine with more detectors than 65536 then nothing will work. This can be easily fixed though, if necessary, since it is simply caused by the use of 16-bit unsigned integers. Put up an issue on the Github page or send me an e-mail if you need a version with support for higher number of detectors.
 
@@ -140,14 +144,12 @@ Attenuation correction can be applied only with attenuation images (e.g. CT imag
 
 Crystals have to be grouped in square blocks (the crystals need to be in e.g. 6x6, 8x8, 13x13, etc. combinations).
 
-Random coincidences are not yet supported.
-
 ECAT geometry is supported only with ASCII data.
 
 OpenCL files might fail to build on Linux systems with an error message about GLIBCXX_3.4.XX not found or with an error about "undefined reference to dlopen/dlclose/dlsomethingelse". This should be fixed with one of the methods presented here:  
 https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
-If you are experiencing crashes at the end of your computations when using OpenCL, it might be caused by the graphics features of ArrayFire. In this case I recommend installing (or building) the no-gl AF:  
+If you are experiencing crashes at the end of your computations when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend installing (or building) the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (use the latest version available)
 
 
@@ -157,13 +159,7 @@ http://arrayfire.s3.amazonaws.com/index.html (use the latest version available)
 
 Here is a list of features that should appear in future releases:
 
-- Dynamic imaging support
-- Fourier rebinning algorithm
-- Filtered backprojection
-- All/most algorithms from method 1 to all/most other methods
 - Support for SPECT data
-- TV prior
-- Support for Siemens Inveon PET list-mode data
 
 
 ## Reporting Bugs and Feature Requests
