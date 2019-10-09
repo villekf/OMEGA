@@ -248,7 +248,7 @@ This work was supported by a grant from Jane and Aatos Erkko foundation.
 
 20. S. Alenius and U. Ruotsalainen, "Generalization of median root prior reconstruction," in IEEE Transactions on Medical Imaging, vol. 21, no. 11, pp. 1413-1420, Nov. 2002. doi:10.1109/TMI.2002.806415
 
-21. Wettenhovi, VV., Kolehmainen, V., Huttunen, J. et al. J Math Imaging Vis (2018) 60: 174. https://doi.org/10.1007/s10851-017-0749-x
+21. Wettenhovi, VV., Kolehmainen, V., Huttunen, J. et al., "State Estimation with Structural Priors in fMRI," J Math Imaging Vis (2018) 60: 174. https://doi.org/10.1007/s10851-017-0749-x
 
 22. M. J. Ehrhardt et al., "PET Reconstruction With an Anatomical MRI Prior Using Parallel Level Sets," in IEEE Transactions on Medical Imaging, vol. 35, no. 9, pp. 2189-2199, Sept. 2016. doi:10.1109/TMI.2016.
 
