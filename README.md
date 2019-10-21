@@ -140,7 +140,7 @@ Raw list-mode data with non-GATE data is still experimental.
 
 Multi-device and OpenMP reconstructions only support OSEM and MLEM.
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices as well as the source location if it was selected in the main-file. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations can be deselected.
+LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations can be deselected.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
@@ -150,13 +150,13 @@ Only machines with a total number of detectors of up to 65536 are supported. I.e
 
 Due to the same reason as above, maximum number of counts per pixel is 65535 (applies only to GATE data).
 
-Moving gantry is not supported at the moment.
+Moving bed is not supported at the momen (needs to be step-and-shoot).
 
 Only cylindrical symmetric devices are supported.
 
 Attenuation correction can be applied only with attenuation images (e.g. CT images scaled to 511 keV).
 
-ECAT geometry is supported only with ASCII data.
+ECAT geometry is supported only with ASCII data. ROOT data might also work (untested).
 
 OpenCL files might fail to build on Linux systems with an error message about GLIBCXX_3.4.XX not found or with an error about "undefined reference to dlopen/dlclose/dlsomethingelse". This should be fixed with one of the methods presented here:  
 https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
@@ -176,7 +176,7 @@ Implementation 2 (ArrayFire matrix free OpenCL) is not supported on Windows due 
 
 Status messages usually only appear after the function has finished.
 
-All MATLAB-based code runs significantly slower compared to MATLAB. Reconstructions are unaffected.
+All MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 
 ## Upcoming Features
@@ -185,6 +185,7 @@ All MATLAB-based code runs significantly slower compared to MATLAB. Reconstructi
 Here is a list of features that should appear in future releases:
 
 - Support for SPECT data
+- TOF support
 
 
 ## Reporting Bugs and Feature Requests
