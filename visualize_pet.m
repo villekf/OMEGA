@@ -22,17 +22,37 @@
 % Load the saved reconstruction and machine specific variables
 image_properties = pz{end,1};
 
+
+
 %% Visualize several reconstructions for one time step for all slices, last iterations
 
 algo_char = algorithms_char();
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = COSEM, 7 = ECOSEM, 8 =
-% ACOSEM, 9 = DRAMA, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 19 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
+% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = RBI, 7 = DRAMA, 
+% 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = MRP-OSL-OSEM, 12 = MRP-OSL-MLEM, 
+% 13 = MRP-BSREM, 14 = MRP-MBSREM, 15 = MRP-ROSEM, 16 = MRP-RBI, 17 = MRP-OSL-COSEM, 
+% 18 = QP (OSL-OSEM), 19 = QP (OSL-MLEM), 20 = QP (BSREM), 21 = QP (MBSREM), 
+% 22 = QP (ROSEM), 23 = QP (RBI), 24 =  QP (OSL-COSEM), 25 = L-filter (OSL-OSEM), 
+% 26 = L-filter (OSL-MLEM), 27 =  L-filter (BSREM), 28 =  L-filter (MBSREM), 
+% 29 = L-filter (ROSEM), 30 = L-filter (RBI), 31 = L-filter (OSL-COSEM), 
+% 32 = FMH (OSL-OSEM), 33 = FMH (OSL-MLEM), 34 = FMH (BSREM), 35 = FMH (MBSREM), 
+% 36 = FMH (ROSEM), 37 = FMH (RBI), 38 = FMH (OSL-COSEM), 39 = Weighted mean (OSL-OSEM), 
+% 40 = Weighted mean (OSL-MLEM), 41 = Weighted mean (BSREM), 42 = Weighted mean (MBSREM), 
+% 43 = Weighted mean (ROSEM), 44 = Weighted mean (RBI), 45 = Weighted mean (OSL-COSEM), 
+% 46 = Total variation (OSL-OSEM), 447 = Total variation (OSL-MLEM), 48 = Total variation (BSREM), 
+% 49 = Total variation (MBSREM), 50 = Total variation (ROSEM), 51 = Total variation (RBI), 
+% 52 = Total variation (OSL-COSEM), 53 = Anisotropic Diffusion (OSL-OSEM), 
+% 54 = Anisotropic Diffusion (OSL-MLEM), 55 = Anisotropic Diffusion (BSREM), 
+% 56 = Anisotropic Diffusion (MBSREM), 57 = Anisotropic Diffusion (ROSEM), 
+% 58 = Anisotropic Diffusion (RBI), 59 = Anisotropic Diffusion (OSL-COSEM), 
+% 60 = APLS (OSL-OSEM), 61 = APLS (OSL-MLEM), 62 = APLS (BSREM), 63 = APLS (MBSREM), 
+% 64 = APLS (ROSEM), 65 = APLS (RBI), 66 = APLS (OSL-COSEM), 67 = TGV (OSL-OSEM), 
+% 68 = TGV (OSL-MLEM), 69 = TGV (BSREM), 70 = TGV (MBSREM), 71 = TGV (ROSEM), 
+% 72 = TGV (RBI), 73 = TGV (OSL-COSEM), 74 = NLM (OSL-OSEM), 75 =  NLM (OSL-MLEM), 
+% 76 = NLM (BSREM), 77 = NLM (MBSREM), 78 = NLM (ROSEM), 79 = NLM (RBI), 80 = NLM (OSL-COSEM), 
+% 81 = Custom prior (OSL-OSEM), 82 =  Custom prior (OSL-MLEM), 83 = Custom prior (BSREM), 
+% 84 = Custom prior (MBSREM), 85 = Custom prior (ROSEM), 86 = Custom prior (RBI), 
+% 87 = Custom prior (OSL-COSEM)
 algorithms = [2];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
@@ -106,13 +126,6 @@ end
 
 algo_char = algorithms_char();
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = COSEM, 6 = ECOSEM, 7 =
-% ACOSEM, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
 algorithm = 2;
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
@@ -182,13 +195,6 @@ algo_char = algorithms_char();
 % coordinates from which the actual radioactive decay happened
 % I.e. these allow for the error checking of the reconstructed data
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = COSEM, 6 = ECOSEM, 7 =
-% ACOSEM, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
 algorithms = [2];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
@@ -301,13 +307,6 @@ end
 
 algo_char = algorithms_char();
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = COSEM, 6 = ECOSEM, 7 =
-% ACOSEM, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
 algorithm = 2;
 % The scale value for the pixel alpha values. Higher values will make the
 % pixels more transparent, allowing areas of higher activity to be seen
@@ -332,13 +331,6 @@ vol3d('CData', img(:,:,:,end), 'Alpha', alpha);
 
 algo_char = algorithms_char();
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = COSEM, 7 = ECOSEM, 8 =
-% ACOSEM, 9 = DRAMA, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 19 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
 algorithms = [1,2];
 % algorithms = [2,3,4,5,6,7];
 % algorithms = [8,9,10,11,12,13,14,15];
@@ -417,13 +409,6 @@ end
 
 algo_char = algorithms_char();
 
-% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = COSEM, 6 = ECOSEM, 7 =
-% ACOSEM, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
-% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
-% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
-% 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
-% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
-% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
 algorithms = [2];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
