@@ -1,14 +1,14 @@
 /**************************************************************************
-* Implements the either the improved Siddon's algorithm or orthogonal 
+* Implements either the improved Siddon's algorithm or orthogonal 
 * distance based projector for OMEGA.
 * 
 * This file contains the mex-functions for both the implementation type 1
-* and type 4. The former in the case of precomputed_lor = true.
+* and type 4.
 * 
 * A precomputed vector that has the number of voxels a LOR/ray passes, as 
 * well as the number of voxels that have been traversed in previous 
-* LORs/rays is required for the implemention type 1, but is optional for 
-* type 4. If the precompute_lor options is set to false and implementation 
+* LORs/rays is required if options.precompute_lor = true, but is optional 
+* otherwise. If the precompute_lor options is set to false and implementation 
 * type 4 has been selected then all the measurements are investigated, but 
 * only those intercepting the FOV will be included.
 * 
@@ -43,8 +43,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	// Check for the number of input and output arguments
 	if (nrhs < 33)
 		mexErrMsgTxt("Too few input arguments. There must be at least 33.");
-	else if (nrhs > 47)
-		mexErrMsgTxt("Too many input arguments. There can be at most 47.");
+	else if (nrhs > 49)
+		mexErrMsgTxt("Too many input arguments. There can be at most 49.");
 
 	if (nlhs > 3 || nlhs < 1)
 		mexErrMsgTxt("Invalid number of output arguments. There can be at most three.");
@@ -109,7 +109,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	// Maximum value of the z-direction detector coordinates
 	const double zmax = (double)mxGetScalar(prhs[17]);
 
-	// attenuation values
+	// attenuation values (attenuation images)
 	const double* atten = (double*)mxGetData(prhs[18]);
 
 	// Normalization coefficients
@@ -168,6 +168,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	const double maxyy = yy_vec.back();
 	const double maxxx = xx_vec.back();
 
+	// Implementation 1, with precomputed_lor = true
 	if (type == 0u) {
 
 		if (nrhs < 39)
@@ -181,7 +182,6 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Total number of voxels traversed by the LORs at the specific LOR
 		// e.g. if the first LOR traverses through 10 voxels then at the second lor the value is 10
 		const uint64_t* lor2 = (uint64_t*)mxGetData(prhs[35]);
-		//mwIndex *lor2 = (mwIndex*)mxGetData(prhs[19]);
 
 		// Total number of non-zero values
 		const uint64_t summa = (uint64_t)mxGetScalar(prhs[36]);
@@ -197,28 +197,21 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const mwSize rows = pituus;
 
 		// Create the MATLAB sparse matrix
-		//mwSize joku = pituus;
 		plhs[0] = mxCreateSparse(N, rows, nzmax, mxREAL);
-
-		//plhs[2] = mxCreateNumericMatrix(nzmax, 1, mxDOUBLE_CLASS, mxREAL);
-		//plhs[0] = mxCreateNumericMatrix(nzmax, 1, mxUINT64_CLASS, mxREAL);
-		//plhs[3] = mxCreateNumericMatrix(loop_var_par + 1, 1, mxUINT64_CLASS, mxREAL);
 
 		// Non-zero elements of the matrix
 		double* elements = (double*)mxGetData(plhs[0]);
 
 		// Row indices
-		//mwIndex* indices = (mwIndex*)mxGetData(plhs[0]);
 		mwIndex* indices = mxGetIr(plhs[0]);
 
 		// Column indices
 		mwIndex* lor = mxGetJc(plhs[0]);
-		//mxSetJc(plhs[0], lor2);
-		//mwIndex* lor = (mwIndex*)mxGetData(plhs[3]);
 
 		for (uint32_t kk = 0; kk <= loop_var_par; kk++)
 			lor[kk] = lor2[kk];
 
+		// If doing Inveon attenuation
 		if (attenuation_phase)
 			plhs[1] = mxCreateNumericMatrix(pituus, 1, mxDOUBLE_CLASS, mxREAL);
 		else
@@ -226,7 +219,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		double* ll = (double*)mxGetData(plhs[1]);
 
-		//clock_t time = clock();
+		// Timing
 		std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
 		if (projector_type == 2u) {
@@ -250,85 +243,89 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 			const int32_t dec_v = (int32_t)mxGetScalar(prhs[44]);
 
-			// run the Orthogonal distance based ray tracer algorithm
+			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det, 
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos, 
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, dec_v);
-
-			//time = clock() - time;
 			
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
 
 			if (verbose) {
-				//mexPrintf("Orthogonal distance based ray tracer took %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 				mexPrintf("Orthogonal distance based ray tracer took %f seconds\n", ((float)time_span.count()));
 				mexEvalString("pause(.001);");
 			}
 		}
 		else {
 
-			// run the Improved Siddon's algorithm
+			// run the Improved Siddon's algorithm, precomputed_lor = true
 			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det, 
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos, 
 				pRows, det_per_ring, raw, attenuation_phase, ll);
-
-			//time = clock() - time;
 			
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
 
 			if (verbose) {
-				//mexPrintf("Improved Siddon took %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 				mexPrintf("Improved Siddon took %f seconds\n", ((float)time_span.count()));
 				mexEvalString("pause(.001);");
 			}
 		}
 
 	}
+	// Implementation 4
 	else if (type == 1u) {
 
 		if (nrhs < 41)
 			mexErrMsgTxt("Too few input arguments.  There must be at least 41.");
-		else if (nrhs > 47)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 47.");
+		else if (nrhs > 49)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 49.");
 
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
 
+		// Small constant to prevent division by zero
 		const double epps = (double)mxGetScalar(prhs[35]);
 
+		// Measurement data
 		const double* Sino = (double*)mxGetData(prhs[36]);
 
+		// Current estimates
 		double* osem_apu = (double*)mxGetData(prhs[37]);
 
+		// Projector used
 		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[38]);
 
 		const size_t N = static_cast<size_t>(Nx) * static_cast<size_t>(Ny) * static_cast<size_t>(Nz);
 
+		// If 1, do not compute the normalization constant anymore
 		const bool no_norm = (bool)mxGetScalar(prhs[39]);
 
+		// precomputed_lor = false
 		const bool precompute = (bool)mxGetScalar(prhs[40]);
 
 		plhs[0] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
+		// Normalization constants
 		double* Summ = (double*)mxGetData(plhs[0]);
 
 		plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
+		// Right-hand side
 		double* rhs = (double*)mxGetData(plhs[1]);
 
 		//clock_t time = clock();
 		//std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
+		// Orthogonal
 		if (projector_type == 2u) {
 
 			if (nrhs != 47)
 				mexErrMsgTxt("Incorrect number of input arguments. There has to be 47.");
 
-			// Width of the TOR
+			// Width of the strip in 2D case
 			const double crystal_size = (double)mxGetScalar(prhs[41]);
 
 			// Coordinates of the pixel centers in y-direction
@@ -340,8 +337,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			// Coordinates of the pixel centers in z-direction
 			const double* z_center = (double*)mxGetData(prhs[44]);
 
+			// Width of the TOR in 3D case
 			const double crystal_size_z = (double)mxGetScalar(prhs[45]);
 
+			// Accuracy factor
 			const int32_t dec_v = (int32_t)mxGetScalar(prhs[46]);
 
 			if (precompute) {
@@ -351,39 +350,39 @@ void mexFunction(int nlhs, mxArray* plhs[],
 					no_norm, dec_v);
 			}
 			else {
-				sequential_orth_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, randoms, norm_coef, 
+				sequential_orth_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
 					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
 					no_norm, dec_v);
 			}
-
-			//time = clock() - time;
 		}
+		// Improved Siddon
 		else {
 
-			//if (nrhs != 41)
-			//	mexErrMsgTxt("Incorrect number of input arguments. There has to be 41.");
+			if (nrhs != 49)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 49.");
+
+			// Number of rays in Siddon
+			uint16_t n_rays = (uint16_t)mxGetScalar(prhs[47]);
+
+			// Crystal pitch in z-direction (for multi-ray)
+			const double cr_pz = (double)mxGetScalar(prhs[48]);
 
 			if (precompute) {
-				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, randoms, norm_coef, x, y, 
+				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm);
 			}
 			else {
-				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, randoms, 
-					norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, 
-					z_index, TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm);
+				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
+					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, TotSinos,
+					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays);
 			}
 
-			//time = clock() - time;
 
 		}
-
-		//if (verbose) {
-		//	mexPrintf("Matrix free reconstruction took %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
-		//	mexEvalString("pause(.001);");
-		//}
 	}
+	// Implementation 1, precomputed_lor = false
 	else if (type == 2u) {
 
 		if (nrhs < 40)
@@ -408,10 +407,12 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const uint32_t* index = (uint32_t*)mxGetData(prhs[38]);
 		const uint32_t index_size = static_cast<uint32_t>(mxGetNumberOfElements(prhs[38]));
 
+		// Projector
 		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[39]);
 
 		uint32_t loop_var_par = 1u;
 
+		// Number of LORs
 		if (index_size > 1ULL && !raw) {
 			loop_var_par = pituus;
 		}
@@ -430,6 +431,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		vector<double> elements;
 
+		// Reserve some memory
 		indices.reserve(ind_size);
 		elements.reserve(ind_size);
 
@@ -472,15 +474,19 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw, 
 				det_per_ring, blocks, block1, L, pseudos, pRows, crystal_size, crystal_size_z, y_center, x_center, z_center, dec_v);
 		}
+		// Original Siddon's ray tracer
 		else if (projector_type == 0u) {
 
 			if (nrhs < 43)
 				mexErrMsgTxt("Too few input arguments.  There must be at least 43.");
 
+			// Voxel numbers in x-direction
 			const double* iij = (double*)mxGetData(prhs[40]);
 
+			// Voxel numbers in y-direction
 			const double* jji = (double*)mxGetData(prhs[41]);
 
+			// Voxel numbers in z-direction
 			const double* kkj = (double*)mxGetData(prhs[42]);
 
 			const vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[40]));
@@ -514,14 +520,11 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		copy(elements.begin(), elements.end(), outputMatrix3);
 
-		//time = clock() - time;
-
 		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 		std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
 
 		if (verbose) {
-			//mexPrintf("Function elapsed time is %f seconds\n", ((float)time) / CLOCKS_PER_SEC);
 			mexPrintf("Function elapsed time is %f seconds\n", ((float)time_span.count()));
 			mexEvalString("pause(.001);");
 		}

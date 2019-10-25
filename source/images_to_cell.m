@@ -67,12 +67,12 @@ if options.MRP && options.OSL_MLEM
     pz{gg, llo} = im_vectors.MRP_MLEM;
 end
 gg = gg + 1;
-if options.MRP && options.MBSREM
-    pz{gg, llo} = im_vectors.MRP_MBSREM;
-end
-gg = gg + 1;
 if options.MRP && options.BSREM
     pz{gg, llo} = im_vectors.MRP_BSREM;
+end
+gg = gg + 1;
+if options.MRP && options.MBSREM
+    pz{gg, llo} = im_vectors.MRP_MBSREM;
 end
 gg = gg + 1;
 if options.MRP && options.ROSEM_MAP
@@ -96,12 +96,12 @@ if options.quad && options.OSL_MLEM
     pz{gg, llo} = im_vectors.Quad_MLEM;
 end
 gg = gg + 1;
-if options.quad && options.MBSREM
-    pz{gg, llo} = im_vectors.Quad_MBSREM;
-end
-gg = gg + 1;
 if options.quad && options.BSREM
     pz{gg, llo} = im_vectors.Quad_BSREM;
+end
+gg = gg + 1;
+if options.quad && options.MBSREM
+    pz{gg, llo} = im_vectors.Quad_MBSREM;
 end
 gg = gg + 1;
 if options.quad && options.ROSEM_MAP
@@ -125,12 +125,12 @@ if options.L && options.OSL_MLEM
     pz{gg, llo} = im_vectors.L_MLEM;
 end
 gg = gg + 1;
-if options.L && options.MBSREM
-    pz{gg, llo} = im_vectors.L_MBSREM;
-end
-gg = gg + 1;
 if options.L && options.BSREM
     pz{gg, llo} = im_vectors.L_BSREM;
+end
+gg = gg + 1;
+if options.L && options.MBSREM
+    pz{gg, llo} = im_vectors.L_MBSREM;
 end
 gg = gg + 1;
 if options.L && options.ROSEM_MAP
@@ -154,12 +154,12 @@ if options.FMH && options.OSL_MLEM
     pz{gg, llo} = im_vectors.FMH_MLEM;
 end
 gg = gg + 1;
-if options.FMH && options.MBSREM
-    pz{gg, llo} = im_vectors.FMH_MBSREM;
-end
-gg = gg + 1;
 if options.FMH && options.BSREM
     pz{gg, llo} = im_vectors.FMH_BSREM;
+end
+gg = gg + 1;
+if options.FMH && options.MBSREM
+    pz{gg, llo} = im_vectors.FMH_MBSREM;
 end
 gg = gg + 1;
 if options.FMH && options.ROSEM_MAP
@@ -183,12 +183,12 @@ if options.weighted_mean && options.OSL_MLEM
     pz{gg, llo} = im_vectors.Weighted_MLEM;
 end
 gg = gg + 1;
-if options.weighted_mean && options.MBSREM
-    pz{gg, llo} = im_vectors.Weighted_MBSREM;
-end
-gg = gg + 1;
 if options.weighted_mean && options.BSREM
     pz{gg, llo} = im_vectors.Weighted_BSREM;
+end
+gg = gg + 1;
+if options.weighted_mean && options.MBSREM
+    pz{gg, llo} = im_vectors.Weighted_MBSREM;
 end
 gg = gg + 1;
 if options.weighted_mean && options.ROSEM_MAP
@@ -212,12 +212,12 @@ if options.TV && options.OSL_MLEM
     pz{gg, llo} = im_vectors.TV_MLEM;
 end
 gg = gg + 1;
-if options.TV && options.MBSREM
-    pz{gg, llo} = im_vectors.TV_MBSREM;
-end
-gg = gg + 1;
 if options.TV && options.BSREM
     pz{gg, llo} = im_vectors.TV_BSREM;
+end
+gg = gg + 1;
+if options.TV && options.MBSREM
+    pz{gg, llo} = im_vectors.TV_MBSREM;
 end
 gg = gg + 1;
 if options.TV && options.ROSEM_MAP
@@ -241,12 +241,12 @@ if options.AD && options.OSL_MLEM
     pz{gg, llo} = im_vectors.AD_MLEM;
 end
 gg = gg + 1;
-if options.AD && options.MBSREM
-    pz{gg, llo} = im_vectors.AD_MBSREM;
-end
-gg = gg + 1;
 if options.AD && options.BSREM
     pz{gg, llo} = im_vectors.AD_BSREM;
+end
+gg = gg + 1;
+if options.AD && options.MBSREM
+    pz{gg, llo} = im_vectors.AD_MBSREM;
 end
 gg = gg + 1;
 if options.AD && options.ROSEM_MAP
@@ -270,12 +270,12 @@ if options.APLS && options.OSL_MLEM
     pz{gg, llo} = im_vectors.APLS_MLEM;
 end
 gg = gg + 1;
-if options.APLS && options.MBSREM
-    pz{gg, llo} = im_vectors.APLS_MBSREM;
-end
-gg = gg + 1;
 if options.APLS && options.BSREM
     pz{gg, llo} = im_vectors.APLS_BSREM;
+end
+gg = gg + 1;
+if options.APLS && options.MBSREM
+    pz{gg, llo} = im_vectors.APLS_MBSREM;
 end
 gg = gg + 1;
 if options.APLS && options.ROSEM_MAP
@@ -299,12 +299,12 @@ if options.TGV && options.OSL_MLEM
     pz{gg, llo} = im_vectors.TGV_MLEM;
 end
 gg = gg + 1;
-if options.TGV && options.MBSREM
-    pz{gg, llo} = im_vectors.TGV_MBSREM;
-end
-gg = gg + 1;
 if options.TGV && options.BSREM
     pz{gg, llo} = im_vectors.TGV_BSREM;
+end
+gg = gg + 1;
+if options.TGV && options.MBSREM
+    pz{gg, llo} = im_vectors.TGV_MBSREM;
 end
 gg = gg + 1;
 if options.TGV && options.ROSEM_MAP
@@ -328,12 +328,12 @@ if options.NLM && options.OSL_MLEM
     pz{gg, llo} = im_vectors.NLM_MLEM;
 end
 gg = gg + 1;
-if options.NLM && options.MBSREM
-    pz{gg, llo} = im_vectors.NLM_MBSREM;
-end
-gg = gg + 1;
 if options.NLM && options.BSREM
     pz{gg, llo} = im_vectors.NLM_BSREM;
+end
+gg = gg + 1;
+if options.NLM && options.MBSREM
+    pz{gg, llo} = im_vectors.NLM_MBSREM;
 end
 gg = gg + 1;
 if options.NLM && options.ROSEM_MAP

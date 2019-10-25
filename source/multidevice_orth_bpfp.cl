@@ -1,35 +1,63 @@
 /**************************************************************************
-* A matrix free improved Siddon's combined with all the reconstruction
-* functions available in OMEGA. This function calculates Summ = sum(A,1) 
-* (sum of every row) and rhs = A*(y./(A'*x)), where A is the system matrix, 
-* y the measurements and x the estimate/image.
+* A matrix free Orthogonal distance-based ray tracer with forward and 
+* backward projections. 
+* This function calculates d_Summ = sum(A,1) (sum of every row) and either 
+* output = A*rhs or output = A'*x + r, where A is the system matrix, 
+* rhs y./(A'*x + r) and x the estimate/image.
+*
+* Used by forward/backward projection.
 *
 * INPUTS:
-* d_rhs_X = buffer for rhs, d_Summ = buffer for Summ, d_lor = row
-* indices, d_Nx = image size in x-dimension, d_dz = distance between
-* adjecent voxels in z-dimension, d_bz = distance from the pixel space
-* to origin (z-dimension), d_bzb = part in parenthesis of equation
-* (9) in [1] precalculated when k = Nz, d_maxxx = maximum distance of the
-* pixel space from origin in x-dimension, d_zmax = maximum value of d_zdet,
-* d_NSlices = the number of image slices, d_x = detector x-coordinates,
-* d_size_x = the number of detector elements, d_row = how many voxels have
-* been traversed so far, d_xyindex = for sinogram format they determine the
-* detector indices corresponding to each sinogram bin (unused with raw data)
-* d_TotSinos = Total number of sinograms, d_attenuation_correction = if
-* attenuation is included this is 1 otherwise 0, d_atten = attenuation
-* data (images), d_L = detector numbers for raw data (unused for sinogram
-* format), d_det_per_ring = number of detectors per ring, d_pseudos =
-* location of pseudo rings, pRows = number of pseudo rings, d_raw = if
-* 1 then raw list-mode data is used otherwise sinogram data, d_rekot = 
-* vector containing 1 if the reconstruction method is included (e.g. if
-* rekot[1] = 1, then OSEM is calculated) and 0 if not, d_X = buffer for 
-* algorithm X, d_X_OSEM = buffer for the OSL estimate of prior X, 
-* d_X_BSREM = same as before, but for BSREM
+* fp = 1 if forward projection phase, 0 for backward,
+* d_N = d_Nx * d_Ny * d_Nz,
+* d_Nx/y/z = image size in x/y/z- dimension,
+* d_dz/x/y = distance between adjecent voxels in z/x/y-dimension,
+* d_bz/x/y = distance from the pixel space to origin (z/x/y-dimension),
+* d_bzb = part in parenthesis of equation (9) in [1] precalculated when
+* k = Nz,
+* d_maxxx/yy = maximum distance of the pixel space from origin in
+* x/y-dimension,
+* d_zmax = maximum value of d_zdet,
+* d_NSlices = the number of image slices,
+* d_x/y/z_det = detector x/y/z-coordinates,
+* d_size_x = the number of detector elements,
+* d_TotSinos = Total number of sinograms,
+* d_attenuation_correction = if attenuation is included this is 1 otherwise
+* 0,
+* d_normalization = if normalization is included this is 1 otherwise 0,
+* d_randoms = if randoms/scatter correction is included this is 1
+* otherwise 0,
+* d_atten = attenuation data (images),
+* d_norm = normalization coefficients,
+* d_pseudos = location of pseudo rings,
+* pRows = number of pseudo rings,
+* d_Nxy = d_Nx * d_Ny,
+* d_det_per_ring = number of detectors per ring,
+* d_raw = if 1 then raw list-mode data is used otherwise sinogram
+* data
+* tube_width = the width of of the strip used for orthogonal distance based
+* projector (2D),
+* crystal_size_z = the width of of the tube used for orthogonal distance 
+* based projector (3D),
+* dec = accuracy factor,
+* x/y/z_center = Cartesian coordinates for the center of the voxels
+* (x/y/z-axis),
+* d_Summ = buffer for Summ,
+* d_lor = number of pixels that each LOR traverses,
+* d_xy/zindex = for sinogram format they determine the detector
+* indices corresponding to each sinogram bin (unused with raw data),
+* d_L = detector numbers for raw data (unused for sinogram format),
+* d_Sino = Sinogram/raw data,
+* d_sc_ra = Randoms and/or scatter data,
+* d_rhs = results from y./(A'*x) in backward projection, current estimate 
+* in forward
+* d_output = buffer for output,
+* no_norm = If 1, normalization constant is not computed,
+* m_size = Total number of LORs for this subset,
 *
 * OUTPUTS:
-* d_rsh_X = rhs values for algorithm/prior X, d_Summ = sum values, 
-* d_X = estimate of algorithm X, d_X_OSEM = OSL estimate of prior X, 
-* d_X_BSREM = BSREM estimate of prior X
+* d_output = output, forward projection or backprojection,
+* d_Summ = Normalization constant
 *
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu,
 * I. (1998). A Fast Algorithm to Calculate the Exact Radiological Path
@@ -62,7 +90,8 @@ void f_b_project_orth(const uchar fp, const uint d_N, const uint d_Nx, const uin
 	const uchar d_raw, const uint d_pRows, const uchar no_norm, const uint d_Nxy, const float tube_width_xy, const float crystal_size_z, const int dec,
 	const __global float* d_atten, const __global float* d_norm, __global float* d_Summ, const __global ushort* d_lor, __constant uint* d_pseudos, const __global float* d_x,
 	const __global float* d_y, const __global float* d_zdet, __constant float* x_center, __constant float* y_center, __constant float* z_center, const __global uint* d_xyindex,
-	const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_sc_ra, const __global float* d_rhs, __global float* d_output, const ulong m_size) {
+	const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_sc_ra, const __global float* d_rhs, __global float* d_output, const ulong m_size,
+	const ulong cumsum) {
 	// Get the current global index
 	uint idx = get_global_id(0);
 	if (idx >= m_size)
@@ -92,7 +121,7 @@ void f_b_project_orth(const uchar fp, const uint d_N, const uint d_Nx, const uin
 	uint local_ind;
 	float local_ele, d_rhs_local = 0.f, d_output_local = 0.f, LL;
 	if (!fp)
-		d_rhs_local = d_rhs[idx];
+		d_rhs_local = d_rhs[idx + cumsum];
 	float jelppi = 0.f;
 	float kerroin, length_;
 	if (crystal_size_z == 0.f) {
@@ -633,13 +662,20 @@ void f_b_project_orth(const uchar fp, const uint d_N, const uint d_Nx, const uin
 }
 
 __kernel void summa(const __global float* d_Summ_device, __global float* d_Summ_local, const __global float* d_rhs_device, __global float* d_rhs_local, 
-	const ulong size_rhs, const uint im_dim, const uchar no_norm) {
+	const ulong size_rhs, const uint im_dim, const uchar no_norm, const ulong globals, const uchar fp) {
 
 	uint gid = get_global_id(0);
 
-	for (uint i = gid; i < size_rhs; i += get_global_size(0)) {
-		d_rhs_local[i] += d_rhs_device[i];
-		if (!no_norm && i < im_dim)
-			d_Summ_local[i] += d_Summ_device[i];
+	if (fp == 1) {
+		for (uint i = gid; i < size_rhs; i += get_global_size(0)) {
+			d_rhs_local[i + globals] += d_rhs_device[i];
+		}
+	}
+	else {
+		for (uint i = gid; i < im_dim; i += get_global_size(0)) {
+			d_rhs_local[i] += d_rhs_device[i];
+			if (no_norm == 0)
+				d_Summ_local[i] += d_Summ_device[i];
+		}
 	}
 }

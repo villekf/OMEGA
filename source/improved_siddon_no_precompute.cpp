@@ -1,5 +1,5 @@
 /**************************************************************************
-* Implements the improved Siddon's algorithm for OMEGA.
+* Implements the improved Siddon's algorithm (implementation 1).
 * This version also checks whether the LOR/ray intersects the pixel space,
 * i.e. it doesn't require any precomputation.
 * This version outputs the row and column indices and values that can be
@@ -23,16 +23,17 @@
 ***************************************************************************/
 #include "projector_functions.h"
 
+// if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
 constexpr int TYPE = 0;
 
 using namespace std;
 
-int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices, vector<double>& elements,
-	uint16_t* lor, const double maxyy, const double maxxx, const vector<double>& xx_vec, const double dy,
-	const vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
-	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const uint32_t *index,
-	const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, const uint32_t block1, const uint16_t *L, const uint32_t *pseudos,
-	const uint32_t pRows) {
+int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices, 
+	vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const vector<double>& xx_vec, const double dy,
+	const vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
+	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, 
+	const uint32_t *index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, 
+	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows) {
 
 	int ll;
 	if (raw)
@@ -61,12 +62,12 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 		else
 			get_detector_coordinates_noalloc(x, y, z_det, size_x, detectors, ll, index, lz, TotSinos, lo);
 
-		// Calculate the x, y and z distances of the detector pair
+		// Calculate the x, y and z distances of the detector pair, i.e. the distance between them in the corresponding dimension
 		const double y_diff = (detectors.yd - detectors.ys);
 		const double x_diff = (detectors.xd - detectors.xs);
 		const double z_diff = (detectors.zd - detectors.zs);
 
-		// If the measurement is on a same ring
+		// If the measurement is on the same ring
 		if (fabs(z_diff) < 1e-8) {
 
 			// Z-coordinate
@@ -79,7 +80,8 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, normalization, temp_ijk, 1u, lo);
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
+						normalization, temp_ijk, 1u, lo);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint32_t ii = 0u; ii < Nx; ii++) {
@@ -99,7 +101,8 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, normalization, temp_ijk, 1u, lo);
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
+						normalization, temp_ijk, Nx, lo);
 
 					for (uint32_t ii = 0u; ii < Ny_max; ii += Ny) {
 						indices.emplace_back((temp_ijk + ii));
@@ -376,8 +379,8 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 				}
 				continue;
 			}
-			const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
-				Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, 
+				tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 
 			if (skip)
 				continue;
@@ -440,7 +443,8 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 
 					temp += templ_ijk[ii];
 				}
-				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) 
+					|| tempk >= static_cast<int32_t>(Nz))
 					break;
 
 			}

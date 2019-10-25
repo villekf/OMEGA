@@ -258,24 +258,24 @@ if options.NLM && any(options.COSEM_MAP)
 end
 
 
-if options.OSL_OSEM
-    im_vectors.custom_OSEM_apu = im_vectors.custom_OSEM(:,iter);
+if options.OSL_OSEM && options.custom
+    im_vectors.custom_OSL_apu = im_vectors.custom_OSL(:,iter);
 end
-if options.OSL_MLEM
+if options.OSL_MLEM && options.custom
     im_vectors.custom_MLEM_apu = im_vectors.custom_MLEM(:,iter);
 end
-if options.MBSREM
+if options.MBSREM && options.custom
     im_vectors.custom_MBSREM_apu = im_vectors.custom_MBSREM(:,iter);
 end
-if options.BSREM
+if options.BSREM && options.custom
     im_vectors.custom_BSREM_apu = im_vectors.custom_BSREM(:,iter);
 end
-if options.ROSEM_MAP
+if options.ROSEM_MAP && options.custom
     im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,iter);
 end
-if options.RBI_MAP
+if options.RBI_MAP && options.custom
     im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,iter);
 end
-if any(options.COSEM_MAP)
+if any(options.COSEM_MAP) && options.custom
     im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,iter);
 end

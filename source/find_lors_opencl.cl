@@ -1,40 +1,8 @@
 /**************************************************************************
-* A matrix free improved Siddon's combined with all the reconstruction
-* functions available in OMEGA. This function calculates Summ = sum(A,1) 
-* (sum of every row) and rhs = A*(y./(A'*x)), where A is the system matrix, 
-* y the measurements and x the estimate/image.
+* Compute the number of voxels that each LOR traverses, by using the
+* improved Siddon's algorithm. OpenCL version (single, f32, precision).
 *
-* INPUTS:
-* d_rhs_X = buffer for rhs, d_Summ = buffer for Summ, d_lor = row
-* indices, d_Nx = image size in x-dimension, d_dz = distance between
-* adjecent voxels in z-dimension, d_bz = distance from the pixel space
-* to origin (z-dimension), d_bzb = part in parenthesis of equation
-* (9) in [1] precalculated when k = Nz, d_maxxx = maximum distance of the
-* pixel space from origin in x-dimension, d_zmax = maximum value of d_zdet,
-* d_NSlices = the number of image slices, d_x = detector x-coordinates,
-* d_size_x = the number of detector elements, d_row = how many voxels have
-* been traversed so far, d_xyindex = for sinogram format they determine the
-* detector indices corresponding to each sinogram bin (unused with raw data)
-* d_TotSinos = Total number of sinograms, d_attenuation_correction = if
-* attenuation is included this is 1 otherwise 0, d_atten = attenuation
-* data (images), d_L = detector numbers for raw data (unused for sinogram
-* format), d_det_per_ring = number of detectors per ring, d_pseudos =
-* location of pseudo rings, pRows = number of pseudo rings, d_raw = if
-* 1 then raw list-mode data is used otherwise sinogram data, d_rekot = 
-* vector containing 1 if the reconstruction method is included (e.g. if
-* rekot[1] = 1, then OSEM is calculated) and 0 if not, d_X = buffer for 
-* algorithm X, d_X_OSEM = buffer for the OSL estimate of prior X, 
-* d_X_BSREM = same as before, but for BSREM
-*
-* OUTPUTS:
-* d_rsh_X = rhs values for algorithm/prior X, d_Summ = sum values, 
-* d_X = estimate of algorithm X, d_X_OSEM = OSL estimate of prior X, 
-* d_X_BSREM = BSREM estimate of prior X
-*
-* [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu,
-* I. (1998). A Fast Algorithm to Calculate the Exact Radiological Path
-* through a Pixel or Voxel Space. Journal of computing and information
-* technology, 6 (1), 89-94.
+* Used by implementations 2 and 3.
 *
 * Copyright (C) 2019  Ville-Veikko Wettenhovi
 *

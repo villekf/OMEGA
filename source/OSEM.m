@@ -41,7 +41,7 @@ lor = [];
 % subset indices
 if options.use_raw_data == false && options.subsets > 1
     % Sinogram format is based on the angles (every nth angle is taken)
-    if options.precompute_lor || options.reconstruction_method == 3
+    if options.precompute_lor || options.implementation == 3
         load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
         if length(discard) ~= options.TotSinos*options.Nang*options.Ndist
             error('Error: Size mismatch between sinogram and LORs to be removed')
@@ -87,7 +87,7 @@ if options.use_raw_data == false && options.subsets > 1
 elseif options.subsets > 1
     % for raw list-mode data, take the options.subsets randomly
     % last subset has all the spare indices
-    if options.precompute_lor || options.reconstruction_method == 3 || options.reconstruction_method == 2
+    if options.precompute_lor || options.implementation == 3 || options.implementation == 2
         load([options.machine_name '_detector_locations_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_raw.mat'],'LL','lor')
         indices = uint32(length(LL));
         index = cell(options.subsets, 1);

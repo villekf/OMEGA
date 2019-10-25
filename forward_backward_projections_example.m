@@ -86,7 +86,7 @@ options.offangle = options.det_w_pseudo * (3/4);
 %%% Span factor/axial compression
 options.span = 3;
 %%% Maximum ring difference
-options.ring_difference = 29;
+options.ring_difference = options.rings - 1;
 %%% Number of angles (tangential positions) in sinogram 
 % This is the final amount after possible mashing, maximum allowed is the
 % number of detectors per ring/2
@@ -176,7 +176,7 @@ options.corrections_during_reconstruction = false;
  
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination
-options.tot_time = 60*60*12;
+options.tot_time = inf;
 %%% Number of time points/dynamic frames (if a static measurement, use 1)
 options.partitions = 1;
 %%% Start time (s) (all measurements before this will be ignored)
@@ -242,7 +242,7 @@ options.verbose = true;
 % NOTE: Only the below ones are available in forward/backward projections
 % 1 = Reconstructions in MATLAB (projector in a MEX-file)
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only)
-options.reconstruction_method = 3;
+options.implementation = 4;
 % Implementations 2 and 3 ONLY
 %%% Device used (this is applicable to implementation 2), or platform used
 % (implementation 3)
@@ -256,14 +256,14 @@ options.reconstruction_method = 3;
 % NOTE: if you switch devices then you need to run the below line
 % (uncommented) as well:
 % clear mex
-options.use_device = 1;
+options.use_device = 0;
 % Implementation 2 ONLY
 %%% Force the (re)building of OpenCL binaries 
 % If set to true, the OpenCL binaries are rebuilt even if they have been
 % previously built
 % Use this once if you update your drivers or there are changes made to the
 % .cl-files
-options.force_build = true;
+options.force_build = false;
 % Implementation 3 ONLY
 %%% How many times more measurements/LORs are in the GPU part (applicable if
 % heterogenous computing is used) 
@@ -277,7 +277,7 @@ options.cpu_to_gpu_factor = 2.4;
 % when precomputed_lor = false.
 % 1 = Improved/accelerated Siddon's algorithm
 % 2 = Orthogonal distance based ray tracer
-options.projector_type = 2;
+options.projector_type = 1;
 % Orthogonal ray tracer only
 %%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are
 % included. If the tube_width_z is non-zero, then this value is ignored.
@@ -293,11 +293,14 @@ options.tube_width_z = options.cr_pz;
 % Higher values lead to more accurate results, but slower computational
 % speeds. Default value is 5 and is a compromise between accuracy and
 % speed. Values above the X/Y pixel count have no effect.
-options.accuracy_factor = 4;
+options.accuracy_factor = 5;
+%%% Number of rays
+% Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
+options.n_rays = 5;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECNSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 1;
+options.Niter = 4;
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
 options.subsets = 8;
 %%% Subset type (n = subsets)
@@ -360,7 +363,7 @@ end
 f = ones(options.Nx*options.Ny*options.Nz,1);
 
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.reconstruction_method == 1
+if options.implementation == 1
     raw_SinM = double(raw_SinM(index));
 else
     raw_SinM = single(raw_SinM(index));
@@ -370,10 +373,10 @@ end
 % recommended for an actual OSEM computation due to reduced performance)
 for iter = 1 : options.Niter
     for osa_iter = 1 : options.subsets
-        [y, options] = forward_project(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), f);
-        [x, norm] = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps));
+        [y, options] = forward_project(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), f, [nn(osa_iter) + 1 , nn(osa_iter+1)]);
+        [x, norm] = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps), ...
+            nn(osa_iter) + 1:nn(osa_iter+1));
         f = (f./(norm + options.epps)).*(x + options.epps);
-        sum(norm)
     end
 end
 f = reshape(f, options.Nx,options.Ny,options.Nz);

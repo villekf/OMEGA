@@ -1,9 +1,10 @@
-function im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, beta, dU, is_transposed)
+function im = MBSREM(im, varargin)
 %MBSREM Computes the modified Block Sequential Regularized Expectation
 % Maximization (MBSREM) estimates
 %
-% Example:
-%   im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, beta, dU)
+% Examples:
+%   im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, SinDelayed, randoms_correction, is_transposed)
+%   im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, SinDelayed, randoms_correction, is_transposed, beta, dU)
 % INPUTS:
 %   im = The current estimate
 %   U = Upper bound of MBSREM (see MBSREM_epsilon)
@@ -15,6 +16,13 @@ function im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, beta, 
 %   epsilon_mramla = Epsilon value of MBSREM (see MBSREM_epsilon)
 %   lambda = Relaxation parameter
 %   iter = Current iteration number
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as varargin{5}. If no scatter
+%   and/or randoms data is available, use zero. 
+%   randoms_correction = Boolean parameter that is true when randoms and/or
+%   scatter correction is applied and false otherwise.
+%   is_transposed = true if varargin{3} matrix is the transpose of it,
+%   false if not 
 %   beta = Regularization parameter (0, if no regularization)
 %   dU = Gradient of the prior
 %
@@ -34,28 +42,56 @@ function im = MBSREM(im, U, D, A, epps, uu, epsilon_mramla, lambda, iter, beta, 
 %
 % This program is distributed in the hope that it will be useful,
 % but WITHOUT ANY WARRANTY; without even the implied warranty of
-% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% MERCHANTABILITY or FITNESS FOR varargin{3} PARTICULAR PURPOSE.  See the
 % GNU General Public License for more details.
 %
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+U = varargin{1};
+epps = varargin{4};
+epsilon_mramla = varargin{6};
+iter = varargin{8};
+randoms_correction = varargin{10};
+is_transposed = varargin{11};
+
 pp = im < (U/2);
 UU = zeros(size(im,1),1);
-UU(pp) = im(pp)./(D(pp)+epps);
-UU(~pp) = (U-im(~pp))./(D(~pp)+epps);
+UU(pp) = im(pp)./(varargin{2}(pp)+epps);
+UU(~pp) = (U-im(~pp))./(varargin{2}(~pp)+epps);
 if is_transposed
-    l_mramla = A'*im;
+    if randoms_correction
+        l_mramla = varargin{3}'*im + varargin{9};
+    else
+        l_mramla = varargin{3}'*im;
+    end
 else
-    l_mramla = A*im;
+    if randoms_correction
+        l_mramla = varargin{3}*im + varargin{9};
+    else
+        l_mramla = varargin{3}*im;
+    end
 end
 l_mramla(l_mramla <= 0) = epps;
-pp = l_mramla < epsilon_mramla;
-hr = uu./l_mramla - 1;
-hr(pp) = uu(pp)./l_mramla(pp) - 1 - (uu(pp)./l_mramla(pp).^2).*(l_mramla(pp) - epsilon_mramla);
-if is_transposed
-    im = im + lambda(iter).*UU.*(A*hr - beta .* dU);
+if randoms_correction
+    pp = l_mramla <= epsilon_mramla & varargin{5} > 0 & varargin{9} == 0;
 else
-    im = im + lambda(iter).*UU.*(A'*hr - beta .* dU);
+    pp = l_mramla <= epsilon_mramla & varargin{5} > 0;
 end
-im(im < 0) = epps;
+hr = varargin{5}./l_mramla - 1;
+hr(pp) = varargin{5}(pp)./epsilon_mramla - 1 - (varargin{5}(pp)./epsilon_mramla.^2).*(l_mramla(pp) - epsilon_mramla);
+if is_transposed
+    if nargin > 12
+        im = im + varargin{7}(iter).*UU.*(varargin{3}*hr - varargin{12} .* varargin{13} + epps);
+    else
+        im = im + varargin{7}(iter).*UU.*(varargin{3}*hr + epps);
+    end
+else
+    if nargin > 12
+        im = im + varargin{7}(iter).*UU.*(varargin{3}'*hr - varargin{12} .* varargin{13} + epps);
+    else
+        im = im + varargin{7}(iter).*UU.*(varargin{3}'*hr + epps);
+    end
+end
+im(im <= 0) = epps;
+im(im >= U) = U - epps;

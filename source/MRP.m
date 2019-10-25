@@ -55,7 +55,7 @@ if license('test', 'image_toolbox')
             grad = medfilt3(reshape(im,Nx,Ny,Nz), [medx medx medz]);
         end
     end
-    % If Image Processing Toolbox does not exist (slower)
+    % If Image Processing Toolbox does not exist or Octave is used (slower)
 else
     if Nz==1
         padd = padding(reshape(im,Nx,Ny),[max(0,medx-2) max(0,medy-2)]);

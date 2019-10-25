@@ -1,3 +1,21 @@
+/**************************************************************************
+* General functions for all the OpenCL kernel files.
+*
+* Copyright (C) 2019  Ville-Veikko Wettenhovi
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program. If not, see <https://www.gnu.org/licenses/>.
+***************************************************************************/
 #pragma once
 #define THR 0.001f
 
@@ -21,6 +39,7 @@ inline float e_norm(const float x, const float y, const float z) {
 	return native_sqrt(x * x + y * y + z * z);
 }
 
+// Compute the linear weight for the current voxel
 inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 	const float xp, const float yp, const float zp) {
 
@@ -40,6 +59,26 @@ inline float compute_element_orth_3D(const float xs, const float ys, const float
 	return (1.f - normi / crystal_size_z);
 }
 
+// Gaussian weight
+//inline float compute_element_orth_3D_gauss(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
+//	const float xp, const float yp, const float zp) {
+//
+//	float x1, y1, z1, x0, y0, z0;
+//
+//	x0 = xp - xs;
+//	y0 = yp - ys;
+//	z0 = zp - zs;
+//
+//	// Cross product
+//	x1 = yl * z0 - zl * y0;
+//	y1 = zl * x0 - xl * z0;
+//	z1 = xl * y0 - yl * x0;
+//
+//	const float normi = e_norm(x1, y1, z1);
+//
+//	return (1.f - native_exp(-(normi * normi) / (2 * pown(crystal_size_z / 2.35482f, 2))));
+//}
+
 inline uint compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
 	uint local_ind = tempi * d_N + tempijk + convert_uint_sat(tempk) * Nyx;
 	return local_ind;
@@ -52,20 +91,22 @@ inline void denominator_multi(float local_ele, float* axOSEM, const __global flo
 }
 
 // Nominator (backprojection), multi-GPU version
-inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const uint randoms_correction, const float d_sc_ra) {
+inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const uint randoms_correction, const __global float* d_sc_ra, 
+	const uint idx) {
 	if (*axOSEM == 0.f)
 		* axOSEM = d_epps;
 	else
 		*axOSEM *= temp;
 	if (randoms_correction == 1u)
-		* axOSEM += d_sc_ra;
+		* axOSEM += d_sc_ra[idx];
 	*axOSEM = d_Sino / *axOSEM;
 }
 
 
 // Get the detector coordinates for the current (raw) measurement
-inline void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, const uint d_det_per_ring,
-	const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
+inline void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
+	const uint d_det_per_ring, const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
+	float* zd) {
 	uint ps = 0;
 	// Get the current detector numbers
 	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
@@ -128,9 +169,111 @@ inline void get_detector_coordinates_raw(const __global float *d_x, const __glob
 	*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
 }
 
+
+
+// Get the detector coordinates for the current (raw) measurement
+inline void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
+	const uint d_det_per_ring, const uint idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, 
+	const ushort lor, const float cr_pz) {
+	uint ps = 0;
+	// Get the current detector numbers
+	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
+	const uint detektorit2 = convert_uint(d_L[idx * 2u + 1u]) - 1u;
+	// Which ring
+	const uint loop1 = ((detektorit1) / d_det_per_ring);
+	const uint loop2 = ((detektorit2) / d_det_per_ring);
+	// same ring
+	if (loop1 == loop2) {
+		*zs = d_zdet[loop1];
+		*zd = *zs;
+	}
+	else {
+		*zs = d_zdet[loop1];
+		*zd = d_zdet[loop2];
+	}
+	// if a pseudo ring is present, move the z-detector coordinate beyond the pseudo ring (z_det includes also pseudo coordinates)
+	if (loop1 >= d_pseudos[0]) {
+		// loop through all the pseudo rings
+		for (uint kk = 0u; kk < d_pRows; kk++) {
+			ps = 1u;
+			// First pseudo rings
+			if (kk + 1u < d_pRows) {
+				if (loop1 >= d_pseudos[kk] && loop1 < d_pseudos[kk + 1u]) {
+					*zs = d_zdet[loop1 + ps];
+					break;
+				}
+				// move to next
+				else
+					ps++;
+			}
+			else {
+				// Last pseudo ring passed
+				if (loop1 >= d_pseudos[kk])
+					* zs = d_zdet[loop1 + ps];
+			}
+		}
+	}
+	if (loop2 >= d_pseudos[0]) {
+		for (uint kk = 0u; kk < d_pRows; kk++) {
+			ps = 1u;
+			if (kk + 1u < d_pRows) {
+				if (loop2 >= d_pseudos[kk] && loop2 < d_pseudos[kk + 1u]) {
+					*zd = d_zdet[loop2 + ps];
+					break;
+				}
+				else
+					ps++;
+			}
+			else {
+				if (loop2 >= d_pseudos[kk])
+					* zd = d_zdet[loop2 + ps];
+			}
+		}
+	}
+	// Get the current x- and y-detector coordinates
+	*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
+	*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
+	*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
+	*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
+
+	if (lor == 1) {
+		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
+		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
+		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
+		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
+	}
+	else if (lor == 3u || lor == 5u) {
+		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring * 2u];
+		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring * 2u];
+		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring * 2u];
+		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring * 2u];
+		if (lor == 3u) {
+			*zs -= cr_pz;
+			*zd -= cr_pz;
+		}
+		else {
+			*zs += cr_pz;
+			*zd += cr_pz;
+		}
+	}
+	else {
+		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring];
+		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring];
+		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring];
+		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring];
+		if (lor == 2u) {
+			*zs -= cr_pz;
+			*zd -= cr_pz;
+		}
+		else {
+			*zs += cr_pz;
+			*zd += cr_pz;
+		}
+	}
+}
 // Get the detector coordinates for the current sinogram bin
-inline void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x,
-	const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
+inline void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
+	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
 	const __global float *d_zdet) {
 
 	if (d_xyindex[idx] >= d_size_x) {
@@ -155,6 +298,104 @@ inline void get_detector_coordinates(const __global uint *d_xyindex, const __glo
 	}
 }
 
+// Get the detector coordinates for the current sinogram bin
+inline void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x,	const uint idx, 
+	const ushort d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float* d_x, const __global float* d_y,
+	const __global float* d_zdet, const ushort lor, const float cr_pz) {
+
+	if (lor == 1u) {
+		if (d_xyindex[idx] >= d_size_x) {
+			*xs = d_x[d_xyindex[idx]];
+			*xd = d_x[d_xyindex[idx] - d_size_x];
+			*ys = d_y[d_xyindex[idx]];
+			*yd = d_y[d_xyindex[idx] - d_size_x];
+		}
+		else {
+			*xs = d_x[d_xyindex[idx]];
+			*xd = d_x[d_xyindex[idx] + d_size_x];
+			*ys = d_y[d_xyindex[idx]];
+			*yd = d_y[d_xyindex[idx] + d_size_x];
+		}
+		if (d_zindex[idx] >= d_TotSinos) {
+			*zs = d_zdet[d_zindex[idx]];
+			*zd = d_zdet[d_zindex[idx] - d_TotSinos];
+		}
+		else {
+			*zs = d_zdet[d_zindex[idx]];
+			*zd = d_zdet[d_zindex[idx] + d_TotSinos];
+		}
+	}
+	else if (lor == 3u || lor == 5u) {
+		if (d_xyindex[idx] >= d_size_x) {
+			*xs = d_x[d_xyindex[idx] + d_size_x * 4u];
+			*xd = d_x[d_xyindex[idx] + d_size_x * 3u];
+			*ys = d_y[d_xyindex[idx] + d_size_x * 4u];
+			*yd = d_y[d_xyindex[idx] + d_size_x * 3u];
+		}
+		else {
+			*xs = d_x[d_xyindex[idx] + d_size_x * 4u];
+			*xd = d_x[d_xyindex[idx] + d_size_x * 5u];
+			*ys = d_y[d_xyindex[idx] + d_size_x * 4u];
+			*yd = d_y[d_xyindex[idx] + d_size_x * 5u];
+		}
+		if (lor == 3u) {
+			if (d_zindex[idx] >= d_TotSinos) {
+				*zs = d_zdet[d_zindex[idx]] - cr_pz;
+				*zd = d_zdet[d_zindex[idx] - d_TotSinos] - cr_pz;
+			}
+			else {
+				*zs = d_zdet[d_zindex[idx]] - cr_pz;
+				*zd = d_zdet[d_zindex[idx] + d_TotSinos] - cr_pz;
+			}
+		}
+		else {
+			if (d_zindex[idx] >= d_TotSinos) {
+				*zs = d_zdet[d_zindex[idx]] + cr_pz;
+				*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz;
+			}
+			else {
+				*zs = d_zdet[d_zindex[idx]] + cr_pz;
+				*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz;
+			}
+		}
+	}
+	else {
+		if (d_xyindex[idx] >= d_size_x) {
+			*xs = d_x[d_xyindex[idx] + d_size_x * 2u];
+			*xd = d_x[d_xyindex[idx] + d_size_x];
+			*ys = d_y[d_xyindex[idx] + d_size_x * 2u];
+			*yd = d_y[d_xyindex[idx] + d_size_x];
+		}
+		else {
+			*xs = d_x[d_xyindex[idx] + d_size_x * 2u];
+			*xd = d_x[d_xyindex[idx] + d_size_x * 3u];
+			*ys = d_y[d_xyindex[idx] + d_size_x * 2u];
+			*yd = d_y[d_xyindex[idx] + d_size_x * 3u];
+		}
+		if (lor == 2u) {
+			if (d_zindex[idx] >= d_TotSinos) {
+				*zs = d_zdet[d_zindex[idx]] - cr_pz;
+				*zd = d_zdet[d_zindex[idx] - d_TotSinos] - cr_pz;
+			}
+			else {
+				*zs = d_zdet[d_zindex[idx]] - cr_pz;
+				*zd = d_zdet[d_zindex[idx] + d_TotSinos] - cr_pz;
+			}
+		}
+		else {
+			if (d_zindex[idx] >= d_TotSinos) {
+				*zs = d_zdet[d_zindex[idx]] + cr_pz;
+				*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz;
+			}
+			else {
+				*zs = d_zdet[d_zindex[idx]] + cr_pz;
+				*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz;
+			}
+		}
+	}
+
+}
+
 // Get the detector coordinates for the current measurement (precomputation phase)
 inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
 	float* zd, const __global float *d_x, const __global float *d_y, const __global float *d_zdet) {
@@ -171,7 +412,7 @@ inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx
 
 // Compute the voxel index where the current perpendicular measurement starts
 inline int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
-	int tempi;
+	int tempi = 0;
 	float start = d_b - d + d_d;
 	for (uint ii = 0u; ii < d_N; ii++) {
 		if (start > 0.f) {
@@ -184,8 +425,9 @@ inline int perpendicular_start(const float d_b, const float d, const float d_d, 
 }
 
 // Compute the probability for the perpendicular elements
-inline void perpendicular_elements(const float d_b, const float d_d1, const float d_N1, const float d, const float d_d2, const float d_N2, const __global float* d_atten,
-	float* templ_ijk, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, const uint d_normalization, const float d_norm) {
+inline void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
+	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, 
+	const uint d_normalization, const __global float* d_norm, const uint idx) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	//float start = d_b - d + d_d1;
 	//// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
@@ -209,8 +451,34 @@ inline void perpendicular_elements(const float d_b, const float d_d1, const floa
 		temp *= native_exp(jelppi);
 	}
 	if (d_normalization == 1u)
-		temp *= d_norm;
+		temp *= d_norm[idx];
 	*templ_ijk = temp * d_d2;
+}
+
+// Compute the probability for the perpendicular elements
+inline float perpendicular_elements_multiray(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
+	const __global float* d_atten, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, float* jelppi) {
+	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
+	//int apu = 0;
+	//float start = d_b - d + d_d1;
+	//for (uint ii = 0u; ii < d_N1; ii++) {
+	//	if (start > 0.f) {
+	//		//apu = convert_int(ii);
+	//		break;
+	//	}
+	//	start += d_d1;
+	//}
+
+	*tempk = convert_uint_sat(apu) * d_N + z_loop * d_N1 * d_N2;
+
+	// Correct for attenuation if applicable
+	//if (d_attenuation_correction == 1u) {
+	//	for (uint iii = 0u; iii < d_N2; iii++) {
+	//		*jelppi += (d_d2 * (-d_atten[*tempk + iii * d_NN]));
+	//	}
+	//}
+
+	return d_d2 * convert_float(d_N2);
 }
 
 // Compute functions (9) and (29) (detector larger than source)
@@ -241,7 +509,8 @@ inline void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, 
 }
 
 // Compute functions (9) and (29) (source larger than detector)
-inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, int* v_u, const float diff, const float b, const float d, const float s, const uint N) {
+inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, int* v_u, const float diff, const float b, const float d, const float s, 
+	const uint N) {
 
 	if (tmin == t_min)
 		// (15)
@@ -268,8 +537,8 @@ inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, 
 }
 
 // same as above, but for precomputation phase
-inline void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, const float diff,
-	const float b, const float d, const float s, const uint N) {
+inline void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
 		// (11)
@@ -296,8 +565,8 @@ inline void d_g_s_precomp(const float tmin, const float t_min, const float tmax,
 }
 
 // same as above, but for precomputation phase
-inline void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, const float diff,
-	const float b, const float d, const float s, const uint N) {
+inline void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
 		// (15)
@@ -350,7 +619,7 @@ inline uint compute_ind(const int tempj, const int tempi, const int tempk, const
 inline float compute_element(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, float* temp) {
 	float local_ele = (*t0 - *tc) * L;
 	*temp_ijk += u;
-	tc = t0;
+	*tc = *t0;
 	*t0 += tu;
 	*temp += local_ele;
 	return local_ele;
@@ -360,8 +629,8 @@ inline float compute_matrix_element(const float t0, const float tc, const float 
 	return (t0 - tc) * L;
 }
 
-inline void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, const uint Nyx, 
-	const __global float* d_atten) {
+inline void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
+	const uint Nyx, const __global float* d_atten) {
 	*jelppi += (compute_matrix_element(t0, *tc, LL) * -d_atten[tempi + tempj * Nx + Nyx * tempk]);
 	*tc = t0;
 }
@@ -370,7 +639,7 @@ inline void compute_attenuation(float* tc, float* jelppi, const float LL, const 
 inline float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
 	float local_ele = (*t0 - *tc) * L * temp;
 	*temp_ijk += u;
-	tc = t0;
+	*tc = *t0;
 	*t0 += tu;
 	return local_ele;
 }

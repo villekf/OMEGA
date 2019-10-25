@@ -1,8 +1,9 @@
 function im = ROSEM_subiter(im, lambda, iter, Summ, epps, varargin)
 %ROSEM_SUBITER Computes the Relaxed OSEM (ROSEM) estimates at sub-iteration level
 %
-% Example:
-%   im = ROSEM_subiter(im, lambda, A, uu, epps, iter, Summ)
+% Examples:
+%   im = ROSEM_subiter(im, lambda, iter, Summ, epps, A, uu, SinDelayed, is_transposed)
+%   im = ROSEM_subiter(im, lambda, iter, Summ, epps, RHS)
 % INPUTS:
 %   im = The current estimate
 %   lambda = Relaxation parameter
@@ -11,7 +12,11 @@ function im = ROSEM_subiter(im, lambda, iter, Summ, epps, varargin)
 %   epps = Small constant to prevent division by zero
 %   A = The transpose of the (sparse) system matrix at current subset
 %   uu = Measurements at current subset
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as varargin{5}. If no scatter
+%   and/or randoms data is available, use zero. 
 %   is_transposed = true if A matrix is the transpose of it, false if not
+%   RHS = The right hand side of OSEM (RHS = A'*(uu./(A*im + SinDelayed))) 
 %
 % OUTPUTS:
 %   im = The updated estimate
@@ -35,14 +40,14 @@ function im = ROSEM_subiter(im, lambda, iter, Summ, epps, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 8
-    if varargin{3}
-        im = im + lambda(iter).*im./Summ.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps) - 1));
+if nargin == 9
+    if varargin{4}
+        im = im + lambda(iter).*im./Summ.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps + varargin{3}) - 1) + epps);
     else
-        im = im + lambda(iter).*im./Summ.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps) - 1));
+        im = im + lambda(iter).*im./Summ.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps + varargin{3}) - 1) + epps);
     end
 elseif nargin == 6
-    im = im + lambda(iter).*im./Summ.*((varargin{1} + epps) - Summ);
+    im = im + lambda(iter).*im./Summ.*((varargin{1} + epps) - Summ + epps);
 else
     error('Invalid number of input arguments')
 end

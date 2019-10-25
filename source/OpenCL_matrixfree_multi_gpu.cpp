@@ -1,8 +1,8 @@
 ﻿/**************************************************************************
 * Matrix free computations for OMEGA for the multi-GPU/device case.
-* Supports heteregenous computing, but only on the same platform (i.e. if 
-* you have a CPU and an integrated GPU from the save vendor and OpenCL
-* runtimes for both you can utilize both of them at the same time). Mixing
+* Supports heterogeneous computing, but only on the same platform (i.e. if 
+* you have a CPU and an integrated GPU from the same vendor and OpenCL
+* runtime for both you can utilize both of them at the same time). Mixing
 * CPU and GPU requires the optimization of the GPU to CPU value.
 * This code can also be run for single device.
 * This code is very similar to the other matrix-free code, but this one
@@ -35,8 +35,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	// Check for the number of input and output arguments
 	if (nrhs < 32)
 		mexErrMsgTxt("Too few input arguments.  There must be at least 32.");
-	else if (nrhs > 57)
-		mexErrMsgTxt("Too many input arguments.  There can be at most 57.");
+	else if (nrhs > 60)
+		mexErrMsgTxt("Too many input arguments.  There can be at most 60.");
 
 	if (nlhs < 1)
 		mexErrMsgTxt("Invalid number of output arguments.  There must be at least one.");
@@ -160,7 +160,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		uint32_t loop_var_par = 1u;
 
 		if (raw)
-			loop_var_par = numRows / 2;
+			loop_var_par = numRows / 2ULL;
 		else
 			loop_var_par = NSinos * size_x;
 
@@ -168,8 +168,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 		uint16_t* lor = (uint16_t*)mxGetData(plhs[0]);
 
-		find_LORs(lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices,
-			size_x, TotSinos, verbose, loop_var_par, k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, numel_x, header_directory);
+		// Find the number of voxels each LOR traverses
+		find_LORs(lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, size_x, TotSinos, verbose, loop_var_par, 
+			k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, numel_x, header_directory);
 
 	}
 	else if (type < 2) {
@@ -231,7 +232,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		// If true, then the precomputed LOR voxels counts are used
 		const bool precompute_var = (bool)mxGetScalar(prhs[44]);
 
+		// Accuracy factor in orthogonal distance
 		const int32_t dec = (int32_t)mxGetScalar(prhs[45]);
+
+		// Number of rays in Siddon
+		uint16_t n_rays = (uint16_t)mxGetScalar(prhs[46]);
+
+		// Crystal pitch in z-direction
+		const double cr_pz = (double)mxGetScalar(prhs[47]);
 
 		size_t koko;
 		if (raw)
@@ -241,15 +249,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 		if (type == 0) {
 
-			if (nrhs != 48)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 48.");
+			if (nrhs != 50)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 50.");
 
 			// Right hand side for forward or backprojections
-			const float* rhs = (float*)mxGetData(prhs[46]);
-			const size_t size_rhs = mxGetNumberOfElements(prhs[46]);
+			const float* rhs = (float*)mxGetData(prhs[48]);
+			const size_t size_rhs = mxGetNumberOfElements(prhs[48]);
 
 			// Is the normalization constant computed (sum(A))
-			const bool no_norm = (bool)mxGetScalar(prhs[47]);
+			const bool no_norm = (bool)mxGetScalar(prhs[49]);
 
 			size_t outSize;
 			if (size_rhs == Nx * Ny*Nz)
@@ -267,61 +275,68 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 			const uint16_t TotSinos = size_z / 2;
 
-			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l,
-				xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm, size_norm, k_path, pseudos, det_per_ring,
-				pRows, L, raw, size_z, fileName, device, kerroin, output, normalizer, size_rhs, no_norm, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x,
-				size_center_y, size_center_z, projector_type, header_directory, precompute_var, dec);
+			// Forward/backward projection
+			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, 
+				koko_l,	xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm, 
+				size_norm, k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, output, normalizer, size_rhs, no_norm, numel_x, 
+				tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, projector_type, header_directory, 
+				precompute_var, dec, n_rays, cr_pz);
 
 		}
 		else if (type == 1) {
 
-			if (nrhs != 57)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 57.");
+			if (nrhs != 60)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 60.");
 
 			// Number of sinograms used
-			const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[46]);
+			const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[48]);
 
 			// Total number of sinograms
-			const uint16_t TotSinos = (uint16_t)mxGetScalar(prhs[47]);
+			const uint16_t TotSinos = (uint16_t)mxGetScalar(prhs[49]);
 
 			// Number of iterations
-			const uint32_t Niter = (uint32_t)mxGetScalar(prhs[48]);
+			const uint32_t Niter = (uint32_t)mxGetScalar(prhs[50]);
 
 			// Number of subsets
-			const uint32_t subsets = (uint32_t)mxGetScalar(prhs[49]);
+			const uint32_t subsets = (uint32_t)mxGetScalar(prhs[51]);
 
 			// Which reconstruction methods are used
-			const uint8_t* rekot = (uint8_t*)mxGetData(prhs[50]);
-			const size_t size_reko = mxGetNumberOfElements(prhs[50]);
+			const uint8_t* rekot = (uint8_t*)mxGetData(prhs[52]);
+			const size_t size_reko = mxGetNumberOfElements(prhs[52]);
 
 			// Epsilon value
-			const float epps = (float)mxGetScalar(prhs[51]);
+			const float epps = (float)mxGetScalar(prhs[53]);
 
 			// Measurement data
-			const mxArray* Sin = prhs[52];
+			const mxArray* Sin = prhs[54];
 
 			// Number of time steps
-			const uint32_t Nt = (uint32_t)mxGetScalar(prhs[53]);
+			const uint32_t Nt = (uint32_t)mxGetScalar(prhs[55]);
 
 			// Is OSEM used
-			const bool osem_bool = (bool)mxGetScalar(prhs[54]);
+			const bool osem_bool = (bool)mxGetScalar(prhs[56]);
 
-			// Force re-building of OpenCL kernels
-			const bool force_build = (bool)mxGetScalar(prhs[55]);
+			// Force re-building of OpenCL kernels (unused)
+			const bool force_build = (bool)mxGetScalar(prhs[57]);
+
+			// Use 64-bit integer atomic functions if possible
+			const bool use_64bit_atomics = (bool)mxGetScalar(prhs[59]);
 
 			const size_t outSize = Nx * Ny * Nz;
 			const size_t outSize2 = Niter + 1;
 
 			// Create the output cell array
 			mxArray *cell_array_ptr;
-			cell_array_ptr = mxCreateCellMatrix(2, Nt);
+			cell_array_ptr = mxCreateCellMatrix(1, Nt);
 
-			const mwSize dim[2] = { static_cast<mwSize>(Nx*Ny*Nz), static_cast<mwSize>(Niter + 1) };
+			mexPrintf("Nt = %u\n", Nt);
 
-			reconstruction_multigpu(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, prhs[56], dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l,
-				xy_index, z_index, size_x, TotSinos, cell_array_ptr, dim, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm, size_norm, subsets, epps, rekot,
-				k_path, size_reko, Nt, pseudos, det_per_ring, pRows, L, raw, size_z, osem_bool, fileName, force_build, device, kerroin, numel_x, tube_width, crystal_size_z,  
-				x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, projector_type, header_directory, precompute_var, dec);
+			// Implementation 3 (multi-device OpenCL)
+			reconstruction_multigpu(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, prhs[58], dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, 
+				NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, cell_array_ptr, verbose, randoms_correction, attenuation_correction, 
+				normalization, atten, size_atten, norm, size_norm, subsets, epps, rekot, k_path, size_reko, Nt, pseudos, det_per_ring, pRows, L, raw, 
+				size_z, osem_bool, fileName, force_build, device, kerroin, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, 
+				size_center_y, size_center_z, projector_type, header_directory, precompute_var, dec, n_rays, cr_pz, use_64bit_atomics);
 
 			plhs[0] = cell_array_ptr;
 		}

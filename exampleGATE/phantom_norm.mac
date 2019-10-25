@@ -1,0 +1,23 @@
+#	P H A N T O M
+#/gate/world/daughters/name NEMACylinder
+#/gate/world/daughters/insert cylinder
+#/gate/NEMACylinder/setMaterial Germanium
+#/gate/NEMACylinder/geometry/setRmax   70. mm
+#/gate/NEMACylinder/geometry/setHeight 100. mm
+#/gate/NEMACylinder/placement/setTranslation 0. 0. -10. mm
+
+#/gate/NEMACylinder/vis/forceSolid
+#/gate/NEMACylinder/vis/setColor red
+
+
+#/gate/NEMACylinder/attachPhantomSD
+
+/gate/world/daughters/name innerCylinder1
+/gate/world/daughters/insert cylinder
+/gate/innerCylinder1/placement/setTranslation 0.0 0.0 0.0 mm
+/gate/innerCylinder1/geometry/setRmax 107. mm
+/gate/innerCylinder1/geometry/setHeight 90.0 mm
+/gate/innerCylinder1/setMaterial Air
+/gate/innerCylinder1/vis/forceWireframe
+/gate/innerCylinder1/vis/setColor blue
+/gate/innerCylinder1/attachPhantomSD

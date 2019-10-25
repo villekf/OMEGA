@@ -11,6 +11,7 @@ function [varargout] = sinogram_coordinates_2D(options)
 %   j = Sinogram bin number (angle) for each measurement
 %   accepted_lors = The indices of the LORs that are within the specified
 %   distance value (Ndist)
+%   swap = Indices of sinogram corners to be swapped
 %   gaps = Location of pseudo detector gaps in the sinogram
 %
 % See also sinogram_coordinates_3D, detector_coordinates, form_sinograms
@@ -32,7 +33,7 @@ function [varargout] = sinogram_coordinates_2D(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargout > 6
+if nargout > 7
     error('Too many output arguments')
 end
 cryst_per_block = options.cryst_per_block;
@@ -40,11 +41,11 @@ blocks_per_ring = options.blocks_per_ring;
 det_per_ring = options.det_per_ring;
 Nang = options.Nang;
 Ndist = options.Ndist;
-machine_name = options.machine_name;
+% machine_name = options.machine_name;
 
-folder = fileparts(which('sinogram_coordinates_2D.m'));
-folder = strrep(folder, 'source','mat-files/');
-folder = strrep(folder, '\','/');
+% folder = fileparts(which('sinogram_coordinates_2D.m'));
+% folder = strrep(folder, 'source','mat-files/');
+% folder = strrep(folder, '\','/');
 
 %% 2D coordinates
 
@@ -103,23 +104,27 @@ for kk = 1 : length(ya)
 end
 
 % The sinogram corners need to the swapped
-temppi = j*2 < -i;
-temppi2 = (i <= (j-det_w_pseudo/2)*2);
 
-temppi3 = false(det_w_pseudo - numel(pseudo_d));
-temppi3(tril(true(det_w_pseudo - numel(pseudo_d)))) = temppi;
-temppi = logical(temppi3 + tril(temppi3,-1)');
+if nargout >= 6
+    temppi = j*2 < -i;
+    temppi2 = (i <= (j-det_w_pseudo/2)*2);
+    
+    temppi3 = false(det_w_pseudo - numel(pseudo_d));
+    temppi3(tril(true(det_w_pseudo - numel(pseudo_d)))) = temppi;
+    temppi = logical(temppi3 + tril(temppi3,-1)');
+    
+    temppi3 = false(det_w_pseudo - numel(pseudo_d));
+    temppi3(tril(true(det_w_pseudo - numel(pseudo_d)))) = temppi2;
+    temppi2 = logical(temppi3 + tril(temppi3,-1)');
+    
+    swap1 = triu(temppi);
+    swap3 = tril(temppi);
+    swap2 = triu(temppi2);
+    swap4 = tril(temppi2);
+    varargout{6} = cat(3, swap1, swap2, swap3, swap4);
+end
 
-temppi3 = false(det_w_pseudo - numel(pseudo_d));
-temppi3(tril(true(det_w_pseudo - numel(pseudo_d)))) = temppi2;
-temppi2 = logical(temppi3 + tril(temppi3,-1)');
-
-swap1 = triu(temppi);
-swap3 = tril(temppi);
-swap2 = triu(temppi2);
-swap4 = tril(temppi2);
-
-save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'], 'swap1', 'swap2','swap3','swap4');
+% save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'], 'swap1', 'swap2','swap3','swap4');
 
 % Determine the accepted LORs (distances that are within the predefined
 % value)
@@ -127,6 +132,9 @@ if mod(Ndist,2) == 0
     accepted_lors = (i <= (Ndist/2 + min(0,options.ndist_side)) & i >= (-Ndist/2 + max(0,options.ndist_side)));
 else
     accepted_lors = (i <= Ndist/2 & i >= (-Ndist/2));
+end
+if nargout >= 5
+    varargout{5} = accepted_lors;
 end
 
 j = idivide(j,det_w_pseudo/2/Nang);
@@ -140,7 +148,7 @@ j = j + 1;
 
 L = L(accepted_lors,:);
 
-L = L +1;
+L = L + 1;
 
 xx1 = xp(L(:,1));
 yy1 = yp(L(:,1));
@@ -213,7 +221,7 @@ if mashing > 1
 end
 
 % If pseudo detectors present, locate the gaps in the sinogram
-if det_w_pseudo > det_per_ring
+if det_w_pseudo > det_per_ring && nargout >= 7
     
     xx = accumarray([i j], xx1, [Ndist Nang],@mean, NaN);
     
@@ -226,11 +234,11 @@ if det_w_pseudo > det_per_ring
     else
         gaps = find(isnan(xx));
     end
-    if nargout >= 6
-        varargout{6} = gaps;
+    if nargout >= 7
+        varargout{7} = gaps;
     end
     
-    save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'], 'gaps','-append');
+%     save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'], 'gaps','-append');
 end
 
 %%
@@ -267,4 +275,4 @@ if nargout >= 4
     varargout{4} = j;
 end
 %%
-save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'],'x','y','i','j','accepted_lors','-append');
+% save([folder machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'],'x','y','i','j','accepted_lors','-append');

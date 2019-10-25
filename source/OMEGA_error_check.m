@@ -19,14 +19,18 @@ function options = OMEGA_error_check(options)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+if ~isfield(options, 'custom')
+    options.custom = false;
+end
 MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_MAP || any(options.COSEM_MAP));
 MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_MAP || any(options.COSEM_MAP));
-PRIOR = (options.MRP || options.quad || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS || options.TGV || options.NLM);
-PRIOR_summa = sum([options.MRP, options.quad, options.L, options.FMH, options.weighted_mean, options.TV, options.AD, options.APLS, options.TGV, options.NLM]);
+PRIOR = (options.MRP || options.quad || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS || options.TGV || options.NLM || options.custom);
+PRIOR_summa = sum([options.MRP, options.quad, options.L, options.FMH, options.weighted_mean, options.TV, options.AD, options.APLS, options.TGV, options.NLM, options.custom]);
 OS = (options.osem || options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
     options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_MAP || any(options.COSEM_MAP));
 MLOS = (options.mlem || options.osem);
+OS_I3 = (options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
+    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_MAP || any(options.COSEM_MAP));
 NMLOS = (options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
     options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_MAP || any(options.COSEM_MAP) || options.OSL_MLEM);
 OS_I4 = (options.mramla || options.cosem || options.rbi || options.ecosem || options.acosem || options.MBSREM || options.RBI_MAP || any(options.COSEM_MAP));
@@ -50,11 +54,11 @@ end
 if options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16
     error('Number of bits used in LMF is more than 16 bits. OMEGA supports only 16 bit detector indices')
 end
-if options.span > options.ring_difference
+if options.span > options.ring_difference && options.NSinos > 1
     error(['Span value cannot be larger than ring difference (' num2str(options.ring_difference) ')'])
 end
-if options.span < 1
-    error('Span value has to be at least 1')
+if options.span < 3
+    error('Span value has to be at least 3. Use raw data if you want uncompressed reconstruction')
 end
 if mod(options.span,2) == 0
     error('Span value has to be odd')
@@ -106,22 +110,16 @@ if isempty(options.x0)
     warning('Initial value is an empty array, using the default values (1)')
     options.x0 = ones(options.Nx, options.Ny, options.Nz);
 end
-if options.attenuation_correction && isempty(options.attenuation_datafile)
-    error('Attenuation correction is selected, but no attenuation file has been specified')
-end
-if options.attenuation_correction && exist(options.attenuation_datafile, 'file') ~= 2
-    error('Attenuation file not found on path')
-end
 if isunix
-    if ~strcmp('/',options.fpath(end))
+    if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
         options.fpath = [options.fpath '/'];
     end
 elseif ispc
-    if ~strcmp('\',options.fpath(end)) && ~strcmp('/',options.fpath(end))
+    if length(options.fpath) > 1 && ~strcmp('\',options.fpath(end)) && ~strcmp('/',options.fpath(end))
         options.fpath = [options.fpath '\'];
     end
 else
-    if ~strcmp('/',options.fpath(end))
+    if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
         options.fpath = [options.fpath '/'];
     end
 end
@@ -129,7 +127,7 @@ if options.use_LMF && options.randoms_correction
     warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
     options.randoms_correction = false;
 end
-if options.TV_use_anatomical && options.TV_OSL && exist(options.TV_reference_image,'file') ~= 2 && MAP
+if options.TV_use_anatomical && options.TV && exist(options.TV_reference_image,'file') ~= 2 && MAP
     error('Anatomical reference image for TV was not found on path')
 end
 % if options.scatter_correction && ~options.only_reconstructions && ~options.use_raw_data
@@ -157,7 +155,7 @@ end
 if options.store_scatter && sum(options.scatter_components) <= 0
     error('Store scatter selected, but no scatter components have been selected')
 end
-if options.reconstruction_method == 3
+if options.implementation == 3
     if options.osem && options.mlem
         warning('Both OSEM and MLEM selected with implementation 3, using only MLEM');
         options.osem = false;
@@ -181,20 +179,20 @@ end
 % if (options.blank || options.transmission_scan) && options.attenuation_correction
 %     error('Both transmission and image based attenuation correction selected. Use only one correction method.')
 % end
-if options.source && options.use_ASCII && (options.source_index1 == 0 || isempty(options.source_index1) || options.source_index2 == 0 || isempty(options.source_index2))
-    error('Source image selected with ASCII data, but no source index column numbers are provided.')
-end
+% if options.source && options.use_ASCII && (options.source_index1 == 0 || isempty(options.source_index1) || options.source_index2 == 0 || isempty(options.source_index2))
+%     error('Source image selected with ASCII data, but no source index column numbers are provided.')
+% end
 if options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;
 end
-% if options.precompute_lor == false && options.reconstruction_method > 1
+% if options.precompute_lor == false && options.implementation > 1
 %     error('precompute_lor must be set to true if any other reconstruction method than 1 is used.')
 % end
-if options.reconstruction_method == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor
+if options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor
     error('MEX-file not found. Run install_mex first.')
 end
-if options.reconstruction_method == 4 && exist('projector_mex','file') ~= 3
+if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file not found. Run install_mex first.')
 end
 if options.use_root && exist('GATE_root_matlab','file') ~= 3
@@ -203,34 +201,37 @@ end
 if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3
     error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
 end
-if options.reconstruction_method == 2 && exist('OpenCL_matrixfree','file') ~= 3
+if options.implementation == 2 && exist('OpenCL_matrixfree','file') ~= 3
     error('OpenCL reconstruction selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.')
 end
-if options.reconstruction_method == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
+if options.implementation == 3 && exist('OpenCL_matrixfree_multi_gpu','file') ~= 3
     error('OpenCL reconstruction selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.')
 end
-if options.reconstruction_method == 5 && exist('improved_Siddon_openCL','file') ~= 3
+if options.implementation == 5 && exist('improved_Siddon_openCL','file') ~= 3
     error('OpenCL reconstruction selected, but OpenCL MEX-files were not installed. Run install_mex to build OpenCL MEX-files.')
 end
-if options.reconstruction_method == 3 && NMLOS
-    warning(['Implementation ' num2str(options.reconstruction_method) ' selected with reconstruction algorithms other than MLEM or OSEM. '...
+if options.implementation == 3 && NMLOS
+    warning(['Implementation ' num2str(options.implementation) ' selected with reconstruction algorithms other than MLEM or OSEM. '...
         'Only MLEM or OSEM reconstruction can be performed'])
 end
-if options.reconstruction_method == 3 && ~MLOS
-    error(['Implementation ' num2str(options.reconstruction_method) ' selected, but neither MLEM nor OSEM algorithm has been selected.'])
+if options.implementation == 3 && ~MLOS
+    error(['Implementation ' num2str(options.implementation) ' selected, but neither MLEM nor OSEM algorithm has been selected.'])
 end
-if options.reconstruction_method == 4 && OS_I4
-    error(['Implementation ' num2str(options.reconstruction_method) ' selected with unsupported algorithm. Only MLEM, OSEM, ROSEM,'...
+if options.implementation == 3 && OS_I3
+    warning(['Implementation ' num2str(options.implementation) ' supports only MLEM and OSEM, any other algorithms will be ignored.'])
+end
+if options.implementation == 4 && OS_I4
+    warning(['Implementation ' num2str(options.implementation) ' selected with unsupported algorithm. Only MLEM, OSEM, ROSEM,'...
        ' RAMLA (and their MAP-methods) and DRAMA are supported!'])
 end
-if options.reconstruction_method == 4 && PRIOR_summa > 1
-    error(['Implementation ' num2str(options.reconstruction_method) ' supports only one prior at a time.'])
+if options.implementation == 4 && PRIOR_summa > 1 && MAP
+    error(['Implementation ' num2str(options.implementation) ' supports only one prior at a time.'])
 end
-if options.reconstruction_method == 4 && (PRIOR_summa == 1 && ((options.osem && options.OSL_OSEM) || (options.mlem && options.OSL_MLEM)) ...
+if options.implementation == 4 && (PRIOR_summa == 1 && ((options.osem && options.OSL_OSEM) || (options.mlem && options.OSL_MLEM)) ...
         || OS_I4_summa > 1)
-    error(['Implementation ' num2str(options.reconstruction_method) ' supports only one OS and one MLEM algorithm at a time.'])
+    error(['Implementation ' num2str(options.implementation) ' supports only one OS and one MLEM algorithm at a time.'])
 end
-if options.reconstruction_method == 1 && ~options.precompute_lor
+if options.implementation == 1 && ~options.precompute_lor
     warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! Either set '...
         'precompute_lor to true or use another implementation.'])
     if options.projector_type == 2
@@ -238,8 +239,17 @@ if options.reconstruction_method == 1 && ~options.precompute_lor
     end
 end
 if options.verbose
+    if options.use_ASCII && options.use_machine == 0
+        disp('Using ASCII data.')
+    elseif options.use_LMF && options.use_machine == 0
+        disp('Using LMF data.')
+    elseif options.use_root && options.use_machine == 0
+        disp('Using ROOT data.')
+    end
+    if ~options.compute_normalization
+    disp(['Using implementation ' num2str(options.implementation)])
     if options.mlem
-        if (options.reconstruction_method == 1 && ~options.precompute_obs_matrix) || options.reconstruction_method == 5
+        if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
             warning('MLEM is not supported with implementation 5 or with implementation 1 without precomputed observation matrix.')
             options.mlem = false;
             if ~OS && ~MAPOS
@@ -247,6 +257,7 @@ if options.verbose
             end
         else
             disp('MLEM selected.')
+            options.subsets = 1;
         end
     end
     if options.osem
@@ -277,7 +288,7 @@ if options.verbose
         disp('ECOSEM selected.')
     end
     if options.OSL_MLEM && PRIOR
-        if options.reconstruction_method ~= 2
+        if options.implementation ~= 2
             warning('MLEM-OSL is not supported with implementations 1, 3 or 4.')
             options.OSL_MLEM = false;
         else
@@ -398,7 +409,7 @@ if options.verbose
         if options.FluxType > 2 || options.FluxType < 1
             error('FluxType has to be either 1 or 2')
         end
-        if (options.DiffusionType > 2 || options.DiffusionType < 1) && options.reconstruction_method == 2
+        if (options.DiffusionType > 2 || options.DiffusionType < 1) && options.implementation == 2
             error('DiffusionType has to be either 1 or 2')
         end
         disp('AD selected.')
@@ -419,7 +430,7 @@ if options.verbose
         options.TGV = false;
     end
     if options.NLM && MAP
-        if options.reconstruction_method == 2
+        if options.implementation == 2
             warning('NLM is not supported with OpenCL reconstruction')
             options.NLM = false;
         else
@@ -431,5 +442,67 @@ if options.verbose
     end
     if ~OS && ~MAP && ~options.mlem && ~options.only_sinos
         error('No reconstruction algorithm selected')
+    end
+    if options.precompute_lor
+        
+        disp('Precomputed LOR voxel counts used.')
+    else
+        disp('No precomputed data will be used.')
+    end
+    if options.projector_type == 1 && ~options.precompute_lor
+        if options.implementation == 1
+            disp('Improved Siddon''s algorithm used with 1 ray.')
+        else
+            disp(['Improved Siddon''s algorithm used with ' num2str(options.n_rays) ' rays.'])
+        end
+    elseif options.projector_type == 1
+        disp('Improved Siddon''s algorithm used with 1 ray.')
+    elseif options.projector_type == 2
+        dispi = 'Orthogonal distance-based ray tracer used';
+        if options.tube_width_z > 0
+            dispi = [dispi, ' in 3D mode.'];
+        else
+            dispi = [dispi, ' in 2D mode.'];
+        end
+        disp(dispi)
+    end
+    if options.attenuation_correction
+        disp('Attenuation correction ON')
+    end
+    if options.randoms_correction
+        dispi = 'Randoms correction ON';
+        if options.variance_reduction
+            dispi = [dispi, ' with variance reduction'];
+            if options.randoms_smoothing
+                dispi = [dispi, ' and smoothing'];
+            end
+        elseif options.randoms_smoothing
+            dispi = [dispi, ' with smoothing'];
+        end
+        disp(dispi)
+    end
+    if options.scatter_correction
+        dispi = 'Scatter correction ON';
+        if options.scatter_smoothing
+            dispi = [dispi, ' with smoothing'];
+        end
+        disp(dispi)
+    end
+    end
+    if options.use_raw_data
+        disp('Using raw list-mode data')
+    else
+        disp('Using sinogram data')
+    end
+    if options.normalization_correction && ~options.compute_normalization
+        disp('Normalization correction ON')
+    elseif options.normalization_correction && options.compute_normalization
+        warning('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
+        options.normalization_correction = false;
+    elseif options.compute_normalization
+        disp('Computing normalization coefficients')
+    end
+    if options.compute_normalization && sum(options.normalization_options) == 0
+        error('Normalization computation selected, but no normalization components selected')
     end
 end

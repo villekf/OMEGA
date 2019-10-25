@@ -1,5 +1,5 @@
 /**************************************************************************
-* Implements the Orthogonal Siddon's algorithm for OMEGA.
+* Implements the Orthogonal Siddon's algorithm (implementation 1).
 * This version also checks whether the LOR/ray intersects the pixel space,
 * i.e. it doesn't require any precomputation.
 * This version outputs the row and column indices and values that can be
@@ -264,12 +264,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
 						if (ii == Np - 1u) {
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 						}
@@ -286,12 +286,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 						if (attenuation_correction)
 							compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
 						if (crystal_size_z == 0.) {
-							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 								0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 						}
 						else {
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-								tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+								tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 								0, elements, indices, idx);
 						}
 
@@ -311,12 +311,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 						if (ii != Np - 1u && xyz == 1) {
 							tempi -= iu;
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 						}
@@ -327,7 +327,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 				temp = 1. / temp;
 
 				if (attenuation_correction)
-					temp *= jelppi;
+					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
 
@@ -398,12 +398,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (attenuation_correction)
 								compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempj, Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, temp, tempijk, Nx, tempi, jelppi, 
+								orth_distance_full(tempj, Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, temp, tempijk, Nx, tempi, 
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center[tempi], y_center, z_center, temp, tempijk, Nx, tempi, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							tempi += iu;
@@ -418,7 +418,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (attenuation_correction)
 								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempj, Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, temp, tempijk, Nx, tempi, jelppi, 
+								orth_distance_full(tempj, Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, temp, tempijk, Nx, tempi, 
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 								if (ku > 0)
 									tempijk += Ny_max;
@@ -427,7 +427,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							}
 							else if (ii == Np - 1u) {
 								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center[tempi], y_center, z_center, temp, tempijk, Nx, tempi, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							tempk += ku;
@@ -438,7 +438,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (ii != Np - 1u && xyz == 3u && crystal_size_z != 0.) {
 								tempk -= ku;
 								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center[tempi], y_center, z_center, temp, tempijk, Nx, tempi, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							break;
@@ -448,7 +448,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 					temp = 1. / temp;
 
 					if (attenuation_correction)
-						temp *= jelppi;
+						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
 
@@ -513,12 +513,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (attenuation_correction)
 								compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							tempj += (ju);
@@ -533,7 +533,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (attenuation_correction)
 								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 								if (ku > 0)
 									tempijk += Ny_max;
@@ -542,7 +542,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							}
 							else if (ii == Np - 1u) {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							tempk += ku;
@@ -553,7 +553,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							if (ii != Np - 1u && xyz == 3u && crystal_size_z != 0.) {
 								tempk -= ku;
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  ju, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 							break;
@@ -564,7 +564,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 					temp = 1. / temp;
 
 					if (attenuation_correction)
-						temp *= jelppi;
+						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
 
@@ -617,7 +617,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 						if (attenuation_correction)
 							compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
 						if (crystal_size_z == 0.) {
-							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 								0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							if (ku > 0)
 								tempijk += Nyx;
@@ -626,7 +626,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 						}
 						else if (ii == Np - 1u) {
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-								tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+								tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 								0, elements, indices, idx);
 						}
 						tempk += ku;
@@ -637,12 +637,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 						if (attenuation_correction)
 							compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
 						if (crystal_size_z == 0.) {
-							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+							orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 								0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 						}
 						else {
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-								tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+								tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 								0, elements, indices, idx);
 						}
 						tempj += (ju);
@@ -658,12 +658,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
 						if (ii == Np - 1u) {
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 						}
@@ -681,12 +681,12 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 							else
 								tempk -= ku;
 							if (crystal_size_z == 0.) {
-								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj, jelppi, 
+								orth_distance_full(tempi, Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, temp, tempijk, 1u, tempj,
 									0., ax, osem_apu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 0, elements, indices, idx);
 							}
 							else {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, temp, tempijk, 1u, tempj, 
-									tempk, jelppi, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
+									tempk, 0., ax, osem_apu, detectors, Nyx, kerroin, dec,  iu, no_norm, false, false, OMP, PRECOMPUTE, rhs, Summ, 
 									0, elements, indices, idx);
 							}
 						}
@@ -697,7 +697,7 @@ int orth_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x
 				temp = 1. / temp;
 
 				if (attenuation_correction)
-					temp *= jelppi;
+					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
 

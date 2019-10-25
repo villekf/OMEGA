@@ -126,11 +126,11 @@ const char *getErrorString(cl_int error)
 
 std::string header_to_string(const char* header_directory) {
 	std::string header_source;
-	mexPrintf("header_dir = %s\n", header_directory);
+	//mexPrintf("header_dir = %s\n", header_directory);
 	header_source = header_directory;
-	mexPrintf("header_dir = %s\n", header_source.c_str());
+	//mexPrintf("header_dir = %s\n", header_source.c_str());
 	header_source += "opencl_functions.h";
-	mexPrintf("header = %s\n", header_source.c_str());
+	//mexPrintf("header = %s\n", header_source.c_str());
 	std::fstream sourceFile(header_source.c_str());
 	std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 	return content;

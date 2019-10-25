@@ -49,19 +49,11 @@ color_from_algo = 1;
 v_plane = 1;
 
 
-
-
-img = pz{algorithms(color_from_algo)};
+img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
-    warning('The current selected algorithm does not contain any estimes!')
-    fprintf('The following are contained in the input array:\n')
-    char_ar = algo_char(~cellfun(@isempty,pz(1:end-1)));
-    loc = find(~cellfun(@isempty,pz(1:end-1)));
-    for kk = 1 : nnz(~cellfun(@isempty,pz(1:end-1)))
-        fprintf('Element %d: %s\n', loc(kk), char_ar(kk))
-    end
     return
 end
+
 
 if length(algorithms) > 2
     hh = 2;
@@ -81,7 +73,7 @@ else
     im_size = gg(4)/2.5;
 end
 figure
-set(gcf, 'Position', [gg(3)/2-im_size/2*jj, gg(4)/2-im_size/2*hh, im_size * jj, im_size * hh]);
+set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, im_size * jj), gg(4), im_size * hh]);
 
 clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
 if v_plane == 2
@@ -105,7 +97,7 @@ for kk = 1 : koko
         axis image
         title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk)])
     end
-    pause(0.25)
+    pause%(0.25)
     drawnow
 end
 
@@ -134,15 +126,8 @@ v_plane = 1;
 % Initial values can be included as iterations as they are saved as such
 N_iter = 2;
 
-img = pz{algorithm};
+img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
-    warning('The current selected algorithm does not contain any estimes!')
-    fprintf('The following are contained in the input array:\n')
-    char_ar = algo_char(~cellfun(@isempty,pz(1:end-1)));
-    loc = find(~cellfun(@isempty,pz(1:end-1)));
-    for kk = 1 : nnz(~cellfun(@isempty,pz(1:end-1)))
-        fprintf('Element %d: %s\n', loc(kk), char_ar(kk))
-    end
     return
 end
 
@@ -166,7 +151,7 @@ else
     im_size = gg(4)/2.5;
 end
 figure
-set(gcf, 'Position', [gg(3)/2-im_size/2*jj, gg(4)/2-im_size/2*hh, im_size * jj, im_size * hh]);
+set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, im_size * jj), gg(4), im_size * hh]);
 if v_plane == 2
     koko = size(img,1);
     img = rot90(permute(img, [3 2 1 4]),2);
@@ -214,31 +199,25 @@ color_scale = 1;
 % will be taken from RAMLA reconstruction (second element of algorithms)
 color_from_algo = 1;
 % How is the source image formed?
-% 1 = Form the source image by using only singles (coincidences) that
-% originate from the very same location (source coordinates are the same)
+% 1 = Form the source image by using only coincidences that originate from
+% the very same location (source coordinates are the same) 
 % 2 = Form the source image by using only the first single
 % 3 = Form the source image by using only the second single
-% 4 = Form the source image by using both singles and then dividing the
+% 4 = Form the source image by using both singles (singles mode)
+% 5 = Form the source image by using both singles and then dividing the
 % counts by two
-% 5 = Form the source image by using the average coordinates from both
+% 6 = Form the source image by using the average coordinates from both
 % singles
-% 6 = Form the source image by using the true coincidences (requires
-% obtain_trues = true) (GATE only)
+% 7 = Form the source image by using the true coincidences (requires
+% obtain_trues = true)
 source_coordinates = 1;
 
 % The source data was obtained from
 % 1 = ASCII, 2 = LMF, 3 = ROOT
 source = 1;
 
-img = pz{algorithms(color_from_algo)};
+img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
-    warning('The current selected algorithm does not contain any estimes!')
-    fprintf('The following are contained in the input array:\n')
-    char_ar = algo_char(~cellfun(@isempty,pz(1:end-1)));
-    loc = find(~cellfun(@isempty,pz(1:end-1)));
-    for kk = 1 : nnz(~cellfun(@isempty,pz(1:end-1)))
-        fprintf('Element %d: %s\n', loc(kk), char_ar(kk))
-    end
     return
 end
 
@@ -256,7 +235,7 @@ else
     im_size = gg(4)/2.5;
 end
 figure
-set(gcf, 'Position', [gg(3)/2-im_size/2*jj, gg(4)/2-im_size/2*hh, im_size * jj, im_size * hh]);
+set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, im_size * jj), gg(4), im_size * hh]);
 
 if source == 1
     load([image_properties.machine_name '_Ideal_image_coordinates_' image_properties.name '_ASCII.mat'])
@@ -278,6 +257,8 @@ elseif source_coordinates == 5
     FOV = C{5};
 elseif source_coordinates == 6
     FOV = C{6};
+elseif source_coordinates == 7
+    FOV = C{7};
 end
 
 
@@ -327,21 +308,14 @@ algo_char = algorithms_char();
 % 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
 % diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
 % Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
-algorithm = 1;
+algorithm = 2;
 % The scale value for the pixel alpha values. Higher values will make the
 % pixels more transparent, allowing areas of higher activity to be seen
 % through background noise
-alpha_scale = 5;
+alpha_scale = 10;
 
-img = pz{algorithm};
+img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
-    warning('The current selected algorithm does not contain any estimes!')
-    fprintf('The following are contained in the input array:\n')
-    char_ar = algo_char(~cellfun(@isempty,pz(1:end-1)));
-    loc = find(~cellfun(@isempty,pz(1:end-1)));
-    for kk = 1 : nnz(~cellfun(@isempty,pz(1:end-1)))
-        fprintf('Element %d: %s\n', loc(kk), char_ar(kk))
-    end
     return
 end
 
@@ -351,6 +325,91 @@ alpha = alpha./alpha_scaling;
 alpha(alpha > 1) = 1;
 
 vol3d('CData', img(:,:,:,end), 'Alpha', alpha);
+
+%% Visualize simultanously all the views for n algorithms
+% NOTE: Due to likely different number of slices, the smallers views will
+% not be updated once they reach maximum number of slices
+
+algo_char = algorithms_char();
+
+% 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = COSEM, 7 = ECOSEM, 8 =
+% ACOSEM, 9 = DRAMA, 8 = MRP-OSL, 9 = MRP-BSREM, 10 = Quadratic prior OSL, 11 =
+% Quadratic prior BSREM 12 = L-filter OSL, 13 = L-filter BSREM, 14 = FMH
+% OSL, 15 = FMH BSREM, 16 = Weighted mean OSL, 17 = Weighted mean BSREM
+% 18 = Total variation OSL, 19 = Total variation BSREM, 20 = Anisotropic
+% diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
+% Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
+algorithms = [1,2];
+% algorithms = [2,3,4,5,6,7];
+% algorithms = [8,9,10,11,12,13,14,15];
+% Use this value to scale the color scale in the image (higher values make
+% low count areas brighter)
+color_scale = 1;
+% From which reconstruction should the color scale be taken
+% NOTE: The numbering is according to the length of the above algorithms
+% vector, e.g. if you have algorithms = [2, 4, 5] and color_from_algo = 2
+% then the scale will be taken from RAMLA reconstruction (second element of
+% algorithms)
+color_from_algo = 1;
+
+img = check_algorithms(pz, algorithms, color_from_algo);
+if isempty(img)
+    return
+end
+
+hh = numel(algorithms);
+jj = 3;
+set(0,'units','pixels')
+gg = get(0,'ScreenSize');
+im_size = gg(4)/2.5;
+figure
+set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, gg(4)), im_size * jj, im_size * hh]);
+
+clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+for kk = 1 : max([koko1, koko2, koko3])
+    for ll = 1 : numel(algorithms)
+        img = pz{algorithms(ll)};
+        koko1 = size(img,1);
+        koko2 = size(img,2);
+        koko3 = size(img,3);
+        if kk <= koko3
+            subplot(hh, jj, 1 + jj*(ll - 1))
+            imagesc(img(:,:,kk,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', transverse'])
+        else
+            subplot(hh, jj, 1 + jj*(ll - 1))
+            imagesc(img(:,:,koko3,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko1) ', transverse'])
+        end
+        axis image
+        if kk <= koko1
+            img = rot90(permute(img, [3 2 1 4]),2);
+            subplot(hh, jj, 2 + jj*(ll - 1))
+            imagesc(img(:,:,kk,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', frontal'])
+        else
+            img = rot90(permute(img, [3 2 1 4]),2);
+            subplot(hh, jj, 2 + jj*(ll - 1))
+            imagesc(img(:,:,koko1,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko1) ', frontal'])
+        end
+        axis image
+        if kk <= koko2
+            img = permute(img, [1 3 2 4]);
+            subplot(hh, jj, 3 + jj*(ll - 1))
+            imagesc(img(:,:,kk,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', sagittal'])
+        else
+            img = permute(img, [1 3 2 4]);
+            subplot(hh, jj, 3 + jj*(ll - 1))
+            imagesc(img(:,:,koko2,end),clim)
+            title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko2) ', sagittal'])
+        end
+        axis image
+    end
+    pause(0.05)
+    drawnow
+end
 
 %% Dynamic visualization
 % Time series of images, n reconstructions, optionally also the
@@ -365,8 +424,7 @@ algo_char = algorithms_char();
 % 18 = Total variation OSL, 18 = Total variation BSREM, 20 = Anisotropic
 % diffusion OSL, 21 = Anisotropic diffusion BSREM, 22 = Asymmetric Parallel
 % Level Sets OSL, 23 = Asymmetric Parallel Level Sets BSREM
-algorithms = [2,3,4,5,6,7];
-% algorithms = [8,9,10,11,12,13,14,15];
+algorithms = [2];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
 color_scale = 1;
@@ -378,35 +436,38 @@ color_from_algo = 1;
 % Visualization plane
 % Choose the plane where the visualization takes place
 % 1 = Transverse, 2 = Coronal/frontal, 3 = Sagittal
-v_plane = 3;
+v_plane = 1;
 % From which slice is the dynamic time series obtained?
 slice = 40;
 % The source data was obtained from
 % 0 = No source image, 1 = ASCII, 2 = LMF, 3 = ROOT
 source = 0;
 % How is the source image formed?
-% 1 = Form the source image by using only singles (coincidences) that
-% originate from the very same location (source coordinates are the same)
+% 1 = Form the source image by using only coincidences that originate from
+% the very same location (source coordinates are the same) 
 % 2 = Form the source image by using only the first single
 % 3 = Form the source image by using only the second single
-% 4 = Form the source image by using both singles and then dividing the
+% 4 = Form the source image by using both singles (singles mode)
+% 5 = Form the source image by using both singles and then dividing the
 % counts by two
-% 5 = Form the source image by using the average coordinates from both
+% 6 = Form the source image by using the average coordinates from both
 % singles
-% 6 = Form the source image by using the true coincidences (requires
-% obtain_trues = true) (GATE only)
+% 7 = Form the source image by using the true coincidences (requires
+% obtain_trues = true)
 source_coordinates = 1;
 
 img = pz{algorithms(color_from_algo)};
-if isempty(img)
-    warning('The current selected algorithm does not contain any estimes!')
-    fprintf('The following are contained in the input array:\n')
-    char_ar = algo_char(~cellfun(@isempty,pz(1:end-1)));
-    loc = find(~cellfun(@isempty,pz(1:end-1)));
-    for kk = 1 : nnz(~cellfun(@isempty,pz(1:end-1)))
-        fprintf('Element %d: %s\n', loc(kk), char_ar(kk))
+for jj = 1:numel(algorithms)
+    if isempty(pz{algorithms(jj)})
+        warning('The current selected algorithm does not contain any estimes!')
+        fprintf('The following are contained in the input array:\n')
+        char_ar = algo_char(~cellfun(@isempty,pz(:,1)));
+        loc = find(~cellfun(@isempty,pz(1:end-1,1)));
+        for kk = 1 : nnz(~cellfun(@isempty,pz(:,1)))-1
+            fprintf('Element %d: %s\n', loc(kk), char_ar{kk})
+        end
+        return
     end
-    return
 end
 
 if length(algorithms) + nnz(source) > 2
@@ -427,7 +488,7 @@ else
     im_size = gg(4)/2.5;
 end
 figure
-set(gcf, 'Position', [gg(3)/2-im_size/2*jj, gg(4)/2-im_size/2*hh, im_size * jj, im_size * hh]);
+set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, im_size * jj), gg(4), im_size * hh]);
 
 if source == 1
     load([image_properties.machine_name '_Ideal_image_coordinates_' image_properties.name '_ASCII.mat'])
@@ -478,6 +539,8 @@ for kk = 1 : image_properties.n_time_steps
             FOV = C{5,kk};
         elseif source_coordinates == 6
             FOV = C{6,kk};
+        elseif source_coordinates == 7
+            FOV = C{7};
         end
         if v_plane == 2
             FOV = permute(FOV, [1 3 2]);
@@ -489,6 +552,6 @@ for kk = 1 : image_properties.n_time_steps
         axis image
         title(['Original decay image, time step = ' num2str(kk)])
     end
-    pause(0.25)
+    pause%(0.25)
     drawnow
 end

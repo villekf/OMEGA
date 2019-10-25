@@ -492,9 +492,10 @@ inline void orth_distance_bpfp_3D(const int tempi, const uint Nx, const uint Nz,
 
 // Denominator (forward projection), orthogonal distance based ray tracer, multi-GPU
 inline void orth_distance_perpendicular_multi(const float diff1, __constant float* center1, const float kerroin,
-	const float length_, float* temp, const uint d_attenuation_correction, const uint d_normalization, float* ax, const float d_b, const float d, const float d_d1,
-	const uint d_N1, const uint d_N2, const uint z_loop, const __global float* d_atten, const float d_norm, const float local_sino, const uint d_N, const uint d_NN,
-	const __global float* d_OSEM, const uchar no_norm, __global float* d_rhs_OSEM, __global float* Summ, const bool FP, const bool RHS) {
+	const float length_, float* temp, const uint d_attenuation_correction, const uint d_normalization, float* ax, const float d_b, const float d, 
+	const float d_d1, const uint d_N1, const uint d_N2, const uint z_loop, const __global float* d_atten, const float d_norm, const float local_sino, 
+	const uint d_N, const uint d_NN, const __global float* d_OSEM, const uchar no_norm, __global float* d_rhs_OSEM, __global float* Summ, const bool FP, 
+	const bool RHS) {
 
 	const uint zz = z_loop * d_N2 * d_N1;
 	const int apu = perpendicular_start(d_b, d, d_d1, d_N1);

@@ -1,35 +1,62 @@
 /**************************************************************************
-* A matrix free improved Siddon's combined with all the reconstruction
-* functions available in OMEGA. This function calculates Summ = sum(A,1) 
-* (sum of every row) and rhs = A*(y./(A'*x)), where A is the system matrix, 
-* y the measurements and x the estimate/image.
+* A matrix free Orthogonal distance-based ray tracer for OSEM or MLEM. 
+* This function calculates Summ = sum(A,1) (sum of every row) and 
+* rhs = A*(y./(A'*x)), where A is the system matrix, y the measurements 
+* and x the estimate/image.
+*
+* Used by implementation 3.
 *
 * INPUTS:
-* d_rhs_X = buffer for rhs, d_Summ = buffer for Summ, d_lor = row
-* indices, d_Nx = image size in x-dimension, d_dz = distance between
-* adjecent voxels in z-dimension, d_bz = distance from the pixel space
-* to origin (z-dimension), d_bzb = part in parenthesis of equation
-* (9) in [1] precalculated when k = Nz, d_maxxx = maximum distance of the
-* pixel space from origin in x-dimension, d_zmax = maximum value of d_zdet,
-* d_NSlices = the number of image slices, d_x = detector x-coordinates,
-* d_size_x = the number of detector elements, d_row = how many voxels have
-* been traversed so far, d_xyindex = for sinogram format they determine the
-* detector indices corresponding to each sinogram bin (unused with raw data)
-* d_TotSinos = Total number of sinograms, d_attenuation_correction = if
-* attenuation is included this is 1 otherwise 0, d_atten = attenuation
-* data (images), d_L = detector numbers for raw data (unused for sinogram
-* format), d_det_per_ring = number of detectors per ring, d_pseudos =
-* location of pseudo rings, pRows = number of pseudo rings, d_raw = if
-* 1 then raw list-mode data is used otherwise sinogram data, d_rekot = 
-* vector containing 1 if the reconstruction method is included (e.g. if
-* rekot[1] = 1, then OSEM is calculated) and 0 if not, d_X = buffer for 
-* algorithm X, d_X_OSEM = buffer for the OSL estimate of prior X, 
-* d_X_BSREM = same as before, but for BSREM
+* d_epps = a small constant to prevent division by zero,
+* d_N = d_Nx * d_Ny * d_Nz,
+* d_Nx/y/z = image size in x/y/z- dimension,
+* d_dz/x/y = distance between adjecent voxels in z/x/y-dimension,
+* d_bz/x/y = distance from the pixel space to origin (z/x/y-dimension),
+* d_bzb = part in parenthesis of equation (9) in [1] precalculated when
+* k = Nz,
+* d_maxxx/yy = maximum distance of the pixel space from origin in
+* x/y-dimension,
+* d_zmax = maximum value of d_zdet,
+* d_NSlices = the number of image slices,
+* d_x/y/z_det = detector x/y/z-coordinates,
+* d_size_x = the number of detector elements,
+* d_TotSinos = Total number of sinograms,
+* d_attenuation_correction = if attenuation is included this is 1 otherwise
+* 0,
+* d_normalization = if normalization is included this is 1 otherwise 0,
+* d_randoms = if randoms/scatter correction is included this is 1
+* otherwise 0,
+* d_atten = attenuation data (images),
+* d_norm = normalization coefficients,
+* d_pseudos = location of pseudo rings,
+* pRows = number of pseudo rings,
+* d_Nxy = d_Nx * d_Ny,
+* d_det_per_ring = number of detectors per ring,
+* d_raw = if 1 then raw list-mode data is used otherwise sinogram
+* data
+* tube_width = the width of of the strip used for orthogonal distance based
+* projector (2D),
+* crystal_size_z = the width of of the tube used for orthogonal distance based
+* projector (3D),
+* dec = accuracy factor,
+* x/y/z_center = Cartesian coordinates for the center of the voxels
+* (x/y/z-axis),
+* d_Summ = buffer for Summ,
+* d_lor = number of pixels that each LOR traverses,
+* d_xy/zindex = for sinogram format they determine the detector
+* indices corresponding to each sinogram bin (unused with raw data),
+* d_L = detector numbers for raw data (unused for sinogram format),
+* d_Sino = Sinogram/raw data,
+* d_sc_ra = Randoms and/or scatter data,
+* d_OSEM = buffer for OSEM/MLEM estimates,
+* d_rhs_OSEM = buffer for OSEM/MLEM RHS elements,
+* no_norm = If 1, normalization constant is not computed,
+* m_size = Total number of LORs for this subset,
 *
 * OUTPUTS:
-* d_rsh_X = rhs values for algorithm/prior X, d_Summ = sum values, 
-* d_X = estimate of algorithm X, d_X_OSEM = OSL estimate of prior X, 
-* d_X_BSREM = BSREM estimate of prior X
+* d_rhs_OSEM = RHS values for OSEM/MLEM,
+* d_OSEM = OSEM/MLEM estimate,
+* d_Summ = Normalization constant
 *
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu,
 * I. (1998). A Fast Algorithm to Calculate the Exact Radiological Path
@@ -57,12 +84,13 @@
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(64, 1, 1)))
 void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dz, const float d_dx,
 	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, const float d_maxyy,
-	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_attenuation_correction, const uint d_normalization, const uint d_randoms, const uint d_det_per_ring,
-	const uchar d_raw, const uint d_pRows, const uint d_Nxy, const float tube_width_xy, const float crystal_size_z, const int dec, 
-	const __global float* d_atten, const __global float* d_norm, __global float* d_Summ, const __global ushort* d_lor, __constant uint* d_pseudos, const __global float* d_x,
-	const __global float* d_y, const __global float* d_zdet, __constant float* x_center, __constant float* y_center, __constant float* z_center,
-	const __global uint* d_xyindex, const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM,
-	__global float* d_rhs_OSEM, const uchar no_norm, const ulong m_size) {
+	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_attenuation_correction, const uint d_normalization, 
+	const uint d_randoms, const uint d_det_per_ring, const uchar d_raw, const uint d_pRows, const uint d_Nxy, const float tube_width_xy, 
+	const float crystal_size_z, const int dec, const __global float* d_atten, const __global float* d_norm, __global float* d_Summ, const __global ushort* d_lor, 
+	__constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet, __constant float* x_center, 
+	__constant float* y_center, __constant float* z_center, const __global uint* d_xyindex, const __global ushort* d_zindex, const __global ushort* d_L, 
+	const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM, __global float* d_rhs_OSEM, const uchar no_norm, 
+	const ulong m_size) {
 	// Get the current global index
 	uint idx = get_global_id(0);
 	if (idx >= m_size)
@@ -126,15 +154,18 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				//xs = ys;
 				//ys = temppi;
 				orth_distance_perpendicular_multi_3D(y_center, x_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-					d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
+					d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, 
+					d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
 				if (local_sino > 0.f) {
 					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
 					orth_distance_perpendicular_multi_3D(y_center, x_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
+						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, 
+						d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
 				}
 				else {
 					orth_distance_perpendicular_multi_3D(y_center, x_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, false);
+						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, 
+						d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, false);
 				}
 			}
 		}
@@ -158,15 +189,18 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 			}
 			else {
 				orth_distance_perpendicular_multi_3D(x_center, y_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-					d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
+					d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, 
+					d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
 				if (local_sino > 0.f) {
 					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
 					orth_distance_perpendicular_multi_3D(x_center, y_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
+						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, 
+						d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
 				}
 				else {
 					orth_distance_perpendicular_multi_3D(x_center, y_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
-						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, false);
+						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, 
+						d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, false);
 				}
 			}
 		}
@@ -183,11 +217,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				temp_ijk = tempk * d_Nxy + convert_uint_sat(tempj) * d_Nx;
 			else
 				temp_ijk = convert_uint_sat(tempj) * d_Nx;
-			if (d_attenuation_correction)
+			if (d_attenuation_correction == 1u)
 				LL = native_sqrt(x_diff * x_diff + y_diff * y_diff);
 			for (uint ii = 0u; ii < Np; ii++) {
 				if (tx0 < ty0) {
-					if (d_attenuation_correction)
+					if (d_attenuation_correction == 1u)
 						compute_attenuation(&tc, &jelppi, LL, tx0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 					if (ii == Np - 1u) {
 						if (crystal_size_z == 0.f) {
@@ -205,7 +239,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					}
 				}
 				else {
-					if (d_attenuation_correction)
+					if (d_attenuation_correction == 1u)
 						compute_attenuation(&tc, &jelppi, LL, ty0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 					if (crystal_size_z == 0.f) {
 						orth_distance_multi(tempi, d_Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, &temp, temp_ijk,
@@ -224,7 +258,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				}
 			}
 			temp = 1.f / temp;
-			if (d_attenuation_correction)
+			if (d_attenuation_correction == 1u)
 				temp *= native_exp(jelppi);
 			if (d_normalization == 1u)
 				temp *= local_norm;
@@ -329,11 +363,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					//xs = ys;
 					//ys = temp_x;
 				}
-				if (d_attenuation_correction)
+				if (d_attenuation_correction == 1u)
 					LL = native_sqrt(x_diff * x_diff + z_diff * z_diff);
 				for (uint ii = 0u; ii < Np; ii++) {
 					if (tx0 < tz0) {
-						if (d_attenuation_correction)
+						if (d_attenuation_correction == 1u)
 							compute_attenuation(&tc, &jelppi, LL, tx0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 						if (crystal_size_z == 0.f) {
 							orth_distance_multi(tempj, d_Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, &temp, temp_ijk,
@@ -351,7 +385,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 						tx0 += txu;
 					}
 					else {
-						if (d_attenuation_correction)
+						if (d_attenuation_correction == 1u)
 							compute_attenuation(&tc, &jelppi, LL, tz0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 						if (crystal_size_z == 0.f) {
 							orth_distance_multi(tempj, d_Ny, -x_diff, -y_diff, x_center[tempi], y_center, kerroin, length_, &temp, temp_ijk,
@@ -370,7 +404,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					}
 				}
 				temp = 1.f / temp;
-				if (d_attenuation_correction)
+				if (d_attenuation_correction == 1u)
 					temp *= native_exp(jelppi);
 				if (d_normalization == 1u)
 					temp *= local_norm;
@@ -470,11 +504,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					temp_ijk = convert_uint_sat(tempk) * d_Nxy + convert_uint_sat(tempj) * d_Nx;
 				else
 					temp_ijk = convert_uint_sat(tempj) * d_Nx;
-				if (d_attenuation_correction)
+				if (d_attenuation_correction == 1u)
 					LL = native_sqrt(y_diff * y_diff + z_diff * z_diff);
 				for (uint ii = 0u; ii < Np; ii++) {
 					if (tz0 < ty0) {
-						if (d_attenuation_correction)
+						if (d_attenuation_correction == 1u)
 							compute_attenuation(&tc, &jelppi, LL, tz0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 						if (crystal_size_z == 0.f) {
 							orth_distance_multi(tempi, d_Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, &temp, temp_ijk,
@@ -492,7 +526,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 						tz0 += tzu;
 					}
 					else {
-						if (d_attenuation_correction)
+						if (d_attenuation_correction == 1u)
 							compute_attenuation(&tc, &jelppi, LL, ty0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 						if (crystal_size_z == 0.f) {
 							orth_distance_multi(tempi, d_Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, &temp, temp_ijk,
@@ -511,7 +545,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					}
 				}
 				temp = 1.f / temp;
-				if (d_attenuation_correction)
+				if (d_attenuation_correction == 1u)
 					temp *= native_exp(jelppi);
 				if (d_normalization == 1u)
 					temp *= local_norm;
@@ -549,11 +583,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 								orth_distance_multi_3D(tempi, d_Nx, d_Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, kerroin, &temp, temp_ijk,
 									local_sino, &axOSEM, d_Ny, 1u, tempk, d_Nxy, xs, ys, zs, dec, no_norm, true, false, d_OSEM, d_Summ, d_rhs_OSEM);
 							}
-							tempj += (ju);
 							if (ju > 0)
 								temp_ijk += d_Nx;
 							else
 								temp_ijk -= d_Nx;
+							tempj += (ju);
 							ty0 += tyu;
 						}
 					}
@@ -585,11 +619,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 								orth_distance_multi_3D(tempi, d_Nx, d_Nz, y_diff, x_diff, z_diff, y_center[tempj], x_center, z_center, kerroin, &temp, temp_ijk,
 									local_sino, &axOSEM, d_Ny, 1u, tempk, d_Nxy, xs, ys, zs, dec, no_norm, false, true, d_OSEM, d_Summ, d_rhs_OSEM);
 							}
-							tempj += (ju);
 							if (ju > 0)
 								temp_ijk += d_Nx;
 							else
 								temp_ijk -= d_Nx;
+							tempj += (ju);
 							ty0 += tyu;
 						}
 					}
@@ -599,8 +633,8 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 		else {
 			int tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
 			float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 0.f, ty0 = 0.f, tz0 = 0.f;
-			const bool skip = siddon_pre_loop_3D(d_bx, d_by, d_bz, x_diff, y_diff, z_diff, d_maxxx, d_maxyy, d_bzb, d_dx, d_dy, d_dz, d_Nx, d_Ny, d_Nz, &tempi, &tempj, &tempk, &tyu, &txu, &tzu,
-				&Np, TYPE, ys, xs, yd, xd, zs, zd, &tc, &iu, &ju, &ku, &tx0, &ty0, &tz0);
+			const bool skip = siddon_pre_loop_3D(d_bx, d_by, d_bz, x_diff, y_diff, z_diff, d_maxxx, d_maxyy, d_bzb, d_dx, d_dy, d_dz, d_Nx, d_Ny, d_Nz, &tempi, 
+				&tempj, &tempk, &tyu, &txu, &tzu, &Np, TYPE, ys, xs, yd, xd, zs, zd, &tc, &iu, &ju, &ku, &tx0, &ty0, &tz0);
 			float temp = 0.f;
 			const float tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 			const int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
@@ -609,11 +643,11 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				temp_ijk = convert_uint_sat(tempk) * d_Nxy + convert_uint_sat(tempj) * d_Nx;
 			else
 				temp_ijk = convert_uint_sat(tempj) * d_Nx;
-			if (d_attenuation_correction)
+			if (d_attenuation_correction == 1u)
 				LL = native_sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 			for (uint ii = 0u; ii < Np; ii++) {
 				if (tz0 < ty0 && tz0 < tx0) {
-					if (d_attenuation_correction)
+					if (d_attenuation_correction == 1u)
 						compute_attenuation(&tc, &jelppi, LL, tz0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 					if (crystal_size_z == 0.f) {
 						orth_distance_multi(tempi, d_Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, &temp, temp_ijk,
@@ -631,7 +665,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					tz0 += tzu;
 				}
 				else if (ty0 < tx0) {
-					if (d_attenuation_correction)
+					if (d_attenuation_correction == 1u)
 						compute_attenuation(&tc, &jelppi, LL, ty0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 					if (crystal_size_z == 0.f) {
 						orth_distance_multi(tempi, d_Nx, y_diff, x_diff, y_center[tempj], x_center, kerroin, length_, &temp, temp_ijk,
@@ -649,7 +683,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					ty0 += tyu;
 				}
 				else {
-					if (d_attenuation_correction)
+					if (d_attenuation_correction == 1u)
 						compute_attenuation(&tc, &jelppi, LL, tx0, tempi, tempj, tempk, d_Nx, d_Nxy, d_atten);
 					if (ii == Np - 1u) {
 						if (crystal_size_z == 0.f) {
@@ -668,7 +702,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				}
 			}
 			temp = 1.f / temp;
-			if (d_attenuation_correction)
+			if (d_attenuation_correction == 1u)
 				temp *= native_exp(jelppi);
 			if (d_normalization == 1u)
 				temp *= local_norm;

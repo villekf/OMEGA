@@ -81,7 +81,7 @@ folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
 %% Raw data and non-OpenCL methods
-if (options.use_raw_data && (options.reconstruction_method == 1 || options.reconstruction_method == 4)) || options.precompute_all
+if (options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
     % Detector pair (LOR) vector
     LL = form_detector_pairs_raw(rings, det_per_ring);
     [x, y, ~, ~] = detector_coordinates(options);
@@ -131,9 +131,9 @@ if (options.use_raw_data && (options.reconstruction_method == 1 || options.recon
         y_center = yy(end);
         z_center = zz(end);
     else
-        if options.tube_width_z > 0 && options.reconstruction_method == 1
+        if options.tube_width_z > 0 && options.implementation == 1
             type = uint32(2);
-        elseif options.reconstruction_method == 1
+        elseif options.implementation == 1
             type = uint32(1);
         else
             type = uint(0);
@@ -186,7 +186,7 @@ if (options.use_raw_data && (options.reconstruction_method == 1 || options.recon
 
 end
 %% Raw data, OpenCL-methods
-if (options.use_raw_data && (options.reconstruction_method == 2 || options.reconstruction_method == 3 || options.reconstruction_method == 5)) ...
+if (options.use_raw_data && (options.implementation == 2 || options.implementation == 3 || options.implementation == 5)) ...
         || options.precompute_all
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
         % Detector pair (LOR) vector
@@ -268,7 +268,7 @@ if (options.use_raw_data && (options.reconstruction_method == 2 || options.recon
     end
 end
 %% Sinogram data, non-OpenCL
-if (~options.use_raw_data && (options.reconstruction_method == 1 || options.reconstruction_method == 4)) || options.precompute_all
+if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
     if exist([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'], 'file') == 2
         load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'x','y');
     else
@@ -318,9 +318,9 @@ if (~options.use_raw_data && (options.reconstruction_method == 1 || options.reco
         y_center = yy(end);
         z_center = zz(end);
     else
-        if options.tube_width_z > 0 && options.reconstruction_method == 1
+        if options.tube_width_z > 0 && options.implementation == 1
             type = uint32(2);
-        elseif options.reconstruction_method == 1
+        elseif options.implementation == 1
             type = uint32(1);
         else
             type = uint32(0);
@@ -370,7 +370,7 @@ if (~options.use_raw_data && (options.reconstruction_method == 1 || options.reco
     end
 end
 %% Sinogram data, OpenCL
-if (~options.use_raw_data && (options.reconstruction_method == 2 || options.reconstruction_method == 3 || options.reconstruction_method == 5)) ...
+if (~options.use_raw_data && (options.implementation == 2 || options.implementation == 3 || options.implementation == 5)) ...
         || options.precompute_all
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
         if exist([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'], 'file') == 2

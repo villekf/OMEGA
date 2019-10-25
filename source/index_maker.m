@@ -59,7 +59,11 @@ folder = fileparts(which('index_maker.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 % lor_a = 0;
-pituus = 0;
+if options.use_raw_data
+    pituus = options.detectors ^2/2 + options.detectors/2;
+else
+    pituus = options.Ndist * options.Nang * options.NSinos;
+end
 index = 0;
 % Sinogram data
 if use_raw_data == false && subsets > 1
@@ -67,7 +71,7 @@ if use_raw_data == false && subsets > 1
         lor_file = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(Ndist) 'x' ...
             num2str(Nang) 'x' num2str(TotSinos) '.mat'];
         if exist(lor_file, 'file') == 2
-            if options.reconstruction_method == 1 || options.reconstruction_method == 4
+            if options.implementation == 1 || options.implementation == 4
                 variableInfo = who('-file', lor_file);
                 if ismember('lor', variableInfo)
                     load(lor_file,'lor')
@@ -88,7 +92,7 @@ if use_raw_data == false && subsets > 1
             end
         else
             lor_pixel_count_prepass(options);
-            if options.reconstruction_method == 1 || options.reconstruction_method == 4
+            if options.implementation == 1 || options.implementation == 4
                 load(lor_file,'lor')
             else
                 load(lor_file,'lor_opencl')
@@ -113,7 +117,7 @@ if use_raw_data == false && subsets > 1
         if options.subset_type == 4
             for i=1:subsets
                 osa = length(i-1:subsets:Ndist);
-                if verLessThan('matlab','8.5')
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                     index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repeat_elem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repeat_elem(Ndist*Nang*(0:NSinos-1)',...
                         Ndist*osa));
                 else
@@ -121,13 +125,13 @@ if use_raw_data == false && subsets > 1
                         Ndist*osa));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Take every nth row from the sinogram
         elseif options.subset_type == 5
             for i=1:subsets
                 osa = length(i-1:subsets:Nang);
-                if verLessThan('matlab','8.5')
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                     index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repeat_elem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
                         repeat_elem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 else
@@ -135,7 +139,7 @@ if use_raw_data == false && subsets > 1
                         repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Take every nth (column) measurement
         elseif options.subset_type == 1
@@ -144,14 +148,14 @@ if use_raw_data == false && subsets > 1
                 [I,J,K] = ind2sub([options.Nang options.Ndist options.NSinos], index1);
                 index1 = uint32(sub2ind([options.Ndist options.Nang options.NSinos], J, I,K));
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Take every nth (row) measurement
         elseif options.subset_type == 2
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Pick the measurements randomly
         elseif options.subset_type == 3
@@ -169,7 +173,7 @@ if use_raw_data == false && subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Pick the subsets based on the angles of the LORs
         elseif options.subset_type == 6
@@ -197,7 +201,7 @@ if use_raw_data == false && subsets > 1
         if options.subset_type == 4
             for i=1:subsets
                 osa = length(i-1:subsets:Ndist);
-                if verLessThan('matlab','8.5')
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                     index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repeat_elem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repeat_elem(Ndist*Nang*(0:NSinos-1)',...
                         Ndist*osa));
                 else
@@ -205,12 +209,12 @@ if use_raw_data == false && subsets > 1
                         Ndist*osa));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 5
             for i=1:subsets
                 osa = length(i-1:subsets:Nang);
-                if verLessThan('matlab','8.5')
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                     index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repeat_elem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
                         repeat_elem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 else
@@ -218,7 +222,7 @@ if use_raw_data == false && subsets > 1
                         repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 1
             for i=1:subsets
@@ -226,13 +230,13 @@ if use_raw_data == false && subsets > 1
                 [I,J,K] = ind2sub([options.Nang options.Ndist options.NSinos], index1);
                 index1 = uint32(sub2ind([options.Ndist options.Nang options.NSinos], J, I,K));
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 2
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 3
             indices = uint32(Ndist*Nang*NSinos);
@@ -249,7 +253,7 @@ if use_raw_data == false && subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         end
     end
@@ -258,7 +262,7 @@ elseif subsets > 1
     if options.precompute_lor
         lor_file = [folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'];
         if exist(lor_file, 'file') == 2
-            if options.reconstruction_method == 1 || options.reconstruction_method == 4
+            if options.implementation == 1 || options.implementation == 4
                 variableInfo = who('-file', lor_file);
                 if ismember('lor', variableInfo)
                     load(lor_file,'lor')
@@ -279,7 +283,7 @@ elseif subsets > 1
             end
         else
             lor_pixel_count_prepass(options);
-            if options.reconstruction_method == 1 || options.reconstruction_method == 4
+            if options.implementation == 1 || options.implementation == 4
                 load(lor_file,'lor')
             else
                 load(lor_file,'lor_opencl')
@@ -310,7 +314,7 @@ elseif subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         % Based on the angles of the LORs
         elseif options.subset_type == 6
@@ -321,7 +325,7 @@ elseif subsets > 1
             for i=1:subsets
                 index1 = uint32(i:subsets:length(LL))';
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         end
     else
@@ -332,8 +336,11 @@ elseif subsets > 1
         if options.subset_type == 3
             indices = uint32(length(LL));
             port = uint32(floor(length(LL)/subsets));
-            if options.use_Shuffle
+            if options.use_Shuffle && exist('Shuffle','file') == 3
                 apu = Shuffle(indices(end), 'index')';
+            elseif options.use_Shuffle && exist('Shuffle','file') == 0
+                warning('options.Shuffle was set to true, but no Shuffle mex-file found. Using randperm')
+                apu = uint32(randperm(indices(end)))';
             else
                 apu = uint32(randperm(indices(end)))';
             end
@@ -344,7 +351,7 @@ elseif subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options);
@@ -353,7 +360,7 @@ elseif subsets > 1
             for i=1:subsets
                 index1 = uint32(i:subsets:length(LL))';
                 index{i} = index1;
-                pituus(i) = int32(length(index{i}));
+                pituus(i) = uint32(length(index{i}));
             end
         end
     end

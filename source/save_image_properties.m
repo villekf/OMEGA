@@ -18,14 +18,33 @@ function pz = save_image_properties(options, pz, subsets)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if options.reconstruction_method == 1
-    image_properties.Reconstruction_method = 'MATLAB';
-elseif options.reconstruction_method == 4
-    image_properties.Reconstruction_method = 'OpenCL';
-elseif options.reconstruction_method == 3
-    image_properties.Reconstruction_method = 'Sequential matrix-free';
-elseif options.reconstruction_method == 2
-    image_properties.Reconstruction_method = 'Matrix-free OpenCL';
+if options.implementation == 1
+    image_properties.Implementation = 'MATLAB';
+elseif options.implementation == 3
+    image_properties.Implementation = 'Matrix-free multi-device OpenCL';
+elseif options.implementation == 4
+    image_properties.Implementation = 'CPU matrix-free';
+elseif options.implementation == 2
+    image_properties.Implementation = 'Matrix-free ArrayFire OpenCL';
+end
+if options.projector_type == 0
+    image_properties.Projector = 'Original Siddon''s ray tracer';
+elseif options.projector_type == 1
+    if options.precompute_lor
+        image_properties.Projector = 'Improved Siddon''s ray tracer with 1 ray';
+    else
+        if options.n_rays == 1
+            image_properties.Projector = 'Improved Siddon''s ray tracer with 1 ray';
+        else
+            image_properties.Projector = ['Improved Siddon''s ray tracer with ' num2str(options.n_rays) ' rays'];
+        end
+    end
+elseif options.projector_type == 2
+    if options.tube_width_z == 0
+        image_properties.Projector = 'Orthogonal distance-based ray tracer in 2D';
+    else
+        image_properties.Projector = 'Orthogonal distance-based ray tracer in 3D';
+    end
 end
 image_properties.Nx = options.Nx;
 image_properties.Ny = options.Ny;
@@ -44,6 +63,13 @@ image_properties.machine_name = options.machine_name;
 image_properties.n_time_steps = options.partitions;
 image_properties.attenuation = options.attenuation_correction;
 image_properties.total_time = options.tot_time;
+image_properties.subset_type = options.subset_type;
+image_properties.normalization = options.normalization_correction;
+image_properties.randoms = options.randoms_correction;
+image_properties.scatter = options.scatter_correction;
+% if isfield(options,'rekot')
+%     image_properties.implementations = options.rekot;
+% end
 if options.acosem || options.COSEM_MAP == 1
     image_properties.h = options.h;
 end
@@ -281,6 +307,32 @@ if options.TGV
     end
     if any(options.COSEM_MAP)
         image_properties.beta_TGV_cosem = options.beta_TGV_cosem;
+    end
+end
+if options.NLM
+    image_properties.Nlx = options.Nlx;
+    image_properties.Nly = options.Nly;
+    image_properties.Nlz = options.Nlz;
+    image_properties.sigma = options.sigma;
+    image_properties.NLM_use_anatomical = options.NLM_use_anatomical;
+    image_properties.NLM_MRP = options.NLM_MRP;
+    if options.OSL_OSEM
+        image_properties.beta_NLM_osem = options.beta_NLM_osem;
+    end
+    if options.BSREM
+        image_properties.beta_NLM_bsrem = options.beta_NLM_bsrem;
+    end
+    if options.MBSREM
+        image_properties.beta_NLM_mbsrem = options.beta_NLM_mbsrem;
+    end
+    if options.ROSEM_MAP
+        image_properties.beta_NLM_rosem = options.beta_NLM_rosem;
+    end
+    if options.RBI_MAP
+        image_properties.beta_NLM_rbi = options.beta_NLM_rbi;
+    end
+    if any(options.COSEM_MAP)
+        image_properties.beta_NLM_cosem = options.beta_NLM_cosem;
     end
 end
 

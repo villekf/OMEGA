@@ -39,6 +39,28 @@ function output = NLM(input,Ndx, Ndy, Ndz, Nlx, Nly, Nlz,h2, epps, Nx, Ny, Nz, o
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%
+%  input   : image to be filtered
+%  t       : radius of search window
+%  f       : radius of similarity window
+%  h1,h2   : w(i,j) = exp(-||GaussFilter(h1) .* (p(i) - p(j))||_2^2/h2^2)
+%  selfsim : w(i,i) = selfsim, for all i
+%
+%  Note:
+%    if selfsim = 0, then w(i,i) = max_{j neq i} w(i,j), for all i
+%
+%  Author: Christian Desrosiers
+%  Date: 07-07-2015
+%
+%  Reimplementation of the Non-Local Means Filter by Jose Vicente Manjon-Herrera
+%
+%  For details see:
+%     A. Buades, B. Coll and J.M. Morel, "A non-local algorithm for image denoising"
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 input = reshape(input, Nx, Ny, Nz);
 [m, n, k]=size(input);
 pixels = input(:);

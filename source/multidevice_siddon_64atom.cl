@@ -1,35 +1,65 @@
 /**************************************************************************
-* A matrix free improved Siddon's combined with all the reconstruction
-* functions available in OMEGA. This function calculates Summ = sum(A,1) 
-* (sum of every row) and rhs = A*(y./(A'*x)), where A is the system matrix, 
-* y the measurements and x the estimate/image.
+* A matrix free improved Siddon's for OSEM or MLEM.
+* This function calculates Summ = sum(A,1) (sum of every row) and
+* rhs = A*(y./(A'*x)), where A is the system matrix, y the measurements
+* and x the estimate/image.
+*
+* Used by implementation 3.
+*
+* Uses integer 64-bit atomics.
 *
 * INPUTS:
-* d_rhs_X = buffer for rhs, d_Summ = buffer for Summ, d_lor = row
-* indices, d_Nx = image size in x-dimension, d_dz = distance between
-* adjecent voxels in z-dimension, d_bz = distance from the pixel space
-* to origin (z-dimension), d_bzb = part in parenthesis of equation
-* (9) in [1] precalculated when k = Nz, d_maxxx = maximum distance of the
-* pixel space from origin in x-dimension, d_zmax = maximum value of d_zdet,
-* d_NSlices = the number of image slices, d_x = detector x-coordinates,
-* d_size_x = the number of detector elements, d_row = how many voxels have
-* been traversed so far, d_xyindex = for sinogram format they determine the
-* detector indices corresponding to each sinogram bin (unused with raw data)
-* d_TotSinos = Total number of sinograms, d_attenuation_correction = if
-* attenuation is included this is 1 otherwise 0, d_atten = attenuation
-* data (images), d_L = detector numbers for raw data (unused for sinogram
-* format), d_det_per_ring = number of detectors per ring, d_pseudos =
-* location of pseudo rings, pRows = number of pseudo rings, d_raw = if
-* 1 then raw list-mode data is used otherwise sinogram data, d_rekot = 
-* vector containing 1 if the reconstruction method is included (e.g. if
-* rekot[1] = 1, then OSEM is calculated) and 0 if not, d_X = buffer for 
-* algorithm X, d_X_OSEM = buffer for the OSL estimate of prior X, 
-* d_X_BSREM = same as before, but for BSREM
+* MethodList = The type of reconstruction algorithms used (e.g. 2 means
+* COSEM)
+* d_raw = if 1 then raw list-mode data is used otherwise sinogram
+* data
+* d_h = power factor for ACOSEM,
+* d_Nx/y/z = image size in x/y/z- dimension,
+* d_dz/x/y = distance between adjecent voxels in z/x/y-dimension,
+* d_bz/x/y = distance from the pixel space to origin (z/x/y-dimension),
+* d_bzb = part in parenthesis of equation (9) in [1] precalculated when
+* k = Nz,
+* d_maxxx/yy = maximum distance of the pixel space from origin in
+* x/y-dimension,
+* d_zmax = maximum value of d_zdet,
+* d_NSlices = the number of image slices,
+* d_x/y/z_det = detector x/y/z-coordinates,
+* d_size_x = the number of detector elements,
+* d_TotSinos = Total number of sinograms,
+* d_attenuation_correction = if attenuation is included this is 1 otherwise
+* 0,
+* d_normalization = if normalization is included this is 1 otherwise 0,
+* d_randoms = if randoms/scatter correction is included this is 1
+* otherwise 0,
+* d_atten = attenuation data (images),
+* d_norm = normalization coefficients,
+* d_epps = a small constant to prevent division by zero,
+* d_N = d_Nx * d_Ny * d_Nz,
+* d_pseudos = location of pseudo rings,
+* pRows = number of pseudo rings,
+* d_Nxy = d_Nx * d_Ny,
+* d_det_per_ring = number of detectors per ring,
+* n_rekos = number of reconstruction algorithms used,
+* dc_z = Distance between the rays (z-direction),
+* n_rays = number of rays used,
+* d_Summ = buffer for Summ,
+* d_lor = number of pixels that each LOR traverses,
+* d_xy/zindex = for sinogram format they determine the detector
+* indices corresponding to each sinogram bin (unused with raw data),
+* d_L = detector numbers for raw data (unused for sinogram format),
+* d_epsilon_mramla = epsilon value for MRAMLA/MBSREM,
+* d_Sino = Sinogram/raw data,
+* d_sc_ra = Randoms and/or scatter data,
+* d_OSEM = buffer for all estimates,
+* d_rhs_OSEM = buffer for all RHS elements,
+* no_norm = If 1, normalization constant is not computed,
+* m_size = Total number of LORs for this subset,
+* ax = Local buffer for forward projection data
 *
 * OUTPUTS:
-* d_rsh_X = rhs values for algorithm/prior X, d_Summ = sum values, 
-* d_X = estimate of algorithm X, d_X_OSEM = OSL estimate of prior X, 
-* d_X_BSREM = BSREM estimate of prior X
+* d_rhs_OSEM = rhs values for all algorithms/priors X,
+* d_OSEM = estimates of all algorithm
+* d_Summ = Normalization constant
 *
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu,
 * I. (1998). A Fast Algorithm to Calculate the Exact Radiological Path
@@ -83,12 +113,9 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 	else {
 		get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet);
 	}
-	float local_sc_ra = 0.f;
-	float local_norm = 0.f;
-	if (d_normalization == 1u)
-		local_norm = d_norm[idx];
+	float d_randoms, d_sc_ra, idx); = 0.f;
 	if (d_randoms == 1u)
-		local_sc_ra = d_sc_ra[idx];
+		d_randoms, d_sc_ra, idx); = d_sc_ra[idx];
 	// Calculate the x, y and z distances of the detector pair
 	const float y_diff = (yd - ys);
 	const float x_diff = (xd - xs);
@@ -108,7 +135,7 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 			if (yd <= d_maxyy && yd >= d_by) {
 				float templ_ijk = 0.f;
 				uint tempk = 0u;
-				perpendicular_elements(d_by, d_dy, d_Ny, yd, d_dx, d_Nx, d_atten, &templ_ijk, &tempk, d_attenuation_correction, z_loop, d_Ny, 1u, d_normalization, local_norm);
+				perpendicular_elements(d_by, d_dy, d_Ny, yd, d_dx, d_Nx, d_atten, &templ_ijk, &tempk, d_attenuation_correction, z_loop, d_Ny, 1u, d_normalization, d_norm, idx);
 				// Calculate the next index and store it as well as the probability of emission
 				// If measurements are present, calculate the 
 				if (local_sino > 0.f) {
@@ -117,7 +144,7 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 					for (uint ii = 0u; ii < Np; ii++) {
 						denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind++]);
 					}
-					nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, d_randoms, d_sc_ra, idx););
 					local_ind = tempk;
 					for (uint ii = 0u; ii < Np; ii++) {
 						if (no_norm == 0u)
@@ -139,7 +166,7 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 			if (xd <= d_maxxx && xd >= d_bx) {
 				float templ_ijk = 0.f;
 				uint tempk = 0u;
-				perpendicular_elements(d_bx, d_dx, d_Nx, xd, d_dy, d_Ny, d_atten, &templ_ijk, &tempk, d_attenuation_correction, z_loop, 1u, d_Nx, d_normalization, local_norm);
+				perpendicular_elements(d_bx, d_dx, d_Nx, xd, d_dy, d_Ny, d_atten, &templ_ijk, &tempk, d_attenuation_correction, z_loop, 1u, d_Nx, d_normalization, d_norm, idx);
 				if (local_sino > 0.f) {
 					local_ele = templ_ijk;
 					local_ind = tempk;
@@ -147,7 +174,7 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 						denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind]);
 						local_ind += d_Ny;
 					}
-					nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, d_randoms, d_sc_ra, idx););
 					local_ind = tempk;
 					for (uint ii = 0u; ii < Np; ii++) {
 						if (no_norm == 0u)
@@ -195,12 +222,12 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 			if (d_attenuation_correction)
 				temp *= native_exp(jelppi);
 			if (d_normalization == 1u)
-				temp *= local_norm;
+				temp *= d_norm[idx];
 			tc = tc_a;
 			tx0 = tx0_a, ty0 = ty0_a;
 			tempi = tempi_a, tempj = tempj_a;
 			if (local_sino > 0.f) {
-				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_randoms, d_sc_ra, idx););
 				for (uint ii = 0u; ii < Np; ii++) {
 					local_ind = compute_ind(tempj, tempi, convert_int(z_loop), d_Nx, d_Ny, d_N, d_Nx, d_Nxy);
 					if (tx0 < ty0) {
@@ -262,12 +289,12 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 				if (d_attenuation_correction)
 					temp *= native_exp(jelppi);
 				if (d_normalization == 1u)
-					temp *= local_norm;
+					temp *= d_norm[idx];
 				tc = tc;
 				tx0 = tx0_a, tz0 = tz0_a;
 				tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
 				if (local_sino > 0.f) {
-					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_randoms, d_sc_ra, idx););
 					for (uint ii = 0; ii < Np; ii++) {
 						local_ind = compute_ind(tempj, tempi, tempk, d_Nx, d_Ny, d_N, 1u, d_Nxy);
 						if (tx0 < tz0) {
@@ -326,12 +353,12 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 				if (d_attenuation_correction)
 					temp *= native_exp(jelppi);
 				if (d_normalization == 1u)
-					temp *= local_norm;
+					temp *= d_norm[idx];
 				tc = tc_a;
 				tz0 = tz0_a, ty0 = ty0_a;
 				tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
 				if (local_sino > 0.f) {
-					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_randoms, d_sc_ra, idx););
 					for (uint ii = 0u; ii < Np; ii++) {
 						local_ind = compute_ind(tempj, tempi, tempk, d_Nx, d_Ny, d_N, d_Nx, d_Nxy);
 						if (tz0 < ty0) {
@@ -391,12 +418,12 @@ void siddon_multi(const float d_epps, const uint d_N, const uint d_Nx, const uin
 			if (d_attenuation_correction)
 				temp *= native_exp(jelppi);
 			if (d_normalization == 1u)
-				temp *= local_norm;
+				temp *= d_norm[idx];
 			tc = tc_a;
 			tx0 = tx0_a, ty0 = ty0_a, tz0 = tz0_a;
 			tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
 			if (local_sino > 0.f) {
-				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_randoms, d_sc_ra, idx););
 				for (uint ii = 0u; ii < Np; ii++) {
 					local_ind = compute_ind(tempj, tempi, tempk, d_Nx, d_Ny, d_N, d_Nx, d_Nxy);
 					if (tz0 < ty0 && tz0 < tx0) {

@@ -76,11 +76,8 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 		prompt = 0;
 
 		if (!tag) {
-		//if (tag) {
 			if (ms >= alku) {
 				prompt = (ew1 >> (42)) & 1;
-				//prompt = (ew1 >> (41)) & 1;
-				//int prompt2 = (ew1 >> (42)) & 1;
 				ll++;
 				if (prompt) {
 					if (begin) {
@@ -88,55 +85,10 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 						mscount++;
 						begin = false;
 					}
-				//if (!prompt && !prompt2) {
 					L1 = (ew1 >> 19) & 0x1ffff;
 					L2 = ew1 & 0x1ffff;
-					//TOF[ll] = (ew1 >> 38) & 0xF;
-					//TOF[ll] += static_cast<uint8_t>(1);
-					//L1 = L1 - 10;
-					//if (L1 < 0)
-					//	L1 = L1 + 320;
-					//L2 = L2 - 10;
-					//if (L2 < 0)
-					//	L2 = L2 + 320;
-					//if (L1 > L2) {
-					//	L3 = L2;
-					//	L2 = L1;
-					//	L1 = L3;
-					//}
-					//int32_t xa = std::max(L1, L2);
-					//int32_t ya = std::min(L1, L2);
-
-					//int32_t j = (((xa + ya + det_w_pseudo / 2 + 1) % det_w_pseudo) / 2);
-
-					//int32_t b = j + det_w_pseudo / 2;
-
-					//int32_t i = std::fabs(xa - ya - det_w_pseudo / 2);
-					//if (ya < j || b < xa) {
-					//	i = -i;
-					//}
-
-					//if (i > (Ndist / 2 - 1) & i < (-Ndist / 2)) {
-					//	continue;
-					//}
-
-					//j = j / (det_w_pseudo / 2 / Nang);
-					//i = i + Ndist / 2;
-
-					//int32_t ring1 = L1 / det_w_pseudo;
-					//int32_t ring2 = L2 / det_w_pseudo;
-
-					//if (Nang*Ndist*ring1 + i + j*Ndist + Nang*Ndist * 80 * ring2 > 128 * 160 * 6400) {
-					//	mexPrintf("L1 %d\n", Nang*Ndist*ring1 + i + j*Ndist + Nang*Ndist * 80 * ring2);
-					//	mexPrintf("ring1 %d\n", ring1);
-					//	mexPrintf("ring2 %d\n", ring2);
-					//	mexPrintf("i %d\n", i);
-					//	mexPrintf("j %d\n", j);
-					//	break;
-					//}
-					//
-					//LL1[Nang*Ndist*ring1 + i + j*Ndist + Nang*Ndist * 80 * ring2] = LL1[Nang*Ndist*ring1 + i + j*Ndist + Nang*Ndist * 80 * ring2] + static_cast<uint16_t>(1);
-
+					if (L1 >= detectors || L2 >= detectors)
+						continue;
 					if (outsize2 == 1) {
 						LL1[L1*detectors + L2] = LL1[L1*detectors + L2] + static_cast<uint16_t>(1);
 					}
@@ -144,11 +96,12 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 						LL1[ll] = static_cast<uint16_t>(L1 + 1);
 						LL2[ll] = static_cast<uint16_t>(L2 + 1);
 					}
-					//mexPrintf("L1 %u\n", L1);
 				}
-				else if (randoms_correction) {
+				else if (randoms_correction && prompt == 0) {
 					L1 = (ew1 >> 19) & 0x1ffff;
 					L2 = ew1 & 0x1ffff;
+					if (L1 >= detectors || L2 >= detectors)
+						continue;
 					if (outsize2 == 1) {
 						DD1[L1*detectors + L2] = DD1[L1*detectors + L2] + static_cast<uint16_t>(1);
 					}
@@ -161,22 +114,17 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 		}
 		if (tag) {
 			if (((ew1 >> (36)) & 0xff) == 160) { // Elapsed Time Tag Packet
-				//ms = ew1 & 0xffffffff; // Extract 29-bit millisecond field
-				ms += 200e-6;
+				ms += 200e-6; // 200 microsecond increments
 
 				if (ms >= aika) {
 					tpoints[mscount] = ll;
 					mscount++;
 					aika += (vali);
-					//mexPrintf("count %d\n", mscount);
-					//mexEvalString("pause(.0001);");
 				}
-				//mexPrintf("ms %f\n", ms);
-				//mexEvalString("pause(.0001);");
 			}
 		}
 	}
-	mexPrintf("ms %f\n", ms);
+	mexPrintf("End time %f\n", ms);
 	mexEvalString("pause(.0001);");
 	tpoints[mscount] = ll;
 	fclose(streami);

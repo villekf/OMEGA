@@ -1,12 +1,12 @@
 /**************************************************************************
-* Implements the improved Siddon's algorithm for OMEGA.
+* Implements the improved Siddon's algorithm (Implementation 1).
 * This version requires precomputation step; the number of voxels each LOR
 * traverses needs to be known in advance.
 * This version computes the system matrix column indices and elements for
-* the preallocated MATLAB sparse matrix. Due to MATLAB's CSR format, this
+* the preallocated MATLAB sparse matrix. Due to MATLAB's CSC format, this
 * is essentially a transposed version of the system matrix.
 *
-* Uses C++11 threads for parallellization.
+* Uses C++11 threads for parallelization.
 *
 * Copyright (C) 2019 Ville-Veikko Wettenhovi
 *
@@ -25,7 +25,7 @@
 ***************************************************************************/
 #include "projector_functions.h"
 
-// if 0, then determines whether the LOR intercepts the FOV
+// if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
 constexpr int TYPE = 1;
 
 using namespace std;
@@ -44,7 +44,6 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 
 	// Parallel for-loop
 	ThreadPool::ParallelFor(static_cast<size_t>(0), loop_var_par, [&](uint32_t lo) {
-	//for (uint32_t lo = 0u; lo < loop_var_par; lo++) {
 
 		Det detectors;
 
@@ -95,11 +94,11 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1u, lo);
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
+						normalization, temp_ijk, Nx, lo);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
-						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii * static_cast<uint64_t>(Ny);
+						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii * static_cast<uint64_t>(Nx);
 						elements[N2 + ii] = fabs(element);
 					}
 				}
@@ -149,7 +148,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 					elements[N2 + ii] = (apu);
 				}
 
-				// If computing the attenuation image
+				// If computing the attenuation image (Inveon)
 				if (attenuation_phase)
 					length[lo] = temp;
 

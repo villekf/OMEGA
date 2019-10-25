@@ -1,8 +1,9 @@
 function im = OSL_OSEM(im, Summ, beta, dU, epps, varargin)
 %OSL_OSEM Computes the One-Step Late OSEM (OSL-OSEM) MAP estimates
 %
-% Example:
-%   im = OSL_OSEM(im, Summ, beta, dU, A, uu, epps)
+% Examples:
+%   im = OSL_OSEM(im, Summ, beta, dU, epps, A, uu, SinDelayed, is_transposed)
+%   im = OSL_OSEM(im, Summ, beta, dU, epps, RHS)
 % INPUTS:
 %   im = The current estimate
 %   Summ = sum(A,2)
@@ -11,7 +12,11 @@ function im = OSL_OSEM(im, Summ, beta, dU, epps, varargin)
 %   epps = Small constant to prevent division by zero
 %   A = The transpose of the (sparse) system matrix at current subset
 %   uu = Measurements at current subset
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as uu. If no scatter and/or
+%   randoms data is available, use zero. 
 %   is_transposed = true if A matrix is the transpose of it, false if not
+%   RHS = The right hand side of OSEM (RHS = A'*(uu./(A*im + SinDelayed))) 
 %
 % OUTPUTS:
 %   im = The updated estimate
@@ -35,11 +40,11 @@ function im = OSL_OSEM(im, Summ, beta, dU, epps, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 8
-    if varargin{3}
-        im = (im./(Summ + beta * dU)).*(varargin{1} * (varargin{2}./(varargin{1}'*im + epps)));
+if nargin == 9
+    if varargin{4}
+        im = (im./(Summ + beta * dU)).*(varargin{1} * (varargin{2}./(varargin{1}'*im + epps + varargin{3})) + epps);
     else
-        im = (im./(Summ + beta * dU)).*(varargin{1}' * (varargin{2}./(varargin{1}*im + epps)));
+        im = (im./(Summ + beta * dU)).*(varargin{1}' * (varargin{2}./(varargin{1}*im + epps + varargin{3})) + epps);
     end
 elseif nargin == 6
     im = (im./(Summ + beta * dU)).*(varargin{1} + epps);

@@ -5,7 +5,7 @@
 #################
 
 /gate/source/addSource twogamma
-/gate/source/twogamma/setActivity 1000000. becquerel
+/gate/source/twogamma/setActivity 500000. becquerel
 /gate/source/twogamma/gps/particle gamma
 /gate/source/twogamma/setForcedUnstableFlag true
 /gate/source/twogamma/setForcedHalfLife 6586.2 s
@@ -20,7 +20,7 @@
 /gate/source/twogamma/gps/angtype iso
 
 /gate/source/addSource twogamma2
-/gate/source/twogamma2/setActivity 1500000. becquerel
+/gate/source/twogamma2/setActivity 750000. becquerel
 /gate/source/twogamma2/gps/particle gamma
 /gate/source/twogamma2/setForcedUnstableFlag true
 /gate/source/twogamma2/setForcedHalfLife 6586.2 s
@@ -35,7 +35,7 @@
 /gate/source/twogamma2/gps/angtype iso
 
 /gate/source/addSource twogamma3
-/gate/source/twogamma3/setActivity 500000. becquerel
+/gate/source/twogamma3/setActivity 250000. becquerel
 /gate/source/twogamma3/gps/particle gamma
 /gate/source/twogamma3/setForcedUnstableFlag true
 /gate/source/twogamma3/setForcedHalfLife 6586.2 s

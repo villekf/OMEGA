@@ -1,8 +1,8 @@
-function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter)
+function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed)
 %COSEM_OSL Computes the One-Step Late COSEM (OSL-COSEM) MAP estimates
 %
 % Example:
-%   [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter)
+%   [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed)
 % INPUTS:
 %   im = The current estimate
 %   D = Sum of the complete data system matrix (D = sum(B,2), where B =
@@ -14,13 +14,17 @@ function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP
 %   epps = Small constant to prevent division by zero
 %   C_co = Complete-data matrix
 %   h = Acceleration parameter (ACOSEM)
-%   COSEM_MAP = Whether COSEM or ACOSEM is used
+%   COSEM_MAP = Whether COSEM or ACOSEM is used (1 == ACOSEM)
 %   osa_iter = Current subset (sub-iteration)
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as uu. If no scatter and/or
+%   randoms data is available, use zero.
+%   is_transposed = true if A matrix is the transpose of it, false if not
 %
 % OUTPUTS:
 %   im = The updated estimate
 %   C_co = Updated Complete-data matrix
-% 
+%
 %   See also COSEM_im, ACOSEM_im, MBSREM, OSL_OSEM, BSREM_iter, RBI_subiter
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -40,11 +44,23 @@ function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if COSEM_MAP == 1
-    C_co(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps),0,size(A,2),size(A,2)),2));
+    if is_transposed
+        C_co(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps + SinDelayed),0,size(A,2),size(A,2)),2));
+    else
+        C_co(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,2),size(A,2))*A')*spdiags(uu./(A*im + epps + SinDelayed),0,size(A,1),size(A,1)),2));
+    end
     im = (sum(C_co,2)./(D + beta * dU)).^h;
-    im = (im)*sum(uu)/(sum(A'*im));
+    if is_transposed
+        im = (im)*(sum(uu)/(sum(A'*im)));
+    else
+        im = (im)*(sum(uu)/(sum(A*im)));
+    end
     im(im < 0) = epps;
 else
-    C_co(:,osa_iter) = full(sum((spdiags(im,0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im+epps),0,size(A,2),size(A,2)),2));
+    if is_transposed
+        C_co(:,osa_iter) = full(sum((spdiags(im,0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps + SinDelayed),0,size(A,2),size(A,2)),2));
+    else
+        C_co(:,osa_iter) = full(sum((spdiags(im,0,size(A,2),size(A,2))*A')*spdiags(uu./(A*im + epps + SinDelayed),0,size(A,1),size(A,1)),2));
+    end
     im = (sum(C_co,2)./(D + beta * dU));
 end

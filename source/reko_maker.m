@@ -26,46 +26,13 @@ function rekot = reko_maker(options)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% ML-methods = 10, MAP-methods = 7, Priors = 9
-rekot = false(10+7*10,1);
+% ML-methods = 10, MAP-methods = 7, Priors = 10 + custom
+if ~isfield(options,'custom')
+    options.custom = false;
+end
+rekot = false(10+7*11 + 1,1);
 gg = 1;
 if options.mlem
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.MRP
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.quad
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.L
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.FMH
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.weighted_mean
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.TV
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.AD
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.APLS
-    rekot(gg) = true;
-end
-gg = gg + 1;
-if options.OSL_MLEM && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -109,6 +76,10 @@ if options.OSL_OSEM && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.MRP
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.MRP
     rekot(gg) = true;
 end
@@ -130,6 +101,10 @@ if any(options.COSEM_MAP) && options.MRP
 end
 gg = gg + 1;
 if options.OSL_OSEM && options.quad
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -157,6 +132,10 @@ if options.OSL_OSEM && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.L
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.L
     rekot(gg) = true;
 end
@@ -178,6 +157,10 @@ if any(options.COSEM_MAP) && options.L
 end
 gg = gg + 1;
 if options.OSL_OSEM && options.FMH
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -205,6 +188,10 @@ if options.OSL_OSEM && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.weighted_mean
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.weighted_mean
     rekot(gg) = true;
 end
@@ -226,6 +213,10 @@ if any(options.COSEM_MAP) && options.weighted_mean
 end
 gg = gg + 1;
 if options.OSL_OSEM && options.TV
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -253,6 +244,10 @@ if options.OSL_OSEM && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.AD
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.AD
     rekot(gg) = true;
 end
@@ -274,6 +269,10 @@ if any(options.COSEM_MAP) && options.AD
 end
 gg = gg + 1;
 if options.OSL_OSEM && options.APLS
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -301,6 +300,10 @@ if options.OSL_OSEM && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.TGV
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.TGV
     rekot(gg) = true;
 end
@@ -325,6 +328,10 @@ if options.OSL_OSEM && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
+if options.OSL_MLEM && options.NLM
+    rekot(gg) = true;
+end
+gg = gg + 1;
 if options.MBSREM && options.NLM
     rekot(gg) = true;
 end
@@ -342,5 +349,33 @@ if options.RBI_MAP && options.NLM
 end
 gg = gg + 1;
 if any(options.COSEM_MAP) && options.NLM
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_OSEM && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.MBSREM && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.BSREM && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.ROSEM_MAP && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.RBI_MAP && options.custom
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if any(options.COSEM_MAP) && options.custom
     rekot(gg) = true;
 end

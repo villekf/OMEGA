@@ -43,7 +43,7 @@ double compute_element_orth_3D(Det detectors, const double xl, const double yl, 
 	y1 = zl * x0 - xl * z0;
 	z1 = xl * y0 - yl * x0;
 
-
+	// Normalize the distance
 	return (1. - norm(x1, y1, z1) / crystal_size_z);
 }
 
@@ -114,6 +114,98 @@ void get_detector_coordinates_raw(const uint32_t det_per_ring, const double* x, 
 	
 }
 
+// Get the detector coordinates for the current raw list-mode measurement (multi-ray)
+void get_detector_coordinates_raw_N(const uint32_t det_per_ring, const double* x, const double* y, const double* z, Det& detectors,
+	const uint16_t* L, const int ll, const uint32_t* pseudos, const uint32_t pRows, const uint16_t lor, const double cr_pz) {
+	uint32_t ps;
+	const uint32_t detektorit1 = static_cast<uint32_t>(L[ll * 2]) - 1u;
+	const uint32_t detektorit2 = static_cast<uint32_t>(L[ll * 2 + 1]) - 1u;
+
+	const uint32_t loop1 = ((detektorit1) / det_per_ring);
+	const uint32_t loop2 = ((detektorit2) / det_per_ring);
+
+	if (loop1 == loop2) {
+		detectors.zs = z[loop1];
+		detectors.zd = detectors.zs;
+	}
+	else {
+		detectors.zs = z[loop1];
+		detectors.zd = z[loop2];
+	}
+
+	if (loop1 >= pseudos[0]) {
+		ps = 1u;
+		for (uint32_t kk = 0u; kk < pRows; kk++) {
+			if (kk + 1u < pRows) {
+				if (loop1 >= pseudos[kk] && loop1 < pseudos[kk + 1]) {
+					detectors.zs = z[loop1 + ps];
+					break;
+				}
+				else
+					ps++;
+			}
+			else {
+				if (loop1 >= pseudos[kk])
+					detectors.zs = z[loop1 + ps];
+			}
+		}
+	}
+
+	if (loop2 >= pseudos[0]) {
+		ps = 1u;
+		for (uint32_t kk = 0u; kk < pRows; kk++) {
+			if (kk + 1 < pRows) {
+				if (loop2 >= pseudos[kk] && loop2 < pseudos[kk + 1]) {
+					detectors.zd = z[loop2 + ps];
+					break;
+				}
+				else
+					ps++;
+			}
+			else {
+				if (loop2 >= pseudos[kk])
+					detectors.zd = z[loop2 + ps];
+			}
+		}
+	}
+
+	if (lor == 1) {
+		detectors.xs = x[detektorit1 - det_per_ring * (loop1)];
+		detectors.xd = x[detektorit2 - det_per_ring * (loop2)];
+		detectors.ys = y[detektorit1 - det_per_ring * (loop1)];
+		detectors.yd = y[detektorit2 - det_per_ring * (loop2)];
+	}
+	else if (lor == 3u || lor == 5u) {
+		detectors.xs = x[detektorit1 - det_per_ring * (loop1) + det_per_ring * 2u];
+		detectors.xd = x[detektorit2 - det_per_ring * (loop2) + det_per_ring * 2u];
+		detectors.ys = y[detektorit1 - det_per_ring * (loop1) + det_per_ring * 2u];
+		detectors.yd = y[detektorit2 - det_per_ring * (loop2) + det_per_ring * 2u];
+		if (lor == 3u) {
+			detectors.zs -= cr_pz;
+			detectors.zd -= cr_pz;
+		}
+		else {
+			detectors.zs += cr_pz;
+			detectors.zd += cr_pz;
+		}
+	}
+	else {
+		detectors.xs = x[detektorit1 - det_per_ring * (loop1) + det_per_ring];
+		detectors.xd = x[detektorit2 - det_per_ring * (loop2) + det_per_ring];
+		detectors.ys = y[detektorit1 - det_per_ring * (loop1) + det_per_ring];
+		detectors.yd = y[detektorit2 - det_per_ring * (loop2) + det_per_ring];
+		if (lor == 2u) {
+			detectors.zs -= cr_pz;
+			detectors.zd -= cr_pz;
+		}
+		else {
+			detectors.zs += cr_pz;
+			detectors.zd += cr_pz;
+		}
+	}
+
+}
+
 // Get the detector coordinates for the current sinogram bin, no precomputations performed beforehand
 void get_detector_coordinates_noalloc(const double* x, const double* y, const double* z, const uint32_t size_x, Det& detectors, int& ll, 
 	const uint32_t* index, int& lz, const uint32_t TotSinos, uint32_t oo) {
@@ -160,7 +252,7 @@ void get_detector_coordinates(const double* x, const double* y, const double* z,
 void get_detector_coordinates_mr(const double* x, const double* y, const double* z, const uint32_t size_x, Det& detectors, const uint32_t* xy_index,
 	const uint16_t* z_index, const uint32_t TotSinos, const uint32_t oo, const uint16_t lor, const double cr_pz) {
 	// Sinogram data
-	if (lor % 2u == 1u) {
+	if (lor == 1u) {
 		if (xy_index[oo] >= size_x) {
 			detectors.xs = x[xy_index[oo]];
 			detectors.xd = x[xy_index[oo] - size_x];
@@ -173,28 +265,16 @@ void get_detector_coordinates_mr(const double* x, const double* y, const double*
 			detectors.ys = y[xy_index[oo]];
 			detectors.yd = y[xy_index[oo] + size_x];
 		}
-		if (lor == 1u) {
-			if (z_index[oo] >= TotSinos) {
-				detectors.zs = z[z_index[oo]] - cr_pz;
-				detectors.zd = z[z_index[oo] - TotSinos] - cr_pz;
-			}
-			else {
-				detectors.zs = z[z_index[oo]] - cr_pz;
-				detectors.zd = z[z_index[oo] + TotSinos] - cr_pz;
-			}
+		if (z_index[oo] >= TotSinos) {
+			detectors.zs = z[z_index[oo]];
+			detectors.zd = z[z_index[oo] - TotSinos];
 		}
 		else {
-			if (z_index[oo] >= TotSinos) {
-				detectors.zs = z[z_index[oo]] + cr_pz;
-				detectors.zd = z[z_index[oo] - TotSinos] + cr_pz;
-			}
-			else {
-				detectors.zs = z[z_index[oo]] + cr_pz;
-				detectors.zd = z[z_index[oo] + TotSinos] + cr_pz;
-			}
+			detectors.zs = z[z_index[oo]];
+			detectors.zd = z[z_index[oo] + TotSinos];
 		}
 	}
-	else if (lor != 5u) {
+	else if (lor == 3u || lor == 5u) {
 		if (xy_index[oo] >= size_x) {
 			detectors.xs = x[xy_index[oo] + size_x * 4u];
 			detectors.xd = x[xy_index[oo] + size_x * 3u];
@@ -207,7 +287,7 @@ void get_detector_coordinates_mr(const double* x, const double* y, const double*
 			detectors.ys = y[xy_index[oo] + size_x * 4u];
 			detectors.yd = y[xy_index[oo] + size_x * 5u];
 		}
-		if (lor == 2u) {
+		if (lor == 3u) {
 			if (z_index[oo] >= TotSinos) {
 				detectors.zs = z[z_index[oo]] - cr_pz;
 				detectors.zd = z[z_index[oo] - TotSinos] - cr_pz;
@@ -241,13 +321,25 @@ void get_detector_coordinates_mr(const double* x, const double* y, const double*
 			detectors.ys = y[xy_index[oo] + size_x * 2u];
 			detectors.yd = y[xy_index[oo] + size_x * 3u];
 		}
-		if (z_index[oo] >= TotSinos) {
-			detectors.zs = z[z_index[oo]];
-			detectors.zd = z[z_index[oo] - TotSinos];
+		if (lor == 2u) {
+			if (z_index[oo] >= TotSinos) {
+				detectors.zs = z[z_index[oo]] - cr_pz;
+				detectors.zd = z[z_index[oo] - TotSinos] - cr_pz;
+			}
+			else {
+				detectors.zs = z[z_index[oo]] - cr_pz;
+				detectors.zd = z[z_index[oo] + TotSinos] - cr_pz;
+			}
 		}
 		else {
-			detectors.zs = z[z_index[oo]];
-			detectors.zd = z[z_index[oo] + TotSinos];
+			if (z_index[oo] >= TotSinos) {
+				detectors.zs = z[z_index[oo]] + cr_pz;
+				detectors.zd = z[z_index[oo] - TotSinos] + cr_pz;
+			}
+			else {
+				detectors.zs = z[z_index[oo]] + cr_pz;
+				detectors.zd = z[z_index[oo] + TotSinos] + cr_pz;
+			}
 		}
 	}
 }
@@ -407,13 +499,14 @@ void att_corr_vec_precomp(const double* elements, const double* atten, const mwI
 }
 
 // Correct for attenuation, scalar data
-void att_corr_scalar(double templ_ijk, uint32_t tempk, const double* atten, double& temp, const uint32_t N1, const uint32_t N) {
+double att_corr_scalar(double templ_ijk, uint32_t tempk, const double* atten, double& temp, const uint32_t N1, const uint32_t N) {
 
 	double jelppi = 0.;
 	for (uint32_t iii = 0u; iii < N1; iii++) {
 		jelppi += templ_ijk * -atten[tempk + iii * N];
 	}
 	temp *= std::exp(jelppi);
+	return jelppi;
 }
 
 // Correct for attenuation, orthogonal distance based ray tracer
@@ -439,7 +532,6 @@ double perpendicular_elements(const uint32_t N, const double dd, const std::vect
 			break;
 		}
 	}
-	//const double templ_ijk = d;
 	tempk = apu * N + z_ring * N1 * N2;
 	double temp = d * static_cast<double>(N2);
 	// Probability
@@ -453,6 +545,29 @@ double perpendicular_elements(const uint32_t N, const double dd, const std::vect
 
 
 	return d * temp;
+}
+
+// Compute the probability for one emission in perpendicular detector case (multi-ray)
+double perpendicular_elements_multiray(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring,
+	const uint32_t N1, const uint32_t N2, const double* atten, const bool attenuation_correction, int32_t& tempk, const uint32_t NN, double& jelppi) {
+	uint32_t apu = 0u;
+	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
+	for (size_t ii = 0ULL; ii < static_cast<size_t>(N2); ii++) {
+		double temp = (vec[ii + 1ULL] - dd);
+		if (temp > 0.) {
+			apu = static_cast<uint32_t>(ii);
+			break;
+		}
+	}
+	tempk = apu * N + z_ring * N1 * N2;
+	double temp = 0.;
+
+	// Correct for attenuation if applicable
+	if (attenuation_correction)
+		jelppi += att_corr_scalar(d, tempk, atten, temp, N2, NN);
+
+
+	return d * static_cast<double>(N2);
 }
 
 // Compute the first voxel index
@@ -620,18 +735,14 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 	}
 	tempk = apu * d_N + z_ring * Nyx;
 	double jelppi = 0.;
-	//mexPrintf("d_NN = %u\n", d_NN);
-	//mexPrintf("d_N = %u\n", d_N);
 	for (int32_t zz = static_cast<int32_t>(z_ring); zz >= 0; zz--) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
 			double d_ort = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (d_ort <= THR)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
-			//mexPrintf("local ind = %u\n", local_ind);
 			for (uint32_t kk = 0u; kk < N1; kk++) {
 				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
-				//mexPrintf("local ind = %u\n", indices[N2 + hpk]);
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -642,7 +753,6 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			if (d_ort <= THR)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
-			//mexPrintf("local ind = %u\n", local_ind);
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
 				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
@@ -658,7 +768,6 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			if (d_ort <= THR)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
-			//mexPrintf("local ind = %u\n", local_ind);
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
 				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
@@ -672,7 +781,6 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			if (d_ort <= THR)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
-			//mexPrintf("local ind = %u\n", local_ind);
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
 				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
@@ -797,7 +905,6 @@ void orth_distance_precompute_3D(const int32_t tempi, const uint32_t N, const ui
 	uint8_t loppu4 = 0u;
 	bool pass1 = true;
 	bool pass = false;
-	//int32_T zz;
 	int32_t alku = tempk;
 	int32_t alku2 = tempk;
 	int32_t alku3 = tempk;
@@ -1088,7 +1195,7 @@ bool siddon_pre_loop_3D(const double bx, const double by, const double bz, const
 
 // Compute the total distance (and optionally forward projection) for the orthogonal ray (2D)
 void orth_distance_full(const int32_t tempi, const uint32_t Nx, const double y_diff, const double x_diff, const double y_center, const double* x_center, 
-	const double kerroin, const double length_, double& temp, const uint32_t tempijk, const uint32_t NN, const int32_t tempj, double& jelppi, 
+	const double kerroin, const double length_, double& temp, const uint32_t tempijk, const uint32_t NN, const int32_t tempj, 
 	const double local_sino, double& ax, const double* osem_apu, const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, 
 	double* rhs, double* Summ, mwIndex* indices, std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, uint64_t N2) {
 
@@ -1171,182 +1278,10 @@ void orth_distance_full(const int32_t tempi, const uint32_t Nx, const double y_d
 	}
 }
 
-//// Compute the total distance (and optionally forward projection) for the orthogonal ray (3D)
-//// This function gives the best and most accurate results, but is also very slow
-//void orth_distance_3D_full(const int32_t tempi, const uint32_t Nx, const uint32_t Nz, const double y_diff, const double x_diff, const double z_diff,
-//	const double y_center, const double* x_center, const double* z_center, double& temp, const uint32_t tempijk, const uint32_t NN,
-//	const int32_t tempj, int32_t tempk, double& jelppi, const double local_sino, double& ax, const double* osem_apu,
-//	const Det detectors, const uint32_t Nyx, const double crystal_size_z, const int32_t n_tempk, const int32_t dec, const int32_t n_tempi,
-//	const int32_t decx, const int32_t iu, const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, double* rhs, 
-// double* Summ, mwIndex* indices,
-//	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, uint64_t N2) {
-//
-//	for (int32_t uu = tempi; uu >= 0; uu--) {
-//		for (int32_t zz = tempk; zz >= 0; zz--) {
-//			double local_ele = compute_element_orth_3D(detectors, x_diff, y_diff, z_diff, crystal_size_z, x_center[uu], y_center, z_center[zz]);
-//			if (local_ele <= THR) {
-//				continue;
-//			}
-//			const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(uu), tempijk, static_cast<uint32_t>(zz), NN, Nyx);
-//			if (RHS) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				rhs[local_ind] += (local_ele * ax);
-//				if (no_norm == false) {
-//#pragma omp atomic
-//					Summ[local_ind] += local_ele;
-//				}
-//			}
-//			else if (SUMMA) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				Summ[local_ind] += local_ele;
-//			}
-//			else {
-//				temp += local_ele;
-//				if (OMP) {
-//					if (local_sino > 0.) {
-//						denominator_mfree(local_ele, ax, osem_apu[local_ind]);
-//					}
-//				}
-//				else if (PRECOMP) {
-//					rhs[N2 + idx] = (local_ele);
-//					indices[N2 + idx] = local_ind;
-//					idx++;
-//				}
-//				else {
-//					elements.emplace_back(local_ele);
-//					v_indices.emplace_back(local_ind);
-//					idx++;
-//				}
-//			}
-//		}
-//		for (uint32_t zz = static_cast<uint32_t>(tempk) + 1u; zz < Nz; zz++) {
-//			double local_ele = compute_element_orth_3D(detectors, x_diff, y_diff, z_diff, crystal_size_z, x_center[uu], y_center, z_center[zz]);
-//			if (local_ele <= THR) {
-//				continue;
-//			}
-//			const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(uu), tempijk, static_cast<uint32_t>(zz), NN, Nyx);
-//			if (RHS) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				rhs[local_ind] += (local_ele * ax);
-//				if (no_norm == false) {
-//#pragma omp atomic
-//					Summ[local_ind] += local_ele;
-//				}
-//			}
-//			else if (SUMMA) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				Summ[local_ind] += local_ele;
-//			}
-//			else {
-//				temp += local_ele;
-//				if (OMP) {
-//					if (local_sino > 0.) {
-//						denominator_mfree(local_ele, ax, osem_apu[local_ind]);
-//					}
-//				}
-//				else if (PRECOMP) {
-//					rhs[N2 + idx] = (local_ele);
-//					indices[N2 + idx] = local_ind;
-//					idx++;
-//				}
-//				else {
-//					elements.emplace_back(local_ele);
-//					v_indices.emplace_back(local_ind);
-//					idx++;
-//				}
-//			}
-//		}
-//	}
-//	for (uint32_t uu = static_cast<uint32_t>(tempi) + 1u; uu < Nx; uu++) {
-//		for (int32_t zz = tempk; zz >= 0; zz--) {
-//			double local_ele = compute_element_orth_3D(detectors, x_diff, y_diff, z_diff, crystal_size_z, x_center[uu], y_center, z_center[zz]);
-//			if (local_ele <= THR) {
-//				continue;
-//			}
-//			const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(uu), tempijk, static_cast<uint32_t>(zz), NN, Nyx);
-//			if (RHS) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				rhs[local_ind] += (local_ele * ax);
-//				if (no_norm == false) {
-//#pragma omp atomic
-//					Summ[local_ind] += local_ele;
-//				}
-//			}
-//			else if (SUMMA) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				Summ[local_ind] += local_ele;
-//			}
-//			else {
-//				temp += local_ele;
-//				if (OMP) {
-//					if (local_sino > 0.) {
-//						denominator_mfree(local_ele, ax, osem_apu[local_ind]);
-//					}
-//				}
-//				else if (PRECOMP) {
-//					rhs[N2 + idx] = (local_ele);
-//					indices[N2 + idx] = local_ind;
-//					idx++;
-//				}
-//				else {
-//					elements.emplace_back(local_ele);
-//					v_indices.emplace_back(local_ind);
-//					idx++;
-//				}
-//			}
-//		}
-//		for (uint32_t zz = static_cast<uint32_t>(tempk) + 1u; zz < Nz; zz++) {
-//			double local_ele = compute_element_orth_3D(detectors, x_diff, y_diff, z_diff, crystal_size_z, x_center[uu], y_center, z_center[zz]);
-//			if (local_ele <= THR) {
-//				continue;
-//			}
-//			const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(uu), tempijk, static_cast<uint32_t>(zz), NN, Nyx);
-//			if (RHS) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				rhs[local_ind] += (local_ele * ax);
-//				if (no_norm == false) {
-//#pragma omp atomic
-//					Summ[local_ind] += local_ele;
-//				}
-//			}
-//			else if (SUMMA) {
-//				local_ele *= temp;
-//#pragma omp atomic
-//				Summ[local_ind] += local_ele;
-//			}
-//			else {
-//				temp += local_ele;
-//				if (OMP) {
-//					if (local_sino > 0.) {
-//						denominator_mfree(local_ele, ax, osem_apu[local_ind]);
-//					}
-//				}
-//				else if (PRECOMP) {
-//					rhs[N2 + idx] = (local_ele);
-//					indices[N2 + idx] = local_ind;
-//					idx++;
-//				}
-//				else {
-//					elements.emplace_back(local_ele);
-//					v_indices.emplace_back(local_ind);
-//					idx++;
-//				}
-//			}
-//		}
-//	}
-//}
-
 // Compute the total distance (and optionally forward projection) for the orthogonal ray (3D)
 void orth_distance_3D_full(const int32_t tempi, const uint32_t Nx, const uint32_t Nz, const double y_diff, const double x_diff, const double z_diff,
 	const double y_center, const double* x_center, const double* z_center, double& temp, const uint32_t tempijk, const uint32_t NN,
-	const int32_t tempj, int32_t tempk, double& jelppi, const double local_sino, double& ax, const double* osem_apu,
+	const int32_t tempj, int32_t tempk, const double local_sino, double& ax, const double* osem_apu,
 	const Det detectors, const uint32_t Nyx, const double crystal_size_z, const int32_t dec, const int32_t iu, 
 	const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, double* rhs, double* Summ, mwIndex* indices, 
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, uint64_t N2) {

@@ -22,9 +22,6 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #include "projector_functions.h"
-//#ifdef _OPENMP
-//#include <omp.h>
-//#endif
 
 constexpr int TYPE = 0;
 
@@ -46,12 +43,7 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 
 
 	ThreadPool::ParallelFor(static_cast<size_t>(0), loop_var_par, [&](uint32_t lo) {
-//#pragma omp parallel for
-	//for (uint32_t lo = 0u; lo < loop_var_par; lo++) {
 		Det detectors;
-
-		//if (lo < 14160033)
-		//	continue;
 
 		if (raw) {
 			uint32_t ps = 0u;
@@ -165,12 +157,9 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 
 
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
-
-					//mexPrintf("lo = %d\n", 1);
 					// The number of voxels the LOR/ray traverses
 
 					if (type > 0u) {
-						//mexPrintf("lo = %d\n", lo);
 						orth_perpendicular_precompute(Nx, Ny, detectors.yd, yy_vec, -x_diff, y_center, kerroin, length_, temp_koko_orth);
 						lor_orth[lo] = temp_koko_orth;
 						if (type == 2u) {
@@ -183,8 +172,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 						}
 					}
 					lor[lo] = static_cast<uint16_t>(Nx);
-					//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-					//	mexPrintf("lo1 = %u\n", lo);
 				}
 				// LOR/ray doesn't traverse through the pixel space
 			}
@@ -202,8 +189,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 						}
 					}
 					lor[lo] = static_cast<uint16_t>(Ny);
-					//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-					//	mexPrintf("lo2 = %u\n", lo);
 				}
 				// LOR/ray doesn't traverse through the pixel space
 			}
@@ -224,21 +209,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 
 						temp_koko++;
 
-						//if (tempi == 127 && tempj == 124 && tempk == 0) {
-							//mexPrintf("lo = %u\n", lo);
-							////var = true;
-						//}
-						
-						//if (lo == 9600) {
-						//		mexPrintf("tempi = %d\n", tempi);
-						//		mexPrintf("tempj = %d\n", tempj);
-						//		mexPrintf("tempk = %d\n", tempk);
-						//}
-							//if (lo == 2116117)
-							//	mexPrintf("ii = %u\n", ii);
-							//if (lo == 2116117)
-							//	mexPrintf("Np = %u\n", Np);
-
 						if (tx0 < ty0) {
 							if (ii == (Np - 1u) && type > 0u) {
 								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
@@ -250,9 +220,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 							tempi += iu;
 							tx0 += txu;
 							xyz = 1u;
-							//if (lo == 7200) {
-							//	mexPrintf("temp_koko_orth_3D_1 = %u\n", temp_koko_orth_3D);
-							//}
 						}
 						else {
 							if (type > 0u) {
@@ -265,9 +232,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 							tempj += ju;
 							ty0 += tyu;
 							xyz = 2u;
-							//if (lo == 7200) {
-							//	mexPrintf("temp_koko_orth_3D_2 = %u\n", temp_koko_orth_3D);
-							//}
 						}
 						if (tempj < 0 || tempi < 0 || tempi >= Nx || tempj >= Ny) {
 							if (xyz == 1u && type > 0u && ii != (Np - 1u)) {
@@ -278,35 +242,10 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
 								}
 							}
-							//if (lo == 7200) {
-							//	mexPrintf("temp_koko_orth_3D_3 = %u\n", temp_koko_orth_3D);
-							//}
 							break;
 						}
 
-						//if (lo == 9600) {
-								//mexPrintf("tempi = %d\n", tempi);
-								//mexPrintf("tempj = %d\n", tempj);
-								//mexPrintf("tempk = %d\n", tempk);
-							//if (lo == 2116117)
-								//mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-						//}
-						//if (lo == 2116117)
-						//	mexPrintf("temp_koko_orth = %u\n", temp_koko_orth);
-						//if (lo == 2116117)
-						//	mexPrintf("temp_koko = %u\n", temp_koko);
-						//if (lo == 2116117)
-						//	mexPrintf("type = %u\n", type);
-
 					}
-
-					//if (lo == 9600) {
-					//	//mexPrintf("tempi = %d\n", tempi);
-					//	//mexPrintf("tempj = %d\n", tempj);
-					//	//mexPrintf("tempk = %d\n", tempk);
-					//	//if (lo == 2116117)
-					//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-					//}
 					// The number of voxels the LOR/ray traverses
 					if (type > 0u) {
 						lor_orth[lo] = temp_koko_orth;
@@ -314,10 +253,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
 					}
 					lor[lo] = temp_koko;
-					//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-						//mexPrintf("lo3 = %u\n", lo);
-						//if (lo == 7200)
-						//	break;
 				}
 			}
 		}
@@ -353,16 +288,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 						for (uint32_t ii = 0u; ii < Np; ii++) {
 
 							temp_koko++;
-							//if (lo == 2168072)
-							//	mexPrintf("tempi = %d\n", tempi);
-							//if (lo == 2168072)
-							//	mexPrintf("tempj = %d\n", tempj);
-							//if (lo == 2168072)
-							//	mexPrintf("tempk = %d\n", tempk);
-							//if (lo == 2168072)
-							//	mexPrintf("ii = %u\n", ii);
-							//if (lo == 2168072)
-							//	mexPrintf("Np = %u\n", Np);
 
 							if (tx0 < tz0) {
 
@@ -377,9 +302,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 								tx0 += txu;
 								xyz = 1u;
 								z_bool = true;
-								//if (lo == 7200) {
-								//	mexPrintf("temp_koko_orth_3D_1 = %u\n", temp_koko_orth_3D);
-								//}
 							}
 							else {
 
@@ -397,9 +319,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 									n_tempk = tempk;
 									z_bool = false;
 								}
-								//if (lo == 7200) {
-								//	mexPrintf("temp_koko_orth_3D_2 = %u\n", temp_koko_orth_3D);
-								//}
 							}
 							if (tempk < 0 || tempi < 0 || tempi >= Nx || tempk >= Nz) {
 								if (type == 2u && xyz == 3u && ii != (Np - 1u)) {
@@ -407,27 +326,10 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 									orth_distance_precompute_3D(tempj, Ny, Nz, x_diff, y_diff, z_diff, y_center, x_center[tempi], z_center, kerroinz,
 										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
 								}
-								//if (lo == 7200) {
-								//	mexPrintf("temp_koko_orth_3D_3 = %u\n", temp_koko_orth_3D);
-								//}
 								break;
 							}
-							//if (lo == 2168072)
-							//	mexPrintf("tempi = %d\n", tempi);
-							//if (lo == 2168072)
-							//	mexPrintf("tempj = %d\n", tempj);
-							//if (lo == 2168072)
-							//	mexPrintf("tempk = %d\n", tempk);
 
 						}
-						//if (lo == 2168072)
-						//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-						//if (lo == 2168072)
-						//	mexPrintf("temp_koko_orth = %u\n", temp_koko_orth);
-						//if (lo == 2168072)
-						//	mexPrintf("temp_koko = %u\n", temp_koko);
-						//if (lo == 2168072)
-						//	mexPrintf("type = %u\n", type);
 
 						// The number of voxels the LOR/ray traverses
 						if (type > 0u) {
@@ -436,14 +338,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 								lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
 						}
 						lor[lo] = temp_koko;
-						//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-//						if (lo == 3579362) {
-//#pragma omp critical
-//							mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-						//}
-
-						//if (lo == 7200)
-						//	break;
 					}
 
 				}
@@ -522,8 +416,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 								lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
 						}
 						lor[lo] = temp_koko;
-						//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-						//	mexPrintf("lo5 = %u\n", lo);
 					}
 				}
 				// LOR/ray doesn't traverse through the pixel space
@@ -560,10 +452,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 								n_tempk = tempk;
 								z_bool = false;
 							}
-							//if (lo == 14160033) {
-							//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-							//	mexPrintf("n_tempk = %d\n", n_tempk);
-							//}
 						}
 						else if (ty0 < tx0) {
 
@@ -577,10 +465,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 							ty0 += tyu;
 							xyz = 2u;
 							z_bool = true;
-							//if (lo == 14160033) {
-							//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-							//	mexPrintf("n_tempk = %d\n", n_tempk);
-							//}
 						}
 						else {
 
@@ -595,10 +479,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 								tx0 += txu;
 							}
 							xyz = 1u;
-							//if (lo == 14160033) {
-							//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-							//	mexPrintf("n_tempk = %d\n", n_tempk);
-							//}
 						}
 						if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz) {
 							if (type > 0u && ii != (Np - 1u)) {
@@ -618,18 +498,10 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
 								}
 							}
-							//if (lo == 14160033) {
-							//	mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-							//	mexPrintf("n_tempk = %d\n", n_tempk);
-							//}
 							break;
 						}
 
 					}
-					//if (lo == 14160033) {
-					//	//mexPrintf("temp_koko_orth_3D = %u\n", temp_koko_orth_3D);
-					//	break;
-					//}
 					// LOR/ray traverses through the pixel space
 					// The number of voxels the LOR/ray traverses
 					if (type > 0u) {
@@ -638,8 +510,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
 					}
 					lor[lo] = temp_koko;
-					//if (lor[lo] > 0u && lor_orth[lo + loop_var_par] == 0u)
-					//	mexPrintf("lo6 = %u\n", lo);
 				}
 				// LOR/ray doesn't traverse through the pixel space
 			}

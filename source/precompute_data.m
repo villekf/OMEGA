@@ -5,12 +5,11 @@ function precompute_data(options)
 % files are not found, then the corresponding functions will be
 % automatically run.
 %
-% This function also needs to be run if sinogram geometries or image sizes
-% are later changed
-%
-% You also need to run this function if you later decide to use raw data, 
+% This function should also be run if sinogram geometries or image sizes
+% are later changed or if you later decide to use raw data, 
 % precomputed LORs or OpenCL reconstruction and haven't run this function
-% before
+% before. However, as mentioned above, this function is automatically run
+% if the necessary data are not found.
 %
 % Input the machine, image, sinogram and reconstruction parameters
 %
@@ -34,23 +33,6 @@ function precompute_data(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-if options.verbose
-    disp('Beginning precomputation phase')
-    tic
-end
-
-% Precompute 2D sinogram coordinates for reconstruction
-if options.use_raw_data == false || options.precompute_all
-    if options.verbose
-        tic
-    end
-    sinogram_coordinates_2D(options);
-    if options.verbose
-        disp('Sinogram coordinates computed')
-        toc
-    end
-end
-
 if options.precompute_lor || options.precompute_all
     if options.verbose
         disp('Beginning LOR precomputation phase. This may take several minutes.')
@@ -66,7 +48,4 @@ if options.precompute_lor || options.precompute_all
         disp('LOR precomputation phase complete')
         toc
     end
-end
-if options.verbose
-    disp('Precomputation phase complete')
 end

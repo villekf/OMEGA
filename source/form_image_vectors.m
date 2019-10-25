@@ -20,16 +20,16 @@ function im_vectors = form_image_vectors(options, N)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if options.reconstruction_method ~= 2
+if options.implementation ~= 2
     
     
     MLEM_bool = options.OSL_MLEM || options.mlem;
     OS_bool = options.osem || options.rosem || options.ramla || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP;
     
-    if options.reconstruction_method == 4 && OS_bool
+    if options.implementation == 4 && OS_bool
         im_vectors.OSEM_apu = ones(N, 1);
     end
-    if options.reconstruction_method == 4 && MLEM_bool
+    if options.implementation == 4 && MLEM_bool
         im_vectors.MLEM_apu = ones(N, 1);
     end
     if options.osem
@@ -50,14 +50,14 @@ if options.reconstruction_method ~= 2
     if options.ramla
         im_vectors.RAMLA = ones(N,options.Niter + 1);
         im_vectors.RAMLA(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.RAMLA_apu = im_vectors.RAMLA(:,1);
         end
     end
     if options.rosem
         im_vectors.ROSEM = ones(N,options.Niter + 1);
         im_vectors.ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.ROSEM_apu = im_vectors.ROSEM(:,1);
         end
     end
@@ -96,14 +96,14 @@ if options.reconstruction_method ~= 2
     if options.MRP && options.OSL_OSEM
         im_vectors.MRP_OSL = ones(N,options.Niter + 1);
         im_vectors.MRP_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.MRP_OSL_apu = im_vectors.MRP_OSL(:,1);
         end
     end
     if options.MRP && options.OSL_MLEM
         im_vectors.MRP_MLEM = ones(N,options.Niter + 1);
         im_vectors.MRP_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.MRP_MLEM_apu = im_vectors.MRP_MLEM(:,1);
         end
     end
@@ -115,14 +115,14 @@ if options.reconstruction_method ~= 2
     if options.MRP && options.BSREM
         im_vectors.MRP_BSREM = ones(N,options.Niter + 1);
         im_vectors.MRP_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.MRP_BSREM_apu = im_vectors.MRP_BSREM(:,1);
         end
     end
     if options.MRP && options.ROSEM_MAP
         im_vectors.MRP_ROSEM = ones(N,options.Niter + 1);
         im_vectors.MRP_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.MRP_ROSEM_apu = im_vectors.MRP_ROSEM(:,1);
         end
     end
@@ -140,14 +140,14 @@ if options.reconstruction_method ~= 2
     if options.quad && options.OSL_OSEM
         im_vectors.Quad_OSL = ones(N,options.Niter + 1);
         im_vectors.Quad_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Quad_OSL_apu = im_vectors.Quad_OSL(:,1);
         end
     end
     if options.quad && options.OSL_MLEM
         im_vectors.Quad_MLEM = ones(N,options.Niter + 1);
         im_vectors.Quad_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Quad_MLEM_apu = im_vectors.Quad_MLEM(:,1);
         end
     end
@@ -159,14 +159,14 @@ if options.reconstruction_method ~= 2
     if options.quad && options.BSREM
         im_vectors.Quad_BSREM = ones(N,options.Niter + 1);
         im_vectors.Quad_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Quad_BSREM_apu = im_vectors.Quad_BSREM(:,1);
         end
     end
     if options.quad && options.ROSEM_MAP
         im_vectors.Quad_ROSEM = ones(N,options.Niter + 1);
         im_vectors.Quad_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Quad_ROSEM_apu = im_vectors.Quad_ROSEM(:,1);
         end
     end
@@ -184,14 +184,14 @@ if options.reconstruction_method ~= 2
     if options.L && options.OSL_OSEM
         im_vectors.L_OSL = ones(N,options.Niter + 1);
         im_vectors.L_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.L_OSL_apu = im_vectors.L_OSL(:,1);
         end
     end
     if options.L && options.OSL_MLEM
         im_vectors.L_MLEM = ones(N,options.Niter + 1);
         im_vectors.L_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.L_MLEM_apu = im_vectors.L_MLEM(:,1);
         end
     end
@@ -203,14 +203,14 @@ if options.reconstruction_method ~= 2
     if options.L && options.BSREM
         im_vectors.L_BSREM = ones(N,options.Niter + 1);
         im_vectors.L_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.L_BSREM_apu = im_vectors.L_BSREM(:,1);
         end
     end
     if options.L && options.ROSEM_MAP
         im_vectors.L_ROSEM = ones(N,options.Niter + 1);
         im_vectors.L_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.L_ROSEM_apu = im_vectors.L_ROSEM(:,1);
         end
     end
@@ -228,14 +228,14 @@ if options.reconstruction_method ~= 2
     if options.FMH && options.OSL_OSEM
         im_vectors.FMH_OSL = ones(N,options.Niter + 1);
         im_vectors.FMH_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.FMH_OSL_apu = im_vectors.FMH_OSL(:,1);
         end
     end
     if options.FMH && options.OSL_MLEM
         im_vectors.FMH_MLEM = ones(N,options.Niter + 1);
         im_vectors.FMH_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.FMH_MLEM_apu = im_vectors.FMH_MLEM(:,1);
         end
     end
@@ -247,14 +247,14 @@ if options.reconstruction_method ~= 2
     if options.FMH && options.BSREM
         im_vectors.FMH_BSREM = ones(N,options.Niter + 1);
         im_vectors.FMH_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.FMH_BSREM_apu = im_vectors.FMH_BSREM(:,1);
         end
     end
     if options.FMH && options.ROSEM_MAP
         im_vectors.FMH_ROSEM = ones(N,options.Niter + 1);
         im_vectors.FMH_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.FMH_ROSEM_apu = im_vectors.FMH_ROSEM(:,1);
         end
     end
@@ -272,14 +272,14 @@ if options.reconstruction_method ~= 2
     if options.weighted_mean && options.OSL_OSEM
         im_vectors.Weighted_OSL = ones(N,options.Niter + 1);
         im_vectors.Weighted_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Weighted_OSL_apu = im_vectors.Weighted_OSL(:,1);
         end
     end
     if options.weighted_mean && options.OSL_MLEM
         im_vectors.Weighted_MLEM = ones(N,options.Niter + 1);
         im_vectors.Weighted_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Weighted_MLEM_apu = im_vectors.Weighted_MLEM(:,1);
         end
     end
@@ -291,14 +291,14 @@ if options.reconstruction_method ~= 2
     if options.weighted_mean && options.BSREM
         im_vectors.Weighted_BSREM = ones(N,options.Niter + 1);
         im_vectors.Weighted_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Weighted_BSREM_apu = im_vectors.Weighted_BSREM(:,1);
         end
     end
     if options.weighted_mean && options.ROSEM_MAP
         im_vectors.Weighted_ROSEM = ones(N,options.Niter + 1);
         im_vectors.Weighted_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.Weighted_ROSEM_apu = im_vectors.Weighted_ROSEM(:,1);
         end
     end
@@ -316,14 +316,14 @@ if options.reconstruction_method ~= 2
     if options.TV && options.OSL_OSEM
         im_vectors.TV_OSL = ones(N,options.Niter + 1);
         im_vectors.TV_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TV_OSL_apu = im_vectors.TV_OSL(:,1);
         end
     end
     if options.TV && options.OSL_MLEM
         im_vectors.TV_MLEM = ones(N,options.Niter + 1);
         im_vectors.TV_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TV_MLEM_apu = im_vectors.TV_MLEM(:,1);
         end
     end
@@ -335,14 +335,14 @@ if options.reconstruction_method ~= 2
     if options.TV && options.BSREM
         im_vectors.TV_BSREM = ones(N,options.Niter + 1);
         im_vectors.TV_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TV_BSREM_apu = im_vectors.TV_BSREM(:,1);
         end
     end
     if options.TV && options.ROSEM_MAP
         im_vectors.TV_ROSEM = ones(N,options.Niter + 1);
         im_vectors.TV_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TV_ROSEM_apu = im_vectors.TV_ROSEM(:,1);
         end
     end
@@ -360,14 +360,14 @@ if options.reconstruction_method ~= 2
     if options.AD && options.OSL_OSEM
         im_vectors.AD_OSL = ones(N,options.Niter + 1);
         im_vectors.AD_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.AD_OSL_apu = im_vectors.AD_OSL(:,1);
         end
     end
     if options.AD && options.OSL_MLEM
         im_vectors.AD_MLEM = ones(N,options.Niter + 1);
         im_vectors.AD_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.AD_MLEM_apu = im_vectors.AD_MLEM(:,1);
         end
     end
@@ -379,14 +379,14 @@ if options.reconstruction_method ~= 2
     if options.AD && options.BSREM
         im_vectors.AD_BSREM = ones(N,options.Niter + 1);
         im_vectors.AD_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.AD_BSREM_apu = im_vectors.AD_BSREM(:,1);
         end
     end
     if options.AD && options.ROSEM_MAP
         im_vectors.AD_ROSEM = ones(N,options.Niter + 1);
         im_vectors.AD_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.AD_ROSEM_apu = im_vectors.AD_ROSEM(:,1);
         end
     end
@@ -404,14 +404,14 @@ if options.reconstruction_method ~= 2
     if options.APLS && options.OSL_OSEM
         im_vectors.APLS_OSL = ones(N,options.Niter + 1);
         im_vectors.APLS_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.APLS_OSL_apu = im_vectors.APLS_OSL(:,1);
         end
     end
     if options.APLS && options.OSL_MLEM
         im_vectors.APLS_MLEM = ones(N,options.Niter + 1);
         im_vectors.APLS_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.APLS_MLEM_apu = im_vectors.APLS_MLEM(:,1);
         end
     end
@@ -423,14 +423,14 @@ if options.reconstruction_method ~= 2
     if options.APLS && options.BSREM
         im_vectors.APLS_BSREM = ones(N,options.Niter + 1);
         im_vectors.APLS_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.APLS_BSREM_apu = im_vectors.APLS_BSREM(:,1);
         end
     end
     if options.APLS && options.ROSEM_MAP
         im_vectors.APLS_ROSEM = ones(N,options.Niter + 1);
         im_vectors.APLS_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.APLS_ROSEM_apu = im_vectors.APLS_ROSEM(:,1);
         end
     end
@@ -448,14 +448,14 @@ if options.reconstruction_method ~= 2
     if options.TGV && options.OSL_OSEM
         im_vectors.TGV_OSL = ones(N,options.Niter + 1);
         im_vectors.TGV_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TGV_OSL_apu = im_vectors.TGV_OSL(:,1);
         end
     end
     if options.TGV && options.OSL_MLEM
         im_vectors.TGV_MLEM = ones(N,options.Niter + 1);
         im_vectors.TGV_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TGV_MLEM_apu = im_vectors.TGV_MLEM(:,1);
         end
     end
@@ -467,14 +467,14 @@ if options.reconstruction_method ~= 2
     if options.TGV && options.BSREM
         im_vectors.TGV_BSREM = ones(N,options.Niter + 1);
         im_vectors.TGV_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TGV_BSREM_apu = im_vectors.TGV_BSREM(:,1);
         end
     end
     if options.TGV && options.ROSEM_MAP
         im_vectors.TGV_ROSEM = ones(N,options.Niter + 1);
         im_vectors.TGV_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.TGV_ROSEM_apu = im_vectors.TGV_ROSEM(:,1);
         end
     end
@@ -492,14 +492,14 @@ if options.reconstruction_method ~= 2
     if options.NLM && options.OSL_OSEM
         im_vectors.NLM_OSL = ones(N,options.Niter + 1);
         im_vectors.NLM_OSL(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.NLM_OSL_apu = im_vectors.NLM_OSL(:,1);
         end
     end
     if options.NLM && options.OSL_MLEM
         im_vectors.NLM_MLEM = ones(N,options.Niter + 1);
         im_vectors.NLM_MLEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.NLM_MLEM_apu = im_vectors.NLM_MLEM(:,1);
         end
     end
@@ -511,14 +511,14 @@ if options.reconstruction_method ~= 2
     if options.NLM && options.BSREM
         im_vectors.NLM_BSREM = ones(N,options.Niter + 1);
         im_vectors.NLM_BSREM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.NLM_BSREM_apu = im_vectors.NLM_BSREM(:,1);
         end
     end
     if options.NLM && options.ROSEM_MAP
         im_vectors.NLM_ROSEM = ones(N,options.Niter + 1);
         im_vectors.NLM_ROSEM(:,1) = options.x0(:);
-        if ~options.reconstruction_method == 4
+        if ~(options.implementation == 4)
             im_vectors.NLM_ROSEM_apu = im_vectors.NLM_ROSEM(:,1);
         end
     end
@@ -531,6 +531,41 @@ if options.reconstruction_method ~= 2
         im_vectors.NLM_COSEM = ones(N,options.Niter + 1);
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
+    end
+    if options.custom && options.OSL_OSEM
+        im_vectors.custom_OSL = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_OSL(:,1) = options.x0(:);
+        im_vectors.custom_OSL_apu = im_vectors.custom_OSL(:,1);
+    end
+    if options.custom && options.OSL_MLEM
+        im_vectors.custom_MLEM = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_MLEM(:,1) = options.x0(:);
+        im_vectors.custom_MLEM_apu = im_vectors.custom_MLEM(:,1);
+    end
+    if options.custom && options.MBSREM
+        im_vectors.custom_MBSREM = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_MBSREM(:,1) = options.x0(:);
+        im_vectors.custom_MBSREM_apu = im_vectors.custom_MBSREM(:,1);
+    end
+    if options.custom && options.BSREM
+        im_vectors.custom_BSREM = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_BSREM(:,1) = options.x0(:);
+        im_vectors.custom_BSREM_apu = im_vectors.custom_BSREM(:,1);
+    end
+    if options.custom && options.ROSEM_MAP
+        im_vectors.custom_ROSEM = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_ROSEM(:,1) = options.x0(:);
+        im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
+    end
+    if options.custom && options.RBI_MAP
+        im_vectors.custom_RBI = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_RBI(:,1) = options.x0(:);
+        im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
+    end
+    if options.custom && any(options.COSEM_MAP)
+        im_vectors.custom_COSEM = ones(N,options.Niter + 1,'double');
+        im_vectors.custom_COSEM(:,1) = options.x0(:);
+        im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);
     end
     
 else
@@ -949,5 +984,41 @@ else
         im_vectors.NLM_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
+    end
+    
+    if options.custom && options.OSL_OSEM
+        im_vectors.custom_OSL = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_OSL(:,1) = options.x0(:);
+        im_vectors.custom_OSL_apu = im_vectors.custom_OSL(:,1);
+    end
+    if options.custom && options.OSL_MLEM
+        im_vectors.custom_MLEM = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_MLEM(:,1) = options.x0(:);
+        im_vectors.custom_MLEM_apu = im_vectors.custom_MLEM(:,1);
+    end
+    if options.custom && options.MBSREM
+        im_vectors.custom_MBSREM = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_MBSREM(:,1) = options.x0(:);
+        im_vectors.custom_MBSREM_apu = im_vectors.custom_MBSREM(:,1);
+    end
+    if options.custom && options.BSREM
+        im_vectors.custom_BSREM = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_BSREM(:,1) = options.x0(:);
+        im_vectors.custom_BSREM_apu = im_vectors.custom_BSREM(:,1);
+    end
+    if options.custom && options.ROSEM_MAP
+        im_vectors.custom_ROSEM = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_ROSEM(:,1) = options.x0(:);
+        im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
+    end
+    if options.custom && options.RBI_MAP
+        im_vectors.custom_RBI = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_RBI(:,1) = options.x0(:);
+        im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
+    end
+    if options.custom && any(options.COSEM_MAP)
+        im_vectors.custom_COSEM = ones(N,options.Niter + 1,'single');
+        im_vectors.custom_COSEM(:,1) = options.x0(:);
+        im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);
     end
 end

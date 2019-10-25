@@ -1,0 +1,81 @@
+/vis/disable
+
+/gate/geometry/setMaterialDatabase GateMaterials.db
+
+#     W O R L D
+/gate/world/geometry/setXLength 30. cm
+/gate/world/geometry/setYLength 30. cm
+/gate/world/geometry/setZLength 30. cm
+
+/control/execute camera.mac
+
+/control/execute phantom_norm.mac
+
+/control/execute physics_norm.mac
+
+/gate/actor/addActor                             SimulationStatisticActor stat
+/gate/actor/stat/saveEveryNSeconds               20
+/gate/actor/stat/save                            stat/cylpet_norm_example.txt
+
+#	I N I T I A L I Z E 
+/gate/run/initialize
+
+/control/execute digitizer.mac
+
+#	S O U R C E
+/control/execute sources_norm.mac
+
+
+
+#	V E R B O S I T Y
+#/gate/verbose Physic    0
+#/gate/verbose Cuts      0
+#/gate/verbose Actor     0
+#/gate/verbose SD        0
+#/gate/verbose Actions   0
+#/gate/verbose Step      0
+#/gate/verbose Error     0
+#/gate/verbose Warning   0
+#/gate/verbose Output    0
+#/gate/verbose Core      0
+
+/run/verbose 0
+/event/verbose 0
+/tracking/verbose 0
+
+#	O U T P U T 
+
+#root
+/gate/output/root/enable
+/gate/output/root/setFileName output/example_norm_PET_240min
+/gate/output/root/setRootHitFlag 0
+/gate/output/root/setRootSinglesFlag 0
+/gate/output/root/setRootCoincidencesFlag 1
+/gate/output/root/setRootdelayFlag 0
+
+#ascii
+/gate/output/ascii/enable
+/gate/output/ascii/setFileName                 output/example_norm_PET_240min
+/gate/output/ascii/setOutFileHitsFlag           0
+/gate/output/ascii/setOutFileSinglesFlag        0
+/gate/output/ascii/setOutFileCoincidencesFlag   1
+/gate/output/ascii/setOutFiledelayFlag          0
+/gate/output/ascii/setCoincidenceMask 0 1 0 1 1 1 1 0 0 0 0 1 1 0 0 0 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 0 0 0 0 0 
+#/gate/output/ascii/setCoincidenceMask 0 1 0 1 1 1 1 1 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 1 0 0 0 1 1 1 1 1 0 0 
+
+
+#   R A N D O M
+# JamesRandom Ranlux64 MersenneTwister
+/gate/random/setEngineName MersenneTwister
+#/gate/random/setEngineSeed default
+#/gate/random/setEngineSeed auto
+/gate/random/setEngineSeed 5262
+#/gate/random/resetEngineFrom fileName
+/gate/random/verbose 1
+
+#	S T A R T 
+/gate/application/setTimeSlice     14400. s
+/gate/application/setTimeStart     0. s
+/gate/application/setTimeStop      14400. s
+
+/gate/application/startDAQ

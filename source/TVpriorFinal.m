@@ -111,7 +111,9 @@ if TVtype ~= 3
             
             epsilon = [fp,gp,hp]./[fp./sqrt(fp.^2 + options.eta^2) + options.epps, gp./sqrt(gp.^2 + options.eta^2) + options.epps, hp./sqrt(hp.^2 + options.eta^2) + options.epps];
             
-            pval = sqrt(f.^2 + g.^2 + h.^2 - (sum([f,g,h].*epsilon,2)).^2 + options.APLSsmoothing);
+            pval = (f.^2 + g.^2 + h.^2 - (sum([f,g,h].*epsilon,2)).^2 + options.APLSsmoothing);
+            pval(pval < 0) = options.APLSsmoothing;
+            pval = sqrt(pval);
             apu1 = (f - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,1)))))./pval; % x-direction
             apu2 = (g - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,2)))))./pval; % y-direction
             apu3 = (h - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,3)))))./pval; % z-direction
@@ -148,11 +150,11 @@ else
         padd2 = padding(reshape(data.reference_image,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd2 = padd2(tr_offsets);
         padd2(:,isinf(options.weights)) = [];
-        grad = sum(bsxfun(@times,((im - padd)./options.C^2 .* (1./sqrt(1 + ((im - padd)./options.C).^2 + ((data.reference_image - padd2)./options.T^2)))),options.weights_quad(~isinf(options.weights_quad)')),2);
+        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + (bsxfun(@minus,data.reference_image, padd2)./options.T).^2))),options.weights_quad(~isinf(options.weights_quad)')),2);
     else
         padd = padding(reshape(im,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd = padd(tr_offsets);
         padd(:,isinf(options.weights)) = [];
-        grad = sum(bsxfun(@times,((im - padd)./options.C^2 .* (1./sqrt(1 + ((im - padd)./options.C).^2))),options.weights_quad(~isinf(options.weights_quad))'),2);
+        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2))),options.weights_quad(~isinf(options.weights_quad))'),2);
     end
 end

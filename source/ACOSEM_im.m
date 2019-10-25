@@ -1,8 +1,8 @@
-function [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h, osa_iter, is_transposed)
+function [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h, osa_iter, SinDelayed, is_transposed)
 %ACOSEM_IM Computes the Accelerated COSEM (ACOSEM) estimates
 %
 % Example:
-%   [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h)
+%   [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h, osa_iter, SinDelayed, is_transposed)
 % INPUTS:
 %   im = The current estimate
 %   A = The transpose of the (sparse) system matrix at current subset
@@ -13,10 +13,14 @@ function [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h, osa_iter, is_tran
 %   [A_1,A_2,...,A_subsets]
 %   h = Acceleration parameter
 %   osa_iter = Current subset (sub-iteration)
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as uu. If no scatter and/or
+%   randoms data is available, use zero. 
+%   is_transposed = true if A matrix is the transpose of it, false if not
 %
 % OUTPUTS:
 %   im = The updated estimate
-%   C_co = Updated complete-data matrix
+%   C_aco = Updated complete-data matrix
 %
 %   See also COSEM_im, ECOSEM_im, COSEM_OSL
 
@@ -38,9 +42,9 @@ function [im, C_aco] = ACOSEM_im(im, A, epps, uu, C_aco, D, h, osa_iter, is_tran
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %C_aco(:,osa_iter) = full(sum(spdiags(uu./(A'*pz_acosem_apu + epps),0,size(A,2),size(A,2))*(bsxfun(@times,A',pz_acosem_apu'.^(1/h))))');
 if is_transposed
-    C_aco(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps),0,size(A,2),size(A,2)),2));
+    C_aco(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,1),size(A,1))*A) * spdiags(uu./(A'*im + epps + SinDelayed),0,size(A,2),size(A,2)),2));
 else
-    C_aco(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,2),size(A,2))*A')*spdiags(uu./(A*im + epps),0,size(A,1),size(A,1)),2));
+    C_aco(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,2),size(A,2))*A') * spdiags(uu./(A*im + epps + SinDelayed),0,size(A,1),size(A,1)),2));
 end
 im = (sum(C_aco,2)./D).^h;
 % im = sum(C_aco,2);

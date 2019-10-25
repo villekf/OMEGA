@@ -1,8 +1,9 @@
 function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 %DRAMA_SUBITER Computes the Dynamic RAMLA (DRAMA) estimates
 %
-% Example:
-%   im = DRAMA_subiter(im, lambda, A, uu, epps, iter, Summ, sub_iter)
+% Examples:
+%   im = DRAMA_subiter(im, lambda, A, uu, epps, iter, Summ, sub_iter, A, uu, SinDelayed, is_transposed)
+%   im = DRAMA_subiter(im, lambda, A, uu, epps, iter, Summ, sub_iter, RHS)
 % INPUTS:
 %   im = The current estimate
 %   lambda = Relaxation parameter
@@ -12,7 +13,11 @@ function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 %   sub_iter = The current subset (sub-iteration)
 %   A = The (transpose of the) (sparse) system matrix at current subset
 %   uu = Measurements at current subset
+%   SinDelayed = Randoms and/or scatter correction data. Dimension must be
+%   either a scalar or a vector of same size as uu. If no scatter and/or
+%   randoms data is available, use zero. 
 %   is_transposed = true if A matrix is the transpose of it, false if not
+%   RHS = The right hand side of OSEM (RHS = A'*(uu./(A*im + SinDelayed))) 
 %
 % OUTPUTS:
 %   im = The updated estimate
@@ -36,11 +41,11 @@ function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 9
-    if varargin{3}
-        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps) - 1));
+if nargin == 10
+    if varargin{4}
+        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps + varargin{3}) - 1));
     else
-        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps) - 1));
+        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps + varargin{3}) - 1));
     end
 elseif nargin == 7
     im = im + lambda(iter, sub_iter).*im./Summ.*((varargin{1} + epps) - Summ);
