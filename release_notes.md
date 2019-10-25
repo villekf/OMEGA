@@ -4,9 +4,15 @@
 
 - Fixed a bug with LMF input and source coordinates 
 
-- Fixed a bug with check for LMF and Root input 
+- Fixed a bug with check for LMF and ROOT input 
 
 - Fixed a bug that caused sinogram formation to fail if you had not loaded the data in the same session 
+
+- Fixed a bug with sinogram segments that caused too low maximum ring difference values to fail 
+
+- Fixed a bug that caused sinogram z-coordinate creation to fail with certain span and segment combinations 
+
+  - Also fixed some bugs in the z-coordinate creation 
 
 - Fixed a bug involving pseudo detectors 
 
@@ -19,6 +25,12 @@
 - Fixed some bugs in the matrix free OpenCL kernel 
 
 - Fixed some bugs when compiling the cpp-files with certain compilers 
+
+- Corrupted ASCII files now work, skipping the corrupted line (with a warning message) 
+
+- ASCII data load is faster on MATLAB R2019a and up 
+
+- ASCII data no longer needs the user to specify each column number, but rather simply to copy-paste the coincidence mask. 
 
 - ACOSEM didn't previously work if one of the other COSEMs weren't selected as well 
 
@@ -80,17 +92,21 @@
 
 - Added ability to use the delayed coincidence window data as randoms correction 
 
-- Added (optional) randoms variance reduction (smoothing) 
+- Added (optional) randoms variance reduction 
+
+- Added (optional) randoms and/or scatter smoothing, with moving mean smoothing 
 
 - Added normalization corrections 
 
   - Can be formed by using OMEGA functions or input by user (e.g. Inveon .nrm-file) 
 
+  - Supports axial geometric, axial block, block profile, crystal efficiency and transaxial geometric corrections 
+
 - All corrections (except attenuation) can be performed either in the sinogram phase or in the reconstruction phase 
 
   - Attenuation is still only in the reconstruction phase 
 
-- Modified the included example to have shorter coincidence window, include delayed coincidence events, scatter information and event IDs. Also changed the simulation to backtoback type (faster simulation) 
+- Modified the included example to have shorter coincidence window, include delayed coincidence events, scatter information and event IDs. Also changed the simulation to backtoback type (faster simulation). Additional cylinder was also added. 
 
 - Added more comments, especially to the .cpp and .cl files 
 
@@ -130,13 +146,13 @@
 
 - Added Dynamic RAMLA (DRAMA) 
 
-- MRP works now even without image processing toolbox, though it is still the preferred implementation 
+- MRP works now even without image processing toolbox, though image processing toolbox is still used if available 
 
 - You can now choose to ignore the normalization step in MRP, L-filter, FMH, AD and weighted mean 
 
 - Matrix-free OpenCL implementation now pre-compiles the binary for the corresponding device on the first run (implementation 2) 
 
-  - Separate binaries are created for each device used 
+  - Separate binaries are created for each device used and for each projector 
 
 - Optimizations to the OpenCL kernels 
 
@@ -160,7 +176,7 @@
 
 - The raw list-mode data file is now always saved initially. Sinograms can be (if required) formed from this data 
 
-- Scatter correction can be applied if the user has a ready-made scatter correction sinogram/raw data matrix 
+- Scatter correction can be applied if the user has a ready-made scatter correction sinogram/raw data matrix. Scatter data created from GATE simulation in OMEGA can also be used. 
 
 - Implementations 2,3 and 4 now support reconstruction without a precomputation phase 
 
@@ -170,7 +186,7 @@
 
 - Previously known reconstruction method 5 has been deprecated; the codes still exist (and the mex-files are built if OpenCL is found) and it can be used by selecting implementation 5, but it has not been tested and will mostly likely fail 
 
-- 64-bit atomic operations are used if the device used supports them (OpenCL only) 
+- 64-bit atomic operations can be used if the device used supports them (OpenCL only) 
 
 - Added specific functions to query the number of platforms and/or devices on your system (OpenCL) 
 
@@ -181,3 +197,21 @@
 - Implementations 2, 3 and 4 are now faster on subsequent iterations due to precomputation done on the first iteration. With OpenCL, this is only the case if there is sufficient memory available on the device 
 
 - Previously only MATLAB 2015a and up were supported, now older versions should work as well 
+
+- ROOT data import works without crashes on R2019a and up 
+
+- Added support for multi-ray improved Siddon, with up to five rays 
+
+- Added support for Octave 
+
+- Added conversion function to convert OMEGA sinogram/reconstructed image data into NIfTI, Analyze, DICOM, Interfile or raw format 
+
+- Measurement data can now be imported from NIfTI, Analyze, DICOM or raw format 
+
+- Michlegorams with the specified span and ring difference can be visualized 
+
+- Raw data can be visualized easily now 
+
+- Added functions to convert CT/HU attenuation values to 511 keV attenuation 
+
+- Added function to convert 122 keV attenuation to 511 keV 
