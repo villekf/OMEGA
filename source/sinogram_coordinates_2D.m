@@ -82,9 +82,9 @@ for kk = int32(1) : (det_w_pseudo)
     end
     jh = jh + (det_w_pseudo) -kk + 1;
 end
-if (det_w_pseudo-det_per_ring) > 0
-    L(ismember(L(:,2),pseudo_d),:) = [];
-end
+% if (det_w_pseudo-det_per_ring) > 0
+%     L(ismember(L(:,2),pseudo_d),:) = [];
+% end
 L(L(:,1) == 0,:) = [];
 
 L = L - 1;
@@ -256,6 +256,13 @@ else
     x2 = accumarray([i j], xx2, [Ndist Nang],@mean, NaN);
     y2 = accumarray([i j], yy2, [Ndist Nang],@mean, NaN);
     
+end
+
+if sum(isnan(x)) > 0
+    x = fillmissing(x,'linear');
+    y = fillmissing(y,'linear');
+    x2 = fillmissing(x2,'linear');
+    y2 = fillmissing(y2,'linear');
 end
 
 
