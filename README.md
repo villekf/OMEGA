@@ -77,7 +77,7 @@ The following features are currently present:
 You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically, Visual Studio 2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04. MinGW++ also works though the ArrayFire OpenCL reconstructions (implementation 2) is not supported. Octave supports only MinGW++ and as such implementation 2 is not supported on Windows.
 
 To install the software, either simply extract the package or obtain the source code through git:  
-git clone https://github.com/villekf/OMEGA  
+`git clone https://github.com/villekf/OMEGA`  
 and then add the OMEGA folder and subfolders to MATLAB/Octave path. Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`.
 
 In order to enable OpenCL support, you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). 
