@@ -1,0 +1,601 @@
+:toc:
+:stem:
+
+Below is an explanation on what the various main-files and major functions do and what do the different parameters mean.
+
+# gate_main.m and nongate_main.m
+
+This file contains all the device, sinogram, GATE output data and reconstruction properties.
+
+## MACHINE PROPERTIES
+
+The first section contains the device parameters and is included in both files. These include (name in parenthesis is the MATLAB variable name):
+
+**Blocks per ring (blocks_per_ring)** = This is the number of "blocks" in your machine on each ring. If you have cylindrical PET geometry, then this should be the number of R-sectors/modules per ring. For ECAT it is the number of blocks/R-sectors. If you need more help, see the included example (# R E P E A T R S E C T O R).
+
+**Linear multiply (linear_multip)** = The repeater number in GATE. See the example on how this compares with the GATE macros (# R E P E A T M O D U L E). For non-GATE it is the number of blocks in axial direction.
+
+**Crystals per block (cryst_per_block)** = The number of crystals on the side of each block. In the example the crystals are in 8x8 grids meaning this value is 8. Blocks need to contain square crystal grids.
+
+**Crystal pitch x/y-direction (cr_p)** = Crystal pitch in the x- and y-directions. I.e. the distance between the centers of adjacent crystals.
+
+**Crystal pitch z-direction (cr_pz)** = Same as above, but in z-direction.
+
+**Bore diameter (diameter)** = Diameter of the machine bore. I.e. distance between perpendicular crystals.
+
+**Transaxial field-of-view (FOVa_x)** = Transaxial field-of-view (x-direction), i.e. the reconstructed image location.
+
+**Transaxial field-of-view (FOVa_y)** = Transaxial field-of-view (y-direction), i.e. the reconstructed image location.
+
+**Axial FOV (axial_fov)** = Same as above, but in axial (z) direction.
+
+**Pseudo rings (pseudot)** = The number of pseudo rings. Use 0 or [] if none.
+
+**Detectors per ring (det_per_ring)** = Number of detectors per ring without pseudo detectors. Can be automatically 
+determined as in the example.
+
+**Detectors per ring w/ pseudo detectors (det_w_pseudo)** = Same as above, but with pseudo detectors included. Since pseudo detectors are usually included in each detector block, you can determine this number by adding +1 to crystals per block. E.g. ``options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1);``
+
+**Total number of rings (rings)** = Number of crystal rings. Can be computed automatically.
+
+**Total number of detectors (detectors)** = Can be automatically determined.
+
+**Machine name** = The name of your machine. Used for naming purposes.
+
+## GATE SPECIFIC SETTINGS
+
+These apply only to ``gate_main.m``.
+
+**Obtain trues (obtain_trues)** = If this is set to true, then the true coincidences are extracted separately from the GATE data. In order to obtain trues with ASCII or LMF format data, you need to enable event ID and scatter counts in the output. See the example macro ``https://github.com/villekf/OMEGA/blob/master/exampleGATE/benchPET.mac#L46[benchPET.mac]``. Initially the trues are obtained in the raw data format, but they can be transformed into sinogram format. True coincidences are coincidences without any random or scattered coincidences.
+
+**Reconstruct trues (reconstruct_trues)** = If this is set to true, then the true coincidences are used in the image reconstruction automatically. Requires an existing trues data file (sinogram or raw data).
+
+**Store scatter (store_scatter)** = If this is set to true, then the scattered coincidences are extracted separately from the GATE data. In order to obtain scatter data with ASCII or LMF format data, you need to enable scatter counts in the output. See the example macro ``https://github.com/villekf/OMEGA/blob/master/exampleGATE/benchPET.mac#L46[benchPET.mac]``. Initially the scatter data are obtained in the raw data format, but they can be transformed into sinogram format. The user can specify which scatter components to include, see below. This data is not used for scatter correction.
+
+**Scatter components (scatter_components)** = A vector for each of the FOUR available scatter components. GATE supports the following different scatter components: Compton scattering in the phantom, Compton scattering in the detector crystal, Rayleigh scattering in the phantom and Rayleigh scattering in the detector crystal. Each component can be enabled by setting the corresponding vector value to 1. E.g. If you would want both Compton and Rayleigh scattering in the phantom (but not in the detector crystal) set this as ``options.scatter_components = [1 0 1 0];``. By default, all four are enabled. This variable only works if ``options.store_scatter = true``.
+
+**Reconstruct scatter (reconstruct_scatter)** = As with trues, when set to true then the scattered coincidences are used in the image reconstruction automatically. Requires an existing scatter data file (sinogram or raw data). Trues take precedence over scatter, i.e. if both this and trues are set to true, then only trues are reconstructed. 
+
+**Store randoms (store_randoms)** = If this is set to true, then the true random coincidences are extracted separately from the GATE data. In order to obtain scatter data with ASCII or LMF format data, you need to enable event ID in the output. See the example macro ``https://github.com/villekf/OMEGA/blob/master/exampleGATE/benchPET.mac#L46[benchPET.mac]``. Initially the randoms data are obtained in the raw data format, but they can be transformed into sinogram format. This includes all coincidences that do not share the same event ID. These counts are not used for randoms correction; delayed coincidences can be used for randoms correction.
+
+**Obtain source coordinates (source)** = If this is set to true, then the source coordinates of all the coincidences are saved in separate variable(s) and stored in mat-file. These can then be used to form the original decay image. Separate matrices are created for all different cases (prompts, trues, scatter and randoms) if any of them have been selected. E.g. if ``store_trues = true``, then the source image containing only the coordinates of the true coincidences are saved. Scatter and randoms are stored as singles, trues as coincidences (only one count at each coordinate) and prompts both as coincidences and singles.
+
+NOTE: Source coordinates obtained from LMF data can be unreliable.
+
+### ASCII DATA FORMAT SETTINGS
+
+**use ASCII (use_ASCII)** = True if you want to use GATE ASCII files as input data, false if you want to use LMF or ROOT.
+
+**Coincidence mask (coincidence_mask)** = This is the ASCII coincidence mask used in GATE macros. Simply copy-paste the number part of the mask to MATLAB inside brackets. E.g. if `/gate/output/ascii/setCoincidenceMask 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0`, then `options.coincidence_mask = [0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0];`. If you have not used a coincidence mask, use an empty array (i.e. `options.coincidence_mask = [];`).
+
+
+### LMF DATA FORMAT SETTINGS
+
+**use LMF (use_LMF)** = True if you want to use GATE LMF files as input data, false if you want to use ASCII or ROOT.
+
+**Number of header bytes (header_bytes)** = How many bytes are dedicated for LMF header.
+
+**Number of event bytes (data_bytes)** = How many bytes are at each event packet. Currently this can be at most 21 (time + detector indices + source indices + event indices + number of Compton in phantom) and has to be at least 10 (time + detector indices).
+
+**Number of bits used for R-sectors (R_bits)** = How many bits in the 16-bit index packet are dedicated for R-sectors. This can be seen when the simulation starts.
+
+**Number of bits used for modules, submodules, crystal and layers (M_bits, etc.)** = Same as above. Although submodules are not supported or used, they should use at least 1 bit.
+
+**Coincidence window length (coincidence_window)** = Length of the coincidence window in seconds.
+
+**Source coordinates (source_LMF)** = Are source coordinates obtained? Set to true if you want to save the "true" image. data_bytes needs to be at least 16 if this is set to true. data_bytes can be 16 even if this is false if source coordinates were saved during the simulation.
+
+**Clock time step (clock_time_step)** = What is the clock time step. This should the clock time step from the cch-files. E.g. if clock time step is 1 ps (1e-12) in cch-files then this would be 1e-12.
+
+
+### ROOT DATA FORMAT SETTINGS
+
+**use ROOT (use_root)** = True if you want to use GATE ROOT files as input data, false if you want to use ASCII or LMF.
+
+## IMAGE PROPERTIES
+
+**Image size in x-direction (Nx)** = If the total image size is 128x128x63 then this is 128. Non-square sizes are technically supported, but untested.
+
+**Image size in y-direction (Ny)** = If the total image size is 128x128x63 then this is 128. Non-square sizes are technically supported, but untested. 
+
+**Image size in z-direction (Nz)** = If the total image size is 128x128x63 then this is 63.
+
+
+## SINOGRAM PROPERTIES
+
+**Span (span)** = The span factor (also called axial compression). The higher the number, the greater the compression of oblique LORs).
+
+**Maximum ring difference (ring_difference)** = The maximum distance (in rings) from which oblique LORs are included.
+
+**Number of angles (Nang)** = How many different angles (tangential positions) are in the sinogram. The angles depict the angle between the LOR and x-axis. Is mashing is used, this value should be the final sinogram size AFTER mashing.
+
+**Number of views (Ndist)** = How many different views (angular positions) are in the sinogram. The views are the shortest (orthogonal) distance between the LOR and the origin.
+
+**Segment table (segment_table)** = Oblique sinograms are divided into groups specified by the segment table. This value depends on the span value and can be automatically computed as in the example.
+
+**Total number of sinograms (TotSinos)** = The total number of sinograms. Can be obtained by summing the segment table.
+
+**Number of sinograms used in reconstruction (NSinos)** = Less sinograms can be used in the reconstruction process itself (e.g. only parallel LORs). This is an experimental feature. Only the N first sinograms can be used, e.g. you can't pick only 100 last sinograms, but you can pick the first 100.
+
+**Distance side (ndist_side)** = When Ndist value is even, then one extra view has to be taken either from the "negative" or "positive" side. With this you can specify whether this is from the "negative" (+1) or "positive" (-1). If you are unsure what value to use, use the default value. This varies from device to device. If you compare the sinogram produced by OMEGA to the machine generated one and see a slight shift, then this parameter is most likely incorrect.
+
+**Fill sinogram gaps (fill_sinogram_gaps)** = If pseudo detectors are used, setting this to true will fill the gaps caused by them. Experimental feature.
+
+**Gap filling method (gap_filling_method)** = What method is used to fill the gaps. Available methods are the MATLAB's built-in `fillmissing` or alternatively `https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans[inpaint_nans]` from file exchange. Must be in char format.
+
+**Interpolation method (fillmissing) (interpolation_method_fillmissing)** = Which of the interpolation methods are used when using `fillmissing` for gap filling. See the help file on `fillmissing` for more information. Input is char, e.g. `'linear'`.
+
+**Interpolation method (inpaint_nans) (interpolation_method_inpaint)** = Which of the interpolation methods are used when using `inpaint_nans` for gap filling. See the help on `inpaint_nans` for more information. Input is a number.
+
+
+## CORRECTIONS
+
+**Randoms correction (randoms_correction)** = If set to true, then the delayed coincidences are stored during data load (GATE and Inveon data) and used for randoms correction during sinogram formation or image reconstruction. For other data, the user will be prompted for the randoms correction data when it is required. The data (mat-file) should then include a variable named SinDelayed (sinogram data), delayed_coincidences (raw_data) or be the only variable in the file.
+
+**Variance reduction (variance_reduction)** = If true, performs variance reduction to randoms data before corrections. The variance reduction uses 3D fan sum algorithm [https://github.com/villekf/OMEGA/wiki/Function-help#references[3]].
+
+**Randoms smoothing (randoms_smoothing)** = If true, performs smoothing to the randoms data before corrections. The smoothing is a fixed 8x8 moving mean smoothing. The window size can be adjusted in the original function `randoms_smoothing`. For sinogram data, the smoothing is done when the randoms sinogram is formed. Activating smoothing later and performing the corrections during reconstructions does NOT perform smoothing unless the sinogram formation step is done as well.
+
+**Scatter correction (scatter_correction)** = If set to true, scatter correction will be performed during sinogram formation or image reconstruction. In all cases, the user will be prompted for the scatter correction data. The input data (mat-file) must include a variable named SinScatter (sinogram data), scattered_coincidences (raw data) or be the only variable in the file. In the first two cases, the data can be scatter data created by OMEGA from a different MC scatter correction simulation.
+
+**Normalize scatter (normalize_scatter)** = If set to true, performs normalization correction to the scatter correction data before the reconstruction phase. This phase is ignored if the corrections are applied directly to the measured data in which case it will be subtracted before the normalization correction.
+
+**Scatter smoothing (scatter_smoothing)** = If true, performs smoothing to the scatter data before corrections. The smoothing is a fixed 8x8 moving mean smoothing. The window size can be adjusted in the original function `randoms_smoothing`. 
+
+**Attenuation correction (attenuation_correction)** = If true, performs attenuation correction during the reconstruction. You need attenuation images scaled to 511 keV for this. CT images can be scaled with the function `attenuationCT_to_511` provided with OMEGA. DICOM CT images might automatically scale with `create_atten_matrix_CT`, but currently it has been tested only with one machine. `attenuation122_to_511` can be used to scale 122 keV blank/transmission data to 511 keV, i.e. GE-68 attenuation measurement.
+
+**Attenuation datafile (attenuation_datafile)** = Name of the data file containing the (scaled) attenuation images. Use full path if it is not on MATLAB/Octave path. This is required if the attenuation correction is applied. One exception is if you are using Inveon data and have an atn-file, you can then leave this one blank and will be asked separately to input the atn-data.
+
+**Compute normalization coefficients (compute_normalization)** = If true and the main-file is run, then the input data will be used to compute the normalization coefficients. Currently supported normalization correction components are axial geometric correction (axial block profile and geometric factors), detector efficiency (fan-sum algorithm for both sinogram and raw data or SPC for raw data), transaxial block profile correction and transaxial geometric correction. Supports both raw list-mode data or sinogram data. Transaxial geometric correction is not recommended for objects that do not cover the entire FOV (or rather do not irradiate the entire FOV region). The corresponding function will output the corrected measurement data, the normalization matrix (multiplying this with the original measurement data gives the same corrected data) and each individual correction factors. Computation of the normalization coefficients follows the book [https://github.com/villekf/OMEGA/wiki/Function-help#references[1]]. Fan-sum algorithm, used in computing the detector efficiencies, can be found from [https://github.com/villekf/OMEGA/wiki/Function-help#references[2]].
+
+**Normalization options (normalization_options)** = A vector representing all the four possible normalization correction steps that can be performed (see above). 1 means that the method is included, 0 that it is excluded. E.g. the default setting `[1 1 1 0]` computes axial geometric, detector efficiency and transaxial block profile corrections, but not transaxial geometric correction.
+
+**Phantom radius (normalization_phantom_radius)** = If the source phantom is cylinder that is smaller than the FOV, input the radius of the cylinder here (in cm). For an object encompassing the entire FOV, use an empty array `[]` or `inf`.
+
+**Scatter correction (normalization_scatter_correction)** = If a phantom, that is smaller than the FOV, is used, compute the scatter correction for the data. Requires the above cylinder radius and only supports sinogram data. For GATE data it is recommended to use trues in the normalization correction in order to skip this phase.
+
+**Apply normalization (normalization_correction)** = Once the normalization correction coefficients have been separately computed, turning this to true will enable them in the sinogram formation or in the reconstruction phase.
+
+**Apply user normalization (use_user_normalization)** = If this is true, then the user will be prompted for the normalization correction data. This file can be either a mat-file with one variable (the normalization coefficients, such that normalized_data = un_normalized_data * normalization) or an Inveon PET .nrm-file. In the latter case, the file needs to be exactly as output by the Siemens software.
+
+**Apply corrections during reconstruction (corrections_during_reconstruction)** = If set to true, then the corrections are applied during the reconstruction phase. I.e. uncorrected sinogram/raw data is automatically loaded and used in the reconstruction process. The corrections data is also automatically loaded (assuming it has been previously created). Smoothing and/or variance reduction needs to be performed beforehand.
+
+
+## DYNAMIC IMAGING PROPERTIES
+
+**Total time (tot_time)** = The total time of the experiment (seconds). If you have a static experiment, use inf to load all the data regardless of the total time.
+
+**Number of time step (partitions)** = How many time steps are in the dynamic case.
+
+**Start time (start)** = The start time for the data load (seconds). Any measurements before this time will be ignored and will not be loaded.
+
+**End time (end)** = The end time for the data load (seconds). Any measurements after this time will be ignored and will not be loaded.
+
+
+## MISCELLANEOUS PROPERTIES
+
+**Name (name)** = Name of the experiment/simulation/whatever (char). Used for naming purposes.
+
+**Precompute necessary data (precompute)** = If this is true, then some of the obligatory mat-files are computed that are required if the `options.precompute_lor` is set to true. Otherwise, there is no need to pass the precomputation step. All mat-files are saved in the `mat-files` folder.
+
+**Path to the input data (fpath)** = This is the path to the folder where the input data is (char). All the files for the specified GATE output will be read. E.g. if you set use_ASCII to true, then from the folder specified by fpath, all the .dat files with Coincidences in them will be loaded, for LMF all .ccs files will be loaded and for Root all .root files will be loaded. If you use Windows, use the `fpat` value after `ispc`, otherwise the one after `else`.
+
+**Form only sinograms (only_sinos)** = If this is set to true, then running the m-file only performs steps up to the sinogram formation. I.e. data is loaded and then the sinogram is formed. No reconstructions, normalization coefficient computations or precomputations will be done.
+
+**Precompute the observation/system matrix (precompute_obs_matrix)** = Experimental feature. Setting to true computes the entire system matrix on one go and will most likely require a significant amount of memory (most likely over 100 GB). Supports only MLEM reconstruction. If set to false, then the system matrix is calculated on-the-fly (recommended).
+
+**Only reconstructions (only_reconstruction)** = Setting to true skips all other steps except the reconstruction phase. Precompute step is also skipped even if set to true. All necessary data is loaded from the previously computed mat-files. This step also overwrites ´only_sinos`.
+
+**Use raw data (use_raw_data)** = Set this to true if you want to use raw list-mode data. I.e. data that has not been compressed at all. This step requires its own precompute phase if `options.precompute_lor = true`. The raw data in OMEGA is formatted such that the saved measurement data is a vector formed from a lower triangular matrix. This lower triangular matrix is extracted from a matrix of size `total_number_of_detectors x total_number_of_detectors`. The matrix contains all the possible line of response combinations, e.g. between detector 1 and detector 3. Since the LOR between detectors 1 and 3 is the same as the LOR between detectors 3 and 1, the upper triangular part is added to the lower triangular part before the lower triangular part is extracted. The raw date is always saved in cell format, regardless of the number of time steps. Non-cell data should work, but cell data is recommended.
+
+**How many pixels a LOR traverses (precompute_lor)** = When true, this option changes the reconstruction process quite radically. First, it requires its own precompute phase. Secondly, it affects greatly on how the system matrix is formed. With this option set to true, the number of pixels each LOR traverses is determined beforehand. For implementation 1 this allows for more efficient memory management, while with other methods the computational speed is enhanced (more for raw data). This step is recommended if you use implementation 1. Improved Siddon's algorithm with more than 1 rays is not supported when this is true.
+
+**Precompute everything (precompute_all)** = This option causes the prepass phase to compute all mat-files even if they were not selected. E.g. if you use sinogram data, also all precomputations for raw list-mode data are done.
+
+**Status messages (verbose)** = If this is set to true, then you will receive occasional status messages and also elapsed time of functions.
+
+
+## RECONSTRUCTION PROPERTIES
+
+### IMPLEMENTATIONS
+
+In OMEGA the different ways to compute the different algorithms and projections is referred to as implementations.
+
+**Implementation (reconstruction_method)** = This option determines how the reconstructions and the system matrix are computed. In all cases the system matrix is done through a mex-file (implementation 1 does have fallback non-mex system matrix formation method, but that is very slow). 
+
+If set to 1, then all the reconstructions will be done purely in MATLAB using nothing but MATLAB commands. Implementation 1 also has the most number of algorithms available. 
+
+Implementation 2 is an OpenCL/ArrayFire reconstruction, and everything is done in a mex-file. This is a matrix-free method. In Implementation 2 both the system matrix creation and reconstruction are performed on the selected device. Supports all the same algorithms as implementation 1 except non-local means prior. AD-MRP prior also behaves differently.
+
+Implementation 3 uses pure OpenCL, i.e. not requiring ArrayFire libraries. This is a matrix-free method. Implementation 3, however, only supports OSEM and MLEM, but does support multi-device computation. The multi-device computation consists using of multiple GPUs (from the same manufacturer) or using GPU + CPU combination (from the same manufacturer). 
+
+If set to 4, then all the computations are done parallel on the CPU by using OpenMP (if supported by the compiler). This is a matrix-free method. This implementation does not require OpenCL and should work on all CPUs. All CPUs/cores are used automatically.
+
+In Implementations 2 and 3, the system matrix is created by using single precision numbers, meaning that it can be slightly inaccurate when compared to Implementations 1 and 4 that use double precision numbers. 
+
+On which implementation to select, see Recommendations. 
+
+**Device (use_device)** = This determines the device used in implementation 2 and the platform in 4. For implementation 2 the devices mean the actual devices available that are either CPUs, GPUs or accelerators, with GPUs usually being first in the list (0 should use always use your GPU if you have one). Use `ArrayFire_OpenCL_device_info()` to determine the devices you have and their respective number. For implementation 4, the platforms are divided by manufacturer. Same manufacturer can have multiple platforms, however, if you have multiple OpenCL runtimes installed. Use `OpenCL_device_info()` to see the available platforms and the devices included in each of them. In implementation 4, by default, all the devices associated with certain platform are used except devices that have less than 2 GB of memory. Single device can also be selected with the `options.cpu_to_gpu_factor` (see below).
+
+**64 bit atomics (use_64bit_atomics)** = If true, then the 64 bit atomic functions are used. This affects ONLY implementations 2 and 3. If your device does not support 64-bit atomics, the result will be equivalent to setting this to false. Intel hardware usually do not support 64-bit atomics, but AMD or Nvidia GPUs should. Setting this to false will cause slower computations if the 64-bit atomics are supported but can be slightly more reliable and accurate.
+
+**Force build (force_build)** = If true, forces the building of the OpenCL binaries. Affects only implementation 2. By default, OMEGA precompiles OpenCL binaries for each device on the first run but setting this to true will cause the binaries to be rewritten to be built even if they had been previously built. Necessary when hardware changes occur, or new OMEGA versions are installed and recommended after driver updates.
+
+**CPU to GPU factor (cpu_to_gpu_factor)** = Affects only implementation 3. This variable has dual purpose. The first purpose is in heterogeneous computing by delegating more LORs to the GPU part. E.g. if this is set to 2, then the GPU will have 2x more LORs compared to the CPU. Another use is obtained by setting this to 0, when it will use only a single device from the platform. GPUs are prioritized with the GPU having the most memory taken.
+
+### PROJECTOR
+
+**Projector used (projector_type)** = Two different projectors are available for all implementations. These are the improved Siddon's algorithm (1) and orthogonal distance-based ray tracer (2). Implementation 1, when `options.precompute_lor = false` also has the original Siddon's ray tracer (0).
+
+**Strip width (tube_width_xy)** = Affects only orthogonal distance-based ray tracer. This is the maximum distance from the ray to a voxel center allowed in the projector in 2D (x- and y-directions). I.e. the width of the strip of response.
+
+**Tube width (tube_width_z)** = Affects only orthogonal distance-based ray tracer. This is the maximum distance from the ray to a voxel center allowed in the projector in 3D (x-, y- and z-directions). I.e. the width and height of the tube of response. Only square tubes are allowed; if this is non-zero, any value in `tube_width_xy` is ignored.
+
+**Accuracy factor (accuracy_factor)** = Affects only orthogonal distance-based ray tracer in 3D mode. This value determines the minimum distance in voxels where the distance is computed. Higher values allow for more accurate estimates while also taking longer to compute. The default value (5) should be good in most cases, though more accurate image sizes might benefit from higher value.
+
+**Number of rays (n_rays)** = Affects only improved Siddon's algorithm when `options.precompute_lor = false` and using any implementation other than 1 (i.e. works with implementations 2, 3 and 4). Allowed values range from 1 to 5, though it is recommended to use either 1 or 5. When using 5 rays, the pattern follows that of number five in six-sided dice.
+
+
+### RECONSTRUCTION SETTINGS
+
+**Number of iterations (Niter)** = The number of iterations.
+
+**Number of subsets (subsets)** = In subset methods, this value determines the number of subsets that the sinogram/raw data is divided into. Depending on the data type used (sinogram or raw), there are several different ways to select the subsets (see below `subset_type`).
+
+**Type of subset division (subset_type)** = Six different methods, numbered from 1 to 6, to sort the measurements into subsets. 
+
+1 = Every nth column is taken in order (sinogram only), e.g. once the end of the column is reached, indexing starts from the first column again in the next row. 
+
+2 = Every nth row (both sinogram and raw data, default in raw data), once the end of the row is reached, indexing starts from the first row again in the next column. 
+
+3 = The measurements are taken randomly, by default uses `randperm`, but can use the file exchange `Shuffle` (see below) for faster speed and better memory use. 
+
+4 = Every nth column from the sinogram, takes an entire column and then jumps n columns to the next. 
+
+5 = Every nth row from the sinogram, takes an entire row and then jumps n row to the next. 
+
+6 = Uses n number of angles to form each subset. First the LORs are sorted according to the angle they create with the (positive) x-axis. Then `n_angles` (see below) angles are grouped together to form one subset. E.g. if `n_angles = 2` then angles 0 and 1 form one subset, 2 and 3 another, etc. For 2D slices there will be a total of 180&#176;/n~angles~ subsets and 360&#176;/n~angles~ for 3D. This method is explained in https://github.com/villekf/OMEGA/wiki/Function-help#references[[4]].
+
+**Number of angles (n_angles)** = If the above method 6 is selected, this value is used to determine how many angles are used in one subset.
+
+**Initial value (x0)** = The initial value of all of the reconstruction methods. In dynamic studies all the time steps have the same initial value.
+
+**Epsilon value (epps)** = This small value is added to divisions to prevent division by zero.
+
+### MISC SETTINGS
+
+**Use Shuffle (use_Shuffle)** = Whether the MATLAB file exchange code https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle[Shuffle] is used. Applies only to `subset_type = 3`. Speeds up the pre-process a bit and also uses less memory.
+
+**Use FSparse (use_fsparse)** = Whether https://github.com/stefanengblom/stenglib[FSparse] is used. Only used if precompute_lor is set to false.
+
+**MRP-type prior without normalization (med_no_norm)** = Normally MPR-type priors (MRP, FMH, L-filter, AD and weighted mean) are of the form (&lambda; - M~b~)/M~b~. If this is set to true, then the denominator (normalization) is removed (i.e. (&lambda; - M~b~)/1).
+
+### RECONSTRUCTION ALGORITHMS
+
+**Use MLEM/OSEM/etc.** = When any of these are set to true, the specific algorithm is computed. This is dependent on the selected implementation. Separate sections are for the maximum likelihood-based methods, maximum a posteriori methods and priors. MAP methods require at least one prior and priors require at least one MAP method.
+
+**ACOSEM properties** = Only the acceleration factor can be adjusted. See the original article for details.
+
+**MRAMLA/MBSREM properties** = Relaxation parameter and the upper bound can be adjusted.
+
+**RAMLA/BSREM properties** = Relaxation parameter can be adjusted.
+
+**ROSEM properties** = Relaxation parameter can be adjusted.
+
+**DRAMA properties** = Parameters &alpha;, &beta; and &beta;~0~ can be adjusted. See [4], e.g. eq. (20).
+
+**Neighborhood properties** = Adjust how many neighboring voxels are taken into account (`Ndx`, `Ndy` and `Ndz`). Used in MRP, quadratic prior, FMH, L-filter, weighted mean and NLM.
+
+**MRP properties** = Regularization parameters for all MAP-methods can be adjusted.
+
+**Quadratic prior properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+Custom weights can be input. The weights vector should be of size `(Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)` and the middle value inf.
+
+**L-filter properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+Custom weights can be input. The weights vector should be of size `(Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)` (middle value is NOT inf). 
+
+If custom weights are not given, the `options.oneD_weights` determines whether 1D (true) or 2D (false) weighting scheme is used. In 1D case, if `(Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)` = 3, = 9 or = 25 then the weights are exactly as in literature https://github.com/villekf/OMEGA/wiki/Function-help#references[[5]]. Otherwise the pattern follows a https://en.wikipedia.org/wiki/Laplace_distribution[Laplace distribution]. In 2D case, the weights follow Laplace distribution, but are also weighted based on the distance of the neighboring voxel from the center voxel. For Laplace distribution, the mean value is set to 0 and b = 1/sqrt(2). The weights are normalized such that the sum equals 1.
+
+**FMH properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+Custom weights can be input. The weights vector should be of size `[Ndx*2+1, 4]` if `Nz = 1` or `Ndz = 0` or ´[Ndx*2+1, 13]´ otherwise. The weight for the center pixel should also be the middle value when the weight matrix is in vector form. The weights are normalized such that the sum equals 1. 
+
+If custom weights are not provided, then the `options.fmh_center_weight` parameter is needed. Default value is 4 as in the original article https://github.com/villekf/OMEGA/wiki/Function-help#references[[6]].
+
+**Weighted mean properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+Custom weights can be input. The weights vector should be of size `(Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)`. 
+
+If custom weights are not provided, then the `options.weighted_center_weight` parameter is needed. Default value is 4 as in the original article https://github.com/villekf/OMEGA/wiki/Function-help#references[[6]]
+
+**TV properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+`options.TVsmoothing` is a "smoothing" parameter that also prevents zero in square root (it is summed to the square root values). (variable &beta; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[7]] eq. 11 and https://github.com/villekf/OMEGA/wiki/Function-help#references[[8]] eq. 13).
+
+If `options.TV_use_anatomical = true`, then an anatomical prior is used in TV regularization. `options.TV_reference_image` is the name of the file containing the anatomical reference images (image size needs to be the same as the reconstructed images). The reference images need to be the only variable in the file.
+
+`options.TVtype` controls the type of TV regularization used. For `TVtype = 1` see https://github.com/villekf/OMEGA/wiki/Function-help#references[[7]], `TVtype = 2` https://github.com/villekf/OMEGA/wiki/Function-help#references[[8]] and `TVtype = 3` https://github.com/villekf/OMEGA/wiki/Function-help#references[[9]]. If no anatomical prior is used, then type 1 and 2 are the same. Type 3 uses the same weights as quadratic prior.
+
+`options.T` is the edge threshold parameter in type 1 (variable C in https://github.com/villekf/OMEGA/wiki/Function-help#references[[7]], see e.g. eq. 8), scale parameter for side information in type 2 (variable &gamma; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[8]], see eq. 13), weight parameter for anatomical information in type 2 (variable &eta; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[9]], see eq. 11).
+
+`options.C` is the weight of the original image in type 3 (variable &delta; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[9]], see e.g. eq. 11).
+
+All TV types are isotropic.
+
+**MRP-AD properties** = In MRP-AD, the median filtered image is replaced with anisotropic diffusion smoothed image. I.e. if M~AD~ is the anisotropic diffusion smoothed image, the prior is (&lambda; - M~AD~)/M~AD~. Using this with implementation 1 requires the Image Processing Toolbox. This prior does not work on Octave.
+
+Regularization parameters for all MAP-methods can be adjusted. 
+
+`options.TimeStepAD` is the time step for the AD filter (implementation 2 only). More information link:++http://arrayfire.org/docs/group__image__func__anisotropic__diffusion.htm++[here].
+
+`options.KAD` is the conductivity/connectivity parameter. More information https://se.mathworks.com/help/images/ref/imdiffusefilt.html[here] and link:++http://arrayfire.org/docs/group__image__func__anisotropic__diffusion.htm++[here].
+
+`options.NiterAD` number of iterations for the AD smoothing part.
+
+`options.FluxType` is the flux/conduction type. Available methods are Exponential (1) and Quadratic (2). E.g. `options.FluxType = 2` uses quadratic.
+
+`options.DiffusionType` is the diffusion type (implementation 2 only). Available methods are Gradient (1) and Modified curvature (2). E.g. `options.DiffusionType= 2` uses modified curvature.
+
+**APLS properties** = Using asymmetric parallel level sets requires the use of anatomic prior. Without anatomical prior it functions as TV types 1 and 2. 
+
+Regularization parameters for all MAP-methods can be adjusted. 
+
+`options.eta` is a scaling parameter in regularized norm (see variable &eta; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[8]]).
+
+`options.APLSsmoothing` is a "smoothing" parameter that also prevents zero in square root (it is summed to the square root values). Has the same function as the `TVsmoothing` parameter (see https://github.com/villekf/OMEGA/wiki/Function-help#references[[8]] eq. 9).
+
+`options.APLS_reference_image` is the name of the file containing the anatomical reference images (image size needs to be the same as the reconstructed images). The reference images need to be the only variable in the file.
+
+**TGV properties** = Regularization parameters for all MAP-methods can be adjusted. 
+
+`options.betaTGV` is the first weighting value for the TGV (see parameter &alpha;~1~ in https://github.com/villekf/OMEGA/wiki/Function-help#references[[10]]).
+
+`options.alphaTGV` is the second weighting value for the TGV (see parameter &alpha;~0~ in https://github.com/villekf/OMEGA/wiki/Function-help#references[[10]]). Weight for the symmetrized derivative.
+
+`options.NiterTGV` number of iterations for the TGV smoothing part.
+
+**NLM properties** = Non-local means is only supported by implementation 1 at the moment.
+
+Regularization parameters for all MAP-methods can be adjusted. 
+
+`options.sigma` is the filtering parameter (see parameter h in https://github.com/villekf/OMEGA/wiki/Function-help#references[[11]] or &sigma; in https://github.com/villekf/OMEGA/wiki/Function-help#references[[12]], eq. 6).
+
+The patch radius is controlled with parameters `options.Nlx`, `options.Nly` and `options.Nlz`. The similarity is investigated in this area.
+
+If `options.NLM_use_anatomical = true` then an anatomical reference image is used in the similarity search of the neighborhood. Normally the original image is used for this. `options.NLM_reference_image` is the name of the anatomical reference data file. The reference images need to be the only variable in the file.
+
+NLM can also be used like MRP (and MRP-AD) where the median filtered image is replaced with NLM replaced image. This is achieved by setting `options.NLM_MRP = true`. This is computed without normalization ((&lambda; - M~NLM~)/1).
+
+## Load measurement data
+
+This function is for non-GATE data ONLY (`main_nongate.m`).
+
+The function `loadMeasurementData` allows you to load measurement data in different formats. Curently supported are MATLAB-data, NIfTI, Analyze 7.5, DICOM and raw data. Analyze requires https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image[Tools for NIfTI and ANALYZE image] from MathWorks file exchange, NIfTI either image processing toolbox or Tools for NIfTI and ANALYZE image and DICOM support requires image processing toolbox on MATLAB and dicom package on Octave (untested on Octave). 
+
+The data is saved in the `options` structure, either in `SinM` (sinogram data) or `coincidences` (raw list-mode data).
+
+Raw data can be of any type, but if raw data other than int32 is used, then it has to be specified. E.g. `options = loadMeasurementData(options,'uint16')` loads 16-bit unsigned integer data. If the raw data has a header of __n__ bytes, it can be skipped by specifying the number of bytes (e.g. `options = loadMeasurementData(options,'uint16', n)`. If the header is at the end of the file, using a negative value will ignore the last __n__ bytes. The data is saved in the `options` structure. 
+
+Raw list-mode data can only be used with MATLAB-data.
+
+DICOM data currently supports only 2D slices.
+
+The user should also always check that the output measurement data looks correct (e.g. `imagesc(options.SinM(:,:,30))`). 
+
+# precompute_data.m
+
+These files computes how many voxels each LOR traverses. Different versions are available for double precision or single precision (OpenCL) and sinogram or raw data.
+
+**lor_pixel_count_prepass** = computes the number of voxels each LOR traverses. This is needed when `options.precompute_lor = true`, however, if the file is not found the function is automatically called. Different image and sinogram sizes need their own files. Precomputing these variables gives faster reconstruction, especially with raw data. All data files are saved in `mat-files` folder
+
+
+# load_data.m
+
+This file loads either the ASCII, LMF, ROOT or Inveon list-mode data into MATLAB/Octave. First goes through all the files and then saves them in the raw data format. Source images are saved if the corresponding values were set to true. Trues, scatter, randoms and delayed coincidences are saved if they were selected. The output data is in cell format, where each cell represent each time step. Static measurements have only one cell. The output order is coincidences, delayed coincidences, true coincidences, scattered coincidences and random coincidences, with 0 to 5 outputs possible.
+
+If `verbose` is set to true, then the number of counts at each time step are also output.
+
+NOTE: Using ROOT data, as mentioned in https://github.com/villekf/OMEGA/blob/master/README.md[readme], will cause MATLAB R2018b and EARLIER to crash during GUI activity. This can be prevented by using MATLAB in the -nojvm mode (i.e. `matlab -nojvm`), which means without any GUIs. It is recommended to use this only for data extraction (set `options.only_sinos = true` and run `gate_main_simple.m`). This issue is not present on Octave or MATLAB R2019a and up. ROOT is not supported on Windows on either MATLAB or Octave. 
+
+
+
+# form_sinograms.m
+
+This file creates the sinograms. First the Michelogram is created and later the final sinograms. Lines 312 to 365 form the Michelograms. Separate sinograms are created for prompts, trues, scatter, randoms and delayed coincidences. If any corrections are done (and `options.corrections_during_reconstruction = false`) then also the raw, uncorrected, sinogram is saved. `SinM` contains the corrected sinogram, `raw_SinM` the uncorrected sinogram, `SinTrues` the sinogram of trues, `SinScatter` the scatter sinogram, `SinRandoms` the randoms sinogram and `SinDelayed` the sinogram of delayed coincidences. The sinograms are saved in the current working folder. Scatter, randoms and normalization correction can be done here.
+
+For Inveon data, if `options.use_machine = 2`, the sinogram created by the IAW is loaded (user will be prompted for the location of the file). Scatter correction (using custom data or IAW created) and normalization correction (custom or IAW data) are supported. The user will be prompted for the scatter data always if `options.scatter_correction = true` and normalization data if `options.normalization_correction = true` and `options.use_user_normalization = true`. If normalization data was created with OMEGA, and `options.use_user_normalization = false` the data will be automatically loaded. Randoms correction is not performed as it has already been done.
+
+
+
+# reconstruction_main.m
+
+The main reconstruction file. Handles all the reconstruction implementations for all types of data. Outputs the reconstructed estimates in a cell-matrix with each cell being one of the algorithms used. If an algorithm/prior is not selected, the corresponding cell is empty. The last cell contains information that was input (e.g. sinogram size, regularization values, etc.). If you wish to know what algorithms the cell matrix contains, you can use `algorithms_char` function for that (e.g. `alg = algorithms_char(); alg(~cellfun(@isempty,pz))`).
+
+
+# forward_backward_projections_example.m
+
+This file is very similar to the `gate_main.m`. However, it lacks the possibility for data load (has to be done with one of the other files). Included blocks are MACHINE PROPERTIES, IMAGE PROPERTIES, SINOGRAM PROPERTIES, CORRECTIONS, DYNAMIC IMAGING PROPERTIES, MIC PROPERTIES and RECONSTRUCTION PROPERTIES. The last one lacks any reconstruction algorithm related settings. The example shows how to compute OSEM estimates by using the forward and backward projections.
+
+Forward projection is essentially _y_ = _Ax_, where _y_ are the measurements (e.g. sinogram), _A_ the system matrix and _x_ the current estimate. Backprojection is then essentially _x_ = _A^T^z_, where _z_ is user input vector. In the case of MLEM, _z_ would be _z_ = _y_/(_Ax_).
+
+# custom_prior_test_main.m
+
+This file can be used to test a custom gradient-based prior with any of the MAP algorithms in OMEGA. This file is similar to `gate_main.m` except that input data needs to be already in sinogram or raw list-mode format. `load_custom_data` prompts the user to select a mat-file with the measurement data. In raw data case, the function looks for `true_coincidences` variable (if `options.reconstruct_trues = true`), otherwise `coincidences`. Sinogram case is similar, with `SinTrues` for trues and `SinM` otherwise. As an example, an MRP reconstruction is done. Only implementations 1 and 2 are supported and implementation 2 does not support any other priors when using a custom prior. Implementation 1 has no restrictions. Both cases allow the use of multiple (or all) MAP methods. `visualize_pet.m` supports custom priors as well.
+
+`custom_prior_prepass` needs to be run before the reconstructions.
+
+
+# Randoms_variance_reduction.m
+
+Performs randoms variance reduction.
+
+# randoms_smoothing.m
+
+Performs randoms smoothing. Currently fixed (symmetric) 8x8 moving mean smoothing.
+
+# normalization_coefficients.m
+
+Computes the normalization coefficients. First the axial block profile and geometric factors are computed. Second is the transaxial block profile, third the crystal/detector efficiency and lastly the transaxial geometric factors (crystal interference included). Outputs the corrected data, the normalization coefficient matrix/vector and all the individual coefficients. The coefficients are different depending on whether sinogram or raw list-mode data is used.
+
+Detector efficiency is computed with fan-sum algorithm in sinogram format. Raw list-mode data also supports SPC (single-plane Casey) algorithm. 
+
+Scatter correction is possible for cylinder sources.
+
+Transaxial geometric correction can be unreliable when using sources that do not cover the entire FOV/sinogram FOV. Currently transaxial geometric correction is hardcoded to have an upper bound of 1. It is recommended to visualize the corresponding matrix or the normalization matrix.
+
+Normalization with raw data should be used with slight caution as it may not work as well as the sinogram format.
+
+# index_maker.m
+
+Computes the indices of the current subset type.
+
+
+# get_coordinates.m
+
+Outputs the coordinates for the current method. Raw list-mode uses raw detector coordinates, sinogram data the sinogram coordinates.
+
+## detector_coordinates.m
+
+Computes the raw (non-sinogram) detector coordinates.
+
+## sinogram_coordinates_2D.m
+
+Compute the x- and y-coordinates of the sinogram bins
+
+## sinogram_coordinates_3D.m
+
+Compute the z-coordinates of the sinogram slices.
+
+# set_up_corrections.m
+
+Loads up the correction data (attenuation, normalization, scatter and randoms).
+
+# form_subset_indices.m
+
+Adjusts the data such that it is ordered as the selected subset type requires.
+
+# OMEGA_error_check.m
+
+This function checks for any potential errors in the input data or combinations that are not supported.
+
+# attenuation_correction_factors.m
+
+This function computes the attenuation image for the Siemens Inveon by using the atn-file created by the IAW.
+
+
+
+# observation_matrix_formation.m
+
+This function outputs the system/observation matrix. Optionally in subset format. This matrix can then be used anywhere. Implementation 1 only. Hasn't been extensively tested.
+
+
+# algorithms_char.m
+
+Outputs a string vector containing the abbreviated names of each of the algorithms output by the `reconstructions_main.m`. This function is used in `visualize_pet.m` to show the algorithms (and their numbers) contained in the output cell matrix. As such, you can use this function to output the names of the algorithms in the output cell matrix (e.g. `alg = algorithms_char(); alg(~cellfun(@isempty,pz))`).
+
+
+# padding.m
+
+Padds the input image (2D or 3D) symmetrically with its mirror image. Similar to MATLAB's https://se.mathworks.com/help/images/ref/padarray.html[`paddarray`] with `'symmetric'`, but doesn't require image processing toolbox.
+
+
+# Various algorithm functions
+
+All the algorithms for implementation 1 are also available as separate functions and can be found from the bottom of nongate_main-file. These functions require the system matrix computed by the above `observation_matrix_formation.m`. These are only computed if `options.single_reconstructions = true` in `main_nongate.m`.
+
+Non-local means is currently experimental.
+
+
+# visualize_pet.m
+
+This file contains some optional visualization options. You can plot a single reconstruction. Iterations from a single 
+reconstruction. A group of different algorithms. The "true" image and a single reconstruction. The "true" image and 
+several different reconstruction algorithms. 3D volume of one reconstruction by using the file exchange file https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2[vol3d v2]. You can also select the view to plot (transverse, frontal or sagittal). Dynamic plotting is also supported.
+
+In case the selected algorithm does not exist in the cell matrix (i.e. the cell is empty), you will see a list of algorithms and their numbers that the cell matrix does contain.
+
+
+# Additional files that are included, but not used
+
+## saveImage.m
+
+This function allows you to save the reconstructed images created by OMEGA to a specified medical imaging format. Currently supported are NIfTI, Analyze 7.5, DICOM, Interfile (32-bit float) and raw 32-bit float. 
+
+DICOM support requires image processing toolbox on MATLAB and dicom package on Octave (untested on Octave). NIfTI requires either image processing toolbox OR https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image[Tools for NIfTI and ANALYZE image] from MathWorks file exchange. Analyze requires Tools for NIfTI and ANALYZE image.
+
+DICOM conversion currently does not support time-series data andalso produces one image for each slice.
+
+The OMEGA created `pz` cell matrices can be used as input. All non-empty cells are saved in a separate file. Saving a NIfTI format image would in this case work with `saveImage(pz,'nifti')`. Analyze support is enabled with `analyze`, DICOM support with `dicom`, Interfile with `interfile` and raw with `raw`. Only one data type can be saved at a time.
+
+Single 3D, 4D or 5D image can be used as input as well. 4D images are expected to be the same is in OMEGA, where the 4th dimension is the number of iterations (last iteration is always used). 5th dimension is considered as time in the non-cell case. The images need to be in the XxYxZ(xN~iter~xT) format. When using a single image, either the output filename or `options` struct has to be input. Saving voxel size in the output images requires `options` to be input in the non-cell case.
+
+Analyze and NIfTI use the same variable type as the input data (i.e. single (f32) precision when using the cell-matrix created by OpenCL methods, otherwise double). DICOM always uses double and Interfile always uses single.
+
+## saveSinogram.
+
+Same as above, but for sinogram format data. You can use either a XxYxZ(xT) sized sinogram or a cell matrix (where the cells are the time steps). I.e. simply inputting the output sinogram data created by `form_sinograms`.
+
+## attenuationCT_to_511.m
+
+Convert CT/HU values to 511 keV attenuation coefficients (i.e. convert CT images to PET attenuation images). Uses trilinear interpolation. Supports any kVp, though kVp values other than 80, 100, 120 or 140 are interpolated. This is based on [https://github.com/villekf/OMEGA/wiki/Function-help#references[12]].
+
+## create_atten_matrix_CT.m
+
+Experimental file that automatically loads CT DICOM images and converts them to 511 keV attenuation coefficients. Tested only with one PET/CT machine.
+
+## siddon_atten.m
+
+The regular Siddon's algorithm written purely in MATLAB. Slow, but if you want some specific variables or just study the code, this might be useful. Includes attenuation correction.
+
+
+## plotMichelogram.m
+
+This code can be used to plot a Michelogram for the specified ring count, span amount and ring difference. Not all ring, span and ring difference combinations work.
+
+
+## visualizeRawData.m
+
+This function can be used to visualize the raw data that is saved by `load_data.m`. Inputs are the raw data vector and the total number of detectors (i.e. `options.detectors`). E.g. `visualizeRawData(options.coincidences{1}, options.detectors)`.
+
+## improved_siddon_atten.m
+
+The improved Siddon's algorithm written purely in MATLAB. Otherwise same as above.
+
+
+## Siddon_algorithm.cpp:
+
+C++ mex code implementing the regular Siddon's algorithm.
+
+
+## system_matrix_openCL.cpp & system_matrix_kernel.cl
+
+C++ mex code for purely calculating the system matrix in OpenCL. Currently not included in the install_mex-file. Needs to be manually run from observation_matrix_formation_nongate.m though the current implementation is not that efficient 
+memory wise (on host). Currently also hardcoded to use CPU. This is the only pure OpenCL code (i.e. no ArrayFire additions). Currently no version available for raw data.
+
+# References
+
+1. Peter E. Valk, Dale L. Bailey, David W. Townsend, and Michael N. Maisey. "Positron Emission Tomography: Basic Science and Clinical Practice," Chapter 5, New York,Springer-Verlag, 2004.
+
+2. R. D. Badawi et al., "Algorithms for calculating detector efficiency normalization coefficients for true coincidences in 3D PET," 1998 Phys. Med. Biol. 43 189.
+
+3. R. D. Badawi et al., "Randoms variance reduction in 3D PET," 1999 Phys. Med. Biol. 44 941.
+
+4. Eiichi Tanaka and Hiroyuki Kudo, "Optimal relaxation parameters of DRAMA (dynamic RAMLA) aiming at one-pass image reconstruction for 3D-PET," 2010 Phys. Med. Biol. 55 2917
+
+5. A. Bovik, T. Huang and D. Munson, "A generalization of median filtering using linear combinations of order statistics," in IEEE Transactions on Acoustics, Speech, and Signal Processing, vol. 31, no. 6, pp. 1342-1350, December 1983.
+
+6. S. Alenius and U. Ruotsalainen, "Improving the visual quality of median root prior images in PET and SPECT   reconstruction," 2000 IEEE Nuclear Science Symposium. Conference Record (Cat. No.00CH37149), Lyon, France, 2000, pp. 15/216-15/223 vol.2. doi:10.1109/NSSMIC.2000.950105
+
+7. Wettenhovi, VV., Kolehmainen, V., Huttunen, J. et al., "State Estimation with Structural Priors in fMRI," J Math Imaging Vis (2018) 60: 174. https://doi.org/10.1007/s10851-017-0749-x
+
+8. M. J. Ehrhardt et al., "PET Reconstruction With an Anatomical MRI Prior Using Parallel Level Sets," in IEEE Transactions on Medical Imaging, vol. 35, no. 9, pp. 2189-2199, Sept. 2016. doi:10.1109/TMI.2016.
+
+9. Lijun Lu et al, "Anatomy-guided brain PET imaging incorporating a joint prior model," 2015 Phys. Med. Biol. 60 2145.
+
+10. Kristian Bredies, Karl Kunisch, and Thomas Pock, "Total Generalized Variation," SIAM Journal on Imaging Sciences 2010 3:3, 492-526.
+
+11. Xiaoqing Cao et al, "A regularized relaxed ordered subset list-mode reconstruction algorithm and its preliminary application to undersampling PET imaging," 2015 Phys. Med. Biol. 60 49
+
+12. Monica Abella et al., "Accuracy of CT-based attenuation correction in PET/CT bone imaging," 2012 Phys. Med. Biol. 57 2477.

@@ -1,0 +1,57 @@
+:toc:
+
+This page lists some useful information such as recommendations and possible issues that can arise.
+
+# Recommendations
+
+## Importing GATE data
+
+On Unix systems, it is highly recommended to use ROOT data as it takes less disk space than ASCII or LMF but is also faster to load than ASCII and has more features than LMF. However, do take note of the crashing in MATLAB R2018b and earlier (see the README.md). 
+
+On Windows systems ASCII is the recommended format. 
+
+LMF format is not recommended but can be used for normal coincidence imaging (i.e. no trues or scatter extraction).
+
+## Using corrections
+
+When using randoms correction (delayed coincidence window), variance reduction is recommended when performing the corrections during the image reconstruction. 
+
+Corrections during the reconstruction are recommended to preserve the Poisson nature of the measurement data, however, they will most likely slightly reduce the speed of the image reconstruction. This should be only marginal increase though.
+
+Normalization with raw list-mode data can be unreliable compared to sinogram data. Computing normalization coefficients for raw data also uses more memory.
+
+## Selecting the correct implementation
+
+Implementation 2 is the recommended method if it is supported (e.g. it is not possible to use in Octave on Windows) and if single precision (f32) variables are not a problem. 
+
+For pure OSEM/MLEM reconstructions, implementation 4 is recommended and should work on all platforms as long as C++11 compiler is available. Implementation 4 also uses double precision (f64) variables and works purely on the CPU.
+
+Implementation 3 is recommended if you have multiple GPUs and want to compute OSEM/MLEM reconstructions.
+
+Implementation 1 should only be used if none of the above cases are valid. This could be if you want to use some of the other algorithms (e.g. COSEM), but can't use implementation 2, or if you want to compute the system matrix. Note, however, that there are memory considerations when using implementation 1 (see below memory issues).
+
+## Image reconstruction parameters
+
+For best quality, the recommended projector is the orthogonal distance-based ray tracer in 3D mode. `options.tube_width_z` is recommended to be the FWHM or, alternatively, the approximately size of the crystal pitch. However, this is also the slowest method.
+
+For the number of iterations, subsets, subset type, regularization parameters, etc. I can't give any recommendations. The optimal selections and values depend on the use case and as such it is best to either experiment or follow values in literature. 
+
+# Memory and computational issues
+
+## Dynamic imaging
+
+Dynamic imaging can be very memory intensive if you have a large amount of time steps. Furthermore, dynamic data load and sinogram formation can take over an hour depending on the amount of time steps, the machine used and the computer the computations are performed on.
+
+Saving the dynamic examination sinogram data might also fail in Octave due to the lack of support for v. 7.3 type of MAT-files.
+
+## Image reconstruction
+
+Implementation 1 is very memory intensive method as it is not a matrix-free method. This is especially true if `options.precompute_lor = false` (this is also the only case where the system matrix computations are NOT parallel). Several algorithms with implementation 1 can require much more memory. These include at least all COSEM variations and MBSREM/MRAMLA. Minimum of 16GB of memory is recommended if using these, but even that might be too little depending on the subset and image size.
+
+Due to above, only improved Siddon's algorithm is recommended as the projector. Especially 3D orthogonal distance-based ray tracer can take significant amount of memory.
+
+As already mentioned above, using implementation 1 with `options.precompute_lor = false` is simply NOT recommended. This is only supported in order to keep feature parity (and because it was the first version that was implemented).
+
+Using the precomputed system matrix (i.e. `options.precompute_obs_matrix = true`) (implementation 1 only) can take over 100GB of memory on normal PET machines. Due to this, it has not been tested and is not recommended for 3D reconstruction.
+
+Errors in MEX-files with implementations 2 and 3 will currently create memory leaks. Closing MATLAB/Octave will clear the allocated memory from the device.

@@ -1,0 +1,27 @@
+:toc:
+
+This page describes the contents of the open Siemens Inveon PET data.
+
+= Files included
+
+`FDG_Naive_R01_PET_Em_F18_60min_v1.lst` is the raw list-mode data. Each event is stored in binary format with the tag related information. For decrypting the list-mode data itself, you should contact Siemens. A header file is also included that has some general information on the measurement and the device.
+
+`FDG_Naive_R01_PET_Em_F18_60min_v1.scn` contains the sinogram created by the PET machine/acquisition computer itself. Randoms correction has already been included in the form of subtraction. This sinogram is dynamic and contains 28 frames. A header file is included that contains more detailed information on the file.
+
+`FDG_Naive_R01_PET_Em_F18_60min_v1_sct.scn` this is the machine created dynamic SCATTER sinogram. Format is exactly the same as the regular sinogram. This should be used for potential scatter correction.
+
+`FDG_Naive_R01_PTX_At_10min_v1.atn` this contains the attenuation data. This cannot be used as-is. In OMEGA this measurement data is reconstructed and then used in the attenuation correction, by using the reconstructed images as the attenuation images.
+
+`Norm_PNM_Normalization_with_Cylinder_v1.nrm` is the normalization data. The inverse of this should be multiplied with the sinogram for normalization correction (when normalization is not included in the reconstruction). In OMEGA, this can be used as the user normalization.
+
+= Inveon data in OMEGA
+
+When using the Inveon data in OMEGA, one should use `Inveon_PET_main.m` file. All the geometry and sinogram values have been adjusted just as the defaults are. This file includes support for GATE data, so when using the list-mode or sinogram data all the GATE specific sections can be ignored. 
+
+Inveon data format is chosen in the second block/section below MACHINE PROPERTIES (INVEON DATA). Here you can specify whether to use GATE data (`options.use_machine = 0`), the list-mode (.lst) data (`options.use_machine = 1`, default) or sinogram data (`options.use_machine = 2`). For the list-mode case, the user will be prompted for the location of the list-mode data file when `load_data` is run. For the sinogram case, the prompt will be during sinogram formation (`form_sinograms`). Using GATE data works just as with any other GATE data.
+
+If `options.randoms_correction` is set to true, then the delayed coincidences will be automatically loaded when the prompts are loaded as well.
+
+When using scatter correction, you can use the provided scn-files when prompted for the scatter data. Scatter data will be prompted FIRST, if you have it enabled.
+
+In static cases, the dynamic sinograms are summed together. However, if dynamic reconstruction are performed, then the number of time steps need to be same as in the sinograms (28) or less. Raw list-mode data is NOT affected by this; it can have any number of time steps.

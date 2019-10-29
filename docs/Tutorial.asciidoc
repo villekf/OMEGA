@@ -1,0 +1,141 @@
+:toc:
+
+Two tutorials are presented, a simple one using `gate_main_simple.m` and a more advanced one utilizing `gate_main.m`. For non-GATE data the flow is similar except there are no GATE specific features. When using `main_nongate.m` or `Inveon_PET_main.m` without GATE data, the user will be prompted for the input data.
+
+Both files are immediately ready to use, once the GATE data has been obtained. Only the path to search for the data needs to be changed (lines 312-316 in `gate_main_simple.m`).
+
+Ready-made simulated GATE data can be found from (both ASCII and ROOT format):
+
+For reconstruction purposes, ready-made example raw data and sinograms can be found from:
+
+# Basic example
+
+## Set up
+
+The most important part of OMEGA is the Machine properties section. This has already been filled for the example case, but here are detailed explanations as to where the values are derived from.
+
+**Blocks per ring**
+
+In the GATE macro `https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L64[camera.mac]` this is the found line 64. I.e. it is the ring/R-sector repeater. The R-sector in this case contains all the blocks/buckets in the axial direction and is repeated radially along the ring. Inside these R-sectors are the modules that are the individual blocks/buckets.
+
+**Linear multiply**
+
+This is the axial repetition factor, from line 59 in `https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L59[camera.mac]`. Each module (block/bucket) is repeated this many times in the axial direction. The blocks have small gaps between them (0.2 mm).
+
+**Crystals per block**
+
+This is simply the number of crystals/detectors in the module/block/bucket transaxially. Line 53 in `https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L53[camera.mac]`.
+
+**Crystal pitch**
+
+Both the transaxial (x- and y-direction) as well as the axial (z-direction) crystal pitches need to be input. These are the distances between the centers of adjacent crystals in the same block. Line 55 in `https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L55[camera.mac]`. There are small gaps between the crystals.
+
+**Ring diameter**
+
+This is the total diameter of the scanner bore, i.e. the distance between perpendicular detectors. Usually this should be the Rmin, see line 6 in `https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L6[camera.mac]`.
+
+**Transaxial FOV**
+
+This is the length of a one side of the transaxial FOV (needs to be rectangular). Both x- and y-directions can be selected individually, though square FOVs are recommended. This parameter can be selected freely, but the current value was selected such that the size is of similar size as that in the Inveon PET scanner (which uses the vendor specified FOV size).
+
+**Axial FOV**
+
+Same as above, but for axial (z) direction. Has been selected to be slightly smaller than the actual scanner length.
+
+**Machine name**
+
+Simply the name for your machine. Used only to name the saved mat-files.
+
+## Loading GATE data
+
+### GATE specific settings
+
+Before loading GATE data, you should specify first if you want to load some GATE specific data. These include trues, scatter, randoms and the source image. For more detailed information on extracting GATE trues, scatter and randoms see https://github.com/villekf/OMEGA/wiki/Extracting-GATE-scatter,-randoms-and-trues-data[Extracting GATE scatter, randoms and trues data]. 
+
+By default, the main-file saves trues, scatter, randoms and the source images. These can be, respectively, disabled by setting the values on lines 53, 58, 87 and 97 to false. Optionally, the trues or scatter can be reconstructed instead of prompts. For trues this is achieved by setting line 64 to true, and for scatter line 80.
+
+### GATE input data setup
+
+Three GATE input data are supported: ASCII, LMF and ROOT. Of these ASCII is used by default. The column indices are correct if no modifications have been made. The numbers come straight from the ASCII data file order as specified by GATE (see GATE https://opengate.readthedocs.io/en/latest/data_output_management.html#coincidences-files-gatecoincidences-dat-bin[documentation]). If any of the columns are not selected, the column numbers decrease by one. I.e. event index is by default always the first column as the run IDs are not saved.
+
+LMF data can be enabled on line 188. For LMF data you need to specify the number of bits dedicated for each geometric element (R-sectors, modules, submodules, crystals, layers). This is output by GATE at the start of the simulation, see the image below:
+
+image::https://github.com/villekf/OMEGA/blob/master/docs/lmf_bits.png[LMF bits]
+
+Furthermore, you need the coincidence window length as well the "clock time step" that can be found from the output cch-files.
+
+ROOT data is enabled from line 230 and doesn't need any specific information. ROOT data is, however, unstable on MATLAB R2018b and earlier and is not supported on Windows. See https://github.com/villekf/OMEGA#known-issues-and-limitations[Known issues and limitations] for more information.
+
+## Image settings
+
+The voxel counts for each slice and the slice count can be specified on lines 246-250. Slice count is usually the number of crystal rings x 2 - 1.
+
+Depending on how the system is built, you might need to rotate it or flip it in order for the reconstructed images to be correctly oriented (see lines 252 and 256). This is not necessary for the example case though. 
+
+## Sinogram settings
+
+Span factor (line 271) determines the axial compression, that is how many sinograms are combined in the axial direction. Currently 3 is the smallest span factor supported (if you wish to use span of 1, use raw data). Higher span values compress the sinogram data more and result in faster reconstruction, but can have a negative impact on the image quality.
+
+Ring difference is related to the span value and can be at most the number of crystal rings - 1. Oblique sinograms are created from the ring distance specified by the ring difference. I.e. with maximum ring difference the coincidences between the first and last crystal ring are included. For more information on span and ring difference see http://tech.snmjournals.org/content/30/2/39.long[Data Acquisition in PET Imaging].
+
+The number of angles (tangential positions) determine the one dimension of a single sinogram slice (usually depicted with a _&phi;_). This should be the number of detectors on a ring divided by two. Smaller values are supported, but they need to be values that are obtained from the number of detectors on a ring divided by a value divisible by two. Smaller values will be considered as sinogram mashing.
+
+The number of angular positions (views) is the second dimension of a single sinogram slice (usually depicted with an _s_). Primarily you should use the same value as the device you are modelling, but if that is not available you can use the function `ndist_max` to determine optimal values. This function outputs the orthogonal distance of every line of response as well as outputs the view counts for the case of fully encompassing the FOV (i.e. a circle with the FOV square inside) or for a case where the sinogram FOV is fully inside the FOV (i.e. a circle that just fits inside the FOV square). It is recommended the value is set somewhere between these two values.
+
+## Input data
+
+On Windows, specify the folder for the GATE data on line 303. On other systems on line 305.
+
+## Other options
+
+The name (line 297) is used for naming purposes only. I.e. sinograms are saved for specific examination and machine.
+
+Only sinograms can be computed by setting line 308 to true and running the file. This loads the GATE data and then forms the sinograms but does not continue to image reconstruction.
+
+Likewise, only reconstruction can be enabled on line 313. Running with this true, will skip the data load and sinogram formation steps. Previously created measurement data will be automatically loaded if such exists (name and machine name match).
+
+Raw data format (the data is stored in detector pair combinations) can be enabled by setting line 317 value to true.
+
+Status messages can be turned off by setting line 319 variable to false.
+
+## Reconstruction options
+
+The number of iterations and subsets can be selected in Reconstruction properties (lines 334 and 336). These are case specific and have not been optimized for this example.
+
+## Export data
+
+If you want to export the reconstructed image, you can use https://github.com/villekf/OMEGA/wiki/Function-help#saveimagem[saveImage] function. For example, you can export the reconstructed image as NIfTI format with the following command `saveImage(f_osem, 'nifti', [], options)`.
+
+# Advanced example
+
+This is based on `gate_main.m`. The process is identical to that of the simple version, except that the non-simple one gives more possibilities for user adjustments.
+
+## Set up
+
+Almost identical to the simple version, but the number of pseudo rings/detectors can be adjusted. Aside from the pseudo rings/detectors, all other variables not present on the simple version are calculated automatically.
+
+**Pseudo rings** 
+
+These can be adjusted in `options.pseudot`. If your scanner has pseudo rings, input the number of pseudo rings here. If no pseudo rings are present (as is with most scanners), use 0 or empty array `[]`.
+
+**Pseudo detectors**
+
+Pseudo detectors can be added to `options.det_w_pseudo`. Normally, without pseudo detectors, this is computed as `options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);` which is the number of detectors on a one crystal ring. Usually pseudo detectors are a one additional detector on each block, which means that this becomes `options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1);` If no pseudo detectors are present, this should be the same as `options.det_per_ring`.
+
+## Sinogram settings
+
+**Segment table**
+
+Table of sinogram segments. This is automatically computed, but can be filled manually as well.
+
+**Total number of sinograms**
+
+This should be the total number of sinograms, i.e. the sum of the segment table.
+
+**Number of sinograms used in reconstruction**
+
+`options.NSinos` can be used to utilize __N__ FIRST sinograms in the image reconstruction. E.g. if you want to use only the direct plane sinograms, then this should equal the number of crystal rings * 2 - 1.
+
+**Angular cut-off**
+
+`options.ndist_side` is used to determine from which side is one angular position removed. E.g. if you have 128 views, as with the Inveon PET, that means that you have an even number of views. However, since the smallest orthogonal distance between a LOR and the center of the FOV is usually zero, that means that there should be 64 views on both sides + the center one. This would result in 129 views. Usually, however, one of the views is removed from either side. 
