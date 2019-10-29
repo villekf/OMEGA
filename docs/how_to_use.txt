@@ -30,9 +30,6 @@ This file contains all the device, sinogram, GATE output data and reconstruction
 The first section contains the device parameters and is included in both files. These include (name in parenthesis is 
 the MATLAB variable name):
 
-Number of rings (rings) = The physical number of rings on your machine. If your machine contains pseudo rings, they are 
-not counted here.
-
 Blocks per ring (blocks_per_ring) = This is the number of "blocks" in your machine on each ring. If you have cylindrical 
 PET geometry then this should be the amount of R-sectors/modules per ring. For ECAT it is the amount of blocks/R-sectors. 
 If you need more help, see the included example. (# R E P E A T R S E C T O R)
@@ -54,18 +51,46 @@ Transaxial field-of-view (FOVa) = Transaxial field-of-view (x- and y-direction),
 
 Axial FOV (axial_fov) = Same as above, but in axial (z) direction.
 
-Pseudo detectors (pseudot) = The location of the pseudo rings. E.g. if you have 9 physical rings and 2 pseudo rings, 
-and the pseudo rings are after every third ring then pseudot = [4,8]. If you have no pseudo rings, simply use empty 
-vector. Do not use 0.
+Pseudo detector rings (pseudot) = The number of pseudo detector rings on the device. The pseudo rings are assumed to locate 
+between adjacent blocks. If you have no pseudo rings, simply use empty vector or 0.
 
 Detectors per ring (det_per_ring) = Number of detectors per ring without pseudo detectors. Can be automatically 
 determined as in the example.
 
 Detectors per ring w/ pseudo detectors (det_w_pseudo) = Same as above, but with pseudo detectors included.
 
+Number of rings (rings) = The physical number of rings on your machine. If your machine contains pseudo rings, they are 
+not counted here. Can be determined automatically.
+
 Total number of detectors (detectors) = Can be automatically determined.
 
 Machine name = The name of your machine. Used for naming purposes.
+
+
+GATE specific settings (only gate_main.m):
+
+Obtain true coincidences (obtain_trues) = When this setting is set to true, also the true coincidences are saved. I.e 
+coincidences that are neither randoms nor have scattered (see scatter_components for more options on what scattered events 
+to include/exclude). If this setting is set to true during the reconstruction phase, then the true events will be used for 
+reconstruction purposes as well.
+
+Store scattered coincidences (store_scatter) = If true, then the scattered coincidences are stored separately as well. 
+However, these events are not used automatically for scatter correction (this step, if desired, needs to be performed 
+manually). See scatter_components for the type of scattered events to include/exclude. If sinogram is created, then a 
+scatter sinogram will also be formed.
+
+Scatter components to include/exclude (scatter_components) = Here you can be choose what scatter components to include in 
+the scattered coincidences and exclude from trues. 1 (or true) means that the component in included in the scatter part 
+and excluded from trues. First is Compton scattering in the phantom, second is Compton scattering in the detector, third is 
+Rayleigh scattering in the phantom and fourth Rayleigh scattering in the detector. At least one value has to be selected if 
+store_scatter = true. The default value [1 0 1 0] will include Compton and Rayleigh scatter in the phantom in the scatter 
+data and exclude these from propmts when forming true coincidences. This feature is fully supported with ASCII and ROOT 
+input data. LMF currently only supports Compton scattering in the phantom and will include this always if 
+store_scatter = true or will always be excluded from prompts when forming true coincidences.
+
+Store random coincidences (store_randoms) = If true, then the "true" random coincidences are stored separately. This does 
+not produce same results as an actual randoms correction (see Corrections) nor is this section used to perform randoms 
+correction. As with scatter data, if sinograms are formed then a separate randoms sinogram is created as well.
 
 
 ASCII data format settings (only gate_main.m):
@@ -83,6 +108,14 @@ imaging only.
 
 Source indices (source_index1/2) = Columns corresponding to the source indices. Use empty vector or 0 if not used.
 
+Event indices (event_index1/2) = Columns corresponding to the event indices. Necessary if any of obtain_trues, store_scatter
+or store_randoms are set to true.
+
+Scatter indices (scatter_index/2) = Columns corresponding to the first scatter index selected. E.g. if you have selected 
+Rayleigh scattering in phantom and in detector in ASCII coincidence mask, use the column number of Rayleigh scattering 
+in phantom. In the example, Compton and Rayleigh scattering in phantom are selected and as such the column index 
+corresponding to Compton scatter in phantom is put here. Necessary if either obtain_trues or store_scatter are set to true.
+
 
 LMF data format settings (only gate_main.m):
 
@@ -90,8 +123,9 @@ use LMF (use_LMF) = True if you want to use GATE LMF files as input data, false 
 
 Number of header bytes (header_bytes) = How many bytes are dedicated for LMF header.
 
-Number of event bytes (data_bytes) = How many bytes are at each event packet. Currently this can be at most 16 (time + 
-detector indices + source indices) and has to be at least 10 (time + detector indices).
+Number of event bytes (data_bytes) = How many bytes are at each event packet. Currently this can be at most 21 (time + 
+detector indices + source indices + event indices + Compton in phantom) and has to be at least 10 (time + detector indices).
+This can actually be more than 21 if the extra bytes are location after Compton scatter in phantom.
 
 Number of bits used for R-sectors (R_bits) = How many bits in the 16-bit index packet are dedicated for R-sectors. This 
 can be seen when the simulation starts.
@@ -105,8 +139,8 @@ Source coordinates (source_LMF) = Are source coordinates obtained? Set to true i
 data_bytes needs to be 16 if this is set to true. data_bytes can be 16 even if this is false if source coordinates were 
 saved during the simulation.
 
-Clock time step (clock_time_step) = What is the clock time step. This should be a value that when multiplied with the 
-clock time step from the cch-files equals 1. E.g. if clock time step is 1 ps (1e-12) in cch-files then this would (1e12).
+Clock time step (clock_time_step) = What is the clock time step. E.g. if clock time step is 1 ps (1e-12) in cch-files then 
+this would be 1e-12.
 
 
 Root data format settings (only gate_main.m):
@@ -141,8 +175,6 @@ distance between the LOR and the origin.
 Segment table (segment_table) = Oblique sinograms are divided into groups specified by the segment table. This value 
 depends on the span value and can be automatically computed.
 
-Arc correction (arc_corrected) = At the moment does nothing.
-
 Total number of sinograms (TotSinos) = The total number of sinograms. Can be obtained from the segment table.
 
 Number of sinograms used in reconstruction (NSinos) = Less sinograms can be used in the reconstruction process itself 
@@ -151,7 +183,53 @@ Number of sinograms used in reconstruction (NSinos) = Less sinograms can be used
 Distance side (ndist_side) = When Ndist value is even, then one extra distance value has to be taken either from the 
 "negative" or "positive" side. With this you can specific whether this is from the "negative" (+1) or "positive" (-1).
 
-Sinogram rotation (offangle) = How much is the sinogram rotated? Should be based on the total number of all detectors.
+Flip the image (flip_image) = Whether the final image will be flipped or not. Depending on your machine detector numbering
+the output image might be flipped. Set this to true to perform the flipping before the image is reconstructed (flipping 
+will be performed in the detector space).
+
+Image rotation (offangle) = How much is the image rotated? As above, the final reconstructed image might be rotated. Use 
+this to rotate the image before the reconstruction. Should be based on the total number of all detectors.
+
+Store the raw sinogram (store_raw_sinogram) = If set to true, then the raw sinogram is also saved. This means that no 
+corrections have been performed with this sinogram (gap filling or randoms correction at the moment). This can be used for
+reconstruction as well if this is true and randoms_correction, scatter_correction and fill_sinogram_gaps (if applicable, 
+see below) are set to false. E.g. if you have no pseudo detectors, but have performed randoms correction, but also want to 
+perform reconstruction on data with no randoms correction and set this to true when initially forming the randoms corrected 
+sinogram, then simply setting randoms_correction = false will use the raw sinogram instead.
+
+Fill gaps in the sinogram (fill_sinogram_gaps) = If your machine has pseudo detectors, your sinogram will include gaps due
+to reduced (or no) measurements available. If this is set to true, then these gaps will be automatically filled. Two methods 
+are available that can be selected with the parameter below. This is applicable only if pseudot > 0.
+
+Method to fill the gaps in the sinogram (gap_filling_method) = Here you can select which of the two different gap filling 
+methods to use. 'fillmissing' is a built-in MATLAB function that does 1D interpolation on the gap values. 'inpaint_nans' is 
+another method that needs to be downloaded from the MATLAB file exchange
+( https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans ) and does 2D interpolation on the gap values. For 
+improved accuracy inpaint_nans is recommended. 
+
+Interpolation method of fillmissing (interpolation_method_fillmissing) = What interpolation method is used if fillmissing is
+selected as the gap filling method. See the documentation, and speficially the methods section, of fillmissing for details.
+
+Interpolation method of inpaint_nans (interpolation_method_inpaint) = What interpolation method is used if inpaint_nans is
+selected as the gap filling method. See the comments section on inpaint_nans.m for more information.
+
+
+Corrections (applies to both):
+
+Arc correction (arc_corrected) = At the moment does nothing.
+
+Randoms correction (randoms_correction) = If set to true, then the delayed coincidences will be used for randoms correction.
+This is a simple subtraction (no variance reduction is performed). For sinogram data, the correction will be performed when
+the sinogram is created (raw sinogram will be saved if store_raw_sinogram = true, see above). For raw list-mode data the 
+correction will be performed during the reconstruction phase. If you want to use the raw sinogram data, set this to false 
+(assuming store_raw_sinogram has been set to true when the sinograms were initially formed and that scatter_correction is 
+also set to false). For GATE data you need to have the delayed coincidences saved (supported by ASCII and ROOT data). LMF 
+does NOT support randoms correction. For non-GATE data setting this to true will prompt you to select the randoms 
+sinogram/raw data. For Inveon PET, the delayed coincidences will be automatically saved from the .lst-file.
+
+Scatter correction (scatter_correction) = If set to true, will prompt the user to load the scatter sinogram (if sinogram 
+data) or the raw list-mode format scatter information (if raw data). Corrects for scatter during sinogram formation (if sinogram 
+data) or during data load (if raw list-mode data). The scatter data has to be the first variable in the MAT-file.
 
 
 Dynamic imaging properties (applies to both), experimental feature:
@@ -159,6 +237,12 @@ Dynamic imaging properties (applies to both), experimental feature:
 Total time (tot_time) = The total time of the experiment.
 
 Number of time step (partitions) = How many time steps there are in the dynamic case.
+
+Start time (start) = The start time in seconds when to start saving the measurement data. E.g. if set to 20, then the first
+20 seconds will be discarded.
+
+End time (end) = The end time in seconds to which measurements are saved. E.g. if set to 300, then all measurements that 
+have a timestamp greater than 300 will be discarded.
 
 
 Miscellanous properties (applies to both):
@@ -173,7 +257,7 @@ the sinogram dimensions change or if sinogram or raw data is used for the first 
 Path to the input data (fpath) = This is the path to the folder where the input data is. All the files for the specified 
 GATE output will be read. E.g. if you set use_ASCII to true, then from the folder specified by fpath, all the .dat files 
 with Coincidences in them will be loaded, for LMF all .ccs files will be loaded and for Root all .root files will be 
-loaded. The fpath-variable must contain either / or \ (depending on your system) at the end.
+loaded.
 
 Form only sinograms (only_sinos) = If this is set to true, then running the m-file only performs steps up to the sinogram 
 formation. I.e. precompute step is done if it is set to true, data is loaded and then the sinogram is formed. No 
@@ -200,7 +284,9 @@ use this option. The only reason not to use this would be, if you know you will 
 precompute step has to be repeated if the image or sinogram dimensions are changed.
 
 Precompute everything (precompute_all) = This option causes the prepass phase to compute all mat-files even if they were
-not selected. E.g. if you use sinogram data, also all precomputations for raw list-mode data are done.
+not selected. E.g. if you use sinogram data, also all precomputations for raw list-mode data are done. This also applies
+to data load, i.e. both raw list-mode and sinogram formatted data will be saved. Will also apply the precompute phase even
+if only_reconstruction = true.
 
 Status messages (verbose) = If this is set to true, then you will receive occasional status messages and also elapsed 
 time of functions.
@@ -253,6 +339,13 @@ Use FSparse (use_fsparse) = Whether FSparse is used. Only used if precompute_lor
 
 Various image reconstruction parameters = These parameters affect the reconstruction of all the other algorithms except 
 MLEM and OSEM. See gate_main, nongate_main or the corresponding articles for more information on these.
+
+
+
+
+OMEGA_error_check.m:
+
+This file performs some small error checking on our input parameters.
 
 
 
@@ -318,7 +411,8 @@ visualize_pet.m:
 
 This file contains some optional visualization options. You can plot a single reconstruction. Iterations from a single 
 reconstruction. A group of different algorithms. The "true" image and a single reconstruction.  The "true" image and 
-several different reconstruction algorithms. 3D volume of one reconstruction by using the file exchange file vol3d v2.
+several different reconstruction algorithms. You can select from three different views, 1 = Transverse, 
+2 = Coronal/frontal, 3 = Sagittal. 3D volume of one reconstruction is possible by using the file exchange function vol3d v2.
 
 
 

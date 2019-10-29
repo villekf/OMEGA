@@ -1,799 +1,656 @@
-#include "mex.h"
-#include <vector>
-#include <algorithm>
-#include <cmath>
+/**************************************************************************
+* This function is used to check for the number of voxels each LOR/ray
+* traverses and also whether the LOR/ray actually intersects with the pixel
+* space.
+* Raw list-mode data and sinogram data have slightly different versions.
+* Output is the number of voxels the ray has traversed (if the LOR does not
+* traverse the pixel space, this value will be 0).
+*
+* Copyright (C) 2019  Ville-Veikko Wettenhovi
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program. If not, see <https://www.gnu.org/licenses/>.
+***************************************************************************/
+#include "projector_functions.h"
+
+constexpr int TYPE = 0;
 
 
 using namespace std;
 
-void improved_siddon(const int loop_var_par, const int size_x, const double zmax, const int TotSinos, uint16_t* lor, const double maxyy, const double minyy,
-	const double maxxx, const double minxx,	const vector<double>& xx_vec, const vector<double>& z_det_vec, const vector<double>& iij_vec, 
-	const vector<double>& jjk_vec, 	const vector<double>& kkj_vec, const vector<double>& yy_vec, const double* x, const double* y, const double* z_det, 
-	const int NSlices, const int Nx, const int Ny, const int Nz, const double d, const double dz, const double bx, const double by, const double bz, 
-	bool* discard) {
+void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, uint16_t* lor, const double maxyy,
+	const double maxxx, const vector<double>& xx_vec, const vector<double>& z_det_vec, const double dy, const vector<double>& yy_vec,
+	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz,
+	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
+	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, const double crystal_size, const double crystal_size_z, 
+	const double* x_center,	const double* y_center, const double* z_center) {
 
-	int ll = -1;
-	int lz = -1;
-	int lj = -1;
-	int luu = 0;
 
-	const double bxf = bx + iij_vec.front() * d;
-	const double byf = by + jjk_vec.front() * d;
-	const double bxb = bx + iij_vec.back() * d;
-	const double byb = by + jjk_vec.back() * d;
-	const double bzf = bz + kkj_vec.front() * dz;
-	const double bzb = bz + kkj_vec.back() * dz;
+	const double bzb = bz + static_cast<double>(Nz) * dz;
 
-	for (int lo = 1; lo <= loop_var_par; lo++) {
+	const int32_T dec = static_cast<int32_T>(ceil(crystal_size_z / sqrt(dz * dz * 2.))) * 3;
+	const int32_T decx = static_cast<int32_T>(ceil(crystal_size_z / sqrt(dx * dx * 2.))) * 1;
 
-		if ((lo - 1) % size_x == 0) {
-			ll = -1;
-			lz++;
+
+	ThreadPool::ParallelFor(static_cast<size_t>(0), loop_var_par, [&](uint32_t lo) {
+		Det detectors;
+
+		if (raw) {
+			uint32_t ps = 0u;
+			const uint32_t detektorit1 = static_cast<uint32_t>(L[lo * 2u]);
+			const uint32_t detektorit2 = static_cast<uint32_t>(L[lo * 2u + 1u]);
+
+			if (detektorit1 == detektorit2)
+				return;
+
+			const uint32_t loop1 = 1 + ((detektorit1 - 1u) / det_per_ring);
+			const uint32_t loop2 = 1 + ((detektorit2 - 1u) / det_per_ring);
+
+			if (loop1 == loop2) {
+				if (loop1 > blocks || loop1 < block1 || loop2 > blocks || loop2 < block1)
+					return;
+				detectors.zs = z_det_vec[loop1 - 1u];
+				detectors.zd = detectors.zs;
+			}
+			else {
+				if (loop1 > blocks && loop2 > blocks || loop1 < block1 && loop2 < block1)
+					return;
+				detectors.zs = z_det_vec[loop1 - 1u];
+				detectors.zd = z_det_vec[loop2 - 1u];
+			}
+
+			for (uint32_t kk = 0u; kk < pRows; kk++) {
+				if (kk + 1u < pRows) {
+					if (loop1 >= pseudos[kk] && loop1 < pseudos[kk + 1u]) {
+						detectors.zs = z_det_vec[loop1 + ps];
+						break;
+					}
+					else
+						ps++;
+				}
+				else {
+					if (loop1 >= pseudos[kk])
+						detectors.zs = z_det_vec[loop1 + ps];
+				}
+			}
+			ps = 0;
+			for (uint32_t kk = 0u; kk < pRows; kk++) {
+				if (kk + 1u < pRows) {
+					if (loop2 >= pseudos[kk] && loop2 < pseudos[kk + 1u]) {
+						detectors.zd = z_det_vec[loop2 + ps];
+						break;
+					}
+					else
+						ps++;
+				}
+				else {
+					if (loop2 >= pseudos[kk])
+						detectors.zd = z_det_vec[loop2 + ps];
+				}
+			}
+			detectors.xs = x[detektorit1 - det_per_ring * (loop1 - 1u) - 1u];
+			detectors.xd = x[detektorit2 - det_per_ring * (loop2 - 1u) - 1u];
+			detectors.ys = y[detektorit1 - det_per_ring * (loop1 - 1u) - 1u];
+			detectors.yd = y[detektorit2 - det_per_ring * (loop2 - 1u) - 1u];
+		}
+		else {
+			const uint32_t id = lo % size_x;
+			const uint32_t idz = lo / size_x;
+
+			detectors.xs = x[id];
+			detectors.xd = x[id + size_x];
+			detectors.ys = y[id];
+			detectors.yd = y[id + size_x];
+			detectors.zs = z_det[idz];
+			detectors.zd = z_det[idz + TotSinos];
 		}
 
-		ll++;
-		lj++;
+		if (detectors.zd < detectors.zs) {
+			double tempa = detectors.zd;
+			detectors.zd = detectors.zs;
+			detectors.zs = tempa;
+			tempa = detectors.xd;
+			detectors.xd = detectors.xs;
+			detectors.xs = tempa;
+			tempa = detectors.yd;
+			detectors.yd = detectors.ys;
+			detectors.ys = tempa;
+		}
 
-		double xs = x[ll];
-		double xd = x[ll + size_x];
-		double ys = y[ll];
-		double yd = y[ll + size_x];
-		double zs = z_det[lz];
-		double zd = z_det[lz + TotSinos];
-		
 
-		double y_diff = (yd - ys);
-		double x_diff = (xd - xs);
-		double z_diff = (zd - zs);
-		
+		const double y_diff = (detectors.yd - detectors.ys);
+		const double x_diff = (detectors.xd - detectors.xs);
+		const double z_diff = (detectors.zd - detectors.zs);
+
+		double kerroinz = 0., kerroin, length_;
+
+		uint16_t temp_koko_orth = 0u;
+		uint16_t temp_koko = 0u;
+		uint16_t temp_koko_orth_3D = 0u;
+
+		uint32_t xyz = 0u;
+		uint32_t Np = 0u;
+
+		if (type > 0u) {
+			if (type == 2u) {
+				kerroinz = norm(x_diff, y_diff, z_diff) * crystal_size_z;
+			}
+			kerroin = detectors.xd * detectors.ys - detectors.yd * detectors.xs;
+			length_ = sqrt(y_diff * y_diff + x_diff * x_diff) * crystal_size;
+		}
 
 		if (fabs(z_diff) < 1e-8) {
 
+			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+
 			if (fabs(y_diff) < 1e-8) {
 
 
-				if (yd <= maxyy && yd >= minyy) {
-					
+				if (detectors.yd <= maxyy && detectors.yd >= by) {
+					// The number of voxels the LOR/ray traverses
 
-					discard[lj] = true;
-					lor[lj] = static_cast<uint16_t>(Nx);
-					continue;
+					if (type > 0u) {
+						orth_perpendicular_precompute(Nx, Ny, detectors.yd, yy_vec, -x_diff, y_center, kerroin, length_, temp_koko_orth);
+						lor_orth[lo] = temp_koko_orth;
+						if (type == 2u) {
+							double temppi = detectors.xs;
+							detectors.xs = detectors.ys;
+							detectors.ys = temppi;
+							orth_perpendicular_precompute_3D(Nx, Ny, Nz, detectors.yd, yy_vec, y_center, x_center[0], z_center, kerroinz, temp_koko_orth_3D, 
+								detectors, y_diff, x_diff, z_diff, tempk);
+							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
+						}
+					}
+					lor[lo] = static_cast<uint16_t>(Nx);
 				}
-				continue;
+				// LOR/ray doesn't traverse through the pixel space
 			}
 			else if (fabs(x_diff) < 1e-8) {
 
-				if (xd <= maxxx && xd >= minxx) {
-					discard[lj] = true;
-					lor[lj] = static_cast<uint16_t>(Ny);
-					continue;
+				if (detectors.xd <= maxxx && detectors.xd >= bx) {
+					// The number of voxels the LOR/ray traverses
+					if (type > 0u) {
+						orth_perpendicular_precompute(Ny, Nx, detectors.xd, xx_vec, y_diff, x_center, kerroin, length_, temp_koko_orth);
+						lor_orth[lo] = temp_koko_orth;
+						if (type == 2u) {
+							orth_perpendicular_precompute_3D(Ny, Nx, Nz, detectors.xd, xx_vec, x_center, y_center[0], z_center, kerroinz, temp_koko_orth_3D,
+								detectors, x_diff, y_diff, z_diff, tempk);
+							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
+						}
+					}
+					lor[lo] = static_cast<uint16_t>(Ny);
 				}
-
-				continue;
+				// LOR/ray doesn't traverse through the pixel space
 			}
-			double tx0 = (bxf - xs) / (x_diff);
-			double ty0 = (byf - ys) / (y_diff);
-			double txback = (bxb - xs) / (x_diff);
-			double tyback = (byb - ys) / (y_diff);
+			else {
+				int32_t tempi = 0, tempj = 0, ju = 0, iu = 0;
+				double tyu = 0., txu = 0., tc = 0., ty0 = 0., tx0 = 0.;
 
-			double txmin = min(tx0, txback);
-			double txmax = max(tx0, txback);
-			double tymin = min(ty0, tyback);
-			double tymax = max(ty0, tyback);
+				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 
-			double tmin = max(txmin, tymin);
-			double tmax = min(txmax, tymax);
+				if (!skip) {
 
+					//bool var = false;
+					int32_t n_tempk = tempk;
+					bool z_bool = true;
 
-			if (tmin >= tmax) {
-				continue;
+					for (uint32_t ii = 0u; ii < Np; ii++) {
+
+						temp_koko++;
+
+						if (tx0 < ty0) {
+							if (ii == (Np - 1u) && type > 0u) {
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (type == 2u) {
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+							}
+							tempi += iu;
+							tx0 += txu;
+							xyz = 1u;
+						}
+						else {
+							if (type > 0u) {
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (type == 2u) {
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+							}
+							tempj += ju;
+							ty0 += tyu;
+							xyz = 2u;
+						}
+						if (tempj < 0 || tempi < 0 || tempi >= Nx || tempj >= Ny) {
+							if (xyz == 1u && type > 0u && ii != (Np - 1u)) {
+								tempi -= iu;
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (type == 2u) {
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+							}
+							break;
+						}
+
+					}
+					// The number of voxels the LOR/ray traverses
+					if (type > 0u) {
+						lor_orth[lo] = temp_koko_orth;
+						if (type == 2u)
+							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
+					}
+					lor[lo] = temp_koko;
+				}
 			}
-
-
-			int imin, imax, jmin, jmax;
-			double pxt, pyt;
-
-			int iu, ju;
-
-			if (xs < xd) {
-				if (tmin == txmin)
-					imin = 1;
-				else {
-					pxt = xs + tmin*(x_diff);
-					imin = static_cast<int>(ceil((pxt - bx) / d));
-				}
-				if (tmax == txmax)
-					imax = Nx;
-				else {
-					pxt = xs + tmax*(x_diff);
-					imax = static_cast<int>(floor((pxt - bx) / d));
-				}
-				tx0 = (bx + static_cast<double>(imin) * d - xs) / (x_diff);
-				iu = 1;
-			}
-			else if (xs > xd) {
-				if (tmin == txmin)
-					imax = Nx - 1;
-				else {
-					pxt = xs + tmin*(x_diff);
-					imax = static_cast<int>(floor((pxt - bx) / d));
-				}
-				if (tmax == txmax)
-					imin = 0;
-				else {
-					pxt = xs + tmax*(x_diff);
-					imin = static_cast<int>(ceil((pxt - bx) / d));
-				}
-				tx0 = (bx + static_cast<double>(imax) * d - xs) / (x_diff);
-				iu = -1;
-			}
-
-			if (ys < yd) {
-				if (tmin == tymin)
-					jmin = 1;
-				else {
-					pyt = ys + tmin*(y_diff);
-					jmin = static_cast<int>(ceil((pyt - by) / d));
-				}
-				if (tmax == tymax)
-					jmax = Ny;
-				else {
-					pyt = ys + tmax*(y_diff);
-					jmax = static_cast<int>(floor((pyt - by) / d));
-				}
-				ty0 = (by + static_cast<double>(jmin) * d - ys) / (y_diff);
-				ju = 1;
-
-			}
-			else if (ys > yd) {
-				if (tmin == tymin)
-					jmax = Ny - 1;
-				else {
-					pyt = ys + tmin*(y_diff);
-					jmax = static_cast<int>(floor((pyt - by) / d));
-				}
-				if (tmax == tymax)
-					jmin = 0;
-				else {
-					pyt = ys + tmax*(y_diff);
-					jmin = static_cast<int>(ceil((pyt - by) / d));
-				}
-				ty0 = (by + static_cast<double>(jmax) * d - ys) / (y_diff);
-				ju = -1;
-			}
-
-			int Np = (imax - imin + 1) + (jmax - jmin + 1);
-
-			int tempi, tempj;
-
-			double pt = ((min(tx0, ty0) + tmin) / 2.);
-
-			tempi = static_cast<int>(floor(((xs + pt * x_diff) - bx) / d));
-			tempj = static_cast<int>(floor(((ys + pt * y_diff) - by) / d));
-
-			double txu = d / fabs(x_diff);
-			double tyu = d / fabs(y_diff);
-
-			double tc = tmin;
-
-			uint16_t temp_koko = 0;
-
-			int z_loop = static_cast<int>((zs / zmax)*(static_cast<double>(NSlices) - 1.));
-
-			for (int ii = 0; ii < Np; ii++) {
-
-				temp_koko++;
-
-				if (tx0 < ty0) {
-
-					tempi += iu;
-					tc = tx0;
-					tx0 += txu;
-
-				}
-				else {
-
-					tempj += ju;
-					tc = ty0;
-					ty0 += tyu;
-				}
-				if (tempj < 0 || tempi < 0 || tempi >= Nx || tempj >= Ny)
-					break;
-
-			}
-
-			discard[lj] = true;
-			lor[lj] = temp_koko;
-
-			continue;
 		}
-
 		else {
 
 			if (fabs(y_diff) < 1e-8) {
-				if (yd <= maxyy && yd >= minyy) {
-
-					double tx0 = (bxf - xs) / (x_diff);
-					double tz0 = (bzf - zs) / (z_diff);
-					double txback = (bxb - xs) / (x_diff);
-					double tzback = (bzb - zs) / (z_diff);
-
-					double txmin = min(tx0, txback);
-					double txmax = max(tx0, txback);
-					double tzmin = min(tz0, tzback);
-					double tzmax = max(tz0, tzback);
-
-					double tmin = max(txmin, tzmin);
-					double tmax = min(txmax, tzmax);
-
-					if (tmin >= tmax)
-						continue;
+				if (detectors.yd <= maxyy && detectors.yd >= by) {
 
 
-					int imin, imax, kmin, kmax;
-					double pxt, pzt;
+					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 1;
+					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
 
-					int iu, ku;
+					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
 
-					if (xs < xd) {
-						if (tmin == txmin)
-							imin = 1;
-						else {
-							pxt = xs + tmin*(x_diff);
-							imin = static_cast<int>(ceil((pxt - bx) / d));
+					if (!skip) {
+
+						const double temp_x = detectors.xs;
+						detectors.xs = detectors.ys;
+						detectors.ys = temp_x;
+
+						double apu1;
+						for (uint32_t ii = 0u; ii < Ny; ii++) {
+							apu1 = (yy_vec[ii + 1u] - detectors.yd);
+							if (apu1 > 0.) {
+								tempj = static_cast<int32_t>(ii);
+								break;
+							}
 						}
-						if (tmax == txmax)
-							imax = Nx;
-						else {
-							pxt = xs + tmax*(x_diff);
-							imax = static_cast<int>(floor((pxt - bx) / d));
-						}
-						tx0 = (bx + static_cast<double>(imin) * d - xs) / (x_diff);
-						iu = 1;
-					}
-					else if (xs > xd) {
-						if (tmin == txmin)
-							imax = Nx - 1;
-						else {
-							pxt = xs + tmin*(x_diff);
-							imax = static_cast<int>(floor((pxt - bx) / d));
-						}
-						if (tmax == txmax)
-							imin = 0;
-						else {
-							pxt = xs + tmax*(x_diff);
-							imin = static_cast<int>(ceil((pxt - bx) / d));
-						}
-						tx0 = (bx + static_cast<double>(imax) * d - xs) / (x_diff);
-						iu = -1;
-					}
+						int32_t n_tempk = tempk;
+						bool z_bool = true;
 
-					if (zs < zd) {
-						if (tmin == tzmin)
-							kmin = 1;
-						else {
-							pzt = zs + tmin*(z_diff);
-							kmin = static_cast<int>(ceil((pzt - bz) / dz));
-						}
-						if (tmax == tzmax)
-							kmax = Nz;
-						else {
-							pzt = zs + tmax*(z_diff);
-							kmax = static_cast<int>(floor((pzt - bz) / dz));
-						}
-						tz0 = (bz + static_cast<double>(kmin) * dz - zs) / (z_diff);
-						ku = 1;
-					}
-					else if (zs > zd) {
-						if (tmin == tzmin)
-							kmax = Nz - 1;
-						else {
-							pzt = zs + tmin*(z_diff);
-							kmax = static_cast<int>(floor((pzt - bz) / dz));
-						}
-						if (tmax == tzmax)
-							kmin = 0;
-						else {
-							pzt = zs + tmax*(z_diff);
-							kmin = static_cast<int>(ceil((pzt - bz) / dz));
-						}
-						tz0 = (bz + static_cast<double>(kmax) * dz - zs) / (z_diff);
-						ku = -1;
-					}
-
-					int Np = (imax - imin + 1) + (kmax - kmin + 1);
-
-					int tempi, tempj, tempk;
-					double apu2, apu1;
-
-					double pt = ((min(tx0, tz0) + tmin) / 2.);
-
-					tempi = static_cast<int>(floor(((xs + pt * x_diff) - bx) / d));
-					tempk = static_cast<int>(floor(((zs + pt * z_diff) - bz) / dz));
-
-					double txu = d / fabs(x_diff);
-					double tzu = dz / fabs(z_diff);
-
-					uint16_t temp_koko = 0;
-
-
-					for (int ii = 0; ii < Ny; ii++) {
-						apu1 = fabs(yy_vec[ii] - yd);
-						if (ii > 0 && apu1 < apu2 || ii == 0) {
-							tempj = ii;
-							apu2 = apu1;
-						}
-
-					}
-
-					tempj = tempj * Nx;
-
-					double tc = tmin;
-
-
-					for (int ii = 0; ii < Np; ii++) {
-
-						
-
-						if (tx0 < tz0) {
+						for (uint32_t ii = 0u; ii < Np; ii++) {
 
 							temp_koko++;
 
-							tempi += iu;
-							tc = tx0;
-							tx0 += txu;
+							if (tx0 < tz0) {
+
+								if (type > 0) {
+									orth_distance_precompute(tempj, Ny, -x_diff, -y_diff, y_center, x_center[tempi], kerroin, length_, temp_koko_orth);
+									if (type == 2u) {
+										orth_distance_precompute_3D(tempj, Ny, Nz, x_diff, y_diff, z_diff, y_center, x_center[tempi], z_center, kerroinz,
+											detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+									}
+								}
+								tempi += iu;
+								tx0 += txu;
+								xyz = 1u;
+								z_bool = true;
+							}
+							else {
+
+								if (type > 0u) {
+									orth_distance_precompute(tempj, Ny, -x_diff, -y_diff, y_center, x_center[tempi], kerroin, length_, temp_koko_orth);
+									if (ii == (Np - 1u) && type == 2u) {
+										orth_distance_precompute_3D(tempj, Ny, Nz, x_diff, y_diff, z_diff, y_center, x_center[tempi], z_center, kerroinz,
+											detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+									}
+								}
+								tempk += ku;
+								tz0 += tzu;
+								xyz = 3u;
+								if (z_bool && tempk >= 0 && tempk < Nz) {
+									n_tempk = tempk;
+									z_bool = false;
+								}
+							}
+							if (tempk < 0 || tempi < 0 || tempi >= Nx || tempk >= Nz) {
+								if (type == 2u && xyz == 3u && ii != (Np - 1u)) {
+									tempk -= ku;
+									orth_distance_precompute_3D(tempj, Ny, Nz, x_diff, y_diff, z_diff, y_center, x_center[tempi], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+								break;
+							}
 
 						}
-						else {
-							temp_koko++;
 
-
-							tempk += ku;
-							tc = tz0;
-							tz0 += tzu;
-
+						// The number of voxels the LOR/ray traverses
+						if (type > 0u) {
+							lor_orth[lo] = temp_koko_orth;
+							if (type == 2u)
+								lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
 						}
-
-						if (tempk < 0 || tempi < 0 || tempi >= Nx || tempk >= Nz)
-							break;
-
+						lor[lo] = temp_koko;
 					}
-
-
-
-					discard[lj] = true;
-					lor[lj] = temp_koko;
-
-					continue;
 
 				}
-				continue;
+				// LOR/ray doesn't traverse through the pixel space
 			}
 			else if (fabs(x_diff) < 1e-8) {
-				if (xd <= maxxx && xd >= minxx) {
+				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 
-					double ty0 = (byf - ys) / (y_diff);
-					double tyback = (byb - ys) / (y_diff);
-					double tz0 = (bzf - zs) / (z_diff);
-					double tzback = (bzb - zs) / (z_diff);
+					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 1;
+					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
+					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
 
-					double tzmin = min(tz0, tzback);
-					double tzmax = max(tz0, tzback);
-					double tymin = min(ty0, tyback);
-					double tymax = max(ty0, tyback);
+					if (!skip) {
 
-					double tmin = max(tymin, tzmin);
-					double tmax = min(tymax, tzmax);
-
-					if (tmin >= tmax)
-						continue;
-
-
-					int jmin, jmax, kmin, kmax;
-					double pyt, pzt;
-
-					int ku, ju;
-
-					if (ys < yd) {
-						if (tmin == tymin)
-							jmin = 1;
-						else {
-							pyt = ys + tmin*(y_diff);
-							jmin = static_cast<int>(ceil((pyt - by) / d));
+						double apu1;
+						for (uint32_t ii = 0u; ii < Nx; ii++) {
+							apu1 = (xx_vec[ii + 1u] - detectors.xd);
+							if (apu1 > 0.) {
+								tempi = ii;
+								break;
+							}
 						}
-						if (tmax == tymax)
-							jmax = Ny;
-						else {
-							pyt = ys + tmax*(y_diff);
-							jmax = static_cast<int>(floor((pyt - by) / d));
-						}
-						ty0 = (by + static_cast<double>(jmin) * d - ys) / (y_diff);
-						ju = 1;
-					}
-					else if (ys > yd) {
-						if (tmin == tymin)
-							jmax = Ny - 1;
-						else {
-							pyt = ys + tmin*(y_diff);
-							jmax = static_cast<int>(floor((pyt - by) / d));
-						}
-						if (tmax == tymax)
-							jmin = 0;
-						else {
-							pyt = ys + tmax*(y_diff);
-							jmin = static_cast<int>(ceil((pyt - by) / d));
-						}
-						ty0 = (by + static_cast<double>(jmax) * d - ys) / (y_diff);
-						ju = -1;
-					}
+						int32_t n_tempk = tempk;
+						bool z_bool = true;
 
 
-					if (zs < zd) {
-						if (tmin == tzmin)
-							kmin = 1;
-						else {
-							pzt = zs + tmin*(z_diff);
-							kmin = static_cast<int>(ceil((pzt - bz) / dz));
-						}
-						if (tmax == tzmax)
-							kmax = Nz;
-						else {
-							pzt = zs + tmax*(z_diff);
-							kmax = static_cast<int>(floor((pzt - bz) / dz));
-						}
-						tz0 = (bz + static_cast<double>(kmin) * dz - zs) / (z_diff);
-						ku = 1;
-					}
-					else if (zs > zd) {
-						if (tmin == tzmin)
-							kmax = Nz - 1;
-						else {
-							pzt = zs + tmin*(z_diff);
-							kmax = static_cast<int>(floor((pzt - bz) / dz));
-						}
-						if (tmax == tzmax)
-							kmin = 0;
-						else {
-							pzt = zs + tmax*(z_diff);
-							kmin = static_cast<int>(ceil((pzt - bz) / dz));
-						}
-						tz0 = (bz + static_cast<double>(kmax) * dz - zs) / (z_diff);
-						ku = -1;
-					}
-
-					int Np = (kmax - kmin + 1) + (jmax - jmin + 1);
-
-
-					int tempi, tempj, tempk;
-					double apu2, apu1;
-
-					double pt = ((min(tz0, ty0) + tmin) / 2.);
-
-					tempk = static_cast<int>(floor(((zs + pt * z_diff) - bz) / dz));
-					tempj = static_cast<int>(floor(((ys + pt * y_diff) - by) / d));
-
-					double tzu = dz / fabs(z_diff);
-					double tyu = d / fabs(y_diff);
-
-					double tc = tmin;
-
-
-					uint16_t temp_koko = 0;
-
-
-					for (int ii = 0; ii < Nx; ii++) {
-						apu1 = fabs(xx_vec[ii] - xd);
-						if (ii > 0 && apu1 < apu2 || ii == 0) {
-							tempi = ii;
-							apu2 = apu1;
-						}
-
-					}
-
-
-					for (int ii = 0; ii < Np; ii++) {
-
-
-						if (tz0 < ty0) {
+						for (uint32_t ii = 0u; ii < Np; ii++) {
 
 							temp_koko++;
 
+							if (ty0 < tz0) {
+
+								if (type > 0u) {
+									orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+									if (type == 2u)
+										orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+											detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+								tempj += ju;
+								ty0 += tyu;
+								xyz = 2u;
+								z_bool = true;
+							}
+							else {
+
+								if (type > 0u) {
+									orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+									if (ii == (Np - 1u) && type == 2u) {
+										orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+											detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+									}
+								}
+								tempk += ku;
+								tz0 += tzu;
+								xyz = 3u;
+								if (z_bool && tempk >= 0 && tempk < Nz) {
+									n_tempk = tempk;
+									z_bool = false;
+								}
+							}
+							if (tempj < 0 || tempk < 0 || tempk >= Nz || tempj >= Ny) {
+								if (type == 2u && xyz == 3u && ii != (Np - 1u)) {
+									tempk -= ku;
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+								break;
+							}
+
+						}
+						// The number of voxels the LOR/ray traverses
+						if (type > 0u) {
+							lor_orth[lo] = temp_koko_orth;
+							if (type == 2u)
+								lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
+						}
+						lor[lo] = temp_koko;
+					}
+				}
+				// LOR/ray doesn't traverse through the pixel space
+			}
+			else {
+
+				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 1;
+				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
+				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+
+				if (!skip) {
+
+					int32_t n_tempk = tempk;
+					bool z_bool = true;
+
+					for (uint32_t ii = 0u; ii < Np; ii++) {
+
+						temp_koko++;
+
+						if (tz0 < ty0 && tz0 < tx0) {
+
+							if (type > 0u) {
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (ii == (Np - 1u) && type == 2u) {
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+							}
 							tempk += ku;
-							tc = tz0;
 							tz0 += tzu;
+							xyz = 3u;
+							if (z_bool && tempk >= 0 && tempk < Nz) {
+								n_tempk = tempk;
+								z_bool = false;
+							}
+						}
+						else if (ty0 < tx0) {
 
+							if (type > 0u) {
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (type == 2u)
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+							}
+							tempj += ju;
+							ty0 += tyu;
+							xyz = 2u;
+							z_bool = true;
 						}
 						else {
 
-							temp_koko++;
-
-							tempj += ju;
-							tc = ty0;
-							ty0 += tyu;
-
+							if (ii == (Np - 1u) && type > 0u) {
+								orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+								if (type == 2u)
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+							}
+							else {
+								tempi += iu;
+								tx0 += txu;
+							}
+							xyz = 1u;
 						}
-						if (tempj < 0 || tempk < 0 || tempk >= Nz || tempj >= Ny)
+						if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz) {
+							if (type > 0u && ii != (Np - 1u)) {
+								if (xyz == 1u)
+									tempi -= iu;
+								else
+									tempk -= ku;
+								if (xyz == 1u) {
+									orth_distance_precompute(tempi, Nx, y_diff, x_diff, x_center, y_center[tempj], kerroin, length_, temp_koko_orth);
+									if (type == 2u) {
+										orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+											detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+									}
+								}
+								else if (type == 2u && xyz == 3u) {
+									orth_distance_precompute_3D(tempi, Nx, Nz, y_diff, x_diff, z_diff, x_center, y_center[tempj], z_center, kerroinz,
+										detectors, temp_koko_orth_3D, tempk, lo, n_tempk, dec, decx);
+								}
+							}
 							break;
+						}
 
 					}
-
-					discard[lj] = true;
-					lor[lj] = temp_koko;
-					continue;
-
+					// LOR/ray traverses through the pixel space
+					// The number of voxels the LOR/ray traverses
+					if (type > 0u) {
+						lor_orth[lo] = temp_koko_orth;
+						if (type == 2u)
+							lor_orth[lo + loop_var_par] = temp_koko_orth_3D;
+					}
+					lor[lo] = temp_koko;
 				}
-				continue;
+				// LOR/ray doesn't traverse through the pixel space
 			}
-
-			double tx0 = (bxf - xs) / (x_diff);
-			double tz0 = (bzf - zs) / (z_diff);
-			double txback = (bxb - xs) / (x_diff);
-			double tzback = (bzb - zs) / (z_diff);
-			double ty0 = (byf - ys) / (y_diff);
-			double tyback = (byb - ys) / (y_diff);
-
-			double txmin = min(tx0, txback);
-			double txmax = max(tx0, txback);
-			double tymin = min(ty0, tyback);
-			double tymax = max(ty0, tyback);
-			double tzmin = min(tz0, tzback);
-			double tzmax = max(tz0, tzback);
-
-			double tmin = max(max(txmin, tzmin), tymin);
-			double tmax = min(min(txmax, tzmax), tymax);
-
-			if (tmin >= tmax)
-				continue;
-
-			int imin, imax, jmin, jmax, kmin, kmax;
-			double pxt, pyt, pzt;
-
-			int iu, ju, ku;
-
-
-			if (xs < xd) {
-				if (tmin == txmin)
-					imin = 1;
-				else {
-					pxt = xs + tmin*(x_diff);
-					imin = static_cast<int>(ceil((pxt - bx) / d));
-				}
-				if (tmax == txmax)
-					imax = Nx;
-				else {
-					pxt = xs + tmax*(x_diff);
-					imax = static_cast<int>(floor((pxt - bx) / d));
-				}
-				tx0 = (bx + static_cast<double>(imin) * d - xs) / (x_diff);
-				iu = 1;
-			}
-			else if (xs > xd) {
-				if (tmin == txmin)
-					imax = Nx - 1;
-				else {
-					pxt = xs + tmin*(x_diff);
-					imax = static_cast<int>(floor((pxt - bx) / d));
-				}
-				if (tmax == txmax)
-					imin = 0;
-				else {
-					pxt = xs + tmax*(x_diff);
-					imin = static_cast<int>(ceil((pxt - bx) / d));
-				}
-				tx0 = (bx + static_cast<double>(imax) * d - xs) / (x_diff);
-				iu = -1;
-			}
-
-			if (ys < yd) {
-				if (tmin == tymin)
-					jmin = 1;
-				else {
-					pyt = ys + tmin*(y_diff);
-					jmin = static_cast<int>(ceil((pyt - by) / d));
-				}
-				if (tmax == tymax)
-					jmax = Ny;
-				else {
-					pyt = ys + tmax*(y_diff);
-					jmax = static_cast<int>(floor((pyt - by) / d));
-				}
-				ty0 = (by + static_cast<double>(jmin) * d - ys) / (y_diff);
-				ju = 1;
-			}
-			else if (ys > yd) {
-				if (tmin == tymin)
-					jmax = Ny - 1;
-				else {
-					pyt = ys + tmin*(y_diff);
-					jmax = static_cast<int>(floor((pyt - by) / d));
-				}
-				if (tmax == tymax)
-					jmin = 0;
-				else {
-					pyt = ys + tmax*(y_diff);
-					jmin = static_cast<int>(ceil((pyt - by) / d));
-				}
-
-				ty0 = (by + static_cast<double>(jmax) * d - ys) / (y_diff);
-				ju = -1;
-			}
-
-			if (zs < zd) {
-				if (tmin == tzmin)
-					kmin = 1;
-				else {
-					pzt = zs + tmin*(z_diff);
-					kmin = static_cast<int>(ceil((pzt - bz) / dz));
-				}
-				if (tmax == tzmax)
-					kmax = Nz;
-				else {
-					pzt = zs + tmax*(z_diff);
-					kmax = static_cast<int>(floor((pzt - bz) / dz));
-				}
-
-				tz0 = (bz + static_cast<double>(kmin) * dz - zs) / (z_diff);
-				ku = 1;
-			}
-			else if (zs > zd) {
-				if (tmin == tzmin)
-					kmax = Nz - 1;
-				else {
-					pzt = zs + tmin*(z_diff);
-					kmax = static_cast<int>(floor((pzt - bz) / dz));
-				}
-				if (tmax == tzmax)
-					kmin = 0;
-				else {
-					pzt = zs + tmax*(z_diff);
-					kmin = static_cast<int>(ceil((pzt - bz) / dz));
-				}
-				tz0 = (bz + static_cast<double>(kmax) * dz - zs) / (z_diff);
-				ku = -1;
-			}
-
-			int Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
-
-			int tempi, tempj, tempk;
-
-			double pt = ((min(min(tz0, ty0), tx0) + tmin) / 2.);
-
-			tempk = static_cast<int>(floor(((zs + pt * z_diff) - bz) / dz));
-			tempj = static_cast<int>(floor(((ys + pt * y_diff) - by) / d));
-			tempi = static_cast<int>(floor(((xs + pt * x_diff) - bx) / d));
-
-
-			double tzu = dz / fabs(z_diff);
-			double tyu = d / fabs(y_diff);
-			double txu = d / fabs(x_diff);
-
-			double tc = tmin;
-			uint16_t temp_koko = 0;
-
-			for (int ii = 0; ii < Np; ii++) {
-
-
-				if (tz0 < ty0 && tz0 < tx0) {
-
-					temp_koko++;
-
-					tempk += ku;
-					tc = tz0;
-					tz0 += tzu;
-				}
-				else if (ty0 < tx0) {
-
-					temp_koko++;
-
-					tempj += ju;
-					tc = ty0;
-					ty0 += tyu;
-				}
-				else {
-
-					temp_koko++;
-
-					tempi += iu;
-					tc = tx0;
-					tx0 += txu;
-				}
-				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz)
-					break;
-
-			}
-
-			discard[lj] = true;
-			lor[lj] = temp_koko;
-			continue;
-
 		}
-
-	}
+	});
+	return;
 }
 
 void mexFunction(int nlhs, mxArray *plhs[],
 		  int nrhs, const mxArray*prhs[])
 
 {
-	if (nrhs != 21)
-		mexErrMsgTxt("Invalid number of input arguments.  There must be exactly 21.");
+	if (nrhs != 31)
+		mexErrMsgTxt("Too few input arguments. There must be exactly 31.");
 
 	if (nlhs != 2)
 		mexErrMsgTxt("Invalid number of output arguments.  There must be exactly two.");
 
-	int TotSinos = (int)mxGetScalar(prhs[0]);
+	const uint32_t TotSinos = (uint32_t)mxGetScalar(prhs[0]);
 
-	int Ny = (int)mxGetScalar(prhs[1]);
+	const uint32_t Ny = (uint32_t)mxGetScalar(prhs[1]);
 
-	int Nx = (int)mxGetScalar(prhs[2]);
+	const uint32_t Nx = (uint32_t)mxGetScalar(prhs[2]);
 
-	int Nz = (int)mxGetScalar(prhs[3]);
+	const uint32_t Nz = (uint32_t)mxGetScalar(prhs[3]);
 
-	double d = (double)mxGetScalar(prhs[4]);
+	const double d = (double)mxGetScalar(prhs[4]);
 
-	double dz = (double)mxGetScalar(prhs[5]);
+	const double dz = (double)mxGetScalar(prhs[5]);
 
-	double by = (double)mxGetScalar(prhs[6]);
+	const double by = (double)mxGetScalar(prhs[6]);
 
-	double bx = (double)mxGetScalar(prhs[7]);
+	const double bx = (double)mxGetScalar(prhs[7]);
 
-	double bz = (double)mxGetScalar(prhs[8]);
+	const double bz = (double)mxGetScalar(prhs[8]);
 
-	double *z_det = (double*)mxGetData(prhs[9]);
+	const double *z_det = (double*)mxGetData(prhs[9]);
 
-	double *x = (double*)mxGetData(prhs[10]);
+	const double *x = (double*)mxGetData(prhs[10]);
 
-	double *y = (double*)mxGetData(prhs[11]);
+	const double *y = (double*)mxGetData(prhs[11]);
 
-	double *iij = (double*)mxGetData(prhs[12]);
+	const double dy = (double)mxGetScalar(prhs[12]);
 
-	double *jji = (double*)mxGetData(prhs[13]);
+	const double *yy = (double*)mxGetData(prhs[13]);
 
-	double *kkj = (double*)mxGetData(prhs[14]);
+	const double *xx = (double*)mxGetData(prhs[14]);
 
-	double *yy = (double*)mxGetData(prhs[15]);
+	const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[15]);
 
-	double *xx = (double*)mxGetData(prhs[16]);
+	const uint32_t NSlices = (uint32_t)mxGetScalar(prhs[16]);
 
-	int NSinos = (int)mxGetScalar(prhs[17]);
+	const vector<double> z_det_vec(z_det, z_det + mxGetNumberOfElements(prhs[9]));
 
-	int NSlices = (int)mxGetScalar(prhs[18]);
+	const vector<double> yy_vec(yy, yy + mxGetNumberOfElements(prhs[13]));
 
-	vector<double> z_det_vec(z_det, z_det + mxGetNumberOfElements(prhs[9]));
-	vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[12]));
+	const vector<double> xx_vec(xx, xx + mxGetNumberOfElements(prhs[14]));
 
-	vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[13]));
+	const uint32_t size_x = (uint32_t)mxGetScalar(prhs[17]);
 
-	vector<double> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[14]));
+	const double zmax = (double)mxGetScalar(prhs[18]);
 
-	vector<double> yy_vec(yy, yy + mxGetNumberOfElements(prhs[15]) - 1);
+	const uint32_t block1 = (uint32_t)mxGetScalar(prhs[19]);
 
-	vector<double> xx_vec(xx, xx + mxGetNumberOfElements(prhs[16]) - 1);
+	const uint32_t blocks = (uint32_t)mxGetScalar(prhs[20]);
 
-	int size_x = (int)mxGetScalar(prhs[19]);
+	const uint32_t det_per_ring = (uint32_t)mxGetScalar(prhs[21]);
 
-	double zmax = (double)mxGetScalar(prhs[20]);
+	const uint16_t *L = (uint16_t*)mxGetData(prhs[22]);
+	const size_t numRows = (uint32_t)mxGetM(prhs[22]);
 
-	int loop_var_par = 1;
+	const uint32_t *pseudos = (uint32_t*)mxGetData(prhs[23]);
+	const uint32_t pRows = (uint32_t)mxGetM(prhs[23]);
 
-	loop_var_par = NSinos * size_x;
+	const bool raw = (bool)mxGetScalar(prhs[24]);
 
-	plhs[0] = mxCreateLogicalMatrix(loop_var_par, 1);
+	const uint32_t type = (uint32_t)mxGetScalar(prhs[25]);
 
-	bool* discard = (bool*)mxGetLogicals(plhs[0]);
+	const double crystal_size = (double)mxGetScalar(prhs[26]);
 
-	plhs[1] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+	const double *x_center = (double*)mxGetData(prhs[27]);
 
-	uint16_t* lor = (uint16_t*)mxGetData(plhs[1]);
+	const double *y_center = (double*)mxGetData(prhs[28]);
 
+	const double* z_center = (double*)mxGetData(prhs[29]);
 
-	double maxyy = *max_element(yy, yy + Ny + 1);
-	double minyy = *min_element(yy, yy + Ny + 1);
+	const double crystal_size_z = (double)mxGetScalar(prhs[30]);
 
-	double maxxx = *max_element(xx, xx + Nx + 1);
-	double minxx = *min_element(xx, xx + Nx + 1);
+	//const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[25]);
 
-	improved_siddon(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, minyy, maxxx, minxx, xx_vec, z_det_vec, iij_vec, jjk_vec, kkj_vec, yy_vec, x, y, 
-		z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, discard);
+	//double* x_center, *y_center;
+	//double crystal_size;
+
+	//if (projector_type == 2) {
+	//	x_center = (double*)mxGetData(prhs[26]);
+	//	y_center = (double*)mxGetData(prhs[27]);
+	//	crystal_size = (double)mxGetScalar(prhs[28]);
+	//}
+
+	size_t loop_var_par = 1ULL;
+
+	if (raw)
+		loop_var_par = numRows / 2ULL;
+	else
+		loop_var_par = NSinos * size_x;
+
+	//plhs[0] = mxCreateLogicalMatrix(loop_var_par, 1);
+
+	//bool* discard = (bool*)mxGetLogicals(plhs[0]);
+
+	uint16_t* lor, *lor_orth;
+
+	if (type == 0) {
+
+		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+
+		lor = (uint16_t*)mxGetData(plhs[0]);
+
+		plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+
+		lor_orth = (uint16_t*)mxGetData(plhs[1]);
+	}
+	else {
+
+		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+
+		lor = (uint16_t*)mxGetData(plhs[0]);
+
+		if (type == 2u)
+			plhs[1] = mxCreateNumericMatrix(loop_var_par * 2ULL, 1, mxUINT16_CLASS, mxREAL);
+		else
+			plhs[1] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+
+		lor_orth = (uint16_t*)mxGetData(plhs[1]);
+	}
+
+	// The maximum elements of the pixel space in both x- and y-directions
+	const double maxyy = yy_vec.back();
+	const double maxxx = xx_vec.back();
+
+	improved_siddon(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz, 
+		d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, type, lor_orth, crystal_size, crystal_size_z, x_center, y_center, z_center);
 
 }

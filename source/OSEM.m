@@ -6,6 +6,23 @@ function x_osem = OSEM(options)
 %   x_osem = OSEM(options) returns the OSEM reconstructions for all
 %   iterations, including the initial value.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 if iscell(options.SinM)
     Sino = options.SinM{1};
     Sino = Sino(:);
@@ -19,8 +36,12 @@ index = [];
 pituus = [];
 lor = [];
 
+% The measurement indices for the subsets are selected here
+% Sinogram and raw list-mode data use different methods to obtain the
+% subset indices
 if options.use_raw_data == false && options.subsets > 1
-    if options.precompute_lor || options.reconstruction_method == 3
+    % Sinogram format is based on the angles (every nth angle is taken)
+    if options.precompute_lor || options.implementation == 3
         load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
         if length(discard) ~= options.TotSinos*options.Nang*options.Ndist
             error('Error: Size mismatch between sinogram and LORs to be removed')
@@ -66,7 +87,7 @@ if options.use_raw_data == false && options.subsets > 1
 elseif options.subsets > 1
     % for raw list-mode data, take the options.subsets randomly
     % last subset has all the spare indices
-    if options.precompute_lor || options.reconstruction_method == 3 || options.reconstruction_method == 2
+    if options.precompute_lor || options.implementation == 3 || options.implementation == 2
         load([options.machine_name '_detector_locations_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_raw.mat'],'LL','lor')
         indices = uint32(length(LL));
         index = cell(options.subsets, 1);
@@ -119,15 +140,18 @@ x_osem = reshape(x_osem, options.Nx*options.Ny*options.Nz, options.Niter + 1);
 for ii = 1 : options.Niter
     osem_apu = x_osem(:,ii);
     for kk = 1 : options.subsets
+        % Compute the system matrix
         [A] = observation_matrix_formation_nongate(options, kk, index, LL, pituus, lor);
         
+        % Extract the measurements corresponding to the current subset
         if options.precompute_lor == false
             uu = double(Sino(index{kk}));
         else
             uu = double(Sino(pituus2(kk)+1:pituus2(kk + 1)));
         end
         tStart = tic;
-        osem_apu = (osem_apu./(full(sum(A,1)')+options.epps)).*((A'*(uu./(A*osem_apu+options.epps))));
+        % Compute OSEM for the current subset
+        osem_apu = OSEM_im(osem_apu, A, options.epps, uu, full(sum(A,2)));
         tElapsed = toc(tStart);
         disp(['OSEM sub-iteration ' num2str(kk) ' took ' num2str(tElapsed) ' seconds'])
         disp(['OSEM sub-iteration ' num2str(kk) ' finished'])

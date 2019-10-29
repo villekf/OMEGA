@@ -1,9 +1,25 @@
 function sinogram_coordinates(options)
-
 %% Coordinates for the sinogram detectors
 % This code is used to compute the coordinates for the detector coordinates
 % in sinogram space. It also provides the indexing needed for the formation
 % of the sinograms from the raw list-mode data
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cr_pz = options.cr_pz;
 cryst_per_block = options.cryst_per_block;
@@ -18,10 +34,11 @@ ring_difference = options.ring_difference;
 
 %% 2D coordinates
 
-load([machine_name '_detector_coordinates.mat'], 'xp', 'yp','y','x')
-
+load([machine_name '_detector_coordinates.mat'], 'xp', 'yp')
 
 det_w_pseudo = length(xp);
+
+mashing = det_w_pseudo/Nang/2;
 
 
 ll = cryst_per_block + (det_w_pseudo-det_per_ring)/blocks_per_ring;
@@ -31,7 +48,7 @@ else
     pseudo_d = [];
 end
 
-%% Determine the sinogram indices for each of the LOR
+% Determine the sinogram indices for each of the LOR
 
 % Form the detector vector pair
 L = zeros(sum(1:det_w_pseudo),2,'int32');
@@ -69,6 +86,7 @@ for kk = 1 : length(ya)
     end
 end
 
+% The sinogram corners need to the swapped
 temppi = j*2 < -i;
 temppi2 = (i <= (j-det_w_pseudo/2)*2);
 
@@ -85,7 +103,7 @@ apu3 = tril(temppi);
 apu2 = triu(temppi2);
 apu4 = tril(temppi2);
 
-save([num2str(machine_name) '_swap_corners_' num2str(Ndist) '.mat'], 'apu1', 'apu2','apu3','apu4');
+save([num2str(machine_name) '_swap_corners_' num2str(Nang) '.mat'], 'apu1', 'apu2','apu3','apu4');
 
 if mod(Ndist,2) == 0
     joku12 = (i <= (Ndist/2 + min(0,options.ndist_side)) & i >= (-Ndist/2 + max(0,options.ndist_side)));
@@ -104,7 +122,7 @@ j = j + 1;
 
 L = L(joku12,:);
 
-if det_w_pseudo/2/Nang > 1
+if det_w_pseudo > det_per_ring%det_w_pseudo/2/Nang > 1
     
     LL = zeros(sum(1:det_w_pseudo),2,'int32');
     ii = 2;
@@ -144,16 +162,18 @@ if det_w_pseudo/2/Nang > 1
         joku121 = (ii <= Ndist/2 & ii >= (-Ndist/2));
     end
     
-    jj = idivide(jj,det_w_pseudo/2/Nang);
-    
     ii = ii(joku121);
     jj = jj(joku121);
+    
+    jj = idivide(jj,det_w_pseudo/2/Nang);
+    
     if min(ii) <= 0
         ii = ii + abs(min(ii)) + 1;
     end
     jj = jj + 1;
     
     LL = LL(joku121,:);
+    
     LL = LL +1;
     
     xx3 = xp(LL(:,1));
@@ -169,32 +189,60 @@ yy1 = yp(L(:,1));
 xx2 = xp(L(:,2));
 yy2 = yp(L(:,2));
 
+% If pseudo detectors present, locate the gaps in the sinogram
+if det_w_pseudo > det_per_ring
+    
+    xx = accumarray([j i], xx1, [Nang Ndist],@mean, NaN);
+    
+    if mashing > 1
+        [C,~,ic] = unique(double([j i]),'rows');
+        nOccurances = histc(ic, 1:length(C));
+        
+        indeksi1 = nOccurances < max(nOccurances);
+        gaps = sub2ind([size(xx,1) size(xx,2)], C(indeksi1,1),C(indeksi1,2));
+    else
+        gaps = find(isnan(xx));
+    end
+    
+    save([num2str(machine_name) '_pseudo_gaps_' num2str(Nang) '.mat'], 'gaps');
+end
+
 %%
 
+% If mashing is present
+% This code is still slightly inaccurate
 if det_w_pseudo/2/Nang > 1
-    nanx = isnan(accumarray([j i], xx1, [Nang Ndist],@mean, NaN));
-    nany = isnan(accumarray([j i], yy1, [Nang Ndist],@mean, NaN));
-    nanx2 = isnan(accumarray([j i], xx2, [Nang Ndist],@mean, NaN));
-    nany2 = isnan(accumarray([j i], yy2, [Nang Ndist],@mean, NaN));
-    
-    
+
     x = accumarray([j i], xx1, [Nang Ndist],@mean, NaN);
     y = accumarray([j i], yy1, [Nang Ndist],@mean, NaN);
     x2 = accumarray([j i], xx2, [Nang Ndist],@mean, NaN);
     y2 = accumarray([j i], yy2, [Nang Ndist],@mean, NaN);
     
-    threshold = max([max(mean(abs(diff(x)),'omitnan'),[],'omitnan'), max(mean(abs(diff(x2)),'omitnan'),[],'omitnan'), max(mean(abs(diff(y)),'omitnan'),[],'omitnan'), max(mean(abs(diff(y2)),'omitnan'),[],'omitnan')]);
+    x_diff = [zeros(1,size(x,2));diff(x)];
     
+    thresholdx = mean(abs(x_diff(:)),'omitnan')*2;
+    
+    xx = accumarray([j i], xx1, [Nang Ndist],@mean, NaN);
+    
+    nanx = find(isnan(xx));
+    
+    y_diff = [zeros(1,size(y,2));diff(y)];
+    
+    thresholdy = mean(abs(y_diff(:)),'omitnan')*2;
+        
     for kk = 1 : size(x,1)
         for ll = 1 : size(x,2)
-            if nanx(kk,ll)
-                if abs(diff(xx3(jj==kk & ii==ll))) >= threshold %abs(diff([x(kk+1,ll) x(kk-1,ll)])) > threshold
+            if any(nanx == sub2ind(size(x),kk, ll))
+%                 if ll == 17 && kk == 46
 %                     return
+%                 end
+                if abs(diff(xx3(jj==kk & ii==ll))) >= thresholdx %abs(diff([x(kk+1,ll) x(kk-1,ll)])) > threshold
+                    %                     return
                     apu1 = xx3(jj==kk & ii==ll);
                     apu2 = xx4(jj==kk & ii==ll);
                     x(kk,ll) = mean([apu1(1) apu2(2)]);
                     x2(kk,ll) = mean([apu1(2) apu2(1)]);
-                elseif abs(diff(xx3(jj==kk & ii==ll))) < threshold
+                elseif abs(diff(xx3(jj==kk & ii==ll))) < thresholdx
                     apu1 = xx3(jj==kk & ii==ll);
                     apu2 = xx4(jj==kk & ii==ll);
                     x(kk,ll) = mean([apu1(1) apu1(2)]);
@@ -203,12 +251,12 @@ if det_w_pseudo/2/Nang > 1
                     x(kk,ll) = mean([x(kk+1,ll) x(kk-1,ll)]);
                     x2(kk,ll) = mean([x2(kk+1,ll) x2(kk-1,ll)]);
                 end
-                if abs(diff(yy3(jj==kk & ii==ll))) >= threshold %abs(diff([y(kk+1,ll) y(kk-1,ll)])) > threshold
+                if abs(diff(yy3(jj==kk & ii==ll))) >= thresholdy %abs(diff([y(kk+1,ll) y(kk-1,ll)])) > threshold
                     apu1 = yy3(jj==kk & ii==ll);
                     apu2 = yy4(jj==kk & ii==ll);
                     y(kk,ll) = mean([apu1(1) apu2(2)]);
                     y2(kk,ll) = mean([apu1(2) apu2(1)]);
-                 elseif abs(diff(yy3(jj==kk & ii==ll))) < threshold
+                elseif abs(diff(yy3(jj==kk & ii==ll))) < thresholdy
                     apu1 = yy3(jj==kk & ii==ll);
                     apu2 = yy4(jj==kk & ii==ll);
                     y(kk,ll) = mean([apu1(1) apu1(2)]);
@@ -220,21 +268,19 @@ if det_w_pseudo/2/Nang > 1
             end
         end
     end
-    x = circshift(x,size(x,1)/2);
-    y = circshift(y,size(y,1)/2);
-    x2 = circshift(x2,size(x2,1)/2);
-    y2 = circshift(y2,size(y2,1)/2);
-
+    
 else
+    % If no mashing is done
     x = accumarray([j i], xx1, [Nang Ndist],@mean, NaN);
     y = accumarray([j i], yy1, [Nang Ndist],@mean, NaN);
     x2 = accumarray([j i], xx2, [Nang Ndist],@mean, NaN);
     y2 = accumarray([j i], yy2, [Nang Ndist],@mean, NaN);
+    
 end
+
 
 x = [x(:) x2(:)];
 y = [y(:) y2(:)];
-
 %%
 
 
@@ -246,14 +292,14 @@ save([machine_name '_app_coordinates_' num2str(Ndist) 'x' num2str(Nang) '.mat'],
 
 dif = cr_pz/2;
 % Michelogram row/column indices for each segment
-p = 0;
+p = zeros(floor((ring_difference-ceil(span/2))/span) + 2,1);
 for kk = 0 : floor((ring_difference-ceil(span/2))/span)
-    p = [p; ceil(span/2) + span*kk];
+    p(kk+2) = ceil(span/2) + span*kk;
 end
 
+z = zeros(options.TotSinos,2);
 
-
-z = [(0:dif:(Nz-1)*dif)' (0:dif:(Nz-1)*dif)'];        % Parallel sinograms
+z(1:options.Nz,:) = [(0:dif:(Nz-1)*dif)' (0:dif:(Nz-1)*dif)'];        % Parallel sinograms
 pp = ((span+1)/4:span:options.rings)';
 
 % Oblique sinograms
@@ -266,7 +312,7 @@ for t=2:ceil(length(options.segment_table)/2)
     
     d1 = [(2*(pp(1)-1)*dif:dif:((Nz-1)-(2*(pp(t)-1)))*dif)' ((2*(pp(t)-1))*dif:dif:((Nz-1)-2*(pp(1)-1))*dif)'];
     d = [ddd;d1;((Nz-1)*dif-fliplr(flip(ddd)))];
-    z = [z;d;fliplr(d)];
+    z(sum(options.segment_table(1:2*t-3))+1:sum(options.segment_table(1:2*t-1)),:) = [d;fliplr(d)];
     
 end
 

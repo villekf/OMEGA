@@ -3,9 +3,9 @@
 /gate/geometry/setMaterialDatabase GateMaterials.db
 
 #     W O R L D
-/gate/world/geometry/setXLength 150. cm
-/gate/world/geometry/setYLength 150. cm
-/gate/world/geometry/setZLength 150. cm
+/gate/world/geometry/setXLength 30. cm
+/gate/world/geometry/setYLength 30. cm
+/gate/world/geometry/setZLength 30. cm
 
 /control/execute camera.mac
 
@@ -13,7 +13,9 @@
 
 /control/execute physics.mac
 
-
+/gate/actor/addActor                             SimulationStatisticActor stat
+/gate/actor/stat/saveEveryNSeconds               20
+/gate/actor/stat/save                            stat/cylpet_example.txt
 
 #	I N I T I A L I Z E 
 /gate/run/initialize
@@ -45,16 +47,17 @@
 
 #root
 /gate/output/root/enable
-/gate/output/root/setFileName output/example_PET_10min
+/gate/output/root/setFileName output/example_PET_15min
 /gate/output/root/setRootHitFlag 0
 /gate/output/root/setRootSinglesFlag 0
 /gate/output/root/setRootCoincidencesFlag 1
+/gate/output/root/setRootdelayFlag 1
 
 #lmf
 /gate/output/lmf/enable
-/gate/output/lmf/setFileName              output/example_PET_10min
+/gate/output/lmf/setFileName              output/example_PET_15min
 /gate/output/lmf/setDetectorIDBool        1
-/gate/output/lmf/setEnergyBool            0
+/gate/output/lmf/setEnergyBool            1
 /gate/output/lmf/setGantryAxialPosBool    0
 /gate/output/lmf/setGantryAngularPosBool  0
 /gate/output/lmf/setSourcePosBool         0
@@ -62,20 +65,21 @@
 /gate/output/lmf/setNeighbourhoodOrder    0
 /gate/output/lmf/setCoincidenceBool       0
 /gate/output/lmf/setGateDigiBool          1 
-/gate/output/lmf/setComptonBool           0 
+/gate/output/lmf/setComptonBool           1 
 /gate/output/lmf/setSourceIDBool          0
 /gate/output/lmf/setSourceXYZPosBool      1
 /gate/output/lmf/setGlobalXYZPosBool      0
-/gate/output/lmf/setEventIDBool           0
+/gate/output/lmf/setEventIDBool           1
 /gate/output/lmf/setRunIDBool             0
 
 #ascii
 /gate/output/ascii/enable
-/gate/output/ascii/setFileName                 output/example_PET_10min
+/gate/output/ascii/setFileName                 output/example_PET_15min
 /gate/output/ascii/setOutFileHitsFlag           0
 /gate/output/ascii/setOutFileSinglesFlag        0
 /gate/output/ascii/setOutFileCoincidencesFlag   1
-/gate/output/ascii/setCoincidenceMask 0 0 0 1 1 1 1 0 0 0 0 1 0 0 0 0 0 0 0 0 0 1 1 1 1 0 0 0 0 1 0 0 0 0 0 0 
+/gate/output/ascii/setOutFiledelayFlag          1
+/gate/output/ascii/setCoincidenceMask 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 
 
 
 #   R A N D O M
@@ -88,8 +92,8 @@
 /gate/random/verbose 1
 
 #	S T A R T 
-/gate/application/setTimeSlice     600. s
+/gate/application/setTimeSlice     900. s
 /gate/application/setTimeStart     0. s
-/gate/application/setTimeStop      600. s
+/gate/application/setTimeStop      900. s
 
 /gate/application/startDAQ

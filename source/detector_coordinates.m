@@ -1,8 +1,16 @@
-function detector_coordinates(options)
+function [varargout] = detector_coordinates(options)
 %% Compute raw detector coordinates
 % This function computes the original detector coordinates for one ring,
 % both non-pseudo and pseudo cases (the latter only done if pseudo
 % detectors are present).
+%
+% OUTPUTS:
+%   x = X detector coordinates
+%   y = Y detector coordinates
+%   xp = X detector coordinates with pseudo detector(s)
+%   yp = Y detector coordinates with pseudo detector(s)
+%
+% See also sinogram_coordinates_2D
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2019  Ville-Veikko Wettenhovi
@@ -21,8 +29,9 @@ function detector_coordinates(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-options.flip_image = false;
-options.offangle = 0;
+if nargout > 4
+    error('Too many output arguments')
+end
 
 cr_p = options.cr_p;
 diameter = options.diameter;
@@ -33,17 +42,20 @@ blocks_per_ring = options.blocks_per_ring;
 
 % All angles, starting from 90 degrees
 angle = 90:-360/blocks_per_ring:-270;
-% starting points
-alkupistex = diameter;
-alkupistey = diameter/2 - (cryst_per_block/2 + 0.5)*cr_p;
 
 % Width of the topmost blocks (diameter)
 widths = (cryst_per_block)*cr_p*cosd(angle(1:(blocks_per_ring/2 + 1)));
+widthsy = (cryst_per_block)*cr_p*sind(angle(1:(blocks_per_ring/2)));
 
 % Gap between adjacent blocks
 % If negative, then the crystal size is smaller on the edges of the block
 % than the crystal pitch
 erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:(blocks_per_ring/2 + 1))))/2;
+erotusy = (diameter - sum(abs(widthsy)))/sum(abs(sind(angle(1:(blocks_per_ring/2)))))/2;
+
+% starting points
+alkupistex = diameter;
+alkupistey = diameter/2 - (cryst_per_block/2 + 0.5)*cr_p;
 
 ii = 1;
 x = zeros(blocks_per_ring*cryst_per_block,1);
@@ -56,7 +68,7 @@ for blocks = 1:ceil(blocks_per_ring/4)
         % Moving to the next block
         if blocks > 1 && crystals == 1
             x(ii) = alkupistex - (cr_p * 0.5)*cosd(angle(blocks)) - erotus * cosd(angle(blocks - 1)) - erotus * cosd(angle(blocks)) - (cr_p * 0.5)*cosd(angle(blocks - 1));
-            y(ii) = alkupistey + (cr_p * 0.5)*sind(angle(blocks)) + erotus * sind(angle(blocks - 1)) + erotus * sind(angle(blocks)) + (cr_p * 0.5)*sind(angle(blocks - 1));
+            y(ii) = alkupistey + (cr_p * 0.5)*sind(angle(blocks)) + erotusy * sind(angle(blocks - 1)) + erotusy * sind(angle(blocks)) + (cr_p * 0.5)*sind(angle(blocks - 1));
         else
             % While in the same block
             x(ii) = alkupistex - (cr_p)*cosd(angle(blocks));
@@ -105,7 +117,7 @@ end
 % per block per ring)
 
 % determine if pseudo detectors are present
-if ~isempty(options.pseudot) && sum(options.pseudot) > 0
+if ~isempty(options.pseudot) && options.pseudot > 0
     
     angle = linspace(90,-270,blocks_per_ring + 1)';
     % starting points
@@ -184,6 +196,19 @@ if options.offangle ~= 0
     yp = circshift(yp, options.offangle);
 end
 
-save([options.machine_name '_detector_coordinates.mat'], 'x', 'y', 'angle', 'xp', 'yp')
+if nargout >= 1
+    varargout{1} = x;
+end
+if nargout >= 2
+    varargout{2} = y;
+end
+if nargout >= 3
+    varargout{3} = xp;
+end
+if nargout == 4
+    varargout{4} = yp;
+end
+
+% save([options.machine_name '_detector_coordinates.mat'], 'x', 'y', 'angle', 'xp', 'yp')
 
 end

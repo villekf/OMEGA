@@ -6,6 +6,23 @@ function x_ramla = RAMLA(options)
 %   x_ramla = RAMLA(options) returns the RAMLA reconstructions for all
 %   iterations, including the initial value.
 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 if iscell(options.SinM)
     Sino = options.SinM{1};
     Sino = Sino(:);
@@ -20,7 +37,7 @@ pituus = [];
 lor = [];
 
 if options.use_raw_data == false && options.subsets > 1
-    if options.precompute_lor || options.reconstruction_method == 3
+    if options.precompute_lor || options.implementation == 3
         load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
         if length(discard) ~= options.TotSinos*options.Nang*options.Ndist
             error('Error: Size mismatch between sinogram and LORs to be removed')
@@ -66,7 +83,7 @@ if options.use_raw_data == false && options.subsets > 1
 elseif options.subsets > 1
     % for raw list-mode data, take the options.subsets randomly
     % last subset has all the spare indices
-    if options.precompute_lor || options.reconstruction_method == 3 || options.reconstruction_method == 2
+    if options.precompute_lor || options.implementation == 3 || options.implementation == 2
         load([options.machine_name '_detector_locations_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_raw.mat'],'LL','lor')
         indices = uint32(length(LL));
         index = cell(options.subsets, 1);
@@ -118,8 +135,8 @@ x_ramla = reshape(x_ramla, options.Nx*options.Ny*options.Nz, options.Niter + 1);
 
 lam = zeros(options.Niter,1);
 lam(1) = options.b0;
-for i=1:options.Niter
-    lam(i+1) = 0.5*lam(i);
+for i=1:options.Niter-1
+    lam(i+1) = lam(1)/i;
 end
 
 for ii = 1 : options.Niter
@@ -133,7 +150,7 @@ for ii = 1 : options.Niter
             uu = double(Sino(pituus2(kk)+1:pituus2(kk + 1)));
         end
         tStart = tic;
-        rm_apu = rm_apu + lam(ii).*rm_apu./(full(sum(A,1)')+options.epps).*(A'*(uu./(A*rm_apu+options.epps))-full(sum(A,1)'));
+        rm_apu = BSREM_subiter(rm_apu, lam, A, uu, options.epps, ii);
         tElapsed = toc(tStart);
         disp(['RAMLA sub-iteration ' num2str(kk) ' took ' num2str(tElapsed) ' seconds'])
         disp(['RAMLA sub-iteration ' num2str(kk) ' finished'])

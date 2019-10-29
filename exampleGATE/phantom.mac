@@ -2,10 +2,10 @@
 /gate/world/daughters/name NEMACylinder
 /gate/world/daughters/insert cylinder
 /gate/NEMACylinder/setMaterial Water
-/gate/NEMACylinder/geometry/setRmax   50. mm
-/gate/NEMACylinder/geometry/setHeight 70. mm
+/gate/NEMACylinder/geometry/setRmax   55. mm
+/gate/NEMACylinder/geometry/setHeight 77. mm
 
-/gate/NEMACylinder/vis/forceSolid
+/gate/NEMACylinder/vis/forceWireframe
 /gate/NEMACylinder/vis/setColor red
 
 
