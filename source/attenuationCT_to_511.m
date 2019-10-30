@@ -7,7 +7,7 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 %disk.
 %
 % Example:
-%   attenuation_factors = attenuationCT_to_511(options, KVP)
+%   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP)
 % INPUTS:
 %   Nx = Image dimension in x-axis
 %   Ny = Image dimension in y-axis
