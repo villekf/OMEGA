@@ -45,7 +45,7 @@ Example MAT-files for non-GATE situation can be found from [![DOI](https://zenod
 
 For more information see the [wiki](https://github.com/villekf/OMEGA/wiki).
 
-
+Sinograms created with v0.9 need to be transposed for them to work.
 
 ## Features
 
