@@ -5,6 +5,15 @@ function saveInterfile(filename, img, reko, varargin)
 %   Josh Schaefferkoetter: 
 %   https://se.mathworks.com/matlabcentral/fileexchange/53745-medical-image-reader-and-viewer
 %
+%   If you wish to convert the image into a type other than 32-bit float,
+%   change "number format:=float" and "!number of bytes per pixel:=4"
+%   accordingly (e.g. number format:=signed integer, !number of bytes per
+%   pixel:=4) and change img = single(img); to correspond to the correct 
+%   type (e.g. img = int32(img);).
+%
+% Example:
+%   saveInterfile(filename, img, reko)
+%
 % Input:
 %   filename = Name of the image and header files (without file prefix)
 %
@@ -17,7 +26,11 @@ function saveInterfile(filename, img, reko, varargin)
 %   (optional). Necessary if many of the optional values are to be saved
 %   (voxel size, number of time steps, total duration, etc.).
 
-prop = varargin{1};
+if nargin > 3
+    prop = varargin{1};
+else
+    prop = [];
+end
 img = single(img);
 koko = size(img);
 fid = fopen([filename '.img'],'w');
@@ -26,10 +39,10 @@ fclose(fid);
 hdrFile = [filename '.hdr'];
 maxmin = [max(img(:)) min(img(:))];
 
-if nargin >= 3
+if nargin > 3
     writeInterfileHeader(hdrFile, koko, maxmin, reko, prop);
 else
-    writeInterfileHeader(hdrFile, koko, reko, maxmin);
+    writeInterfileHeader(hdrFile, koko, maxmin, reko);
 end
 end
 

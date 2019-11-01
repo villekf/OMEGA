@@ -2972,7 +2972,7 @@ else
                             grad = TGV(im_vectors.OSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
                             im_vectors.TGV_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, options.beta_TGV_rosem, grad, epps);
                         elseif options.NLM && options.OSL_OSEM
-                            im_vectors.NLM_OSL(:, iter + 1) = im_vectors.NLM_OSL_apu;
+                            im_vectors.NLM_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.NLM && options.BSREM
                             med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);

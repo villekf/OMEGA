@@ -18,6 +18,11 @@ function options = loadMeasurementData(options, varargin)
 %   exist in the options struct) can be used if no data is selected when
 %   prompted.
 %
+%   The file extension is used to determine the input data format. E.g.
+%   img/hdr are considered Analyze or NIfTI format files. For interfile, it
+%   is recommended to use raw data format and manually specify the data
+%   format (as indicated in the header).
+%
 % Examples:
 %   options = loadMeasurementData(options)
 %   options = loadMeasurementData(options,'uint16', skip)
@@ -50,7 +55,7 @@ function options = loadMeasurementData(options, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-[file, fpath] = uigetfile('Select PET Sinogram or list-mode data');
+[file, fpath] = uigetfile('*.*','Select PET Sinogram or list-mode data');
 
 if isequal(file, 0)
     if isfield(options,'SinM') || isfield(options,'coincidences')
@@ -151,6 +156,7 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
 else
     fid = fopen(nimi);
     f_size = dir(nimi);
+    f_size = f_size.bytes;
     if nargin >= 2 && skip > 0
         fread(fid,skip,'*uint8');
         f_size = f_size - skip;
