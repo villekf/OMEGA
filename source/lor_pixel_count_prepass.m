@@ -368,12 +368,7 @@ end
 if (~options.use_raw_data && (options.implementation == 2 || options.implementation == 3 || options.implementation == 5)) ...
         || options.precompute_all
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
-        if exist([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'], 'file') == 2
-            load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'x','y');
-        else
-            sinogram_coordinates_2D(options);
-            load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'x','y');
-        end
+        [x,y] = sinogram_coordinates_2D(options);
         z = sinogram_coordinates_3D(options);
         
         
