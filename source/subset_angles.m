@@ -1,4 +1,4 @@
-function [index, pituus] = subset_angles(options, LL)
+function [index, pituus, varargout] = subset_angles(options, varargin)
 %SUBSET_ANGLES Form the subset indices for the subset_type 5
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18,39 +18,23 @@ function [index, pituus] = subset_angles(options, LL)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-folder = fileparts(which('subset_angles.m'));
-folder = strrep(folder, 'source','mat-files/');
-folder = strrep(folder, '\','/');
-
 if options.use_raw_data
     [x,y] = detector_coordinates(options);
     % Determine the rings of each detector
-    apu = idivide(LL, uint16(options.det_per_ring),'ceil');
+    apu = idivide(varargin{1}, uint16(options.det_per_ring),'ceil');
     % Same ring
     ind = apu(:,1) == apu(:,2);
     indi = find(ind);
     % Make all detector numbers constrained in [1, det_per_ring]
-    LL = mod(LL, options.det_per_ring);
-    LL(LL == 0) = options.det_per_ring;
+    varargin{1} = mod(varargin{1}, options.det_per_ring);
+    varargin{1}(varargin{1} == 0) = options.det_per_ring;
     x2 = single(x);
     y2 = single(y);
     % Coordinates of detectors that are on the same rings (2D)
-    x = single(x(LL(ind,:)));
-    y = single(y(LL(ind,:)));
+    x = single(x(varargin{1}(ind,:)));
+    y = single(y(varargin{1}(ind,:)));
 else
-    sino_file = [folder options.machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'];
-    if exist(sino_file, 'file') == 2
-        variableInfo = who('-file', sino_file);
-        if ismember('x', variableInfo) && ismember('y', variableInfo)
-            load(sino_file,'x', 'y');
-        else
-            sinogram_coordinates_2D(options);
-            load(sino_file,'x', 'y');
-        end
-    else
-        sinogram_coordinates_2D(options);
-        load(sino_file,'x', 'y');
-    end
+    [x,y] = sinogram_coordinates_2D(options);
     sino_length = options.Nang*options.Ndist;
 end
 % Lengths of the triangle sides
@@ -61,6 +45,9 @@ ind = x(:,1) > x(:,2) & y(:,1) > y(:,2) | x(:,2) > x(:,1) & y(:,2) > y(:,1);
 % Angle
 kulma = atand(jokux./jokuy);
 kulma(ind) = kulma(ind) + 90;
+if nargout >= 3
+    varargout{1} = kulma;
+end
 % Combine similar angles together
 kulma = round(kulma);
 kulma(kulma==180) = 179;
@@ -114,8 +101,8 @@ if options.use_raw_data
         ind2 = apu(:,2) == (apu(:,1) + kk);
         ind = logical(ind1 + ind2);
         indi = find(ind);
-        xx = x2(LL(ind,:));
-        yy = y2(LL(ind,:));
+        xx = x2(varargin{1}(ind,:));
+        yy = y2(varargin{1}(ind,:));
         jokux = abs(xx(:,1)-xx(:,2));
         jokuy = abs(yy(:,1)-yy(:,2));
         ind = xx(:,1) > xx(:,2) & yy(:,1) > yy(:,2) | xx(:,2) > xx(:,1) & yy(:,2) > yy(:,1);
