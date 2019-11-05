@@ -1318,7 +1318,7 @@ else
                                 im_vectors.Quad_BSREM_apu = BSREM_subiter(im_vectors.Quad_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.Quad_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1406,7 +1406,7 @@ else
                                 im_vectors.L_BSREM_apu = BSREM_subiter(im_vectors.L_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.L_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1494,7 +1494,7 @@ else
                                 im_vectors.FMH_BSREM_apu = BSREM_subiter(im_vectors.FMH_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.FMH_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1582,7 +1582,7 @@ else
                                 im_vectors.Weighted_BSREM_apu = BSREM_subiter(im_vectors.Weighted_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.Weighted_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1671,7 +1671,7 @@ else
                                 im_vectors.TV_BSREM_apu = BSREM_subiter(im_vectors.TV_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.TV_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1760,7 +1760,7 @@ else
                                 im_vectors.AD_BSREM_apu = BSREM_subiter(im_vectors.AD_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.AD_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1843,7 +1843,7 @@ else
                                 im_vectors.APLS_BSREM_apu = BSREM_subiter(im_vectors.APLS_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.APLS_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1927,7 +1927,7 @@ else
                                 im_vectors.TGV_BSREM_apu = BSREM_subiter(im_vectors.TGV_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.TGV_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2012,7 +2012,7 @@ else
                                 im_vectors.NLM_BSREM_apu = BSREM_subiter(im_vectors.NLM_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed);
                             end
                             if any(im_vectors.NLM_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value')
+                                warning('Negative values in BSREM, it is recommended to lower lambda value')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2680,7 +2680,7 @@ else
                             elseif options.quad && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2702,7 +2702,7 @@ else
                             elseif options.L && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2715,9 +2715,6 @@ else
                                     disp(['ROSEM-MAP L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.FMH && options.OSL_OSEM
-                                if verbose
-                                    tStart = tic;
-                                end
                                 med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                     options.med_no_norm);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
@@ -2728,7 +2725,7 @@ else
                             elseif options.FMH && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2751,7 +2748,7 @@ else
                             elseif options.weighted_mean && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2774,7 +2771,7 @@ else
                             elseif options.TV && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2800,7 +2797,7 @@ else
                             elseif options.AD && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2822,7 +2819,7 @@ else
                             elseif options.APLS && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2844,7 +2841,7 @@ else
                             elseif options.TGV && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2857,9 +2854,6 @@ else
                                     disp(['ROSEM-MAP TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.NLM && options.OSL_OSEM
-                                if verbose
-                                    tStart = tic;
-                                end
                                 med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                     options.sigma, epps, Nx, Ny, Nz, options);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_NLM_osem, med, epps, rhs);
@@ -2870,7 +2864,7 @@ else
                             elseif options.NLM && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value')
+                                    warning('Negative values in BSREM, it is recommended to lower lambda value')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -2885,6 +2879,7 @@ else
                             end
                             
                             clear Summ rhs
+                            im_vectors.OSEM_apu(im_vectors.OSEM_apu < 0) = 0;
                         end
                         if options.osem
                             im_vectors.OSEM(:,iter + 1) = im_vectors.OSEM_apu;
