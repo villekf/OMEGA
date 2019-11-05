@@ -2,6 +2,9 @@ function output = NLM(input,Ndx, Ndy, Ndz, Nlx, Nly, Nlz,h2, epps, Nx, Ny, Nz, o
 % Non-Local Means prior (NLM)
 % Based on Simple Non Local Means (NLM) Filter from MATLAB file exchange 
 % https://se.mathworks.com/matlabcentral/fileexchange/52018-simple-non-local-means-nlm-filter
+%
+%   Supports regular NLM, NLTV and NLM-MRP regularization. Also allows the
+%   weight matrix to be determined from a reference image.
 % 
 % INPUTS:
 % im = The current estimate
@@ -65,7 +68,7 @@ input = reshape(input, Nx, Ny, Nz);
 [m, n, k]=size(input);
 pixels = input(:);
 
-s = m*n*k;
+s = int32(m*n*k);
 
 psizex = 2*Nlx+1;
 psizey = 2*Nly+1;
@@ -77,49 +80,71 @@ nsizez = 2*Ndz+1;
 
 % Compute list of edges (pixel pairs within the same search window)
 indexes = reshape(1:s, m, n, k);
-padIndexes = padding(indexes, [Ndx Ndy Ndz]);
+padIndexes = padding(indexes, [Ndx Ndy Ndz],'zeros');
 neighbors = im2col_3D_sliding(padIndexes, [nsizex nsizey nsizez]);
 neighbors = reshape(neighbors, [], size(neighbors,2)*size(neighbors,3));
 TT = repmat(1:s, [nsizex*nsizey*nsizez 1]);
 edges = [TT(:) neighbors(:)];
-RR = TT(:) >= neighbors(:);
-edges(RR, :) = [];
+TT = TT(:) >= neighbors(:);
+edges(TT, :) = [];
+clear TT
 
 % Compute weight matrix (using weighted Euclidean distance)
 if options.NLM_use_anatomical
-    padInput = padding(options.NLM_ref,[Nlx Nly Nlz]);
+    padInput = single(padding(options.NLM_ref,[Nlx Nly Nlz]));
+    filter = single(fspecial('gaussian',[psizex psizey],options.NLM_gauss));
+    filter = repmat(filter,1,1,psizez);
+    filter = repmat(sqrt(filter(:))',[s 1]);
     patches = im2col_3D_sliding(padInput, [psizex psizey psizez]);
-    patches = reshape(patches, [], size(patches,2)*size(patches,3))';
+    patches = reshape(patches, [], size(patches,2)*size(patches,3))' .* filter;
     diff = patches(edges(:,1), :) - patches(edges(:,2), :);
 else
     % Compute patches
-    %  padInput = padarray(input,[Nlx Nly Nlz],'symmetric');
-    padInput = padding(input,[Nlx Nly Nlz]);
+    padInput = single(padding(input,[Nlx Nly Nlz]));
+    filter = single(fspecial('gaussian',[psizex psizey],1));
+    filter = repmat(filter,1,1,psizez);
+    filter = repmat(sqrt(filter(:))',[s 1]);
     patches = im2col_3D_sliding(padInput, [psizex psizey psizez]);
-    patches = reshape(patches, [], size(patches,2)*size(patches,3))';
+    patches = reshape(patches, [], size(patches,2)*size(patches,3))' .* filter;
     diff = patches(edges(:,1), :) - patches(edges(:,2), :);
 end
+clear patches filter padInput
 V = exp(-sum(diff.*diff,2)/h2^2);
-V(V == 0) = epps;
-W = sparse(edges(:,1), edges(:,2), V, s, s);
-
-
-W = W + W';
+V(V == 0) = min(V(V > 0));
+clear diff
+if options.use_fsparse && exist('fsparse','file') == 3
+    W = fsparse(edges(:,1), edges(:,2), double(V), [double(s) double(s)]);
+else
+    W = sparse(double(edges(:,1)), double(edges(:,2)), double(V), double(s), double(s));
+end
+maxv = max(W,[],2);
+W = W + W' + spdiags(maxv, 0, double(s), double(s));
 
 % Normalize weights
-W = spdiags(1./(sum(W,2)), 0, s, s)*W;
+W = spdiags(1./(sum(W,2)), 0, double(s), double(s))*W;
 
-if options.NLM_MRP
+% NLTV
+if options.NLTV
+    S = pixels(edges(:,1), :) - pixels(edges(:,2), :);
+    
+    if options.use_fsparse && exist('fsparse','file') == 3
+        K = fsparse(edges(:,1), edges(:,2), S, [double(s) double(s)]);
+    else
+        K = sparse(double(edges(:,1)), double(edges(:,2)), S, double(s), double(s));
+    end
+    
+    output = full(sum(W .* K,2) ./ (sqrt(full(sum(W .* K.^2,2))) + epps));
+% NLM-MRP
+elseif options.NLM_MRP
     output = pixels - W*pixels;
 else
     S = pixels(edges(:,1), :) - pixels(edges(:,2), :);
     
-    K = sparse(edges(:,1), edges(:,2), S, s, s);
-    K = K + K';
-    
+    if options.use_fsparse && exist('fsparse','file') == 3
+        K = fsparse(edges(:,1), edges(:,2), S, [double(s) double(s)]);
+    else
+        K = sparse(double(edges(:,1)), double(edges(:,2)), S, double(s), double(s));
+    end
     
     output = full(sum(W .* K,2));
 end
-
-% NLTV
-%  output = full(sum(W .* K,2) ./ (sqrt(sum(W .* K.^2,2)) + epps));
