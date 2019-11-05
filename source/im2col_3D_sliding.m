@@ -20,17 +20,17 @@ lin_row = permute(bsxfun(@plus,start_ind,[0:nrows-1])',[1 3 2]);  %//'
 %// 2D linear indices
 lidx_2D = reshape(bsxfun(@plus,lin_row,[0:ncols-1]*m),nrows*ncols,[]);
 
-if nslices > 1
-    
-    apu = m*n*(repelem((0:nrows-1)', ncols*nslices));
-    
-    lidx_2D = bsxfun(@plus, repmat(lidx_2D, nslices, 1), apu);
-    
-    %// 3D linear indices
-    lidx_3D = bsxfun(@plus,lidx_2D,m*n*permute((0:(r-nslices)),[1 3 2]));
+%// 3D linear indices
+lidx_3D = bsxfun(@plus,lidx_2D,m*n*permute((0:(r-nslices)),[1 3 2]));
+
+lidx_3D = repmat(lidx_3D,nslices,1,1);
+apu = (0:m*n:m*n*nslices-1)';
+if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+    apu = repeat_elem(apu,nrows*ncols,0);
 else
-    lidx_3D = bsxfun(@plus,lidx_2D,m*n*permute((0:(r-1)),[1 3 2]));
+    apu = repelem(apu,nrows*ncols);
 end
+lidx_3D = bsxfun(@plus, lidx_3D, apu);
 
 %// Get linear indices based on row and col indices and get desired output
 out = A(lidx_3D);
