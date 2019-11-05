@@ -29,7 +29,7 @@ The algorithms implemented so far are:
 - Total generalized variation (TGV) [24]
 - Anisotropic diffusion (AD) Median Root Prior
 - Asymmetric parallel levels sets prior (APLS) [22]
-- Experimental non-local means prior (NLM) [25,26]
+- Non-local means prior (NLM), including non-local TV [25,26,27]
 
 
 
@@ -58,16 +58,19 @@ The following features are currently present:
 - Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
 - Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)
 - Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), pure OpenCL version (multidevice support, e.g. multiple GPUs or heterogenous computing) or OpenCL version utilizing ArrayFire libraries
-- Include attenuation correction, normalization, scatter correction and/or randoms correction into the reconstruction
+- Include attenuation correction, normalization, scatter correction and/or randoms correction into the reconstruction (either user-made or OMEGA made data)
 - Compute normalization coefficients
+- Perform variance reduction on randoms data and/or smoothing on randoms/scatter data
 - Perform GATE Monte Carlo scatter correction
 - Perform corrections either to the measurement data (excluding attenuation) or during the reconstruction phase
 - Optionally allows to obtain only the system/observation matrix used in PET reconstruction
 - All the data (e.g. sinograms, system matrix) can be used with your own algorithms
 - Supports machines with pseudo detectors
 - Parallel and matrix free forward and back projection functions
+- Ready-made function for custom gradient-based priors
 - Two different projectors available, one being the improved Siddon's algorithm with up to 5 rays and the other the orthogonal distance-based ray tracer (2D or 3D mode)
-- Support for dynamic (time-varying) imaging
+- Support for dynamic (time-varying) imaging (time-series of images)
+- Several different subset selection methods, including random sampling, golden angle sampling, every nth measurement, etc.
 - Support for Siemens Inveon PET list-mode data
 
 
@@ -121,9 +124,9 @@ OpenCL SDK/headers are required for OpenCL functionality.
 ArrayFire is required for implementation 2.
 
 The following third-party MATLAB codes are NOT required, but can be useful as they can be optionally used:  
-https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle)  
-https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2)  
-https://github.com/stefanengblom/stenglib (FSPARSE)  
+https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
+https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
+https://github.com/stefanengblom/stenglib (FSPARSE, used when creating sparse matrices)
 
 
 
@@ -135,9 +138,9 @@ Submodules are not supported.
 
 Raw list-mode data with non-GATE data is still experimental.
 
-Multi-device and OpenMP reconstructions only support OSEM and MLEM.
+Multi-device reconstruction only supports OSEM and MLEM.
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations can be deselected.
+LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
@@ -147,7 +150,7 @@ Only machines with a total number of detectors of up to 65536 are supported. I.e
 
 Due to the same reason as above, maximum number of counts per pixel is 65535 (applies only to GATE data).
 
-Moving bed is not supported at the momen (needs to be step-and-shoot).
+Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as seprate cases).
 
 Only cylindrical symmetric devices are supported.
 
@@ -173,7 +176,7 @@ Implementation 2 (ArrayFire matrix free OpenCL) is not supported on Windows due 
 
 Status messages usually only appear after the function has finished.
 
-All MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
+Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 
 ## Upcoming Features
@@ -257,3 +260,5 @@ This work was supported by a grant from Jane and Aatos Erkko foundation.
 25. Antoni Buades, Bartomeu Coll, Jean-Michel Morel, "A review of image denoising algorithms, with a new one," SIAM Journal on Multiscale Modeling and Simulation: A SIAM Interdisciplinary Journal, 2005, 4 (2), pp.490-530
 
 26. Xiaoqing Cao et al, "A regularized relaxed ordered subset list-mode reconstruction algorithm and its preliminary application to undersampling PET imaging," 2015 Phys. Med. Biol. 60 49
+
+27. Zhang, Hao et al. “Applications of nonlocal means algorithm in low-dose X-ray CT image processing and reconstruction: A review.” Medical physics vol. 44,3 (2017): 1168-1185. doi:10.1002/mp.12097
