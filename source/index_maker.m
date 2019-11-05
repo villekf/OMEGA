@@ -179,6 +179,9 @@ if use_raw_data == false && subsets > 1
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options);
             subsets = length(pituus);
+        % Use golden angle sampling
+        elseif options.subset_type == 7
+            [index, pituus] = goldenAngleSubsets(options);
         end
         if iscell(index)
             index = cell2mat(index);
@@ -255,6 +258,13 @@ if use_raw_data == false && subsets > 1
                 index{i} = index1;
                 pituus(i) = uint32(length(index{i}));
             end
+        % Pick the subsets based on the angles of the LORs
+        elseif options.subset_type == 6
+            [index, pituus] = subset_angles(options);
+            subsets = length(pituus);
+        % Use golden angle sampling
+        elseif options.subset_type == 7
+            [index, pituus] = goldenAngleSubsets(options);
         end
     end
 elseif subsets > 1
@@ -318,7 +328,7 @@ elseif subsets > 1
             end
         % Based on the angles of the LORs
         elseif options.subset_type == 6
-            [index, pituus] = subset_angles(options);
+            [index, pituus] = subset_angles(options, LL);
             subsets = length(pituus);
         else
         % Every nth measurements
@@ -354,7 +364,7 @@ elseif subsets > 1
                 pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 6
-            [index, pituus] = subset_angles(options);
+            [index, pituus] = subset_angles(options, LL);
             subsets = length(pituus);
         else
             for i=1:subsets
