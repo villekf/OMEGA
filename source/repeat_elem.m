@@ -7,7 +7,8 @@ function output = repeat_elem(A, R, varargin)
 %   A = Vector/matrix to be repeated
 %   R = Scalar/vector containing the amounts that each of the elements will be
 %   repeated
-%   d = Dimension where repeating is performed
+%   d = Dimension where repeating is performed (zero-based indexing, e.g. 0
+%   is the first dimension)
 % OUTPUTS:
 %   B = Vector/matrix A with repeated elements
 %
