@@ -526,6 +526,7 @@ options.subsets = 8;
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
 % 360/n_angles for 3D, see GitHub wiki for more information
+% 7 = Form the subsets by using golden angle sampling
 options.subset_type = 1;
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are
@@ -574,7 +575,7 @@ options.med_no_norm = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ML-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % These are non-regularized versions
 %%% Maximum-Likelihood Expectation Maximization (MLEM)
-% Supported by implementations 1, 2, 3, and 5
+% Supported by all implementations
 options.mlem = false;
 %%% Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all implementations
@@ -583,10 +584,10 @@ options.osem = false;
 % Supported by implementations 1 and 2
 options.mramla = false;
 %%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.ramla = false;
 %%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.rosem = false;
 %%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
 % Supported by implementations 1 and 2
@@ -611,19 +612,19 @@ options.acosem = false;
 % then OSL-OSEM estimates will be computed for both MRP and Quadratic
 % prior.
 %%% One-Step Late MLEM (OSL-MLEM)
-% Supported by implementation 2 only
+% Supported by implementations 1, 2 and 4
 options.OSL_MLEM = false;
 %%% One-Step Late OSEM (OSL-OSEM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.OSL_OSEM = true;
 %%% Modified BSREM (MBSREM)
 % Supported by implementations 1 and 2
 options.MBSREM = false;
 %%% Block Sequential Regularized Expectation Maximization (BSREM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.BSREM = false;
 %%% ROSEM-MAP
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.ROSEM_MAP = false;
 %%% RBI-MAP
 % Supported by implementations 1 and 2
@@ -653,7 +654,7 @@ options.AD = false;
 options.APLS = false;
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
-%%% Non-local Means (NLM) prior (implementation 1 only)
+%%% Non-local Means (NLM) prior (implementations 1 and 4 only)
 options.NLM = false;
 %%% Custom prior
 options.custom = true;
@@ -975,15 +976,21 @@ options.beta_NLM_cosem = 0.01;
 %%% Filter parameter
 options.sigma = 0.01;
 %%% Patch radius
-options.Nlx = 1;
-options.Nly = 1;
-options.Nlz = 0;
+options.Nlx = 2;
+options.Nly = 2;
+options.Nlz = 1;
+%%% Standard deviation of the Gaussian filter
+options.NLM_gauss = 1;
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
 options.NLM_use_anatomical = true;
 %%% Specify filename for the reference image here (same rules apply as with
 % attenuation correction above)
 options.NLM_reference_image = 'reference_image.mat';
+%%% Use Non-local total variation (NLTV)
+% If selected, will overwrite regular NLM regularization as well as the
+% below MRP version
+options.NLTV = false;
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
 options.NLM_MRP = true;
@@ -991,7 +998,7 @@ options.NLM_MRP = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% Custom prior properties %%%%%%%%%%%%%%%%%%%%%%%%%
 % Regularization parameter for custom prior with OSL-OSEM
-options.beta_custom_osem = 0.1;%0.3;
+options.beta_custom_osem = 0.1;
 % Regularization parameter for custom prior with OSL-MLEM
 options.beta_custom_mlem = 1.5;
 % Regularization parameter for custom prior with MBSREM

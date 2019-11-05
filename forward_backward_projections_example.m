@@ -313,6 +313,7 @@ options.subsets = 8;
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
 % 360/n_angles for 3D, see GitHub wiki for more information
+% 7 = Form the subsets by using golden angle sampling
 options.subset_type = 1;
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are

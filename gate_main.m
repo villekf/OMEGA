@@ -285,8 +285,8 @@ options.interpolation_method_inpaint = 0;
 options.randoms_correction = false;
 
 %%% Variance reduction
-% If set to true, then the variance reduction will be performed to delayed
-% coincidence (randoms corrections) data if is selected
+% If set to true, variance reduction will be performed to delayed
+% coincidence (randoms corrections) data if randoms correction is selected
 options.variance_reduction = false;
 
 %%% Randoms smoothing
@@ -548,7 +548,7 @@ options.n_rays = 5;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 4;
+options.Niter = 1;
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
 options.subsets = 8;
 %%% Subset type (n = subsets)
@@ -561,6 +561,7 @@ options.subsets = 8;
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
 % 360/n_angles for 3D, see GitHub wiki for more information
+% 7 = Form the subsets by using golden angle sampling
 options.subset_type = 1;
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are
@@ -609,7 +610,7 @@ options.med_no_norm = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ML-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % These are non-regularized versions
 %%% Maximum-Likelihood Expectation Maximization (MLEM)
-% Supported by implementations 1, 2, 3, and 5
+% Supported by all implementations
 options.mlem = false;
 %%% Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all implementations
@@ -618,10 +619,10 @@ options.osem = true;
 % Supported by implementations 1 and 2
 options.mramla = false;
 %%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.ramla = false;
 %%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.rosem = false;
 %%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
 % Supported by implementations 1 and 2
@@ -646,19 +647,19 @@ options.acosem = false;
 % then OSL-OSEM estimates will be computed for both MRP and Quadratic
 % prior.
 %%% One-Step Late MLEM (OSL-MLEM)
-% Supported by implementation 2 only
+% Supported by implementations 2 and 4
 options.OSL_MLEM = false;
 %%% One-Step Late OSEM (OSL-OSEM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.OSL_OSEM = false;
 %%% Modified BSREM (MBSREM)
 % Supported by implementations 1 and 2
 options.MBSREM = false;
 %%% Block Sequential Regularized Expectation Maximization (BSREM)
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.BSREM = false;
 %%% ROSEM-MAP
-% Supported by implementations 1 and 2
+% Supported by implementations 1, 2 and 4
 options.ROSEM_MAP = false;
 %%% RBI-MAP
 % Supported by implementations 1 and 2
@@ -688,7 +689,7 @@ options.AD = false;
 options.APLS = false;
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
-%%% Non-local Means (NLM) prior (implementation 1 only)
+%%% Non-local Means (NLM) prior (implementations 1 and 4 only)
 options.NLM = false;
  
  
@@ -994,7 +995,6 @@ options.NiterTGV = 30;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%% EXPERIMENTAL FEATURE %%%%
 %%% Regularization parameter for NLM with OSL-OSEM
 options.beta_NLM_osem = 0.025;
 %%% Regularization parameter for NLM with MBSREM
@@ -1010,18 +1010,24 @@ options.beta_NLM_cosem = 0.01;
 %%% Filter parameter
 options.sigma = 0.01;
 %%% Patch radius
-options.Nlx = 1;
-options.Nly = 1;
-options.Nlz = 0;
+options.Nlx = 2;
+options.Nly = 2;
+options.Nlz = 1;
+%%% Standard deviation of the Gaussian filter
+options.NLM_gauss = 1;
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
 options.NLM_use_anatomical = true;
 %%% Specify filename for the reference image here (same rules apply as with
 % attenuation correction above)
 options.NLM_reference_image = 'reference_image.mat';
+%%% Use Non-local total variation (NLTV)
+% If selected, will overwrite regular NLM regularization as well as the
+% below MRP version
+options.NLTV = false;
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
-options.NLM_MRP = true;
+options.NLM_MRP = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1119,4 +1125,4 @@ if ~options.only_sinos
     
 end
 
-% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_dyn.mat'], 'pz');
+% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations.mat'], 'pz');
