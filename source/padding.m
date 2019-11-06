@@ -26,7 +26,7 @@ function A = padding(A,sizeP,varargin)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargin > 3 && (isempty(varargin{1}) || ~strcmp(varargin{1},'zeros'))
+if nargin == 2 || (nargin >= 3 && (isempty(varargin{1}) || ~strcmp(varargin{1},'zeros')))
     A = [flipud(A(1:sizeP(2),:,:));A;flipud(A(end-sizeP(2) + 1:end,:,:))];
     A = [fliplr(A(:,1:sizeP(1),:)),A,fliplr(A(:,end-sizeP(1) + 1:end,:))];
     if length(sizeP) == 3 && sizeP(3) ~= 0
