@@ -53,6 +53,7 @@ typedef struct {
 		AD_OSEM, AD_MLEM, AD_MBSREM, AD_BSREM, AD_ROSEM, AD_RBI, AD_COSEM, 
 		APLS_OSEM, APLS_MLEM, APLS_MBSREM, APLS_BSREM, APLS_ROSEM, APLS_RBI, APLS_COSEM, 
 		TGV_OSEM, TGV_MLEM, TGV_MBSREM, TGV_BSREM, TGV_ROSEM, TGV_RBI, TGV_COSEM,
+		NLM_OSEM, NLM_MLEM, NLM_MBSREM, NLM_BSREM, NLM_ROSEM, NLM_RBI, NLM_COSEM,
 		custom_OSEM, custom_MLEM, custom_MBSREM, custom_BSREM, custom_ROSEM, custom_RBI, custom_COSEM;
 	af::array C_co = af::constant(0.f, 1, 1), C_aco = af::constant(0.f, 1, 1), C_osl = af::constant(0.f, 1, 1);
 	af::array im_mlem, rhs_mlem, im_os, rhs_os;
@@ -75,6 +76,7 @@ typedef struct {
 		AD_OSEM, AD_MLEM, AD_MBSREM, AD_BSREM, AD_ROSEM, AD_RBI, AD_COSEM,
 		APLS_OSEM, APLS_MLEM, APLS_MBSREM, APLS_BSREM, APLS_ROSEM, APLS_RBI, APLS_COSEM,
 		TGV_OSEM, TGV_MLEM, TGV_MBSREM, TGV_BSREM, TGV_ROSEM, TGV_RBI, TGV_COSEM,
+		NLM_OSEM, NLM_MLEM, NLM_MBSREM, NLM_BSREM, NLM_ROSEM, NLM_RBI, NLM_COSEM,
 		custom_OSEM, custom_MLEM, custom_MBSREM, custom_BSREM, custom_ROSEM, custom_RBI, custom_COSEM;
 } Beta;
 
@@ -82,19 +84,20 @@ typedef struct {
 typedef struct {
 	af::array tr_offsets, weights_quad, fmh_weights, a_L, weighted_weights, UU, Amin, D, ACOSEM_rhs = af::constant(0.f, 1, 1);
 	af::array dU_OSEM, dU_MLEM, dU_BSREM, dU_MBSREM, dU_ROSEM, dU_RBI, dU_COSEM;
+	af::array NLM_ref;
 	float *lambda, *lambda_MBSREM, *lambda_BSREM, *lambda_ROSEM, *lambda_DRAMA, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum;// , epsilon_mramla = 0.f;
-	float epsilon_mramla = 0.f, U;
+	float epsilon_mramla = 0.f, U, NLM_gauss = 1.f, h2;
 	uint32_t alku_fmh, mean_type;
 	af_flux_function FluxType;
 	af_diffusion_eq DiffusionType;
-	uint32_t Ndx, Ndy, Ndz, NiterAD, dimmu, inffi;
-	bool med_no_norm = false, MBSREM_prepass = false;
+	uint32_t Ndx, Ndy, Ndz, NiterAD, dimmu, inffi, Nlx, Nly, Nlz;
+	bool med_no_norm = false, MBSREM_prepass = false, NLM_MRP = false, NLTV = false, NLM_anatomical = false;
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected
 typedef struct {
 	bool MLEM, OSEM, MRAMLA, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
-	bool MRP, Quad, L, FMH, WeightedMean, TV, AD, APLS, TGV;
+	bool MRP, Quad, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
 	bool OSLMLEM, OSLOSEM, MBSREM, BSREM, ROSEMMAP, RBIMAP;
 	bool MAP;
 	bool CUSTOM = false;
@@ -104,7 +107,7 @@ typedef struct {
 // Struct for boolean operators indicating whether a certain method is selected (OpenCL)
 typedef struct _RecMethodsOpenCL {
 	cl_char MLEM, OSEM, MRAMLA, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
-	cl_char MRP, Quad, L, FMH, WeightedMean, TV, AD, APLS, TGV;
+	cl_char MRP, Quad, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
 	cl_char OSLMLEM, OSLOSEM, MBSREM, BSREM, ROSEMMAP, RBIMAP;
 	cl_char OSLCOSEM;
 } RecMethodsOpenCL;
@@ -112,23 +115,23 @@ typedef struct _RecMethodsOpenCL {
 // MATLAB output arrays
 typedef struct {
 	mxArray* mlem, * osem, * ramla, * ramlaM, * rosem, * rbi, * drama, * cosem, * ecosem, * acosem,
-		* mrp_mlem, * quad_mlem, * L_mlem, * fmh_mlem, * weighted_mlem, * TV_mlem, * AD_mlem, * APLS_mlem, * TGV_mlem,
-		* mrp_osem, * quad_osem, * L_osem, * fmh_osem, * weighted_osem, * TV_osem, * AD_osem, * APLS_osem, * TGV_osem,
-		* mrp_bsrem, * quad_bsrem, * L_bsrem, * fmh_bsrem, * weighted_bsrem, * TV_bsrem, * AD_bsrem, * APLS_bsrem, * TGV_bsrem,
-		* mrp_mbsrem, * quad_mbsrem, * L_mbsrem, * fmh_mbsrem, * weighted_mbsrem, * TV_mbsrem, * AD_mbsrem, * APLS_mbsrem, * TGV_mbsrem,
-		* mrp_rosem, * quad_rosem, * L_rosem, * fmh_rosem, * weighted_rosem, * TV_rosem, * AD_rosem, * APLS_rosem, * TGV_rosem,
-		* mrp_rbi, * quad_rbi, * L_rbi, * fmh_rbi, * weighted_rbi, * TV_rbi, * AD_rbi, * APLS_rbi, * TGV_rbi,
-		* mrp_cosem, * quad_cosem, * L_cosem, * fmh_cosem, * weighted_cosem, * TV_cosem, * AD_cosem, * APLS_cosem, * TGV_cosem,
+		* mrp_mlem, * quad_mlem, * L_mlem, * fmh_mlem, * weighted_mlem, * TV_mlem, * AD_mlem, * APLS_mlem, * TGV_mlem, * NLM_mlem,
+		* mrp_osem, * quad_osem, * L_osem, * fmh_osem, * weighted_osem, * TV_osem, * AD_osem, * APLS_osem, * TGV_osem, * NLM_osem,
+		* mrp_bsrem, * quad_bsrem, * L_bsrem, * fmh_bsrem, * weighted_bsrem, * TV_bsrem, * AD_bsrem, * APLS_bsrem, * TGV_bsrem, * NLM_bsrem,
+		* mrp_mbsrem, * quad_mbsrem, * L_mbsrem, * fmh_mbsrem, * weighted_mbsrem, * TV_mbsrem, * AD_mbsrem, * APLS_mbsrem, * TGV_mbsrem, * NLM_mbsrem,
+		* mrp_rosem, * quad_rosem, * L_rosem, * fmh_rosem, * weighted_rosem, * TV_rosem, * AD_rosem, * APLS_rosem, * TGV_rosem, * NLM_rosem,
+		* mrp_rbi, * quad_rbi, * L_rbi, * fmh_rbi, * weighted_rbi, * TV_rbi, * AD_rbi, * APLS_rbi, * TGV_rbi, * NLM_rbi,
+		* mrp_cosem, * quad_cosem, * L_cosem, * fmh_cosem, * weighted_cosem, * TV_cosem, * AD_cosem, * APLS_cosem, * TGV_cosem, * NLM_cosem,
 		* custom_osem, * custom_mlem, * custom_bsrem, * custom_mbsrem, * custom_rosem, * custom_rbi, * custom_cosem;
 	mxArray* c_osl_custom, *D_custom;
 	float* ele_os, * ele_ml, * ele_ramla, * ele_ramlaM, * ele_rosem, * ele_rbi, * ele_drama, * ele_cosem, * ele_ecosem, * ele_acosem,
-		* ele_mrp_mlem, * ele_quad_mlem, * ele_L_mlem, * ele_fmh_mlem, * ele_weighted_mlem, * ele_TV_mlem, * ele_AD_mlem, * ele_APLS_mlem, * ele_TGV_mlem,
-		* ele_mrp_osem, * ele_quad_osem, * ele_L_osem, * ele_fmh_osem, * ele_weighted_osem, * ele_TV_osem, * ele_AD_osem, * ele_APLS_osem, * ele_TGV_osem,
-		* ele_mrp_bsrem, * ele_quad_bsrem, * ele_L_bsrem, * ele_fmh_bsrem, * ele_weighted_bsrem, * ele_TV_bsrem, * ele_AD_bsrem, * ele_TGV_bsrem, * ele_APLS_bsrem,
-		* ele_mrp_mbsrem, * ele_quad_mbsrem, * ele_L_mbsrem, * ele_fmh_mbsrem, * ele_weighted_mbsrem, * ele_TV_mbsrem, * ele_AD_mbsrem, * ele_TGV_mbsrem, * ele_APLS_mbsrem,
-		* ele_mrp_rosem, * ele_quad_rosem, * ele_L_rosem, * ele_fmh_rosem, * ele_weighted_rosem, * ele_TV_rosem, * ele_AD_rosem, * ele_TGV_rosem, * ele_APLS_rosem,
-		* ele_mrp_rbi, * ele_quad_rbi, * ele_L_rbi, * ele_fmh_rbi, * ele_weighted_rbi, * ele_TV_rbi, * ele_AD_rbi, * ele_TGV_rbi, * ele_APLS_rbi,
-		* ele_mrp_cosem, * ele_quad_cosem, * ele_L_cosem, * ele_fmh_cosem, * ele_weighted_cosem, * ele_TV_cosem, * ele_AD_cosem, * ele_TGV_cosem, * ele_APLS_cosem,
+		* ele_mrp_mlem, * ele_quad_mlem, * ele_L_mlem, * ele_fmh_mlem, * ele_weighted_mlem, * ele_TV_mlem, * ele_AD_mlem, * ele_APLS_mlem, * ele_TGV_mlem, * ele_NLM_mlem,
+		* ele_mrp_osem, * ele_quad_osem, * ele_L_osem, * ele_fmh_osem, * ele_weighted_osem, * ele_TV_osem, * ele_AD_osem, * ele_APLS_osem, * ele_TGV_osem, * ele_NLM_osem,
+		* ele_mrp_bsrem, * ele_quad_bsrem, * ele_L_bsrem, * ele_fmh_bsrem, * ele_weighted_bsrem, * ele_TV_bsrem, * ele_AD_bsrem, * ele_TGV_bsrem, * ele_APLS_bsrem, * ele_NLM_bsrem,
+		* ele_mrp_mbsrem, * ele_quad_mbsrem, * ele_L_mbsrem, * ele_fmh_mbsrem, * ele_weighted_mbsrem, * ele_TV_mbsrem, * ele_AD_mbsrem, * ele_TGV_mbsrem, * ele_APLS_mbsrem, * ele_NLM_mbsrem,
+		* ele_mrp_rosem, * ele_quad_rosem, * ele_L_rosem, * ele_fmh_rosem, * ele_weighted_rosem, * ele_TV_rosem, * ele_AD_rosem, * ele_TGV_rosem, * ele_APLS_rosem, * ele_NLM_rosem,
+		* ele_mrp_rbi, * ele_quad_rbi, * ele_L_rbi, * ele_fmh_rbi, * ele_weighted_rbi, * ele_TV_rbi, * ele_AD_rbi, * ele_TGV_rbi, * ele_APLS_rbi, * ele_NLM_rbi,
+		* ele_mrp_cosem, * ele_quad_cosem, * ele_L_cosem, * ele_fmh_cosem, * ele_weighted_cosem, * ele_TV_cosem, * ele_AD_cosem, * ele_TGV_cosem, * ele_APLS_cosem, * ele_NLM_cosem,
 		* ele_custom_osem, * ele_custom_mlem, * ele_custom_bsrem, * ele_custom_mbsrem, * ele_custom_rosem, * ele_custom_rbi, * ele_custom_cosem;
 	float* ele_c_osl_custom, *ele_D_custom;
 } matlabArrays;
@@ -213,7 +216,8 @@ af::array batchDiv(const af::array &lhs, const af::array &rhs);
 af::array batchNotEqual(const af::array &lhs, const af::array &rhs);
 
 // Create a zero-padded image
-af::array padding(const af::array& im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz);
+af::array padding(const af::array& im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, 
+	const bool zero_pad = false);
 
 // Reconstruction methods
 af::array MLEM(const af::array &im, const af::array &Summ, const af::array &rhs);
@@ -272,6 +276,10 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 
 af::array TGV(const af::array &im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t maxits, const float alpha, const float beta);
 
+af::array NLM(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nlx, const uint32_t Nly, const uint32_t Nlz,
+	const float h2, const float epps, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const bool NLM_anatomical, const float NLM_gauss,
+	const bool NLTV, const bool NLM_MRP, const af::array& NLM_ref);
+
 void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, 
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, 
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax, 
@@ -300,3 +308,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	const float NSlices, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path,
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z,
 	const char* fileName, const uint32_t device, float kerroin, const size_t numel_x, const char* header_directory);
+
+af::array im2col_3D(const af::array& A, const uint32_t blocksize1, const uint32_t blocksize2, const uint32_t blocksize3);
+
+af::array sparseSum(const af::array& W, const uint32_t s);

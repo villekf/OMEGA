@@ -1254,6 +1254,58 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							yy += im_dim;
 						}
 					}
+					// Non-local means prior
+					if (MethodList.NLM) {
+						if (MethodList.OSLOSEM) {
+							array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2, 
+								epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = OSL_OSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
+								dU, beta.NLM_OSEM);
+							yy += im_dim;
+						}
+						if (MethodList.BSREM) {
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
+								w_vec.lambda_BSREM, iter);
+							yy += im_dim;
+						}
+						if (MethodList.MBSREM) {
+							array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+								epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = MBSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)), w_vec.U,
+								pj3, w_vec.lambda_MBSREM, iter, im_dim, beta.NLM_MBSREM, dU, *testi, epps);
+							yy += im_dim;
+						}
+						if (MethodList.ROSEMMAP) {
+							array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+								epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = ROSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
+								w_vec.lambda_ROSEM, iter);
+							yy += im_dim;
+						}
+						if (MethodList.RBIMAP) {
+							array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+								epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = RBI(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
+								w_vec.D, beta.NLM_RBI, dU);
+							yy += im_dim;
+						}
+						if (MethodList.OSLCOSEM > 0u) {
+							array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+								epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+							vec.im_os(seq(yy, yy + im_dim - 1u)) = OSL_COSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.C_osl, w_vec.D, w_vec.h_ACOSEM,
+								MethodList.OSLCOSEM, dU, beta.NLM_COSEM);
+							if (MethodList.OSLCOSEM == 1u) {
+								array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
+								MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program, af_queue, af_context, w_vec, Summ,
+									d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
+									length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E);
+								vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
+								w_vec.ACOSEM_rhs(w_vec.ACOSEM_rhs <= 0.f) = epps;
+								vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), uu / w_vec.ACOSEM_rhs, batchMul);
+							}
+							yy += im_dim;
+						}
+					}
 					// Custom prior
 					if (MethodList.CUSTOM) {
 						if (MethodList.OSLOSEM) {
@@ -1631,6 +1683,36 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						yy += im_dim;
 					}
 				}
+				if (MethodList.NLM) {
+					if (MethodList.OSLOSEM) {
+						vec.NLM_OSEM(span, iter + 1u) = vec.im_os(seq(yy, yy + im_dim - 1u)).copy();
+						yy += im_dim;
+					}
+					if (MethodList.BSREM) {
+						array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+							epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+						vec.NLM_BSREM(span, iter + 1u) = BSREM_MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_BSREM, iter, beta.NLM_BSREM, dU, epps);
+						yy += im_dim;
+					}
+					if (MethodList.MBSREM) {
+						vec.NLM_MBSREM(span, iter + 1u) = vec.im_os(seq(yy, yy + im_dim - 1u)).copy();
+						yy += im_dim;
+					}
+					if (MethodList.ROSEMMAP) {
+						array dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+							epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+						vec.NLM_ROSEM(span, iter + 1u) = BSREM_MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_ROSEM, iter, beta.NLM_ROSEM, dU, epps);
+						yy += im_dim;
+					}
+					if (MethodList.RBIMAP) {
+						vec.NLM_RBI(span, iter + 1u) = vec.im_os(seq(yy, yy + im_dim - 1u)).copy();
+						yy += im_dim;
+					}
+					if (MethodList.OSLCOSEM > 0) {
+						vec.NLM_COSEM(span, iter + 1u) = vec.im_os(seq(yy, yy + im_dim - 1u)).copy();
+						yy += im_dim;
+					}
+				}
 				if (MethodList.CUSTOM) {
 					if (MethodList.OSLOSEM) {
 						vec.custom_OSEM = vec.im_os(seq(yy, yy + im_dim - 1u)).copy();
@@ -1830,6 +1912,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						dU, beta.TGV_MLEM);
 					ee += im_dim;
 				}
+				// OSL-MLEM with Non-Local Means prior
+				if (MethodList.OSLMLEM && MethodList.NLM) {
+					array dU = NLM(vec.im_os(seq(ee, ee + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, w_vec.Nlx, w_vec.Nly, w_vec.Nlz, w_vec.h2,
+						epps, Nx, Ny, Nz, w_vec.NLM_anatomical, w_vec.NLM_gauss, w_vec.NLTV, w_vec.NLM_MRP, w_vec.NLM_ref);
+					vec.im_mlem(seq(ee, ee + im_dim - 1u)) = OSL_MLEM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), Summ_mlem, vec.rhs_mlem(seq(ee, ee + im_dim - 1u)),
+						dU, beta.NLM_MLEM);
+					ee += im_dim;
+				}
 				// OSL-MLEM with custom prior
 				if (MethodList.OSLMLEM && MethodList.CUSTOM) {
 					vec.im_mlem(seq(ee, ee + im_dim - 1u)) = OSL_MLEM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), Summ_mlem, vec.rhs_mlem(seq(ee, ee + im_dim - 1u)), 
@@ -1878,6 +1968,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					}
 					if (MethodList.TGV) {
 						vec.TGV_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+						ee += im_dim;
+					}
+					if (MethodList.NLM) {
+						vec.NLM_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 						ee += im_dim;
 					}
 				}
