@@ -542,19 +542,11 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
             c1{1} = cat(3, c1{1}, zeros(size(c1{1},1), size(c1{1},2), options.Ndz));
             c1{2} = cat(3, c1{2}, zeros(size(c1{2},1), size(c1{2},2), options.Ndz));
             c1{3} = cat(3, c1{3}, zeros(size(c1{3},1), size(c1{3},2), options.Ndz));
-            %                 apu2 = c1{2};
-            %                 apu3 = c1{3};
             for kk = options.Ndz - 1 : - 1 : 0
-                %                     apu(:,:,end+1) = apu(:,:,end);
-                %                     apu2(:,:,end+1) = apu2(:,:,end);
-                %                     apu3(:,:,end+1) = apu3(:,:,end) + 1;
                 c1{1}(:,:,end-kk) = c1{1}(:,:,end - kk - 1);
                 c1{2}(:,:,end-kk) = c1{2}(:,:,end - kk - 1);
                 c1{3}(:,:,end-kk) = c1{3}(:,:,end - kk - 1) + 1;
             end
-            %                 c1{1} = apu;
-            %                 c1{2} = apu2;
-            %                 c1{3} = apu3;
             c2(end) = {options.Ndz+1};
         elseif options.Ndz < options.Ndx && options.Ndz > 1
             %                 apu = c1{1};
@@ -578,9 +570,9 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
         if options.implementation == 2
             options.tr_offsets = options.tr_offsets - 1;
-            options.options.Ndx = uint32(options.Ndx);
-            options.options.Ndy = uint32(options.Ndy);
-            options.options.Ndz = uint32(options.Ndz);
+            options.Ndx = uint32(options.Ndx);
+            options.Ndy = uint32(options.Ndy);
+            options.Ndz = uint32(options.Ndz);
             clear tr_offsets
         end
         %             if (options.OSL_OSEM || options.OSL_MLEM) && options.quad
@@ -802,6 +794,17 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         variables = fields(apu);
         options.NLM_ref = double(apu.(variables{1}));
         options.NLM_ref = reshape(options.NLM_ref, Nx, Ny, Nz);
+    end
+    if options.NLM && options.implementation == 2 && options.MAP
+        options.NLM_ref = single(options.NLM_ref);
+        options.NLM_gauss = single(options.NLM_gauss);
+        options.sigma = single(options.sigma);
+        options.Nlx = uint32(options.Nlx);
+        options.Nly = uint32(options.Nly);
+        options.Nlz = uint32(options.Nlz);
+        options.Ndx = uint32(options.Ndx);
+        options.Ndy = uint32(options.Ndy);
+        options.Ndz = uint32(options.Ndz);
     end
 end
 end
