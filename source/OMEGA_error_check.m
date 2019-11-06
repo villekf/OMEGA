@@ -432,9 +432,9 @@ if options.verbose
     if options.NLM && MAP
         if options.implementation == 2
             warning('NLM is not supported with OpenCL reconstruction')
-            options.NLM = false;
-%         else
-%             warning('NLM selected. NLM is an experimental feature.')
+%             options.NLM = false;
+% %         else
+% %             warning('NLM selected. NLM is an experimental feature.')
         end
     elseif options.NLM && ~MAP
         warning('NLM selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
