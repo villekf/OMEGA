@@ -140,6 +140,8 @@ Raw list-mode data with non-GATE data is still experimental.
 
 Multi-device reconstruction only supports OSEM and MLEM.
 
+Implementation 4 (OpenMP CPU) supports only one prior at a time and only a select number of algorithms.
+
 LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
