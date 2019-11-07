@@ -1,53 +1,59 @@
 function saveInterfile(filename, img, reko, varargin)
 %SAVEINTERFILE Saves the input matrix as an interfile format image
 %   This file saves the input 3D or 4D image into interfile format (32-bit
-%   float). This code is based on the code from MathWorks file exchange by
-%   Josh Schaefferkoetter: 
+%   float by default). This code is based on the code from MathWorks file
+%   exchange by Josh Schaefferkoetter: 
 %   https://se.mathworks.com/matlabcentral/fileexchange/53745-medical-image-reader-and-viewer
 %
-%   If you wish to convert the image into a type other than 32-bit float,
-%   change "number format:=float" and "!number of bytes per pixel:=4"
-%   accordingly (e.g. number format:=signed integer, !number of bytes per
-%   pixel:=4) and change img = single(img); to correspond to the correct 
-%   type (e.g. img = int32(img);).
-%
-% Example:
+% Examples:
 %   saveInterfile(filename, img, reko)
+%   saveInterfile(filename, img, reko, type)
+%   saveInterfile(filename, img, [], [], options)
 %
 % Input:
-%   filename = Name of the image and header files (without file prefix)
+%   filename = Name of the image and header files (without file type).
+%   Saves the header file as [filename '.h33'] and image file as [filename
+%   '.i33'].
 %
 %   img = The 3D or 4D image
 %
 %   reko = Name of the current reconstruction (can be an empty array)
 %
+%   type = Data type, e.g. 'single', 'int8', 'uint32', etc. Default is
+%   'single' (32-bit float).
+%
 %   options/image_properties = Either the options struct created by the
 %   main files or the image_properties struct saved in the cell-matrix
-%   (optional). Necessary if many of the optional values are to be saved
+%   (optional). Necessary if any of the optional values are to be saved
 %   (voxel size, number of time steps, total duration, etc.).
 
-if nargin > 3
-    prop = varargin{1};
+if nargin > 4 && ~isempty(varargin{2})
+    prop = varargin{2};
 else
     prop = [];
 end
-img = single(img);
+if nargin > 3 && ~isempty(varargin{1})
+    type = varargin{1};
+else
+    type = 'single';
+end
+img = cast(img,type);
 koko = size(img);
-fid = fopen([filename '.img'],'w');
-fwrite(fid, img, 'single');
+fid = fopen([filename '.i33'],'w');
+fwrite(fid, img, type);
 fclose(fid);
-hdrFile = [filename '.hdr'];
+hdrFile = [filename '.h33'];
 maxmin = [max(img(:)) min(img(:))];
 
 if nargin > 3
-    writeInterfileHeader(hdrFile, koko, maxmin, reko, prop);
+    writeInterfileHeader(hdrFile, koko, maxmin, reko, type, prop);
 else
-    writeInterfileHeader(hdrFile, koko, maxmin, reko);
+    writeInterfileHeader(hdrFile, koko, maxmin, reko, type);
 end
 end
 
-function writeInterfileHeader(hdrFile, koko, maxmin, rekot, varargin)
-if nargin >= 5 && ~isempty(varargin{1})
+function writeInterfileHeader(hdrFile, koko, maxmin, rekot, type, varargin)
+if nargin >= 6 && ~isempty(varargin{1})
     prop = varargin{1};
 else
     prop = [];
@@ -64,7 +70,7 @@ fprintf(fid,'\r\n');
 fprintf(fid,'!GENERAL DATA:=\r\n');
 fprintf(fid,'%%sinogram header file:=\r\n');
 fprintf(fid,'%%sinogram data file:=\r\n');
-fprintf(fid,['!name of data file:=' [hdrFile(1:end-2) 'img'] '\r\n']);
+fprintf(fid,['!name of data file:=' [hdrFile(1:end-3) 'i33'] '\r\n']);
 fprintf(fid,'\r\n');
 fprintf(fid,'!GENERAL IMAGE DATA:=\r\n');
 fprintf(fid,['%%study date (yyyy:mm:dd):=' datestr(datetime('now', 'Format', 'yyyy:M:dd'),'yyyy:mm:dd') '\r\n']);
@@ -82,8 +88,37 @@ fprintf(fid,'image data byte order:=LITTLEENDIAN\r\n');
 fprintf(fid,['%%patient orientation:=\r\n']);
 fprintf(fid,['%%image orientation:=\r\n']);
 fprintf(fid,'!PET data type:=image\r\n');
-fprintf(fid,'number format:=float\r\n');
-fprintf(fid,'!number of bytes per pixel:=4\r\n');
+if strcmp(type, 'single') || strcmp(type, 'double')
+    if strcmp(type, 'single')
+        fprintf(fid,'!number of bytes per pixel:=4\r\n');
+        fprintf(fid,'number format:=float\r\n');
+    else
+        fprintf(fid,'!number of bytes per pixel:=8\r\n');
+        fprintf(fid,'number format:=double\r\n');
+    end
+elseif strcmp(type, 'int8') || strcmp(type, 'int16') || strcmp(type, 'int32') || strcmp(type, 'int64') || strcmp(type, 'char')
+    fprintf(fid,'number format:=signed integer\r\n');
+    if strcmp(type, 'int8') || strcmp(type, 'char')
+        fprintf(fid,'!number of bytes per pixel:=1\r\n');
+    elseif strcmp(type, 'int16')
+        fprintf(fid,'!number of bytes per pixel:=2\r\n');
+    elseif strcmp(type, 'int32')
+        fprintf(fid,'!number of bytes per pixel:=4\r\n');
+    else
+        fprintf(fid,'!number of bytes per pixel:=8\r\n');
+    end
+elseif strcmp(type, 'uint8') || strcmp(type, 'uint16') || strcmp(type, 'uint32') || strcmp(type, 'uint64') || strcmp(type, 'uchar')
+    fprintf(fid,'number format:=unsigned integer\r\n');
+    if strcmp(type, 'uint8') || strcmp(type, 'uchar')
+        fprintf(fid,'!number of bytes per pixel:=1\r\n');
+    elseif strcmp(type, 'uint16')
+        fprintf(fid,'!number of bytes per pixel:=2\r\n');
+    elseif strcmp(type, 'uint32')
+        fprintf(fid,'!number of bytes per pixel:=4\r\n');
+    else
+        fprintf(fid,'!number of bytes per pixel:=8\r\n');
+    end
+end
 if length(koko) > 3 && koko(4) > 1
     fprintf(fid,'number of dimensions:=4\r\n');
 else
@@ -233,6 +268,23 @@ fprintf(fid,['maximum pixel count:=' num2str(maxmin(1)) '\r\n']);
 fprintf(fid,['minimum pixel count:=' num2str(maxmin(2)) '\r\n']);
 fprintf(fid,'\r\n');
 fprintf(fid,'%%SUPPLEMENTARY ATTRIBUTES:=\r\n');
+if ~isempty(prop) && isfield(prop, 'rings')
+    fprintf(fid,'Scanner parameters:=\r\n');
+    fprintf(fid,['Scanner type:=' prop.machine_name '\r\n']);
+    fprintf(fid,['Number of rings:=' num2str(prop.rings) '\r\n']);
+    fprintf(fid,['Number of detectors per ring:=' num2str(prop.det_w_pseudo) '\r\n']);
+    fprintf(fid,['Inner ring diameter (cm):=' num2str(prop.diameter/10) '\r\n']);
+    fprintf(fid,['Average depth of interaction (cm):=0\r\n']);
+    fprintf(fid,['View offset (degrees):=0\r\n']);
+    fprintf(fid,['Maximum number of non-arc-corrected bins:=' num2str(prop.Nang) '\r\n']);
+    fprintf(fid,['Default number of arc-corrected bins:=' num2str(prop.Nang) '\r\n']);
+    fprintf(fid,['Number of blocks per bucket in transaxial direction:=1\r\n']);
+    fprintf(fid,['Number of blocks per bucket in axial direction:= ' num2str(prop.linear_multip) '\r\n']);
+    fprintf(fid,['Number of crystals per block in axial direction:=' num2str(prop.cryst_per_block) '\r\n']);
+    fprintf(fid,['Number of crystals per block in transaxial direction:=' num2str(prop.cryst_per_block) '\r\n']);
+    fprintf(fid,['Number of detector layers:=1\r\n']);
+    fprintf(fid,'end scanner parameters:=\r\n');
+end
 fclose(fid);
 
 end
