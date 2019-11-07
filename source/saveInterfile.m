@@ -1,8 +1,8 @@
 function saveInterfile(filename, img, reko, varargin)
 %SAVEINTERFILE Saves the input matrix as an interfile format image
-%   This file saves the input 3D or 4D image into interfile format (32-bit
-%   float by default). This code is based on the code from MathWorks file
-%   exchange by Josh Schaefferkoetter: 
+%   This file saves the input 3D or 4D image into interfile format. This
+%   code is based on the code from MathWorks file exchange by Josh
+%   Schaefferkoetter:  
 %   https://se.mathworks.com/matlabcentral/fileexchange/53745-medical-image-reader-and-viewer
 %
 % Examples:
@@ -20,7 +20,7 @@ function saveInterfile(filename, img, reko, varargin)
 %   reko = Name of the current reconstruction (can be an empty array)
 %
 %   type = Data type, e.g. 'single', 'int8', 'uint32', etc. Default is
-%   'single' (32-bit float).
+%   the same type as the input image.
 %
 %   options/image_properties = Either the options struct created by the
 %   main files or the image_properties struct saved in the cell-matrix
@@ -35,12 +35,12 @@ end
 if nargin > 3 && ~isempty(varargin{1})
     type = varargin{1};
 else
-    type = 'single';
+    type = class(img);
 end
 img = cast(img,type);
 koko = size(img);
 fid = fopen([filename '.i33'],'w');
-fwrite(fid, img, type);
+fwrite(fid, img(:), type);
 fclose(fid);
 hdrFile = [filename '.h33'];
 maxmin = [max(img(:)) min(img(:))];

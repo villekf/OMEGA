@@ -1,19 +1,21 @@
 function saveImage(img, varargin)
 %SAVEIMAGE Saves the specified reconstructed images in the specified format
 %   This function saves the input image(s) to the specified format.
-%   Available formats are DICOM, NIfTI, Analyze 7.5, Interfile (32-bit
-%   float) or raw 32-bit float image. 
+%   Available formats are DICOM, NIfTI, Analyze 7.5, Interfile, MetaImage
+%   or raw image.
 %
 %   DICOM support requires image processing toolbox (or dicom
 %   package on Octave (untested)), NIfTI requires either image processing
 %   toolbox (R2017b and up) OR "Tools for NIfTI and ANALYZE image" toolbox
 %   from MathWorks file exchange:
 %   https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image
-%   Analyze format requires "Tools for NIfTI and ANALYZE image".
+%   Analyze format requires "Tools for NIfTI and ANALYZE image". MetaImage
+%   requires "Medical Image Processing Toolbox" from file exchange:
+%   https://se.mathworks.com/matlabcentral/fileexchange/41594-medical-image-processing-toolbox
 %
 %   Raw data format is used by default. DICOM format does not support
-%   time-series of images. Interfile and raw format are the same, except
-%   Interfile also outputs the header file.
+%   time-series of images. Interfile, MetaImage and raw format are the
+%   same, except Interfile and MetaImage also output the header file.
 %
 % Examples:
 %   saveImage(img)
@@ -35,8 +37,11 @@ function saveImage(img, varargin)
 %   format supports it).
 %
 %   type = The output file type. 'nifti' uses NIfTI, 'analyze' uses Analyze
-%   7.5 format, 'dicom' uses DICOM format and 'raw' uses raw 32-bit float
-%   (default).
+%   7.5 format, 'dicom' uses DICOM format, 'interfile' uses Interfile
+%   format, 'metaimage' uses MetaImage, and 'raw' uses raw binary data.
+%
+%   DICOM uses double precision regardless of the input image. Other
+%   formats use the same type as the input image.
 %
 %   Using DICOM format creates a single file for each slice.
 %
@@ -54,7 +59,7 @@ function saveImage(img, varargin)
 %   The output file will be saved either in the current directory (if no
 %   filename was specified) or in the path specified in the filename.
 %
-% See also
+% See also saveInterfile, importData, saveSinogram, niftiwrite, save_nii
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2019  Ville-Veikko Wettenhovi
@@ -173,17 +178,18 @@ for kk = 1 : pituus
         end
     elseif strcmp(type,'interfile')
         if iscell(img)
-            saveInterfile(filename, kuva, reko, prop)
+            saveInterfile(filename, kuva, reko, class(kuva), prop)
         elseif nargin >= 4 && ~isempty(varargin{3})
-            saveInterfile(filename, kuva, reko, varargin{3})
+            saveInterfile(filename, kuva, reko, class(kuva), varargin{3})
         else
-            saveInterfile(filename, kuva, reko)
+            saveInterfile(filename, kuva, reko, class(kuva))
         end
+    elseif strcmp(type, 'metaimage')
+        saveMetaImage(filename,kuva);
     elseif strcmp(type, 'raw')
         filename = [filename '.raw'];
         fid = fopen(filename);
-        kuva = single(kuva);
-        fwrite(fid, kuva(:),'single');
+        fwrite(fid, kuva(:),class(kuva));
         fclose(fid);
     else
         error('Unsupported output filetype')

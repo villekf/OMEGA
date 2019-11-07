@@ -1,10 +1,10 @@
 function saveSinogram(sino, varargin)
 %SAVESINOGRAM Saves the specified sinogram in the specified format
 %   This function saves the input sinogram to the specified format.
-%   Available formats are DICOM, NIfTI, Analyze 7.5 or raw 32-bit float
-%   image. DICOM support requires image processing toolbox (or dicom
-%   package on Octave (untested)), NIfTI and Analyze support require "Tools
-%   for NIfTI and ANALYZE image" toolbox from MathWorks file exchange:
+%   Available formats are DICOM, NIfTI, Analyze 7.5 or raw binary image.
+%   DICOM support requires image processing toolbox (or dicom package on
+%   Octave (untested)), NIfTI and Analyze support require "Tools for NIfTI
+%   and ANALYZE image" toolbox from MathWorks file exchange: 
 %   https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image
 %
 %   Raw data format is used by default. DICOM format does not support
@@ -25,7 +25,7 @@ function saveSinogram(sino, varargin)
 %   another time step.
 %
 %   type = The output file type. 'nifti' uses NIfTI, 'analyze' uses Analyze
-%   7.5 format, 'dicom' uses DICOM format and 'raw' uses raw 32-bit float
+%   7.5 format, 'dicom' uses DICOM format and 'raw' uses raw binary data
 %   (default).
 %
 %   Filename = The filename (and optionally full path) of the output file.
@@ -117,12 +117,13 @@ elseif strcmp(type, 'dicom')
         dicomwrite(kuva(:,:,ll), [filename '_slice' num2str(ll) '.dcm']);
     end
 elseif strcmp(type, 'interfile')
-    saveInterfile(filename, kuva);
+    saveInterfile(filename, kuva, 'sinogram', class(kuva));
+elseif strcmp(type, 'metaimage')
+    saveMetaImage(filename, kuva);
 elseif strcmp(type, 'raw')
     filename = [filename '.raw'];
     fid = fopen(filename);
-    kuva = single(kuva);
-    fwrite(fid, kuva(:),'single');
+    fwrite(fid, kuva(:),class(kuva));
     fclose(fid);
 else
     error('Unsupported output filetype')

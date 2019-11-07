@@ -1,7 +1,8 @@
 function options = loadMeasurementData(options, varargin)
 %LOADMEASUREMENTDATA Loads the measurement data
 %   Loads the measurement data for non-GATE situations from either a
-%   mat-file, a NIfTI file, Analyze 7.5 file, DICOM file or raw data file
+%   mat-file, a NIfTI file, Analyze 7.5 file, DICOM file, Interfile or raw
+%   data file 
 %   in the specified bit-format. For the last case the default is 32-bit
 %   integer (int32). A different bit format for the raw data file can be
 %   input as an optional parameter. The measurement data will be saved in
@@ -19,9 +20,8 @@ function options = loadMeasurementData(options, varargin)
 %   prompted.
 %
 %   The file extension is used to determine the input data format. E.g.
-%   img/hdr are considered Analyze or NIfTI format files. For interfile, it
-%   is recommended to use raw data format and manually specify the data
-%   format (as indicated in the header).
+%   img/hdr/nii are considered Analyze or NIfTI format files. For
+%   Interfile i33/h33 are considered Interfile files.
 %
 % Examples:
 %   options = loadMeasurementData(options)
@@ -36,7 +36,7 @@ function options = loadMeasurementData(options, varargin)
 %   negative value. Unnecessary if no header is present. Applicable ONLY
 %   for raw data.
 %
-% See also dicomread, load_nii
+% See also dicomread, load_nii, niftiread, loadInterfile
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -153,6 +153,10 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
     else
         error('No dicomread file found. Image processing toolbox is required for reading DICOM files on MATLAB')
     end
+elseif strcmp(FileName(end-2:end),'i33') || strcmp(FileName(end-2:end),'h33')
+    options.SinM = loadInterfile(FileName);
+elseif strcmp(FileName(end-2:end),'mhd') || strcmp(FileName(end-2:end),'mha')
+    options.SinM = loadMetaImage(FileName);
 else
     fid = fopen(nimi);
     f_size = dir(nimi);

@@ -3,8 +3,8 @@ function output = importData(type, varargin)
 %   Import the input data (user will be prompted for the data) of the
 %   specified type into a MATLAB matrix.
 %
-%   Available types are DICOM, NIfTI, Analyze 7.5, Interfile and raw data
-%   format.
+%   Available types are DICOM, NIfTI, Analyze 7.5, Interfile, MetaImage and
+%   raw data format.
 %
 %   Loading DICOM files requires image processing toolbox on MATLAB or the
 %   dicom-package on Octave (untested). NIfTI requires either image
@@ -19,7 +19,7 @@ function output = importData(type, varargin)
 %
 % Inputs:
 %   type = The type of data used. Available ones are 'dicom', 'nifti',
-%   'analyze', 'interfile', 'raw'.
+%   'analyze', 'interfile', 'metaimage' and 'raw'.
 %
 %   format = The data format type of the raw data. E.g. 'single', 'uint32',
 %   'double', etc.
@@ -33,9 +33,10 @@ function output = importData(type, varargin)
 %   skip = Number of bytes skipped before the actual data. I.e. the length
 %   of possible header in bytes. If the header is at the end of file, use
 %   negative value. Unnecessary if no header is present. Applicable ONLY
-%   for raw data.
+%   for raw data. This is computed automatically if the header is in the
+%   beginning of the file and the data format and dimensions are input.
 %
-% See also dicomread, load_nii
+% See also dicomread, niftiread, load_nii, loadInterfile, analyze75read
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -91,8 +92,13 @@ elseif strcmp(type, 'interfile')
     [file, fpath] = uigetfile(('*.img;*.hdr'),'Select Interfile data file');
     FileName = fullfile(fpath, file);
     output = loadInterfile(FileName);
+elseif strcmp(type, 'metaimage')
+    [file, fpath] = uigetfile(('*.mhd;*.mha;*.raw'),'Select MetaImage header file');
+    FileName = fullfile(fpath, file);
+    output = loadMetaImage(FileName);
 elseif strcmp(type, 'raw')
     type = varargin{1};
+    n_bytes = struct('double',8,'single', 4, 'int8',1,'uint8',1,'int16',2,'uint16',2,'int32',4,'uint32',4, 'int64',8, 'uint64', 8);
     if nargin >= 3 && ~isempty(varargin{2})
         N1 = varargin{2};
     else
@@ -133,6 +139,12 @@ elseif strcmp(type, 'raw')
         f_size = f_size - skip;
     elseif nargin >= 8 && skip < 0
         f_size = f_size + skip;
+    else
+        skip = f_size - n_bytes.(type) * N1 * N2 * N3 * N4 * N5;
+        if skip > 0
+            fread(fid,skip,'*uint8');
+            f_size = f_size - skip;
+        end
     end
     if strcmp(type,'int16') || strcmp(type,'uint16')
         f_size = f_size / 2;
