@@ -89,7 +89,7 @@ elseif strcmp(type, 'analyze')
     end
     
 elseif strcmp(type, 'interfile')
-    [file, fpath] = uigetfile(('*.img;*.hdr'),'Select Interfile data file');
+    [file, fpath] = uigetfile(('*.img;*.hdr;*.i33;*.h33'),'Select Interfile data file');
     FileName = fullfile(fpath, file);
     output = loadInterfile(FileName);
 elseif strcmp(type, 'metaimage')
