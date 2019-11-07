@@ -1,5 +1,26 @@
 # Release notes
 
+## 1.1
+
+- Fixed non-local means regularization (NLM is no longer an experimental feature) 
+
+- Added non-local total variation 
+
+- Added support for MetaImage import/export 
+
+- Added support for golden angle based subset sampling 
+
+- Added zero padding support to padding 
+
+- Fixed some bugs with various file import and export files 
+
+- Fixed bugs with the prepass computations on OpenCL 
+
+- Added mention of implementation 4 support to several algorithms and priors (e.g. supports OSL-OSEM with all priors, but only one prior at a time) 
+
+- Implementation 2 now also uses symmetric padding
+
+
 ## 1.0
 
 - Fixed a bug with LMF input and source coordinates 
