@@ -552,8 +552,6 @@ void OSEM_MLEM(const cl_uint &num_devices_context, const float kerroin, const in
 		}
 	}
 
-	mexPrintf("Kohta 1 \n");
-
 	cl_uchar no_norm = 0u;
 
 	// Time steps

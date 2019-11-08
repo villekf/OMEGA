@@ -329,8 +329,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			mxArray *cell_array_ptr;
 			cell_array_ptr = mxCreateCellMatrix(1, Nt);
 
-			mexPrintf("Nt = %u\n", Nt);
-
 			// Implementation 3 (multi-device OpenCL)
 			reconstruction_multigpu(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, prhs[58], dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, 
 				NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, cell_array_ptr, verbose, randoms_correction, attenuation_correction, 
