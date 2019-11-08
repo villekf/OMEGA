@@ -112,8 +112,6 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 	float local_norm = 0.f;
 	if (d_normalization == 1u)
 		local_norm = d_norm[idx];
-	if (d_randoms == 1u)
-		local_sc_ra = d_sc_ra[idx];
 	// Calculate the x, y and z distances of the detector pair
 	const float y_diff = (yd - ys);
 	const float x_diff = (xd - xs);
@@ -145,7 +143,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					orth_distance_perpendicular_multi(-x_diff, y_center, kerroin, length_, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, no_norm, d_rhs_OSEM, d_Summ, true, false);
 					if (local_sino > 0.f) {
-						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 						orth_distance_perpendicular_multi(-x_diff, y_center, kerroin, length_, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 							d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, no_norm, d_rhs_OSEM, d_Summ, false, true);
 					}
@@ -161,7 +159,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					orth_distance_perpendicular_multi_3D(y_center, x_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 						d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
 					if (local_sino > 0.f) {
-						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 						orth_distance_perpendicular_multi_3D(y_center, x_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 							d_by, yd, d_dy, d_Ny, d_Nx, tempk, d_atten, local_norm, local_sino, d_Ny, 1u, d_OSEM, ys, xs, zs, y_diff, x_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
 					}
@@ -180,7 +178,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, no_norm,
 						d_rhs_OSEM, d_Summ, true, false);
 					if (local_sino > 0.f) {
-						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 						orth_distance_perpendicular_multi(y_diff, x_center, kerroin, length_, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 							d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, no_norm,
 							d_rhs_OSEM, d_Summ, false, true);
@@ -195,7 +193,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 					orth_distance_perpendicular_multi_3D(x_center, y_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 						d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, true, false);
 					if (local_sino > 0.f) {
-						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+						nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 						orth_distance_perpendicular_multi_3D(x_center, y_center[0], z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
 							d_bx, xd, d_dx, d_Nx, d_Ny, tempk, d_atten, local_norm, local_sino, 1u, d_Nx, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy, d_Nz, no_norm, d_Summ, d_rhs_OSEM, false, true);
 					}
@@ -289,7 +287,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 			else
 				temp_ijk = convert_uint_sat(tempj) * d_Nx;
 			if (local_sino > 0.f) {
-				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 				for (uint ii = 0u; ii < Np_n; ii++) {
 					if (tx0 < ty0) {
 						if (ii == Np_n - 1u) {
@@ -447,7 +445,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				else
 					temp_ijk = convert_uint_sat(tempi);
 				if (local_sino > 0.f) {
-					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 					for (uint ii = 0u; ii < Np_n; ii++) {
 						if (tx0 < tz0) {
 							if (crystal_size_z == 0.f) {
@@ -602,7 +600,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 				else
 					temp_ijk = convert_uint_sat(tempj) * d_Nx;
 				if (local_sino > 0.f) {
-					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+					nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 					for (uint ii = 0u; ii < Np_n; ii++) {
 						if (tz0 < ty0) {
 							if (crystal_size_z == 0.f) {
@@ -780,7 +778,7 @@ void orth_multi(const float d_epps, const uint d_N, const uint d_Nx, const uint 
 			else
 				temp_ijk = convert_uint_sat(tempj) * d_Nx;
 			if (local_sino > 0.f) {
-				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, local_sc_ra);
+				nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
 				for (uint ii = 0u; ii < Np_n; ii++) {
 					if (tz0 < ty0 && tz0 < tx0) {
 						if (crystal_size_z == 0.f) {
