@@ -1428,6 +1428,8 @@ void f_b_project(const cl_uint &num_devices_context, const float kerroin, const 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 
+		const uint64_t st = static_cast<uint64_t>(cumsum[i]);
+
 		cl_uint kernelIndSubIter = kernelInd;
 
 		const size_t global_size = length[i] + (local_size - length[i] % local_size);
@@ -1460,7 +1462,7 @@ void f_b_project(const cl_uint &num_devices_context, const float kerroin, const 
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_rhs[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_output[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &m_size);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &static_cast<uint64_t>(cumsum[i]));
+		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &st);
 		status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1, NULL, &global_size, &local_size, 0, NULL, &events[i][0]);
 		if (status != CL_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
