@@ -20,6 +20,10 @@
 
 - Implementation 2 now also uses symmetric padding
 
+- MLEM now works with implementation 2 and 3
+
+- Using smaller number of sinograms than the maximum now works with implementation 2 and 3
+
 
 ## 1.0
 
