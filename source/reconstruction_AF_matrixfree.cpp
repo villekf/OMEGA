@@ -500,7 +500,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	}
 
 	if (mlem_bool) {
-		if (!atomic_64bit && compute_norm_matrix == 0u && osem_bool)
+		if (!atomic_64bit)
 			Summ_mlem = constant(0.f, im_dim, 1);
 		else
 			Summ_mlem = constant(0ULL, im_dim, 1, u64);

@@ -906,6 +906,10 @@ else
     [options, D, C_co, C_aco, C_osl, Amin, E] = prepass_phase(options, pituus, index, options.SinM, pseudot, x, y, xx, yy, z_det, dz, dx, dy, bz, bx, by, NSlices, zmax, size_x, block1, blocks,...
         normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center);
     
+    if length(pituus) == 1
+        pituus = [uint32(0);pituus];
+    end
+    
     %%
     
     % Compute the reconstructions
@@ -3024,7 +3028,7 @@ else
                             uint32(options.projector_type), no_norm, options.precompute_lor, options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
                             int32(options.accuracy_factor), options.n_rays, dc_z);
                         
-                        if iter == 1 && (Niter > 1 || options.partitions > 1) && ~OS_bool && llo == 1
+                        if iter == 1 && ~OS_bool && llo == 1
                             f_Summ_ml = Summ;
                         end
                         if options.mlem
@@ -3368,7 +3372,7 @@ else
             LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), single(options.cpu_to_gpu_factor), uint32(1), header_directory, ...
             options.vaimennus, options.normalization, pituus, uint32(attenuation_correction), uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, ...
             crystal_size_z, x_center, y_center, z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            int32(options.accuracy_factor), n_rays, dc_z, NSinos, uint16(TotSinos), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), options.SinM, uint32(partitions), ...
+            int32(options.accuracy_factor), n_rays, dc_z, NSinos, uint16(NSinos), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), options.SinM, uint32(partitions), ...
             options.osem, options.force_build, options, logical(options.use_64bit_atomics));
         toc
         
