@@ -126,7 +126,7 @@ end
 
 algo_char = algorithms_char();
 
-algorithm = 2;
+algorithms = 2;
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
 color_scale = 1;
@@ -137,8 +137,10 @@ v_plane = 1;
 
 % How many iterations in the image 
 % Initial values can be included as iterations as they are saved as such
+% N_iter LAST iterations will be used for visualization
 N_iter = 2;
 
+color_from_algo = 1;
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -331,7 +333,7 @@ vol3d('CData', img(:,:,:,end), 'Alpha', alpha);
 
 algo_char = algorithms_char();
 
-algorithms = [1,2];
+algorithms = [2];
 % algorithms = [2,3,4,5,6,7];
 % algorithms = [8,9,10,11,12,13,14,15];
 % Use this value to scale the color scale in the image (higher values make
