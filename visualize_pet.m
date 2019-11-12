@@ -182,7 +182,7 @@ for kk = 1 : koko
         subplot(hh, jj, ll)
         imagesc(img(:,:,kk,end - ll + 1),clim)
         axis image
-        title([char(algo_char(algorithm)) ', iteration = ' num2str(size(img,4) - ll) ', slice = ' num2str(kk)])
+        title([char(algo_char(algorithms)) ', iteration = ' num2str(size(img,4) - ll) ', slice = ' num2str(kk)])
     end
     pause(0.25)
     drawnow
@@ -309,7 +309,7 @@ end
 
 algo_char = algorithms_char();
 
-algorithm = 2;
+algorithms = 2;
 % The scale value for the pixel alpha values. Higher values will make the
 % pixels more transparent, allowing areas of higher activity to be seen
 % through background noise
