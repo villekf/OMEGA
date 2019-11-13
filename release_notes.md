@@ -24,6 +24,10 @@
 
 - Using smaller number of sinograms than the maximum now works with implementation 2 and 3
 
+- Visualization with N_iter number of iterations now works without errors
+
+- Visualization with vol3d now works without errors
+
 
 ## 1.0
 
