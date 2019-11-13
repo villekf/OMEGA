@@ -22,6 +22,8 @@
 
 - MLEM now works with implementation 2 and 3
 
+- MLEM iterations are now updated with implementation 4
+
 - Using smaller number of sinograms than the maximum now works with implementation 2 and 3
 
 - Visualization with N_iter number of iterations now works without errors
