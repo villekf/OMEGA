@@ -3032,28 +3032,32 @@ else
                             f_Summ_ml = Summ;
                         end
                         if options.mlem
-                            im_vectors.MLEM(:,iter + 1) = MLEM_im(im_vectors.MLEM_apu, f_Summ_ml, epps, rhs);
+                            im_vectors.MLEM_apu = MLEM_im(im_vectors.MLEM_apu, f_Summ_ml, epps, rhs);
+                            im_vectors.MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['MLEM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.MRP && options.OSL_MLEM
                             med = MRP(im_vectors.MLEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_MLEM(:,iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_mrp_osem, med, epps, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_mrp_osem, med, epps, rhs);
+                            im_vectors.MRP_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.quad && options.OSL_MLEM
                             med = Quadratic_prior(im_vectors.MLEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_quad_osem, med, epps, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_quad_osem, med, epps, rhs);
+                            im_vectors.Quad_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL Quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.L && options.OSL_MLEM
                             med = L_filter(im_vectors.MLEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_L_osem, med, epps, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_L_osem, med, epps, rhs);
+                            im_vectors.L_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3061,7 +3065,8 @@ else
                         elseif options.FMH && options.OSL_MLEM
                             med = FMH(im_vectors.MLEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
+                            im_vectors.FMH_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3069,7 +3074,8 @@ else
                         elseif options.weighted_mean && options.OSL_MLEM
                             med = Weighted_mean(im_vectors.MLEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.w_sum, options.med_no_norm);
-                            im_vectors.Weighted_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_weighted_osem, med, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_weighted_osem, med, rhs);
+                            im_vectors.Weighted_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3077,7 +3083,8 @@ else
                         elseif options.TV && options.OSL_MLEM
                             grad = TVpriorFinal(im_vectors.MLEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
                                 options.tr_offsets);
-                            im_vectors.TV_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TV_osem, grad, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TV_osem, grad, rhs);
+                            im_vectors.TV_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL TV sub-iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3085,24 +3092,27 @@ else
                         elseif options.AD && options.OSL_MLEM
                             if iter > 1
                                 med = AD(im_vectors.MLEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                                im_vectors.AD_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_ad_osem, med, epps, rhs);
+                                im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_ad_osem, med, epps, rhs);
                             else
-                                im_vectors.AD_MLEM(:, iter + 1) = OSEM_im(im_vectors.MLEM_apu, rhs, f_Summ_ml(:,osa_iter), epps);
+                                im_vectors.MLEM_apu = OSEM_im(im_vectors.MLEM_apu, rhs, f_Summ_ml(:,osa_iter), epps);
                             end
+                            im_vectors.AD_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.APLS && options.OSL_MLEM
                             grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, 4);
-                            im_vectors.APLS_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_APLS_osem, grad, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_APLS_osem, grad, rhs);
+                            im_vectors.APLS_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.TGV && options.OSL_MLEM
                             grad = TGV(im_vectors.MLEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TGV_osem, grad, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TGV_osem, grad, rhs);
+                            im_vectors.TGV_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3110,7 +3120,8 @@ else
                         elseif options.NLM && options.OSL_MLEM
                             med = NLM(im_vectors.MLEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_MLEM(:, iter + 1) = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_NLM_osem, med, epps, rhs);
+                            im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_NLM_osem, med, epps, rhs);
+                            im_vectors.NLM_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSL NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
