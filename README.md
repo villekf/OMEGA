@@ -163,6 +163,8 @@ ECAT geometry is supported only with ASCII data. ROOT data might also work (unte
 If you get GLIBCXX_3.4.XX/CXXABI_1.3.XX not found error or an error about "undefined reference to dlopen/dlclose/dlsomethingelse" when building or running files, this should be fixed with one of the methods presented here:  
 https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
+If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
+
 If you are experiencing crashes at the end of your computations when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend installing (or building) the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (use the latest version available). This should currently only apply to older versions of ArrayFire.
 
