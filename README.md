@@ -160,7 +160,7 @@ Attenuation correction can be applied only with attenuation images (e.g. CT imag
 
 ECAT geometry is supported only with ASCII data. ROOT data might also work (untested).
 
-OpenCL files might fail to build on Linux systems with an error message about GLIBCXX_3.4.XX not found or with an error about "undefined reference to dlopen/dlclose/dlsomethingelse". This should be fixed with one of the methods presented here:  
+If you get GLIBCXX_3.4.XX/CXXABI_1.3.XX not found error or an error about "undefined reference to dlopen/dlclose/dlsomethingelse" when building or running files, this should be fixed with one of the methods presented here:  
 https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 If you are experiencing crashes at the end of your computations when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend installing (or building) the no-gl AF:  
