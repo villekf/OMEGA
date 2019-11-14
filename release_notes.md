@@ -57,6 +57,8 @@
 
 - Fixed some bugs when compiling the cpp-files with certain compilers 
 
+- Added missing padding.m
+
 - Corrupted ASCII files now work, skipping the corrupted line (with a warning message) 
 
 - ASCII data load is faster on MATLAB R2019a and up 
