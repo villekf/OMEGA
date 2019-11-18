@@ -620,6 +620,10 @@ elseif options.use_machine == 0
                     end
                 end
             end
+            if ascii_ind.module_ind1 > 0 && sum(M(:,ascii_ind.module_ind1)) == 0
+                ascii_ind.module_ind1 = 0;
+                ascii_ind.module_ind2 = 0;
+            end
             
             if partitions > 1
                 if isempty(find(M(:,time_index) > time_intervals(1),1,'last'))
@@ -867,7 +871,7 @@ elseif options.use_machine == 0
             % a detector on crystal ring 5 and second a detector on crystal ring 10)
             % [0 rings - 1]
             if int_loc(1) > 0
-                if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && ascii_ind.linear_multip > 1
+                if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1
                     ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block + floor(M(:,crs_ind1)/cryst_per_block));
                     ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block + floor(M(:,crs_ind2)/cryst_per_block));
                 elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1
