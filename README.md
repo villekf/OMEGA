@@ -77,7 +77,7 @@ The following features are currently present:
 
 ## Installation
 
-You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically, Visual Studio 2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04. MinGW++ also works though the ArrayFire OpenCL reconstructions (implementation 2) is not supported. Octave supports only MinGW++ and as such implementation 2 is not supported on Windows.
+You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically, Visual Studio 2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04. MinGW++ also works though the ArrayFire OpenCL reconstructions (implementation 2) is not supported. Octave supports only MinGW++ and as such implementation 2 is not supported on Windows. MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
 To install the software, either simply extract the package or obtain the source code through git:  
 `git clone https://github.com/villekf/OMEGA`  
