@@ -12,6 +12,10 @@
 
 - Added zero padding support to padding 
 
+- Added experimental arc correction for sinogram data only
+
+- Added ability to increase the sampling rate of sinogram data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
+
 - Fixed some bugs with various file import and export files 
 
 - Fixed bugs with the prepass computations on OpenCL 
@@ -29,6 +33,10 @@
 - Visualization with N_iter number of iterations now works without errors
 
 - Visualization with vol3d now works without errors
+
+- Fixed sinogram mashing
+
+- Fixed pseudo detector sinogram creation
 
 
 ## 1.0
