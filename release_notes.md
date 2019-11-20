@@ -36,6 +36,8 @@
 
 - Fixed sinogram mashing
 
+- Implemention 3 now correctly discards devices with less than 2GB of memory
+
 - Fixed pseudo detector sinogram creation
 
 
