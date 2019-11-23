@@ -71,42 +71,6 @@ void get_detector_coordinates_raw(const uint32_t det_per_ring, const double* x, 
 			detectors.zd = z[loop2];
 		}
 
-		if (loop1 >= pseudos[0]) {
-			ps = 1u;
-			for (uint32_t kk = 0u; kk < pRows; kk++) {
-				if (kk + 1u < pRows) {
-					if (loop1 >= pseudos[kk] && loop1 < pseudos[kk + 1]) {
-						detectors.zs = z[loop1 + ps];
-						break;
-					}
-					else
-						ps++;
-				}
-				else {
-					if (loop1 >= pseudos[kk])
-						detectors.zs = z[loop1 + ps];
-				}
-			}
-		}
-
-		if (loop2 >= pseudos[0]) {
-			ps = 1u;
-			for (uint32_t kk = 0u; kk < pRows; kk++) {
-				if (kk + 1 < pRows) {
-					if (loop2 >= pseudos[kk] && loop2 < pseudos[kk + 1]) {
-						detectors.zd = z[loop2 + ps];
-						break;
-					}
-					else
-						ps++;
-				}
-				else {
-					if (loop2 >= pseudos[kk])
-						detectors.zd = z[loop2 + ps];
-				}
-			}
-		}
-
 		detectors.xs = x[detektorit1 - det_per_ring * (loop1)];
 		detectors.xd = x[detektorit2 - det_per_ring * (loop2)];
 		detectors.ys = y[detektorit1 - det_per_ring * (loop1)];
@@ -131,42 +95,6 @@ void get_detector_coordinates_raw_N(const uint32_t det_per_ring, const double* x
 	else {
 		detectors.zs = z[loop1];
 		detectors.zd = z[loop2];
-	}
-
-	if (loop1 >= pseudos[0]) {
-		ps = 1u;
-		for (uint32_t kk = 0u; kk < pRows; kk++) {
-			if (kk + 1u < pRows) {
-				if (loop1 >= pseudos[kk] && loop1 < pseudos[kk + 1]) {
-					detectors.zs = z[loop1 + ps];
-					break;
-				}
-				else
-					ps++;
-			}
-			else {
-				if (loop1 >= pseudos[kk])
-					detectors.zs = z[loop1 + ps];
-			}
-		}
-	}
-
-	if (loop2 >= pseudos[0]) {
-		ps = 1u;
-		for (uint32_t kk = 0u; kk < pRows; kk++) {
-			if (kk + 1 < pRows) {
-				if (loop2 >= pseudos[kk] && loop2 < pseudos[kk + 1]) {
-					detectors.zd = z[loop2 + ps];
-					break;
-				}
-				else
-					ps++;
-			}
-			else {
-				if (loop2 >= pseudos[kk])
-					detectors.zd = z[loop2 + ps];
-			}
-		}
 	}
 
 	if (lor == 1) {
@@ -1104,6 +1032,12 @@ bool siddon_pre_loop_2D(const double b1, const double b2, const double diff1, co
 	temp1 = voxel_index(pt, diff1, d1, apu_tx);
 	// (27)
 	temp2 = voxel_index(pt, diff2, d2, apu_ty);
+	//if (temp2 > N2) {
+	//	mexPrintf("pt = %f\n", pt);
+	//	mexPrintf("diff2 = %f\n", diff2);
+	//	mexPrintf("d2 = %f\n", d2);
+	//	mexPrintf("apu_ty = %f\n", apu_ty);
+	//}
 
 	// (28)
 	t1u = d1 / fabs(diff1);

@@ -124,7 +124,8 @@ if ~options.use_raw_data
     %mm --> cm
     z=z./10;
     
-    [x,y]=sinogram_coordinates_2D(options);
+    [~, ~, xp, yp] = detector_coordinates(options);
+    [x,y]=sinogram_coordinates_2D(options, xp, yp);
     
     %mm --> cm
     x=x./10;

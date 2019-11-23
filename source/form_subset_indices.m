@@ -152,24 +152,12 @@ if options.use_raw_data == false && options.precompute_lor
         end
     end
     if subsets > 1 || fpbp
-        if options.NSinos ~= options.TotSinos
-            lor_a = (lor(index(1:options.Ndist*options.Nang*options.NSinos)));
-        else
-            lor_a = (lor(index));
-        end
+        lor_a = (lor(index));
         if options.projector_type == 2 && options.implementation == 1
-            if options.NSinos ~= options.TotSinos
-                lor_orth = (lor_orth(index(1:options.Ndist*options.Nang*options.NSinos)));
-            else
-                lor_orth = (lor_orth(index));
-            end
+            lor_orth = (lor_orth(index));
         end
         if options.normalization_correction && options.corrections_during_reconstruction
-            if options.NSinos ~= options.TotSinos
-                options.normalization = options.normalization(index(1:options.Ndist*options.Nang*options.NSinos));
-            else
-                options.normalization = options.normalization(index);
-            end
+            options.normalization = options.normalization(index);
         end
         if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
             if options.partitions > 1
@@ -177,26 +165,16 @@ if options.use_raw_data == false && options.precompute_lor
                     temp = options.SinDelayed{ff};
                     if options.NSinos ~= options.TotSinos
                         temp = temp(:,:,1:options.NSinos);
-                        temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        temp = temp(index);
                     end
+                    temp = temp(index);
                     options.SinDelayed{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.SinDelayed)
-                    if options.NSinos ~= options.TotSinos
-                        options.SinDelayed{1} = options.SinDelayed{1}(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        options.SinDelayed{1} = options.SinDelayed{1}(index);
-                    end
+                    options.SinDelayed{1} = options.SinDelayed{1}(index);
                 else
-                    if options.NSinos ~= options.TotSinos
-                        options.SinDelayed = options.SinDelayed(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        options.SinDelayed = options.SinDelayed(index);
-                    end
+                    options.SinDelayed = options.SinDelayed(index);
                 end
             end
         end
@@ -206,20 +184,16 @@ if options.use_raw_data == false && options.precompute_lor
                     temp = varargin{1}{ff};
                     if options.NSinos ~= options.TotSinos
                         temp = temp(:,:,1:options.NSinos);
-                        temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        temp = temp(index);
                     end
+                    temp = temp(index);
                     varargout{1}{ff} = temp;
                 end
                 clear temp
             else
                 if options.NSinos ~= options.TotSinos
                     varargin{1} = varargin{1}(:,:,1:options.NSinos);
-                    varargout{1} = varargin{1}(index(1:options.Ndist*options.Nang*options.NSinos));
-                else
-                    varargout{1} = varargin{1}(index);
                 end
+                varargout{1} = varargin{1}(index);
             end
         end
         clear lor

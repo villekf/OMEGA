@@ -54,32 +54,47 @@ end
 if options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16
     error('Number of bits used in LMF is more than 16 bits. OMEGA supports only 16 bit detector indices')
 end
-if options.span > options.ring_difference && options.NSinos > 1
+if options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data
     error(['Span value cannot be larger than ring difference (' num2str(options.ring_difference) ')'])
 end
-if options.span < 3
+if options.span < 3 && ~options.use_raw_data
     error('Span value has to be at least 3. Use raw data if you want uncompressed reconstruction')
 end
-if mod(options.span,2) == 0
+if mod(options.span,2) == 0 && ~options.use_raw_data
     error('Span value has to be odd')
 end
-if options.ring_difference >= options.rings
+if options.ring_difference >= options.rings && ~options.use_raw_data
     error(['Ring difference can be at most ' num2str(options.rings-1)])
 end
-if options.ring_difference < 0
+if options.ring_difference < 0 && ~options.use_raw_data
     error('Ring difference has to be at least 0')
 end
-if options.Nang > options.det_w_pseudo/2
+if options.Nang > options.det_w_pseudo/2 && ~options.use_raw_data
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo/2) ')'])
 end
-if options.TotSinos < options.NSinos
+if options.TotSinos < options.NSinos && ~options.use_raw_data
     error(['The numnber of sinograms used (' num2str(options.NSinos) ') is larger than the total number of sinograms (' num2str(options.TotSinos) ')'])
 end
-if options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0
+if (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data
     error('ndist_side can be either 1 or -1')
 end
-if options.ndist_side == 0 && mod(options.Ndist,2) == 0
+if options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data
     error('ndist_side cannot be 0 when Ndist is even')
+end
+if (mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0
+    error('Sampling rate has to be divisible by two and positive or one')
+end
+if options.sampling > 1 && options.use_raw_data
+    warning('Increased sampling rate is not supported for raw data yet')
+end
+if options.sampling > 1 && options.precompute_lor
+    error('Increased sampling rate is not supported for precomputed data')
+end
+if options.arc_correction && options.use_raw_data
+    warning('Arc correction is not supported for raw data yet')
+end
+if options.arc_correction && options.precompute_lor
+    error('Arc correction is not supported for precomputed data')
 end
 if options.partitions < 1
     warning('Number of partitions is less than one. Using one partition.')
@@ -247,7 +262,8 @@ if options.verbose
         disp('Using ROOT data.')
     end
     if ~options.compute_normalization
-    disp(['Using implementation ' num2str(options.implementation)])
+    disp(['Using implementation ' num2str(options.implementation) '.'])
+    reko = {};
     if options.mlem
         if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
             warning('MLEM is not supported with implementation 5 or with implementation 1 without precomputed observation matrix.')
@@ -256,86 +272,86 @@ if options.verbose
                 error('No other reconstruction algorithms selected. Select an ordered subsets algorithm.')
             end
         else
-            disp('MLEM selected.')
             options.subsets = 1;
+            reko = [reko;{'MLEM'}];
         end
     end
     if options.osem
-        disp('OSEM selected.')
+        reko = [reko;{'OSEM'}];
     end
     if options.ramla
-        disp('RAMLA selected.')
+        reko = [reko;{'RAMLA'}];
     end
     if options.mramla
-        disp('MRAMLA selected.')
+        reko = [reko;{'MRAMLA'}];
     end
     if options.rosem
-        disp('ROSEM selected.')
+        reko = [reko;{'ROSEM'}];
     end
     if options.rbi
-        disp('RBI selected.')
+        reko = [reko;{'RBI'}];
     end
     if options.drama
-        disp('DRAMA selected.')
+        reko = [reko;{'DRAMA'}];
     end
     if options.cosem
-        disp('COSEM selected.')
+        reko = [reko;{'COSEM'}];
     end
     if options.acosem
-        disp('ACOSEM selected.')
+        reko = [reko;{'ACOSEM'}];
     end
     if options.ecosem
-        disp('ECOSEM selected.')
+        reko = [reko;{'ECOSEM'}];
     end
     if options.OSL_MLEM && PRIOR
         if options.implementation ~= 2
             warning('MLEM-OSL is not supported with implementations 1, 3 or 4.')
             options.OSL_MLEM = false;
         else
-            disp('MLEM-OSL selected.')
+            reko = [reko;{'MLEM-OSL'}];
         end
     elseif options.OSL_MLEM && ~PRIOR
         warning('MLEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.OSL_MLEM = false;
     end
     if options.OSL_OSEM && PRIOR
-        disp('OSEM-OSL selected.')
+        reko = [reko;{'OSEM-OSL'}];
     elseif options.OSL_OSEM && ~PRIOR
         warning('OSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.OSL_OSEM = false;
     end
     if options.BSREM && PRIOR
-        disp('BSREM selected.')
+        reko = [reko;{'BSREM'}];
     elseif options.BSREM && ~PRIOR
         warning('BSREM selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.BSREM = false;
     end
     if options.MBSREM && PRIOR
-        disp('MBSREM selected.')
+        reko = [reko;{'MBSREM'}];
     elseif options.MBSREM && ~PRIOR
         warning('MBSREM selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.MBSREM = false;
     end
     if options.ROSEM_MAP && PRIOR
-        disp('ROSEM-MAP selected.')
+        reko = [reko;{'ROSEM-MAP'}];
     elseif options.ROSEM_MAP && ~PRIOR
         warning('ROSEM_MAP selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.ROSEM_MAP = false;
     end
     if options.RBI_MAP && PRIOR
-        disp('RBI-MAP selected.')
+        reko = [reko;{'RBI-MAP'}];
     elseif options.RBI_MAP && ~PRIOR
         warning('RBI_MAP selected, but no prior has been selected. No MAP reconstruction will be performed.')
         options.RBI_MAP = false;
     end
     if any(options.COSEM_MAP) && PRIOR
         if options.COSEM_MAP == 1 && PRIOR
-            disp('ACOSEM-OSL selected.')
+            reko = [reko;{'ACOSEM-OSL'}];
         elseif options.COSEM_MAP == 1 && ~PRIOR
             warning('ACOSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
             options.COSEM_MAP = 0;
         elseif options.COSEM_MAP == 2 && PRIOR
-            disp('COSEM-OSL selected.')
+            reko = [reko;{'COSEM-OSL'}];
         elseif options.COSEM_MAP == 2 && ~PRIOR
             warning('COSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
             options.COSEM_MAP = 0;
@@ -343,37 +359,55 @@ if options.verbose
             error('Unsupported COSEM-MAP method selected!')
         end
     end
+    for kk = 1 : length(reko)
+        if kk == 1
+            dispi = reko{kk};
+        else
+            dispi = [dispi, ', ' reko{kk}];
+        end
+        if kk == length(reko) && length(reko) > 1
+            dispi = [dispi, ' reconstruction methods selected.'];
+        elseif kk == length(reko) && length(reko) == 1
+            dispi = [dispi, ' reconstruction method selected.'];
+        end
+    end
+    if ~isempty(reko)
+        disp(dispi)
+    else
+        error('No reconstruction method selected')
+    end
+    priori = {};
     if options.MRP && MAP
-        disp('MRP selected.')
+        priori = [priori;{'MRP'}];
     elseif options.MRP && ~MAP
         warning('MRP selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.MRP = false;
     end
     if options.quad && MAP
-        disp('Quadratic prior selected.')
+        priori = [priori;{'Quadratic prior'}];
     elseif options.quad && ~MAP
         warning('Quadratic prior selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.quad = false;
     end
     if options.L && MAP
-        disp('L-filter selected.')
+        priori = [priori;{'L-filter'}];
     elseif options.L && ~MAP
         warning('L-filter selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.L = false;
     end
     if options.FMH && MAP
-        disp('FMH selected.')
+        priori = [priori;{'FMH'}];
     elseif options.FMH && ~MAP
         warning('FMH selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.FMH = false;
     end
     if options.weighted_mean && MAP
         if options.mean_type == 1
-            disp('Weighted (arithmetic) mean selected.')
+            priori = [priori;{'Weighted (arithmetic) mean'}];
         elseif options.mean_type == 2
-            disp('Weighted (harmonic) mean selected.')
+            priori = [priori;{'Weighted (harmonic) mean'}];
         elseif options.mean_type == 3
-            disp('Weighted (geometric) mean selected.')
+            priori = [priori;{'Weighted (geometric) mean'}];
         else
             error('Unsupported mean type selected.')
         end
@@ -384,19 +418,19 @@ if options.verbose
     if options.TV && MAP
         if options.TV_use_anatomical
             if options.TVtype == 1
-                disp('Anatomically weighted TV selected.')
+                priori = [priori;{'Anatomically weighted TV'}];
             elseif options.TVtype == 2
-                disp('Joint TV selected.')
+                priori = [priori;{'Joint TV'}];
             elseif options.TVtype == 3
-                disp('Weighted joint TV selected.')
+                priori = [priori;{'Weighted joint TV'}];
             else
                 error('Unsupported TV type selected.')
             end
         else
             if options.TVtype == 1 || options.TVtype == 2
-                disp('TV selected.')
+                priori = [priori;{'TV'}];
             elseif options.TVtype == 3
-                disp('Weighted TV selected.')
+                priori = [priori;{'Weighted TV'}];
             else
                 error('Unsupported TV type selected.')
             end
@@ -407,41 +441,62 @@ if options.verbose
     end
     if options.AD && MAP
         if options.FluxType > 2 || options.FluxType < 1
-            error('FluxType has to be either 1 or 2')
+            error('FluxType has to be either 1 or 2.')
         end
         if (options.DiffusionType > 2 || options.DiffusionType < 1) && options.implementation == 2
-            error('DiffusionType has to be either 1 or 2')
+            error('DiffusionType has to be either 1 or 2.')
         end
-        disp('AD selected.')
+        priori = [priori;{'AD-MRP'}];
     elseif options.AD && ~MAP
-        warning('AD selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
+        warning('AD-MRP selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.AD = false;
     end
     if options.APLS && MAP
-        disp('APLS selected.')
+        priori = [priori;{'APLS'}];
     elseif options.APLS && ~MAP
         warning('APLS selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.APLS = false;
     end
     if options.TGV && MAP
-        disp('TGV selected.')
+        priori = [priori;{'TGV'}];
     elseif options.TGV && ~MAP
         warning('TGV selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.TGV = false;
     end
     if options.NLM && MAP
         if options.implementation == 2
-            warning('NLM is not supported with OpenCL reconstruction')
+            warning('NLM is not supported with OpenCL reconstruction.')
 %             options.NLM = false;
 % %         else
 % %             warning('NLM selected. NLM is an experimental feature.')
         end
+        priori = [priori;{'NLM'}];
     elseif options.NLM && ~MAP
         warning('NLM selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
         options.NLM = false;
     end
+    if isfield(options, 'custom') && options.custom && MAP
+        priori = [priori;{'Custom'}];
+    elseif ~MAP && isfield(options, 'custom') && options.custom
+        error('Custom prior selected, but no MAP-method selected')
+    end
+    for kk = 1 : length(priori)
+        if kk == 1
+            dispi2 = priori{kk};
+        else
+            dispi2 = [dispi2, ', ' priori{kk}];
+        end
+        if kk == length(priori) && length(priori) > 1
+            dispi2 = [dispi2, ' priors selected.'];
+        elseif kk == length(priori) && length(priori) == 1
+            dispi2 = [dispi2, ' prior selected.'];
+        end
+    end
+    if ~isempty(priori)
+        disp(dispi2)
+    end
     if ~OS && ~MAP && ~options.mlem && ~options.only_sinos
-        error('No reconstruction algorithm selected')
+        error('No reconstruction algorithm selected.')
     end
     if options.precompute_lor
         
@@ -467,42 +522,46 @@ if options.verbose
         disp(dispi)
     end
     if options.attenuation_correction
-        disp('Attenuation correction ON')
+        disp('Attenuation correction ON.')
     end
     if options.randoms_correction
         dispi = 'Randoms correction ON';
         if options.variance_reduction
-            dispi = [dispi, ' with variance reduction'];
+            dispi = [dispi, ' with variance reduction.'];
             if options.randoms_smoothing
-                dispi = [dispi, ' and smoothing'];
+                dispi = [dispi, ' and smoothing.'];
             end
         elseif options.randoms_smoothing
-            dispi = [dispi, ' with smoothing'];
+            dispi = [dispi, ' with smoothing.'];
         end
         disp(dispi)
     end
     if options.scatter_correction
         dispi = 'Scatter correction ON';
         if options.scatter_smoothing
-            dispi = [dispi, ' with smoothing'];
+            dispi = [dispi, ' with smoothing.'];
         end
         disp(dispi)
     end
     end
     if options.use_raw_data
-        disp('Using raw list-mode data')
+        disp('Using raw list-mode data.')
     else
-        disp('Using sinogram data')
+        disp('Using sinogram data.')
     end
     if options.normalization_correction && ~options.compute_normalization
-        disp('Normalization correction ON')
+        disp('Normalization correction ON.')
     elseif options.normalization_correction && options.compute_normalization
         warning('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
         options.normalization_correction = false;
     elseif options.compute_normalization
-        disp('Computing normalization coefficients')
+        disp('Computing normalization coefficients.')
     end
     if options.compute_normalization && sum(options.normalization_options) == 0
-        error('Normalization computation selected, but no normalization components selected')
+        error('Normalization computation selected, but no normalization components selected.')
     end
+    if options.arc_correction && ~options.use_raw_data
+        disp('Arc correction ON.')
+    end
+    disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.'])
 end

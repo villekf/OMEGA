@@ -237,7 +237,7 @@ options.Nang = options.det_per_ring/2;
 %%% Specify the amount of sinograms contained on each segment
 % (this should total the total number of sinograms)
 options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
-if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
     options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
@@ -250,6 +250,14 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = 1;
+%%% Increase the sampling rate of the sinogram
+% Increasing this interpolates additional rows to the sinogram
+% Can be used to prevent aliasing artifacts
+% NOTE: Has to be either 1 or divisible by two
+options.sampling = 1;
+%%% Interpolation method used for sampling rate increase
+% All the methods are available that are supported by interp1
+options.sampling_interpolation_method = 'linear';
 %%% Fill the gaps caused by pseudo detectors?
 % NOTE: Applicable only if options.pseudot > 0
 options.fill_sinogram_gaps = false;
@@ -372,6 +380,21 @@ options.normalization_correction = false;
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Apply arc correction
+% NOTE: Arc correction is an experimental feature. It is currently
+% relatively slow and supports only sinogram data. Generally it is not
+% recommended to use arc correction (Inveon data is an exception).
+% Uses parallel computing toolbox if it is available (parfor)
+options.arc_correction = false;
+%%% Arc correction interpolation method
+% The interpolation method used to interpolate the arc corrected sinogram.
+% Available methods are those supported by scatteredInterpolant and
+% griddata. If an interpolation method is used which is not supported by
+% scatteredInterpolant then griddata will be used instead
+% NOTE: griddata is used if scatteredInterpolant is not found
+options.arc_interpolation = 'linear';
  
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
@@ -517,7 +540,7 @@ options.force_build = false;
 % heterogeneous computing is used) 
 % Alternatively, set this to 0 to use only a single device on the specific
 % platform (the one with the highest memory count will be used)
-options.cpu_to_gpu_factor = 2.4;
+options.cpu_to_gpu_factor = 2.5;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
@@ -544,11 +567,11 @@ options.tube_width_z = options.cr_pz;
 options.accuracy_factor = 5;
 %%% Number of rays
 % Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
-options.n_rays = 5;
+options.n_rays = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 1;
+options.Niter = 4;
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
 options.subsets = 8;
 %%% Subset type (n = subsets)
@@ -591,7 +614,7 @@ options.use_fsparse = false;
 % E.g. if set to true the MRP prior is (x - median(x))
 % E.g. if set to false the MRP prior is (x - median(x)) / median(x)
 options.med_no_norm = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  
@@ -996,7 +1019,7 @@ options.NiterTGV = 30;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for NLM with OSL-OSEM
-options.beta_NLM_osem = 0.025;
+options.beta_NLM_osem = 0.005;
 %%% Regularization parameter for NLM with MBSREM
 options.beta_NLM_mbsrem = 0.05;
 %%% Regularization parameter for NLM with BSREM

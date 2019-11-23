@@ -26,26 +26,26 @@ function [varargout] = form_sinograms(options)
 %   SinRandoms = Randoms coincidence sinogram (GATE only)
 %
 % See also michelogram_formation, load_data, sinogram_coordinates_2D,
-% sinogram_coordinates_3D
+% sinogram_coordinates_3D, gapFilling, arcCorrection
 
 
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2019  Ville-Veikko Wettenhovi
 %
-% This program is free software: you can redistribute it and/or modify
-% it under the terms of the GNU General Public License as published by
-% the Free Software Foundation, either version 3 of the License, or
-% (at your option) any later version.
+% This program is free software: you can redistribute it and/or modify it
+% under the terms of the GNU General Public License as published by the
+% Free Software Foundation, either version 3 of the License, or (at your
+% option) any later version. 
 %
-% This program is distributed in the hope that it will be useful,
-% but WITHOUT ANY WARRANTY; without even the implied warranty of
-% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-% GNU General Public License for more details.
+% This program is distributed in the hope that it will be useful, but
+% WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+% Public License for more details. 
 %
-% You should have received a copy of the GNU General Public License
-% along with this program. If not, see <https://www.gnu.org/licenses/>.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% You should have received a copy of the GNU General Public License along
+% with this program. If not, see <https://www.gnu.org/licenses/>. 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargout > 5
     error('Too many output arguments')
@@ -72,6 +72,15 @@ if options.use_machine < 2
     tot_time = options.tot_time;
     
     ringsp = rings + sum(pseudot);
+    
+    temp = pseudot;
+    if ~isempty(temp) && temp > 0
+        for kk = uint32(1) : temp
+            pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
+        end
+    elseif temp == 0
+        pseudot = [];
+    end
     
     variableList = {'SinM','SinTrues','SinScatter','SinRandoms','SinDelayed','SinSC'};
     
@@ -103,7 +112,7 @@ if options.use_machine < 2
             else
                 load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_listmode.mat'], 'delayed_coincidences')
             end
-            delayed_coincidences = initial_michelogram(options, delayed_coincidences);
+            delayed_coincidences = initial_michelogram(options, delayed_coincidences, 'delays');
         end
     else
         if exist( 'options.coincidences' , 'var') == 0
@@ -151,7 +160,7 @@ if options.use_machine < 2
                     load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'true_coincidences')
                 end
             end
-            true_coincidences = initial_michelogram(options, true_coincidences);
+            true_coincidences = initial_michelogram(options, true_coincidences, 'trues');
             options.true_coincidences = true_coincidences;
             clear true_coincidences
         end
@@ -177,7 +186,7 @@ if options.use_machine < 2
                     load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'scattered_coincidences')
                 end
             end
-            scattered_coincidences = initial_michelogram(options, scattered_coincidences);
+            scattered_coincidences = initial_michelogram(options, scattered_coincidences, 'scatter');
         end
         if options.store_randoms
             if options.partitions == 1
@@ -201,7 +210,7 @@ if options.use_machine < 2
                     load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'random_coincidences')
                 end
             end
-            random_coincidences = initial_michelogram(options, random_coincidences);
+            random_coincidences = initial_michelogram(options, random_coincidences, 'randoms');
             options.random_coincidences = random_coincidences;
             clear random_coincidences
         end
@@ -228,10 +237,10 @@ if options.use_machine < 2
                     load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'delayed_coincidences')
                 end
             end
-            delayed_coincidences = initial_michelogram(options, delayed_coincidences);
+            delayed_coincidences = initial_michelogram(options, delayed_coincidences, 'delays');
         end
     end
-    options.coincidences = initial_michelogram(options, options.coincidences);
+    options.coincidences = initial_michelogram(options, options.coincidences, 'prompts');
     
     if options.verbose
         disp('Initial Michelogram formed')
@@ -239,12 +248,8 @@ if options.use_machine < 2
         tic
     end
     
-% if exist([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'], 'file') == 2
-%     load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'i', 'j', 'accepted_lors');
-% else
-    [~, ~, i, j, accepted_lors] = sinogram_coordinates_2D(options);
-%     load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'i', 'j', 'accepted_lors');
-% end
+    [~, ~, xp, yp] = detector_coordinates(options);
+    [~, ~, i, j, accepted_lors] = sinogram_coordinates_2D(options, xp, yp);
     
     
     if partitions > 1
@@ -304,11 +309,11 @@ if options.use_machine < 2
         % Create the Michelograms
         tic
         for ii=1:ringsp
-            if any(ii==pseudot)
+            if any(ii == pseudot)
                 continue
             end
             for jj=1:ringsp
-                if any(jj==pseudot)
+                if any(jj == pseudot)
                     continue
                 end
                 if issparse(P1{ii,jj})
@@ -392,26 +397,10 @@ if options.use_machine < 2
         % Fill sinogram gaps if pseudo detectors are present and the user
         % has seleced gap filling
         if options.fill_sinogram_gaps && sum(pseudot) > 0
-            % load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'gaps')
-            [~, ~, ~, ~, ~, ~, gaps] = sinogram_coordinates_2D(options);
-            if strcmp('fillmissing',options.gap_filling_method)
-                for kk = 1 : size(Sin,3)
-                    apu = Sin(:,:,kk);
-                    apu(gaps) = NaN;
-                    Sin(:,:,kk) = fillmissing(apu, options.interpolation_method_fillmissing);
-                end
-            elseif strcmp('inpaint_nans',options.gap_filling_method)
-                for kk = 1 : size(Sin,3)
-                    apu = Sin(:,:,kk);
-                    apu(gaps) = NaN;
-                    Sin(:,:,kk) = inpaint_nans(apu, options.interpolation_method_inpaint);
-                end
-            else
-                warning('Unsupported gap filling method! No gap filling was performed!')
+            if llo == 1
+                gaps = [];
             end
-            if options.verbose
-                disp('Gap filling completed')
-            end
+            [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
         end
         if partitions > 1
             raw_SinM{llo} = Sin;

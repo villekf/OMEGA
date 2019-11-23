@@ -34,7 +34,8 @@ if options.use_raw_data
     x = single(x(varargin{1}(ind,:)));
     y = single(y(varargin{1}(ind,:)));
 else
-    [x,y] = sinogram_coordinates_2D(options);
+    [~, ~, xp, yp] = detector_coordinates(options);
+    [x,y] = sinogram_coordinates_2D(options, xp, yp);
     sino_length = options.Nang*options.Ndist;
 end
 % Lengths of the triangle sides

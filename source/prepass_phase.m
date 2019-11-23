@@ -1,5 +1,5 @@
 function [options, D, C_co, C_aco, C_osl, Amin, E] = prepass_phase(options, pituus, index, SinM, pseudot, x, y, xx, yy, z_det, dz, dx, dy, bz, bx, by, NSlices, zmax, size_x, block1, blocks,...
-    normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center)
+    normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center, ind_size)
 %PREPASS_PHASE Prepass step for various priors and algorithms
 % Computes the necessary variables (e.g. weights) for certain
 % algorithms/priors if they have been selected

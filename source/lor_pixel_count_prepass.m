@@ -63,7 +63,7 @@ FOVay=double(FOVay);
 % Axial FOV (mm)
 axial_fov = double(axial_fov);
 % Kristallien lukumäärä
-blocks=uint32(rings + length(pseudot));
+blocks=uint32(rings + length(pseudot) - 1);
 % ensimmäinen kristalli
 block1=uint32(1);
 
@@ -84,14 +84,19 @@ folder = strrep(folder, '\','/');
 if (options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
     % Detector pair (LOR) vector
     LL = form_detector_pairs_raw(rings, det_per_ring);
-    [x, y, ~, ~] = detector_coordinates(options);
     if sum(pseudot) == 0
         pseudot = [];
     end
-    z_length = double(blocks) * options.cr_pz;
-    zl = z_length - axial_fov;
-    z = linspace(-zl/2, z_length-zl/2, blocks + 1);
-    z = z(2:end) - options.cr_pz/2;
+    [x, y, z] = get_coordinates(options, blocks);
+    
+    if options.use_raw_data && sum(pseudot) > 0
+        z(pseudot) = [];
+    end
+%     [x, y, ~, ~] = detector_coordinates(options);
+%     z_length = double(blocks) * options.cr_pz;
+%     zl = z_length - axial_fov;
+%     z = linspace(-zl/2, z_length-zl/2, blocks + 1);
+%     z = z(2:end) - options.cr_pz/2;
     blocks = uint32(rings);
     if min(min(z)) == 0
         z = z + (axial_fov - max(max(z)))/2;
@@ -191,14 +196,19 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
         % Detector pair (LOR) vector
         LL = form_detector_pairs_raw(rings, det_per_ring);
-        [x, y, ~, ~] = detector_coordinates(options);
+%         [x, y, ~, ~] = detector_coordinates(options);
         if sum(pseudot) == 0
             pseudot = [];
         end
-        z_length = single(blocks) * options.cr_pz;
-        zl = z_length - axial_fov;
-        z = linspace(-zl/2, z_length-zl/2, blocks + 1);
-        z = z(2:end) - options.cr_pz/2;
+        [x, y, z] = get_coordinates(options, blocks);
+        
+        if options.use_raw_data && sum(pseudot) > 0
+            z(pseudot) = [];
+        end
+%         z_length = single(blocks) * options.cr_pz;
+%         zl = z_length - axial_fov;
+%         z = linspace(-zl/2, z_length-zl/2, blocks + 1);
+%         z = z(2:end) - options.cr_pz/2;
         blocks = uint32(rings);
         if min(min(z)) == 0
             z = z + (axial_fov - max(max(z)))/2;
@@ -269,8 +279,7 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
 end
 %% Sinogram data, non-OpenCL
 if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
-    [x,y] = sinogram_coordinates_2D(options);
-    z = sinogram_coordinates_3D(options);
+    [x, y, z] = get_coordinates(options, blocks);
     
     
     if min(min(z)) == 0
@@ -368,9 +377,7 @@ end
 if (~options.use_raw_data && (options.implementation == 2 || options.implementation == 3 || options.implementation == 5)) ...
         || options.precompute_all
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
-        [x,y] = sinogram_coordinates_2D(options);
-        z = sinogram_coordinates_3D(options);
-        
+        [x, y, z] = get_coordinates(options, blocks);
         
         if min(min(z)) == 0
             z = z + (axial_fov - max(max(z)))/2;

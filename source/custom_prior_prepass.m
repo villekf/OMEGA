@@ -1280,7 +1280,7 @@ end
 
 if custom
     [options, options.D, options.C_co, options.C_aco, options.C_osl, options.Amin, options.E] = prepass_phase(options, options.pituus, options.index, options.SinM, options.pseudot, options.x, options.y, options.xx, options.yy, options.z_det, options.dz, options.dx, options.dy, options.bz, options.bx, options.by, options.NSlices, options.zmax, options.size_x, options.block1, options.blocks,...
-        options.normalization_correction, options.randoms_correction, options.xy_index, options.z_index, options.lor_a, options.lor_orth, options.summa, options.LL, options.is_transposed, options.x_center, options.y_center, options.z_center);
+        options.normalization_correction, options.randoms_correction, options.xy_index, options.z_index, options.lor_a, options.lor_orth, options.summa, options.LL, options.is_transposed, options.x_center, options.y_center, options.z_center, 0);
     
     
     if options.MBSREM || options.mramla

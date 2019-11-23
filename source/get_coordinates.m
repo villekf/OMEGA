@@ -32,12 +32,17 @@ function [x, y, z] = get_coordinates(options, rings)
 
 
 if options.use_raw_data == false
-    [x, y] = sinogram_coordinates_2D(options);
+    [~, ~, xp, yp] = detector_coordinates(options);
+    [x, y] = sinogram_coordinates_2D(options, xp, yp);
     z = sinogram_coordinates_3D(options);
     if options.NSinos ~= options.TotSinos
         z = z(1:options.NSinos,:);
     end
 else
+    if options.det_per_ring < options.det_w_pseudo
+        options.offangle = options.offangle / options.det_w_pseudo;
+        options.offangle = options.offangle * options.det_per_ring;
+    end
     [x, y] = detector_coordinates(options);
     
     z_length = double(rings) * options.cr_pz;

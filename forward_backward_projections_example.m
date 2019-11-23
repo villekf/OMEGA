@@ -109,6 +109,14 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = 1;
+%%% Increase the sampling rate of the sinogram
+% Increasing this interpolates additional rows to the sinogram
+% Can be used to prevent aliasing artifacts
+% NOTE: Has to be either 1 or divisible by two
+options.sampling = 1;
+%%% Interpolation method used for sampling rate increase
+% All the methods are available that are supported by interp1
+options.sampling_interpolation_method = 'linear';
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -122,19 +130,50 @@ options.ndist_side = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
  
-%%% Randoms correction
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Randoms correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, stores the delayed coincidences during data load and
 % later corrects for randoms during sinogram formation (if sinogram data)
 % or during data load (if raw list-mode data)
 options.randoms_correction = false;
-%%% Scatter correction
+
+%%% Variance reduction
+% If set to true, variance reduction will be performed to delayed
+% coincidence (randoms corrections) data if randoms correction is selected
+options.variance_reduction = false;
+
+%%% Randoms smoothing
+% If set to true, applies a 8x8 moving mean smoothing to the delayed
+% coincidence data. This is applied on all cases (randoms correction data
+% is smoothed before subtraction of before reconstruction)
+% NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
+% function
+options.randoms_smoothing = false;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, will prompt the user to load the scatter sinogram/raw
 % data. Corrects for scatter during sinogram formation (if sinogram data)
 % or during data load (if raw list-mode data)
 % NOTE: Scatter data is not created by this software and as such must be
 % provided by the user
 options.scatter_correction = false;
-%%% Attenuation correction
+
+%%% Scatter normalization
+% If set to true, normalizes the scatter coincidences data before
+% reconstruction. This applies only if the below
+% options.corrections_during_reconstruction = true, otherwise it will have
+% no effect (scatter correction is applied before the sinogram/raw data is
+% normalized).
+options.normalize_scatter = false;
+
+%%% Scatter smoothing
+% If set to true, applies a 8x8 moving mean smoothing to the scattered
+% coincidences data. This is applied on all cases (scatter correction data
+% is smoothed before subtraction of before reconstruction)
+% NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
+% function
+options.scatter_smoothing = false;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%
 % Image-based attenuation correction
 % Include attenuation correction from images (e.g. CT-images) (for this you
 % need attenuation images of each slice correctly rotated and scaled for
@@ -145,7 +184,8 @@ options.attenuation_correction = false;
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image
 options.attenuation_datafile = '';
-%%% Normalization correction
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, normalization correction is applied.
 options.normalization_correction = false;
 %%% Use user-made normalization
@@ -155,7 +195,23 @@ options.normalization_correction = false;
 % User will be prompted for the location of the file either during sinogram
 % formation or before image reconstruction (see below)
 options.use_user_normalization = false;
-%%% Corrections during reconstruction
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Apply arc correction
+% NOTE: Arc correction is an experimental feature. It is currently
+% relatively slow and supports only sinogram data. Generally it is not
+% recommended to use arc correction (Inveon data is an exception).
+% Uses parallel computing toolbox if it is available (parfor)
+options.arc_correction = false;
+%%% Arc correction interpolation method
+% The interpolation method used to interpolate the arc corrected sinogram.
+% Available methods are those supported by scatteredInterpolant and
+% griddata. If an interpolation method is used which is not supported by
+% scatteredInterpolant then griddata will be used instead
+% NOTE: griddata is used if scatteredInterpolant is not found
+options.arc_interpolation = 'linear';
+
+%%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
 % reconstruction step, otherwise the corrections are performed to the
 % sinogram/raw data before reconstruction.
@@ -202,7 +258,7 @@ options.name = 'cylpet_example';
 % This should be done when using data from a certain machine the first time
 % as it can speed up reconstruction. Especially recommended for raw
 % list-mode data.
-options.precompute = true;
+options.precompute = false;
 %%% Use raw list mode data
 % This means that the data is used as is without any sinogramming and thus
 % without any "compression"
@@ -242,7 +298,7 @@ options.verbose = true;
 % NOTE: Only the below ones are available in forward/backward projections
 % 1 = Reconstructions in MATLAB (projector in a MEX-file)
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only)
-options.implementation = 4;
+options.implementation = 3;
 % Implementations 2 and 3 ONLY
 %%% Device used (this is applicable to implementation 2), or platform used
 % (implementation 3)
@@ -257,13 +313,6 @@ options.implementation = 4;
 % (uncommented) as well:
 % clear mex
 options.use_device = 0;
-% Implementation 2 ONLY
-%%% Force the (re)building of OpenCL binaries 
-% If set to true, the OpenCL binaries are rebuilt even if they have been
-% previously built
-% Use this once if you update your drivers or there are changes made to the
-% .cl-files
-options.force_build = false;
 % Implementation 3 ONLY
 %%% How many times more measurements/LORs are in the GPU part (applicable if
 % heterogenous computing is used) 
@@ -296,7 +345,7 @@ options.tube_width_z = options.cr_pz;
 options.accuracy_factor = 5;
 %%% Number of rays
 % Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
-options.n_rays = 5;
+options.n_rays = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECNSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -332,13 +381,27 @@ options.epps = 1e-8;
 % manually downloaded and installed.
 % Download from: 
 % https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
-options.use_Shuffle = true;
+options.use_Shuffle = false;
 %%% Use fast sparse
 % Not included in OMEGA, needs to be manually downloaded and installed.
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to implementation 1 when precompute_lor is false.
-options.use_fsparse = true;
+options.use_fsparse = false;
  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+%%% Implementation 3
+% Uncomment the below line and run it to determine the available platforms,
+% their respective numbers and device numbers
+% OpenCL_device_info();
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -353,6 +416,9 @@ end
 %% Forward and backward projections (and normalization constant)
 
 % Get the subset indices for the current subset type
+% Index contains the subset indices (which measurements belong to each
+% subset)
+% n_meas the number of measurements in each subset
 [index, n_meas, options.subsets] = index_maker(options.Nx, options.Ny, options.Nz, options.subsets, options.use_raw_data, ...
     options.machine_name, options, options.Nang, options.Ndist, options.TotSinos, options.NSinos);
 

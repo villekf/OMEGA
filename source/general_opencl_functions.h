@@ -40,6 +40,26 @@ inline float e_norm(const float x, const float y, const float z) {
 }
 
 // Compute the linear weight for the current voxel
+//inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
+//	const float xp, const float yp, const float zp) {
+//
+//	float x1, y1, z1, x0, y0, z0;
+//
+//	x0 = xp - xs;
+//	y0 = yp - ys;
+//	z0 = zp - zs;
+//
+//	// Cross product
+//	x1 = yl * z0 - zl * y0;
+//	y1 = zl * x0 - xl * z0;
+//	z1 = xl * y0 - yl * x0;
+//
+//	const float normi = e_norm(x1, y1, z1);
+//
+//	return (1.f - normi / crystal_size_z);
+//}
+
+// Gaussian weight
 inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 	const float xp, const float yp, const float zp) {
 
@@ -56,28 +76,13 @@ inline float compute_element_orth_3D(const float xs, const float ys, const float
 
 	const float normi = e_norm(x1, y1, z1);
 
-	return (1.f - normi / crystal_size_z);
-}
+	float gauss = 0.f;
 
-// Gaussian weight
-//inline float compute_element_orth_3D_gauss(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
-//	const float xp, const float yp, const float zp) {
-//
-//	float x1, y1, z1, x0, y0, z0;
-//
-//	x0 = xp - xs;
-//	y0 = yp - ys;
-//	z0 = zp - zs;
-//
-//	// Cross product
-//	x1 = yl * z0 - zl * y0;
-//	y1 = zl * x0 - xl * z0;
-//	z1 = xl * y0 - yl * x0;
-//
-//	const float normi = e_norm(x1, y1, z1);
-//
-//	return (1.f - native_exp(-(normi * normi) / (2 * pown(crystal_size_z / 2.35482f, 2))));
-//}
+	if (normi < crystal_size_z)
+		gauss = (1.f - native_exp(-(normi * normi) / (2 * (crystal_size_z / 2.35482f) * (crystal_size_z / 2.35482f))));
+
+	return gauss;
+}
 
 inline uint compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
 	uint local_ind = tempi * d_N + tempijk + convert_uint_sat(tempk) * Nyx;
@@ -123,45 +128,6 @@ inline void get_detector_coordinates_raw(const __global float *d_x, const __glob
 		*zs = d_zdet[loop1];
 		*zd = d_zdet[loop2];
 	}
-	// if a pseudo ring is present, move the z-detector coordinate beyond the pseudo ring (z_det includes also pseudo coordinates)
-	if (loop1 >= d_pseudos[0]) {
-		// loop through all the pseudo rings
-		for (uint kk = 0u; kk < d_pRows; kk++) {
-			ps = 1u;
-			// First pseudo rings
-			if (kk + 1u < d_pRows) {
-				if (loop1 >= d_pseudos[kk] && loop1 < d_pseudos[kk + 1u]) {
-					*zs = d_zdet[loop1 + ps];
-					break;
-				}
-				// move to next
-				else
-					ps++;
-			}
-			else {
-				// Last pseudo ring passed
-				if (loop1 >= d_pseudos[kk])
-					*zs = d_zdet[loop1 + ps];
-			}
-		}
-	}
-	if (loop2 >= d_pseudos[0]) {
-		for (uint kk = 0u; kk < d_pRows; kk++) {
-			ps = 1u;
-			if (kk + 1u < d_pRows) {
-				if (loop2 >= d_pseudos[kk] && loop2 < d_pseudos[kk + 1u]) {
-					*zd = d_zdet[loop2 + ps];
-					break;
-				}
-				else
-					ps++;
-			}
-			else {
-				if (loop2 >= d_pseudos[kk])
-					*zd = d_zdet[loop2 + ps];
-			}
-		}
-	}
 	// Get the current x- and y-detector coordinates
 	*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
 	*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
@@ -190,45 +156,6 @@ inline void get_detector_coordinates_raw_multiray(const __global float* d_x, con
 	else {
 		*zs = d_zdet[loop1];
 		*zd = d_zdet[loop2];
-	}
-	// if a pseudo ring is present, move the z-detector coordinate beyond the pseudo ring (z_det includes also pseudo coordinates)
-	if (loop1 >= d_pseudos[0]) {
-		// loop through all the pseudo rings
-		for (uint kk = 0u; kk < d_pRows; kk++) {
-			ps = 1u;
-			// First pseudo rings
-			if (kk + 1u < d_pRows) {
-				if (loop1 >= d_pseudos[kk] && loop1 < d_pseudos[kk + 1u]) {
-					*zs = d_zdet[loop1 + ps];
-					break;
-				}
-				// move to next
-				else
-					ps++;
-			}
-			else {
-				// Last pseudo ring passed
-				if (loop1 >= d_pseudos[kk])
-					* zs = d_zdet[loop1 + ps];
-			}
-		}
-	}
-	if (loop2 >= d_pseudos[0]) {
-		for (uint kk = 0u; kk < d_pRows; kk++) {
-			ps = 1u;
-			if (kk + 1u < d_pRows) {
-				if (loop2 >= d_pseudos[kk] && loop2 < d_pseudos[kk + 1u]) {
-					*zd = d_zdet[loop2 + ps];
-					break;
-				}
-				else
-					ps++;
-			}
-			else {
-				if (loop2 >= d_pseudos[kk])
-					* zd = d_zdet[loop2 + ps];
-			}
-		}
 	}
 	// Get the current x- and y-detector coordinates
 	*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];

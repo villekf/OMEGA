@@ -1650,7 +1650,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 		return status;
 	}
 	// Get device IDs
-	cl_device_id * devices2 = (cl_device_id*)alloca(size);
+	cl_device_id * devices2 = (cl_device_id*)alloca(size / sizeof(cl_device_id));
 	status = clGetContextInfo(context, CL_CONTEXT_DEVICES, size, devices2, NULL);
 	if (status != CL_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
@@ -1677,7 +1677,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 					std::cerr << getErrorString(status) << std::endl;
 					return status;
 				}
-				if ((mem * 1024ULL * 1024ULL) < 2000ULL || (kerroin == 0.f && mem < mem_max)) {
+				if ((mem / (1024ULL * 1024ULL)) < 2000ULL || (kerroin == 0.f && mem < mem_max)) {
 					ignores[i] = 1;
 					n_ignores++;
 				}

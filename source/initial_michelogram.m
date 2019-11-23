@@ -1,8 +1,8 @@
-function coincidences = initial_michelogram(options, coincidences)
+function coincidences = initial_michelogram(options, coincidences, type)
 %% Form initial raw Michelograms
 % Forms the initial raw Michelograms from the raw list-mode data. I.e. a
 % Michelogram without any spanning yet applied. Used by form_sinograms in
-% forming the actual sinograms. 
+% forming the actual sinograms.
 %
 % INPUTS:
 %   options = Machine properties.
@@ -10,7 +10,9 @@ function coincidences = initial_michelogram(options, coincidences)
 %   step. The cell matrix contains n vectors, where n is the number of time
 %   steps (i.e. options.partitions). The size of the (sparse) vectors is
 %   the lower triangular part of a options.detectors x  options.detectors
-%   matrix, with the diagonal included. 
+%   matrix, with the diagonal included.
+%   type = The type of input data (trues, randoms, scatter, delayes or
+%   prompts)
 %
 % OUTPUT:
 %   coincidences = A cell matrix containing the raw Michelogram for each
@@ -49,17 +51,20 @@ pseudot = options.pseudot;
 
 
 temp = pseudot;
+pseudo_d = [];
 if ~isempty(temp) && sum(temp) > 0
     for kk = 1 : temp
         pseudot(kk) = (options.cryst_per_block + 1) * kk;
     end
+    pseudo_d = (options.cryst_per_block+1:options.cryst_per_block+1:options.det_w_pseudo)';
 end
 
 % Forms a raw Michelogram that is still in the detector space
 % if exist([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'], 'file') == 2
 %     load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'swap(:,:,1)', 'swap(:,:,2)', 'swap(:,:,3)', 'swap(:,:,4)');
 % else
-    [~, ~, ~, ~, ~, swap] = sinogram_coordinates_2D(options);
+[~, ~, xp, yp] = detector_coordinates(options);
+[~, ~, ~, ~, ~, swap] = sinogram_coordinates_2D(options, xp, yp);
 %     load([folder machine_name '_app_coordinates_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'swap(:,:,1)', 'swap(:,:,2)', 'swap(:,:,3)', 'swap(:,:,4)');
 % end
 % koko2 = options.det_per_ring * options.rings;
@@ -131,9 +136,15 @@ for llo=1:options.partitions
                 % Observations equaling the ones detected on the current
                 % ring
                 temppiP = full(prompt((1+options.det_per_ring*(ring-1)):(options.det_per_ring+options.det_per_ring*(ring-1)),1+options.det_per_ring*(ring-1):(options.det_per_ring+options.det_per_ring*(ring-1))));
+                if sum(pseudot) > 0
+                    for jj = 1 : numel(pseudo_d)
+                        temppiP = [temppiP(1 : pseudo_d(jj) - 1, :); zeros(1,size(temppiP,2)); temppiP(pseudo_d(jj) : end, :)];
+                        temppiP = [temppiP(:, 1 : pseudo_d(jj) - 1), zeros(size(temppiP,1),1), temppiP(:, pseudo_d(jj) : end)];
+                    end
+                end
                 % combine same LORs, but with different detector order
                 % (i.e. combine values at [325 25100] and [25100 325])
-                temppiP = full(temppiP(tril(logical(true(options.det_per_ring)),0))); % Finally take only the other side
+                temppiP = full(temppiP(tril(logical(true(options.det_w_pseudo)),0))); % Finally take only the other side
                 
                 if options.partitions > 1
                     P1{ll,ll} = sparse(double(temppiP(:)));
@@ -147,6 +158,12 @@ for llo=1:options.partitions
                 end
                 temppiP2 = (prompt(1+options.det_per_ring*(ring-1)+options.det_per_ring*(luuppi-1):(options.det_per_ring+options.det_per_ring*(ring-1)+options.det_per_ring*(luuppi-1)),(1+options.det_per_ring*(ring-1)):(options.det_per_ring+options.det_per_ring*(ring-1))));
                 
+                if sum(pseudot) > 0
+                    for jj = 1 : numel(pseudo_d)
+                        temppiP2 = [temppiP2(1 : pseudo_d(jj) - 1, :); zeros(1,size(temppiP2,2)); temppiP2(pseudo_d(jj) : end, :)];
+                        temppiP2 = [temppiP2(:, 1 : pseudo_d(jj) - 1), zeros(size(temppiP2,1),1), temppiP2(:, pseudo_d(jj) : end)];
+                    end
+                end
                 % Combine LORs
                 temppiP = full(triu(temppiP2));
                 temppiP2 = full(tril(temppiP2));
@@ -174,8 +191,8 @@ for llo=1:options.partitions
                 temppiP2 = temppiP2 + temppiP4';
                 
                 % Take only the other side
-                temppiP2 = temppiP2(tril(true(options.det_per_ring),0));
-                temppiP = temppiP(tril(true(options.det_per_ring),0));
+                temppiP2 = temppiP2(tril(true(options.det_w_pseudo),0));
+                temppiP = temppiP(tril(true(options.det_w_pseudo),0));
                 
                 if options.partitions > 1
                     P1{ll,lk} = sparse(temppiP(:));
@@ -199,7 +216,7 @@ for llo=1:options.partitions
     
     
     if options.verbose
-        disp(['Initial Michelogram for timestep ' num2str(llo) ' formed'])
+        disp(['Initial Michelogram for timestep ' num2str(llo) ' formed ' '(' type ')'])
     end
     
 end

@@ -67,7 +67,6 @@ if options.use_raw_data
                     num2str(options.tot_time) 's_raw_listmode.mat'], 'coincidences');
             end
         end
-        %         options.SinM = coincidences;
     elseif ~options.reconstruct_trues && ~options.reconstruct_scatter && isfield(options, 'coincidences')
         options.SinM = options.coincidences;
     elseif options.reconstruct_trues
@@ -668,10 +667,15 @@ end
 
 if (options.implementation == 3 || options.implementation == 1 ) && ~any(rekot(cellfun('isempty',strfind(algorithms_char(),'MLEM'))))
     subsets = 1;
-    %     pituus = [pituus(1); pituus(end)];
 end
+    
 
 %%
+
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist * options.sampling;
+    Ndist = Ndist * options.sampling;
+end
 
 % Compute the indices for the subsets used.
 % For Sinogram data, six different methods to select the subsets are
@@ -679,6 +683,9 @@ end
 [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
 
 
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist / options.sampling;
+end
 
 %%
 
@@ -697,13 +704,26 @@ block1=uint32(0);
 
 NSinos = uint32(NSinos);
 NSlices = uint32(Nz);
-TotSinos = uint32(TotSinos);
 
 % Coordinates of the detectors
 [x, y, z] = get_coordinates(options, blocks);
 
+if options.use_raw_data && sum(pseudot) > 0
+    z(pseudot) = [];
+end
+
+if options.arc_correction && ~options.use_raw_data && ~options.precompute_lor
+    [~, ~, xp, yp] = detector_coordinates(options);
+    [x, y, options] = arcCorrection(options, xp, yp, true);
+end
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    [x, y, options] = increaseSampling(options, x, y, true);
+end
+
 % Load correction data
 [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
+
+
 
 if min(z(:)) == 0
     z = z + (axial_fow - max(max(z)))/2;
@@ -732,9 +752,15 @@ end
 
 % Compute the necessary indices required for subsets (e.g. the index of
 % the detector coordinates for the current LOR)
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist * options.sampling;
+end
 [options, lor_a, xy_index, z_index, LL, summa, pituus, options.SinM, lor_orth] = form_subset_indices(options, pituus, subsets, index, size_x, y, z_det, rings, false, options.SinM);
 if ~options.precompute_lor
     lor_a = uint16(0);
+end
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist / options.sampling;
 end
 
 if use_raw_data
@@ -904,10 +930,54 @@ else
     
     
     [options, D, C_co, C_aco, C_osl, Amin, E] = prepass_phase(options, pituus, index, options.SinM, pseudot, x, y, xx, yy, z_det, dz, dx, dy, bz, bx, by, NSlices, zmax, size_x, block1, blocks,...
-        normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center);
+        normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center, ind_size);
     
     if length(pituus) == 1
         pituus = [uint32(0);pituus];
+    end
+    
+    % Multi-ray Siddon
+    if options.implementation > 1 && options.n_rays > 1 && ~options.precompute_lor && options.projector_type == 1
+        if options.n_rays < 4 || options.n_rays > 5
+            error('Only ray counts of 1, 4 and 5 are supported')
+        end
+        if options.use_raw_data
+            [x, y] = detector_coordinates_multiray(options);
+            x = x(:,[2 1 3]);
+            y = y(:,[2 1 3]);
+        else
+            if options.arc_correction
+                [~, ~, xp, yp] = detector_coordinates_multiray(options);
+                new_x = zeros(options.Ndist * options.Nang, 2, size(xp,2));
+                new_y = zeros(options.Ndist * options.Nang, 2, size(yp,2));
+                for Nightwish = 1 : size(yp,2)
+                    [new_x(:,:,Nightwish), new_y(:,:,Nightwish), options] = arcCorrection(options, xp(:,Nightwish), yp(:,Nightwish), false);
+                end
+                x = new_x;
+                y = new_y;
+                clear new_x new_y
+            else
+                [x, y] = sinogram_coordinates_2D_multiray(options);
+                x = x(:,:,[2 1 3]);
+                y = y(:,:,[2 1 3]);
+            end
+            if options.sampling > 1
+                new_x = zeros(options.Ndist * options.sampling * options.Nang, size(x,2), size(x,3));
+                new_y = zeros(options.Ndist * options.sampling * options.Nang, size(y,2), size(y,3));
+                for KalPa = 1 : size(y,3)
+                    [new_x(:,:,KalPa), new_y(:,:,KalPa), options] = increaseSampling(options, x(:,:,KalPa), y(:,:,KalPa), false);
+                end
+                x = new_x;
+                y = new_y;
+                clear new_x new_y
+            end
+        end
+        x = x(:);
+        y = y(:);
+        if options.implementation == 2 || options.implementation == 3
+            x = single(x);
+            y = single(y);
+        end
     end
     
     %%
@@ -2564,22 +2634,6 @@ else
                     end
                 end
                 options.n_rays = uint16(options.n_rays);
-                if options.n_rays > 1 && ~options.precompute_lor && options.projector_type == 1
-                    if options.n_rays < 4 || options.n_rays > 5
-                        error('Only ray counts of 1, 4 and 5 are supported')
-                    end
-                    if options.use_raw_data
-                        [x, y] = detector_coordinates_multiray(options);
-                        x = x(:,[2 1 3]);
-                        y = y(:,[2 1 3]);
-                    else
-                        [x, y] = sinogram_coordinates_2D_multiray(options);
-                        x = x(:,:,[2 1 3]);
-                        y = y(:,:,[2 1 3]);
-                    end
-                    x = x(:);
-                    y = y(:);
-                end
                 dc_z = z_det(2,1) - z_det(1,1);
                 for iter = 1 : Niter
                     if OS_bool
@@ -3194,22 +3248,6 @@ else
             randoms = uint32(0);
         end
         n_rays = uint16(options.n_rays);
-        if options.n_rays > 1 && ~options.precompute_lor && options.projector_type == 1
-            if options.n_rays > 5
-                error('Only ray counts of 1 to 5 are supported')
-            end
-            if options.use_raw_data
-                [x, y] = detector_coordinates_multiray(options);
-                x = x(:,[2 1 3]);
-                y = y(:,[2 1 3]);
-            else
-                [x, y] = sinogram_coordinates_2D_multiray(options);
-                x = x(:,:,[2 1 3]);
-                y = y(:,:,[2 1 3]);
-            end
-            x = single(x(:));
-            y = single(y(:));
-        end
         dc_z = single(z_det(2,1) - z_det(1,1));
         
         
@@ -3324,22 +3362,6 @@ else
             randoms = uint32(0);
         end
         n_rays = uint16(options.n_rays);
-        if options.n_rays > 1 && ~options.precompute_lor && options.projector_type == 1
-            if options.n_rays > 5
-                error('Only ray counts of 1 to 5 are supported')
-            end
-            if options.use_raw_data
-                [x, y] = detector_coordinates_multiray(options);
-                x = x(:,[2 1 3]);
-                y = y(:,[2 1 3]);
-            else
-                [x, y] = sinogram_coordinates_2D_multiray(options);
-                x = x(:,:,[2 1 3]);
-                y = y(:,:,[2 1 3]);
-            end
-            x = single(x(:));
-            y = single(y(:));
-        end
         dc_z = single(z_det(2,1) - z_det(1,1));
         
         tube_width_xy = single(options.tube_width_xy);

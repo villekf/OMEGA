@@ -74,7 +74,7 @@ else
     type = 'int32';
 end
 
-if nargin >= 2
+if nargin > 2
     skip = varargin{2};
 else
     skip = 0;

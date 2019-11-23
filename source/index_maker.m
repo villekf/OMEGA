@@ -62,7 +62,7 @@ folder = strrep(folder, '\','/');
 if options.use_raw_data
     pituus = options.detectors ^2/2 + options.detectors/2;
 else
-    pituus = options.Ndist * options.Nang * options.NSinos;
+    pituus = Ndist * Nang * NSinos;
 end
 index = 0;
 % Sinogram data
@@ -145,8 +145,8 @@ if use_raw_data == false && subsets > 1
         elseif options.subset_type == 1
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                [I,J,K] = ind2sub([options.Nang options.Ndist options.NSinos], index1);
-                index1 = uint32(sub2ind([options.Ndist options.Nang options.NSinos], J, I,K));
+                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+                index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
                 index{i} = index1;
                 pituus(i) = uint32(length(index{i}));
             end
@@ -230,8 +230,8 @@ if use_raw_data == false && subsets > 1
         elseif options.subset_type == 1
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                [I,J,K] = ind2sub([options.Nang options.Ndist options.NSinos], index1);
-                index1 = uint32(sub2ind([options.Ndist options.Nang options.NSinos], J, I,K));
+                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+                index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
                 index{i} = index1;
                 pituus(i) = uint32(length(index{i}));
             end

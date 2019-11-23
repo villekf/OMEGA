@@ -243,7 +243,14 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = 1;
-options.store_raw_sinogram = true;
+%%% Increase the sampling rate of the sinogram
+% Increasing this interpolates additional rows to the sinogram
+% Can be used to prevent aliasing artifacts
+% NOTE: Has to be either 1 or divisible by two
+options.sampling = 1;
+%%% Interpolation method used for sampling rate increase
+% All the methods are available that are supported by interp1
+options.sampling_interpolation_method = 'linear';
 %%% Fill the gaps caused by pseudo detectors?
 % NOTE: Applicable only if options.pseudot > 0
 options.fill_sinogram_gaps = false;
@@ -277,6 +284,19 @@ options.interpolation_method_inpaint = 0;
 % later corrects for randoms during the data formation/load or during
 % reconstruction
 options.randoms_correction = false;
+
+%%% Variance reduction
+% If set to true, variance reduction will be performed to delayed
+% coincidence (randoms corrections) data if randoms correction is selected
+options.variance_reduction = false;
+
+%%% Randoms smoothing
+% If set to true, applies a 8x8 moving mean smoothing to the delayed
+% coincidence data. This is applied on all cases (randoms correction data
+% is smoothed before subtraction of before reconstruction)
+% NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
+% function
+options.randoms_smoothing = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, will prompt the user to load the scatter sinogram/raw
@@ -285,6 +305,22 @@ options.randoms_correction = false;
 % NOTE: Scatter data is not created by this software and as such must be
 % provided by the user
 options.scatter_correction = false;
+
+%%% Scatter normalization
+% If set to true, normalizes the scatter coincidences data before
+% reconstruction. This applies only if the below
+% options.corrections_during_reconstruction = true, otherwise it will have
+% no effect (scatter correction is applied before the sinogram/raw data is
+% normalized).
+options.normalize_scatter = false;
+
+%%% Scatter smoothing
+% If set to true, applies a 8x8 moving mean smoothing to the scattered
+% coincidences data. This is applied on all cases (scatter correction data
+% is smoothed before subtraction of before reconstruction)
+% NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
+% function
+options.scatter_smoothing = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Image-based attenuation correction
@@ -337,6 +373,21 @@ options.normalization_correction = false;
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Apply arc correction
+% NOTE: Arc correction is an experimental feature. It is currently
+% relatively slow and supports only sinogram data. Generally it is not
+% recommended to use arc correction (Inveon data is an exception).
+% Uses parallel computing toolbox if it is available (parfor)
+options.arc_correction = false;
+%%% Arc correction interpolation method
+% The interpolation method used to interpolate the arc corrected sinogram.
+% Available methods are those supported by scatteredInterpolant and
+% griddata. If an interpolation method is used which is not supported by
+% scatteredInterpolant then griddata will be used instead
+% NOTE: griddata is used if scatteredInterpolant is not found
+options.arc_interpolation = 'linear';
  
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
@@ -509,7 +560,7 @@ options.tube_width_z = options.cr_pz;
 options.accuracy_factor = 5;
 %%% Number of rays
 % Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
-options.n_rays = 5;
+options.n_rays = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -545,12 +596,12 @@ options.epps = 1e-8;
 % manually downloaded and installed.
 % Download from: 
 % https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
-options.use_Shuffle = true;
+options.use_Shuffle = false;
 %%% Use fast sparse
 % Not included in OMEGA, needs to be manually downloaded and installed.
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to implementation 1 when precompute_lor is false.
-options.use_fsparse = true;
+options.use_fsparse = false;
 %%% Skip the normalization phase in MRP, FMH, L-filter, ADMRP and/or weighted
 % mean
 % E.g. if set to true the MRP prior is (x - median(x))

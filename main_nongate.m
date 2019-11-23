@@ -111,6 +111,14 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = 1;
+%%% Increase the sampling rate of the sinogram
+% Increasing this interpolates additional rows to the sinogram
+% Can be used to prevent aliasing artifacts
+% NOTE: Has to be either 1 or divisible by two
+options.sampling = 1;
+%%% Interpolation method used for sampling rate increase
+% All the methods are available that are supported by interp1
+options.sampling_interpolation_method = 'linear';
 %%% Fill the gaps caused by pseudo detectors?
 % NOTE: Applicable only if options.pseudot > 0
 options.fill_sinogram_gaps = false;
@@ -146,8 +154,8 @@ options.interpolation_method_inpaint = 0;
 options.randoms_correction = false;
 
 %%% Variance reduction
-% If set to true, variance reduction will be performed to delayed
-% coincidence (randoms corrections) data if randoms correction is selected
+% If set to true, then the variance reduction will be performed to delayed
+% coincidence (randoms corrections) data if is selected
 options.variance_reduction = false;
 
 %%% Randoms smoothing
@@ -233,6 +241,21 @@ options.normalization_correction = false;
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Apply arc correction
+% NOTE: Arc correction is an experimental feature. It is currently
+% relatively slow and supports only sinogram data. Generally it is not
+% recommended to use arc correction (Inveon data is an exception).
+% Uses parallel computing toolbox if it is available (parfor)
+options.arc_correction = false;
+%%% Arc correction interpolation method
+% The interpolation method used to interpolate the arc corrected sinogram.
+% Available methods are those supported by scatteredInterpolant and
+% griddata. If an interpolation method is used which is not supported by
+% scatteredInterpolant then griddata will be used instead
+% NOTE: griddata is used if scatteredInterpolant is not found
+options.arc_interpolation = 'linear';
 
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
@@ -389,7 +412,7 @@ options.tube_width_z = options.cr_pz;
 options.accuracy_factor = 5;
 %%% Number of rays
 % Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
-options.n_rays = 5;
+options.n_rays = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -406,7 +429,6 @@ options.subsets = 8;
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
 % 360/n_angles for 3D, see GitHub wiki for more information
-% 7 = Form the subsets by using golden angle sampling
 options.subset_type = 1;
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are
@@ -425,12 +447,12 @@ options.epps = 1e-8;
 % manually downloaded and installed.
 % Download from:
 % https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
-options.use_Shuffle = true;
+options.use_Shuffle = false;
 %%% Use fast sparse
 % Not included in OMEGA, needs to be manually downloaded and installed.
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to implementation 1 when precompute_lor is false.
-options.use_fsparse = true;
+options.use_fsparse = false;
 %%% Skip the normalization phase in MRP, FMH, L-filter, ADMRP and/or weighted
 % mean
 % E.g. if set to true the MRP prior is (x - median(x))
@@ -464,10 +486,10 @@ options.osem = true;
 % Supported by implementations 1 and 2
 options.mramla = false;
 %%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1, 2 and 4
+% Supported by implementations 1 and 2
 options.ramla = false;
 %%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1, 2 and 4
+% Supported by implementations 1 and 2
 options.rosem = false;
 %%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
 % Supported by implementations 1 and 2
@@ -492,19 +514,19 @@ options.acosem = false;
 % then OSL-OSEM estimates will be computed for both MRP and Quadratic
 % prior.
 %%% One-Step Late MLEM (OSL-MLEM)
-% Supported by implementations 2 and 4
+% Supported by implementation 2 only
 options.OSL_MLEM = false;
 %%% One-Step Late OSEM (OSL-OSEM)
-% Supported by implementations 1, 2 and 4
+% Supported by implementations 1 and 2
 options.OSL_OSEM = false;
 %%% Modified BSREM (MBSREM)
 % Supported by implementations 1 and 2
 options.MBSREM = false;
 %%% Block Sequential Regularized Expectation Maximization (BSREM)
-% Supported by implementations 1, 2 and 4
+% Supported by implementations 1 and 2
 options.BSREM = false;
 %%% ROSEM-MAP
-% Supported by implementations 1, 2 and 4
+% Supported by implementations 1 and 2
 options.ROSEM_MAP = false;
 %%% RBI-MAP
 % Supported by implementations 1 and 2
@@ -534,7 +556,7 @@ options.AD = false;
 options.APLS = false;
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
-%%% Non-local Means (NLM) prior (implementations 1 and 4 only)
+%%% Non-local Means (NLM) prior (implementation 1 only)
 options.NLM = false;
 
 
@@ -840,6 +862,7 @@ options.NiterTGV = 30;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%% EXPERIMENTAL FEATURE %%%%
 %%% Regularization parameter for NLM with OSL-OSEM
 options.beta_NLM_osem = 0.025;
 %%% Regularization parameter for NLM with MBSREM
@@ -858,18 +881,12 @@ options.sigma = 0.01;
 options.Nlx = 1;
 options.Nly = 1;
 options.Nlz = 0;
-%%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 1;
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
 options.NLM_use_anatomical = true;
 %%% Specify filename for the reference image here (same rules apply as with
 % attenuation correction above)
 options.NLM_reference_image = 'reference_image.mat';
-%%% Use Non-local total variation (NLTV)
-% If selected, will overwrite regular NLM regularization as well as the
-% below MRP version
-options.NLTV = false;
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
 options.NLM_MRP = true;
@@ -937,7 +954,7 @@ options = OMEGA_error_check(options);
 
 if options.only_system_matrix == false
     % Load the measurement data
-    options = loadMeasurementData(options,'int32');
+    options = loadMeasurementData(options);
 else
     if options.use_raw_data == false
         options.SinM = false(options.Ndist, options.Nang, options.NSinos);
@@ -964,7 +981,7 @@ if options.only_system_matrix == false
     
 end
 
-save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations.mat'], 'pz');
+% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations.mat'], 'pz');
 
 %% System matrix formation
 % System matrix formation is ALWAYS computed with implementation 1,
@@ -1014,6 +1031,7 @@ if options.only_system_matrix || options.single_reconstructions
                 % Use A here (y = Ax)
                 %%% Separate reconstruction algorithms
                 if options.single_reconstructions
+                    % Sensitivity image/normalization constant
                     if options.is_transposed
                         Summ = full(sum(A,2));
                     else

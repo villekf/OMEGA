@@ -46,7 +46,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 		Det detectors;
 
 		if (raw) {
-			uint32_t ps = 0u;
 			const uint32_t detektorit1 = static_cast<uint32_t>(L[lo * 2u]);
 			const uint32_t detektorit2 = static_cast<uint32_t>(L[lo * 2u + 1u]);
 
@@ -69,35 +68,6 @@ void improved_siddon(const size_t loop_var_par, const uint32_t size_x, const dou
 				detectors.zd = z_det_vec[loop2 - 1u];
 			}
 
-			for (uint32_t kk = 0u; kk < pRows; kk++) {
-				if (kk + 1u < pRows) {
-					if (loop1 >= pseudos[kk] && loop1 < pseudos[kk + 1u]) {
-						detectors.zs = z_det_vec[loop1 + ps];
-						break;
-					}
-					else
-						ps++;
-				}
-				else {
-					if (loop1 >= pseudos[kk])
-						detectors.zs = z_det_vec[loop1 + ps];
-				}
-			}
-			ps = 0;
-			for (uint32_t kk = 0u; kk < pRows; kk++) {
-				if (kk + 1u < pRows) {
-					if (loop2 >= pseudos[kk] && loop2 < pseudos[kk + 1u]) {
-						detectors.zd = z_det_vec[loop2 + ps];
-						break;
-					}
-					else
-						ps++;
-				}
-				else {
-					if (loop2 >= pseudos[kk])
-						detectors.zd = z_det_vec[loop2 + ps];
-				}
-			}
 			detectors.xs = x[detektorit1 - det_per_ring * (loop1 - 1u) - 1u];
 			detectors.xd = x[detektorit2 - det_per_ring * (loop2 - 1u) - 1u];
 			detectors.ys = y[detektorit1 - det_per_ring * (loop1 - 1u) - 1u];

@@ -251,6 +251,14 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = -1;
+%%% Increase the sampling rate of the sinogram
+% Increasing this interpolates additional rows to the sinogram
+% Can be used to prevent aliasing artifacts
+% NOTE: Has to be either 1 or divisible by two
+options.sampling = 1;
+%%% Interpolation method used for sampling rate increase
+% All the methods are available that are supported by interp1
+options.sampling_interpolation_method = 'linear';
 % Fill the gaps caused by pseudo detectors?
 % NOTE: Applicable only if options.pseudot > 0
 options.fill_sinogram_gaps = false;
@@ -296,7 +304,7 @@ options.variance_reduction = false;
 % NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
 % function
 options.randoms_smoothing = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, will prompt the user to load the scatter sinogram/raw
 % data. Corrects for scatter during data formation/load or during
@@ -373,6 +381,21 @@ options.normalization_correction = false;
 % of OMEGA.
 options.use_user_normalization = false;
  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Apply arc correction
+% NOTE: Arc correction is an experimental feature. It is currently
+% relatively slow and supports only sinogram data. Generally it is not
+% recommended to use arc correction (Inveon data is an exception).
+% Uses parallel computing toolbox if it is available (parfor)
+options.arc_correction = true;
+%%% Arc correction interpolation method
+% The interpolation method used to interpolate the arc corrected sinogram.
+% Available methods are those supported by scatteredInterpolant and
+% griddata. If an interpolation method is used which is not supported by
+% scatteredInterpolant then griddata will be used instead
+% NOTE: griddata is used if scatteredInterpolant is not found
+options.arc_interpolation = 'linear';
+ 
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
 % reconstruction step, otherwise the corrections are performed to the
@@ -421,7 +444,7 @@ options.name = 'open_PET_data';
 % This should be done when using data from a certain machine the first time
 % as it can speed up reconstruction. Especially recommended for raw
 % list-mode data.
-options.precompute = true;
+options.precompute = false;
 %%% Folder for the data (.dat ASCII, .ccs LMF, .root ROOT) files
 % If no files are located in the path provided below, then the current
 % folder is also checked. If no files are detected there either, an error
@@ -546,7 +569,7 @@ options.tube_width_z = options.cr_pz;
 options.accuracy_factor = 5;
 %%% Number of rays
 % Number of rays used if projector_type = 1 (i.e. Improved Siddon is used)
-options.n_rays = 5;
+options.n_rays = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECNSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -582,12 +605,12 @@ options.epps = 1e-8;
 % manually downloaded and installed.
 % Download from: 
 % https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
-options.use_Shuffle = true;
+options.use_Shuffle = false;
 %%% Use fast sparse
 % Not included in OMEGA, needs to be manually downloaded and installed.
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to implementation 1 when precompute_lor is false.
-options.use_fsparse = true;
+options.use_fsparse = false;
 %%% Skip the normalization phase in MRP, FMH, L-filter, ADMRP and/or weighted
 % mean
 % E.g. if set to true the MRP prior is (x - median(x))
@@ -1101,5 +1124,5 @@ if options.only_sinos == false
     
 end
 
-save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
-    num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_NLMTV.mat'], 'pz');
+% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
+%     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_NLMTV.mat'], 'pz');

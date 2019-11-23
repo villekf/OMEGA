@@ -20,7 +20,9 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Load the saved reconstruction and machine specific variables
-image_properties = pz{end,1};
+if exist('pz','var')
+    image_properties = pz{end,1};
+end
 
 
 
@@ -68,7 +70,10 @@ color_from_algo = 1;
 % 1 = Transverse, 2 = Coronal/frontal, 3 = Sagittal
 v_plane = 1;
 
-
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -140,7 +145,12 @@ v_plane = 1;
 % N_iter LAST iterations will be used for visualization
 N_iter = 2;
 
+
 color_from_algo = 1;
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -224,6 +234,10 @@ source_coordinates = 1;
 % 1 = ASCII, 2 = LMF, 3 = ROOT
 source = 1;
 
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -315,6 +329,10 @@ algorithms = 2;
 % through background noise
 alpha_scale = 10;
 
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -346,6 +364,10 @@ color_scale = 1;
 % algorithms)
 color_from_algo = 1;
 
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = check_algorithms(pz, algorithms, color_from_algo);
 if isempty(img)
     return
@@ -443,6 +465,10 @@ source = 0;
 % obtain_trues = true)
 source_coordinates = 1;
 
+if exist('f_osem','var') && ~exist('pz','var')
+    pz = cell(88,1);
+    pz{2} = f_osem;
+end
 img = pz{algorithms(color_from_algo)};
 for jj = 1:numel(algorithms)
     if isempty(pz{algorithms(jj)})

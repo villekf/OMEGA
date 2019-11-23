@@ -195,7 +195,7 @@ options.flip_image = false;
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction)
-options.offangle = 0;
+options.offangle = 336 * (3/4);
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
