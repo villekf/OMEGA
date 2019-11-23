@@ -136,9 +136,9 @@ https://github.com/stefanengblom/stenglib (FSPARSE, used when creating sparse ma
 
 Submodules are not supported.
 
-Raw list-mode data with non-GATE data is still experimental.
+Raw list-mode data with non-GATE data is still experimental (i.e. the data needs to be formatted in the same way as done in OMEGA).
 
-Multi-device reconstruction only supports OSEM and MLEM.
+Multi-device/GPU reconstruction only supports OSEM and MLEM.
 
 Implementation 4 (OpenMP CPU) supports only one prior at a time and only a select number of algorithms.
 
@@ -146,7 +146,7 @@ LMF output currently has to contain the time stamp (cannot be removed in GATE) a
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
-Non-square images are untested.
+Non-square images are untested (some features will not work).
 
 Only machines with a total number of detectors of up to 65536 are supported. I.e. if you have a machine with more detectors than 65536 then nothing will work. This can be easily fixed though, if necessary, since it is simply caused by using 16-bit unsigned integers. Put up an issue on the GitHub page or send me an e-mail if you need a version with support for higher number of detectors.
 
@@ -154,7 +154,7 @@ Due to the same reason as above, maximum number of counts per pixel is 65535 (ap
 
 Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as seprate cases).
 
-Only cylindrical symmetric devices are supported.
+Only cylindrical symmetric devices are supported, though other designs might work.
 
 Attenuation correction can be applied only with attenuation images (e.g. CT images scaled to 511 keV).
 
@@ -170,7 +170,7 @@ http://arrayfire.s3.amazonaws.com/index.html (use the latest version available).
 
 ### MATLAB
 
-ROOT data import is unstable in MATLAB R2018b and older due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI features. MATLAB R2019a and up are unaffected.
+ROOT data import is unstable in MATLAB R2018b and older due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected.
 
 ROOT is not supported on Windows, though it should, theoretically, work if you use ROOT with 32-bit MATLAB, but this is untested.
 
@@ -190,6 +190,8 @@ Here is a list of features that should appear in future releases:
 
 - Support for SPECT data
 - TOF support
+- Fourier rebinning
+- New projectors
 
 
 ## Reporting Bugs and Feature Requests
