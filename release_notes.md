@@ -20,6 +20,8 @@
 
 - Added HTLM documentation
 
+- Inveon data is now available from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056)
+
 ### Bug fixes and enhancements
 
 - Fixed some bugs with various file import and export files 
