@@ -18,6 +18,8 @@
 
 - Added ability to increase the sampling rate of sinogram data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
 
+- Added HTLM documentation
+
 ### Bug fixes and enhancements
 
 - Fixed some bugs with various file import and export files 
