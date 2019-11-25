@@ -1,0 +1,51 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Features</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }
+.S2 { margin: 10px 0px 20px; padding-left: 0px; font-family: Helvetica, Arial, sans-serif; font-size: 14px;  }
+.S3 { margin-left: 56px; line-height: 21px; min-height: 0px; text-align: left; white-space: pre-wrap;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Features</span></h1><div  class = 'S1'><span>The following features are currently present:</span></div><ul  class = 'S2'><li  class = 'S3'><span>Supports both MATLAB and Octave</span></li><li  class = 'S3'><span>Reconstruct any PET sinogram/raw list-mode data</span></li><li  class = 'S3'><span>Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA,  MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior,  L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in  MATLAB/Octave (OpenCL support, except for NLM)</span></li><li  class = 'S3'><span>Import GATE LMF, ASCII or ROOT data into MATLAB/Octave and either  reconstruct them in their raw list-mode format or in the user specified  sinogram format (see Known issues and limitations for LMF and ROOT  limitations)</span></li><li  class = 'S3'><span>Extract GATE scatter, randoms and/or trues data and optionally reconstruct it</span></li><li  class = 'S3'><span>Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)</span></li><li  class = 'S3'><span>Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), pure OpenCL version (multidevice support, e.g.  multiple GPUs or heterogenous computing) or OpenCL version utilizing  ArrayFire libraries</span></li><li  class = 'S3'><span>Include attenuation correction, arc correction, normalization, scatter correction and/or randoms correction into the reconstruction (either user-made or  OMEGA made data)</span></li><li  class = 'S3'><span>Compute normalization coefficients</span></li><li  class = 'S3'><span>Perform variance reduction on randoms data and/or smoothing on randoms/scatter data</span></li><li  class = 'S3'><span>Perform GATE Monte Carlo scatter correction</span></li><li  class = 'S3'><span>Perform corrections either to the measurement data (excluding attenuation) or during the reconstruction phase</span></li><li  class = 'S3'><span>Optionally allows to obtain only the system/observation matrix used in PET reconstruction</span></li><li  class = 'S3'><span>All the data (e.g. sinograms, system matrix) can be used with your own algorithms</span></li><li  class = 'S3'><span>Supports machines with pseudo detectors</span></li><li  class = 'S3'><span>Parallel and matrix free forward and back projection functions</span></li><li  class = 'S3'><span>Ready-made function for custom gradient-based priors</span></li><li  class = 'S3'><span>Two different projectors available, one being the improved Siddon's algorithm with up to 5 rays and the other the orthogonal distance-based  ray tracer (2D or 3D mode)</span></li><li  class = 'S3'><span>Support for dynamic (time-varying) imaging (time-series of images)</span></li><li  class = 'S3'><span>Several different subset selection methods, including random sampling, golden angle sampling, every nth measurement, etc.</span></li><li  class = 'S3'><span>Support for Siemens Inveon PET list-mode data</span></li></ul></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Features
+% The following features are currently present:
+%% 
+% * Supports both MATLAB and Octave
+% * Reconstruct any PET sinogram/raw list-mode data
+% * Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA,  MRAMLA, RBI, 
+% ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior,  L-filter, FMH, weighted 
+% mean, TV, TGV, AD, APLS, NLM algorithms in  MATLAB/Octave (OpenCL support, except 
+% for NLM)
+% * Import GATE LMF, ASCII or ROOT data into MATLAB/Octave and either  reconstruct 
+% them in their raw list-mode format or in the user specified  sinogram format 
+% (see Known issues and limitations for LMF and ROOT  limitations)
+% * Extract GATE scatter, randoms and/or trues data and optionally reconstruct 
+% it
+% * Compare the reconstructed image with the actual "true" GATE source image 
+% (i.e. error analysis)
+% * Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), 
+% pure OpenCL version (multidevice support, e.g.  multiple GPUs or heterogenous 
+% computing) or OpenCL version utilizing  ArrayFire libraries
+% * Include attenuation correction, arc correction, normalization, scatter correction 
+% and/or randoms correction into the reconstruction (either user-made or  OMEGA 
+% made data)
+% * Compute normalization coefficients
+% * Perform variance reduction on randoms data and/or smoothing on randoms/scatter 
+% data
+% * Perform GATE Monte Carlo scatter correction
+% * Perform corrections either to the measurement data (excluding attenuation) 
+% or during the reconstruction phase
+% * Optionally allows to obtain only the system/observation matrix used in PET 
+% reconstruction
+% * All the data (e.g. sinograms, system matrix) can be used with your own algorithms
+% * Supports machines with pseudo detectors
+% * Parallel and matrix free forward and back projection functions
+% * Ready-made function for custom gradient-based priors
+% * Two different projectors available, one being the improved Siddon's algorithm 
+% with up to 5 rays and the other the orthogonal distance-based  ray tracer (2D 
+% or 3D mode)
+% * Support for dynamic (time-varying) imaging (time-series of images)
+% * Several different subset selection methods, including random sampling, golden 
+% angle sampling, every nth measurement, etc.
+% * Support for Siemens Inveon PET list-mode data
+##### SOURCE END #####
+--></body></html>

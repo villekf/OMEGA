@@ -119,6 +119,10 @@ NOTE: Source coordinates obtained from LMF data can be unreliable.
 
 **Distance side (ndist_side)** = When Ndist value is even, then one extra view has to be taken either from the "negative" or "positive" side. With this you can specify whether this is from the "negative" (+1) or "positive" (-1). If you are unsure what value to use, use the default value. This varies from device to device. If you compare the sinogram produced by OMEGA to the machine generated one and see a slight shift, then this parameter is most likely incorrect.
 
+**Increasing sinogram sampling (sampling)** = The first dimension of the sinogram (views) can be increased with this value. For example setting sampling to 2, would double the size of the first dimension. The extra values are interpolated (see below). This can be used to prevent aliasing artifacts. Value should be either 1 or divisible by two.
+
+**Sampling interpolation type (sampling_interpolation_method)** = Specifies the interpolation method used for increased sampling. All methods supported by `interp1` are available.
+
 **Fill sinogram gaps (fill_sinogram_gaps)** = If pseudo detectors are used, setting this to true will fill the gaps caused by them. Experimental feature.
 
 **Gap filling method (gap_filling_method)** = What method is used to fill the gaps. Available methods are the MATLAB's built-in `fillmissing` or alternatively `https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans[inpaint_nans]` from file exchange. Must be in char format.
@@ -157,6 +161,10 @@ NOTE: Source coordinates obtained from LMF data can be unreliable.
 **Apply normalization (normalization_correction)** = Once the normalization correction coefficients have been separately computed, turning this to true will enable them in the sinogram formation or in the reconstruction phase.
 
 **Apply user normalization (use_user_normalization)** = If this is true, then the user will be prompted for the normalization correction data. This file can be either a mat-file with one variable (the normalization coefficients, such that normalized_data = un_normalized_data * normalization) or an Inveon PET .nrm-file. In the latter case, the file needs to be exactly as output by the Siemens software.
+
+**Arc correction (arc_correction)** = Applies arc correction to the input sinogram data. For the interpolation method, see below.
+
+**Arc correction interpolation (arc_interpolation)** = Method used in the arc correction interpolation. All methods supported either by `scatteredInterpolant` or `griddata` are available. By default `scatteredInterpolant` is used, but if the method is not supported by it `gridddata` is used. `griddata` is also used if `scatteredInterpolant` is not found.
 
 **Apply corrections during reconstruction (corrections_during_reconstruction)** = If set to true, then the corrections are applied during the reconstruction phase. I.e. uncorrected sinogram/raw data is automatically loaded and used in the reconstruction process. The corrections data is also automatically loaded (assuming it has been previously created). Smoothing and/or variance reduction needs to be performed beforehand.
 
@@ -203,13 +211,13 @@ In OMEGA the different ways to compute the different algorithms and projections 
 
 **Implementation (reconstruction_method)** = This option determines how the reconstructions and the system matrix are computed. In all cases the system matrix is done through a mex-file (implementation 1 does have fallback non-mex system matrix formation method, but that is very slow). 
 
-If set to 1, then all the reconstructions will be done purely in MATLAB using nothing but MATLAB commands. Implementation 1 also has the most number of algorithms available. 
+If set to 1, then all the reconstructions will be done purely in MATLAB using nothing but MATLAB commands. Implementation 1 also supports all algorithms available. 
 
-Implementation 2 is an OpenCL/ArrayFire reconstruction, and everything is done in a mex-file. This is a matrix-free method. In Implementation 2 both the system matrix creation and reconstruction are performed on the selected device. Supports all the same algorithms as implementation 1 except non-local means prior. AD-MRP prior also behaves differently.
+Implementation 2 is an OpenCL/ArrayFire reconstruction, and everything is done in a mex-file. This is a matrix-free method. In Implementation 2 both the system matrix creation and reconstruction are performed on the selected device. Supports all the same algorithms as implementation 1 except non-local means prior (there is preliminary beta support). AD-MRP prior also behaves differently.
 
 Implementation 3 uses pure OpenCL, i.e. not requiring ArrayFire libraries. This is a matrix-free method. Implementation 3, however, only supports OSEM and MLEM, but does support multi-device computation. The multi-device computation consists using of multiple GPUs (from the same manufacturer) or using GPU + CPU combination (from the same manufacturer). 
 
-If set to 4, then all the computations are done parallel on the CPU by using OpenMP (if supported by the compiler). This is a matrix-free method. This implementation does not require OpenCL and should work on all CPUs. All CPUs/cores are used automatically.
+If set to 4, then all the computations are done parallel on the CPU by using OpenMP (if supported by the compiler). This is a matrix-free method. This implementation does not require OpenCL and should work on all CPUs. All CPUs/cores are used automatically. Supported algorithms are MLEM, OSEM, RAMLA, ROSEM, OSL-MLEM, OSL-OSEM, BSREM and ROSEM-MAP. All priors are supported. Only one MLEM-based algorithm and one OS-based algorithm are supported (with one prior) at a time. E.g. you can have MLEM and OSL-OSEM with NLM, but not OSEM and OSL-OSEM.
 
 In Implementations 2 and 3, the system matrix is created by using single precision numbers, meaning that it can be slightly inaccurate when compared to Implementations 1 and 4 that use double precision numbers. 
 
@@ -255,6 +263,8 @@ On which implementation to select, see Recommendations.
 5 = Every nth row from the sinogram, takes an entire row and then jumps n row to the next. 
 
 6 = Uses n number of angles to form each subset. First the LORs are sorted according to the angle they create with the (positive) x-axis. Then `n_angles` (see below) angles are grouped together to form one subset. E.g. if `n_angles = 2` then angles 0 and 1 form one subset, 2 and 3 another, etc. For 2D slices there will be a total of 180&#176;/n~angles~ subsets and 360&#176;/n~angles~ for 3D. This method is explained in https://github.com/villekf/OMEGA/wiki/Function-help#references[[4]].
+
+7 = Uses golden angle sampling to select the subsets. Each sinogram uses the same number of angles and the same angles, the golden angle sampling is thus performed on single sinogram basis. The next angle is selected such that the difference is roughly the same as the golden angle (approx. 111.246&#176;). Currently this subset sampling is supported only by sinogram data.
 
 **Number of angles (n_angles)** = If the above method 6 is selected, this value is used to determine how many angles are used in one subset.
 
@@ -364,15 +374,19 @@ Regularization parameters for all MAP-methods can be adjusted.
 
 The patch radius is controlled with parameters `options.Nlx`, `options.Nly` and `options.Nlz`. The similarity is investigated in this area.
 
+The strength of the Gaussian weighting (standard deviation) of the weights can be adjusted with `options.NLM_gauss`.
+
 If `options.NLM_use_anatomical = true` then an anatomical reference image is used in the similarity search of the neighborhood. Normally the original image is used for this. `options.NLM_reference_image` is the name of the anatomical reference data file. The reference images need to be the only variable in the file.
 
-NLM can also be used like MRP (and MRP-AD) where the median filtered image is replaced with NLM replaced image. This is achieved by setting `options.NLM_MRP = true`. This is computed without normalization ((&lambda; - M~NLM~)/1).
+If you wish to use non-local total variation, set `options.NLTV = true`. This overwrites the MRP selection (see below). All other NLM options apply.
+
+NLM can also be used like MRP (and MRP-AD) where the median filtered image is replaced with NLM replaced image. This is achieved by setting `options.NLM_MRP = true`. This is computed without normalization ((&lambda; - M~NLM~)/1). All other NLM options apply.
 
 ## Load measurement data
 
 This function is for non-GATE data ONLY (`main_nongate.m`).
 
-The function `loadMeasurementData` allows you to load measurement data in different formats. Curently supported are MATLAB-data, NIfTI, Analyze 7.5, DICOM and raw data. Analyze requires https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image[Tools for NIfTI and ANALYZE image] from MathWorks file exchange, NIfTI either image processing toolbox or Tools for NIfTI and ANALYZE image and DICOM support requires image processing toolbox on MATLAB and dicom package on Octave (untested on Octave). 
+The function `loadMeasurementData` allows you to load measurement data in different formats. Curently supported are MATLAB-data, NIfTI, Analyze 7.5, DICOM, Interfile, MetaImage, and raw data. Analyze requires https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image[Tools for NIfTI and ANALYZE image] from MathWorks file exchange, NIfTI either image processing toolbox or Tools for NIfTI and ANALYZE image and DICOM support requires image processing toolbox on MATLAB and dicom package on Octave (untested on Octave). 
 
 The data is saved in the `options` structure, either in `SinM` (sinogram data) or `coincidences` (raw list-mode data).
 
@@ -521,21 +535,29 @@ In case the selected algorithm does not exist in the cell matrix (i.e. the cell 
 
 ## saveImage.m
 
-This function allows you to save the reconstructed images created by OMEGA to a specified medical imaging format. Currently supported are NIfTI, Analyze 7.5, DICOM, Interfile (32-bit float) and raw 32-bit float. 
+This function allows you to save the reconstructed images created by OMEGA to a specified medical imaging format. Currently supported are NIfTI, Analyze 7.5, DICOM, Interfile, MetaImage and raw binary data without header. 
 
 DICOM support requires image processing toolbox on MATLAB and dicom package on Octave (untested on Octave). NIfTI requires either image processing toolbox OR https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image[Tools for NIfTI and ANALYZE image] from MathWorks file exchange. Analyze requires Tools for NIfTI and ANALYZE image.
 
-DICOM conversion currently does not support time-series data andalso produces one image for each slice.
+DICOM conversion currently does not support time-series data and also produces one image for each slice.
 
 The OMEGA created `pz` cell matrices can be used as input. All non-empty cells are saved in a separate file. Saving a NIfTI format image would in this case work with `saveImage(pz,'nifti')`. Analyze support is enabled with `analyze`, DICOM support with `dicom`, Interfile with `interfile` and raw with `raw`. Only one data type can be saved at a time.
 
 Single 3D, 4D or 5D image can be used as input as well. 4D images are expected to be the same is in OMEGA, where the 4th dimension is the number of iterations (last iteration is always used). 5th dimension is considered as time in the non-cell case. The images need to be in the XxYxZ(xN~iter~xT) format. When using a single image, either the output filename or `options` struct has to be input. Saving voxel size in the output images requires `options` to be input in the non-cell case.
 
-Analyze and NIfTI use the same variable type as the input data (i.e. single (f32) precision when using the cell-matrix created by OpenCL methods, otherwise double). DICOM always uses double and Interfile always uses single.
+All file types use the same variable type as the input data (i.e. single (f32) precision when using the cell-matrix created by OpenCL methods) except DICOM which always uses double.
 
-## saveSinogram.
+## saveSinogram.m
 
 Same as above, but for sinogram format data. You can use either a XxYxZ(xT) sized sinogram or a cell matrix (where the cells are the time steps). I.e. simply inputting the output sinogram data created by `form_sinograms`.
+
+## importData.m
+
+Similar as `loadMeasurementData.m` mentioned earlier. Though in this case you input the file format type you wish to import and after running the function you will be prompted for the file. E.g. `output = importData('interfile');' will prompt you to selected an Interfile file (.img, .hdr, .h33 or .i33 file). In case an image file is input, the header file will be automatically loaded (assuming they have the same name).
+
+The same file formats are accepted as previously (NIfTI, Analyze, DICOM, Interfile, MetaImage and raw binary). In the case of raw binary data, the user needs to specify the data type (e.g. `'single'`), size of each dimension (up to five) and optionally the number of bytes to skip (i.e. possible header). The number of bytes to skip can be computed automatically if there are no header bytes also at the end of the file. If the header is at the end of the file, use negative number.
+
+The output matrix is of the same size and type as the input data. Orientation might differ from the original data.
 
 ## attenuationCT_to_511.m
 
@@ -572,7 +594,7 @@ C++ mex code implementing the regular Siddon's algorithm.
 ## system_matrix_openCL.cpp & system_matrix_kernel.cl
 
 C++ mex code for purely calculating the system matrix in OpenCL. Currently not included in the install_mex-file. Needs to be manually run from observation_matrix_formation_nongate.m though the current implementation is not that efficient 
-memory wise (on host). Currently also hardcoded to use CPU. This is the only pure OpenCL code (i.e. no ArrayFire additions). Currently no version available for raw data.
+memory wise (on host). Currently also hardcoded to use CPU. This is pure OpenCL code (i.e. no ArrayFire additions). Currently no version available for raw data. These files have not been updated since their initial release and as such are not guaranteed to work.
 
 # References
 

@@ -1,0 +1,119 @@
+<?xml version='1.0' encoding="utf-8"?>
+
+<toc version="2.0">
+<!-- First tocitem specifies top level in Help browser Contents pane -->
+<!-- This can be a roadmap page, as shown below, or a content page -->
+    <tocitem target="contents.html">OMEGA help contents
+        <!-- Nest tocitems to create hierarchical entries in  Contents-->
+        <!-- To include icons, use the following syntax for tocitems: -->
+        <!-- <tocitem target="foo.html" image="HelpIcon.NAME"> -->
+        <!-- Title-of-Section </tocitem> -->
+        <!-- where NAME is one of the following (use capital letters): -->
+        <!-- FUNCTION, USER_GUIDE, EXAMPLES, BLOCK, GETTING_STARTED, -->
+        <!-- DEMOS, RELEASE_NOTES --> 
+        <!-- Icon images used for these entries are also stored in -->
+        <!-- matlabroot/toolbox/matlab/icons -->
+        <!-- A Getting Started Guide usually comes first -->
+        <tocitem target="getting_started.html" image="HelpIcon.GETTING_STARTED">
+            Getting Started
+            <tocitem target="installation.html">Installation
+            </tocitem>
+            <tocitem target="examples.html">Examples
+            </tocitem>
+            <tocitem target="features.html">Features
+            </tocitem>
+            <tocitem target="system_requirements.html">System requirements
+            </tocitem>
+            <tocitem target="known_issues.html">Known issues and limitations
+            </tocitem>
+            <tocitem target="upcoming_features.html">Upcoming features
+            </tocitem>
+            <tocitem target="bug_reports.html">Reporting bugs and feature requests
+            </tocitem>
+            <tocitem target="citation.html">Citations
+            </tocitem>
+            <tocitem target="acknowledgments.html">Acknowledgments
+            </tocitem>
+        </tocitem>
+        <!-- User Guide comes next -->
+        <tocitem target="tutorials.html" 
+            image="HelpIcon.USER_GUIDE">Tutorials
+            <tocitem target="basic_example.html">Basic example
+            </tocitem>
+            <tocitem target="advanced_example.html">Advanced example
+            </tocitem>
+        </tocitem>
+        <!-- Function reference next -->
+        <!-- First item is page describing function categories, if any -->
+        <tocitem target="functions.html" 
+                 image="HelpIcon.FUNCTION">Function Reference
+            <!-- First category, with link to anchor in above page -->
+            <tocitem target="core_functions.html#1">Core functions
+                <!-- Inside category, list its functions alphabetically -->
+                <tocitem target="gate_main.html">gate_main</tocitem>
+                <tocitem target="nongate_main.html">nongate_main</tocitem>
+                <tocitem target="precompute_data.html">precompute_data</tocitem>
+                <tocitem target="load_data.html">load_data</tocitem>
+                <tocitem target="form_sinograms.html">form_sinograms</tocitem>
+                <tocitem target="reconstruction_main.html">reconstruction_main</tocitem>
+                <tocitem target="forward_backward_projections_example.html">forward_backward_projections_example</tocitem>
+                <tocitem target="custom_prior_test_main.html">custom_prior_test_main</tocitem>
+                <tocitem target="Randoms_variance_reduction.html">Randoms_variance_reduction</tocitem>
+                <tocitem target="randoms_smoothing.html">randoms_smoothing</tocitem>
+                <tocitem target="normalization_coefficients.html">normalization_coefficients</tocitem>
+                <tocitem target="index_maker.html">index_maker</tocitem>
+                <tocitem target="get_coordinates.html">get_coordinates</tocitem>
+                <tocitem target="set_up_corrections.html">set_up_corrections</tocitem>
+                <tocitem target="form_subset_indices.html">form_subset_indices</tocitem>
+                <tocitem target="OMEGA_error_check.html">OMEGA_error_check</tocitem>
+                <tocitem target="attenuation_correction_factors.html">attenuation_correction_factors</tocitem>
+                <tocitem target="observation_matrix_formation.html">observation_matrix_formation</tocitem>
+                <tocitem target="algorithms_char.html">algorithms_char</tocitem>
+                <tocitem target="padding.html">padding</tocitem>
+                <tocitem target="algorithms.html">Various algorithm functions</tocitem>
+                <tocitem target="visualize_pet.html">visualize_pet</tocitem>
+                <!-- ... -->
+            </tocitem>
+            <!-- Second category, with link to anchor in above page -->
+            <tocitem target="sup_functions.html#2">Supplementary functions
+                <!-- Inside category, list its functions alphabetically -->
+                <tocitem target="saveImage.html">saveImage</tocitem>
+                <tocitem target="saveSinogram.html">saveSinogram</tocitem>
+                <tocitem target="importData.html">importData</tocitem>
+                <tocitem target="attenuationCT_to_511.html">attenuationCT_to_511</tocitem>
+                <tocitem target="create_atten_matrix_CT.html">create_atten_matrix_CT</tocitem>
+                <tocitem target="siddon_atten.html">siddon_atten</tocitem>
+                <tocitem target="plotMichelogram.html">plotMichelogram</tocitem>
+                <tocitem target="visualizeRawData.html">visualizeRawData</tocitem>
+                <tocitem target="improved_siddon_atten.html">improved_siddon_atten</tocitem>
+                <tocitem target="Siddon_algorithm.html">Siddon_algorithm</tocitem>
+                <tocitem target="system_matrix_openCL.html">system_matrix_openCL</tocitem>
+                <!-- ... -->
+             </tocitem>
+        </tocitem>
+        <!-- Optional List of Examples, with hyperlinks to examples in other files -->
+        <tocitem target="extract_GATE_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting GATE scatter, randoms and trues data
+        </tocitem>
+        <tocitem target="useful_information.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Useful information
+        </tocitem>
+        <tocitem target="using_inveon_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon data
+        </tocitem>
+        <tocitem target="non-cylindrical_scanners.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using non-cylindrical scanners
+        </tocitem>
+        <tocitem target="contributing.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Contributing code to OMEGA
+        </tocitem>
+        <tocitem target="release_notes.html" 
+                 image="HelpIcon.HelpIcon.RELEASE_NOTES">Release notes
+        </tocitem>
+        <!-- Optional link or links to your or other Web sites -->
+        <tocitem target="https://github.com/villekf/OMEGA" 
+                 image="$toolbox/matlab/icons/webicon.gif">
+        OMEGA on GitHub
+        </tocitem>
+    </tocitem>
+</toc>

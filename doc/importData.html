@@ -1,0 +1,26 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>importData</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>importData</span></h1><div  class = 'S1'><span>Similar as </span><span style=' font-family: monospace;'>loadMeasurementData.m</span><span> mentioned earlier.  Though in this case you input the file format type you wish to import  and after running the function you will be prompted for the file. E.g.  `output = importData('interfile');' will prompt you to selected an  Interfile file (.img, .hdr, .h33 or .i33 file). In case an image file is input, the header file will be automatically loaded (assuming they have the same name).</span></div><div  class = 'S1'><span>The same file formats are accepted as previously (NIfTI, Analyze,  DICOM, Interfile, MetaImage and raw binary). In the case of raw binary  data, the user needs to specify the data type (e.g. </span><span style=' font-family: monospace;'>'single'</span><span>), size of each dimension (up to five) and optionally the number of bytes  to skip (i.e. possible header). The number of bytes to skip can be  computed automatically if there are no header bytes also at the end of  the file. If the header is at the end of the file, use negative number.</span></div><div  class = 'S1'><span>The output matrix is of the same size and type as the input data. Orientation might differ from the original data.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% importData
+% Similar as |loadMeasurementData.m| mentioned earlier.  Though in this case 
+% you input the file format type you wish to import  and after running the function 
+% you will be prompted for the file. E.g.  `output = importData('interfile');' 
+% will prompt you to selected an  Interfile file (.img, .hdr, .h33 or .i33 file). 
+% In case an image file is input, the header file will be automatically loaded 
+% (assuming they have the same name).
+% 
+% The same file formats are accepted as previously (NIfTI, Analyze,  DICOM, 
+% Interfile, MetaImage and raw binary). In the case of raw binary  data, the user 
+% needs to specify the data type (e.g. |'single'|), size of each dimension (up 
+% to five) and optionally the number of bytes  to skip (i.e. possible header). 
+% The number of bytes to skip can be  computed automatically if there are no header 
+% bytes also at the end of  the file. If the header is at the end of the file, 
+% use negative number.
+% 
+% The output matrix is of the same size and type as the input data. Orientation 
+% might differ from the original data.
+##### SOURCE END #####
+--></body></html>

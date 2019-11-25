@@ -24,9 +24,11 @@ Normalization with raw list-mode data can be unreliable compared to sinogram dat
 
 Implementation 2 is the recommended method if it is supported (e.g. it is not possible to use in Octave on Windows) and if single precision (f32) variables are not a problem. 
 
-For pure OSEM/MLEM reconstructions, implementation 4 is recommended and should work on all platforms as long as C++11 compiler is available. Implementation 4 also uses double precision (f64) variables and works purely on the CPU.
+For pure OSEM/MLEM reconstructions, implementation 4 is recommended and should work on all platforms as long as C++11 compiler is available. Implementation 4 also uses double precision (f64) variables and works purely on the CPU. For NLM, implementation 4 is recommended.
 
-Implementation 3 is recommended if you have multiple GPUs and want to compute OSEM/MLEM reconstructions.
+Implementation 3 is recommended if you have multiple GPUs and want to compute OSEM/MLEM reconstructions. It is also most likely faster than implementation 2 when doing OSEM or MLEM reconstructions only.
+
+If you are doing OSEM or MLEM only and want the fastest method, then implementation 3 is recommended.
 
 Implementation 1 should only be used if none of the above cases are valid. This could be if you want to use some of the other algorithms (e.g. COSEM), but can't use implementation 2, or if you want to compute the system matrix. Note, however, that there are memory considerations when using implementation 1 (see below memory issues).
 
@@ -49,6 +51,8 @@ Saving the dynamic examination sinogram data might also fail in Octave due to th
 Implementation 1 is very memory intensive method as it is not a matrix-free method. This is especially true if `options.precompute_lor = false` (this is also the only case where the system matrix computations are NOT parallel). Several algorithms with implementation 1 can require much more memory. These include at least all COSEM variations and MBSREM/MRAMLA. Minimum of 16GB of memory is recommended if using these, but even that might be too little depending on the subset and image size.
 
 Due to above, only improved Siddon's algorithm is recommended as the projector. Especially 3D orthogonal distance-based ray tracer can take significant amount of memory.
+
+NLM is currently very memory intensive prior, regardless of the implementation.
 
 As already mentioned above, using implementation 1 with `options.precompute_lor = false` is simply NOT recommended. This is only supported in order to keep feature parity (and because it was the first version that was implemented).
 

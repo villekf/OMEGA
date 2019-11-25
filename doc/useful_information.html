@@ -1,0 +1,102 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Useful information</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }
+.S2 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S3 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: bold; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Useful information</span></h1><div  class = 'S1'><span>This page lists some useful information such as recommendations and possible issues that can arise.</span></div><h1  class = 'S2'><span>Recommendations</span></h1><h2  class = 'S3'><span>Importing GATE data</span></h2><div  class = 'S1'><span>On Unix systems, it is highly recommended to use ROOT data as it  takes less disk space than ASCII or LMF but is also faster to load than  ASCII and has more features than LMF. However, do take note of the  crashing in MATLAB R2018b and earlier (see the README.md).</span></div><div  class = 'S1'><span>On Windows systems ASCII is the recommended format.</span></div><div  class = 'S1'><span>LMF format is not recommended but can be used for normal coincidence imaging (i.e. no trues or scatter extraction).</span></div><h2  class = 'S3'><span>Using corrections</span></h2><div  class = 'S1'><span>When using randoms correction (delayed coincidence window), variance  reduction is recommended when performing the corrections during the  image reconstruction.</span></div><div  class = 'S1'><span>Corrections during the reconstruction are recommended to preserve the Poisson nature of the measurement data, however, they will most likely  slightly reduce the speed of the image reconstruction. This should be  only marginal increase though.</span></div><div  class = 'S1'><span>Normalization with raw list-mode data can be unreliable compared to  sinogram data. Computing normalization coefficients for raw data also  uses more memory.</span></div><h2  class = 'S3'><span>Selecting the correct implementation</span></h2><div  class = 'S1'><span>Implementation 2 is the recommended method if it is supported (e.g.  it is not possible to use in Octave on Windows) and if single precision  (f32) variables are not a problem.</span></div><div  class = 'S1'><span>For pure OSEM/MLEM reconstructions, implementation 4 is recommended  and should work on all platforms as long as C++11 compiler is available. Implementation 4 also uses double precision (f64) variables and works  purely on the CPU. For NLM, implementation 4 is recommended.</span></div><div  class = 'S1'><span>Implementation 3 is recommended if you have multiple GPUs and want to compute OSEM/MLEM reconstructions. It is also most likely faster than  implementation 2 when doing OSEM or MLEM reconstructions only.</span></div><div  class = 'S1'><span>If you are doing OSEM or MLEM only and want the fastest method, then implementation 3 is recommended.</span></div><div  class = 'S1'><span>Implementation 1 should only be used if none of the above cases are  valid. This could be if you want to use some of the other algorithms  (e.g. COSEM), but can’t use implementation 2, or if you want to compute  the system matrix. Note, however, that there are memory considerations  when using implementation 1 (see below memory issues).</span></div><h2  class = 'S3'><span>Image reconstruction parameters</span></h2><div  class = 'S1'><span>For best quality, the recommended projector is the orthogonal distance-based ray tracer in 3D mode. </span><span style=' font-family: monospace;'>options.tube_width_z</span><span> is recommended to be the FWHM or, alternatively, the approximately size of the crystal pitch. However, this is also the slowest method.</span></div><div  class = 'S1'><span>For the number of iterations, subsets, subset type, regularization  parameters, etc. I can’t give any recommendations. The optimal  selections and values depend on the use case and as such it is best to  either experiment or follow values in literature.</span></div><h1  class = 'S2'><span>Memory and computational issues</span></h1><h2  class = 'S3'><span>Dynamic imaging</span></h2><div  class = 'S1'><span>Dynamic imaging can be very memory intensive if you have a large  amount of time steps. Furthermore, dynamic data load and sinogram  formation can take over an hour depending on the amount of time steps,  the machine used and the computer the computations are performed on.</span></div><div  class = 'S1'><span>Saving the dynamic examination sinogram data might also fail in Octave due to the lack of support for v. 7.3 type of MAT-files.</span></div><h2  class = 'S3'><span>Image reconstruction</span></h2><div  class = 'S1'><span>Implementation 1 is very memory intensive method as it is not a matrix-free method. This is especially true if </span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span> (this is also the only case where the system matrix computations are  NOT parallel). Several algorithms with implementation 1 can require much more memory. These include at least all COSEM variations and  MBSREM/MRAMLA. Minimum of 16GB of memory is recommended if using these,  but even that might be too little depending on the subset and image  size.</span></div><div  class = 'S1'><span>Due to above, only improved Siddon’s algorithm is recommended as the  projector. Especially 3D orthogonal distance-based ray tracer can take  significant amount of memory.</span></div><div  class = 'S1'><span>NLM is currently very memory intensive prior, regardless of the implementation.</span></div><div  class = 'S1'><span>As already mentioned above, using implementation 1 with </span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span> is simply NOT recommended. This is only supported in order to keep  feature parity (and because it was the first version that was  implemented).</span></div><div  class = 'S1'><span>Using the precomputed system matrix (i.e. </span><span style=' font-family: monospace;'>options.precompute_obs_matrix = true</span><span>) (implementation 1 only) can take over 100GB of memory on normal PET  machines. Due to this, it has not been tested and is not recommended for 3D reconstruction.</span></div><div  class = 'S1'><span>Errors in MEX-files with implementations 2 and 3 will currently  create memory leaks. Closing MATLAB/Octave will clear the allocated  memory from the device.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Useful information
+% This page lists some useful information such as recommendations and possible 
+% issues that can arise.
+%% Recommendations
+%% Importing GATE data
+% On Unix systems, it is highly recommended to use ROOT data as it  takes less 
+% disk space than ASCII or LMF but is also faster to load than  ASCII and has 
+% more features than LMF. However, do take note of the  crashing in MATLAB R2018b 
+% and earlier (see the README.md).
+% 
+% On Windows systems ASCII is the recommended format.
+% 
+% LMF format is not recommended but can be used for normal coincidence imaging 
+% (i.e. no trues or scatter extraction).
+%% Using corrections
+% When using randoms correction (delayed coincidence window), variance  reduction 
+% is recommended when performing the corrections during the  image reconstruction.
+% 
+% Corrections during the reconstruction are recommended to preserve the Poisson 
+% nature of the measurement data, however, they will most likely  slightly reduce 
+% the speed of the image reconstruction. This should be  only marginal increase 
+% though.
+% 
+% Normalization with raw list-mode data can be unreliable compared to  sinogram 
+% data. Computing normalization coefficients for raw data also  uses more memory.
+%% Selecting the correct implementation
+% Implementation 2 is the recommended method if it is supported (e.g.  it is 
+% not possible to use in Octave on Windows) and if single precision  (f32) variables 
+% are not a problem.
+% 
+% For pure OSEM/MLEM reconstructions, implementation 4 is recommended  and should 
+% work on all platforms as long as C++11 compiler is available. Implementation 
+% 4 also uses double precision (f64) variables and works  purely on the CPU. For 
+% NLM, implementation 4 is recommended.
+% 
+% Implementation 3 is recommended if you have multiple GPUs and want to compute 
+% OSEM/MLEM reconstructions. It is also most likely faster than  implementation 
+% 2 when doing OSEM or MLEM reconstructions only.
+% 
+% If you are doing OSEM or MLEM only and want the fastest method, then implementation 
+% 3 is recommended.
+% 
+% Implementation 1 should only be used if none of the above cases are  valid. 
+% This could be if you want to use some of the other algorithms  (e.g. COSEM), 
+% but can’t use implementation 2, or if you want to compute  the system matrix. 
+% Note, however, that there are memory considerations  when using implementation 
+% 1 (see below memory issues).
+%% Image reconstruction parameters
+% For best quality, the recommended projector is the orthogonal distance-based 
+% ray tracer in 3D mode. |options.tube_width_z| is recommended to be the FWHM 
+% or, alternatively, the approximately size of the crystal pitch. However, this 
+% is also the slowest method.
+% 
+% For the number of iterations, subsets, subset type, regularization  parameters, 
+% etc. I can’t give any recommendations. The optimal  selections and values depend 
+% on the use case and as such it is best to  either experiment or follow values 
+% in literature.
+%% Memory and computational issues
+%% Dynamic imaging
+% Dynamic imaging can be very memory intensive if you have a large  amount of 
+% time steps. Furthermore, dynamic data load and sinogram  formation can take 
+% over an hour depending on the amount of time steps,  the machine used and the 
+% computer the computations are performed on.
+% 
+% Saving the dynamic examination sinogram data might also fail in Octave due 
+% to the lack of support for v. 7.3 type of MAT-files.
+%% Image reconstruction
+% Implementation 1 is very memory intensive method as it is not a matrix-free 
+% method. This is especially true if |options.precompute_lor = false| (this is 
+% also the only case where the system matrix computations are  NOT parallel). 
+% Several algorithms with implementation 1 can require much more memory. These 
+% include at least all COSEM variations and  MBSREM/MRAMLA. Minimum of 16GB of 
+% memory is recommended if using these,  but even that might be too little depending 
+% on the subset and image  size.
+% 
+% Due to above, only improved Siddon’s algorithm is recommended as the  projector. 
+% Especially 3D orthogonal distance-based ray tracer can take  significant amount 
+% of memory.
+% 
+% NLM is currently very memory intensive prior, regardless of the implementation.
+% 
+% As already mentioned above, using implementation 1 with |options.precompute_lor 
+% = false| is simply NOT recommended. This is only supported in order to keep  
+% feature parity (and because it was the first version that was  implemented).
+% 
+% Using the precomputed system matrix (i.e. |options.precompute_obs_matrix = 
+% true|) (implementation 1 only) can take over 100GB of memory on normal PET  
+% machines. Due to this, it has not been tested and is not recommended for 3D 
+% reconstruction.
+% 
+% Errors in MEX-files with implementations 2 and 3 will currently  create memory 
+% leaks. Closing MATLAB/Octave will clear the allocated  memory from the device.
+##### SOURCE END #####
+--></body></html>

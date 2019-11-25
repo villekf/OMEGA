@@ -1,0 +1,29 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>form_sinograms</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>form_sinograms</span></h1><div  class = 'S1'><span>This file creates the sinograms. First the Michelogram is created and later the final sinograms. Lines 312 to 365 form the Michelograms.  Separate sinograms are created for prompts, trues, scatter, randoms and  delayed coincidences. If any corrections are done (and </span><span style=' font-family: monospace;'>options.corrections_during_reconstruction = false</span><span>) then also the raw, uncorrected, sinogram is saved. </span><span style=' font-family: monospace;'>SinM</span><span> contains the corrected sinogram, </span><span style=' font-family: monospace;'>raw_SinM</span><span> the uncorrected sinogram, </span><span style=' font-family: monospace;'>SinTrues</span><span> the sinogram of trues, </span><span style=' font-family: monospace;'>SinScatter</span><span> the scatter sinogram, </span><span style=' font-family: monospace;'>SinRandoms</span><span> the randoms sinogram and </span><span style=' font-family: monospace;'>SinDelayed</span><span> the sinogram of delayed coincidences. The sinograms are saved in the  current working folder. Scatter, randoms and normalization correction  can be done here.</span></div><div  class = 'S1'><span>For Inveon data, if </span><span style=' font-family: monospace;'>options.use_machine = 2</span><span>, the  sinogram created by the IAW is loaded (user will be prompted for the  location of the file). Scatter correction (using custom data or IAW  created) and normalization correction (custom or IAW data) are  supported. The user will be prompted for the scatter data always if </span><span style=' font-family: monospace;'>options.scatter_correction = true</span><span> and normalization data if </span><span style=' font-family: monospace;'>options.normalization_correction = true</span><span> and </span><span style=' font-family: monospace;'>options.use_user_normalization = true</span><span>. If normalization data was created with OMEGA, and </span><span style=' font-family: monospace;'>options.use_user_normalization = false</span><span> the data will be automatically loaded. Randoms correction is not performed as it has already been done.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% form_sinograms
+% This file creates the sinograms. First the Michelogram is created and later 
+% the final sinograms. Lines 312 to 365 form the Michelograms.  Separate sinograms 
+% are created for prompts, trues, scatter, randoms and  delayed coincidences. 
+% If any corrections are done (and |options.corrections_during_reconstruction 
+% = false|) then also the raw, uncorrected, sinogram is saved. |SinM| contains 
+% the corrected sinogram, |raw_SinM| the uncorrected sinogram, |SinTrues| the 
+% sinogram of trues, |SinScatter| the scatter sinogram, |SinRandoms| the randoms 
+% sinogram and |SinDelayed| the sinogram of delayed coincidences. The sinograms 
+% are saved in the  current working folder. Scatter, randoms and normalization 
+% correction  can be done here.
+% 
+% For Inveon data, if |options.use_machine = 2|, the  sinogram created by the 
+% IAW is loaded (user will be prompted for the  location of the file). Scatter 
+% correction (using custom data or IAW  created) and normalization correction 
+% (custom or IAW data) are  supported. The user will be prompted for the scatter 
+% data always if |options.scatter_correction = true| and normalization data if 
+% |options.normalization_correction = true| and |options.use_user_normalization 
+% = true|. If normalization data was created with OMEGA, and |options.use_user_normalization 
+% = false| the data will be automatically loaded. Randoms correction is not performed 
+% as it has already been done.
+##### SOURCE END #####
+--></body></html>

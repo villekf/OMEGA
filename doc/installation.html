@@ -1,0 +1,101 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Installation</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 10px 10px 5px 4px; padding: 0px; line-height: 18px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 15px; font-weight: bold; text-align: left;  }
+.S2 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Installation</span></h1><h4  class = 'S1'><span>Toolbox installation</span></h4><div  class = 'S2'><span>Latest version of the toolbox can always be found from </span><a href = "https://github.com/villekf/OMEGA"><span>GitHub</span></a><span>. </span></div><div  class = 'S2'><span>OMEGA can be obtained as a packaged toolbox from file exchange or as the collection of the source code in GitHub. In the former case you only need to run the package and the toolbox will be installed automatically and added to MATLAB path. OMEGA can then be found from Add-ons --&gt; Manage Add-Ons. The three dots on the right allow you to open the toolbox folder in MATLAB, view documentation, uninstall the package, etc.</span></div><div  class = 'S2'><span>If obtained as zip-file or through git (e.g. </span><span style=' font-family: monospace;'>git clone https://github.com/villekf/OMEGA</span><span>), the toolbox folders need to be manually added to the MATLAB path. The toolbox also needs to be manually uninstalled. Help documentation should be available in MATLAB documentation as supplemental software.</span></div><div  class = 'S2'><span>Whether installed as a package or as a collection of individual files, the </span><span style=' font-family: monospace;'>install_mex</span><span> function needs to be run. This will automatically attempt to build all required mex-files. Some of them might fail to build (e.g. ROOT will always fail on Windows). You can view the build logs with </span><span style=' font-family: monospace;'>install_mex(1)</span><span>. If OpenCL headers/ROOT/ArrayFire are in non-standard locations and not on path, you can speficy their paths with i</span><span style=' font-family: monospace;'>nstall_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)</span><span>. </span></div><h4  class = 'S1'><span>C++ compiler</span></h4><div  class = 'S2'><span>You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform. Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04. MinGW++ also works though the ArrayFire OpenCL reconstructions (implementation 2) is not supported. Octave supports only MinGW++ and as such implementation 2 is not supported on Windows. MinGW++ for MATLAB can be downloaded from </span><a href = "https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler"><span style=' text-decoration: underline;'>here</span></a><span>.</span></div><h4  class = 'S1'><span>OpenCL support</span></h4><div  class = 'S2'><span>In order to enable OpenCL support, you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below).</span></div><div  class = 'S2'><span>On Linux you can alternatively simply install the OpenCL headers (NOTE: UNTESTED):</span></div><div  class = 'S2'><span style=' font-family: monospace;'>sudo apt-get install opencl-headers</span></div><div  class = 'S2'><span>and then the library:</span></div><div  class = 'S2'><span style=' font-family: monospace;'>sudo apt-get install ocl-icd-libopencl1</span></div><div  class = 'S2'><span>The SDK can be any (or all) of the following CUDA Toolkit, Intel  OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and  header files need to be on your system's PATH. By default, the  install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an  error message like "CL/cl.h: No such file or directory", the headers  could not be found. You can also add these manually to </span><span style=' font-family: monospace;'>install_mex</span><span> by adding </span><span style=' font-family: monospace;'>-I/path/to/CL</span><span> and </span><span style=' font-family: monospace;'>-L/path/to/OpenCLlib</span><span> before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command </span><span style=' font-family: monospace;'>find / -iname cl.h 2&gt;/dev/null</span><span> to find the required cl.h file and </span><span style=' font-family: monospace;'>find / -iname libOpenCL.so 2&gt;/dev/null</span><span> to find the required library file. i</span><span style=' font-family: monospace;'>nstall_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH) </span><span>can be used to input custom paths as well. See </span><span style=' font-family: monospace;'>install_mex.m</span><span> for further details. Library path needs to be on system path when running the mex-files though or otherwise the required libraries will not be found.</span></div><div  class = 'S2'><span>Links:</span></div><div  class = 'S2'><a href = "https://software.intel.com/en-us/intel-opencl"><span style=' text-decoration: underline;'>https://software.intel.com/en-us/intel-opencl</span></a></div><div  class = 'S2'><a href = "https://developer.nvidia.com/cuda-toolkit"><span style=' text-decoration: underline;'>https://developer.nvidia.com/cuda-toolkit</span></a></div><div  class = 'S2'><a href = "https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases"><span style=' text-decoration: underline;'>https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases</span></a></div><div  class = 'S2'><span>Once you have the header and library files, you need drivers/OpenCL runtimes for your device(s). If you have GPUs/APUs then simply having  the vendor drivers should be enough. For Intel CPUs without an integrated GPU you need CPU runtimes. For AMD CPUs it seems that the AMD drivers released around the summer 2018 and after no longer support  CPUs so you need an older driver in order to get CPU support. Inte  runtimes can be found here:</span></div><div  class = 'S2'><a href = "https://software.intel.com/en-us/articles/opencl-drivers"><span style=' text-decoration: underline;'>https://software.intel.com/en-us/articles/opencl-drivers</span></a></div><h4  class = 'S1'><span>ArrayFire</span></h4><div  class = 'S2'><span>This software also uses ArrayFire library for the GPU/OpenCL implementation. You can find AF binaries from here:</span></div><div  class = 'S2'><a href = "https://arrayfire.com/download/"><span style=' text-decoration: underline;'>https://arrayfire.com/download/</span></a></div><div  class = 'S2'><span>and the source code from here:</span></div><div  class = 'S2'><a href = "https://github.com/arrayfire/arrayfire"><span style=' text-decoration: underline;'>https://github.com/arrayfire/arrayfire</span></a></div><div  class = 'S2'><span>Installing/building ArrayFire to the default location (</span><span style=' font-family: monospace;'>C:\Program Files\ArrayFire</span><span> on Windows, </span><span style=' font-family: monospace;'>/opt/arrayfire/</span><span> on Linux) should cause </span><span style=' font-family: monospace;'>install_mex</span><span> to automatically locate everything. However, on Linux you probably need to add </span><span style=' font-family: monospace;'>/opt/arrayfire/lib</span><span> to the library path (e.g. </span><span style=' font-family: monospace;'>sudo ldconfig /opt/arrayfire/lib/</span><span>).</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Installation
+% Toolbox installation
+% Latest version of the toolbox can always be found from <https://github.com/villekf/OMEGA 
+% GitHub>. 
+% 
+% OMEGA can be obtained as a packaged toolbox from file exchange or as the collection 
+% of the source code in GitHub. In the former case you only need to run the package 
+% and the toolbox will be installed automatically and added to MATLAB path. OMEGA 
+% can then be found from Add-ons REPLACE_WITH_DASH_DASH> Manage Add-Ons. The three dots on the right 
+% allow you to open the toolbox folder in MATLAB, view documentation, uninstall 
+% the package, etc.
+% 
+% If obtained as zip-file or through git (e.g. |git clone https://github.com/villekf/OMEGA|), 
+% the toolbox folders need to be manually added to the MATLAB path. The toolbox 
+% also needs to be manually uninstalled. Help documentation should be available 
+% in MATLAB documentation as supplemental software.
+% 
+% Whether installed as a package or as a collection of individual files, the 
+% |install_mex| function needs to be run. This will automatically attempt to build 
+% all required mex-files. Some of them might fail to build (e.g. ROOT will always 
+% fail on Windows). You can view the build logs with |install_mex(1)|. If OpenCL 
+% headers/ROOT/ArrayFire are in non-standard locations and not on path, you can 
+% speficy their paths with i|nstall_mex(0, OpenCL_include_path, OpenCL_lib_path, 
+% AF_PATH, ROOT_PATH)|. 
+% C++ compiler
+% You're going to need C++ compiler in order to compile the MEX-files and use 
+% this software. Visual Studio and GCC have been tested to work so I recommend 
+% those depending on your platform. Specifically, Visual Studio  2015, 2017 and 
+% 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 
+% 7.3 on Ubuntu 16.04. MinGW++ also works though the ArrayFire OpenCL reconstructions 
+% (implementation 2) is not supported. Octave supports only MinGW++ and as such 
+% implementation 2 is not supported on Windows. MinGW++ for MATLAB can be downloaded 
+% from <https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler 
+% here>.
+% OpenCL support
+% In order to enable OpenCL support, you're going to need an OpenCL SDK and 
+% (for implementation 2) ArrayFire (see below).
+% 
+% On Linux you can alternatively simply install the OpenCL headers (NOTE: UNTESTED):
+% 
+% |sudo apt-get install opencl-headers|
+% 
+% and then the library:
+% 
+% |sudo apt-get install ocl-icd-libopencl1|
+% 
+% The SDK can be any (or all) of the following CUDA Toolkit, Intel  OpenCL SDK, 
+% OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and  header files need 
+% to be on your system's PATH. By default, the  install_mex-file assumes that 
+% you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux 
+% and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux 
+% and Windows). If you get an  error message like "CL/cl.h: No such file or directory", 
+% the headers  could not be found. You can also add these manually to |install_mex| 
+% by adding |-I/path/to/CL| and |-L/path/to/OpenCLlib| before the .cpp file (simply 
+% replace the CUDA paths with the correct ones). On Ubuntu you can use command 
+% |find / -iname cl.h 2>/dev/null| to find the required cl.h file and |find / 
+% -iname libOpenCL.so 2>/dev/null| to find the required library file. i|nstall_mex(0, 
+% OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH) |can be used to input 
+% custom paths as well. See |install_mex.m| for further details. Library path 
+% needs to be on system path when running the mex-files though or otherwise the 
+% required libraries will not be found.
+% 
+% Links:
+% 
+% <https://software.intel.com/en-us/intel-opencl https://software.intel.com/en-us/intel-opencl>
+% 
+% <https://developer.nvidia.com/cuda-toolkit https://developer.nvidia.com/cuda-toolkit>
+% 
+% <https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases>
+% 
+% Once you have the header and library files, you need drivers/OpenCL runtimes 
+% for your device(s). If you have GPUs/APUs then simply having  the vendor drivers 
+% should be enough. For Intel CPUs without an integrated GPU you need CPU runtimes. 
+% For AMD CPUs it seems that the AMD drivers released around the summer 2018 and 
+% after no longer support  CPUs so you need an older driver in order to get CPU 
+% support. Inte  runtimes can be found here:
+% 
+% <https://software.intel.com/en-us/articles/opencl-drivers https://software.intel.com/en-us/articles/opencl-drivers>
+% ArrayFire
+% This software also uses ArrayFire library for the GPU/OpenCL implementation. 
+% You can find AF binaries from here:
+% 
+% <https://arrayfire.com/download/ https://arrayfire.com/download/>
+% 
+% and the source code from here:
+% 
+% <https://github.com/arrayfire/arrayfire https://github.com/arrayfire/arrayfire>
+% 
+% Installing/building ArrayFire to the default location (|C:\Program Files\ArrayFire| 
+% on Windows, |/opt/arrayfire/| on Linux) should cause |install_mex| to automatically 
+% locate everything. However, on Linux you probably need to add |/opt/arrayfire/lib| 
+% to the library path (e.g. |sudo ldconfig /opt/arrayfire/lib/|).
+##### SOURCE END #####
+--></body></html>

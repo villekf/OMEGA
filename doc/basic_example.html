@@ -1,0 +1,190 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Basic example</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: bold; text-align: left;  }
+.S2 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Basic example</span></h1><h2  class = 'S1'><span>Set up</span></h2><div  class = 'S2'><span>The most important part of OMEGA is the Machine properties section. This has already been filled for the example case, but here are detailed explanations as to where the values are derived from.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Blocks per ring</span></div><div  class = 'S2'><span>In the GATE macro </span><a href = "https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L64"><span style=' text-decoration: underline; font-family: monospace;'>camera.mac</span></a><span> this is found from line 64. I.e. it is the ring/R-sector repeater. The R-sector in this case contains all the blocks/buckets in the axial direction and is repeated radially along the ring. Inside these R-sectors are the modules that are the individual blocks/buckets.</span></div><div  class = 'S2'><span>For non-GATE data, this should be the number of blocks/buckets the machine has transaxially. This multiplied with the below crystals per block should equal the total number of detectors on one ring (transaxially).</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Linear multiply</span></div><div  class = 'S2'><span>This is the axial repetition factor, from line 59 in </span><a href = "https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L59"><span style=' text-decoration: underline; font-family: monospace;'>camera.mac</span></a><span>. Each module (block/bucket) is repeated this many times in the axial direction. The blocks have small gaps between them in the example data (0.2 mm).</span></div><div  class = 'S2'><span>For non-GATE data this should be the number of blocks/buckets axially. This multiplied with the below crystals per block should equal the number of crystal rings (e.g. the number of crystals along a line axially).</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Crystals per block</span></div><div  class = 'S2'><span>This is simply the number of crystals/detectors in the module/block/bucket transaxially. Line 53 in </span><a href = "https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L53"><span style=' text-decoration: underline; font-family: monospace;'>camera.mac</span></a><span>.</span></div><div  class = 'S2'><span>If you have a block with 20x10 crystals with 8 rings (e.g. Biograph Vision), set crystals per block to 20 and linear multiply to 4 (e.g. 20*4 = 10*8).</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Crystal pitch</span></div><div  class = 'S2'><span>Both the transaxial (x- and y-direction) as well as the axial (z-direction) crystal pitches need to be input. These are the distances between the centers of adjacent crystals in the same block. Line 55 in </span><a href = "https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L55"><span style=' text-decoration: underline; font-family: monospace;'>camera.mac</span></a><span>. There are small gaps between the crystals.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Ring diameter</span></div><div  class = 'S2'><span>This is the total diameter of the scanner bore, i.e. the distance between perpendicular detectors. Usually this should be the Rmin, see line 6 in </span><a href = "https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L6"><span style=' text-decoration: underline; font-family: monospace;'>camera.mac</span></a><span>.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Transaxial FOV</span></div><div  class = 'S2'><span>This is the length of a one side of the transaxial FOV (needs to be rectangular). Both x- and y-directions can be selected individually, though square FOVs are recommended. This parameter can be selected freely, but the current value was selected such that the size is of similar size as that in the Inveon PET scanner (which uses the vendor specified FOV size).</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Axial FOV</span></div><div  class = 'S2'><span>Same as above, but for axial (z) direction. Has been selected to be slightly smaller than the actual scanner length.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Machine name</span></div><div  class = 'S2'><span>Simply the name for your machine. Used only to name the saved mat-files.</span></div><h2  class = 'S1'><span>Loading GATE data</span></h2><div  class = 'S2'><span style=' font-weight: bold;'>GATE specific settings</span></div><div  class = 'S2'><span>Before loading GATE data, you should specify first if you want to load some GATE specific data. These include trues, scatter, randoms and the source image. For more detailed information on extracting GATE trues, scatter and randoms see </span><a href = "extract_GATE_data.html"><span>Extracting GATE scatter, randoms and trues data</span></a><span>.</span></div><div  class = 'S2'><span>By default, the main-file saves trues, scatter, randoms and the source images. These can be, respectively, disabled by setting the values on lines </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L53"><span style=' text-decoration: underline;'>53</span></a><span>, </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L58"><span style=' text-decoration: underline;'>58</span></a><span>, </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L87"><span style=' text-decoration: underline;'>87</span></a><span> and </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L97"><span style=' text-decoration: underline;'>97</span></a><span> to false. Optionally, the trues or scatter can be reconstructed instead of prompts. For trues this is achieved by setting line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L64"><span style=' text-decoration: underline;'>64</span></a><span> to true, and for scatter line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L80"><span style=' text-decoration: underline;'>80</span></a><span>.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>GATE input data setup</span></div><div  class = 'S2'><span>Three GATE input data are supported: ASCII, LMF and ROOT. Of these ASCII is used by default (line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L112"><span style=' text-decoration: underline;'>112</span></a><span>). The coincidence mask is correct if no modifications have been made. The numbers come straight from the ASCII mask order as specified by GATE (see GATE </span><a href = "https://opengate.readthedocs.io/en/latest/data_output_management.html#coincidences-files-gatecoincidences-dat-bin"><span style=' text-decoration: underline;'>documentation</span></a><span>).</span></div><div  class = 'S2'><span>LMF data can be enabled on line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L130"><span style=' text-decoration: underline;'>130</span></a><span>. For LMF data you need to specify the number of bits dedicated for each geometric element (R-sectors, modules, submodules, crystals, layers). This is output by GATE at the start of the simulation, see the image below:</span></div><div  class = 'S2'><span>Furthermore, you need the coincidence window length as well the "clock time step" that can be found from the output cch-files.</span></div><div  class = 'S2'><span>ROOT data is enabled from line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L172"><span style=' text-decoration: underline;'>172</span></a><span> and doesn’t need any specific information. ROOT data is, however, unstable on MATLAB R2018b and earlier and is not supported on Windows. See </span><a href = "known_issues.html"><span>Known issues and limitations</span></a><span> for more information.</span></div><h2  class = 'S1'><span>Image settings</span></h2><div  class = 'S2'><span>The voxel counts for each slice and the slice count can be specified on lines </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L188"><span style=' text-decoration: underline;'>188-192</span></a><span>. Slice count is usually the number of crystal rings x 2 - 1.</span></div><div  class = 'S2'><span>Depending on how the system is built, you might need to rotate it or flip it in order for the reconstructed images to be correctly oriented (see lines </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L194"><span style=' text-decoration: underline;'>194</span></a><span> and </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L198"><span style=' text-decoration: underline;'>198</span></a><span>). This is not necessary for the example case though.</span></div><h2  class = 'S1'><span>Sinogram settings</span></h2><div  class = 'S2'><span>Span factor (line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L213"><span style=' text-decoration: underline;'>213</span></a><span>) determines the axial compression, that is how many sinograms are combined in the axial direction. Currently 3 is the smallest span factor supported (if you wish to use span of 1, use raw data). Higher span values compress the sinogram data more and result in faster reconstruction, but can have a negative impact on the image quality.</span></div><div  class = 'S2'><span>Ring difference is related to the span value and can be at most the number of crystal rings - 1. Oblique sinograms are created from the ring distance specified by the ring difference. I.e. with maximum ring difference the coincidences between the first and last crystal ring are included. For more information on span and ring difference see </span><a href = "http://tech.snmjournals.org/content/30/2/39.long"><span style=' text-decoration: underline;'>Data Acquisition in PET Imaging</span></a><span>.</span></div><div  class = 'S2'><span>The number of angular positions (views) is the first dimension of a single sinogram slice (usually depicted with an </span><span style=' font-style: italic;'>s</span><span>). Primarily you should use the same value as the device you are modelling, but if that is not available you can use the function </span><span style=' font-family: monospace;'>ndist_max</span><span> to determine optimal values. This function outputs the orthogonal distance of every line of response as well as displays the view counts for the case of fully encompassing the FOV (i.e. a circle with the FOV square inside) or for a case where the sinogram FOV is fully inside the FOV (i.e. a circle that just fits inside the FOV square). It is recommended the value is set somewhere between these two values.</span></div><div  class = 'S2'><span>The number of angles (tangential positions) determine the second dimension of a single sinogram slice (usually depicted with a </span><span style=' font-style: italic;'>φ</span><span>). This should be the number of detectors on a ring divided by two. Smaller values are supported, but they need to be values that are obtained from the number of detectors on a ring divided by a value divisible by two. Smaller values than the number of detectors per ring divided by two will be considered as sinogram mashing (e.g. number of detectors per ring divided by four).</span></div><h2  class = 'S1'><span>Input data</span></h2><div  class = 'S2'><span>On Windows, specify the folder for the GATE data on line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L245"><span style=' text-decoration: underline;'>245</span></a><span>. On other systems on line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L247"><span style=' text-decoration: underline;'>247</span></a><span>.</span></div><h2  class = 'S1'><span>Other options</span></h2><div  class = 'S2'><span>The name (line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L239"><span style=' text-decoration: underline;'>239</span></a><span>) is used for naming purposes only. I.e. sinograms are saved for specific examination and machine.</span></div><div  class = 'S2'><span>Only sinograms can be computed by setting line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L250"><span style=' text-decoration: underline;'>250</span></a><span> to true and running the file. This loads the GATE data and then forms the sinograms but does not continue to image reconstruction.</span></div><div  class = 'S2'><span>Likewise, only reconstruction can be enabled on line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L255"><span style=' text-decoration: underline;'>255</span></a><span>. Running with this true, will skip the data load and sinogram formation steps. Previously created measurement data will be automatically loaded if such exists (name and machine name match).</span></div><div  class = 'S2'><span>Raw data format (the data is stored in detector pair combinations) can be enabled by setting line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L259"><span style=' text-decoration: underline;'>259</span></a><span> value to true.</span></div><div  class = 'S2'><span>Status messages can be turned off by setting line </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L261"><span style=' text-decoration: underline;'>261</span></a><span> variable to false.</span></div><h2  class = 'S1'><span>Reconstruction options</span></h2><div  class = 'S2'><span>The number of iterations and subsets can be selected in Reconstruction properties (lines </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L276"><span style=' text-decoration: underline;'>276</span></a><span> and </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L278"><span style=' text-decoration: underline;'>278</span></a><span>). These are case specific and have not been optimized for this example.</span></div><h2  class = 'S1'><span>Export data</span></h2><div  class = 'S2'><span>If you want to export the reconstructed image, you can use </span><a href = "https://github.com/villekf/OMEGA/wiki/Function-help#saveimagem"><span style=' text-decoration: underline;'>saveImage</span></a><span> function. For example, you can export the reconstructed image as NIfTI format with the following command </span><span style=' font-family: monospace;'>saveImage(f_osem, 'nifti', [], options)</span><span>.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Basic example
+%% Set up
+% The most important part of OMEGA is the Machine properties section. This has 
+% already been filled for the example case, but here are detailed explanations 
+% as to where the values are derived from.
+% 
+% *Blocks per ring*
+% 
+% In the GATE macro <https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L64 
+% |camera.mac|> this is found from line 64. I.e. it is the ring/R-sector repeater. 
+% The R-sector in this case contains all the blocks/buckets in the axial direction 
+% and is repeated radially along the ring. Inside these R-sectors are the modules 
+% that are the individual blocks/buckets.
+% 
+% For non-GATE data, this should be the number of blocks/buckets the machine 
+% has transaxially. This multiplied with the below crystals per block should equal 
+% the total number of detectors on one ring (transaxially).
+% 
+% *Linear multiply*
+% 
+% This is the axial repetition factor, from line 59 in <https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L59 
+% |camera.mac|>. Each module (block/bucket) is repeated this many times in the 
+% axial direction. The blocks have small gaps between them in the example data 
+% (0.2 mm).
+% 
+% For non-GATE data this should be the number of blocks/buckets axially. This 
+% multiplied with the below crystals per block should equal the number of crystal 
+% rings (e.g. the number of crystals along a line axially).
+% 
+% *Crystals per block*
+% 
+% This is simply the number of crystals/detectors in the module/block/bucket 
+% transaxially. Line 53 in <https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L53 
+% |camera.mac|>.
+% 
+% If you have a block with 20x10 crystals with 8 rings (e.g. Biograph Vision), 
+% set crystals per block to 20 and linear multiply to 4 (e.g. 20*4 = 10*8).
+% 
+% *Crystal pitch*
+% 
+% Both the transaxial (x- and y-direction) as well as the axial (z-direction) 
+% crystal pitches need to be input. These are the distances between the centers 
+% of adjacent crystals in the same block. Line 55 in <https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L55 
+% |camera.mac|>. There are small gaps between the crystals.
+% 
+% *Ring diameter*
+% 
+% This is the total diameter of the scanner bore, i.e. the distance between 
+% perpendicular detectors. Usually this should be the Rmin, see line 6 in <https://github.com/villekf/OMEGA/blob/master/exampleGATE/camera.mac#L6 
+% |camera.mac|>.
+% 
+% *Transaxial FOV*
+% 
+% This is the length of a one side of the transaxial FOV (needs to be rectangular). 
+% Both x- and y-directions can be selected individually, though square FOVs are 
+% recommended. This parameter can be selected freely, but the current value was 
+% selected such that the size is of similar size as that in the Inveon PET scanner 
+% (which uses the vendor specified FOV size).
+% 
+% *Axial FOV*
+% 
+% Same as above, but for axial (z) direction. Has been selected to be slightly 
+% smaller than the actual scanner length.
+% 
+% *Machine name*
+% 
+% Simply the name for your machine. Used only to name the saved mat-files.
+%% Loading GATE data
+% *GATE specific settings*
+% 
+% Before loading GATE data, you should specify first if you want to load some 
+% GATE specific data. These include trues, scatter, randoms and the source image. 
+% For more detailed information on extracting GATE trues, scatter and randoms 
+% see <extract_GATE_data.html Extracting GATE scatter, randoms and trues data>.
+% 
+% By default, the main-file saves trues, scatter, randoms and the source images. 
+% These can be, respectively, disabled by setting the values on lines <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L53 
+% 53>, <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L58 58>, 
+% <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L87 87> and 
+% <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L97 97> to 
+% false. Optionally, the trues or scatter can be reconstructed instead of prompts. 
+% For trues this is achieved by setting line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L64 
+% 64> to true, and for scatter line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L80 
+% 80>.
+% 
+% *GATE input data setup*
+% 
+% Three GATE input data are supported: ASCII, LMF and ROOT. Of these ASCII is 
+% used by default (line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L112 
+% 112>). The coincidence mask is correct if no modifications have been made. The 
+% numbers come straight from the ASCII mask order as specified by GATE (see GATE 
+% <https://opengate.readthedocs.io/en/latest/data_output_management.html#coincidences-files-gatecoincidences-dat-bin 
+% documentation>).
+% 
+% LMF data can be enabled on line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L130 
+% 130>. For LMF data you need to specify the number of bits dedicated for each 
+% geometric element (R-sectors, modules, submodules, crystals, layers). This is 
+% output by GATE at the start of the simulation, see the image below:
+% 
+% Furthermore, you need the coincidence window length as well the "clock time 
+% step" that can be found from the output cch-files.
+% 
+% ROOT data is enabled from line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L172 
+% 172> and doesn’t need any specific information. ROOT data is, however, unstable 
+% on MATLAB R2018b and earlier and is not supported on Windows. See <known_issues.html 
+% Known issues and limitations> for more information.
+%% Image settings
+% The voxel counts for each slice and the slice count can be specified on lines 
+% <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L188 188-192>. 
+% Slice count is usually the number of crystal rings x 2 - 1.
+% 
+% Depending on how the system is built, you might need to rotate it or flip 
+% it in order for the reconstructed images to be correctly oriented (see lines 
+% <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L194 194> and 
+% <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L198 198>). 
+% This is not necessary for the example case though.
+%% Sinogram settings
+% Span factor (line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L213 
+% 213>) determines the axial compression, that is how many sinograms are combined 
+% in the axial direction. Currently 3 is the smallest span factor supported (if 
+% you wish to use span of 1, use raw data). Higher span values compress the sinogram 
+% data more and result in faster reconstruction, but can have a negative impact 
+% on the image quality.
+% 
+% Ring difference is related to the span value and can be at most the number 
+% of crystal rings - 1. Oblique sinograms are created from the ring distance specified 
+% by the ring difference. I.e. with maximum ring difference the coincidences between 
+% the first and last crystal ring are included. For more information on span and 
+% ring difference see <http://tech.snmjournals.org/content/30/2/39.long Data Acquisition 
+% in PET Imaging>.
+% 
+% The number of angular positions (views) is the first dimension of a single 
+% sinogram slice (usually depicted with an _s_). Primarily you should use the 
+% same value as the device you are modelling, but if that is not available you 
+% can use the function |ndist_max| to determine optimal values. This function 
+% outputs the orthogonal distance of every line of response as well as displays 
+% the view counts for the case of fully encompassing the FOV (i.e. a circle with 
+% the FOV square inside) or for a case where the sinogram FOV is fully inside 
+% the FOV (i.e. a circle that just fits inside the FOV square). It is recommended 
+% the value is set somewhere between these two values.
+% 
+% The number of angles (tangential positions) determine the second dimension 
+% of a single sinogram slice (usually depicted with a _φ_). This should be the 
+% number of detectors on a ring divided by two. Smaller values are supported, 
+% but they need to be values that are obtained from the number of detectors on 
+% a ring divided by a value divisible by two. Smaller values than the number of 
+% detectors per ring divided by two will be considered as sinogram mashing (e.g. 
+% number of detectors per ring divided by four).
+%% Input data
+% On Windows, specify the folder for the GATE data on line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L245 
+% 245>. On other systems on line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L247 
+% 247>.
+%% Other options
+% The name (line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L239 
+% 239>) is used for naming purposes only. I.e. sinograms are saved for specific 
+% examination and machine.
+% 
+% Only sinograms can be computed by setting line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L250 
+% 250> to true and running the file. This loads the GATE data and then forms the 
+% sinograms but does not continue to image reconstruction.
+% 
+% Likewise, only reconstruction can be enabled on line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L255 
+% 255>. Running with this true, will skip the data load and sinogram formation 
+% steps. Previously created measurement data will be automatically loaded if such 
+% exists (name and machine name match).
+% 
+% Raw data format (the data is stored in detector pair combinations) can be 
+% enabled by setting line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L259 
+% 259> value to true.
+% 
+% Status messages can be turned off by setting line <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L261 
+% 261> variable to false.
+%% Reconstruction options
+% The number of iterations and subsets can be selected in Reconstruction properties 
+% (lines <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L276 
+% 276> and <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m#L278 
+% 278>). These are case specific and have not been optimized for this example.
+%% Export data
+% If you want to export the reconstructed image, you can use <https://github.com/villekf/OMEGA/wiki/Function-help#saveimagem 
+% saveImage> function. For example, you can export the reconstructed image as 
+% NIfTI format with the following command |saveImage(f_osem, 'nifti', [], options)|.
+##### SOURCE END #####
+--></body></html>

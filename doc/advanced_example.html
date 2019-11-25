@@ -1,0 +1,391 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Advanced example</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: bold; text-align: left;  }
+.S2 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Advanced example</span></h1><h2  class = 'S1'><span>Set up</span></h2><div  class = 'S2'><span>Almost identical to the simple version, but the number of pseudo rings/detectors can be adjusted. Aside from the pseudo rings/detectors, all other variables not present in the simple version are calculated automatically.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Pseudo rings</span></div><div  class = 'S2'><span>These can be adjusted in </span><span style=' font-family: monospace;'>options.pseudot</span><span>. If your scanner has pseudo rings, input the number of pseudo rings here. If no pseudo rings are present (as is with most scanners), use 0 or empty array </span><span style=' font-family: monospace;'>[]</span><span>.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Pseudo detectors</span></div><div  class = 'S2'><span>Pseudo detectors can be added to </span><span style=' font-family: monospace;'>options.det_w_pseudo</span><span>. Normally, without pseudo detectors, this is computed as </span><span style=' font-family: monospace;'>options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);</span><span> which is the number of detectors on a one crystal ring. Usually pseudo detectors are one additional detector on each block, which means that this becomes </span><span style=' font-family: monospace;'>options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1);</span><span> If no pseudo detectors are present, </span><span style=' font-family: monospace;'>options.det_w_pseudo</span><span> should be the same as </span><span style=' font-family: monospace;'>options.det_per_ring</span><span>.</span></div><h2  class = 'S1'><span>Sinogram settings</span></h2><div  class = 'S2'><span style=' font-weight: bold;'>Segment table</span></div><div  class = 'S2'><span>Table of sinogram segments. This is automatically computed, but can be filled manually as well.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Total number of sinograms</span></div><div  class = 'S2'><span>This should be the total number of sinograms, i.e. the sum of the segment table.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Number of sinograms used in reconstruction</span></div><div  class = 'S2'><span style=' font-family: monospace;'>options.NSinos</span><span> can be used to utilize </span><span style=' font-style: italic;'>N</span><span> FIRST sinograms in the image reconstruction. E.g. if you want to use only the direct plane sinograms, then this should equal the number of crystal rings * 2 - 1.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Angular cut-off</span></div><div  class = 'S2'><span style=' font-family: monospace;'>options.ndist_side</span><span> is used to determine from which side is one angular position removed. E.g. if you have 128 views, as with the Inveon PET, that means that you have an even number of views. However, since the smallest orthogonal distance between a LOR and the center of the FOV is usually zero, that means that there should be 64 views on both sides + the center one. This would result in 129 views. Usually, however, one of the views is removed from either side.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Increased sampling</span></div><div  class = 'S2'><span>Sinogram sampling can be increased by increasing </span><span style=' font-family: monospace;'>options.sampling</span><span>. E.g. </span><span style=' font-family: monospace;'>options.sampling = 2</span><span> doubles the length of the first dimension of the sinogram. This is achieved through interpolation that can be selected with </span><span style=' font-family: monospace;'>options.sampling_interpolation_method</span><span>. All interpolation methods supported by </span><span style=' font-family: monospace;'>interp1</span><span> are available. The sampling is only increased in the first (views) dimension, not on the second (angles). Furthermore, only sinogram data is supported.</span></div><div  class = 'S2'><span>This can be used to remove aliasing artifacts caused by too low sampling rate. It is not recommended to use this, if no aliasing artifacts are present and even then it is better to test arc correction and/or orthogonal distance-based ray tracer first.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Gap filling</span></div><div  class = 'S2'><span>If pseudo detectors are present on your scanner, these will not obviously receive any measurements. Due to this, the location of these pseudo detectors cause gaps in the formed sinogram. These gaps can be, however, filled if the </span><span style=' font-family: monospace;'>fill_sinogram_gaps</span><span> is set to true.</span></div><div  class = 'S2'><span>Two different gap filling methods can be selected. The first is </span><span style=' font-family: monospace;'>fillmissing</span><span> (built-in function in MATLAB), that uses 1D interpolation. Since it uses 1D interpolation, the quality of the gap filling may not be so good. You can also specify the type of interpolation used, default is </span><span style=' font-family: monospace;'>'linear'</span><span>. See the help of </span><span style=' font-family: monospace;'>fillmissing</span><span> for details on the interpolation methods.</span></div><div  class = 'S2'><span>The second interpolation method is </span><span style=' font-family: monospace;'>inpaint_nans</span><span> which is available from </span><a href = "https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans"><span style=' text-decoration: underline;'>MathWorks file exchange</span></a><span>. This is a 2D interpolation method. As with </span><span style=' font-family: monospace;'>fillmissing</span><span> it also supports different interpolation methods that you can specify. See the help for </span><span style=' font-family: monospace;'>inpaint_nans</span><span> for more information.</span></div><h2  class = 'S1'><span>Corrections</span></h2><div  class = 'S2'><span>When using sinogram data that has been previously saved, and </span><span style=' font-family: monospace;'>options.corrections_during_reconstruction = false</span><span>, applying any correction will automatically use the corrected sinogram, even if the sinogram did not actually contain that correction. E.g. if you have previously constructed a sinogram with ONLY normalization correction, both the raw uncorrected sinogram as well as the normalization corrected sinograms have been saved. Using this same data (same machine name and name) and setting all corrections to </span><span style=' font-family: monospace;'>false</span><span> will cause the uncorrected sinogram to be used during the reconstruction (if the sinogram is not re-created, i.e. </span><span style=' font-family: monospace;'>options.only_reconstructions = true</span><span>). Assuming that the sinogram is NOT re-created, setting any correction to true (e.g. randoms correction) will cause the corrected sinogram to be used although the specified correction may not have been included (in this case it would be the normalized sinogram).</span></div><div  class = 'S2'><span>The above does NOT apply when </span><span style=' font-family: monospace;'>options.corrections_during_reconstruction = true</span><span> as the uncorrected sinogram is always used and corrections are not applied to measurement data. The above also does not apply to raw list-mode data.</span></div><div  class = 'S2'><span>Attenuation correction is always applied during the reconstruction and as such does not affect the measurement data in any case.</span></div><div  class = 'S2'><span>Arc correction is always applied before the reconstruction, but is never saved. Thus arc corrected sinogram cannot be obtained automatically (but can be obtained manually, but saving the </span><span style=' font-family: monospace;'>options.SinM</span><span> variable after </span><span style=' font-family: monospace;'>arc_correction</span><span> has been run) and is always computed regardless of other choices as long </span><span style=' font-family: monospace;'>options.arc_correction = true</span><span>.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Randoms correction</span></div><div  class = 'S2'><span>Randoms correction in OMEGA is performed by using the delayed coincidence window data. For GATE and Inveon data, the delayed coincidences are automatically (and only) collected when randoms correction is enabled. This delayed coincidence data is then used for the randoms corrections either in the sinogram or during reconstruction. For other devices, the user will be prompted for the location of the randoms correction (mat) file if randoms correction is enabled and then used similarly as in the GATE/Inveon case.</span></div><div  class = 'S2'><span>If randoms correction is selected, the randoms can be optionally smoothed (with fixed 8x8 moving mean smoothing) and/or perform variance reduction on the randoms data. These are performed before the corrections.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Scatter correction</span></div><div  class = 'S2'><span>Scatter correction is not inherently provided in OMEGA. However, since you can extract scatter data from GATE simulations, you can use that data for scatter correction. If scatter correction is selected, the user will be prompted for the scatter data (scn or mat file). Data in other format could be converted with </span><span style=' font-family: monospace;'>loadMeasurementData</span><span> (data is saved to </span><span style=' font-family: monospace;'>options.SinM</span><span>).</span></div><div  class = 'S2'><span>Like randoms, scatter data can also be similarly smoothed. Scatter data can also be normalized if normalization correction is enabled and </span><span style=' font-family: monospace;'>normalize_scatter</span><span> is selected.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Attenuation correction</span></div><div  class = 'S2'><span>Attenuation is achieved by using attenuation images scaled for 511 keV. CT and 122 keV attenuation (e.g. germanium phantom) can be converted to 511 keV attenuation images with </span><span style=' font-family: monospace;'>attenuationCT_to_511.m</span><span> and </span><span style=' font-family: monospace;'>attenuation122_to_511.m</span><span>, respectively. To use attenuation correction, the </span><span style=' font-family: monospace;'>attenuation_correction</span><span> needs to be set to true as well as provide the name (and if not present on MATLAB path also the full path) of the mat-file containing the attenuation images to </span><span style=' font-family: monospace;'>attenuation_datafile</span><span>.</span></div><div  class = 'S2'><span>An experimental CT DICOM image to PET attenuation map is available with the function </span><span style=' font-family: monospace;'>create_atten_matrix_CT.m</span><span>. For converting of other formats it is recommended to try to use </span><span style=' font-family: monospace;'>importData</span><span>.</span></div><div  class = 'S2'><span>Attenuation, unlike all other corrections, is always performed during the reconstruction. I.e. when computing the system matrix.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Normalization correction</span></div><div  class = 'S2'><span>The normalization correction is component based and contains the following components: axial block profile factors, axial geometric factors, intrinsic detector efficiencies, transaxial block profile, and transaxial geometric factors. These are grouped into four different groups, with axial block profile factors and axial geometric factors being one, detector efficiencies one, transaxial block profile one and transaxial geometric factors one. Each or any of these can be deselected. The corresponding function </span><span style=' font-family: monospace;'>normalization_coefficients.m</span><span> can also output any of the specific normalization coefficients.</span></div><div  class = 'S2'><span>First output is the normalization coefficient matrix, second the normalized input data (sinogram or raw data file), third the axial geometric coefficients, fourth axial block profiles, fifth the transaxial block profile, sixth the detector efficiencies and seventh the transaxial geometric factors.</span></div><div  class = 'S2'><span>The process for sinogram data or raw list-mode data is slightly different. Sinogram data supports only fan-sum algorithm, while raw list-mode data also support single-plane Casey (detector efficiency).</span></div><div  class = 'S2'><span>Transaxial geometric factors can be unreliable if small (non-FOV covering) sources are used.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Arc correction</span></div><div  class = 'S2'><span>Arc correction is currently an experimental feature. It is not recommended except with Inveon data. Arc correction also currently only works with sinogram data.</span></div><div  class = 'S2'><span>Arc correction is simply enabled by setting </span><span style=' font-family: monospace;'>options.arc_correction = true</span><span>. Increased sampling is supported.</span></div><div  class = 'S2'><span>Arc correction automatically uses parallel computing toolbox (parfor) if it is available.</span></div><h2  class = 'S1'><span>Dynamic imaging</span></h2><div  class = 'S2'><span>Dynamic imaging in OMEGA means a time-series of images. For input data that means a time-series of sinograms/raw data contained in cells. For reconstructed images, the results are a time-series of the reconstructed images.</span></div><div  class = 'S2'><span>For dynamic imaging the start time, end time, total time and the number of time steps can be specified. The amount of time per time-step is currently fixed; variable rate is not supported at the moment.</span></div><div  class = 'S2'><span>No inherent TAC or Patlak plotting is available (currently).</span></div><h2  class = 'S1'><span>Misc properties</span></h2><div  class = 'S2'><span>Setting the </span><span style=' font-family: monospace;'>precompute</span><span> option to true, enables precomputation when the </span><span style=' font-family: monospace;'>gate_main.m</span><span>, </span><span style=' font-family: monospace;'>Inveon_PET_main.m</span><span> or </span><span style=' font-family: monospace;'>main_nongate.m</span><span> is run. The precomputation phase includes the computation of the number of voxels that each LOR traverses. This allows for more efficient computation as LORs which are not inside the FOV can be ignored. This is especially true when using raw list-mode data. With sinogram data you may not get any benefit from precomputation, depending on the number of views. This is highly recommended when using implementation 1 as without precomputation it is NOT parallelized. With precomputation the memory for the system matrix can be preallocated and, as such, the matrix creation can be parallelized.</span></div><div  class = 'S2'><span>If implementation 1 is used, the entire system matrix (no subsets) can be computed by setting </span><span style=' font-family: monospace;'>precompute_obs_matrix</span><span>. This will most likely use significant amount of memory, however, as the matrix is output without any reduction to its size. This is the only way to compute MLEM with implementation 1.</span></div><h2  class = 'S1'><span>Reconstruction options</span></h2><div  class = 'S2'><span style=' font-weight: bold;'>Implementations</span></div><div  class = 'S2'><span>Four different implementations can be selected. </span></div><div  class = 'S2'><span style=' font-style: italic; text-decoration: underline;'>Implementation 1</span></div><div  class = 'S2'><span>Implementation 1 computes the system matrix as a sparse (MATLAB) matrix. This matrix is then used in MATLAB to compute the selected algorithm(s). This matrix can be either the full system matrix (not recommended) or a subset. Full system matrix is obtained by setting </span><span style=' font-family: monospace;'>options.precompute_obs_matrix = true</span><span> in misc properties.</span></div><div  class = 'S2'><span>If </span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span> (misc properties), the system matrix is computed such that there is only partial memory preallocation and as such there is no parallellization. If </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>, then the matrix can be preallocated after the precomputation phase and thus allowing parallellization and more efficient memory usage. </span></div><div  class = 'S2'><span>If you use implementation 1, it is highly recommended to do the precomputation phase (</span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>).</span></div><div  class = 'S2'><span style=' font-style: italic; text-decoration: underline;'>Implementation 2</span></div><div  class = 'S2'><span>This is a matrix-free reconstruction method. Implementation 2 uses both OpenCL and ArrayFire and as such you need to have both OpenCL and ArrayFire libraries installed and on your path. Implementation 2 supports all algorithms and priors (except NLM) that implementation 1 supports. Implementation 2 precompiles the binaries used on the first run for the specific device.</span></div><div  class = 'S2'><span>As with implementation 1, you can run 2 with both precomputation on (</span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>) or off (</span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span>). The difference in implementation 2, however, is much smaller. Precomputation only leads to somewhat faster reconstruction, especially with raw list-mode data, but is otherwise identical in performance.</span></div><div  class = 'S2'><span>Unlike implementation 1, 2 has some additional properties you can set. First is the device used (</span><span style=' font-family: monospace;'>options.use_device</span><span>). Default is device 0 and, depending on the OpenCL supported devices, might also be the only device available. This is often also a GPU. You can query the available device numbers with </span><span style=' font-family: monospace;'>ArrayFire_OpenCL_device_info()</span><span>. Any devices shown with the aforementioned function can be used, though devices with less than 2GB of memory are not recommended.</span></div><div  class = 'S2'><span>Second is the usage of 64-bit atomics (</span><span style=' font-family: monospace;'>options.use_64bit_atomics</span><span>). This is on by default and is recommended when using GPUs. If you use CPUs, it is recommended to turn this to </span><span style=' font-family: monospace;'>false</span><span> as 64-bit atomics are not supported on CPU and as such cause slight delay in the kernel creation process.</span></div><div  class = 'S2'><span>Lastly is the force build (</span><span style=' font-family: monospace;'>options.force_build</span><span>) option, that forces the rebuilding of the OpenCL binaries for the selected device. This should be used if you update your drivers or there are changes in the OpenCL code. Alternatively, the binaries can simply be deleted as they are rebuilt if they are not found.</span></div><div  class = 'S2'><span style=' font-style: italic; text-decoration: underline;'>Implementation 3</span></div><div  class = 'S2'><span>This is a matrix-free reconstruction method. Implementation 3 is a pure OpenCL method, meaning that ArrayFire libraries are not required. Implementation 3 also supports multi-device (heterogeneous or multi-GPU) computing. No binaries will be precompiled. Only OSEM and MLEM are supported (though all projectors are supported).</span></div><div  class = 'S2'><span>Precomputation works as with implementation 2.</span></div><div  class = 'S2'><span>Similarily to implementation 2, you can set the device used with the same parameter (</span><span style=' font-family: monospace;'>options.use_device</span><span>), however, unlike implementation 2 you do not select a single device, but rather a </span><span style=' font-style: italic;'>platform</span><span>. Platform contains all the supported devices from the same vendor. You can view available platforms with </span><span style=' font-family: monospace;'>OpenCL_device_info()</span><span>. Some computing devices (especially CPUs) can be in multiple platforms. Selecting a platform will, by default, use all devices available on that platform. E.g. if you both a GPU and a CPU on the same platform, then both will be used. If you have two GPUs from the same vendor, both will be used, etc. Multi-device computing from different vendors are not supported (e.g. you can't use both an AMD and a Nvidia GPU at the same time). In multi-GPU/device case, devices with less than 2GB memory are ignored (not used).</span></div><div  class = 'S2'><span>The amount of data distributed between the CPU and GPU in heterogeneous computing can be adjusted with </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor</span><span>.  E.g. if </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor = 2.5</span><span> then 2.5 times more data is given to the GPU.</span></div><div  class = 'S2'><span>Alternatively, if </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor = 0</span><span>, then in multi-device platform the GPU with the highest amount of memory is used.</span></div><div  class = 'S2'><span style=' font-style: italic; text-decoration: underline;'>Implementation 4</span></div><div  class = 'S2'><span>This is a matrix-free reconstruction method. Implementation 4 is a pure CPU implementation using OpenMP for parallellization. It behaves similarily to implementations 2 and 3, except that OpenCL is not required and double precision (64-bit) values are used. Supported algorithms are MLEM, OSEM, ROSEM, RAMLA, BSREM, OSL-OSEM, OSL-MLEM, ROSEM-MAP and all priors. Though only subset method and one MLEM method can be used at the same time (with one prior). E.g. you can use MLEM and OSL-OSEM with NLM, but you can't use MLEM with OSEM and OSL-OSEM, or OSL-OSEM with MRP and MLM.</span></div><div  class = 'S2'><span>Precomputation works just as with implementations 2 and 3.</span></div><div  class = 'S2'><span>There are no additional parameters for implementation 4. All threads are always used.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Projectors</span></div><div  class = 'S2'><span>Two different projectors can be selected, the improved Siddon's ray tracer or the orthogonal distance-based ray tracer.</span></div><div  class = 'S2'><span>First is selected by setting </span><span style=' font-family: monospace;'>options.projector_type = 1</span><span>, which is also the default. Second with </span><span style=' font-family: monospace;'>options.projector_type = 2</span><span>. Implementation 1, with no precomputation, supports also the regular Siddon's algorithm, but it is not recommended.</span></div><div  class = 'S2'><span>Improved Siddon can be used with up to 5 rays if no precomputation is used (options.precompute_lor = false). This can be set with </span><span style=' font-family: monospace;'>options.n_rays</span><span>, however only ray counts of 1 or 5 are recommended (e.g. it is not recommended to use 3 rays). More than 1 ray is not supported with implementation 1.</span></div><div  class = 'S2'><span>Orthogonal distance-based ray tracer can be used in either 2D or 3D mode. 2D mode is enabled by setting </span><span style=' font-family: monospace;'>options.tube_width_z = 0</span><span> and </span><span style=' font-family: monospace;'>options.tube_width_xy</span><span> to greater than zero. 3D mode is enabled if </span><span style=' font-family: monospace;'>options.tube_width_z</span><span> is nonzero. In 3D-mode </span><span style=' font-family: monospace;'>options.tube_width_xy</span><span> is ignored. In 3D, </span><span style=' font-family: monospace;'>options.accuracy_factor </span><span>can also be adjusted and adjusts the speed/accuracy of the projector. Smaller values speed up the reconstruction, but can be more inaccurate while larger values should provide more accurate results. Higher values than 5 should be rarely required.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Reconstruction settings</span></div><div  class = 'S2'><span>Subset type can be selected with </span><span style=' font-family: monospace;'>options.subset_type</span><span>.</span></div><div  class = 'S2'><span>Initial value can be set to </span><span style=' font-family: monospace;'>options.x0</span><span>. Dimensions should match with the values in image properties.</span></div><div  class = 'S2'><span style=' font-family: monospace;'>options.epps</span><span> is a small value that prevents division by zero. Shouldn't be need to adjust.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Misc settings</span></div><div  class = 'S2'><span>Setting </span><span style=' font-family: monospace;'>options.use_Shuffle = true</span><span> uses the file exchange function shuffle, when </span><span style=' font-family: monospace;'>options.subset_type = 3</span><span> (subsets selected randomly). Using this is optional, but recommended (reduces memory usage). This function needs to be downloaded from the file exchange: </span><a href = "https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle"><span>https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle</span></a></div><div  class = 'S2'><span>Fast sparse can be enabled with </span><span style=' font-family: monospace;'>options.use_fsparse = true</span><span>. This is also optional, but speeds up sparse matrix generation (used in NLM and implementation 1 when </span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span>). Download from </span><a href = "https://github.com/stefanengblom/stenglib"><span>https://github.com/stefanengblom/stenglib</span></a></div><div  class = 'S2'><span>When computing any median root prior based priors, the prior is normally computed as (x - median(x)) / median(x). Setting </span><span style=' font-family: monospace;'>options.med_no_norm = true</span><span> changes this such that the prior is computed as x - median(x). This can lead to improved image quality, but is NOT the way it is presented in the literature.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Reconstruction algorithms</span></div><div  class = 'S2'><span>Select the desired algorithms by setting them to true. Deselect them by setting them to false.</span></div><div  class = 'S2'><span style=' font-weight: bold;'>Algorithm properties</span></div><div  class = 'S2'><span>Adjust the various algorithm properties here.</span></div><h2  class = 'S1'><span>Load non-GATE data</span></h2><div  class = 'S2'><span>When using </span><span style=' font-family: monospace;'>main_nongate.m</span><span> you will be prompted for the input data when you either run the scrip, run the section or run the </span><span style=' font-family: monospace;'>loadMeasurementData</span><span> function.</span></div><div  class = 'S2'><span>The input data can be either a mat-file (raw list-mode data supports ONLY mat files), NIfTI, Analyze, Interfile, DICOM or MetaImage file. The file type is detected from the file extension. .hdr, .img. .nii and .gz are considered either NIfTI or Analyze format images, .i33 and .h33 Interfile, .dcm DICOM, .mhd and .mha MetaImage and all others as raw data.</span></div><div  class = 'S2'><span>DICOM support requires image processing toolbox. NIfTI either image processing toolbox or "Tools for NIfTI and ANALYZE image" toolbox from MathWorks file exchange </span><a href = "https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image"><span>https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image</span></a></div><div  class = 'S2'><span>Sinogram data is saved in </span><span style=' font-family: monospace;'>options.SinM</span><span> and raw list-mode data to </span><span style=' font-family: monospace;'>options.coincidences</span><span>.</span></div><div  class = 'S2'><span>Always check the correct orientation of the input data before proceeding.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Advanced example
+%% Set up
+% Almost identical to the simple version, but the number of pseudo rings/detectors 
+% can be adjusted. Aside from the pseudo rings/detectors, all other variables 
+% not present in the simple version are calculated automatically.
+% 
+% *Pseudo rings*
+% 
+% These can be adjusted in |options.pseudot|. If your scanner has pseudo rings, 
+% input the number of pseudo rings here. If no pseudo rings are present (as is 
+% with most scanners), use 0 or empty array |[]|.
+% 
+% *Pseudo detectors*
+% 
+% Pseudo detectors can be added to |options.det_w_pseudo|. Normally, without 
+% pseudo detectors, this is computed as |options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);| 
+% which is the number of detectors on a one crystal ring. Usually pseudo detectors 
+% are one additional detector on each block, which means that this becomes |options.det_w_pseudo 
+% = options.blocks_per_ring*(options.cryst_per_block + 1);| If no pseudo detectors 
+% are present, |options.det_w_pseudo| should be the same as |options.det_per_ring|.
+%% Sinogram settings
+% *Segment table*
+% 
+% Table of sinogram segments. This is automatically computed, but can be filled 
+% manually as well.
+% 
+% *Total number of sinograms*
+% 
+% This should be the total number of sinograms, i.e. the sum of the segment 
+% table.
+% 
+% *Number of sinograms used in reconstruction*
+% 
+% |options.NSinos| can be used to utilize _N_ FIRST sinograms in the image reconstruction. 
+% E.g. if you want to use only the direct plane sinograms, then this should equal 
+% the number of crystal rings * 2 - 1.
+% 
+% *Angular cut-off*
+% 
+% |options.ndist_side| is used to determine from which side is one angular position 
+% removed. E.g. if you have 128 views, as with the Inveon PET, that means that 
+% you have an even number of views. However, since the smallest orthogonal distance 
+% between a LOR and the center of the FOV is usually zero, that means that there 
+% should be 64 views on both sides + the center one. This would result in 129 
+% views. Usually, however, one of the views is removed from either side.
+% 
+% *Increased sampling*
+% 
+% Sinogram sampling can be increased by increasing |options.sampling|. E.g. 
+% |options.sampling = 2| doubles the length of the first dimension of the sinogram. 
+% This is achieved through interpolation that can be selected with |options.sampling_interpolation_method|. 
+% All interpolation methods supported by |interp1| are available. The sampling 
+% is only increased in the first (views) dimension, not on the second (angles). 
+% Furthermore, only sinogram data is supported.
+% 
+% This can be used to remove aliasing artifacts caused by too low sampling rate. 
+% It is not recommended to use this, if no aliasing artifacts are present and 
+% even then it is better to test arc correction and/or orthogonal distance-based 
+% ray tracer first.
+% 
+% *Gap filling*
+% 
+% If pseudo detectors are present on your scanner, these will not obviously 
+% receive any measurements. Due to this, the location of these pseudo detectors 
+% cause gaps in the formed sinogram. These gaps can be, however, filled if the 
+% |fill_sinogram_gaps| is set to true.
+% 
+% Two different gap filling methods can be selected. The first is |fillmissing| 
+% (built-in function in MATLAB), that uses 1D interpolation. Since it uses 1D 
+% interpolation, the quality of the gap filling may not be so good. You can also 
+% specify the type of interpolation used, default is |'linear'|. See the help 
+% of |fillmissing| for details on the interpolation methods.
+% 
+% The second interpolation method is |inpaint_nans| which is available from 
+% <https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans MathWorks 
+% file exchange>. This is a 2D interpolation method. As with |fillmissing| it 
+% also supports different interpolation methods that you can specify. See the 
+% help for |inpaint_nans| for more information.
+%% Corrections
+% When using sinogram data that has been previously saved, and |options.corrections_during_reconstruction 
+% = false|, applying any correction will automatically use the corrected sinogram, 
+% even if the sinogram did not actually contain that correction. E.g. if you have 
+% previously constructed a sinogram with ONLY normalization correction, both the 
+% raw uncorrected sinogram as well as the normalization corrected sinograms have 
+% been saved. Using this same data (same machine name and name) and setting all 
+% corrections to |false| will cause the uncorrected sinogram to be used during 
+% the reconstruction (if the sinogram is not re-created, i.e. |options.only_reconstructions 
+% = true|). Assuming that the sinogram is NOT re-created, setting any correction 
+% to true (e.g. randoms correction) will cause the corrected sinogram to be used 
+% although the specified correction may not have been included (in this case it 
+% would be the normalized sinogram).
+% 
+% The above does NOT apply when |options.corrections_during_reconstruction = 
+% true| as the uncorrected sinogram is always used and corrections are not applied 
+% to measurement data. The above also does not apply to raw list-mode data.
+% 
+% Attenuation correction is always applied during the reconstruction and as 
+% such does not affect the measurement data in any case.
+% 
+% Arc correction is always applied before the reconstruction, but is never saved. 
+% Thus arc corrected sinogram cannot be obtained automatically (but can be obtained 
+% manually, but saving the |options.SinM| variable after |arc_correction| has 
+% been run) and is always computed regardless of other choices as long |options.arc_correction 
+% = true|.
+% 
+% *Randoms correction*
+% 
+% Randoms correction in OMEGA is performed by using the delayed coincidence 
+% window data. For GATE and Inveon data, the delayed coincidences are automatically 
+% (and only) collected when randoms correction is enabled. This delayed coincidence 
+% data is then used for the randoms corrections either in the sinogram or during 
+% reconstruction. For other devices, the user will be prompted for the location 
+% of the randoms correction (mat) file if randoms correction is enabled and then 
+% used similarly as in the GATE/Inveon case.
+% 
+% If randoms correction is selected, the randoms can be optionally smoothed 
+% (with fixed 8x8 moving mean smoothing) and/or perform variance reduction on 
+% the randoms data. These are performed before the corrections.
+% 
+% *Scatter correction*
+% 
+% Scatter correction is not inherently provided in OMEGA. However, since you 
+% can extract scatter data from GATE simulations, you can use that data for scatter 
+% correction. If scatter correction is selected, the user will be prompted for 
+% the scatter data (scn or mat file). Data in other format could be converted 
+% with |loadMeasurementData| (data is saved to |options.SinM|).
+% 
+% Like randoms, scatter data can also be similarly smoothed. Scatter data can 
+% also be normalized if normalization correction is enabled and |normalize_scatter| 
+% is selected.
+% 
+% *Attenuation correction*
+% 
+% Attenuation is achieved by using attenuation images scaled for 511 keV. CT 
+% and 122 keV attenuation (e.g. germanium phantom) can be converted to 511 keV 
+% attenuation images with |attenuationCT_to_511.m| and |attenuation122_to_511.m|, 
+% respectively. To use attenuation correction, the |attenuation_correction| needs 
+% to be set to true as well as provide the name (and if not present on MATLAB 
+% path also the full path) of the mat-file containing the attenuation images to 
+% |attenuation_datafile|.
+% 
+% An experimental CT DICOM image to PET attenuation map is available with the 
+% function |create_atten_matrix_CT.m|. For converting of other formats it is recommended 
+% to try to use |importData|.
+% 
+% Attenuation, unlike all other corrections, is always performed during the 
+% reconstruction. I.e. when computing the system matrix.
+% 
+% *Normalization correction*
+% 
+% The normalization correction is component based and contains the following 
+% components: axial block profile factors, axial geometric factors, intrinsic 
+% detector efficiencies, transaxial block profile, and transaxial geometric factors. 
+% These are grouped into four different groups, with axial block profile factors 
+% and axial geometric factors being one, detector efficiencies one, transaxial 
+% block profile one and transaxial geometric factors one. Each or any of these 
+% can be deselected. The corresponding function |normalization_coefficients.m| 
+% can also output any of the specific normalization coefficients.
+% 
+% First output is the normalization coefficient matrix, second the normalized 
+% input data (sinogram or raw data file), third the axial geometric coefficients, 
+% fourth axial block profiles, fifth the transaxial block profile, sixth the detector 
+% efficiencies and seventh the transaxial geometric factors.
+% 
+% The process for sinogram data or raw list-mode data is slightly different. 
+% Sinogram data supports only fan-sum algorithm, while raw list-mode data also 
+% support single-plane Casey (detector efficiency).
+% 
+% Transaxial geometric factors can be unreliable if small (non-FOV covering) 
+% sources are used.
+% 
+% *Arc correction*
+% 
+% Arc correction is currently an experimental feature. It is not recommended 
+% except with Inveon data. Arc correction also currently only works with sinogram 
+% data.
+% 
+% Arc correction is simply enabled by setting |options.arc_correction = true|. 
+% Increased sampling is supported.
+% 
+% Arc correction automatically uses parallel computing toolbox (parfor) if it 
+% is available.
+%% Dynamic imaging
+% Dynamic imaging in OMEGA means a time-series of images. For input data that 
+% means a time-series of sinograms/raw data contained in cells. For reconstructed 
+% images, the results are a time-series of the reconstructed images.
+% 
+% For dynamic imaging the start time, end time, total time and the number of 
+% time steps can be specified. The amount of time per time-step is currently fixed; 
+% variable rate is not supported at the moment.
+% 
+% No inherent TAC or Patlak plotting is available (currently).
+%% Misc properties
+% Setting the |precompute| option to true, enables precomputation when the |gate_main.m|, 
+% |Inveon_PET_main.m| or |main_nongate.m| is run. The precomputation phase includes 
+% the computation of the number of voxels that each LOR traverses. This allows 
+% for more efficient computation as LORs which are not inside the FOV can be ignored. 
+% This is especially true when using raw list-mode data. With sinogram data you 
+% may not get any benefit from precomputation, depending on the number of views. 
+% This is highly recommended when using implementation 1 as without precomputation 
+% it is NOT parallelized. With precomputation the memory for the system matrix 
+% can be preallocated and, as such, the matrix creation can be parallelized.
+% 
+% If implementation 1 is used, the entire system matrix (no subsets) can be 
+% computed by setting |precompute_obs_matrix|. This will most likely use significant 
+% amount of memory, however, as the matrix is output without any reduction to 
+% its size. This is the only way to compute MLEM with implementation 1.
+%% Reconstruction options
+% *Implementations*
+% 
+% Four different implementations can be selected. 
+% 
+% _Implementation 1_
+% 
+% Implementation 1 computes the system matrix as a sparse (MATLAB) matrix. This 
+% matrix is then used in MATLAB to compute the selected algorithm(s). This matrix 
+% can be either the full system matrix (not recommended) or a subset. Full system 
+% matrix is obtained by setting |options.precompute_obs_matrix = true| in misc 
+% properties.
+% 
+% If |options.precompute_lor = false| (misc properties), the system matrix is 
+% computed such that there is only partial memory preallocation and as such there 
+% is no parallellization. If |options.precompute_lor = true|, then the matrix 
+% can be preallocated after the precomputation phase and thus allowing parallellization 
+% and more efficient memory usage. 
+% 
+% If you use implementation 1, it is highly recommended to do the precomputation 
+% phase (|options.precompute_lor = true|).
+% 
+% _Implementation 2_
+% 
+% This is a matrix-free reconstruction method. Implementation 2 uses both OpenCL 
+% and ArrayFire and as such you need to have both OpenCL and ArrayFire libraries 
+% installed and on your path. Implementation 2 supports all algorithms and priors 
+% (except NLM) that implementation 1 supports. Implementation 2 precompiles the 
+% binaries used on the first run for the specific device.
+% 
+% As with implementation 1, you can run 2 with both precomputation on (|options.precompute_lor 
+% = true|) or off (|options.precompute_lor = false|). The difference in implementation 
+% 2, however, is much smaller. Precomputation only leads to somewhat faster reconstruction, 
+% especially with raw list-mode data, but is otherwise identical in performance.
+% 
+% Unlike implementation 1, 2 has some additional properties you can set. First 
+% is the device used (|options.use_device|). Default is device 0 and, depending 
+% on the OpenCL supported devices, might also be the only device available. This 
+% is often also a GPU. You can query the available device numbers with |ArrayFire_OpenCL_device_info()|. 
+% Any devices shown with the aforementioned function can be used, though devices 
+% with less than 2GB of memory are not recommended.
+% 
+% Second is the usage of 64-bit atomics (|options.use_64bit_atomics|). This 
+% is on by default and is recommended when using GPUs. If you use CPUs, it is 
+% recommended to turn this to |false| as 64-bit atomics are not supported on CPU 
+% and as such cause slight delay in the kernel creation process.
+% 
+% Lastly is the force build (|options.force_build|) option, that forces the 
+% rebuilding of the OpenCL binaries for the selected device. This should be used 
+% if you update your drivers or there are changes in the OpenCL code. Alternatively, 
+% the binaries can simply be deleted as they are rebuilt if they are not found.
+% 
+% _Implementation 3_
+% 
+% This is a matrix-free reconstruction method. Implementation 3 is a pure OpenCL 
+% method, meaning that ArrayFire libraries are not required. Implementation 3 
+% also supports multi-device (heterogeneous or multi-GPU) computing. No binaries 
+% will be precompiled. Only OSEM and MLEM are supported (though all projectors 
+% are supported).
+% 
+% Precomputation works as with implementation 2.
+% 
+% Similarily to implementation 2, you can set the device used with the same 
+% parameter (|options.use_device|), however, unlike implementation 2 you do not 
+% select a single device, but rather a _platform_. Platform contains all the supported 
+% devices from the same vendor. You can view available platforms with |OpenCL_device_info()|. 
+% Some computing devices (especially CPUs) can be in multiple platforms. Selecting 
+% a platform will, by default, use all devices available on that platform. E.g. 
+% if you both a GPU and a CPU on the same platform, then both will be used. If 
+% you have two GPUs from the same vendor, both will be used, etc. Multi-device 
+% computing from different vendors are not supported (e.g. you can't use both 
+% an AMD and a Nvidia GPU at the same time). In multi-GPU/device case, devices 
+% with less than 2GB memory are ignored (not used).
+% 
+% The amount of data distributed between the CPU and GPU in heterogeneous computing 
+% can be adjusted with |options.cpu_to_gpu_factor|.  E.g. if |options.cpu_to_gpu_factor 
+% = 2.5| then 2.5 times more data is given to the GPU.
+% 
+% Alternatively, if |options.cpu_to_gpu_factor = 0|, then in multi-device platform 
+% the GPU with the highest amount of memory is used.
+% 
+% _Implementation 4_
+% 
+% This is a matrix-free reconstruction method. Implementation 4 is a pure CPU 
+% implementation using OpenMP for parallellization. It behaves similarily to implementations 
+% 2 and 3, except that OpenCL is not required and double precision (64-bit) values 
+% are used. Supported algorithms are MLEM, OSEM, ROSEM, RAMLA, BSREM, OSL-OSEM, 
+% OSL-MLEM, ROSEM-MAP and all priors. Though only subset method and one MLEM method 
+% can be used at the same time (with one prior). E.g. you can use MLEM and OSL-OSEM 
+% with NLM, but you can't use MLEM with OSEM and OSL-OSEM, or OSL-OSEM with MRP 
+% and MLM.
+% 
+% Precomputation works just as with implementations 2 and 3.
+% 
+% There are no additional parameters for implementation 4. All threads are always 
+% used.
+% 
+% *Projectors*
+% 
+% Two different projectors can be selected, the improved Siddon's ray tracer 
+% or the orthogonal distance-based ray tracer.
+% 
+% First is selected by setting |options.projector_type = 1|, which is also the 
+% default. Second with |options.projector_type = 2|. Implementation 1, with no 
+% precomputation, supports also the regular Siddon's algorithm, but it is not 
+% recommended.
+% 
+% Improved Siddon can be used with up to 5 rays if no precomputation is used 
+% (options.precompute_lor = false). This can be set with |options.n_rays|, however 
+% only ray counts of 1 or 5 are recommended (e.g. it is not recommended to use 
+% 3 rays). More than 1 ray is not supported with implementation 1.
+% 
+% Orthogonal distance-based ray tracer can be used in either 2D or 3D mode. 
+% 2D mode is enabled by setting |options.tube_width_z = 0| and |options.tube_width_xy| 
+% to greater than zero. 3D mode is enabled if |options.tube_width_z| is nonzero. 
+% In 3D-mode |options.tube_width_xy| is ignored. In 3D, |options.accuracy_factor 
+% |can also be adjusted and adjusts the speed/accuracy of the projector. Smaller 
+% values speed up the reconstruction, but can be more inaccurate while larger 
+% values should provide more accurate results. Higher values than 5 should be 
+% rarely required.
+% 
+% *Reconstruction settings*
+% 
+% Subset type can be selected with |options.subset_type|.
+% 
+% Initial value can be set to |options.x0|. Dimensions should match with the 
+% values in image properties.
+% 
+% |options.epps| is a small value that prevents division by zero. Shouldn't 
+% be need to adjust.
+% 
+% *Misc settings*
+% 
+% Setting |options.use_Shuffle = true| uses the file exchange function shuffle, 
+% when |options.subset_type = 3| (subsets selected randomly). Using this is optional, 
+% but recommended (reduces memory usage). This function needs to be downloaded 
+% from the file exchange: <https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle 
+% https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle>
+% 
+% Fast sparse can be enabled with |options.use_fsparse = true|. This is also 
+% optional, but speeds up sparse matrix generation (used in NLM and implementation 
+% 1 when |options.precompute_lor = false|). Download from <https://github.com/stefanengblom/stenglib 
+% https://github.com/stefanengblom/stenglib>
+% 
+% When computing any median root prior based priors, the prior is normally computed 
+% as (x - median(x)) / median(x). Setting |options.med_no_norm = true| changes 
+% this such that the prior is computed as x - median(x). This can lead to improved 
+% image quality, but is NOT the way it is presented in the literature.
+% 
+% *Reconstruction algorithms*
+% 
+% Select the desired algorithms by setting them to true. Deselect them by setting 
+% them to false.
+% 
+% *Algorithm properties*
+% 
+% Adjust the various algorithm properties here.
+%% Load non-GATE data
+% When using |main_nongate.m| you will be prompted for the input data when you 
+% either run the scrip, run the section or run the |loadMeasurementData| function.
+% 
+% The input data can be either a mat-file (raw list-mode data supports ONLY 
+% mat files), NIfTI, Analyze, Interfile, DICOM or MetaImage file. The file type 
+% is detected from the file extension. .hdr, .img. .nii and .gz are considered 
+% either NIfTI or Analyze format images, .i33 and .h33 Interfile, .dcm DICOM, 
+% .mhd and .mha MetaImage and all others as raw data.
+% 
+% DICOM support requires image processing toolbox. NIfTI either image processing 
+% toolbox or "Tools for NIfTI and ANALYZE image" toolbox from MathWorks file exchange 
+% <https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image 
+% https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image>
+% 
+% Sinogram data is saved in |options.SinM| and raw list-mode data to |options.coincidences|.
+% 
+% Always check the correct orientation of the input data before proceeding.
+##### SOURCE END #####
+--></body></html>

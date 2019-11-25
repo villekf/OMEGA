@@ -1,0 +1,18 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>precompute_data</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>precompute_data</span></h1><div  class = 'S1'><span>These files computes how many voxels each LOR traverses. Different  versions are available for double precision or single precision (OpenCL) and sinogram or raw data.</span></div><div  class = 'S1'><span style=' font-weight: bold;'>lor_pixel_count_prepass</span><span> = computes the number of voxels each LOR traverses. This is needed when </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>, however, if the file is not found the function is automatically called. Different image and sinogram sizes need their own files. Precomputing  these variables gives faster reconstruction, especially with raw data.  All data files are saved in </span><span style=' font-family: monospace;'>mat-files</span><span> folder</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% precompute_data
+% These files computes how many voxels each LOR traverses. Different  versions 
+% are available for double precision or single precision (OpenCL) and sinogram 
+% or raw data.
+% 
+% *lor_pixel_count_prepass* = computes the number of voxels each LOR traverses. 
+% This is needed when |options.precompute_lor = true|, however, if the file is 
+% not found the function is automatically called. Different image and sinogram 
+% sizes need their own files. Precomputing  these variables gives faster reconstruction, 
+% especially with raw data.  All data files are saved in |mat-files| folder
+##### SOURCE END #####
+--></body></html>
