@@ -213,7 +213,7 @@ options.offangle = 336 * (3/4);
 options.span = 3;
 %%% Maximum ring difference
 options.ring_difference = 31;
-%%% Number of angular positions (views) in sinogram
+%%% Number of radial positions (views) in sinogram
 % You should primarily use the same number as the device uses
 % However, if that information is not available you can use ndist_max
 % function to determine potential values (see help ndist_max for usage)

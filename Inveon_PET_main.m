@@ -230,12 +230,16 @@ options.offangle = options.det_w_pseudo * (2/4) - options.cryst_per_block/2;
 options.span = 3;
 % maximum ring difference
 options.ring_difference = options.rings - 1;
-% number of angular positions in sinogram
+% Number of radial positions (views) in sinogram
+% You should primarily use the same number as the device uses
+% However, if that information is not available you can use ndist_max
+% function to determine potential values (see help ndist_max for usage)
 options.Ndist = 128;
-% number of angles in sinogram (this is the final amount after possible
-% mashing), maximum allowed is the number of detectors per ring/2
+%%% Number of angles (tangential positions) in sinogram 
+% This is the final amount after possible mashing, maximum allowed is the
+% number of detectors per ring/2
 options.Nang = 160;
-% for sinograms, specify the amount of sinograms contained on each segment
+%%% Specify the amount of sinograms contained on each segment
 % (this should total the total number of sinograms)
 options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:options.span];
 if verLessThan('matlab','8.5')
@@ -243,11 +247,11 @@ if verLessThan('matlab','8.5')
 else
     options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
 end
-% Total number of sinograms
+%%% Total number of sinograms
 options.TotSinos = sum(options.segment_table);
-% number of sinograms used in reconstruction
+%%% Number of sinograms used in reconstruction
 options.NSinos = options.TotSinos;
-% If Ndist value is even, take one extra out of the negative side (+1) or
+%%% If Ndist value is even, take one extra out of the negative side (+1) or
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99].
 options.ndist_side = -1;
@@ -259,18 +263,18 @@ options.sampling = 1;
 %%% Interpolation method used for sampling rate increase
 % All the methods are available that are supported by interp1
 options.sampling_interpolation_method = 'linear';
-% Fill the gaps caused by pseudo detectors?
+%%% Fill the gaps caused by pseudo detectors?
 % NOTE: Applicable only if options.pseudot > 0
 options.fill_sinogram_gaps = false;
-% Which method used to fill the gaps?
+%%% Which method used to fill the gaps?
 % Either MATLAB's built-in fillmissing or inpaint_nans from file exchange
 % For inpaint_nans see: https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans
 % See wiki for more details
 options.gap_filling_method = 'fillmissing';
-% interpolation method used with fillmissing
+%%% interpolation method used with fillmissing
 % Possible methods are those listed under method-section in fillmissing
 options.interpolation_method_fillmissing = 'linear';
-% interpolation method used with inpaint_nans
+%%% interpolation method used with inpaint_nans
 % See inpaint_nans.m for details
 options.interpolation_method_inpaint = 0;
  

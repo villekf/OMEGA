@@ -89,12 +89,15 @@ options.offangle = options.det_w_pseudo * (3/4);
 options.span = 3;
 %%% Maximum ring difference
 options.ring_difference = 31;
+%%% Number of radial positions (views) in sinogram
+% You should primarily use the same number as the device uses
+% However, if that information is not available you can use ndist_max
+% function to determine potential values (see help ndist_max for usage)
+options.Ndist = 200;
 %%% Number of angles (tangential positions) in sinogram
 % This is the final amount after possible mashing, maximum allowed is the
 % number of detectors per ring/2
 options.Nang = options.det_per_ring/2;
-%%% Number of angular positions (views) in sinogram
-options.Ndist = 200;
 %%% Specify the amount of sinograms contained on each segment
 % (this should total the total number of sinograms)
 options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
