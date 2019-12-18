@@ -22,6 +22,10 @@
 
 - Inveon data is now available from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056)
 
+- Redesigned the orthogonal distance-based ray tracer
+  - 2D version is now 2.5D, i.e. it takes into account two dimensions (transaxial, but not axial)
+  - 3D version is slower, but more accurate than the previous one (no more line artifacts)
+
 ### Bug fixes and enhancements
 
 - Fixed some bugs with various file import and export files 
@@ -51,6 +55,10 @@
 - Visualization now supports `gate_main_simple.m` as well
 
 - Gap filling should now work properly
+
+- Implementation 2 didn't work previously without randoms correction
+
+- Orthogonal distance-based ray tracer now works correctly
 
 
 ## 1.0
