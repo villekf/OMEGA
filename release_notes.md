@@ -38,7 +38,7 @@
 - Added a volume-based ray tracer (THOR)
 
 - Added PSF reconstruction for all implementations and projectors
-  - Optional deblurring phase possibly
+  - Optional deblurring phase possible
 
 - Improved Siddon now supports N transaxial rays and M axial rays, previously only total ray counts of 1, 4 and 5 were allowed
 
@@ -64,7 +64,7 @@
 
 - Added a global correction factor that can be used to correct all LORs with the same correction factor (e.g. decay correction)
 
-- Interaction coordinates (i.e. coordinate where the single has absorbed in the crystal) can now be optionally saved with GATE data
+- Interaction coordinates (i.e. coordinate where the single has been absorbed in the crystal) can now be optionally saved with GATE data
 
 - Custom detector coordinates are now easier to include
 
@@ -78,7 +78,9 @@
 
 - Added mention of implementation 4 support to several algorithms and priors (e.g. supports OSL-OSEM with all priors, but only one prior at a time) 
 
-- Implementation 2 now also uses symmetric padding
+- Implementation 2 now uses symmetric padding
+
+- Implementation 2 is now as fast as implementation 3 when using one algorithm
 
 - MLEM now works with implementation 2 and 3
 
@@ -113,8 +115,6 @@
 - Fixed bugs in normalization
   - Raw-list mode data with cylindrical normalization data should now work
   
-- When creating sinograms and the selected input data (e.g. ASCII) has no measurement file either of the other two (ROOT and LMF) are used if available
-
 - Implementation 1 should be slightly more numerically stable
 
 - Enhanced error checking
