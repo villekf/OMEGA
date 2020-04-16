@@ -28,7 +28,6 @@
 - Inveon data is now available from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056)
 
 - Redesigned the orthogonal distance-based ray tracer
-<<<<<<< HEAD
   - 2D version is now 2.5D, i.e. it takes fully into account two dimensions (transaxial), but only partially axial dimension
   - 3D version is slower, but more accurate than the previous one (no more line artifacts)
   - Removed support for implementation 1 when precompute_lor = false
@@ -68,10 +67,6 @@
 - Interaction coordinates (i.e. coordinate where the single has absorbed in the crystal) can now be optionally saved with GATE data
 
 - Custom detector coordinates are now easier to include
-=======
-  - 2D version is now 2.5D, i.e. it takes into account two dimensions (transaxial, but not axial)
-  - 3D version is slower, but more accurate than the previous one (no more line artifacts)
->>>>>>> cb790d0dc8ccbfa71a64b65581ce5f71f8afd66d
 
 ### Bug fixes and enhancements
 
@@ -133,14 +128,7 @@
 
 - Sinogram creation can now load data created from different file type than specified (e.g. if ROOT data is selected, but no ROOT raw list-mode data is found, but ASCII is available then the ASCII data is used)
 
-<<<<<<< HEAD
 - Enhanced the `main_PET` single reconstruction section
-=======
-- Implementation 2 didn't work previously without randoms correction
-
-- Orthogonal distance-based ray tracer now works correctly
-
->>>>>>> cb790d0dc8ccbfa71a64b65581ce5f71f8afd66d
 
 ## 1.0
 
