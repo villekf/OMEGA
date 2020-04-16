@@ -5,8 +5,12 @@
 ### New features
 
 - Fixed non-local means regularization (NLM is no longer an experimental feature) 
+  - NLM is now also available in implementation 2
+  - Computations are significantly faster than before and also less memory intensive
 
 - Added non-local total variation
+
+- Added Huber prior
 
 - Added support for MetaImage import/export 
 
@@ -15,14 +19,58 @@
 - Added zero padding support to `padding.m`
 
 - Added experimental arc correction for sinogram data only
+  - Only for non-precomputed data
 
-- Added ability to increase the sampling rate of sinogram data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
+- Added ability to increase the sampling rate of sinogram and raw list-mode data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
 
 - Added HTLM documentation
 
 - Inveon data is now available from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056)
 
+- Redesigned the orthogonal distance-based ray tracer
+  - 2D version is now 2.5D, i.e. it takes fully into account two dimensions (transaxial), but only partially axial dimension
+  - 3D version is slower, but more accurate than the previous one (no more line artifacts)
+  - Removed support for implementation 1 when precompute_lor = false
+  
+- Added preliminary CUDA support for implementation 2 (run-time compilation, does not require NVCC)
+  - Currently improved Siddon is faster than OpenCL, but orthogonal/volume-based is slower
+  
+- Added a volume-based ray tracer (THOR)
+
+- Added PSF reconstruction for all implementations and projectors
+  - Optional deblurring phase possibly
+
+- Improved Siddon now supports N transaxial rays and M axial rays, previously only total ray counts of 1, 4 and 5 were allowed
+
+- Implementation 2 no longer saves the binaries, but rather performs the compilations always on runtime (force_build has been removed)
+  - Compilation times are significantly faster
+
+- Implementation 4 now supports all algorithms except MBSREM and MRAMLA
+  - All algorithms are also now slightly faster
+
+- COSEM and its variants are faster when using implementation 1 and use much less memory
+  
+- Inveon data now supports Inveon CT UMAP-images as attenuation data
+
+- Added support for Siemens Biograph mCT and Vision 64-bit list-mode data
+  - 32-bit list-mode support for mCT as well
+  - Closed source release ONLY, available for MATLAB R2015a and up on Windows and Linux
+  
+- Sinograms are automatically created during raw data load if raw data has not been explicitly selected
+  - Raw data is still saved regardless of choices
+  - Slightly speeds up the sinogram creation and uses less memory
+  
+- Allowed sinogram corrections to be applied without re-creating the sinogram (as long as the uncorrected sinogram already exists)
+
+- Added a global correction factor that can be used to correct all LORs with the same correction factor (e.g. decay correction)
+
+- Interaction coordinates (i.e. coordinate where the single has absorbed in the crystal) can now be optionally saved with GATE data
+
+- Custom detector coordinates are now easier to include
+
 ### Bug fixes and enhancements
+
+- Renamed `main_nongate.m` to `main_PET.m`
 
 - Fixed some bugs with various file import and export files 
 
@@ -51,7 +99,36 @@
 - Visualization now supports `gate_main_simple.m` as well
 
 - Gap filling should now work properly
+  - fillmissing now uses 1D interpolation in two directions
 
+- Implementation 2 didn't work previously without randoms correction
+
+- Orthogonal distance-based ray tracer now works correctly
+
+- Compilation should produce less warnings when using Visual studio
+  - Older versions (2013) of Visual studio should now work better
+
+- Fixed implementation 2 when using custom prior
+
+- Fixed bugs in normalization
+  - Raw-list mode data with cylindrical normalization data should now work
+  
+- When creating sinograms and the selected input data (e.g. ASCII) has no measurement file either of the other two (ROOT and LMF) are used if available
+
+- Implementation 1 should be slightly more numerically stable
+
+- Enhanced error checking
+
+- Random crashes when normalization is not applied with implementations 1 and 4 should be fixed
+
+- Orthogonal and volume-based ray tracers can be computed faster by selecting the new `apply_accleration` variable
+  - Gives about 30% faster speeds, but uses more device memory, especially on GPUs
+  
+- Added ability to specify the maximum ring difference with raw list-mode data
+
+- Sinogram creation can now load data created from different file type than specified (e.g. if ROOT data is selected, but no ROOT raw list-mode data is found, but ASCII is available then the ASCII data is used)
+
+- Enhanced the `main_PET` single reconstruction section
 
 ## 1.0
 
