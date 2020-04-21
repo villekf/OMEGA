@@ -19,7 +19,7 @@ function im = BSREM_iter(im, lambda, iter, beta, dU, epps)
 % OSL_OSEM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2019 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -35,4 +35,4 @@ function im = BSREM_iter(im, lambda, iter, beta, dU, epps)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 im = im - beta.*lambda(iter).*im.*dU;
-im(im < 0) = epps;
+im(im < epps) = epps;
