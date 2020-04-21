@@ -13,7 +13,7 @@ function [varargout] = detector_coordinates(options)
 % See also sinogram_coordinates_2D
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -117,7 +117,7 @@ end
 % per block per ring)
 
 % determine if pseudo detectors are present
-if ~isempty(options.pseudot) && options.pseudot > 0
+if options.det_w_pseudo > options.det_per_ring
     
     angle = linspace(90,-270,blocks_per_ring + 1)';
     % starting points
@@ -127,6 +127,7 @@ if ~isempty(options.pseudot) && options.pseudot > 0
     % Width of the topmost blocks (diameter)
     widths = (cryst_per_block + 1)*cr_p*cosd(angle(1:(blocks_per_ring/2 + 1)));
     
+    % Gap
     erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:(blocks_per_ring/2 + 1))))/2;
     
     ii = 1;
@@ -143,7 +144,6 @@ if ~isempty(options.pseudot) && options.pseudot > 0
                 xp(ii) = alkupistex - (cr_p)*cosd(angle(blocks));
                 yp(ii) = alkupistey + (cr_p)*sind(angle(blocks));
             end
-            %         end
             alkupistex = xp(ii);
             alkupistey = yp(ii);
             ii=ii+1;
@@ -208,7 +208,5 @@ end
 if nargout == 4
     varargout{4} = yp;
 end
-
-% save([options.machine_name '_detector_coordinates.mat'], 'x', 'y', 'angle', 'xp', 'yp')
 
 end
