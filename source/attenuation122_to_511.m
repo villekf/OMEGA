@@ -26,7 +26,7 @@ function img = attenuation122_to_511(img)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -90,22 +90,23 @@ alu122 = alu122 * 2.699;
 alu511 = (8.445E-02 + (7.802E-02 - 8.445E-02)*0.11);
 alu511 = alu511 * 2.699;
 
-[apu1,apu2] = hist(img(img > adtissue122/2));
-[~,locmax] = max(apu1);
-kerroin = tissue122/apu2(locmax);
+% [apu1,apu2] = hist(img(img > adtissue122/2));
+% [~,locmax] = max(apu1);
+% kerroin = tissue122/apu2(locmax);
+kerroin = 0.1;
 
 img = img * kerroin;
 img(img < adtissue122/100) = air122;
 
-X = ([air122, adtissue122,water122,muscle122,tissue122,plastic122,bone122,alu122]);
+X = ([air122, adtissue122, water122, muscle122, tissue122, plastic122, bone122, alu122]);
 
-V = [1.205e-3, 9.5e-1,1, 1.05, 1.06, 1.45, 1.92, 2.699];
+V = [1.205e-3, 9.5e-1, 1, 1.05, 1.06, 1.45, 1.92, 2.699];
 
 Vq = interp1(X,V,img(:),'linear');
 
-V = ([air511, adtissue511,water511,muscle511,tissue511,plastic511,bone511,alu511]);
+V = ([air511, adtissue511, water511, muscle511, tissue511, plastic511, bone511, alu511]);
 
-X = [1.205e-3, 9.5e-1,1, 1.05, 1.06, 1.45, 1.92, 2.699];
+X = [1.205e-3, 9.5e-1, 1, 1.05, 1.06, 1.45, 1.92, 2.699];
 
 Vq = interp1(X,V,Vq,'linear');
 
