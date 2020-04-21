@@ -4,7 +4,7 @@ function im_vectors = form_image_vectors(options, N)
 %
 %
 %
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -24,7 +24,8 @@ if options.implementation ~= 2
     
     
     MLEM_bool = options.OSL_MLEM || options.mlem;
-    OS_bool = options.osem || options.rosem || options.ramla || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP;
+    OS_bool = options.osem || options.rosem || options.ramla || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP || options.rbi || options.drama ...
+    || options.cosem || options.ecosem || options.acosem || options.RBI_OSL || any(options.COSEM_OSL);
     
     if options.implementation == 4 && OS_bool
         im_vectors.OSEM_apu = ones(N, 1);
@@ -126,12 +127,12 @@ if options.implementation ~= 2
             im_vectors.MRP_ROSEM_apu = im_vectors.MRP_ROSEM(:,1);
         end
     end
-    if options.MRP && options.RBI_MAP
+    if options.MRP && options.RBI_OSL
         im_vectors.MRP_RBI = ones(N,options.Niter + 1);
         im_vectors.MRP_RBI(:,1) = options.x0(:);
         im_vectors.MRP_RBI_apu = im_vectors.MRP_RBI(:,1);
     end
-    if options.MRP && any(options.COSEM_MAP)
+    if options.MRP && any(options.COSEM_OSL)
         im_vectors.MRP_COSEM = ones(N,options.Niter + 1);
         im_vectors.MRP_COSEM(:,1) = options.x0(:);
         im_vectors.MRP_COSEM_apu = im_vectors.MRP_COSEM(:,1);
@@ -170,15 +171,59 @@ if options.implementation ~= 2
             im_vectors.Quad_ROSEM_apu = im_vectors.Quad_ROSEM(:,1);
         end
     end
-    if options.quad && options.RBI_MAP
+    if options.quad && options.RBI_OSL
         im_vectors.Quad_RBI = ones(N,options.Niter + 1);
         im_vectors.Quad_RBI(:,1) = options.x0(:);
         im_vectors.Quad_RBI_apu = im_vectors.Quad_RBI(:,1);
     end
-    if options.quad && any(options.COSEM_MAP)
+    if options.quad && any(options.COSEM_OSL)
         im_vectors.Quad_COSEM = ones(N,options.Niter + 1);
         im_vectors.Quad_COSEM(:,1) = options.x0(:);
         im_vectors.Quad_COSEM_apu = im_vectors.Quad_COSEM(:,1);
+    end
+    
+    if options.Huber && options.OSL_OSEM
+        im_vectors.Huber_OSL = ones(N,options.Niter + 1);
+        im_vectors.Huber_OSL(:,1) = options.x0(:);
+        if ~(options.implementation == 4)
+            im_vectors.Huber_OSL_apu = im_vectors.Huber_OSL(:,1);
+        end
+    end
+    if options.Huber && options.OSL_MLEM
+        im_vectors.Huber_MLEM = ones(N,options.Niter + 1);
+        im_vectors.Huber_MLEM(:,1) = options.x0(:);
+        if ~(options.implementation == 4)
+            im_vectors.Huber_MLEM_apu = im_vectors.Huber_MLEM(:,1);
+        end
+    end
+    if options.Huber && options.MBSREM
+        im_vectors.Huber_MBSREM = ones(N,options.Niter + 1);
+        im_vectors.Huber_MBSREM(:,1) = options.x0(:);
+        im_vectors.Huber_MBSREM_apu = im_vectors.Huber_MBSREM(:,1);
+    end
+    if options.Huber && options.BSREM
+        im_vectors.Huber_BSREM = ones(N,options.Niter + 1);
+        im_vectors.Huber_BSREM(:,1) = options.x0(:);
+        if ~(options.implementation == 4)
+            im_vectors.Huber_BSREM_apu = im_vectors.Huber_BSREM(:,1);
+        end
+    end
+    if options.Huber && options.ROSEM_MAP
+        im_vectors.Huber_ROSEM = ones(N,options.Niter + 1);
+        im_vectors.Huber_ROSEM(:,1) = options.x0(:);
+        if ~(options.implementation == 4)
+            im_vectors.Huber_ROSEM_apu = im_vectors.Huber_ROSEM(:,1);
+        end
+    end
+    if options.Huber && options.RBI_OSL
+        im_vectors.Huber_RBI = ones(N,options.Niter + 1);
+        im_vectors.Huber_RBI(:,1) = options.x0(:);
+        im_vectors.Huber_RBI_apu = im_vectors.Huber_RBI(:,1);
+    end
+    if options.Huber && any(options.COSEM_OSL)
+        im_vectors.Huber_COSEM = ones(N,options.Niter + 1);
+        im_vectors.Huber_COSEM(:,1) = options.x0(:);
+        im_vectors.Huber_COSEM_apu = im_vectors.Huber_COSEM(:,1);
     end
     
     if options.L && options.OSL_OSEM
@@ -214,12 +259,12 @@ if options.implementation ~= 2
             im_vectors.L_ROSEM_apu = im_vectors.L_ROSEM(:,1);
         end
     end
-    if options.L && options.RBI_MAP
+    if options.L && options.RBI_OSL
         im_vectors.L_RBI = ones(N,options.Niter + 1);
         im_vectors.L_RBI(:,1) = options.x0(:);
         im_vectors.L_RBI_apu = im_vectors.L_RBI(:,1);
     end
-    if options.L && any(options.COSEM_MAP)
+    if options.L && any(options.COSEM_OSL)
         im_vectors.L_COSEM = ones(N,options.Niter + 1);
         im_vectors.L_COSEM(:,1) = options.x0(:);
         im_vectors.L_COSEM_apu = im_vectors.L_COSEM(:,1);
@@ -258,12 +303,12 @@ if options.implementation ~= 2
             im_vectors.FMH_ROSEM_apu = im_vectors.FMH_ROSEM(:,1);
         end
     end
-    if options.FMH && options.RBI_MAP
+    if options.FMH && options.RBI_OSL
         im_vectors.FMH_RBI = ones(N,options.Niter + 1);
         im_vectors.FMH_RBI(:,1) = options.x0(:);
         im_vectors.FMH_RBI_apu = im_vectors.FMH_RBI(:,1);
     end
-    if options.FMH && any(options.COSEM_MAP)
+    if options.FMH && any(options.COSEM_OSL)
         im_vectors.FMH_COSEM = ones(N,options.Niter + 1);
         im_vectors.FMH_COSEM(:,1) = options.x0(:);
         im_vectors.FMH_COSEM_apu = im_vectors.FMH_COSEM(:,1);
@@ -302,12 +347,12 @@ if options.implementation ~= 2
             im_vectors.Weighted_ROSEM_apu = im_vectors.Weighted_ROSEM(:,1);
         end
     end
-    if options.weighted_mean && options.RBI_MAP
+    if options.weighted_mean && options.RBI_OSL
         im_vectors.Weighted_RBI = ones(N,options.Niter + 1);
         im_vectors.Weighted_RBI(:,1) = options.x0(:);
         im_vectors.Weighted_RBI_apu = im_vectors.Weighted_RBI(:,1);
     end
-    if options.weighted_mean && any(options.COSEM_MAP)
+    if options.weighted_mean && any(options.COSEM_OSL)
         im_vectors.Weighted_COSEM = ones(N,options.Niter + 1);
         im_vectors.Weighted_COSEM(:,1) = options.x0(:);
         im_vectors.Weighted_COSEM_apu = im_vectors.Weighted_COSEM(:,1);
@@ -346,12 +391,12 @@ if options.implementation ~= 2
             im_vectors.TV_ROSEM_apu = im_vectors.TV_ROSEM(:,1);
         end
     end
-    if options.TV && options.RBI_MAP
+    if options.TV && options.RBI_OSL
         im_vectors.TV_RBI = ones(N,options.Niter + 1);
         im_vectors.TV_RBI(:,1) = options.x0(:);
         im_vectors.TV_RBI_apu = im_vectors.TV_RBI(:,1);
     end
-    if options.TV && any(options.COSEM_MAP)
+    if options.TV && any(options.COSEM_OSL)
         im_vectors.TV_COSEM = ones(N,options.Niter + 1);
         im_vectors.TV_COSEM(:,1) = options.x0(:);
         im_vectors.TV_COSEM_apu = im_vectors.TV_COSEM(:,1);
@@ -390,12 +435,12 @@ if options.implementation ~= 2
             im_vectors.AD_ROSEM_apu = im_vectors.AD_ROSEM(:,1);
         end
     end
-    if options.AD && options.RBI_MAP
+    if options.AD && options.RBI_OSL
         im_vectors.AD_RBI = ones(N,options.Niter + 1);
         im_vectors.AD_RBI(:,1) = options.x0(:);
         im_vectors.AD_RBI_apu = im_vectors.AD_RBI(:,1);
     end
-    if options.AD && any(options.COSEM_MAP)
+    if options.AD && any(options.COSEM_OSL)
         im_vectors.AD_COSEM = ones(N,options.Niter + 1);
         im_vectors.AD_COSEM(:,1) = options.x0(:);
         im_vectors.AD_COSEM_apu = im_vectors.AD_COSEM(:,1);
@@ -434,12 +479,12 @@ if options.implementation ~= 2
             im_vectors.APLS_ROSEM_apu = im_vectors.APLS_ROSEM(:,1);
         end
     end
-    if options.APLS && options.RBI_MAP
+    if options.APLS && options.RBI_OSL
         im_vectors.APLS_RBI = ones(N,options.Niter + 1);
         im_vectors.APLS_RBI(:,1) = options.x0(:);
         im_vectors.APLS_RBI_apu = im_vectors.APLS_RBI(:,1);
     end
-    if options.APLS && any(options.COSEM_MAP)
+    if options.APLS && any(options.COSEM_OSL)
         im_vectors.APLS_COSEM = ones(N,options.Niter + 1);
         im_vectors.APLS_COSEM(:,1) = options.x0(:);
         im_vectors.APLS_COSEM_apu = im_vectors.APLS_COSEM(:,1);
@@ -478,12 +523,12 @@ if options.implementation ~= 2
             im_vectors.TGV_ROSEM_apu = im_vectors.TGV_ROSEM(:,1);
         end
     end
-    if options.TGV && options.RBI_MAP
+    if options.TGV && options.RBI_OSL
         im_vectors.TGV_RBI = ones(N,options.Niter + 1);
         im_vectors.TGV_RBI(:,1) = options.x0(:);
         im_vectors.TGV_RBI_apu = im_vectors.TGV_RBI(:,1);
     end
-    if options.TGV && any(options.COSEM_MAP)
+    if options.TGV && any(options.COSEM_OSL)
         im_vectors.TGV_COSEM = ones(N,options.Niter + 1);
         im_vectors.TGV_COSEM(:,1) = options.x0(:);
         im_vectors.TGV_COSEM_apu = im_vectors.TGV_COSEM(:,1);
@@ -522,12 +567,12 @@ if options.implementation ~= 2
             im_vectors.NLM_ROSEM_apu = im_vectors.NLM_ROSEM(:,1);
         end
     end
-    if options.NLM && options.RBI_MAP
+    if options.NLM && options.RBI_OSL
         im_vectors.NLM_RBI = ones(N,options.Niter + 1);
         im_vectors.NLM_RBI(:,1) = options.x0(:);
         im_vectors.NLM_RBI_apu = im_vectors.NLM_RBI(:,1);
     end
-    if options.NLM && any(options.COSEM_MAP)
+    if options.NLM && any(options.COSEM_OSL)
         im_vectors.NLM_COSEM = ones(N,options.Niter + 1);
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
@@ -557,12 +602,12 @@ if options.implementation ~= 2
         im_vectors.custom_ROSEM(:,1) = options.x0(:);
         im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
     end
-    if options.custom && options.RBI_MAP
+    if options.custom && options.RBI_OSL
         im_vectors.custom_RBI = ones(N,options.Niter + 1,'double');
         im_vectors.custom_RBI(:,1) = options.x0(:);
         im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
     end
-    if options.custom && any(options.COSEM_MAP)
+    if options.custom && any(options.COSEM_OSL)
         im_vectors.custom_COSEM = ones(N,options.Niter + 1,'double');
         im_vectors.custom_COSEM(:,1) = options.x0(:);
         im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);
@@ -651,12 +696,12 @@ else
         im_vectors.MRP_ROSEM(:,1) = options.x0(:);
         im_vectors.MRP_ROSEM_apu = im_vectors.MRP_ROSEM(:,1);
     end
-    if options.MRP && options.RBI_MAP
+    if options.MRP && options.RBI_OSL
         im_vectors.MRP_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.MRP_RBI(:,1) = options.x0(:);
         im_vectors.MRP_RBI_apu = im_vectors.MRP_RBI(:,1);
     end
-    if options.MRP && any(options.COSEM_MAP)
+    if options.MRP && any(options.COSEM_OSL)
         im_vectors.MRP_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.MRP_COSEM(:,1) = options.x0(:);
         im_vectors.MRP_COSEM_apu = im_vectors.MRP_COSEM(:,1);
@@ -687,12 +732,12 @@ else
         im_vectors.Quad_ROSEM(:,1) = options.x0(:);
         im_vectors.Quad_ROSEM_apu = im_vectors.Quad_ROSEM(:,1);
     end
-    if options.quad && options.RBI_MAP
+    if options.quad && options.RBI_OSL
         im_vectors.Quad_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.Quad_RBI(:,1) = options.x0(:);
         im_vectors.Quad_RBI_apu = im_vectors.Quad_RBI(:,1);
     end
-    if options.quad && any(options.COSEM_MAP)
+    if options.quad && any(options.COSEM_OSL)
         im_vectors.Quad_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.Quad_COSEM(:,1) = options.x0(:);
         im_vectors.Quad_COSEM_apu = im_vectors.Quad_COSEM(:,1);
@@ -723,12 +768,12 @@ else
         im_vectors.L_ROSEM(:,1) = options.x0(:);
         im_vectors.L_ROSEM_apu = im_vectors.L_ROSEM(:,1);
     end
-    if options.L && options.RBI_MAP
+    if options.L && options.RBI_OSL
         im_vectors.L_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.L_RBI(:,1) = options.x0(:);
         im_vectors.L_RBI_apu = im_vectors.L_RBI(:,1);
     end
-    if options.L && any(options.COSEM_MAP)
+    if options.L && any(options.COSEM_OSL)
         im_vectors.L_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.L_COSEM(:,1) = options.x0(:);
         im_vectors.L_COSEM_apu = im_vectors.L_COSEM(:,1);
@@ -759,12 +804,12 @@ else
         im_vectors.FMH_ROSEM(:,1) = options.x0(:);
         im_vectors.FMH_ROSEM_apu = im_vectors.FMH_ROSEM(:,1);
     end
-    if options.FMH && options.RBI_MAP
+    if options.FMH && options.RBI_OSL
         im_vectors.FMH_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.FMH_RBI(:,1) = options.x0(:);
         im_vectors.FMH_RBI_apu = im_vectors.FMH_RBI(:,1);
     end
-    if options.FMH && any(options.COSEM_MAP)
+    if options.FMH && any(options.COSEM_OSL)
         im_vectors.FMH_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.FMH_COSEM(:,1) = options.x0(:);
         im_vectors.FMH_COSEM_apu = im_vectors.FMH_COSEM(:,1);
@@ -795,12 +840,12 @@ else
         im_vectors.Weighted_ROSEM(:,1) = options.x0(:);
         im_vectors.Weighted_ROSEM_apu = im_vectors.Weighted_ROSEM(:,1);
     end
-    if options.weighted_mean && options.RBI_MAP
+    if options.weighted_mean && options.RBI_OSL
         im_vectors.Weighted_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.Weighted_RBI(:,1) = options.x0(:);
         im_vectors.Weighted_RBI_apu = im_vectors.Weighted_RBI(:,1);
     end
-    if options.weighted_mean && any(options.COSEM_MAP)
+    if options.weighted_mean && any(options.COSEM_OSL)
         im_vectors.Weighted_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.Weighted_COSEM(:,1) = options.x0(:);
         im_vectors.Weighted_COSEM_apu = im_vectors.Weighted_COSEM(:,1);
@@ -831,12 +876,12 @@ else
         im_vectors.TV_ROSEM(:,1) = options.x0(:);
         im_vectors.TV_ROSEM_apu = im_vectors.TV_ROSEM(:,1);
     end
-    if options.TV && options.RBI_MAP
+    if options.TV && options.RBI_OSL
         im_vectors.TV_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.TV_RBI(:,1) = options.x0(:);
         im_vectors.TV_RBI_apu = im_vectors.TV_RBI(:,1);
     end
-    if options.TV && any(options.COSEM_MAP)
+    if options.TV && any(options.COSEM_OSL)
         im_vectors.TV_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.TV_COSEM(:,1) = options.x0(:);
         im_vectors.TV_COSEM_apu = im_vectors.TV_COSEM(:,1);
@@ -867,12 +912,12 @@ else
         im_vectors.AD_ROSEM(:,1) = options.x0(:);
         im_vectors.AD_ROSEM_apu = im_vectors.AD_ROSEM(:,1);
     end
-    if options.AD && options.RBI_MAP
+    if options.AD && options.RBI_OSL
         im_vectors.AD_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.AD_RBI(:,1) = options.x0(:);
         im_vectors.AD_RBI_apu = im_vectors.AD_RBI(:,1);
     end
-    if options.AD && any(options.COSEM_MAP)
+    if options.AD && any(options.COSEM_OSL)
         im_vectors.AD_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.AD_COSEM(:,1) = options.x0(:);
         im_vectors.AD_COSEM_apu = im_vectors.AD_COSEM(:,1);
@@ -903,12 +948,12 @@ else
         im_vectors.APLS_ROSEM(:,1) = options.x0(:);
         im_vectors.APLS_ROSEM_apu = im_vectors.APLS_ROSEM(:,1);
     end
-    if options.APLS && options.RBI_MAP
+    if options.APLS && options.RBI_OSL
         im_vectors.APLS_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.APLS_RBI(:,1) = options.x0(:);
         im_vectors.APLS_RBI_apu = im_vectors.APLS_RBI(:,1);
     end
-    if options.APLS && any(options.COSEM_MAP)
+    if options.APLS && any(options.COSEM_OSL)
         im_vectors.APLS_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.APLS_COSEM(:,1) = options.x0(:);
         im_vectors.APLS_COSEM_apu = im_vectors.APLS_COSEM(:,1);
@@ -939,12 +984,12 @@ else
         im_vectors.TGV_ROSEM(:,1) = options.x0(:);
         im_vectors.TGV_ROSEM_apu = im_vectors.TGV_ROSEM(:,1);
     end
-    if options.TGV && options.RBI_MAP
+    if options.TGV && options.RBI_OSL
         im_vectors.TGV_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.TGV_RBI(:,1) = options.x0(:);
         im_vectors.TGV_RBI_apu = im_vectors.TGV_RBI(:,1);
     end
-    if options.TGV && any(options.COSEM_MAP)
+    if options.TGV && any(options.COSEM_OSL)
         im_vectors.TGV_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.TGV_COSEM(:,1) = options.x0(:);
         im_vectors.TGV_COSEM_apu = im_vectors.TGV_COSEM(:,1);
@@ -975,12 +1020,12 @@ else
         im_vectors.NLM_ROSEM(:,1) = options.x0(:);
         im_vectors.NLM_ROSEM_apu = im_vectors.NLM_ROSEM(:,1);
     end
-    if options.NLM && options.RBI_MAP
+    if options.NLM && options.RBI_OSL
         im_vectors.NLM_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.NLM_RBI(:,1) = options.x0(:);
         im_vectors.NLM_RBI_apu = im_vectors.NLM_RBI(:,1);
     end
-    if options.NLM && any(options.COSEM_MAP)
+    if options.NLM && any(options.COSEM_OSL)
         im_vectors.NLM_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
@@ -1011,12 +1056,12 @@ else
         im_vectors.custom_ROSEM(:,1) = options.x0(:);
         im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
     end
-    if options.custom && options.RBI_MAP
+    if options.custom && options.RBI_OSL
         im_vectors.custom_RBI = ones(N,options.Niter + 1,'single');
         im_vectors.custom_RBI(:,1) = options.x0(:);
         im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
     end
-    if options.custom && any(options.COSEM_MAP)
+    if options.custom && any(options.COSEM_OSL)
         im_vectors.custom_COSEM = ones(N,options.Niter + 1,'single');
         im_vectors.custom_COSEM(:,1) = options.x0(:);
         im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);
