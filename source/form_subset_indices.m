@@ -44,7 +44,7 @@ function [options, lor_a, xy_index, z_index, LL, summa, pituus, varargout] = for
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -71,6 +71,9 @@ if nargout > 7
 end
 if nargout > 8
     varargout{2} = [];
+end
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist * options.sampling;
 end
 % for the precomputed version, index vectors are needed
 if options.use_raw_data == false && options.precompute_lor
@@ -109,12 +112,12 @@ if options.use_raw_data == false && options.precompute_lor
                         lor_pixel_count_prepass(options);
                         load(lor_file,'lor_orth')
                     end
-                    if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
-                        lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
-                    elseif length(lor_orth) == options.Nang*options.Ndist*options.NSinos
+                    if length(lor_orth) > options.Nang*options.Ndist*options.TotSinos
+                        lor_orth = lor_orth(options.Nang*options.Ndist*options.TotSinos+1:end);
+                    elseif length(lor_orth) == options.Nang*options.Ndist*options.TotSinos
                         lor_pixel_count_prepass(options);
                         load(lor_file,'lor_orth')
-                        lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
+                        lor_orth = lor_orth(options.Nang*options.Ndist*options.TotSinos+1:end);
                     end
                 end
             end
@@ -295,9 +298,9 @@ if options.use_raw_data == false && options.precompute_lor
     if subsets > 1 && length(pituus) > 1 || fpbp
         for kk = 1 : subsets
             if options.projector_type == 2 && options.implementation == 1
-                summa(kk) = sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1))));
+                summa(kk) = uint64(sum(uint64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
             else
-                summa(kk) = sum(int64(lor_a(pituus(kk)+1:pituus(kk+1))));
+                summa(kk) = uint64(sum(uint64(lor_a(pituus(kk)+1:pituus(kk+1)))));
             end
         end
     else
@@ -308,7 +311,7 @@ if options.use_raw_data == false && options.precompute_lor
         end
         pituus = uint32([0;length(lor_a)]);
     end
-    if nargin == 9 && options.projector_type == 2
+    if options.projector_type == 2 && options.implementation == 1
         varargout{2} = lor_orth;
     end
     
@@ -340,20 +343,20 @@ elseif options.use_raw_data && options.precompute_lor
                         lor_pixel_count_prepass(options);
                         load(lor_file,'lor_orth')
                     end
-                    if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
-                        lor_orth = lor_orth(1:options.Nang*options.Ndist*options.NSinos);
+                    if length(lor_orth) > length(lor)
+                        lor_orth = lor_orth(1:length(lor));
                     end
                 elseif options.tube_width_z > 0
                     if crystal_size_z ~= options.tube_width_z
                         lor_pixel_count_prepass(options);
                         load(lor_file,'lor_orth')
                     end
-                    if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
-                        lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
-                    elseif length(lor_orth) == options.Nang*options.Ndist*options.NSinos
+                    if length(lor_orth) > length(lor)
+                        lor_orth = lor_orth(length(lor)+1:end);
+                    elseif length(lor_orth) == length(lor)
                         lor_pixel_count_prepass(options);
                         load(lor_file,'lor_orth')
-                        lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
+                        lor_orth = lor_orth(length(lor)+1:end);
                     end
                 end
             end
@@ -374,12 +377,12 @@ elseif options.use_raw_data && options.precompute_lor
             if options.projector_type == 2 && options.implementation == 1
                 load(lor_file,'lor_orth')
                 if options.tube_width_z == 0
-                    if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
-                        lor_orth = lor_orth(1:options.Nang*options.Ndist*options.NSinos);
+                    if length(lor_orth) > length(lor)
+                        lor_orth = lor_orth(1:length(lor));
                     end
                 elseif options.tube_width_z > 0
-                    if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
-                        lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
+                    if length(lor_orth) > length(lor)
+                        lor_orth = lor_orth(length(lor)+1:end);
                     end
                 end
             end
@@ -388,6 +391,17 @@ elseif options.use_raw_data && options.precompute_lor
             lor = lor_opencl;
             clear lor_opencl
         end
+    end
+    if options.ring_difference_raw < options.rings
+        testi3 = zeros(options.detectors,options.detectors,'uint16');
+        testi3(tril(true(size(testi3)), 0)) = lor;
+        for kk = options.rings : - 1 : options.ring_difference_raw + 1
+            for ll = 1 : kk - options.ring_difference_raw
+                testi3(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
+                    zeros(options.det_per_ring, options.det_per_ring, 'uint16');
+            end
+        end
+        lor = testi3(tril(true(size(testi3)), 0));
     end
     discard = lor > 0;
     if subsets > 1 || fpbp
@@ -465,9 +479,21 @@ elseif options.use_raw_data && options.precompute_lor
             clear temp
         else
             if iscell(varargin{1})
-                varargout{1}{1} = varargin{1}{1}(discard);
+                if issparse(varargin{1}{1})
+                    apu = full(varargin{1}{1});
+                    varargout{1}{1} = sparse(apu(discard));
+                    clear apu
+                else
+                    varargout{1}{1} = varargin{1}{1}(discard);
+                end
             else
-                varargout{1} = varargin{1}(discard);
+                if issparse(varargin{1})
+                    apu = full(varargin{1});
+                    varargout{1} = sparse(apu(discard));
+                    clear apu
+                else
+                    varargout{1} = varargin{1}(discard);
+                end
             end
         end
         lor_a = lor(discard);
@@ -510,9 +536,9 @@ elseif options.use_raw_data && options.precompute_lor
         apu(idx,:) = apu2;
         LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
         if options.projector_type == 2 && options.implementation == 1
-            summa(kk) = sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1))));
+            summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
         else
-            summa(kk) = sum(int64(lor_a(pituus(kk)+1:pituus(kk+1))));
+            summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
         end
     end
     
@@ -522,7 +548,7 @@ elseif options.use_raw_data && options.precompute_lor
     LL = LL(:);
     xy_index =  [];
     z_index = [];
-    if nargin == 9 && options.projector_type == 2
+    if options.projector_type == 2 && options.implementation == 1
         varargout{2} = lor_orth;
     end
 elseif options.use_raw_data == false && ~options.precompute_lor
@@ -679,10 +705,10 @@ elseif options.use_raw_data == false && ~options.precompute_lor
     clear discard I yt xt xy_index2 index apu
 elseif options.use_raw_data && ~options.precompute_lor
     
+    if ~exist('LL','var')
+        LL = form_detector_pairs_raw(rings, options.det_per_ring);
+    end
     if subsets > 1 || fpbp
-        if ~exist('LL','var')
-            LL = form_detector_pairs_raw(rings, options.det_per_ring);
-        end
         LL = LL(index,:);
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(index);
@@ -703,25 +729,37 @@ elseif options.use_raw_data && ~options.precompute_lor
                 end
             end
         end
-        clear lor
-    end
-    if nargout >= 8
-        if options.partitions > 1
-            for ff = 1 : options.partitions
-                temp = varargin{1}{ff};
-                if subsets > 1 || fpbp
-                    temp = temp(index);
+        if nargout >= 8
+            if options.partitions > 1
+                for ff = 1 : options.partitions
+                    temp = varargin{1}{ff};
+                    if subsets > 1 || fpbp
+                        temp = temp(index);
+                    end
+                    varargout{1}{ff} = temp;
                 end
-                varargout{1}{ff} = temp;
-            end
-            clear temp
-        else
-            if iscell(varargin{1})
-                varargout{1}{1} = varargin{1}{1}(index);
+                clear temp
             else
-                varargout{1} = varargin{1}(index);
+                if iscell(varargin{1})
+                    if issparse(varargin{1}{1})
+                        apu = full(varargin{1}{1});
+                        varargout{1}{1} = sparse(apu(index));
+                        clear apu
+                    else
+                        varargout{1}{1} = varargin{1}{1}(index);
+                    end
+                else
+                    if issparse(varargin{1})
+                        apu = full(varargin{1});
+                        varargout{1} = sparse(apu(index));
+                        clear apu
+                    else
+                        varargout{1} = varargin{1}(index);
+                    end
+                end
             end
         end
+        clear lor
     end
     summa = zeros(subsets, 1, 'uint64');
     
@@ -758,4 +796,7 @@ elseif options.use_raw_data && ~options.precompute_lor
     lor_a = [];
     xy_index = [];
     z_index = [];
+end
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist / options.sampling;
 end
