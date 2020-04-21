@@ -1,4 +1,4 @@
-function varargout = forward_project(options, index, n_meas, f, nn)
+function varargout = forward_project(options, index, n_meas, f, nn, iternn, SinM)
 %FORWARD_PROJECT Calculates the forward projection
 % Examples:
 %   fp = forward_project(options, index, n_meas, f, nn)
@@ -12,6 +12,10 @@ function varargout = forward_project(options, index, n_meas, f, nn)
 %   f = The current estimate
 %   nn = The interval from where the measurements are taken (current
 %   subset)
+%   iternn = Current subset and iteration numbers summed minus 1. E.g. this
+%   is 1 if it is the very first iteration and subset
+%   SinM = The measurements, used to skip zero measurements. If you want to
+%   include also zero measurements, then input a vector of ones.
 %
 % OUTPUTS:
 %   fp = The forward projection (fp = A * f)
@@ -21,7 +25,7 @@ function varargout = forward_project(options, index, n_meas, f, nn)
 % See also index_maker, backproject
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -59,7 +63,11 @@ attenuation_correction = options.attenuation_correction;
 FOVax = options.FOVa_x;
 FOVay = options.FOVa_y;
 rings = options.rings;
-det_per_ring = options.det_per_ring;
+if options.use_raw_data && isfield(options,'x')
+    det_per_ring = numel(options.x);
+else
+    det_per_ring = options.det_per_ring;
+end
 % machine_name = options.machine_name;
 % Nang = options.Nang;
 % Ndist = options.Ndist;
@@ -84,19 +92,31 @@ FOVay=double(FOVay);
 % Axial FOV (mm)
 axial_fow = double(options.axial_fov);
 % Number of rings
-blocks=int32(rings + length(pseudot) - 1);
+blocks=uint32(rings + length(pseudot) - 1);
 % First ring
-block1=int32(0);
+block1=uint32(0);
 
-NSinos = int32(options.NSinos);
+NSinos = uint32(options.NSinos);
 % TotSinos = int32(options.TotSinos);
 
 if numel(f) ~= Nx*Ny*Nz
     error('Estimate has different amount of elements than the image size')
 end
 
-
-[x, y, z] = get_coordinates(options, blocks);
+if iternn == 1 || (options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1)
+    if (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && isfield(options,'x') && isfield(options,'y')
+        options = rmfield(options, 'x');
+        options = rmfield(options, 'y');
+    end
+    [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
+    options.x = x;
+    options.y = y;
+    options.z_det = z_det;
+else
+    x = options.x;
+    y = options.y;
+    z_det = options.z_det;
+end
 
 [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
 
@@ -132,25 +152,11 @@ else
     end
 end
 
-if min(min(z)) == 0
-    z = z + (axial_fow - max(max(z)))/2;
-end
-
-if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-    x=single(x);
-    y=single(y);
-    z_det = single(z);
+if options.use_raw_data
+    size_x = uint32(options.det_w_pseudo);
 else
-    x=double(x);
-    y=double(y);
-    z_det = double(z);
+    size_x = uint32(options.Nang*options.Ndist);
 end
-clear z
-
-
-
-
-size_x = int32(size(x,1));
 
 if (options.precompute_lor || options.implementation == 5 || options.implementation == 2 || options.implementation == 3)
     n_meas = [0;cumsum(n_meas)];
@@ -185,7 +191,7 @@ else
     xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
     yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
 end
-zz=zz(2*block1+1:2*blocks+2);
+zz=zz(2*block1+1:2*blocks);
 
 % Distance of adjacent pixels
 dx=diff(xx(1:2));
@@ -198,18 +204,18 @@ by=yy(1);
 bz=zz(1);
 
 % Number of pixels
-Ny=int32(Ny);
-Nx=int32(Nx);
-Nz=int32(Nz);
+Ny=uint32(Ny);
+Nx=uint32(Nx);
+Nz=uint32(Nz);
 
 N=(Nx)*(Ny)*(Nz);
-det_per_ring = int32(det_per_ring);
+det_per_ring = uint32(det_per_ring);
 
 % How much memory is preallocated
 if use_raw_data == false
-    ind_size = int32(NSinos/8*(det_per_ring)* Nx * (Ny));
+    ind_size = uint32(NSinos/8*(det_per_ring)* Nx * (Ny));
 else
-    ind_size = int32((det_per_ring)^2/8* Nx * (Ny));
+    ind_size = uint32((det_per_ring)^2/8* Nx * (Ny));
 end
 
 
@@ -222,34 +228,81 @@ if zmax==0
     end
 end
 
-if options.projector_type == 2
+if options.projector_type == 2 || options.projector_type == 3
     x_center = xx(1 : end - 1)' + dx/2;
     y_center = yy(1 : end - 1)' + dy/2;
-    if options.tube_width_z > 0
+%     if options.tube_width_z > 0
         z_center = zz(1 : end - 1)' + dz/2;
+%     else
+%         z_center = zz(1);
+%     end
+    temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
+    if options.tube_width_z > 0
+        temppi = max([1,round(options.tube_width_z / temppi)]);
     else
-        z_center = zz(1);
+        temppi = max([1,round(options.tube_width_xy / temppi)]);
+    end
+    temppi = temppi * temppi * 4;
+    if options.apply_acceleration
+        if options.tube_width_z == 0
+            dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
+        else
+            dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * temppi);
+        end
+    else
+        dec = uint32(0);
     end
 else
     x_center = xx(1);
     y_center = yy(1);
     z_center = zz(1);
+%     if options.use_psf && options.apply_acceleration
+%         dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * ((ceil(options.cr_pz / dx) * 2 + 1)^2));
+%     else
+        dec = uint32(0);
+%     end
+end
+
+if options.projector_type == 3
+    voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
+    bmax = options.tube_radius + voxel_radius;
+    b = linspace(0, bmax, 10000)';
+    b(options.tube_radius > (b + voxel_radius)) = [];
+    b = unique(round(b*10^3)/10^3);
+    V = volumeIntersection(options.tube_radius, voxel_radius, b);
+    Vmax = (4*pi)/3*voxel_radius^3;
+    bmin = min(b);
+else
+    V = 0;
+    Vmax = 0;
+    bmin = 0;
+    bmax = 0;
+end
+if options.implementation == 2 || options.implementation == 3
+    V = single(V);
+    Vmax = single(Vmax);
+    bmin = single(bmin);
+    bmax = single(bmax);
+end
+% Multi-ray Siddon
+if options.implementation > 1 && options.n_rays_transaxial > 1 && ~options.precompute_lor && options.projector_type == 1
+    [x,y] = getMultirayCoordinates(options);
+    options.x = x;
+    options.y = y;
 end
 
 if options.implementation == 1
     if options.precompute_lor == false
+        iij = double(0:Nx);
+        jji = double(0:Ny);
+        kkj = double(0:Nz);
         if use_raw_data == false
             if options.projector_type == 1 || options.projector_type == 0
                 [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                     zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, ...
-                    randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
-                    use_raw_data, uint32(2), ind_size, block1, blocks, index{osa_iter}, uint32(options.projector_type));
-            elseif options.projector_type == 2
-                [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                    zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, ...
-                    randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
-                    use_raw_data, uint32(2), ind_size, block1, blocks, index{osa_iter}, uint32(options.projector_type), ...
-                    options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
+                    randoms_correction, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                    use_raw_data, uint32(2), ind_size, block1, blocks, index, ...
+                    uint32(options.projector_type), iij, jji, kkj);
             else
                 error('Unsupported projector type')
             end
@@ -260,37 +313,40 @@ if options.implementation == 1
             if options.projector_type == 1
                 [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                     zmax, options.vaimennus, normalization, SinDelayed, uint32(0), attenuation_correction, normalization_correction, ...
-                    randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
-                    use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type));
-            elseif options.projector_type == 2
-                [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                    zmax, options.vaimennus, normalization, SinDelayed, uint32(0), attenuation_correction, normalization_correction, ...
-                    randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
-                    use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), options.tube_width_xy, ...
-                    x_center, y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
+                    randoms_correction, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
+                    use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
             else
                 error('Unsupported projector type')
             end
         end
-        lor = reshape(lor,[],2);
-        if verLessThan('matlab','8.5')
-            lor=repeat_elem(int32((lor(:,1))),lor(:,2));
+        if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+            lor = repeat_elem(uint32(1:length(lor))',uint32(lor));
+        elseif exist('OCTAVE_VERSION','builtin') == 5
+            lor = repelem(uint32(1:length(lor)),uint32(lor));
         else
-            lor=repelem(int32((lor(:,1))),lor(:,2));
+            lor = repelem(uint32(1:length(lor)),uint32(lor))';
         end
         
-        A_length = length(rhs);
-        indices=indices + 1;
-        if verbose
+        A_length = length(SinM);
+        if options.verbose
             tStart = tic;
         end
-        if options.use_fsparse == false
-            A = sparse(double(lor),double(indices),double(alkiot), A_length, double(N));
+        if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.8')
+            indices = uint32(indices) + 1;
+            A = sparse(lor,indices,double(alkiot), A_length, double(N));
+        elseif options.use_fsparse && exist('fsparse','file') == 3
+            indices = int32(indices) + 1;
+            A = fsparse(int32(lor),(indices),double(alkiot),[A_length double(N) length(alkiot)]);
+        elseif options.use_fsparse && exist('fsparse','file') == 0
+            warning('options.fsparse set to true, but no FSparse mex-file found. Using regular sparse')
+            indices = double(indices) + 1;
+            A = sparse(double(lor),(indices),double(alkiot), A_length, double(N));
         else
-            A = fsparse(lor,indices,double(alkiot),[A_length double(N) length(alkiot)]);
+            indices = double(indices) + 1;
+            A = sparse(double(lor),(indices),double(alkiot), A_length, double(N));
         end
         clear indices alkiot lor
-        if verbose
+        if options.verbose
             tElapsed = toc(tStart);
             disp(['Sparse matrix formation took ' num2str(tElapsed) ' seconds'])
         end
@@ -301,33 +357,32 @@ if options.implementation == 1
         else
             LL = uint16(0);
         end
-        if options.projector_type == 2
+        if options.projector_type == 2 || options.projector_type == 3
             lor2 = [0; cumsum(uint64(lor_orth(n_meas(1)+1:n_meas(2))))];
         else
             lor2 = [0; cumsum(uint64(lor_a(n_meas(1)+1:n_meas(2))))];
         end
-        [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, NSinos, NSlices, ...
-            size_x, zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction,...
-            randoms_correction, lor_a, xy_index, ...
-            z_index, NSinos, LL, pseudot, det_per_ring, options.verbose, ...
-            use_raw_data, uint32(0), lor2, summa, false, uint32(options.projector_type), ...
-            options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
+        [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
+            normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction,...
+            randoms_correction, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, ...
+            LL, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa, false, ...
+            uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
         clear lor2
     end
     
     
     if size(A,2) ~= size(f,1)
-        if no_norm
+%         if no_norm
+%             varargout{1} = A' * f;
+%         else
             varargout{1} = A' * f;
-        else
-            varargout{1} = A' * f;
-        end
+%         end
     else
-        if no_norm
+%         if no_norm
+%             varargout{1} = A * f;
+%         else
             varargout{1} = A * f;
-        else
-            varargout{1} = A * f;
-        end
+%         end
     end
     varargout{2} = options;
 elseif options.implementation == 3
@@ -343,59 +398,54 @@ elseif options.implementation == 3
         end
         LL = uint16(0);
     end
+    if ~iscell(SinM)
+        SinM = {single(SinM)};
+    end
     tube_width_xy = single(options.tube_width_xy);
     crystal_size_z = single(options.tube_width_z);
-    n_rays = uint16(options.n_rays);
+    n_rays = uint16(options.n_rays_transaxial);
+    n_rays3D = uint16(options.n_rays_axial);
     dc_z = single(z_det(2,1) - z_det(1,1));
     if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
         randoms = uint32(1);
     else
         randoms = uint32(0);
     end
-    if options.projector_type == 1 && options.precompute_lor
-        kernel_file = 'multidevice_siddon_bpfp.cl';
+    if (options.projector_type == 1 && (options.precompute_lor || (n_rays + n_rays3D) <= 2)) || options.projector_type == 2 || options.projector_type == 3
+        kernel_file = 'multidevice_kernel.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_backproject_OpenCL_binary_device';
-        filename = [kernel_path(1:end-length(kernel_file)), filename];
-        header_directory = strrep(kernel_path,'multidevice_siddon_bpfp','');
-    elseif options.projector_type == 2 && options.precompute_lor
-        filename = 'OMEGA_matrix_free_orthogonal_OpenCL_binary_device';
-        kernel_file = 'multidevice_orth_bpfp.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        header_directory = strrep(kernel_path,'multidevice_orth_bpfp','');
+        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
+        header_directory = strrep(kernel_path,'multidevice_kernel','');
     elseif options.projector_type == 1 && ~options.precompute_lor
-        kernel_file = 'multidevice_siddon_no_precomp_bpfp.cl';
+        kernel_file = 'multidevice_siddon_no_precomp.cl';
         kernel_path = which(kernel_file);
         kernel_path = strrep(kernel_path, '\', '/');
         kernel_path = strrep(kernel_path, '.cl', '');
         filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_siddon_no_precomp_bpfp','');
-    elseif options.projector_type == 2 && ~options.precompute_lor
-        kernel_file = 'multidevice_orth_no_precomp_bpfp.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_orth_no_precomp_bpfp','');
+        header_directory = strrep(kernel_path,'multidevice_siddon_no_precomp','');
     else
         error('Invalid projector for OpenCL')
     end
-
+    
     filename = [header_directory, filename];
     header_directory = strcat('-I "', header_directory);
     header_directory = strcat(header_directory,'"');
     
     tic
-    [varargout{1},~] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
+    [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
         single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), ...
         single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...
         uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...
-        uint32(options.projector_type), options.precompute_lor, int32(options.accuracy_factor), n_rays, dc_z, f, false);
+        uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, true, ...
+        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf);
     toc
+    if isa(output{1},'uint64')
+        varargout{1} = single(output{1}) / 100000000000;
+    else
+        varargout{1} = output{1};
+    end
     varargout{2} = options;
 else
     error('Only implementations 1 and 3 are available in forward/backward projection')
