@@ -1,19 +1,22 @@
-function [x, y, z] = get_coordinates(options, rings)
+function [x, y, z, options] = get_coordinates(options, varargin)
 % GET_COORDINATES Get the coordinates for the current machine
 %   Outputs the x-, y- and z-coordinates for the current machine, depending
 %   on whether sinogram or raw data is used
 %
-% EXAMPLE:
-%   [x, y, z] = get_coordinates(options, rings)
+% EXAMPLES:
+%   [x, y, z, options] = get_coordinates(options)
+%   [x, y, z, options] = get_coordinates(options, rings, pseudot)
 % INPUTS:
 %   options = Machine properties, sinogram properties and whether raw data
 %   is used are needed.
-%   rings = Number of crystal rings
+%   rings = Number of crystal rings (required only for raw data)
+%   pseudot = The numbers of the pseudo rings (required only for raw data)
 %
-% See also sinogram_coordinates_2D, sinogram_coordinates_3D, detector_coordinates
+% See also sinogram_coordinates_2D, sinogram_coordinates_3D,
+% detector_coordinates, getMultirayCoordinates
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -29,22 +32,74 @@ function [x, y, z] = get_coordinates(options, rings)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+if nargin >= 2
+    rings = varargin{1};
+else
+    rings = options.rings;
+end
+if nargin >= 3
+    pseudot = varargin{2};
+else
+    pseudot = [];
+end
 
-
-if options.use_raw_data == false
-    [~, ~, xp, yp] = detector_coordinates(options);
-    [x, y] = sinogram_coordinates_2D(options, xp, yp);
-    z = sinogram_coordinates_3D(options);
-    if options.NSinos ~= options.TotSinos
-        z = z(1:options.NSinos,:);
+if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))
+    x = options.x;
+    y = options.y;
+    if isfield(options,'z')
+        z = options.z;
+    else
+        z = options.z_det;
     end
 else
-    if options.det_per_ring < options.det_w_pseudo
-        options.offangle = options.offangle / options.det_w_pseudo;
-        options.offangle = options.offangle * options.det_per_ring;
+    if options.use_raw_data == false
+        [~, ~, xp, yp] = detector_coordinates(options);
+        [x, y] = sinogram_coordinates_2D(options, xp, yp);
+        
+        if options.arc_correction && ~options.precompute_lor
+            [~, ~, xp, yp] = detector_coordinates(options);
+            [x, y, options] = arcCorrection(options, xp, yp, true);
+        end
+        if options.sampling > 1 && ~options.precompute_lor
+            [x, y, options] = increaseSampling(options, x, y, true);
+        end
+        z = sinogram_coordinates_3D(options);
+        if options.NSinos ~= options.TotSinos
+            z = z(1:options.NSinos,:);
+        end
+    else
+        if options.det_per_ring < options.det_w_pseudo
+            options.offangle = options.offangle / options.det_w_pseudo;
+            options.offangle = options.offangle * options.det_per_ring;
+        end
+        [x, y] = detector_coordinates(options);
+        if options.sampling_raw > 1 && ~options.precompute_lor
+            [x, y, options] = increaseSampling(options, x, y, true);
+        end
+        
+        z_length = double(rings + 1) * options.cr_pz;
+        z = linspace(0, z_length, rings + 2)';
+        if sum(pseudot) > 0
+            z(pseudot) = [];
+        end
     end
-    [x, y] = detector_coordinates(options);
     
-    z_length = double(rings) * options.cr_pz;
-    z = linspace(0, z_length, rings + 1)';
+    if min(z(:)) == 0
+        z = z + (options.axial_fov - max(max(z)))/2;
+    end
+    
+    if options.use_raw_data
+        z = z + options.cr_pz/2;
+        z(end) = [];
+    end
+end
+
+if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+    x = single(x);
+    y = single(y);
+    z = single(z);
+else
+    x = double(x);
+    y = double(y);
+    z = double(z);
 end
