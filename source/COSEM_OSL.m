@@ -1,8 +1,10 @@
-function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed)
+function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed, varargin)
 %COSEM_OSL Computes the One-Step Late COSEM (OSL-COSEM) MAP estimates
 %
 % Example:
 %   [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed)
+%   [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP, osa_iter, SinDelayed, is_transposed, options, Nx, Ny, Nz, gaussK)
+%   [im, C_co] = COSEM_OSL(im, D, beta, dU, RHS, osa_iter, h, C_co, COSEM_MAP)
 % INPUTS:
 %   im = The current estimate
 %   D = Sum of the complete data system matrix (D = sum(B,2), where B =
@@ -21,6 +23,16 @@ function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP
 %   randoms data is available, use zero.
 %   is_transposed = true if A matrix is the transpose of it, false if not
 %
+%   These values are needed only when doing PSF reconstruction:
+%	options = Needed for PSF reconstruction
+%   Nx = Image size in X-direction, for PSF
+%   Ny = Image size in Y-direction, for PSF
+%   Nz = Image size in Z-direction, for PSF
+%   gaussK = Gaussian kernel for PSF
+%
+%   This is for implementation 4:
+%   RHS = Backprojection computed by implementation 4
+%
 % OUTPUTS:
 %   im = The updated estimate
 %   C_co = Updated Complete-data matrix
@@ -28,7 +40,7 @@ function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP
 %   See also COSEM_im, ACOSEM_im, MBSREM, OSL_OSEM, BSREM_iter, RBI_subiter
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -43,24 +55,51 @@ function [im, C_co] = COSEM_OSL(im, D, beta, dU, A, uu, epps, C_co, h, COSEM_MAP
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if COSEM_MAP == 1
-    if is_transposed
-        C_co(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps + SinDelayed),0,size(A,2),size(A,2)),2));
+% Implementation 4
+if isempty(osa_iter) && isempty(is_transposed)
+    if h == 1
+        C_co(:,uu) = (im).^(1 / epps) .* A;
+        im = (sum(C_co,2) ./ (D + beta * dU)) .^epps;
     else
-        C_co(:,osa_iter) = full(sum((spdiags(im.^(1/h),0,size(A,2),size(A,2))*A')*spdiags(uu./(A*im + epps + SinDelayed),0,size(A,1),size(A,1)),2));
+        C_co(:,uu) = (im) .* A;
+        im = (sum(C_co,2) ./ (D + beta * dU));
     end
-    im = (sum(C_co,2)./(D + beta * dU)).^h;
-    if is_transposed
-        im = (im)*(sum(uu)/(sum(A'*im)));
-    else
-        im = (im)*(sum(uu)/(sum(A*im)));
-    end
-    im(im < 0) = epps;
 else
-    if is_transposed
-        C_co(:,osa_iter) = full(sum((spdiags(im,0,size(A,1),size(A,1))*A)*spdiags(uu./(A'*im + epps + SinDelayed),0,size(A,2),size(A,2)),2));
+    % Implementation 1
+    % PSF reconstruction
+    if ~isempty(varargin{1}) && varargin{1}.use_psf
+        im_apu = computeConvolution(im, varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
     else
-        C_co(:,osa_iter) = full(sum((spdiags(im,0,size(A,2),size(A,2))*A')*spdiags(uu./(A*im + epps + SinDelayed),0,size(A,1),size(A,1)),2));
+        im_apu = im;
     end
-    im = (sum(C_co,2)./(D + beta * dU));
+    if is_transposed
+        FP = A' * im_apu + epps + SinDelayed;
+        RHS = A * (uu ./ FP);
+    else
+        FP = A * im_apu + epps + SinDelayed;
+        RHS = A' * (uu ./ FP);
+    end
+    if ~isempty(varargin) && ~isempty(varargin{1}) && varargin{1}.use_psf
+        RHS = computeConvolution(RHS, varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
+    end
+    % ACOSEM-OSL
+    if COSEM_MAP == 1
+        C_co(:,osa_iter) = im.^(1/h) .* RHS;
+        im = (sum(C_co,2)./(D + beta * dU)).^h;
+        if ~isempty(varargin{1}) && varargin{1}.use_psf
+            im_apu = computeConvolution(im, varargin{1}, varargin{2}, varargin{3}, varargin{4}, varargin{5});
+        else
+            im_apu = im;
+        end
+        if is_transposed
+            im = (im)*(sum(uu)/(sum(A'*im_apu)));
+        else
+            im = (im)*(sum(uu)/(sum(A*im_apu)));
+        end
+    else
+        % COSEM-OSL
+        C_co(:,osa_iter) = im .* RHS;
+        im = (sum(C_co,2)./(D + beta * dU));
+    end
+    im(im < epps) = epps;
 end
