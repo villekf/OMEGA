@@ -17,7 +17,10 @@ function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 %   either a scalar or a vector of same size as uu. If no scatter and/or
 %   randoms data is available, use zero. 
 %   is_transposed = true if A matrix is the transpose of it, false if not
-%   RHS = The right hand side of OSEM (RHS = A'*(uu./(A*im + SinDelayed))) 
+%
+%   For implementation 4 only:
+%   RHS = The right hand side (backprojection) of OSEM (RHS = A'*(uu./(A*im
+%   + SinDelayed)))
 %
 % OUTPUTS:
 %   im = The updated estimate
@@ -26,7 +29,7 @@ function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 % ACOSEM_im, ECOSEM_im, MBSREM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -41,14 +44,28 @@ function im = DRAMA_subiter(im, lambda, epps, iter, Summ, sub_iter, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 10
-    if varargin{4}
-        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps + varargin{3}) - 1));
+% Implementation 1
+if nargin >= 10
+    % PSF case
+    if length(varargin) > 4 && ~isempty(varargin{5}) && varargin{5}.use_psf
+        im_apu = computeConvolution(im, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});
     else
-        im = im + lambda(iter, sub_iter).*im./Summ.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps + varargin{3}) - 1));
+        im_apu = im;
     end
+    if varargin{4}
+        FP = varargin{1}' * im_apu;
+        BP = varargin{1} * (varargin{2} ./ ( FP + epps + varargin{3}) - 1);
+    else
+        FP = varargin{1} * im_apu;
+        BP = varargin{1}' * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+    end
+    if length(varargin) > 4 && ~isempty(varargin{5}) && varargin{5}.use_psf
+        BP = computeConvolution(BP, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});
+    end
+    im = im + lambda(iter, sub_iter) .* (im ./ Summ) .* BP;
 elseif nargin == 7
-    im = im + lambda(iter, sub_iter).*im./Summ.*((varargin{1} + epps) - Summ);
+    % Implementation 4
+    im = im + lambda(iter, sub_iter) .* (im./Summ) .* (varargin{1} - Summ);
 else
     error('Invalid number of input arguments')
 end
