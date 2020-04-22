@@ -26,7 +26,7 @@ function [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2020 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -49,78 +49,51 @@ if mashing == 1
 else
     if llo == 1
         options.Nang = options.Nang * mashing;
-        pseudot = options.pseudot;
-        ringsp = options.rings + sum(pseudot);
-        temp = pseudot;
-        if ~isempty(temp) && temp > 0
-            for kk = uint32(1) : temp
-                pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
-            end
-        elseif temp == 0
-            pseudot = [];
-        end
         [~, ~, i, j, accepted_lors] = sinogram_coordinates_2D(options, xp, yp);
-        Sinog = cell(ringsp,ringsp);
         
-        ix=cellfun('isempty',Sinog);
-        Sinog(ix)={zeros(options.Ndist,options.Nang,'uint16')};
-        
-        P1 = options.coincidences{llo};
-        
-        % Create the Michelograms
-        for ii=1:ringsp
-            if any(ii==pseudot)
-                continue
+        L = zeros(sum(1:options.det_w_pseudo),2,'int32');
+        jh = int32(1);
+        for kk = int32(1) : (options.det_w_pseudo)
+            if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+                L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repeat_elem((kk), options.det_w_pseudo-(kk-1)), ((kk):options.det_w_pseudo)'];
+            elseif exist('OCTAVE_VERSION','builtin') == 5
+                L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repelem((kk), options.det_w_pseudo-(kk-1)), ((kk):options.det_w_pseudo)'];
+            else
+                L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repelem((kk), options.det_w_pseudo-(kk-1))', ((kk):options.det_w_pseudo)'];
             end
-            for jj=1:ringsp
-                if any(jj==pseudot)
-                    continue
-                end
-                if issparse(P1{ii,jj})
-                    CC = uint16(full(P1{ii,jj}));
-                else
-                    CC = P1{ii,jj};
-                end
-                CC = CC(accepted_lors);
-                %                 Sinog{ii,jj}(ind) = CC;
-                Sinog{ii,jj} = uint16(accumarray([i j],CC,[options.Ndist options.Nang]));
+            jh = jh + (options.det_w_pseudo) -kk + 1;
+        end
+        L(L(:,1) == 0,:) = [];
+        
+        L = L(accepted_lors,:);
+        
+        locci = true(size(L,1),1);
+        for dd = 1 : size(L,1)
+            if mod(L(dd,1),options.cryst_per_block + 1) == 0
+                locci(dd) = false;
             end
         end
-        Sinog = cat(3,Sinog{:});
-        Sin_orig = zeros(options.Ndist,options.Nang,options.TotSinos,'uint16');
-        
-        
-        kkj = zeros(floor((options.ring_difference-ceil(options.span/2))/options.span) + 1, 1);
-        for kk = 1 : floor((options.ring_difference-ceil(options.span/2))/options.span) + 1
-            kkj(kk) = ceil(options.span/2) + options.span*(kk - 1);
-        end
-        offset2 = cumsum(options.segment_table);
-        % Create the sinograms
-        % First the detectors on the same ring
-        Sin_orig(:,:,1:2:options.Nz) = Sinog(:,:,1:ringsp+1:ringsp^2);
-        % Then the detectors on adjacent rings
-        for jh=1:floor(options.span/2)
-            apu = Sinog(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-            apu2 = Sinog(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-            Sin_orig(:,:,jh+1:2:offset2(1)-jh) = Sin_orig(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-        end
-        % Lastly the rest of the detectors with the amount of combined LORs
-        % specified with the span value
-        for ih=1:floor(length(options.segment_table)/2)
-            for jh=1:span
-                apu = Sinog(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                Sin_orig(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin_orig(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                apu2 = Sinog(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                Sin_orig(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin_orig(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+        ykkoset = zeros(size(L,1),1);
+        ykkoset(locci) = 1;
+        ff = accumarray([i j], ykkoset, [options.Ndist options.Nang]);
+        locci = true(size(L,1),1);
+        for dd = 1 : size(L,1)
+            if mod(L(dd,2),options.cryst_per_block + 1) == 0
+                locci(dd) = false;
             end
         end
-        clear Sinog
-        apu = sum(Sin_orig,3);
+        ykkoset = zeros(size(L,1),1);
+        ykkoset(locci) = 1;
+        ff2 = accumarray([i j], ykkoset, [options.Ndist options.Nang]);
+        uusf = ff + ff2;
+        uusf(uusf == 1) = 0;
+        uusf(uusf > 0) = 1;
+        apu = uusf;
         apu(apu == 0) = NaN;
         apu(~isnan(apu)) = 0;
         apu(isnan(apu)) = 1;
         for kk = 1 : mashing - 1
-            apu = apu(:,1:2:end) + apu(:,2:2:end);
+            apu = apu(:,1:mashing:end) + apu(:,2:mashing:end);
         end
         gaps = apu > 0;
     end
@@ -130,15 +103,19 @@ if strcmp('fillmissing',options.gap_filling_method)
     for kk = 1 : size(Sin,3)
         apu = Sin(:,:,kk);
         apu(gaps) = NaN;
-        Sin(:,:,kk) = fillmissing(apu, options.interpolation_method_fillmissing);
+        jelppi1 = fillmissing(apu, options.interpolation_method_fillmissing);
+        jelppi2 = fillmissing(apu', options.interpolation_method_fillmissing)';
+        Sin(:,:,kk) = (jelppi1 + jelppi2) / 2;
     end
+    Sin(Sin < 0) = 0;
 elseif strcmp('inpaint_nans',options.gap_filling_method)
     Sin = single(Sin);
     for kk = 1 : size(Sin,3)
         apu = Sin(:,:,kk);
         apu(gaps) = NaN;
-        Sin(:,:,kk) = inpaint_nans(apu, options.interpolation_method_inpaint);
+        Sin(:,:,kk) = single(inpaint_nans(double(apu), options.interpolation_method_inpaint));
     end
+    Sin(Sin < 0) = 0;
 else
     warning('Unsupported gap filling method! No gap filling was performed!')
 end
