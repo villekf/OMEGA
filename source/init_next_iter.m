@@ -85,11 +85,11 @@ if options.MRP && options.ROSEM_MAP
     end
 end
 
-if options.MRP && options.RBI_MAP
+if options.MRP && options.RBI_OSL
     options.im_vectors.MRP_RBI(:, iter + 1) = options.im_vectors.MRP_RBI_apu;
 end
 
-if options.MRP && any(options.COSEM_MAP)
+if options.MRP && any(options.COSEM_OSL)
     options.im_vectors.MRP_COSEM(:, iter + 1) = options.im_vectors.MRP_COSEM_apu;
 end
 
@@ -137,12 +137,66 @@ if options.quad && options.ROSEM_MAP
     end
 end
 
-if options.quad && options.RBI_MAP
+if options.quad && options.RBI_OSL
     options.im_vectors.Quad_RBI(:, iter + 1) = options.im_vectors.Quad_RBI_apu;
 end
 
-if options.quad && any(options.COSEM_MAP)
+if options.quad && any(options.COSEM_OSL)
     options.im_vectors.Quad_COSEM(:, iter + 1) = options.im_vectors.Quad_COSEM_apu;
+end
+
+if options.Huber && options.OSL_OSEM
+    options.im_vectors.Huber_OSL(:, iter + 1) = options.im_vectors.Huber_OSL_apu;
+end
+if options.Huber && options.OSL_MLEM
+    options.im_vectors.Huber_MLEM(:, iter + 1) = options.im_vectors.Huber_MLEM_apu;
+end
+if options.Huber && options.MBSREM
+    options.im_vectors.Huber_MBSREM(:, iter + 1) = options.im_vectors.Huber_MBSREM_apu;
+end
+
+if options.Huber && options.BSREM
+    if options.implementation == 1
+    if verbose
+        tStart = tic;
+    end
+    med = Huber_prior(options.im_vectors.Huber_BSREM_apu, options.tr_offsets, options.weights, options.weights_Huber, options.Nx, options.Ny, options.Nz, ...
+        options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
+    options.im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(options.im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, options.epps);
+    if verbose
+        tElapsed = toc(tStart);
+        disp(['BSREM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
+    else
+        disp(['BSREM Huber iteration ' num2str(iter) ' finished'])
+    end
+    else
+    end
+end
+
+if options.Huber && options.ROSEM_MAP
+    if options.implementation == 1
+    if verbose
+        tStart = tic;
+    end
+    med = Huber_prior(options.im_vectors.Huber_ROSEM_apu, options.tr_offsets, options.weights, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
+        options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
+    options.im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(options.im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, options.epps);
+    if verbose
+        tElapsed = toc(tStart);
+        disp(['ROSEM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
+    else
+        disp(['ROSEM Huber iteration ' num2str(iter) ' finished'])
+    end
+    else
+    end
+end
+
+if options.Huber && options.RBI_OSL
+    options.im_vectors.Huber_RBI(:, iter + 1) = options.im_vectors.Huber_RBI_apu;
+end
+
+if options.Huber && any(options.COSEM_OSL)
+    options.im_vectors.Huber_COSEM(:, iter + 1) = options.im_vectors.Huber_COSEM_apu;
 end
 
 if options.L && options.OSL_OSEM
@@ -189,11 +243,11 @@ if options.L && options.ROSEM_MAP
     end
 end
 
-if options.L && options.RBI_MAP
+if options.L && options.RBI_OSL
     options.im_vectors.L_RBI(:, iter + 1) = options.im_vectors.L_RBI_apu;
 end
 
-if options.L && any(options.COSEM_MAP)
+if options.L && any(options.COSEM_OSL)
     options.im_vectors.L_COSEM(:, iter + 1) = options.im_vectors.L_COSEM_apu;
 end
 
@@ -241,11 +295,11 @@ if options.FMH && options.ROSEM_MAP
     end
 end
 
-if options.FMH && options.RBI_MAP
+if options.FMH && options.RBI_OSL
     options.im_vectors.FMH_RBI(:, iter + 1) = options.im_vectors.FMH_RBI_apu;
 end
 
-if options.FMH && any(options.COSEM_MAP)
+if options.FMH && any(options.COSEM_OSL)
     options.im_vectors.FMH_COSEM(:, iter + 1) = options.im_vectors.FMH_COSEM_apu;
 end
 
@@ -293,11 +347,11 @@ if options.weighted_mean && options.ROSEM_MAP
     end
 end
 
-if options.weighted_mean && options.RBI_MAP
+if options.weighted_mean && options.RBI_OSL
     options.im_vectors.Weighted_RBI(:, iter + 1) = options.im_vectors.Weighted_RBI_apu;
 end
 
-if options.weighted_mean && any(options.COSEM_MAP)
+if options.weighted_mean && any(options.COSEM_OSL)
     options.im_vectors.Weighted_COSEM(:, iter + 1) = options.im_vectors.Weighted_COSEM_apu;
 end
 
@@ -345,11 +399,11 @@ if options.TV && options.ROSEM_MAP
     end
 end
 
-if options.TV && options.RBI_MAP
+if options.TV && options.RBI_OSL
     options.im_vectors.TV_RBI(:, iter + 1) = options.im_vectors.TV_RBI_apu;
 end
 
-if options.TV && any(options.COSEM_MAP)
+if options.TV && any(options.COSEM_OSL)
     options.im_vectors.TV_COSEM(:, iter + 1) = options.im_vectors.TV_COSEM_apu;
 end
 
@@ -395,10 +449,10 @@ if options.AD && options.ROSEM_MAP
     else
     end
 end
-if options.AD && options.RBI_MAP
+if options.AD && options.RBI_OSL
     options.im_vectors.AD_RBI(:, iter + 1) = options.im_vectors.AD_RBI_apu;
 end
-if options.AD && any(options.COSEM_MAP)
+if options.AD && any(options.COSEM_OSL)
     options.im_vectors.AD_COSEM(:, iter + 1) = options.im_vectors.AD_COSEM_apu;
 end
 
@@ -443,10 +497,10 @@ if options.APLS && options.ROSEM_MAP
     else
     end
 end
-if options.APLS && options.RBI_MAP
+if options.APLS && options.RBI_OSL
     options.im_vectors.APLS_RBI(:, iter + 1) = options.im_vectors.APLS_RBI_apu;
 end
-if options.APLS && any(options.COSEM_MAP)
+if options.APLS && any(options.COSEM_OSL)
     options.im_vectors.APLS_COSEM(:, iter + 1) = options.im_vectors.APLS_COSEM_apu;
 end
 
@@ -491,10 +545,10 @@ if options.TGV && options.ROSEM_MAP
     else
     end
 end
-if options.TGV && options.RBI_MAP
+if options.TGV && options.RBI_OSL
     options.im_vectors.TGV_RBI(:, iter + 1) = options.im_vectors.TGV_RBI_apu;
 end
-if options.TGV && any(options.COSEM_MAP)
+if options.TGV && any(options.COSEM_OSL)
     options.im_vectors.TGV_COSEM(:, iter + 1) = options.im_vectors.TGV_COSEM_apu;
 end
 if options.NLM && options.OSL_OSEM
@@ -535,10 +589,10 @@ if options.NLM && options.ROSEM_MAP
     else
     end
 end
-if options.NLM && options.RBI_MAP
+if options.NLM && options.RBI_OSL
     options.im_vectors.NLM_RBI(:, iter + 1) = options.im_vectors.NLM_RBI_apu;
 end
-if options.NLM && any(options.COSEM_MAP)
+if options.NLM && any(options.COSEM_OSL)
     options.im_vectors.NLM_COSEM(:, iter + 1) = options.im_vectors.NLM_COSEM_apu;
 end
 
@@ -582,10 +636,10 @@ if options.ROSEM_MAP && options.custom
     else
     end
 end
-if options.RBI_MAP && options.custom
+if options.RBI_OSL && options.custom
     options.im_vectors.custom_RBI(:, iter + 1) = options.im_vectors.custom_RBI_apu;
 end
-if any(options.COSEM_MAP) && options.custom
+if any(options.COSEM_OSL) && options.custom
     options.im_vectors.custom_COSEM(:, iter + 1) = options.im_vectors.custom_COSEM_apu;
 end
 disp(['Iteration ' num2str(iter) ' finished'])
