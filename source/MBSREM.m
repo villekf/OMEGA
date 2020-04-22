@@ -33,7 +33,7 @@ function im = MBSREM(im, varargin)
 % RBI_subiter, COSEM_OSL, ROSEM_subiter, OSL_OSEM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2020 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -59,20 +59,20 @@ pp = im < (U/2);
 UU = zeros(size(im,1),1);
 UU(pp) = im(pp)./(varargin{2}(pp)+epps);
 UU(~pp) = (U-im(~pp))./(varargin{2}(~pp)+epps);
-if is_transposed
-    if randoms_correction
-        l_mramla = varargin{3}'*im + varargin{9};
-    else
-        l_mramla = varargin{3}'*im;
-    end
+if length(varargin) > 13 && varargin{14}.use_psf
+    im_apu = computeConvolution(im, varargin{14}, varargin{15}, varargin{16}, varargin{17}, varargin{18});
 else
-    if randoms_correction
-        l_mramla = varargin{3}*im + varargin{9};
-    else
-        l_mramla = varargin{3}*im;
-    end
+    im_apu = im;
 end
-l_mramla(l_mramla <= 0) = epps;
+if is_transposed
+    l_mramla = varargin{3}' * im_apu;
+else
+    l_mramla = varargin{3} * im_apu;
+end
+if randoms_correction
+    l_mramla = l_mramla + varargin{9};
+end
+l_mramla(l_mramla < epps) = epps;
 if randoms_correction
     pp = l_mramla <= epsilon_mramla & varargin{5} > 0 & varargin{9} == 0;
 else
@@ -81,17 +81,17 @@ end
 hr = varargin{5}./l_mramla - 1;
 hr(pp) = varargin{5}(pp)./epsilon_mramla - 1 - (varargin{5}(pp)./epsilon_mramla.^2).*(l_mramla(pp) - epsilon_mramla);
 if is_transposed
-    if nargin > 12
-        im = im + varargin{7}(iter).*UU.*(varargin{3}*hr - varargin{12} .* varargin{13} + epps);
-    else
-        im = im + varargin{7}(iter).*UU.*(varargin{3}*hr + epps);
-    end
+    rhs = varargin{3} * hr;
 else
-    if nargin > 12
-        im = im + varargin{7}(iter).*UU.*(varargin{3}'*hr - varargin{12} .* varargin{13} + epps);
-    else
-        im = im + varargin{7}(iter).*UU.*(varargin{3}'*hr + epps);
-    end
+    rhs = varargin{3}' * hr;
 end
-im(im <= 0) = epps;
+if length(varargin) > 13 && varargin{14}.use_psf
+    rhs = computeConvolution(rhs, varargin{14}, varargin{15}, varargin{16}, varargin{17}, varargin{18});
+end
+if length(varargin) > 11 && ~isempty(varargin{12}) && ~isempty(varargin{13})
+    im = im + varargin{7}(iter).*UU.*(rhs - varargin{12} .* varargin{13} + epps);
+else
+    im = im + varargin{7}(iter).*UU.*(rhs + epps);
+end
+im(im < epps) = epps;
 im(im >= U) = U - epps;
