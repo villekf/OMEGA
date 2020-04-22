@@ -28,7 +28,7 @@ function [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_dat
 %   used, otherwise returns the previously used value
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2019 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -53,6 +53,10 @@ if nargin - 7 == 4
     Ndist = varargin{2};
     TotSinos = varargin{3};
     NSinos = varargin{4};
+    
+    if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+        Ndist = Ndist * options.sampling;
+    end
 end
 
 folder = fileparts(which('index_maker.m'));
@@ -302,6 +306,17 @@ elseif subsets > 1
             end
         end
         LL = form_detector_pairs_raw(options.rings, options.det_per_ring);
+        if options.ring_difference_raw < options.rings
+            testi3 = zeros(options.detectors,options.detectors,'uint16');
+            testi3(tril(true(size(testi3)), 0)) = lor;
+            for kk = options.rings : - 1 : options.ring_difference_raw + 1
+                for ll = 1 : kk - options.ring_difference_raw
+                    testi3(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
+                        zeros(options.det_per_ring, options.det_per_ring, 'uint16');
+                end
+            end
+            lor = testi3(tril(true(size(testi3)), 0));
+        end
         % Use only LORs that go through the FOV
         LL = LL(lor > 0,:);
 %         lor_a = lor(lor > 0);
@@ -343,6 +358,17 @@ elseif subsets > 1
         LL = form_detector_pairs_raw(options.rings, options.det_per_ring);
         index = cell(subsets, 1);
         pituus = zeros(subsets, 1, 'uint32');
+        if options.ring_difference_raw < options.rings
+            testi = zeros(options.detectors,options.detectors,'uint32');
+            testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
+            for kk = options.rings : - 1 : options.ring_difference_raw + 1
+                for ll = 1 : kk - options.ring_difference_raw
+                    testi(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
+                        zeros(options.det_per_ring, options.det_per_ring, 'uint32');
+                end
+            end
+            ind = testi(tril(true(size(testi)), 0));
+        end
         if options.subset_type == 3
             indices = uint32(length(LL));
             port = uint32(floor(length(LL)/subsets));
@@ -360,15 +386,24 @@ elseif subsets > 1
                 else
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
+                if options.ring_difference_raw < options.rings
+                    index1 = index1(ismember(index1,ind));
+                end
                 index{i} = index1;
                 pituus(i) = uint32(length(index{i}));
             end
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options, LL);
+            if options.ring_difference_raw < options.rings
+                index = index(ismember(index,ind));
+            end
             subsets = length(pituus);
         else
             for i=1:subsets
                 index1 = uint32(i:subsets:length(LL))';
+                if options.ring_difference_raw < options.rings
+                    index1 = index1(ismember(index1,ind));
+                end
                 index{i} = index1;
                 pituus(i) = uint32(length(index{i}));
             end
