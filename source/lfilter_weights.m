@@ -5,7 +5,7 @@ function alpha = lfilter_weights(Ndx, Ndy, Ndz, dx, dy, dz, oned_weights)
 % The weights are either 1D (oned_weights = true) or 2D
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -22,7 +22,9 @@ function alpha = lfilter_weights(Ndx, Ndy, Ndz, dx, dy, dz, oned_weights)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 N = (Ndx*2+1)*(Ndy*2+1)*(Ndz*2+1);
 
+% 1D weights
 if oned_weights
+    % Precomputed weights
     if N == 3
         alpha = [0.15168;0.69663];
         alpha = [alpha;flip(alpha(1:end-1))];
@@ -32,6 +34,7 @@ if oned_weights
     elseif N == 25
         alpha = [0.0055;0.00335;-0.00427;-0.00101;-0.00008;0.00065;0.00314;0.01064;0.02907;0.06499;0.11835;0.17195;0.19541];
         alpha = [alpha;flip(alpha(1:end-1))];
+    % Compute the weights
     elseif N < 67
         b = 1/sqrt(2);
         CorrM = zeros(N,N);
@@ -67,28 +70,29 @@ if oned_weights
         alpha = alpha/sum(alpha);
     end
 else
-    dxy = sqrt(dx^2 + dy^2);
-    dxz = sqrt(dx^2 + dz^2);
-    dyz = sqrt(dy^2 + dz^2);
-    dxyz = sqrt(sqrt(dy^2 + dx^2) + dz^2);
-    dmin = min([dx, dy, dz]);
+    % 2D weights
+    dxy = double(sqrt(dx^2 + dy^2));
+    dxz = double(sqrt(dx^2 + dz^2));
+    dyz = double(sqrt(dy^2 + dz^2));
+    dxyz = double(sqrt(sqrt(dy^2 + dx^2) + dz^2));
+    dmin = double(min([dx, dy, dz]));
     b = 1/sqrt(2);
     x = linspace(-1.5,0,min(1,Ndx) + min(1,Ndy) + 1)';
     alpha1 = 0.5*exp(x/b);
     if Ndz > 0
         ll = 1;
         alpha = zeros((Ndx*2+1)*(Ndy*2+1)*(Ndz*2+1),1);
-        for lz = -Ndz : Ndz
-            for ly = -Ndy : Ndy
-                for lx = -Ndx : Ndx
+        for lz = -int32(Ndz) : int32(Ndz)
+            for ly = -int32(Ndy) : int32(Ndy)
+                for lx = -int32(Ndx) : int32(Ndx)
                     if ly == 0 && lz == 0 && lx ~= 0
-                        alpha(ll) = alpha1(2) / (dx * abs(lx));
+                        alpha(ll) = alpha1(2) / (double(dx) * abs(lx));
                     elseif ly == 0 && lz == 0 && lx == 0
                         alpha(ll) = alpha1(end) / (dmin);
                     elseif lx == 0 && lz == 0
-                        alpha(ll) = alpha1(2) / (dy * abs(ly));
+                        alpha(ll) = alpha1(2) / (double(dy) * abs(ly));
                     elseif lx == 0 && ly == 0
-                        alpha(ll) = alpha1(2) / (dz * abs(lz));
+                        alpha(ll) = alpha1(2) / (double(dz) * abs(lz));
                     elseif ly ~= 0 && lz == 0 && lx ~= 0
                         alpha(ll) = alpha1(1) / (dxy);
                     elseif ly ~= 0 && lz ~= 0 && lx == 0
@@ -105,14 +109,14 @@ else
     else
         ll = 1;
         alpha = zeros((Ndx*2+1)*(Ndy*2+1),1);
-        for ly = -Ndy : Ndy
-            for lx = -Ndx : Ndx
+        for ly = -int32(Ndy) : int32(Ndy)
+            for lx = -int32(Ndx) : int32(Ndx)
                 if ly == 0 && lx ~= 0
-                    alpha(ll) = alpha1(2) / (dx * abs(lx));
+                    alpha(ll) = alpha1(2) / (double(dx) * abs(lx));
                 elseif ly == 0 && lx == 0
                     alpha(ll) = alpha1(end) / (dmin);
                 elseif lx == 0
-                    alpha(ll) = alpha1(2) / (dy * abs(ly));
+                    alpha(ll) = alpha1(2) / (double(dy) * abs(ly));
                 elseif ly ~= 0 && lx ~= 0
                     alpha(ll) = alpha1(1) / (dxy);
                 end
