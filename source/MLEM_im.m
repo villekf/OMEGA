@@ -19,7 +19,7 @@ function im = MLEM_im(im, Summ, epps, varargin)
 % RBI_subiter, COSEM_im, ACOSEM_im, ECOSEM_im, MBSREM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -34,14 +34,23 @@ function im = MLEM_im(im, Summ, epps, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 6
-    if varargin{3}
-        im = (im./Summ).*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps)));
+if nargin >= 6
+    if ~isempty(varargin) && ~isempty(varargin{4}) && varargin{4}.use_psf
+        im_apu = computeConvolution(im, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});
     else
-        im = (im./Summ).*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps)));
+        im_apu = im;
     end
+    if varargin{3}
+        RHS = (varargin{1} * (varargin{2} ./ (varargin{1}' * im_apu + epps)));
+    else
+        RHS = (varargin{1}' * (varargin{2} ./ (varargin{1} * im_apu + epps)));
+    end
+    if ~isempty(varargin) && ~isempty(varargin{4}) && varargin{4}.use_psf
+        RHS = computeConvolution(im, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});
+    end
+    im = (im ./ Summ) .* RHS;
 elseif nargin == 4
-    im = (im./Summ).*(varargin{1} + epps);
+    im = (im ./ Summ) .* (varargin{1} + epps);
 else
     error('Invalid number of input arguments')
 end
