@@ -41,33 +41,23 @@ function grad = MRP(im, medx, medy, medz, Nx, Ny, Nz, epps, tr_offsets, med_no_n
 % If Image Processing Toolbox exists
 if license('test', 'image_toolbox')
     if Nz==1
-        grad = medfilt2(reshape(im,Nx,Ny),[medx medy], 'symmetric');
+        grad = medfilt2(reshape(im,Nx,Ny), [medx medy], 'symmetric');
     else
-        if medz == 0
-            if Nz==1
-                padd = padding(reshape(im,Nx,Ny),[max(0,medx-2) max(0,medy-2)]);
-            else
-                padd = padding(reshape(im,Nx,Ny,Nz),[max(0,medx-2) max(0,medx-2) max(0,medz-2)]);
-            end
-            grad = padd(tr_offsets);
-            grad = median(grad,2);
-        else
-            grad = medfilt3(reshape(im,Nx,Ny,Nz), [medx medx medz]);
-        end
+        grad = medfilt3(reshape(im,Nx,Ny,Nz), [medx medx medz]);
     end
     % If Image Processing Toolbox does not exist or Octave is used (slower)
 else
     if Nz==1
-        padd = padding(reshape(im,Nx,Ny),[max(0,medx-2) max(0,medy-2)]);
+        padd = padding(reshape(im, Nx, Ny), [max(0, floor(medx / 2)) max(0, floor(medy / 2))]);
     else
-        padd = padding(reshape(im,Nx,Ny,Nz),[max(0,medx-2) max(0,medx-2) max(0,medz-2)]);
+        padd = padding(reshape(im, Nx, Ny, Nz), [max(0, floor(medx / 2)) max(0, floor(medy / 2)) max(0, floor(medz / 2))]);
     end
     grad = padd(tr_offsets);
-    grad = median(grad,2);
+    grad = median(grad, 2);
 end
 grad = grad(:);
 if med_no_norm
     grad = (im - grad);
 else
-    grad = (im - grad)./(grad + epps);
+    grad = (im - grad) ./ (grad + epps);
 end
