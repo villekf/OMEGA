@@ -6,12 +6,19 @@ function [varargout] = load_data(options)
 % Outputs data formatted for pure, raw list-mode, data. This data can be
 % later transformed into sinogram format or used as-is. Loads also the
 % delayed coincidences, true randoms, true scatter and true coincidences
-% separately if they are selected.
+% separately if they are selected. Additionally saves the corresponding
+% sinograms if raw list-mode data has not been selected exclusively.
 %
 % The input struct options should include all the relevant information
 % (machine properties, path, names, what are saved, etc.).
 %
 % The output data is saved in a mat-file in the current working directory.
+%
+% EXAMPLES:
+%   coincidences = load_data(options);
+%   [coincidences, delayed_coincidences, true_coincidences,
+%   scattered_coincidences, random_coincidences] = load_data(options);
+%   [coincidences, ~, ~, ~, ~, x, y, z] = load_data(options);
 %
 % OUTPUT:
 %   coincidences = A cell matrix containing the raw list-mode data for each
@@ -22,6 +29,12 @@ function [varargout] = load_data(options)
 %   true_coincidences = True coincidences (GATE only)
 %   scattered_coincidences = Scattered coincidences (GATE only)
 %   random_coincidences = True random coincidences (GATE only)
+%   x = The x coordinates of the hits, i.e. the location of the detected
+%   coincidence in the x-axis. The coordinates are output only if the
+%   function has 8 outputs (see last example above). Only ASCII and ROOT
+%   data are supported (GATE only).
+%   y = Same as above, but for y-coordinates
+%   z = Axial coordinate
 %
 % See also form_sinograms, initial_michelogram
 
@@ -42,13 +55,9 @@ function [varargout] = load_data(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargout > 5
-    error('Too many output arguments, there can be at most five')
+if nargout > 8
+    error('Too many output arguments, there can be at most eight')
 end
-
-% folder = fileparts(which('load_data.m'));
-% folder = strrep(folder, 'source','mat-files/');
-% folder = strrep(folder, '\','/');
 
 Nx = uint32(options.Nx);
 Ny = uint32(options.Ny);
@@ -62,11 +71,15 @@ if isinf(loppu)
     loppu = 1e9;
 end
 vali = (loppu - alku)/options.partitions;
-tot_time = options.tot_time;
-    
+% tot_time = options.tot_time;
+
 machine_name = options.machine_name;
 name = options.name;
 detectors = options.detectors;
+trues = [];
+scatter = [];
+randoms = [];
+delays = [];
 
 disp('Beginning data load')
 
@@ -84,7 +97,7 @@ if options.use_machine == 1
     end
     
     if partitions > 1
-        save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_listmode.mat'];
+        save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_listmode.mat'];
     else
         save_string_raw = [machine_name '_measurements_' name '_static_raw_listmode.mat'];
     end
@@ -102,11 +115,10 @@ if options.use_machine == 1
     
     % Load the data from the binary file
     [LL1, LL2, tpoints, DD1, DD2, ~] = inveon_list2matlab(nimi,(vali),(alku),(loppu),pituus, uint32(detectors), options.randoms_correction);
-%     clear mex
     
     
     % If no time steps, the output matirx LL1 is a options.detectors x
-    % options.detectors matrix in unsigned short (u16) format
+    % options.detectors matrix in unsigned short (u16) format.
     % Contains counts for each detector pair
     if partitions == 1
         prompts = LL1;
@@ -115,7 +127,7 @@ if options.use_machine == 1
         end
         clear LL1 LL2 DD1 DD2
         % Else the outputs are vectors LL1 and LL2 containing the detector
-        % pairs for the counts
+        % pairs for all the counts.
         % Form a similar (sparse) detectors x detectors matrix
     else
         prompts = cell(partitions,1);
@@ -164,6 +176,12 @@ elseif options.use_machine == 0
         tic
     end
     
+    if nargout == 8
+        store_coordinates = true;
+    else
+        store_coordinates = false;
+    end
+    
     fpath = options.fpath;
     blocks_per_ring = options.blocks_per_ring;
     cryst_per_block = options.cryst_per_block;
@@ -175,6 +193,7 @@ elseif options.use_machine == 0
     
     temp = pseudot;
     if ~isempty(temp) && sum(temp) > 0
+        rings = rings - pseudot;
         for kk = 1 : temp
             pseudot(kk) = (options.cryst_per_block + 1) * kk;
         end
@@ -188,7 +207,7 @@ elseif options.use_machine == 0
     
     
     
-    %%
+    %% LMF data
     if options.use_LMF
         blocks_per_ring = uint32(blocks_per_ring);
         cryst_per_block = uint32(cryst_per_block);
@@ -205,7 +224,7 @@ elseif options.use_machine == 0
         coincidence_window = coincidence_window / options.clock_time_step;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_LMF.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_LMF.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_LMF.mat'];
         end
@@ -221,23 +240,19 @@ elseif options.use_machine == 0
             end
         end
         
-%         bina = [];
+        % Bit locations
         bina = char(zeros(1,R_bits));
         for kk = 1 : R_bits
-%             bina = [bina, '1'];
             bina(kk) = '1';
         end
         R_length = int32(bin2dec(bina));
         bina = char(zeros(1,M_bits));
         for kk = 1 : M_bits
-%             bina = [bina, '1'];
             bina(kk) = '1';
         end
         M_length = int32(bin2dec(bina));
         bina = char(zeros(1,C_bits));
-%         bina = [];
         for kk = 1 : C_bits
-%             bina = [bina, '1'];
             bina(kk) = '1';
         end
         C_length = int32(bin2dec(bina));
@@ -291,8 +306,6 @@ elseif options.use_machine == 0
                 coincidence_window, options.clock_time_step, time_intervals, options.obtain_trues, options.store_scatter, options.store_randoms);
             
             trues_index = logical(trues_index);
-            
-%             int_loc = int_loc + 1;
             
             % An ideal image can be formed with this, see the file
             % visualize_pet.m
@@ -493,7 +506,7 @@ elseif options.use_machine == 0
         end
         
     elseif options.use_ASCII
-        %%
+        %% ASCII data
         ascii_ind = get_ascii_indices(options.coincidence_mask);
         rsector_ind1 = ascii_ind.rsector_ind1;
         rsector_ind2 = ascii_ind.rsector_ind2;
@@ -505,7 +518,7 @@ elseif options.use_machine == 0
         det_per_ring = options.det_per_ring;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_ASCII.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_ASCII.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_ASCII.mat'];
         end
@@ -548,6 +561,11 @@ elseif options.use_machine == 0
             if options.randoms_correction
                 delays = cell(partitions,1);
             end
+            if store_coordinates
+                x_coordinate = cell(partitions,1);
+                y_coordinate = cell(partitions,1);
+                z_coordinate = cell(partitions,1);
+            end
         else
             prompts = zeros(detectors,detectors,'uint16');
             if options.obtain_trues
@@ -561,6 +579,12 @@ elseif options.use_machine == 0
             end
             if options.randoms_correction
                 delays = zeros(detectors,detectors,'uint16');
+            end
+            lisays = uint16(1);
+            if store_coordinates
+                x_coordinate = [];
+                y_coordinate = [];
+                z_coordinate = [];
             end
         end
         if source
@@ -586,8 +610,10 @@ elseif options.use_machine == 0
         % Go through all the files
         for lk=1:length(fnames)
             
+            % Use readmatrix if newer MATLAB is used, otherwise importdata
             if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6') || exist('OCTAVE_VERSION','builtin') == 5
                 M = importdata([fpath fnames(lk).name]);
+                % Check for corrupted data
                 if any(any(isnan(M))) > 0
                     header = size(M,1);
                     warning(['Line ' num2str(header) ' corrupted, skipping.'])
@@ -620,6 +646,7 @@ elseif options.use_machine == 0
                     end
                 end
             end
+            % If no module indices are present (i.e. ECAT data)
             if ascii_ind.module_ind1 > 0 && sum(M(:,ascii_ind.module_ind1)) == 0
                 ascii_ind.module_ind1 = 0;
                 ascii_ind.module_ind2 = 0;
@@ -684,8 +711,7 @@ elseif options.use_machine == 0
             end
             clear ind
             
-            % An ideal image can be formed with this, see the file
-            % Compare_Phantom_vs_Reconstructions.m
+            % An ideal image can be formed with this
             % Takes the columns containing the source locations for both singles
             if source_index1 ~= 0 && ~isempty(source_index1) && source_index2 ~= 0 && ~isempty(source_index2) && int_loc(1) > 0 && source
                 
@@ -871,15 +897,23 @@ elseif options.use_machine == 0
             % a detector on crystal ring 5 and second a detector on crystal ring 10)
             % [0 rings - 1]
             if int_loc(1) > 0
+                % No modules
                 if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1
                     ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block + floor(M(:,crs_ind1)/cryst_per_block));
                     ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block + floor(M(:,crs_ind2)/cryst_per_block));
+                    % Only a single ring
+                elseif options.rings == 1
+                    ring_number1 = 0;
+                    ring_number2 = 0;
+                    % No modules and no repeated axial rings
                 elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1
                     ring_number1 = uint16(M(:,rsector_ind1));
                     ring_number2 = uint16(M(:,rsector_ind2));
+                    % No repeated axial rings
                 elseif options.linear_multip == 1
                     ring_number1 = uint16(M(:,ascii_ind.module_ind1));
                     ring_number2 = uint16(M(:,ascii_ind.module_ind2));
+                    % "Normal" case
                 else
                     ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1),options.linear_multip) * cryst_per_block + floor(M(:,crs_ind1)/cryst_per_block));
                     ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2),options.linear_multip) * cryst_per_block + floor(M(:,crs_ind2)/cryst_per_block));
@@ -896,26 +930,50 @@ elseif options.use_machine == 0
                 if partitions == 1
                     LL1 = ring_number1*uint16(det_per_ring) + ring_pos1 + 1;
                     LL2 = ring_number2*uint16(det_per_ring) + ring_pos2 + 1;
-                    prompts = prompts + accumarray([LL1 LL2],uint16(1),[detectors detectors],@(x) sum(x,'native'));
+                    LL3 = LL2;
+                    LL2(LL2 > LL1) = LL1(LL2 > LL1);
+                    LL1(LL3 > LL1) = LL3(LL3 > LL1);
+                    clear LL3
+                    if sum(prompts(:)) == 0
+                        prompts = prompts + accumarray([LL1 LL2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                        if max(prompts(:)) >= 65535
+                            lisays = uint32(1);
+                            prompts = accumarray([LL1 LL2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                        end
+                    else
+                        prompts = prompts + accumarray([LL1 LL2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
                     if options.obtain_trues
                         if any(trues_index)
-                            trues = trues + accumarray([LL1(trues_index) LL2(trues_index)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
+                            trues = trues + accumarray([LL1(trues_index) LL2(trues_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
                         end
                     end
                     if options.store_scatter
                         if any(scatter_index)
-                            scatter = scatter + accumarray([LL1(scatter_index) LL2(scatter_index)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
+                            scatter = scatter + accumarray([LL1(scatter_index) LL2(scatter_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
                         end
                     end
                     if options.store_randoms
                         if any(randoms_index)
-                            randoms = randoms + accumarray([LL1(randoms_index) LL2(randoms_index)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
+                            randoms = randoms + accumarray([LL1(randoms_index) LL2(randoms_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
                         end
                     end
                     li = li + length(LL1);
+                    if store_coordinates && ascii_ind.world_index1 > 0 && ascii_ind.world_index2 > 0
+                        temp = [M(:,ascii_ind.world_index1), M(:,ascii_ind.world_index2)];
+                        x_coordinate = [x_coordinate; temp];
+                        temp = [M(:,ascii_ind.world_index1+1), M(:,ascii_ind.world_index2+1)];
+                        y_coordinate = [y_coordinate; temp];
+                        temp = [M(:,ascii_ind.world_index1+2), M(:,ascii_ind.world_index2+2)];
+                        z_coordinate = [z_coordinate; temp];
+                    end
                 else
                     LL1 = ring_number1*uint16(det_per_ring) + ring_pos1 + 1;
                     LL2 = ring_number2*uint16(det_per_ring) + ring_pos2 + 1;
+                    LL3 = LL2;
+                    LL2(LL2 > LL1) = LL1(LL2 > LL1);
+                    LL1(LL3 > LL1) = LL3(LL3 > LL1);
+                    clear LL3
                     ll = 1;
                     for kk = int_loc(1) : int_loc(2)
                         index = find(M(:,time_index)<time_intervals(kk+1),1,'last');
@@ -959,6 +1017,14 @@ elseif options.use_machine == 0
                             else
                                 randoms{kk} = randoms{kk} + accumarray([L1randoms L2randoms],1,[detectors detectors],[],[],true);
                             end
+                        end
+                        if store_coordinates && ascii_ind.world_index1 > 0 && ascii_ind.world_index2 > 0
+                            temp = [M(:,ascii_ind.world_index1), M(:,ascii_ind.world_index2)];
+                            x_coordinate{kk} = [x_coordinate{kk}; temp];
+                            temp = [M(:,ascii_ind.world_index1+1), M(:,ascii_ind.world_index2+1)];
+                            y_coordinate{kk} = [y_coordinate{kk}; temp];
+                            temp = [M(:,ascii_ind.world_index1+2), M(:,ascii_ind.world_index2+2)];
+                            z_coordinate{kk} = [z_coordinate{kk}; temp];
                         end
                         ll = index + 1;
                     end
@@ -1028,12 +1094,12 @@ elseif options.use_machine == 0
                 end
                 
                 if int_loc(1) > 0
-                    if options.module_ind1 == 0 || options.module_ind2 == 0
+                    if ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0
                         ring_number1 = uint16(floor(M(:,rsector_ind1)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
                         ring_number2 = uint16(floor(M(:,rsector_ind2)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
                     else
-                        ring_number1 = uint16(mod(M(:,options.module_ind1),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
-                        ring_number2 = uint16(mod(M(:,options.module_ind2),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
+                        ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
+                        ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
                     end
                     
                     % detector number of the single at the above ring (e.g. first single hits a
@@ -1082,38 +1148,19 @@ elseif options.use_machine == 0
                 save([machine_name '_Ideal_image_coordinates_' name '_ASCII.mat'],'SC','-append')
             end
         end
-        
-        % forms a sparse matrix containing all the events at different LORs
-        % e.g. a value at [325 25100] contains the number of events detected at
-        % detectors 325 (detector 1) and 25100 (detector 2)
-        % a value at [25100 325] on the other hand tells the number of events when
-        % 25100 is detector 1 and 325 detector 2
-        %         if partitions == 1
-        %             if options.obtain_trues
-        %                 trues = accumarray([LL1(Ltrues) LL2(Ltrues)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %             end
-        %             if options.store_scatter
-        %                 scatter = accumarray([LL1(Lscatter) LL2(Lscatter)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %             end
-        %             if options.store_randoms
-        %                 randoms = accumarray([LL1(Lrandoms) LL2(Lrandoms)],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %             end
-        %             if options.randoms_correction
-        %                 delays = accumarray([Ldelay1 Ldelay2],uint16(1),[detectors detectors],@(x) sum(x,'native'));
-        %             end
-        %         end
         clear Lrandoms Lscatter Ltrues LL1 LL2 C Ldelay2 Ldelay1
-        %     return
         
     elseif options.use_root
-        %%
+        %% ROOT data
         blocks_per_ring = uint32(blocks_per_ring);
         cryst_per_block = uint32(cryst_per_block);
         det_per_ring = uint32(det_per_ring);
         scatter_components = logical(options.scatter_components);
+        lisays = uint16(1);
+        large_case = false;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_root.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_root.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_root.mat'];
         end
@@ -1185,21 +1232,23 @@ elseif options.use_machine == 0
             nimi = [fpath fnames(lk).name];
             
             % Use the new features of MATLAB if version is R2019a or newer
-            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6') || exist('OCTAVE_VERSION','builtin') == 5
-                [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index] = GATE_root_matlab_C(nimi,vali,alku,loppu, ...
+            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6')
+                [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, x1, x2, y1, y2, z1, z2] = GATE_root_matlab_C(nimi,vali,alku,loppu, ...
                     uint32(detectors), blocks_per_ring, cryst_per_block, det_per_ring, uint32(options.linear_multip), source, time_intervals, options.obtain_trues, ...
-                    options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction);
+                    options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates);
+            elseif exist('OCTAVE_VERSION','builtin') == 5
+                [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, x1, x2, y1, y2, z1, z2] = GATE_root_matlab_oct(nimi,vali,alku,loppu, ...
+                    uint32(detectors), blocks_per_ring, cryst_per_block, det_per_ring, uint32(options.linear_multip), source, time_intervals, options.obtain_trues, ...
+                    options.store_scatter, options.store_randoms, scatter_components, options.randoms_correction, store_coordinates);
             else
-                [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index] ...
-                    = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, time_intervals, options, scatter_components);
-                
+                % If the machine is large (detectors x detectors matrix is
+                % over 2 GB), the data is loaded in a different way
+                if detectors^2 * 2 >= 1024^3*2
+                    large_case = true;
+                end
+                [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, x1, x2, y1, y2, z1, z2] ...
+                    = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, time_intervals, options, scatter_components, store_coordinates);
             end
-            
-%             int_loc = int_loc + 1;
-%             
-%             if options.randoms_correction
-%                 int_loc_delay = int_loc_delay + 1;
-%             end
             
             
             % An ideal image can be formed with this. Takes the variables
@@ -1211,18 +1260,12 @@ elseif options.use_machine == 0
                         S = A(tpoints(ll) + 1:tpoints(ll+1),:);
                         if options.obtain_trues
                             trues_index = logical(Ltrues(tpoints(ll) + 1:tpoints(ll+1),:));
-                            %                             inde = any(S,2);
-                            %                             trues_index = trues_index(inde);
                         end
                         if options.store_scatter
                             scatter_index = logical(Lscatter(tpoints(ll) + 1:tpoints(ll+1),:));
-                            %                             inde = any(S,2);
-                            %                             scatter_index = scatter_index(inde);
                         end
                         if options.store_randoms
                             randoms_index = logical(Lrandoms(tpoints(ll) + 1:tpoints(ll+1),:));
-                            %                             inde = any(S,2);
-                            %                             randoms_index = randoms_index(inde);
                         end
                         ll = ll + 1;
                     else
@@ -1315,6 +1358,7 @@ elseif options.use_machine == 0
                     C{6,jj} = C{6,jj} + FOV;
                     
                     if options.obtain_trues
+                        trues_index(trues_index > 1) = true;
                         CC = ones(nnz(trues_index),1,'int16');
                         SS = S(trues_index,:);
                         t= all([abs(SS(:,1))<=max_x abs(SS(:,2))<=max_y abs(SS(:,3))<=max_z],2);
@@ -1331,6 +1375,7 @@ elseif options.use_machine == 0
                         C{7,jj} = C{7,jj} + FOV;
                     end
                     if options.store_scatter
+                        scatter_index(scatter_index > 1) = true;
                         CC = ones(nnz(scatter_index),1,'int16');
                         SS = S(scatter_index,:);
                         t= all([abs(SS(:,1))<=max_x abs(SS(:,2))<=max_y abs(SS(:,3))<=max_z],2);
@@ -1363,6 +1408,7 @@ elseif options.use_machine == 0
                         clear SS
                     end
                     if options.store_randoms
+                        randoms_index(randoms_index > 1) = true;
                         CC = ones(nnz(randoms_index),1,'int16');
                         SS = S(randoms_index,:);
                         t= all([abs(SS(:,1))<=max_x abs(SS(:,2))<=max_y abs(SS(:,3))<=max_z],2);
@@ -1398,20 +1444,63 @@ elseif options.use_machine == 0
             
             
             if partitions == 1
-                prompts = prompts + L1;
-                if options.obtain_trues
-                    trues = trues + Ltrues;
+                % In the "large" case, count matrix needs to be formed like
+                % in the dynamic case
+                if large_case
+                    L1(L1 == 0) = [];
+                    L2(L2 == 0) = [];
+                    if sum(prompts(:)) == 0
+                        prompts = prompts + accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                        if max(prompts(:)) >= 65535
+                            lisays = uint32(1);
+                            prompts = accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                        end
+                    else
+                        prompts = prompts + accumarray([L1 L2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
+                    if options.obtain_trues
+                        trues_index = logical(Ltrues);
+                        trues = trues + accumarray([L1(trues_index) L2(trues_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
+                    if options.store_scatter
+                        scatter_index = logical(Lscatter);
+                        scatter = scatter + accumarray([L1(scatter_index) L2(scatter_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
+                    if options.store_randoms
+                        randoms_index = logical(Lrandoms);
+                        randoms = randoms + accumarray([L1(randoms_index) L2(randoms_index)],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
+                    if options.randoms_correction
+                        Ldelay1(Ldelay1 == 0) = [];
+                        Ldelay2(Ldelay2 == 0) = [];
+                        delays = delays + accumarray([Ldelay1 Ldelay2],lisays,[detectors detectors],@(x) sum(x,'native'));
+                    end
+                else
+                    prompts = prompts + L1;
+                    if options.obtain_trues
+                        trues = trues + Ltrues;
+                    end
+                    if options.store_scatter
+                        scatter = scatter + Lscatter;
+                    end
+                    if options.store_randoms
+                        randoms = randoms + Lrandoms;
+                    end
+                    if options.randoms_correction
+                        delays = delays + Ldelay1;
+                    end
                 end
-                if options.store_scatter
-                    scatter = scatter + Lscatter;
-                end
-                if options.store_randoms
-                    randoms = randoms + Lrandoms;
-                end
-                if options.randoms_correction
-                    delays = delays + Ldelay1;
+                % Save the interaction coordinates if selected
+                if store_coordinates
+                    temp = [x1, x2];
+                    x_coordinate = [x_coordinate; temp];
+                    temp = [y1, y2];
+                    y_coordinate = [y_coordinate; temp];
+                    temp = [z1, z2];
+                    z_coordinate = [z_coordinate; temp];
                 end
             else
+                % Dynamic case
                 if  int_loc(1) > 0
                     ll = 1;
                     for kk = int_loc(1) : min(int_loc(2),partitions)
@@ -1451,6 +1540,14 @@ elseif options.use_machine == 0
                             else
                                 randoms{kk} = randoms{kk} + accumarray([apu1(trues_index) apu2(trues_index)],1,[detectors detectors],[],[],true);
                             end
+                        end
+                        if store_coordinates
+                            temp = [x1, x2];
+                            x_coordinate{kk} = [x_coordinate{kk}; temp];
+                            temp = [y1, y2];
+                            y_coordinate{kk} = [y_coordinate{kk}; temp];
+                            temp = [z1, z2];
+                            z_coordinate{kk} = [z_coordinate{kk}; temp];
                         end
                         ll = ll + 1;
                     end
@@ -1494,7 +1591,7 @@ elseif options.use_machine == 0
         
     end
 end
-    %%
+    %% Form the raw data vector and the sinograms
     
     coincidences = cell(partitions,1);
     if options.use_machine == 0 && options.obtain_trues
@@ -1511,7 +1608,6 @@ end
     end
     
     tot_counts = 0;
-    %     dis = 0;
     if options.use_machine == 0 && options.obtain_trues
         tot_trues = 0;
     end
@@ -1527,47 +1623,24 @@ end
     
     for llo=1:partitions
         
-        if partitions > 1
-            P = uint16(full(prompts{llo}));
-            if options.use_machine == 0 && options.obtain_trues
-                T = uint16(full(trues{llo}));
-            end
-            if options.use_machine == 0 && options.store_scatter
-                S = uint16(full(scatter{llo}));
-            end
-            if options.use_machine == 0 && options.store_randoms
-                R = uint16(full(randoms{llo}));
-            end
-            if options.randoms_correction && (~options.use_LMF || options.use_machine == 1)
-                D = uint16(full(delays{llo}));
-            end
-        else
-            P = uint16(full(prompts));
-            if options.use_machine == 0 && options.obtain_trues
-                T = uint16(full(trues));
-            end
-            if options.use_machine == 0 && options.store_scatter
-                S = uint16(full(scatter));
-            end
-            if options.use_machine == 0 && options.store_randoms
-                R = uint16(full(randoms));
-            end
-            if options.randoms_correction && (~options.use_LMF || options.use_machine == 1)
-                D = uint16(full(delays));
-            end
+        if ~options.use_raw_data
+            form_sinograms(options, false, prompts, delays, trues, scatter, randoms);
         end
         
-        % Sum the upper and lower parts together (LOR from detector 1 to 2
-        % is the same as LOR from 2 to 1)
-        P = tril(P,0) + triu(P,1)';
-        % Take only the lower triangular part
-        P = (P(tril(true(size(P)), 0)));
+        % Take only the lower triangular part and store as a sparse vector
+        if partitions > 1
+            coincidences{llo, 1} = sparse(double(prompts{llo}(tril(true(size(prompts{llo})), 0))));
+        else
+            coincidences{llo, 1} = sparse(double(prompts(tril(true(size(prompts)), 0))));
+        end
         
         if options.verbose
-            counts = sum(P(:));
+            if partitions > 1
+                counts = sum(prompts{llo},'all');
+            else
+                counts = sum(prompts,'all');
+            end
         end
-        
-        coincidences{llo, 1} = sparse(double(P));
         
         if options.verbose
             disp(['Total number of prompts at time point ' num2str(llo) ' is ' num2str(counts) '.'])
@@ -1575,41 +1648,67 @@ end
         end
         
         if options.use_machine == 0 && options.obtain_trues
-            T = tril(T,0) + triu(T,1)';
-            T = (T(tril(true(size(T)), 0)));
-            true_coincidences{llo, 1} = sparse(double(T));
+            if partitions > 1
+                true_coincidences{llo, 1} = sparse(double(trues{llo}(tril(true(size(trues{llo})), 0))));
+            else
+                true_coincidences{llo, 1} = sparse(double(trues(tril(true(size(trues)), 0))));
+            end
             if options.verbose
-                disp(['Total number of trues at time point ' num2str(llo) ' is ' num2str(sum(T(:))) '.'])
-                tot_trues = tot_trues + sum(T(:));
+                if partitions > 1
+                    Tcounts = sum(trues{llo},'all');
+                else
+                    Tcounts = sum(trues,'all');
+                end
+                disp(['Total number of trues at time point ' num2str(llo) ' is ' num2str(Tcounts) '.'])
+                tot_trues = tot_trues + Tcounts;
             end
         end
         if options.use_machine == 0 && options.store_scatter
-            S = tril(S,0) + triu(S,1)';
-            S = (S(tril(true(size(S)), 0)));
-            scattered_coincidences{llo, 1} = sparse(double(S));
+            if partitions > 1
+                scattered_coincidences{llo, 1} = sparse(double(scatter{llo}(tril(true(size(scatter{llo})), 0))));
+            else
+                scattered_coincidences{llo, 1} = sparse(double(scatter(tril(true(size(scatter)), 0))));
+            end
             if options.verbose
-                disp(['Total number of scattered coincidences at time point ' num2str(llo) ' is ' num2str(sum(S(:))) '.'])
-                tot_scatter = tot_scatter + sum(S(:));
+                if partitions > 1
+                    Scounts = sum(scatter{llo},'all');
+                else
+                    Scounts = sum(scatter,'all');
+                end
+                disp(['Total number of scattered coincidences at time point ' num2str(llo) ' is ' num2str(Scounts) '.'])
+                tot_scatter = tot_scatter + Scounts;
             end
         end
         if options.use_machine == 0 && options.store_randoms
-            R = tril(R,0) + triu(R,1)';
-            %                 R = tril(R,0);
-            R = (R(tril(true(size(R)), 0)));
-            %                 R = R(discard);
-            random_coincidences{llo, 1} = sparse(double(R));
+            if partitions > 1
+                random_coincidences{llo, 1} = sparse(double(randoms{llo}(tril(true(size(randoms{llo})), 0))));
+            else
+                random_coincidences{llo, 1} = sparse(double(randoms(tril(true(size(randoms)), 0))));
+            end
             if options.verbose
-                disp(['Total number of randoms at time point ' num2str(llo) ' is ' num2str(sum(R(:))) '.'])
-                tot_randoms = tot_randoms + sum(R(:));
+                if partitions > 1
+                    Rcounts = sum(randoms{llo},'all');
+                else
+                    Rcounts = sum(randoms,'all');
+                end
+                disp(['Total number of randoms at time point ' num2str(llo) ' is ' num2str(Rcounts) '.'])
+                tot_randoms = tot_randoms + Rcounts;
             end
         end
         if options.randoms_correction && (~options.use_LMF || options.use_machine == 1)
-            D = tril(D,0) + triu(D,1)';
-            D = (D(tril(true(size(D)), 0)));
-            delayed_coincidences{llo, 1} = sparse(double(D));
+            if partitions > 1
+                delayed_coincidences{llo, 1} = sparse(double(delays{llo}(tril(true(size(delays{llo})), 0))));
+            else
+                delayed_coincidences{llo, 1} = sparse(double(delays(tril(true(size(delays)), 0))));
+            end
             if options.verbose
-                disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(sum(D(:))) '.'])
-                tot_delayed = tot_delayed + sum(D(:));
+                if partitions > 1
+                    Dcounts = sum(delays{llo},'all');
+                else
+                    Dcounts = sum(delays,'all');
+                end
+                disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(Dcounts) '.'])
+                tot_delayed = tot_delayed + Dcounts;
             end
         end
     end
@@ -1620,11 +1719,15 @@ end
       if exist('OCTAVE_VERSION', 'builtin') == 0
         save(save_string_raw, 'coincidences', '-v7.3')
       else
-        save(save_string_raw, 'coincidences')
+        save(save_string_raw, 'coincidences','-v7')
       end
         for variableIndex = 1:length(variableList)
             if exist(variableList{variableIndex},'var')
-                save(save_string_raw,variableList{variableIndex},'-append')
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(save_string_raw,variableList{variableIndex},'-append')
+                else
+                    save(save_string_raw,variableList{variableIndex},'-append','-v7')
+                end
             end
         end
     else
@@ -1646,28 +1749,37 @@ end
        if exist('OCTAVE_VERSION', 'builtin') == 0
           save(save_string_raw, 'coincidences', '-v7.3')
        else
-          save(save_string_raw, 'coincidences')
+          save(save_string_raw, 'coincidences','-v7')
         end
         for variableIndex = 1:length(variableList)
             if exist(variableList{variableIndex},'var')
-                save(save_string_raw,variableList{variableIndex},'-append')
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(save_string_raw,variableList{variableIndex},'-append')
+                else
+                    save(save_string_raw,variableList{variableIndex},'-append','-v7')
+                end
             end
         end
     end
     if nargout >= 1
         varargout{1} = coincidences;
     end
-    if nargout >= 2
+    if nargout >= 2 && exist('delayed_coincidences','var')
         varargout{2} = delayed_coincidences;
     end
-    if nargout >= 3
+    if nargout >= 3 && exist('true_coincidences','var')
         varargout{3} = true_coincidences;
     end
-    if nargout >= 4
+    if nargout >= 4 && exist('scattered_coincidences','var')
         varargout{4} = scattered_coincidences;
     end
-    if nargout >= 5
+    if nargout >= 5 && exist('random_coincidences','var')
         varargout{5} = random_coincidences;
+    end
+    if nargout >= 8
+        varargout{6} = x_coordinate;
+        varargout{7} = y_coordinate;
+        varargout{8} = z_coordinate;
     end
     if options.verbose
         disp('Measurements loaded and saved')
