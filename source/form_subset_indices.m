@@ -265,8 +265,13 @@ if options.use_raw_data == false && options.precompute_lor
     I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
     
     xy_index = uint32(I(:,1));
-    xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
-    xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    if options.span > 1
+        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
+        xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    else
+        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
+        xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
+    end
     [~, I] = sort(z_det, 2);
     sy = size(z_det);
     I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
@@ -669,8 +674,13 @@ elseif options.use_raw_data == false && ~options.precompute_lor
     I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
     
     xy_index = uint32(I(:,1));
-    xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
-    xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    if options.span > 1
+        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
+        xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    else
+        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
+        xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
+    end
     [~, I] = sort(z_det, 2);
     sy = size(z_det);
     I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
