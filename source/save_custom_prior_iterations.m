@@ -1,19 +1,18 @@
 function [options, pz] = save_custom_prior_iterations(options, llo, pz)
 % Save the current time step and all the iterations in a cell
 
-im_vectors = reshape_vectors(options.im_vectors, options);
+options.im_vectors = reshape_vectors(options.im_vectors, options);
 
-pz = images_to_cell(im_vectors, llo, pz, options);
+pz = images_to_cell(options.im_vectors, llo, pz, options);
 gg = length(pz) - 7;
+if options.OSL_OSEM && options.custom
+    pz{gg, llo} = reshape(options.im_vectors.custom_OSL,options.Nx,options.Ny,options.Nz,options.Niter+1);
+end
 gg = gg + 1;
 if options.implementation == 2
     if options.OSL_MLEM && options.custom
         pz{gg, llo} = reshape(options.im_vectors.custom_MLEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
     end
-end
-gg = gg + 1;
-if options.OSL_OSEM && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_OSL,options.Nx,options.Ny,options.Nz,options.Niter+1);
 end
 gg = gg + 1;
 if options.MBSREM && options.custom
@@ -28,11 +27,11 @@ if options.ROSEM_MAP && options.custom
     pz{gg, llo} = reshape(options.im_vectors.custom_ROSEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
 end
 gg = gg + 1;
-if options.RBI_MAP && options.custom
+if options.RBI_OSL && options.custom
     pz{gg, llo} = reshape(options.im_vectors.custom_RBI,options.Nx,options.Ny,options.Nz,options.Niter+1);
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.custom
+if any(options.COSEM_OSL) && options.custom
     pz{gg, llo} = reshape(options.im_vectors.custom_COSEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
 end
 
@@ -96,11 +95,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.MRP_ROSEM(:, 1) = options.im_vectors.MRP_ROSEM(:, end);
     end
     
-    if options.MRP && options.RBI_MAP
+    if options.MRP && options.RBI_OSL
         options.im_vectors.MRP_RBI(:, 1) = options.im_vectors.MRP_RBI(:,end);
     end
     
-    if options.MRP && any(options.COSEM_MAP)
+    if options.MRP && any(options.COSEM_OSL)
         options.im_vectors.MRP_COSEM(:, 1) = options.im_vectors.MRP_COSEM(:,end);
     end
     
@@ -122,11 +121,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.Quad_ROSEM(:, 1) = options.im_vectors.Quad_ROSEM(:, end);
     end
     
-    if options.quad && options.RBI_MAP
+    if options.quad && options.RBI_OSL
         options.im_vectors.Quad_RBI(:, 1) = options.im_vectors.Quad_RBI(:,end);
     end
     
-    if options.quad && any(options.COSEM_MAP)
+    if options.quad && any(options.COSEM_OSL)
         options.im_vectors.Quad_COSEM(:, 1) = options.im_vectors.Quad_COSEM(:,end);
     end
     
@@ -148,11 +147,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.L_ROSEM(:, 1) = options.im_vectors.L_ROSEM(:, end);
     end
     
-    if options.L && options.RBI_MAP
+    if options.L && options.RBI_OSL
         options.im_vectors.L_RBI(:, 1) = options.im_vectors.L_RBI(:,end);
     end
     
-    if options.L && any(options.COSEM_MAP)
+    if options.L && any(options.COSEM_OSL)
         options.im_vectors.L_COSEM(:, 1) = options.im_vectors.L_COSEM(:,end);
     end
     
@@ -174,11 +173,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.FMH_ROSEM(:, 1) = options.im_vectors.FMH_ROSEM(:, end);
     end
     
-    if options.FMH && options.RBI_MAP
+    if options.FMH && options.RBI_OSL
         options.im_vectors.FMH_RBI(:, 1) = options.im_vectors.FMH_RBI(:,end);
     end
     
-    if options.FMH && any(options.COSEM_MAP)
+    if options.FMH && any(options.COSEM_OSL)
         options.im_vectors.FMH_COSEM(:, 1) = options.im_vectors.FMH_COSEM(:,end);
     end
     
@@ -200,11 +199,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.Weighted_ROSEM(:, 1) = options.im_vectors.Weighted_ROSEM(:, end);
     end
     
-    if options.weighted_mean && options.RBI_MAP
+    if options.weighted_mean && options.RBI_OSL
         options.im_vectors.Weighted_RBI(:, 1) = options.im_vectors.Weighted_RBI(:,end);
     end
     
-    if options.weighted_mean && any(options.COSEM_MAP)
+    if options.weighted_mean && any(options.COSEM_OSL)
         options.im_vectors.Weighted_COSEM(:, 1) = options.im_vectors.Weighted_COSEM(:,end);
     end
     
@@ -226,11 +225,11 @@ if options.partitions > 1 && llo < options.partitions
         options.im_vectors.TV_ROSEM(:, 1) = options.im_vectors.TV_ROSEM(:, end);
     end
     
-    if options.TV && options.RBI_MAP
+    if options.TV && options.RBI_OSL
         options.im_vectors.TV_RBI(:, 1) = options.im_vectors.TV_RBI(:,end);
     end
     
-    if options.TV && any(options.COSEM_MAP)
+    if options.TV && any(options.COSEM_OSL)
         options.im_vectors.TV_COSEM(:, 1) = options.im_vectors.TV_COSEM(:,end);
     end
     
@@ -250,10 +249,10 @@ if options.partitions > 1 && llo < options.partitions
     if options.AD && options.ROSEM_MAP
         options.im_vectors.AD_ROSEM(:, 1) = options.im_vectors.AD_ROSEM(:, end);
     end
-    if options.AD && options.RBI_MAP
+    if options.AD && options.RBI_OSL
         options.im_vectors.AD_RBI(:, 1) = options.im_vectors.AD_RBI(:,end);
     end
-    if options.AD && any(options.COSEM_MAP)
+    if options.AD && any(options.COSEM_OSL)
         options.im_vectors.AD_COSEM(:, 1) = options.im_vectors.AD_COSEM(:,end);
     end
     
@@ -272,10 +271,10 @@ if options.partitions > 1 && llo < options.partitions
     if options.APLS && options.ROSEM_MAP
         options.im_vectors.APLS_ROSEM(:, 1) = options.im_vectors.APLS_ROSEM(:, end);
     end
-    if options.APLS && options.RBI_MAP
+    if options.APLS && options.RBI_OSL
         options.im_vectors.APLS_RBI(:, 1) = options.im_vectors.APLS_RBI(:,end);
     end
-    if options.APLS && any(options.COSEM_MAP)
+    if options.APLS && any(options.COSEM_OSL)
         options.im_vectors.APLS_COSEM(:, 1) = options.im_vectors.APLS_COSEM(:,end);
     end
     
@@ -294,12 +293,13 @@ if options.partitions > 1 && llo < options.partitions
     if options.TGV && options.ROSEM_MAP
         options.im_vectors.TGV_ROSEM(:, 1) = options.im_vectors.TGV_ROSEM(:, end);
     end
-    if options.TGV && options.RBI_MAP
+    if options.TGV && options.RBI_OSL
         options.im_vectors.TGV_RBI(:, 1) = options.im_vectors.TGV_RBI(:,end);
     end
-    if options.TGV && any(options.COSEM_MAP)
+    if options.TGV && any(options.COSEM_OSL)
         options.im_vectors.TGV_COSEM(:, 1) = options.im_vectors.TGV_COSEM(:,end);
     end
+    
     if options.NLM && options.OSL_OSEM
         options.im_vectors.NLM_OSL(:, 1) = options.im_vectors.NLM_OSL(:,end);
     end
@@ -312,10 +312,10 @@ if options.partitions > 1 && llo < options.partitions
     if options.NLM && options.ROSEM_MAP
         options.im_vectors.NLM_ROSEM(:, 1) = options.im_vectors.NLM_ROSEM(:, end);
     end
-    if options.NLM && options.RBI_MAP
+    if options.NLM && options.RBI_OSL
         options.im_vectors.NLM_RBI(:, 1) = options.im_vectors.NLM_RBI(:,end);
     end
-    if options.NLM && any(options.COSEM_MAP)
+    if options.NLM && any(options.COSEM_OSL)
         options.im_vectors.NLM_COSEM(:, 1) = options.im_vectors.NLM_COSEM(:,end);
     end
     
@@ -334,10 +334,10 @@ if options.partitions > 1 && llo < options.partitions
     if options.ROSEM_MAP && options.custom
         options.im_vectors.custom_ROSEM(:, 1) = options.im_vectors.custom_ROSEM(:, end);
     end
-    if options.RBI_MAP && options.custom
+    if options.RBI_OSL && options.custom
         options.im_vectors.custom_RBI(:, 1) = options.im_vectors.custom_RBI(:,end);
     end
-    if any(options.COSEM_MAP) && options.custom
+    if any(options.COSEM_OSL) && options.custom
         options.im_vectors.custom_COSEM(:, 1) = options.im_vectors.custom_COSEM(:,end);
     end
 end
