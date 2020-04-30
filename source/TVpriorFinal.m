@@ -150,7 +150,8 @@ else
         padd2 = padding(reshape(data.reference_image,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd2 = padd2(tr_offsets);
         padd2(:,isinf(options.weights)) = [];
-        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + (bsxfun(@minus,data.reference_image, padd2)./options.T).^2))),options.weights_quad(~isinf(options.weights_quad)')),2);
+        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + ...
+            (bsxfun(@minus,data.reference_image, padd2)./options.T).^2))),options.weights_quad(~isinf(options.weights_quad)')),2);
     else
         padd = padding(reshape(im,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd = padd(tr_offsets);
