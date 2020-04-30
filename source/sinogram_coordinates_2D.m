@@ -21,28 +21,34 @@ function [varargout] = sinogram_coordinates_2D(options, xp, yp)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
 % Free Software Foundation, either version 3 of the License, or (at your
-% option) any later version. 
+% option) any later version.
 %
 % This program is distributed in the hope that it will be useful, but
 % WITHOUT ANY WARRANTY; without even the implied warranty of
 % MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
-% Public License for more details. 
+% Public License for more details.
 %
 % You should have received a copy of the GNU General Public License along
-% with this program. If not, see <https://www.gnu.org/licenses/>. 
+% with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargout > 6
+if nargout > 7
     error('Too many output arguments')
 end
 det_w_pseudo = options.det_w_pseudo;
 Nang = options.Nang;
 Ndist = options.Ndist;
+mashing = 1;
+% Determine the possible mashing factor
+if Nang < options.det_w_pseudo/2
+    mashing = (options.det_w_pseudo / Nang / 2);
+    Nang = Nang * mashing;
+end
 
 
 %% 2D coordinates
@@ -53,7 +59,13 @@ Ndist = options.Ndist;
 L = zeros(sum(1:det_w_pseudo),2,'int32');
 jh = int32(1);
 for kk = int32(1) : (det_w_pseudo)
-    L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1))', ((kk):det_w_pseudo)'];
+    if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+        L(jh:(jh + (det_w_pseudo) - kk),:) = [repeat_elem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
+    elseif exist('OCTAVE_VERSION','builtin') == 5
+        L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
+    else
+        L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1))', ((kk):det_w_pseudo)'];
+    end
     jh = jh + (det_w_pseudo) -kk + 1;
 end
 L(L(:,1) == 0,:) = [];
@@ -63,14 +75,16 @@ L = L - 1;
 xa = max(L,[],2);
 ya = min(L,[],2);
 
-j=idivide(mod(xa+ya+det_w_pseudo/2+1,det_w_pseudo),2);
+% Angle
+j = idivide(mod(xa+ya+det_w_pseudo/2+1,det_w_pseudo),2);
 
-b=j+det_w_pseudo/2;
+b = j+det_w_pseudo/2;
 
-i=abs(xa-ya-det_w_pseudo/2);
+% Distance
+i = abs(xa-ya-det_w_pseudo/2);
 for kk = 1 : length(ya)
     if (ya(kk)<j(kk)) || (b(kk)<xa(kk))
-        i(kk)=-i(kk);
+        i(kk) = -i(kk);
     end
 end
 
@@ -102,9 +116,6 @@ if mod(Ndist,2) == 0
 else
     accepted_lors = (i <= Ndist/2 & i >= (-Ndist/2));
 end
-if nargout >= 5
-    varargout{5} = accepted_lors;
-end
 
 j = idivide(j,det_w_pseudo/2/Nang);
 
@@ -126,18 +137,128 @@ yy2 = yp(L(:,2));
 
 %%
 
+% Accumulate the coordinates
 x = accumarray([i j], xx1, [Ndist Nang],@mean, NaN);
 y = accumarray([i j], yy1, [Ndist Nang],@mean, NaN);
 x2 = accumarray([i j], xx2, [Ndist Nang],@mean, NaN);
 y2 = accumarray([i j], yy2, [Ndist Nang],@mean, NaN);
 
-if sum(isnan(x)) > 0
+% Remove NaN values
+if sum(isnan(x(:))) > 0
     x = fillmissing(x,'linear');
     y = fillmissing(y,'linear');
     x2 = fillmissing(x2,'linear');
     y2 = fillmissing(y2,'linear');
 end
 
+% If mashing is present, combine the coordinates
+if mashing > 1
+    xx1 = reshape(x,options.Ndist,Nang);
+    xx2 = reshape(x2,options.Ndist,Nang);
+    yy1 = reshape(y,options.Ndist,Nang);
+    yy2 = reshape(y2,options.Ndist,Nang);
+    
+    % Make the coordinate space continuous
+    testi = abs(diff(xx1));
+    [I,J] = find(testi > options.cr_p*2);
+    testi2 = abs(diff(J));
+    ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
+    if xx1(1,J(ind1)) <= xx1(1,J(ind1) + 1)
+        indices2 = J(ind1) + 1 : - 1 : 1;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    elseif xx1(1,J(ind1)) <= xx1(2,J(ind1))
+        indices2 = J(ind1) : - 1 : 1;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    else
+        indices2 = J(ind1) : - 1 : 1;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    end
+    indices1 = false(size(xx1));
+    for kk = 1 : I(1)
+        indices1(kk,1:indices2(kk)) = true(indices2(kk),1);
+    end
+    testi = abs(diff(fliplr(xx1)));
+    [I,J] = find(testi > options.cr_p*2);
+    testi2 = abs(diff(J));
+    ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
+    if xx1(1,Nang - J(ind1) + 1) >= xx1(2,Nang - J(ind1) + 1)
+        indices2 = Nang - J(ind1) + 1 : Nang;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    elseif xx1(1,Nang - J(ind1) + 1) >= xx1(1,Nang - J(ind1))
+        indices2 = Nang - J(ind1) + 1 : Nang;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    else
+        indices2 = Nang - J(ind1) + 1 : Nang;
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
+        else
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+    end
+    for kk = 1 : I(1)
+        indices1(kk,indices2(kk):end) = true(length(indices1(kk,indices2(kk):end)),1);
+    end
+    temp = xx1(indices1);
+    x(indices1) = xx2(indices1);
+    x2(indices1) = temp;
+    temp = yy1(indices1);
+    y(indices1) = yy2(indices1);
+    y2(indices1) = temp;
+    
+    % Compute the mean coordinates
+    x = cell2mat(arrayfun(@(i) mean(x(:,i:i+mashing-1),2),1:mashing:size(x,2)-mashing+1,'UniformOutput',false));
+    x2 = cell2mat(arrayfun(@(i) mean(x2(:,i:i+mashing-1),2),1:mashing:size(x2,2)-mashing+1,'UniformOutput',false));
+    y = cell2mat(arrayfun(@(i) mean(y(:,i:i+mashing-1),2),1:mashing:size(y,2)-mashing+1,'UniformOutput',false));
+    y2 = cell2mat(arrayfun(@(i) mean(y2(:,i:i+mashing-1),2),1:mashing:size(y2,2)-mashing+1,'UniformOutput',false));
+    
+    Nang = Nang / mashing;
+    
+    L = zeros(sum(1:det_w_pseudo),2,'int32');
+    jh = int32(1);
+    for kk = int32(1) : (det_w_pseudo)
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            L(jh:(jh + (det_w_pseudo) - kk),:) = [repeat_elem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
+        elseif exist('OCTAVE_VERSION','builtin') == 5
+            L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
+        else
+            L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1))', ((kk):det_w_pseudo)'];
+        end
+        jh = jh + (det_w_pseudo) -kk + 1;
+    end
+    L(L(:,1) == 0,:) = [];
+    
+    L = L - 1;
+    
+    xa = max(L,[],2);
+    ya = min(L,[],2);
+    
+    j = idivide(mod(xa+ya+det_w_pseudo/2+1,det_w_pseudo),2);
+    
+    j = idivide(j,det_w_pseudo/2/Nang);
+    
+    j = j(accepted_lors);
+    j = j + 1;
+end
 
 x = [x(:) x2(:)];
 y = [y(:) y2(:)];
@@ -153,4 +274,7 @@ if nargout >= 3
 end
 if nargout >= 4
     varargout{4} = j;
+end
+if nargout >= 5
+    varargout{5} = accepted_lors;
 end

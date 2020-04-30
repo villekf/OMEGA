@@ -38,16 +38,22 @@ function [varargout] = sinogram_coordinates_2D_multiray(options)
 % det_per_ring = options.det_per_ring;
 Nang = options.Nang;
 Ndist = options.Ndist;
+mashing = 1;
+if Nang < options.det_w_pseudo/2
+    mashing = (options.det_w_pseudo / Nang / 2);
+    Nang = Nang * mashing;
+end
 
 %% 2D coordinates
 
 % Detector coordinates
-[~, ~, xp, yp] = detector_coordinates_multiray(options);
+% [~, ~, xp, yp] = detector_coordinates_multiray(options);
+[xp, yp] = detector_coordinates_multiray(options);
 
-x_final = zeros(options.Nang*options.Ndist,2,3);
-y_final = zeros(options.Nang*options.Ndist,2,3);
+x_final = zeros(options.Nang*options.Ndist,2,options.n_rays_transaxial);
+y_final = zeros(options.Nang*options.Ndist,2,options.n_rays_transaxial);
 
-for uu = 1 : 3
+for uu = 1 : options.n_rays_transaxial
     
     det_w_pseudo = options.det_w_pseudo;
     
@@ -63,7 +69,6 @@ for uu = 1 : 3
     
     % Form the detector vector pair
     L = zeros(sum(1:det_w_pseudo),2,'int32');
-    ii = 2;
     jh = int32(1);
     for kk = int32(1) : (det_w_pseudo)
 %         if kk == ll && (det_w_pseudo-det_per_ring) > 0
@@ -130,6 +135,59 @@ for uu = 1 : 3
     x2 = accumarray([i j], xx2, [Ndist Nang],@mean, NaN);
     y2 = accumarray([i j], yy2, [Ndist Nang],@mean, NaN);
     
+    if mashing > 1
+        xx1 = reshape(x,options.Ndist,Nang);
+        xx2 = reshape(x2,options.Ndist,Nang);
+        yy1 = reshape(y,options.Ndist,Nang);
+        yy2 = reshape(y2,options.Ndist,Nang);
+        
+        testi = abs(diff(xx1));
+        [I,J] = find(testi > options.cr_p*2);
+        testi2 = abs(diff(J));
+        ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
+        if xx1(1,J(ind1)) <= xx1(1,J(ind1) + 1)
+            indices2 = J(ind1) + 1 : - 1 : 1;
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        elseif xx1(1,J(ind1)) <= xx1(2,J(ind1))
+            indices2 = J(ind1) : - 1 : 1;
+            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
+        else
+            indices2 = J(ind1) : - 1 : 1;
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+        indices1 = false(size(xx1));
+        for kk = 1 : I(1)
+            indices1(kk,1:indices2(kk)) = true(indices2(kk),1);
+        end
+        testi = abs(diff(fliplr(xx1)));
+        [I,J] = find(testi > options.cr_p*2);
+        testi2 = abs(diff(J));
+        ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
+        if xx1(1,Nang - J(ind1) + 1) >= xx1(2,Nang - J(ind1) + 1)
+            indices2 = Nang - J(ind1) + 1 : Nang;
+            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
+        elseif xx1(1,Nang - J(ind1) + 1) >= xx1(1,Nang - J(ind1))
+            indices2 = Nang - J(ind1) + 1 : Nang;
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        else
+            indices2 = Nang - J(ind1) + 1 : Nang;
+            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
+        end
+        for kk = 1 : I(1)
+            indices1(kk,indices2(kk):end) = true(length(indices1(kk,indices2(kk):end)),1);
+        end
+        temp = xx1(indices1);
+        x(indices1) = xx2(indices1);
+        x2(indices1) = temp;
+        temp = yy1(indices1);
+        y(indices1) = yy2(indices1);
+        y2(indices1) = temp;
+        
+        x = cell2mat(arrayfun(@(i) mean(x(:,i:i+mashing-1),2),1:mashing:size(x,2)-mashing+1,'UniformOutput',false));
+        x2 = cell2mat(arrayfun(@(i) mean(x2(:,i:i+mashing-1),2),1:mashing:size(x2,2)-mashing+1,'UniformOutput',false));
+        y = cell2mat(arrayfun(@(i) mean(y(:,i:i+mashing-1),2),1:mashing:size(y,2)-mashing+1,'UniformOutput',false));
+        y2 = cell2mat(arrayfun(@(i) mean(y2(:,i:i+mashing-1),2),1:mashing:size(y2,2)-mashing+1,'UniformOutput',false));
+    end
     
     x = [x(:) x2(:)];
     y = [y(:) y2(:)];
