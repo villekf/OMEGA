@@ -82,12 +82,12 @@ if ~options.use_raw_data
     
     %effiency for LOR(i,j) = detector_effiency(i) x detector_effiency(j)
     
-    z_rings=z(1:options.segment_table(1),1);
     det_num=zeros(options.Ndist,options.Nang,2);
     randoms_det=zeros(detectors_ring,options.segment_table(1));
     coeff_matrix=zeros(size(Randoms));
     sino_amount=sum(options.segment_table);
     %Determine each LORS detector numbers
+    ring = round(z ./ z(2,1)) + 1;
     
     for u=1:options.Ndist*options.Nang
         
@@ -118,101 +118,48 @@ if ~options.use_raw_data
         
     end
     
-    coeffs_detectors=zeros(detectors_ring,options.segment_table(1));
     hits_det=zeros(detectors_ring,options.segment_table(1));
+    testi1 = det_num(:,:,1);
+    testi2 = det_num(:,:,2);
+    testi1 = testi1(:);
+    testi2 = testi2(:);
+    testi1 = bsxfun(@plus, testi1, (ring(:,1)' - 1) * detectors_ring);
+    testi2 = bsxfun(@plus, testi2, (ring(:,2)' - 1) * detectors_ring);
+    testi1 = testi1(:);
+    testi2 = testi2(:);
+    maksimi1 = max(testi1(:));
+    maksimi2 = max(testi2(:));
     
-    for k=1:sino_amount
-        
-        found1=0;
-        found2=0;
-        t=1;
-        while found1==0
-            
-            if norm(z_rings(t)-z(k,1))<0.001
-                
-                ring_1=t;
-                found1=1;
-                
-            end
-            
-            t=t+1;
-            
-        end
-        
-        t=1;
-        
-        while found2==0
-            
-            if norm(z_rings(t)-z(k,2))<0.001
-                
-                ring_2=t;
-                found2=1;
-                
-            end
-            
-            t=t+1;
-        end
-        
-        
-        
-            
-        for i=1:options.Ndist
-            for u=1:options.Nang
-                
-                randoms_det(det_num(i,u,1),ring_1)=randoms_det(det_num(i,u,1),ring_1)+Randoms(i,u,k);
-                randoms_det(det_num(i,u,2),ring_2)=randoms_det(det_num(i,u,2),ring_2)+Randoms(i,u,k);
-                
-                hits_det(det_num(i,u,1),ring_1)=hits_det(det_num(i,u,1),ring_1)+1;
-                hits_det(det_num(i,u,2),ring_2)=hits_det(det_num(i,u,2),ring_2)+1;
-                
-            end
-            
-            
-        end
-        
-    end
+    randoms_det(1:maksimi1) = accumarray(testi1, Randoms(:));
+    randoms_det(1:maksimi2) = randoms_det(1:maksimi2)' + accumarray(testi2,  Randoms(:));
+    hits_det(1:maksimi1) = accumarray(testi1(:),1);
+    hits_det(1:maksimi2) = hits_det(1:maksimi2)' + accumarray(testi2(:),1);
     
     %Calculate coeffs (mean inverse)
     
-    for k=1:options.segment_table(1)
-        
-        randoms_det(:,k)=randoms_det(:,k)./hits_det(:,k);
-        coeffs_detectors(:,k)=mean(randoms_det(:,k))./randoms_det(:,k);
-        
-    end
+    randoms_det = randoms_det./hits_det;
+    coeffs_detectors = bsxfun(@rdivide, mean(randoms_det,1), randoms_det);
     
     for k=1:sino_amount
-        
-        
         for i=1:options.Ndist
             for j=1:options.Nang
                 
-                coeff_matrix(i,j,k)=coeffs_detectors(det_num(i,j,1),ring_1)*coeffs_detectors(det_num(i,j,2),ring_2);
+                coeff_matrix(i,j,k) = coeffs_detectors(det_num(i,j,1),ring(k,1))*coeffs_detectors(det_num(i,j,2),ring(k,2));
                 
             end
-            
         end
-        
     end
-    
     
     New_randoms=Randoms.*coeff_matrix;
     
-    
     %Scale noise reduced sinograms total counts to original amount
-%     for k=1:sino_amount
-%         
-%         New_randoms(:,:,k)=New_randoms(:,:,k)*(sum(sum(Randoms(:,:,k)))/sum(sum(New_randoms(:,:,k))));
-%         
-%     end
-    
     New_randoms = New_randoms .* (sum(sum(Randoms)) ./ sum(sum(New_randoms)));
     
 else
     %% List-mode data
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    %%%Apply 3-D fansum to reduce randoms variance%%%
+    %%% Apply 3-D fansum to reduce randoms variance %%%
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     if ~isa(Randoms,'sparse')
@@ -326,7 +273,7 @@ else
     New_randoms=zeros(size(Randoms));
     cylinder_counts=zeros(size(Randoms));
     
-    for u=1:options.ring_difference+1
+    for u=1:options.rings
         
         for k=1:options.rings-u+1
             
@@ -384,7 +331,7 @@ else
     
     %Scale new randoms
     
-    for u=1:options.ring_difference+1
+    for u=1:options.rings
         
         for k=1:options.rings-u+1
             
@@ -406,4 +353,7 @@ else
     
     New_randoms = sparse(New_randoms);
     
+end
+if options.verbose
+    disp('Randoms variance reduction completed')
 end
