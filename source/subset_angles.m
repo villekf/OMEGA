@@ -34,6 +34,9 @@ if options.use_raw_data
     x = single(x(varargin{1}(ind,:)));
     y = single(y(varargin{1}(ind,:)));
 else
+    if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+        options.Ndist = options.Ndist * options.sampling;
+    end
     [~, ~, xp, yp] = detector_coordinates(options);
     [x,y] = sinogram_coordinates_2D(options, xp, yp);
     sino_length = options.Nang*options.Ndist;
