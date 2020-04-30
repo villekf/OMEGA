@@ -3,7 +3,7 @@ function rekot = reko_maker(options)
 % Indices: 
 % 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = RBI, 7 = DRAMA,
 % 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = OSL-OSEM MRP, 12 = OSL-MLEM MRP,
-% 13 = MBSREM MRP, 14 = BSREM MRP, 15 = ROSEM-MAP MRP, 16 = RBI-MAP MRP, 17
+% 13 = MBSREM MRP, 14 = BSREM MRP, 15 = ROSEM-MAP MRP, 16 = RBI-OSL MRP, 17
 % - 22 = Quadratic, 23 - 28 = L-filter, 29 - 34 = FMH, 35 - 40 = Weighted
 % mean, 41 - 46 = TV, 47 - 52 = AD, 53 - 58 = APLS
 % Total ML-methods + Total MAP-methods * Total number of priors + extra
@@ -11,7 +11,7 @@ function rekot = reko_maker(options)
 %
 % 
 % 
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -26,11 +26,11 @@ function rekot = reko_maker(options)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% ML-methods = 10, MAP-methods = 7, Priors = 10 + custom
+% ML-methods = 10, MAP-methods = 7, Priors = 11 + custom
 if ~isfield(options,'custom')
     options.custom = false;
 end
-rekot = false(10+7*11 + 1,1);
+rekot = false(10+7*12 + 1,1);
 gg = 1;
 if options.mlem
     rekot(gg) = true;
@@ -92,11 +92,11 @@ if options.ROSEM_MAP && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.MRP
+if options.RBI_OSL && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.MRP
+if any(options.COSEM_OSL) && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -120,11 +120,39 @@ if options.ROSEM_MAP && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.quad
+if options.RBI_OSL && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.quad
+if any(options.COSEM_OSL) && options.quad
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_OSEM && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.OSL_MLEM && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.MBSREM && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.BSREM && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.ROSEM_MAP && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if options.RBI_OSL && options.Huber
+    rekot(gg) = true;
+end
+gg = gg + 1;
+if any(options.COSEM_OSL) && options.Huber
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -148,11 +176,11 @@ if options.ROSEM_MAP && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.L
+if options.RBI_OSL && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.L
+if any(options.COSEM_OSL) && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -176,11 +204,11 @@ if options.ROSEM_MAP && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.FMH
+if options.RBI_OSL && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.FMH
+if any(options.COSEM_OSL) && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -204,11 +232,11 @@ if options.ROSEM_MAP && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.weighted_mean
+if options.RBI_OSL && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.weighted_mean
+if any(options.COSEM_OSL) && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -232,11 +260,11 @@ if options.ROSEM_MAP && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.TV
+if options.RBI_OSL && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.TV
+if any(options.COSEM_OSL) && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -260,11 +288,11 @@ if options.ROSEM_MAP && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.AD
+if options.RBI_OSL && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.AD
+if any(options.COSEM_OSL) && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -288,11 +316,11 @@ if options.ROSEM_MAP && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.APLS
+if options.RBI_OSL && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.APLS
+if any(options.COSEM_OSL) && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -316,11 +344,11 @@ if options.ROSEM_MAP && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.TGV
+if options.RBI_OSL && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.TGV
+if any(options.COSEM_OSL) && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -344,11 +372,11 @@ if options.ROSEM_MAP && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.NLM
+if options.RBI_OSL && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.NLM
+if any(options.COSEM_OSL) && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -372,10 +400,10 @@ if options.ROSEM_MAP && options.custom
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.RBI_MAP && options.custom
+if options.RBI_OSL && options.custom
     rekot(gg) = true;
 end
 gg = gg + 1;
-if any(options.COSEM_MAP) && options.custom
+if any(options.COSEM_OSL) && options.custom
     rekot(gg) = true;
 end
