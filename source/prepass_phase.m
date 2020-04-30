@@ -1,9 +1,13 @@
 function [options, D, C_co, C_aco, C_osl, Amin, E] = prepass_phase(options, pituus, index, SinM, pseudot, x, y, xx, yy, z_det, dz, dx, dy, bz, bx, by, NSlices, zmax, size_x, block1, blocks,...
-    normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center, ind_size)
+    normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, z_center, ind_size, gaussK, bmin, bmax, Vmax, V)
 %PREPASS_PHASE Prepass step for various priors and algorithms
 % Computes the necessary variables (e.g. weights) for certain
-% algorithms/priors if they have been selected
+% algorithms/priors if they have been selected. Also converts various
+% values to single precision if implementation 2 has been selected.
 
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist * options.sampling;
+end
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
@@ -25,12 +29,13 @@ C_osl = [];
 Amin = [];
 E = [];
 
-if (options.MRP || options.quad || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
+if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.ramla || options.MBSREM || options.mramla || options.rosem || options.drama || options.ROSEM_MAP || options.ecosem ...
-        || options.cosem || options.acosem || options.AD || any(options.COSEM_MAP) || (options.NLM && options.NLM_use_anatomical))
+        || options.cosem || options.acosem || options.AD || any(options.COSEM_OSL) || options.NLM)
     
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
+        % Anatomical prior
         if options.TV_use_anatomical
             apu = load(options.TV_reference_image);
             variables = fields(apu);
@@ -138,12 +143,12 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         clear alkuarvo apu variables
     end
     
-    % Compute the necessary variables for MRAMLA, RBI and/or various
+    % Compute the necessary variables for MRAMLA, RBI-OSL and/or various
     % COSEM algorithms
-    % E.g. for COSEM compute the complete data matrix, for RBI compute
+    % E.g. for COSEM compute the complete data matrix, for RBI-OSL compute
     % the sum of all the rows of the system matrix
-    if ((options.mramla || options.MBSREM || options.rbi || options.RBI_MAP) && options.MBSREM_prepass || options.ecosem || options.cosem ...
-            || options.acosem || any(options.COSEM_MAP))  && options.implementation == 1
+    if ((options.mramla || options.MBSREM || options.RBI_OSL) && options.MBSREM_prepass || options.ecosem || options.cosem ...
+            || options.acosem || any(options.COSEM_OSL))  && options.implementation == 1
         
         if options.acosem
             C_aco = zeros(double(N), options.subsets);
@@ -151,8 +156,18 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         if options.cosem || options.ecosem
             C_co = zeros(double(N), options.subsets);
         end
-        if any(options.COSEM_MAP)
+        if any(options.COSEM_OSL)
             C_osl = zeros(double(N), options.subsets);
+        end
+        if options.acosem || options.cosem || options.ecosem || any(options.COSEM_OSL)
+            if options.use_psf
+                im_apu = computeConvolution(options.x0(:), options, Nx, Ny, Nz, gaussK);
+            else
+                im_apu = options.x0(:);
+            end
+            if options.acosem || options.COSEM_OSL == 1
+                im = power(options.x0(:), 1/options.h);
+            end
         end
         if options.mramla || options.MBSREM
             if options.precompute_lor == false
@@ -203,6 +218,11 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
             else
                 SinD = 0;
             end
+            if normalization_correction
+                norm_input = options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1));
+            else
+                norm_input = 0;
+            end
             if options.precompute_lor == false
                 if use_raw_data == false
                     if options.projector_type == 1 || options.projector_type == 0
@@ -231,7 +251,7 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                             zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
                             randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
                             use_raw_data, uint32(2), ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), uint32(options.projector_type), ...
-                            options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
+                            options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0));
                     else
                         error('Unsupported projector type')
                     end
@@ -247,12 +267,11 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                             zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
                             randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, L, pseudot, det_per_ring, options.verbose, ...
                             use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), options.tube_width_xy, ...
-                            x_center, y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
+                            x_center, y_center, z_center, options.tube_width_z, int32(0));
                     else
                         error('Unsupported projector type')
                     end
                 end
-                %                     lor = reshape(lor,[],2);
                 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                     lor = repeat_elem(int32(1:length(lor))',int32(lor));
                 elseif exist('OCTAVE_VERSION','builtin') == 5
@@ -287,21 +306,23 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                     xy_index_input = xy_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                     z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                 end
-                if options.projector_type == 2
+                if options.projector_type == 2 || options.projector_type == 3
                     lor2 = [uint64(0); cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
                 else
                     lor2 = [uint64(0); cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
                 end
-                [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                    options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, randoms_correction, ...
-                    lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, z_index_input, NSinos, L_input, pseudot, det_per_ring, options.verbose, ...
-                    use_raw_data, uint32(0), lor2, summa(osa_iter), options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, ...
-                    y_center, z_center, options.tube_width_z, int32(options.accuracy_factor));
-                uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
+                    norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
+                    randoms_correction, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, z_index_input, uint32(NSinos), ...
+                    L_input, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa(osa_iter), options.attenuation_phase, ...
+                    uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
+%                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                 clear lor2
             end
             if is_transposed
+                % Sensitivity image
                 D = D + A * ones(size(A,2),1,'double');
+                % Required for MRAMLA/MBSREM epsilon value
                 if normalization_correction || options.attenuation_correction
                     if options.precompute_lor
                         E(index{osa_iter}) = full(sum(A,1))';
@@ -319,58 +340,53 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                     end
                 end
             end
-            if options.ecosem || options.cosem || options.acosem || any(options.COSEM_MAP)
-                %                     if options.precompute_lor == false
-                %                         uu = double(Sino(index{osa_iter}));
-                %                     else
+            if options.ecosem || options.cosem || options.acosem || any(options.COSEM_OSL)
                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
-                %                     end
+                if is_transposed
+                    FP = A' * im_apu + epps + SinD;
+                    RHS = A * (uu ./ FP);
+                else
+                    FP = A * im_apu + epps + SinD;
+                    RHS = A' * (uu ./ FP);
+                end
+                if options.use_psf
+                    RHS = computeConvolution(RHS, options, Nx, Ny, Nz, gaussK);
+                end
             end
             if options.cosem || options.ecosem
                 if osa_iter > 1
-                    if is_transposed
-                        C_co(:,osa_iter) = full(sum(spdiags(options.x0(:),0,size(A,1),size(A,1)) * A * spdiags(uu ./ (A' * options.x0(:) + epps + SinD),...
-                            0,size(A,2),size(A,2)),2));
-                    else
-                        C_co(:,osa_iter) = full(sum(spdiags(options.x0(:),0,size(A,2),size(A,2)) * A' * spdiags(uu ./ (A * options.x0(:) + epps + SinD),...
-                            0,size(A,1),size(A,1)),2));
+                    if options.verbose
+                        tic
+                    end
+                    C_co(:,osa_iter) = options.x0(:) .* RHS;
+                    if options.verbose
+                        disp(['COSEM complete data calculation took ' num2str(toc) ' seconds'])
                     end
                 end
             end
             if options.acosem
                 if osa_iter > 1
-                    if is_transposed
-                        C_aco(:,osa_iter) = full(sum(spdiags(power(options.x0(:),1/options.h),0,size(A,1),size(A,1)) * A * ...
-                            spdiags(uu ./ (A' * options.x0(:) + epps + SinD),0,size(A,2),size(A,2)),2));
-                    else
-                        C_aco(:,osa_iter) = full(sum(spdiags(power(options.x0(:),1/options.h),0,size(A,2),size(A,2)) * A' * ...
-                            spdiags(uu ./ (A * options.x0(:) + epps + SinD),0,size(A,1),size(A,1)),2));
+                    if options.verbose
+                        tic
+                    end
+                    C_aco(:,osa_iter) = im .* RHS;
+                    if options.verbose
+                        disp(['ACOSEM complete data calculation took ' num2str(toc) ' seconds'])
                     end
                 end
             end
-            if any(options.COSEM_MAP)
-                if options.COSEM_MAP == 2
+            if any(options.COSEM_OSL)
+                if options.COSEM_OSL == 2
                     if osa_iter > 1
-                        if is_transposed
-                            C_osl(:,osa_iter) = full(sum(spdiags(options.x0(:),0,size(A,1),size(A,1)) * A * spdiags(uu ./ (A' * options.x0(:) + epps + SinD),...
-                                0,size(A,2),size(A,2)),2));
-                        else
-                            C_osl(:,osa_iter) = full(sum(spdiags(options.x0(:),0,size(A,2),size(A,2)) * A' * spdiags(uu ./ (A * options.x0(:) + epps + SinD),...
-                                0,size(A,1),size(A,1)),2));
-                        end
+                        C_osl(:,osa_iter) = options.x0(:) .* RHS;
                     end
                 else
                     if osa_iter > 1
-                        if is_transposed
-                            C_osl(:,osa_iter) = full(sum(spdiags(power(options.x0(:),1/options.h),0,size(A,1),size(A,1)) * A * ...
-                                spdiags(uu ./ (A' * options.x0(:) + epps + SinD),0,size(A,2),size(A,2)),2));
-                        else
-                            C_osl(:,osa_iter) = full(sum(spdiags(power(options.x0(:),1/options.h),0,size(A,2),size(A,2)) * A' * ...
-                                spdiags(uu ./ (A * options.x0(:) + epps + SinD),0,size(A,1),size(A,1)),2));
-                        end
+                        C_osl(:,osa_iter) = im .* RHS;
                     end
                 end
             end
+            % Required for upper bound of MRAMLA/MBSREM
             if options.MBSREM_prepass && options.U == 0 && (options.MBSREM || options.mramla)
                 %%%% This particular piece of code was taken from:
                 %%%% https://se.mathworks.com/matlabcentral/answers/35309-max-min-of-sparse-matrices
@@ -388,7 +404,7 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                 [I,K] = sort(I);
                 S = S(K);
                 markers = [find([1; diff(I)]); numel(I)+1];
-                iRows = I(markers(1:end-1));
+                iRows = uint32(I(markers(1:end-1)));
                 for i = 1:numel(iRows)
                     s = S(markers(i):(markers(i+1)-1));
                     rowMin(iRows(i)) = min(s);
@@ -474,12 +490,13 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
             options.lam_drama = lam_drama;
         end
     end
+    % Sensitivity image for MRAMLA/MBSREM
     if (options.MBSREM || options.mramla) && options.implementation == 1
         options.pj3 = D/options.subsets;
     end
     % Compute the weights
-    if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3)) && options.MAP
-        if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3)
+    if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3) || options.Huber) && options.MAP
+        if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3) || options.Huber
             distX = options.FOVa_x/double(Nx);
             distY = options.FOVa_y/double(Ny);
             distZ = (double(options.axial_fov)/double(Nz));
@@ -533,55 +550,40 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                 options.weights = 1./options.weights;
             end
         end
-        %             pz_pad = padding(reshape(options.x0(:),Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
-        s = [Nx + options.Ndx*2 Ny + options.Ndy*2 Nz + options.Ndz*2];
-        N_pad = min(3, options.Ndx + options.Ndy + options.Ndz);
-        [c1{1:N_pad}]=ndgrid(1:(options.Ndx*2+1));
-        c2(1:N_pad)={options.Ndy+1};
-        if options.Ndz > options.Ndx && options.Ndz > 1
-            c1{1} = cat(3, c1{1}, zeros(size(c1{1},1), size(c1{1},2), options.Ndz));
-            c1{2} = cat(3, c1{2}, zeros(size(c1{2},1), size(c1{2},2), options.Ndz));
-            c1{3} = cat(3, c1{3}, zeros(size(c1{3},1), size(c1{3},2), options.Ndz));
-            for kk = options.Ndz - 1 : - 1 : 0
-                c1{1}(:,:,end-kk) = c1{1}(:,:,end - kk - 1);
-                c1{2}(:,:,end-kk) = c1{2}(:,:,end - kk - 1);
-                c1{3}(:,:,end-kk) = c1{3}(:,:,end - kk - 1) + 1;
+        % These values are needed in order to vectorize the calculation of
+        % certain priors
+        % Specifies the indices of the center pixel and its neighborhood
+        if (options.MRP && (options.implementation == 2 || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
+            s = [Nx + options.Ndx*2 Ny + options.Ndy*2 Nz + options.Ndz*2];
+            N_pad = min(3, options.Ndx + options.Ndy + options.Ndz);
+            [c1{1:N_pad}]=ndgrid(1:(options.Ndx*2+1));
+            c2(1:N_pad)={options.Ndy+1};
+            if options.Ndz > options.Ndx && options.Ndz > 1
+                c1{1} = cat(3, c1{1}, zeros(size(c1{1},1), size(c1{1},2), options.Ndz));
+                c1{2} = cat(3, c1{2}, zeros(size(c1{2},1), size(c1{2},2), options.Ndz));
+                c1{3} = cat(3, c1{3}, zeros(size(c1{3},1), size(c1{3},2), options.Ndz));
+                for kk = options.Ndz - 1 : - 1 : 0
+                    c1{1}(:,:,end-kk) = c1{1}(:,:,end - kk - 1);
+                    c1{2}(:,:,end-kk) = c1{2}(:,:,end - kk - 1);
+                    c1{3}(:,:,end-kk) = c1{3}(:,:,end - kk - 1) + 1;
+                end
+                c2(end) = {options.Ndz+1};
+            elseif options.Ndz < options.Ndx && options.Ndz > 1
+                c1{1}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
+                c1{2}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
+                c1{3}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
+                c2(end) = {options.Ndz+1};
             end
-            c2(end) = {options.Ndz+1};
-        elseif options.Ndz < options.Ndx && options.Ndz > 1
-            %                 apu = c1{1};
-            %                 apu2 = c1{2};
-            %                 apu3 = c1{3};
-            c1{1}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
-            c1{2}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
-            c1{3}(:,:,end-2*(options.Ndx-options.Ndz) + 1) = [];
-            %                 c1{1} = apu;
-            %                 c1{2} = apu2;
-            %                 c1{3} = apu3;
-            c2(end) = {options.Ndz+1};
+            offsets=sub2ind(s,c1{:}) - sub2ind(s,c2{:});
+            if Nz == 1
+                tr_ind = sub2ind([Nx+options.Ndx*2 Ny + options.Ndy*2],mod((1:N)'-1,Nx)+(options.Ndx + 1),mod(floor(((1:double(N))'-1)/double(Nx)),double(Ny))+(options.Ndy + 1));
+            else
+                tr_ind = sub2ind([Nx+options.Ndx*2 Ny+options.Ndy*2 Nz+options.Ndz*2], mod((1:N)' - 1, Nx) + (options.Ndx + 1), mod(floor(((1:double(N))' - 1)/double(Nx)), ...
+                    double(Ny)) + (options.Ndy + 1), floor(((1:double(N))' - 1)/double(Nx * Ny)) + (options.Ndz + 1));
+            end
+            options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
+            clear offsets tr_ind s c1 c2
         end
-        offsets=sub2ind(s,c1{:}) - sub2ind(s,c2{:});
-        if Nz == 1
-            tr_ind = sub2ind([Nx+options.Ndx*2 Ny + options.Ndy*2],mod((1:N)'-1,Nx)+(options.Ndx + 1),mod(floor(((1:double(N))'-1)/double(Nx)),double(Ny))+(options.Ndy + 1));
-        else
-            tr_ind = sub2ind([Nx+options.Ndx*2 Ny+options.Ndy*2 Nz+options.Ndz*2], mod((1:N)' - 1, Nx) + (options.Ndx + 1), mod(floor(((1:double(N))' - 1)/double(Nx)), ...
-                double(Ny)) + (options.Ndy + 1), floor(((1:double(N))' - 1)/double(Nx * Ny)) + (options.Ndz + 1));
-        end
-        options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
-        if options.implementation == 2
-            options.tr_offsets = options.tr_offsets - 1;
-            options.Ndx = uint32(options.Ndx);
-            options.Ndy = uint32(options.Ndy);
-            options.Ndz = uint32(options.Ndz);
-            clear tr_offsets
-        end
-        %             if (options.OSL_OSEM || options.OSL_MLEM) && options.quad
-        %                 pz_pad_osl = pz_pad;
-        %                 if options.implementation == 2
-        %                     options.pz_pad_osl = single(pz_pad_osl);
-        %                     clear pz_pad_osl
-        %                 end
-        %             end
         if options.quad || (options.TV && options.TVtype == 3)
             if options.empty_weight
                 options.weights_quad = options.weights/sum(options.weights(~isinf(options.weights)));
@@ -594,6 +596,26 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                 options.weights_quad(isinf(options.weights_quad)) = [];
                 options.weights_quad = single(options.weights_quad);
                 clear weights_quad
+            else
+                options.weights_quad = options.weights_quad * -1;
+                options.weights_quad = [options.weights_quad(1 : end/2); abs(sum(options.weights_quad)); options.weights_quad(end/2 + 1: end)];
+                options.weights_quad = reshape(options.weights_quad, options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1);
+            end
+        end
+        if options.Huber
+            if isempty(options.weights_huber)
+                options.weights_huber = options.weights/sum(options.weights(~isinf(options.weights)));
+                options.weights_huber = [options.weights_huber(1:floor(length(options.weights_huber) / 2)); ...
+                    options.weights_huber(ceil(length(options.weights_huber)/2) + 1 : end)];
+            end
+            if options.implementation == 2
+                options.weights_huber(isinf(options.weights_huber)) = [];
+                options.weights_huber = single(options.weights_huber);
+                options.huber_delta = single(options.huber_delta);
+            else
+                options.weights_huber = options.weights_huber * -1;
+                options.weights_huber = [options.weights_huber(1 : end/2); abs(sum(options.weights_huber)); options.weights_huber(end/2 + 1: end)];
+                options.weights_huber = reshape(options.weights_huber, options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1);
             end
         end
         if options.L
@@ -608,13 +630,17 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         end
         if options.FMH
             if isempty(options.fmh_weights)
-                kerroin = sqrt(2)*distX;
+                kerroin = options.fmh_center_weight^(1/4)*distX;
+                % 2D case
                 if Nz == 1 || options.Ndz == 0
                     options.fmh_weights = zeros(options.Ndx*2+1, 4);
+                    lll = 0;
                     for jjj = 1 : 4
                         lll = lll + 1;
                         apu = zeros(options.Ndx*2+1,1);
                         hhh = 0;
+                        % There are 4 different combinations where the
+                        % means are computed in FMH
                         if jjj == 1 || jjj == 3
                             for iii = options.Ndx : -1 : -options.Ndx
                                 hhh = hhh + 1;
@@ -646,11 +672,13 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                         options.fmh_weights(:, jjj) = apu;
                     end
                 else
+                    % 3D case
                     options.fmh_weights = zeros(max([options.Ndx*2+1,options.Ndz*2+1]), 13);
                     lll = 0;
                     for kkk = 1 : -1 : 0
                         for jjj = 1 : 9
                             lll = lll + 1;
+                            % 9 cases in 3D + the 2D cases
                             if kkk == 1
                                 apu = zeros(options.Ndz*2+1,1);
                                 hhh = 0;
@@ -693,6 +721,7 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                                 end
                                 options.fmh_weights(:, lll) = apu;
                             else
+                                % Same as in 2D case
                                 apu = zeros(options.Ndx*2+1,1);
                                 hhh = 0;
                                 if jjj == 1 || jjj == 3
@@ -732,16 +761,21 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                 end
                 options.fmh_weights = options.fmh_weights./sum(options.fmh_weights,1);
             end
-            %                 if options.OSL_OSEM || options.OSL_MLEM
-            %                     pz_pad_fmh = pz_pad;
-            %                 end
             
             if options.implementation == 2
                 options.fmh_weights = single(options.fmh_weights);
                 clear fmh_weights pz_pad_fmh
             end
         end
-        if (options.FMH || options.quad) && options.implementation == 2
+        if options.implementation == 2
+            if options.MRP || options.L || options.FMH || (options.TV && options.TVtype == 3)
+                options.tr_offsets = options.tr_offsets - 1;
+            end
+            options.Ndx = uint32(options.Ndx);
+            options.Ndy = uint32(options.Ndy);
+            options.Ndz = uint32(options.Ndz);
+        end
+        if (options.FMH || options.quad || options.Huber) && options.implementation == 2
             options.weights = single(options.weights);
             options.inffi = uint32(find(isinf(options.weights)) - 1);
         end
@@ -755,21 +789,15 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
                 kerroin = sqrt(2)*distX;
                 options.weighted_weights = kerroin.*options.weights;
                 options.weighted_weights(isinf(options.weighted_weights)) = options.weighted_center_weight;
-                %                 options.weighted_weights = options.weighted_weights/sum(options.weighted_weights);
             end
-            %                 if options.OSL_OSEM || options.OSL_MLEM
-            %                     pz_pad_weighted = pz_pad;
-            %                 end
             options.w_sum = sum(options.weighted_weights);
             if options.implementation == 2
                 options.weighted_weights = single(options.weighted_weights);
-                %                     if options.OSL_OSEM || options.OSL_MLEM
-                %                         options.pz_pad_weighted = single(pz_pad_weighted);
-                %                     end
                 clear weighted_weights pz_pad_weighted
             end
+            options.weighted_weights = reshape(options.weighted_weights, options.Ndx*2 + 1, options.Ndy*2 + 1, options.Ndz*2 + 1);
         end
-        clear tr_ind offsets c1 c2 apu apu2 apu3 N_pad cc pz_pad
+        clear apu apu2 apu3 N_pad cc pz_pad
         if verbose
             disp('Prepass phase for MRP, quadratic prior, L-filter, FMH and weighted mean completed')
         end
@@ -789,15 +817,27 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
             end
         end
     end
-    if (options.NLM && options.NLM_use_anatomical) && options.MAP
-        apu = load(options.NLM_reference_image);
-        variables = fields(apu);
-        options.NLM_ref = double(apu.(variables{1}));
-        options.NLM_ref = reshape(options.NLM_ref, Nx, Ny, Nz);
+    if options.NLM && options.MAP
+        g_x = linspace(-options.Nlx, options.Nlx, 2*options.Nlx + 1)';
+        g_y = linspace(-options.Nly, options.Nly, 2*options.Nly + 1);
+        g_z = zeros(1,1,options.Nlz*2+1);
+        g_z(1,1,:) = linspace(-options.Nlz, options.Nlz, 2*options.Nlz + 1);
+        gaussian = gaussianKernel(g_x, g_y, g_z, options.NLM_gauss, options.NLM_gauss, options.NLM_gauss);
+        options.gaussianNLM = gaussian(:);
+        if options.NLM_use_anatomical
+            apu = load(options.NLM_reference_image);
+            variables = fields(apu);
+            options.NLM_ref = double(apu.(variables{1}));
+            options.NLM_ref = reshape(options.NLM_ref, Nx, Ny, Nz);
+            if options.implementation == 2
+                options.NLM_ref = single(options.NLM_ref);
+            end
+        end
+        if options.implementation == 2
+            options.gaussianNLM = single(options.gaussianNLM);
+        end
     end
     if options.NLM && options.implementation == 2 && options.MAP
-        options.NLM_ref = single(options.NLM_ref);
-        options.NLM_gauss = single(options.NLM_gauss);
         options.sigma = single(options.sigma);
         options.Nlx = uint32(options.Nlx);
         options.Nly = uint32(options.Nly);
@@ -807,5 +847,6 @@ if (options.MRP || options.quad || options.TV ||options. FMH || options.L || opt
         options.Ndz = uint32(options.Ndz);
     end
 end
+if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
+    options.Ndist = options.Ndist / options.sampling;
 end
-
