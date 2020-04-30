@@ -24,7 +24,7 @@ function im = OSEM_im(im, varargin)
 % COSEM_im, ACOSEM_im, ECOSEM_im, MBSREM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -39,14 +39,25 @@ function im = OSEM_im(im, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 7
-    if varargin{6}
-        im = (im./varargin{4}).*(varargin{1}*(varargin{3}./(varargin{1}'*im + varargin{2} + varargin{5})) + varargin{2});
+if nargin >= 7
+    if length(varargin) > 6 && ~isempty(varargin{7}) && varargin{7}.use_psf
+        im_apu = computeConvolution(im, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11});
     else
-        im = (im./varargin{4}).*(varargin{1}'*(varargin{3}./(varargin{1}*im + varargin{2} + varargin{5})) + varargin{2});
+        im_apu = im;
     end
-elseif nargin == 4
-    im = im./varargin{2} .* (varargin{1} + varargin{3});
+    if varargin{6}
+        FP = varargin{1}' * im_apu;
+        BP = varargin{1}*(varargin{3}./(FP + varargin{2} + varargin{5})) + varargin{2};
+    else
+        FP = varargin{1} * im_apu;
+        BP = varargin{1}' * (varargin{3} ./ (FP + varargin{2} + varargin{5})) + varargin{2};
+    end
+    if length(varargin) > 6 && ~isempty(varargin{7}) && varargin{7}.use_psf
+        BP = computeConvolution(BP, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11});
+    end
+    im = (im ./ varargin{4}) .* BP;
+elseif nargin == 3
+    im = im./varargin{2} .* varargin{1};
 else
     error('Invalid number of input arguments')
 end
