@@ -15,7 +15,7 @@ function im = RBI_subiter(im, A, uu, epps, Summ, D, SinDelayed, is_transposed, v
 %   subsets (D = sum(B,2)/subsets, where B = [A_1,A_2,...,A_subsets]
 %   SinDelayed = Randoms and/or scatter correction data. Dimension must be
 %   either a scalar or a vector of same size as uu. If no scatter and/or
-%   randoms data is available, use zero. 
+%   randoms data is available, use zero.
 %   is_transposed = true if A matrix is the transpose of it, false if not
 %   beta = Regularization parameter (0, if no regularization)
 %   dU = Gradient of the prior
@@ -43,40 +43,52 @@ function im = RBI_subiter(im, A, uu, epps, Summ, D, SinDelayed, is_transposed, v
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%%% This version is from: Block-iterative techniques for fast 4D
+%%%% The MAP version is from: Block-iterative techniques for fast 4D
 %%%% reconstruction using a priori motion models in gated cardiac SPECT,
 %%%% David S Lalush and Benjamin M W Tsui, 1998 Phys. Med. Biol. 43 875
-if nargin > 8
-    Summ = max((Summ + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
-else
-    Summ = max(Summ ./ D);
-end
-if is_transposed
-    if nargin > 8
-        im = im + (1/Summ).*(im./(D + varargin{1} .* varargin{2})).*(A*(uu./(A'*im + epps + SinDelayed) - 1) - varargin{1} .* varargin{2});
+%%%%
+%%%% Uncommenting the commented sections will cause the non-MAP version to
+%%%% use the same formula as in the MAP version. The non-MAP version is the
+%%%% original version (as in the articles by Byrne).
+if isempty(epps) && isempty(is_transposed)
+    if ~isempty(D) && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
+        A = max((A + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
     else
-        im = im + (1/Summ).*(im./(D)).*(A*(uu./(A'*im + epps + SinDelayed) - 1));
+        A = max(A);
+        %     Summ = max(Summ ./ D);
+    end
+    if ~isempty(D) && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
+        im = im + (1 / A) .* (im ./ (D + varargin{1} .* varargin{2})) .* (uu - varargin{1} .* varargin{2});
+    else
+        im = im + (im / A) .* uu;
+        %     im = im + (1 / Summ) .* (im ./ D) .* BP;
     end
 else
-    if nargin > 8
-        im = im + (1/Summ).*(im./(D + varargin{1} .* varargin{2})).*(A'*(uu./(A*im + epps + SinDelayed) - 1) - varargin{1} .* varargin{2});
+    if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
+        Summ = max((Summ + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
     else
-        im = im + (1/Summ).*(im./(D)).*(A'*(uu./(A*im + epps + SinDelayed) - 1));
+        Summ = max(Summ);
+        %     Summ = max(Summ ./ D);
+    end
+    if length(varargin) > 2 && ~isempty(varargin{3}) && varargin{3}.use_psf
+        im_apu = computeConvolution(im, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7});
+    else
+        im_apu = im;
+    end
+    if is_transposed
+        FP = A' * im_apu;
+        BP = A * (uu ./ (FP + epps + SinDelayed) - 1);
+    else
+        FP = A * im_apu;
+        BP = A' * (uu ./ (FP + epps + SinDelayed) - 1);
+    end
+    if length(varargin) > 2 && ~isempty(varargin{3}) && varargin{3}.use_psf
+        BP = computeConvolution(BP, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7});
+    end
+    if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
+        im = im + (1 / Summ) .* (im ./ (D + varargin{1} .* varargin{2})) .* (BP - varargin{1} .* varargin{2});
+    else
+        im = im + (im / Summ) .* BP;
+        %     im = im + (1 / Summ) .* (im ./ D) .* BP;
     end
 end
-
-%%%% This is the original version
-% Summ = max(Summ + varargin{1} .* varargin{2});
-% if is_transposed
-%     if nargin > 8
-%         im = im + (im./Summ).*(A*(uu./(A'*im + epps + SinDelayed) - 1) - varargin{1} .* varargin{2});
-%     else
-%         im = im + (im./Summ).*(A*(uu./(A'*im + epps + SinDelayed) - 1));
-%     end
-% else
-%     if nargin > 8
-%         im = im + (im./Summ).*(A'*(uu./(A*im + epps + SinDelayed) - 1) - varargin{1} .* varargin{2});
-%     else
-%         im = im + (im./Summ).*(A'*(uu./(A*im + epps + SinDelayed) - 1));
-%     end
-% end
