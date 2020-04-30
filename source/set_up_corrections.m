@@ -1,4 +1,4 @@
-function [normalization_correction, randoms_correction, options] = set_up_corrections(options, rings)
+function [normalization_correction, randoms_correction, options] = set_up_corrections(options, rings, RandProp, ScatterProp)
 %% SET UP CORRECTIONS
 % This function sets up (loads) the necessary corrections that are applied.
 % Included are attenuation correction, normalization correction and randoms
@@ -8,7 +8,7 @@ function [normalization_correction, randoms_correction, options] = set_up_correc
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -29,6 +29,7 @@ folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
 
+% options.use_psf = false;
 block1 = 0;
 if options.attenuation_correction
     if ~isfield(options,'vaimennus')
@@ -78,12 +79,16 @@ if (options.normalization_correction && options.corrections_during_reconstructio
                 error('Normalization correction selected, but no normalization data found')
             end
         end
-        options.normalization = options.normalization(:);
+        options.normalization(options.normalization <= 0) = 1;
+        options.normalization = 1./options.normalization(:);
         if (options.implementation == 1 || options.implementation == 4)
             options.normalization = double(options.normalization);
         else
             options.normalization = single(options.normalization);
         end
+    end
+    if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+        options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
     end
 elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
     normalization_correction = true;
@@ -99,7 +104,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             fid = fopen(file);
             options.normalization = fread(fid, inf, 'single=>single',0,'l');
             fclose(fid);
-            if numel(options.normalization) ~= options.Ndist * options.Nang * options.NSinos && ~options.use_raw_data
+            if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
                 error('Size mismatch between the current data and the normalization data file')
             end
 %             options.normalization = 1 ./ options.normalization;
@@ -108,7 +113,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             variables = fields(data);
             options.normalization = data.(variables{1});
             clear data
-            if numel(options.normalization) ~= options.Ndist * options.Nang * options.NSinos && ~options.use_raw_data
+            if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
                 error('Size mismatch between the current data and the normalization data file')
             elseif numel(options.normalization) ~= sum(1:options.detectors) && options.use_raw_data
                 error('Size mismatch between the current data and the normalization data file')
@@ -119,7 +124,10 @@ elseif options.normalization_correction && options.use_user_normalization && opt
         else
             options.normalization = single(options.normalization);
         end
-        options.normalization = options.normalization(:);
+        options.normalization = 1./options.normalization(:);
+    end
+    if ~options.use_raw_data && options.NSinos ~= options.TotSinos
+        options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
     end
 elseif options.normalization_correction && options.use_raw_data && ~options.corrections_during_reconstruction
     normalization_correction = false;
@@ -156,7 +164,7 @@ elseif options.normalization_correction && options.use_raw_data && ~options.corr
         normalization = normalization(:);
     end
     for kk = 1 : options.partitions
-        options.SinM{kk} = options.SinM{kk} .* normalization;
+        options.SinM{kk} = options.SinM{kk} .* double(normalization);
     end
     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
         options.normalization = single(0);
@@ -178,17 +186,58 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
         && ~options.reconstruct_scatter
     randoms_correction = true;
     r_exist = isfield(options,'SinDelayed');
+    if isempty(RandProp)
+        RandProp.smoothing = false;
+        RandProp.variance_reduction = false;
+    end
+    if isempty(ScatterProp)
+        ScatterProp.smoothing = false;
+        ScatterProp.variance_reduction = false;
+        ScatterProp.normalization = false;
+    end
     if options.randoms_correction && ~r_exist
         options = loadDelayedData(options);
     end
-    if options.scatter_correction && ~isfield(options,'ScatterC')
+    if options.scatter_correction && (~isfield(options,'ScatterC') || (ScatterProp.normalization && ~options.normalize_scatter) || ...
+            (ScatterProp.smoothing && ~options.scatter_smoothing) || (ScatterProp.variance_reduction && ~options.scatter_variance_reduction))
         options = loadScatterData(options);
+    end
+    if r_exist && randoms_correction
+        if (~options.variance_reduction && RandProp.variance_reduction) || (~options.randoms_smoothing && RandProp.smoothing)
+            if options.partitions == 1
+                if options.use_machine == 0
+                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+                        num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'raw_SinDelayed');
+                elseif  options.use_machine == 1
+                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+                        num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'raw_SinDelayed');
+                end
+            else
+                if options.use_machine == 0
+                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                        num2str(options.span) '.mat'], 'raw_SinDelayed');
+                elseif  options.use_machine == 1
+                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                        num2str(options.span) '_listmode.mat'], 'raw_SinDelayed');
+                end
+            end
+            RandProp.variance_reduction = false;
+            RandProp.smoothing = false;
+        end
     end
     if r_exist
         if iscell(options.SinDelayed)
             for kk = 1 : options.partitions
                 % SinM{kk} = SinM{kk} + SinDelayed{kk};
                 % SinDelayed{kk} = 2 * SinDelayed{kk};
+                if options.variance_reduction && ~RandProp.variance_reduction
+                    options.SinDelayed{kk} = Randoms_variance_reduction(double(options.SinDelayed{kk}), options);
+                end
+                if options.randoms_smoothing && ~RandProp.smoothing
+                    options.SinDelayed{kk} = randoms_smoothing(double(options.SinDelayed{kk}), options);
+                end
                 options.SinDelayed{kk} = options.SinDelayed{kk}(:);
                 if options.use_raw_data == false && options.NSinos ~= options.TotSinos
                     options.SinDelayed{kk} = options.SinDelayed{kk}(1:options.NSinos*options.Ndist*options.Nang);
@@ -198,10 +247,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
                             options.ScatterC = permute(options.ScatterC,[2 1 3]);
                         end
-                        if normalization_correction && options.normalize_scatter
-                            options.ScatterC = double(options.ScatterC) .* normalization;
+                        if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                            options.ScatterC = double(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC = randoms_smoothing(double(options.ScatterC), options);
                         end
                     elseif iscell(options.ScatterC)
@@ -211,9 +263,12 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             end
                         end
                         if normalization_correction && options.normalize_scatter
-                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* normalization;
+                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC{kk} = Randoms_variance_reduction(double(options.ScatterC{kk}), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC{kk} = randoms_smoothing(double(options.ScatterC{kk}), options);
                         end
                     end
@@ -225,6 +280,12 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                 end
             end
         else
+            if options.variance_reduction && ~RandProp.variance_reduction
+                options.SinDelayed = Randoms_variance_reduction(double(options.SinDelayed), options);
+            end
+            if options.randoms_smoothing && ~RandProp.smoothing
+                options.SinDelayed = randoms_smoothing(double(options.SinDelayed), options);
+            end
             options.SinDelayed = options.SinDelayed(:);
             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
                 options.SinDelayed = options.SinDelayed(1:options.NSinos*options.Ndist*options.Nang);
@@ -232,17 +293,22 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
             % Sino = Sino + SinDelayed;
             % SinDelayed = 2 * SinDelayed;
             if options.scatter_correction && isfield(options,'ScatterC')
+                if isempty(ScatterProp)
+                    ScatterProp.smoothing = false;
+                    ScatterProp.variance_reduction = false;                
+                    ScatterProp.normalization = false;
+                end
                 if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
                     if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
                         options.ScatterC = permute(options.ScatterC,[2 1 3]);
                     end
-                    % if options.variance_reduction
-                    %    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
-                    % end
-                    if normalization_correction && options.normalize_scatter
-                        options.ScatterC = double(options.ScatterC) .* normalization;
+                    if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                        options.ScatterC = double(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
                     end
-                    if options.scatter_smoothing
+                    if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                        options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                    end
+                    if options.scatter_smoothing && ~ScatterProp.smoothing
                         options.ScatterC = randoms_smoothing(double(options.ScatterC), options);
                     end
                     if options.use_raw_data == false && options.NSinos ~= options.TotSinos
@@ -260,10 +326,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                                 options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
                             end
                         end
-                        if normalization_correction && options.normalize_scatter
-                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* normalization;
+                        if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC{kk} = Randoms_variance_reduction(double(options.ScatterC{kk}), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC{kk} = randoms_smoothing(double(options.ScatterC{kk}), options);
                         end
                         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
@@ -283,10 +352,10 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
             for kk = 1 : options.partitions
                 % SinM{kk} = SinM{kk} + SinDelayed{kk};
                 % SinDelayed{kk} = 2 * SinDelayed{kk};
-                if options.variance_reduction
+                if options.variance_reduction && ~RandProp.variance_reduction
                     options.SinDelayed{kk} = Randoms_variance_reduction(double(options.SinDelayed{kk}), options);
                 end
-                if options.randoms_smoothing
+                if options.randoms_smoothing && ~RandProp.smoothing
                     options.SinDelayed{kk} = randoms_smoothing(double(options.SinDelayed{kk}), options);
                 end
                 options.SinDelayed{kk} = options.SinDelayed{kk}(:);
@@ -298,10 +367,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
                             options.ScatterC = permute(options.ScatterC,[2 1 3]);
                         end
-                        if normalization_correction && options.normalize_scatter
-                            options.ScatterC = double(options.ScatterC) .* normalization;
+                        if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                            options.ScatterC = double(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC = randoms_smoothing(double(options.ScatterC), options);
                         end
                     elseif iscell(options.ScatterC)
@@ -310,10 +382,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                                 options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
                             end
                         end
-                        if normalization_correction && options.normalize_scatter
-                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* normalization;
+                        if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC{kk} = Randoms_variance_reduction(double(options.ScatterC{kk}), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC{kk} = randoms_smoothing(double(options.ScatterC{kk}), options);
                         end
                     end
@@ -325,10 +400,10 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                 end
             end
         elseif options.randoms_correction
-            if options.variance_reduction
+            if options.variance_reduction && ~RandProp.variance_reduction
                 options.SinDelayed = Randoms_variance_reduction(double(options.SinDelayed), options);
             end
-            if options.randoms_smoothing
+            if options.randoms_smoothing && ~RandProp.smoothing
                 options.SinDelayed = randoms_smoothing(double(options.SinDelayed), options);
             end
             options.SinDelayed = options.SinDelayed(:);
@@ -345,10 +420,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     % if options.variance_reduction
                     %    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
                     % end
-                    if normalization_correction && options.normalize_scatter
-                        options.ScatterC = double(options.ScatterC) .* normalization;
+                    if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                        options.ScatterC = double(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
                     end
-                    if options.scatter_smoothing
+                    if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                        options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                    end
+                    if options.scatter_smoothing && ~ScatterProp.smoothing
                         options.ScatterC = randoms_smoothing(double(options.ScatterC), options);
                     end
                     if options.use_raw_data == false && options.NSinos ~= options.TotSinos
@@ -366,10 +444,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                                 options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
                             end
                         end
-                        if normalization_correction && options.normalize_scatter
-                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* normalization;
+                        if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                            options.ScatterC{kk} = double(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
                         end
-                        if options.scatter_smoothing
+                        if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                            options.ScatterC{kk} = Randoms_variance_reduction(double(options.ScatterC{kk}), options);
+                        end
+                        if options.scatter_smoothing && ~ScatterProp.smoothing
                             options.ScatterC{kk} = randoms_smoothing(double(options.ScatterC{kk}), options);
                         end
                         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
@@ -388,10 +469,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                 if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
                     options.ScatterC = permute(options.ScatterC,[2 1 3]);
                 end
-                if normalization_correction && options.normalize_scatter
-                    options.ScatterC = double(options.ScatterC) .* normalization;
+                if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                    options.ScatterC = double(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
                 end
-                if options.scatter_smoothing
+                if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                end
+                if options.scatter_smoothing && ~ScatterProp.smoothing
                     options.ScatterC = randoms_smoothing(double(options.ScatterC), options);
                 end
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
@@ -407,10 +491,13 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             options.ScatterC{kk} = permute(options.ScatterC{kk},[2 1 3]);
                         end
                     end
-                    if normalization_correction && options.normalize_scatter
-                        options.ScatterC{kk} = double(options.ScatterC{kk}) .* normalization;
+                    if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
+                        options.ScatterC{kk} = double(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
                     end
-                    if options.scatter_smoothing
+                    if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
+                        options.ScatterC{kk} = Randoms_variance_reduction(double(options.ScatterC{kk}), options);
+                    end
+                    if options.scatter_smoothing && ~ScatterProp.smoothing
                         options.ScatterC{kk} = randoms_smoothing(double(options.ScatterC{kk}), options);
                     end
                     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
@@ -429,4 +516,19 @@ else
     else
         options.SinDelayed = {0};
     end
+end
+if ~isfield(options,'global_correction_factor') || isempty(options.global_correction_factor) || options.global_correction_factor <= 0
+    options.global_correction_factor = 1;
+end
+if options.use_raw_data && ~options.corrections_during_reconstruction
+    if iscell(options.SinM)
+        for kk = 1 : options.partitions
+            options.SinM{kk} = options.SinM{kk} * options.global_correction_factor;
+        end
+    else
+        options.SinM = options.SinM * options.global_correction_factor;
+    end
+end
+if options.implementation == 2 || options.implementation == 3
+    options.global_correction_factor = single(options.global_correction_factor);
 end
