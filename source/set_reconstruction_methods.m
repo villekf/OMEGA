@@ -17,5 +17,5 @@ options.OSL_OSEM = false;
 options.MBSREM = false;
 options.BSREM = false;
 options.ROSEM_MAP = false;
-options.RBI_MAP = false;
-options.COSEM_MAP = false;
+options.RBI_OSL = false;
+options.COSEM_OSL = false;
