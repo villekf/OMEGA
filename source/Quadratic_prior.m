@@ -1,4 +1,4 @@
-function grad = Quadratic_prior(im, tr_offsets, weights, weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz)
+function grad = Quadratic_prior(im, ~, ~, weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz)
 %QUADRATIC_PRIOR Quadratic Prior (QP)
 %
 % Example:
@@ -21,7 +21,7 @@ function grad = Quadratic_prior(im, tr_offsets, weights, weights_quad, Nx, Ny, N
 % See also MRP, TGV, L_filter, FMH, TVpriorfinal, Weighted_mean
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2020 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -41,4 +41,6 @@ if Nz==1
 else
     im = padding(reshape(im,Nx,Ny,Nz),[Ndx Ndy Ndz]);
 end
-grad = bsxfun(@minus,im(tr_offsets(:,isinf(weights))),im(tr_offsets(:,[1:(find(isinf(weights))-1) (find(isinf(weights))+1):end])))*weights_quad;
+grad = convn(im, weights_quad, 'valid');
+grad = grad(:);
+% grad = bsxfun(@minus,im(tr_offsets(:,isinf(weights))),im(tr_offsets(:,[1:(find(isinf(weights))-1) (find(isinf(weights))+1):end])))*weights_quad;
