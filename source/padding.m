@@ -8,9 +8,13 @@ function A = padding(A,sizeP,varargin)
 %   is always performed symmetrically.
 %
 %   Zero padding can be achieved by inputting 'zeros' after the size.
+%
+% Examples:
+%   A = padding(A, sizeP);
+%   A = padding(A, sizeP, 'zeros');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
