@@ -33,7 +33,7 @@ function precompute_data(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-if options.precompute_lor || options.precompute_all
+if options.precompute || options.precompute_all
     if options.verbose
         disp('Beginning LOR precomputation phase. This may take several minutes.')
         tic
