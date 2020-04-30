@@ -45,17 +45,21 @@ if Nz==1
 else
     padd = padding(reshape(im,Nx,Ny,Nz),[Ndx Ndy Ndz]);
 end
+% weights = reshape(weighted_weights, Ndx * 2 + 1, Ndy * 2 + 1, Ndz * 2 + 1);
 if mean_type == 1
-    grad = (padd(tr_offsets)*weighted_weights)./w_sum;
+    grad = convn(padd, weighted_weights ./ w_sum, 'valid');
+%     grad = (padd(tr_offsets)*weighted_weights)./w_sum;
 elseif mean_type == 2
-    grad = w_sum./((1./padd(tr_offsets))*weighted_weights);
+    grad = convn(1 ./ padd, w_sum ./ weighted_weights, 'valid');
+%     grad = w_sum./((1./padd(tr_offsets))*weighted_weights);
 elseif mean_type == 3
-    grad = exp((log(padd(tr_offsets))*weighted_weights)./w_sum);
+    grad = exp(convn(log(padd), weighted_weights ./ w_sum, 'valid'));
+%     grad = exp((log(padd(tr_offsets))*weighted_weights)./w_sum);
 else
     error('Unsupported mean')
 end
 if med_no_norm
-    grad = (im - grad);
+    grad = (im - grad(:));
 else
-    grad = (im - grad)./(grad + epps);
+    grad = (im - grad(:))./(grad(:) + epps);
 end
