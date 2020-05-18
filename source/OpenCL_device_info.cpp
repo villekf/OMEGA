@@ -13,13 +13,16 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	size_t size;
 	cl_context context = NULL;
 
+	std::string output_string;
+
 	status = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (status != CL_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
 		return;
 	}
 
-	mexPrintf("No. platforms: %u\n", num_platforms);
+	output_string = "No. platforms: " + std::to_string(num_platforms) + "\n";
+	//mexPrintf("No. platforms: %u\n", num_platforms);
 
 	cl_platform_id platforms[64];
 
@@ -42,13 +45,15 @@ void mexFunction(int nlhs, mxArray *plhs[],
 			std::cerr << getErrorString(status) << std::endl;
 			return;
 		}
-		mexPrintf("\nPlatform %d: %s\n", kk, name);
+		//mexPrintf("\nPlatform %d: %s\n", kk, name);
+		output_string += "\nPlatform " + std::to_string(kk) + ": " + name + "\n";
 		status = clGetDeviceIDs(platforms[kk], CL_DEVICE_TYPE_ALL, 0, NULL, &num_devices);
 		if (status != CL_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return;
 		}
-		mexPrintf("No. devices: %u\n", num_devices);
+		output_string += "No. devices:  " + std::to_string(num_devices) + "\n";
+		//mexPrintf("No. devices: %u\n", num_devices);
 		cl_device_id *devices = new cl_device_id[num_devices];
 		status = clGetDeviceIDs(platforms[kk], CL_DEVICE_TYPE_ALL, num_devices, devices, NULL);
 		if (status != CL_SUCCESS) {
@@ -80,15 +85,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
 				return;
 			}
 			mem = mem / (1024 * 1024);
-			mexPrintf("Device %d: %s with %u MB of memory\n", ii, name2, mem);
+			//mexPrintf("Device %d: %s with %u MB of memory\n", ii, name2, mem);
+			output_string += "Device  " + std::to_string(ii) + ": " + name2 + " with " + std::to_string(mem) + " MB of memory\n";
 		}
 		delete[] devices;
 	}
+	const char* c = output_string.c_str();
 
-	//std::string S = af::infoString();
-	//const char * c = S.c_str();
+	//mexPrintf("\n%s\n", c);
 
-	//mexPrintf("\n%s\n", S.c_str());
-
-	//plhs[0] = mxCreateString(c);
+	plhs[0] = mxCreateString(c);
 }
