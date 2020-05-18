@@ -6,9 +6,9 @@
 * the preallocated MATLAB sparse matrix. Due to MATLAB's CSC format, this
 * is essentially a transposed version of the system matrix.
 *
-* Uses C++11 threads for parallelization.
+* Uses OpenMP for parallelization.
 *
-* Copyright (C) 2019 Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -26,16 +26,18 @@
 #include "projector_functions.h"
 
 // if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
-constexpr int TYPE = 1;
+const static int TYPE = 1;
 
 using namespace std;
 
-void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_x, const double zmax, mwIndex* indices, double* elements, const double maxyy,
+void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, mwIndex* indices, double* elements, const double maxyy,
 	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef, 
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
-	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length) {
+	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor) {
+
+	setThreads();
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -43,7 +45,8 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 
 	// Parallel for-loop
-	ThreadPool::ParallelFor(static_cast<size_t>(0), loop_var_par, [&](uint32_t lo) {
+#pragma omp parallel for schedule(dynamic)
+	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		Det detectors;
 
@@ -65,6 +68,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 		uint32_t Np = static_cast<uint32_t>(lor1[lo]);
 		// The initial index for the sparse matrix elements
 		const uint64_t N2 = lor2[lo];
+		const uint64_t N22 = lor2[lo + 1];
 
 		// If the measurement is on a same ring
 		if (fabs(z_diff) < 1e-8) {
@@ -79,7 +83,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1u, lo);
+						normalization, temp_ijk, 1u, lo, global_factor);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint64_t ii = 0ULL; ii < static_cast<uint64_t>(Nx); ii++) {
@@ -95,7 +99,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, Nx, lo);
+						normalization, temp_ijk, Nx, lo, global_factor);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
 						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii * static_cast<uint64_t>(Nx);
@@ -159,6 +163,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 				if (normalization)
 					temp *= norm_coef[lo];
+				temp *= global_factor;
 
 
 				for (uint32_t ii = 0u; ii < Np; ii++) {
@@ -236,6 +241,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 					if (normalization)
 						temp *= norm_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
 						elements[N2 + ii] *= temp;
@@ -307,6 +313,7 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 					if (normalization)
 						temp *= norm_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
 						elements[N2 + ii] *= temp;
@@ -375,11 +382,12 @@ void improved_siddon_precomputed(const size_t loop_var_par, const uint32_t size_
 					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 				if (normalization)
 					temp *= norm_coef[lo];
+				temp *= global_factor;
 
 				for (uint32_t ii = 0u; ii < Np; ii++) {
 					elements[N2 + ii] *= temp;
 				}
 			}
 		}
-	});
+	}
 }

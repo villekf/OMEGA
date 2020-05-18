@@ -1,6 +1,10 @@
 /**************************************************************************
-* Implements either the improved Siddon's algorithm or orthogonal 
-* distance based projector for OMEGA.
+* Implements either the improved Siddon's algorithm, orthogonal 
+* distance based projector or volume-based projector for OMEGA.
+*
+* Implementation 1 supports only Siddon's algorithm and outputs the sparse
+* system matrix. Implementation 4 supports all projectors and is computed
+* matrix-free.
 * 
 * This file contains the mex-functions for both the implementation type 1
 * and type 4.
@@ -12,11 +16,10 @@
 * type 4 has been selected then all the measurements are investigated, but 
 * only those intercepting the FOV will be included.
 * 
-* Implementation type 1 uses C++11 threads for multithreading (parallel 
-* for loop), type 4 uses OpenMP (if available, otherwise the code will be
-* sequential with no parallelization).
+* Both implementations use OpenMP for parallellization (if available, 
+* otherwise the code will be sequential with no parallelization).
 * 
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -41,128 +44,170 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 {
 	// Check for the number of input and output arguments
-	if (nrhs < 33)
-		mexErrMsgTxt("Too few input arguments. There must be at least 33.");
-	else if (nrhs > 49)
-		mexErrMsgTxt("Too many input arguments. There can be at most 49.");
+	if (nrhs < 34)
+		mexErrMsgTxt("Too few input arguments. There must be at least 34.");
+	else if (nrhs > 52)
+		mexErrMsgTxt("Too many input arguments. There can be at most 52.");
 
 	if (nlhs > 3 || nlhs < 1)
 		mexErrMsgTxt("Invalid number of output arguments. There can be at most three.");
 
+	int ind = 0;
 	// Load the input arguments
 	// Image size in y-direction
-	const uint32_t Ny = (uint32_t)mxGetScalar(prhs[0]);
+	const uint32_t Ny = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Image size in x-direction
-	const uint32_t Nx = (uint32_t)mxGetScalar(prhs[1]);
+	const uint32_t Nx = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Image size in z-direction
-	const uint32_t Nz = (uint32_t)mxGetScalar(prhs[2]);
+	const uint32_t Nz = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Distance between adjacent pixels in x-direction
-	const double d = (double)mxGetScalar(prhs[3]);
+	const double d = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Distance between adjacent pixels in z-direction
-	const double dz = (double)mxGetScalar(prhs[4]);
+	const double dz = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Distance of the pixel grid from the origin in y-direction
-	const double by = (double)mxGetScalar(prhs[5]);
+	const double by = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Distance of the pixel grid from the origin in x-direction
-	const double bx = (double)mxGetScalar(prhs[6]);
+	const double bx = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Distance of the pixel grid from the origin in z-direction
-	const double bz = (double)mxGetScalar(prhs[7]);
+	const double bz = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Coordinates of the detectors in z-direction
-	const double* z_det = (double*)mxGetData(prhs[8]);
+	const double* z_det = (double*)mxGetData(prhs[ind]);
+
+	const vector<double> z_det_vec(z_det, z_det + mxGetNumberOfElements(prhs[ind]));
+	ind++;
 
 	// Coordinates of the detectors in x-direction
-	const double* x = (double*)mxGetData(prhs[9]);
+	const double* x = (double*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Coordinates of the detectors in y-direction
-	const double* y = (double*)mxGetData(prhs[10]);
+	const double* y = (double*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Distance between adjacent pixels in y-direction
-	const double dy = (double)mxGetScalar(prhs[11]);
+	const double dy = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Coordinates of the pixel planes (boundaries of the pixels) in y-direction
-	const double* yy = (double*)mxGetData(prhs[12]);
-
-	// Coordinates of the pixel planes (boundaries of the pixels) in x-direction
-	const double* xx = (double*)mxGetData(prhs[13]);
-
-	// Number of sinograms used
-	const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[14]);
-
-	// Number of slices included
-	const uint32_t NSlices = (uint32_t)mxGetScalar(prhs[15]);
+	const double* yy = (double*)mxGetData(prhs[ind]);
 
 	// from array to std::vector
-	const vector<double> yy_vec(yy, yy + mxGetNumberOfElements(prhs[12]));
+	const vector<double> yy_vec(yy, yy + mxGetNumberOfElements(prhs[ind]));
+	ind++;
 
-	const vector<double> xx_vec(xx, xx + mxGetNumberOfElements(prhs[13]));
+	// Coordinates of the pixel planes (boundaries of the pixels) in x-direction
+	const double* xx = (double*)mxGetData(prhs[ind]);
+
+	const vector<double> xx_vec(xx, xx + mxGetNumberOfElements(prhs[ind]));
+	ind++;
+
+	// Number of sinograms used
+	const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
+
+	// Number of slices included
+	const uint32_t NSlices = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Number of detector indices
-	const uint32_t size_x = (uint32_t)mxGetScalar(prhs[16]);
+	const uint32_t size_x = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Maximum value of the z-direction detector coordinates
-	const double zmax = (double)mxGetScalar(prhs[17]);
+	const double zmax = (double)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// attenuation values (attenuation images)
-	const double* atten = (double*)mxGetData(prhs[18]);
+	const double* atten = (double*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Normalization coefficients
-	const double* norm_coef = (double*)mxGetData(prhs[19]);
+	const double* norm_coef = (double*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Randoms
-	const double* randoms = (double*)mxGetData(prhs[20]);
+	const double* randoms = (double*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Number of measurements/LORs
-	const uint32_t pituus = (uint32_t)mxGetScalar(prhs[21]);
+	const uint32_t pituus = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Is the attenuation correction included
-	const bool attenuation_correction = (bool)mxGetScalar(prhs[22]);
+	const bool attenuation_correction = (bool)mxGetScalar(prhs[ind]);
+	ind++;
 
-	// Is the attenuation correction included
-	const bool normalization = (bool)mxGetScalar(prhs[23]);
+	// Is the normalization correction included
+	const bool normalization = (bool)mxGetScalar(prhs[ind]);
+	ind++;
 
-	// Is the attenuation correction included
-	const bool randoms_correction = (bool)mxGetScalar(prhs[24]);
+	// Is the randoms/scatter correction included
+	const bool randoms_correction = (bool)mxGetScalar(prhs[ind]);
+	ind++;
 
-	// Number of voxels the current LOR/ray traverses
-	const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[25]);
+	// Global correction factor
+	const double global_factor = (double)mxGetScalar(prhs[ind]);
+	ind++;
+
+	// Number of voxels the current LOR/ray traverses, precomputed data ONLY
+	const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[ind]);
+	ind++;
 
 	// For sinogram data, the indices of the detectors corresponding to the current sinogram bin
-	const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[26]);
+	const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Same as above, but for z-direction
-	const uint16_t* z_index = (uint16_t*)mxGetData(prhs[27]);
+	const uint16_t* z_index = (uint16_t*)mxGetData(prhs[ind]);
+	ind++;
 
 	// Total number of sinograms
-	const uint32_t TotSinos = (uint32_t)mxGetScalar(prhs[28]);
+	const uint32_t TotSinos = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Detector pair numbers, for raw list-mode data
-	const uint16_t* L = (uint16_t*)mxGetData(prhs[29]);
-	const size_t numRows = mxGetM(prhs[29]);
+	const uint16_t* L = (uint16_t*)mxGetData(prhs[ind]);
+	const size_t numRows = mxGetNumberOfElements(prhs[ind]);
+	ind++;
 
 	// Location (ring numbers) of pseudo rings, if present
-	const uint32_t* pseudos = (uint32_t*)mxGetData(prhs[30]);
-	const uint32_t pRows = (uint32_t)mxGetM(prhs[30]);
+	const uint32_t* pseudos = (uint32_t*)mxGetData(prhs[ind]);
+	const uint32_t pRows = (uint32_t)mxGetM(prhs[ind]);
+	ind++;
 
 	// Number of detectors per ring
-	const uint32_t det_per_ring = (uint32_t)mxGetScalar(prhs[31]);
+	const uint32_t det_per_ring = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Are status messages displayed
-	const bool verbose = (bool)mxGetScalar(prhs[32]);
+	const bool verbose = (bool)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Is raw list-mode data used
-	const bool raw = (bool)mxGetScalar(prhs[33]);
+	const bool raw = (bool)mxGetScalar(prhs[ind]);
+	ind++;
 
-	const uint32_t type = (uint32_t)mxGetScalar(prhs[34]);
+	const uint32_t type = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
 
 	// Number of measurements/LORs
-	const size_t loop_var_par = pituus;
+	int64_t loop_var_par = pituus;
 
 	// The maximum elements of the pixel space in both x- and y-directions
 	const double maxyy = yy_vec.back();
@@ -171,25 +216,29 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	// Implementation 1, with precomputed_lor = true
 	if (type == 0u) {
 
-		if (nrhs < 39)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 39.");
-		else if (nrhs > 45)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 45.");
+		if (nrhs < 40)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 40.");
+		else if (nrhs > 50)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 50.");
 
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
 
 		// Total number of voxels traversed by the LORs at the specific LOR
 		// e.g. if the first LOR traverses through 10 voxels then at the second lor the value is 10
-		const uint64_t* lor2 = (uint64_t*)mxGetData(prhs[35]);
+		const uint64_t* lor2 = (uint64_t*)mxGetData(prhs[ind]);
+		ind++;
 
 		// Total number of non-zero values
-		const uint64_t summa = (uint64_t)mxGetScalar(prhs[36]);
+		const uint64_t summa = (uint64_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// Is this a transmission image reconstruction (true) or emission image reconstruction (false)
-		const bool attenuation_phase = (bool)mxGetScalar(prhs[37]);
+		const bool attenuation_phase = (bool)mxGetScalar(prhs[ind]);
+		ind++;
 
-		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[38]);
+		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// output sizes
 		const mwSize N = static_cast<mwSize>(Nx) * static_cast<mwSize>(Ny) * static_cast<mwSize>(Nz);
@@ -208,7 +257,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Column indices
 		mwIndex* lor = mxGetJc(plhs[0]);
 
-		for (uint32_t kk = 0; kk <= loop_var_par; kk++)
+		for (size_t kk = 0; kk <= loop_var_par; kk++)
 			lor[kk] = lor2[kk];
 
 		// If doing Inveon attenuation
@@ -224,30 +273,36 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		if (projector_type == 2u) {
 
-			if (nrhs != 45)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 45.");
+			if (nrhs != 50)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 50.");
 
 			// Width of the TOR
-			const double crystal_size = (double)mxGetScalar(prhs[39]);
+			const double crystal_size = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-			const double* x_center = (double*)mxGetData(prhs[40]);
+			const double* x_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-			const double* y_center = (double*)mxGetData(prhs[41]);
+			const double* y_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-			const double* z_center = (double*)mxGetData(prhs[42]);
+			const double* z_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
-			const double crystal_size_z = (double)mxGetScalar(prhs[43]);
+			const double crystal_size_z = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
-			const int32_t dec_v = (int32_t)mxGetScalar(prhs[44]);
+			const uint32_t dec_v = (uint32_t)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
-			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det, 
-				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos, 
-				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, dec_v);
-			
+			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
+				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
+				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor);
+
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
@@ -257,13 +312,13 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				mexEvalString("pause(.001);");
 			}
 		}
-		else {
+		else if (projector_type == 1u) {
 
 			// run the Improved Siddon's algorithm, precomputed_lor = true
-			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det, 
-				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos, 
-				pRows, det_per_ring, raw, attenuation_phase, ll);
-			
+			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
+				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
+				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor);
+
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
 			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
@@ -273,45 +328,116 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				mexEvalString("pause(.001);");
 			}
 		}
+		else if ((projector_type == 3u)) {
+
+			if (nrhs != 50)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 50.");
+
+			// Width of the TOR
+			const double crystal_size = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in y-direction
+			const double* x_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in x-direction
+			const double* y_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in z-direction
+			const double* z_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			const double crystal_size_z = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			const uint32_t dec_v = (uint32_t)mxGetScalar(prhs[ind]);
+			ind++;
+
+			const double bmin = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			const double bmax = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			const double Vmax = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			const double* V = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
+			vol_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
+				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
+				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin, 
+				bmax, Vmax, V);
+
+			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+
+			std::chrono::duration<double> time_span = std::chrono::duration_cast<std::chrono::duration<double>>(t2 - t1);
+
+			if (verbose) {
+				mexPrintf("Volume-based ray tracer took %f seconds\n", ((float)time_span.count()));
+				mexEvalString("pause(.001);");
+			}
+		}
+		else
+			mexErrMsgTxt("Unsupported projector");
 
 	}
 	// Implementation 4
 	else if (type == 1u) {
 
-		if (nrhs < 41)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 41.");
-		else if (nrhs > 49)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 49.");
+		if (nrhs < 43)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 43.");
+		else if (nrhs > 52)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 52.");
 
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
 
 		// Small constant to prevent division by zero
-		const double epps = (double)mxGetScalar(prhs[35]);
+		const double epps = (double)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// Measurement data
-		const double* Sino = (double*)mxGetData(prhs[36]);
+		const double* Sino = (double*)mxGetData(prhs[ind]);
+		ind++;
 
 		// Current estimates
-		double* osem_apu = (double*)mxGetData(prhs[37]);
+		double* osem_apu = (double*)mxGetData(prhs[ind]);
+		ind++;
 
 		// Projector used
-		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[38]);
+		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		const size_t N = static_cast<size_t>(Nx) * static_cast<size_t>(Ny) * static_cast<size_t>(Nz);
 
 		// If 1, do not compute the normalization constant anymore
-		const bool no_norm = (bool)mxGetScalar(prhs[39]);
+		const bool no_norm = (bool)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// precomputed_lor = false
-		const bool precompute = (bool)mxGetScalar(prhs[40]);
+		const bool precompute = (bool)mxGetScalar(prhs[ind]);
+		ind++;
+
+		const bool fp = (bool)mxGetScalar(prhs[ind]);
+		ind++;
+
+		const bool list_mode_format = (bool)mxGetScalar(prhs[ind]);
+		ind++;
 
 		plhs[0] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
 		// Normalization constants
 		double* Summ = (double*)mxGetData(plhs[0]);
 
-		plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
+		if (fp)
+			plhs[1] = mxCreateNumericMatrix(pituus, 1, mxDOUBLE_CLASS, mxREAL);
+		else
+			plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
 		// Right-hand side
 		double* rhs = (double*)mxGetData(plhs[1]);
@@ -322,105 +448,169 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Orthogonal
 		if (projector_type == 2u) {
 
-			if (nrhs != 47)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 47.");
+			if (nrhs < 49)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 49.");
 
 			// Width of the strip in 2D case
-			const double crystal_size = (double)mxGetScalar(prhs[41]);
+			const double crystal_size = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-			const double* x_center = (double*)mxGetData(prhs[42]);
+			const double* x_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-			const double* y_center = (double*)mxGetData(prhs[43]);
+			const double* y_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-			const double* z_center = (double*)mxGetData(prhs[44]);
+			const double* z_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Width of the TOR in 3D case
-			const double crystal_size_z = (double)mxGetScalar(prhs[45]);
+			const double crystal_size_z = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// Accuracy factor
-			const int32_t dec_v = (int32_t)mxGetScalar(prhs[46]);
+			const uint32_t dec_v = (uint32_t)mxGetScalar(prhs[ind]);
+			ind++;
 
 			if (precompute) {
 				sequential_orth_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det, 
 					NSlices, Nx, Ny, Nz, d, dz,	bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
-					no_norm, dec_v);
+					no_norm, dec_v, global_factor, fp);
 			}
 			else {
 				sequential_orth_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
 					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
-					no_norm, dec_v);
+					no_norm, dec_v, global_factor, fp, list_mode_format);
 			}
 		}
 		// Improved Siddon
-		else {
+		else if (projector_type == 1u) {
 
-			if (nrhs != 49)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 49.");
+			if (nrhs < 46)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 46.");
 
-			// Number of rays in Siddon
-			uint16_t n_rays = (uint16_t)mxGetScalar(prhs[47]);
+			// Number of rays in Siddon (transaxial)
+			uint16_t n_rays = (uint16_t)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Number of rays in Siddon (axial)
+			uint16_t n_rays3D = (uint16_t)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// Crystal pitch in z-direction (for multi-ray)
-			const double cr_pz = (double)mxGetScalar(prhs[48]);
+			const double cr_pz = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
 			if (precompute) {
 				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
-					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm);
+					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm, global_factor, fp);
 			}
 			else {
 				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, TotSinos,
-					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays);
+					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays, n_rays3D, global_factor, fp, list_mode_format);
 			}
 
 
+		}
+		else if ((projector_type == 3u)) {
+			if (nrhs < 52)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 52.");
+
+			// Coordinates of the pixel centers in y-direction
+			const double* x_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in x-direction
+			const double* y_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in z-direction
+			const double* z_center = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			// Accuracy factor
+			const uint32_t dec_v = (uint32_t)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Width of the TOR in 3D case
+			const double bmin = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Width of the TOR in 3D case
+			const double bmax = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Width of the TOR in 3D case
+			const double Vmax = (double)mxGetScalar(prhs[ind]);
+			ind++;
+
+			// Coordinates of the pixel centers in y-direction
+			const double* V = (double*)mxGetData(prhs[ind]);
+			ind++;
+
+			if (precompute) {
+				sequential_volume_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det,
+					NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index,
+					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
+					no_norm, dec_v, global_factor, fp);
+			}
+			else {
+				sequential_volume_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
+					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index,
+					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
+					no_norm, dec_v, global_factor, fp, list_mode_format);
+			}
 		}
 	}
 	// Implementation 1, precomputed_lor = false
 	else if (type == 2u) {
 
-		if (nrhs < 40)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 40.");
-		else if (nrhs > 46)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 46.");
+		if (nrhs < 41)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 41.");
+		else if (nrhs > 47)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 47.");
 
 		if (nlhs != 3)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be three.");
 
 
 		// How many elements are preallocated in memory
-		const uint32_t ind_size = (uint32_t)mxGetScalar(prhs[35]);
+		const uint32_t ind_size = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// Starting ring
-		const uint32_t block1 = (uint32_t)mxGetScalar(prhs[36]);
+		const uint32_t block1 = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// End ring
-		const uint32_t blocks = (uint32_t)mxGetScalar(prhs[37]);
+		const uint32_t blocks = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// Subset indices
-		const uint32_t* index = (uint32_t*)mxGetData(prhs[38]);
-		const uint32_t index_size = static_cast<uint32_t>(mxGetNumberOfElements(prhs[38]));
+		const uint32_t* index = (uint32_t*)mxGetData(prhs[ind]);
+		const uint32_t index_size = static_cast<uint32_t>(mxGetNumberOfElements(prhs[ind]));
+		ind++;
 
 		// Projector
-		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[39]);
-
-		uint32_t loop_var_par = 1u;
+		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
 
 		// Number of LORs
 		if (index_size > 1ULL && !raw) {
-			loop_var_par = pituus;
+			loop_var_par = index_size;
 		}
 		else if (!raw) {
-			loop_var_par = NSinos * size_x;
+			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(size_x);
 		}
 		else {
-			loop_var_par = static_cast<uint32_t>(numRows / 2ULL);
+			loop_var_par = numRows / 2ULL;
 		}
 
 		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
@@ -449,56 +639,68 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			// run the Improved Siddon's algorithm
 			lj = improved_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
 				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw, 
-				det_per_ring, blocks, block1, L, pseudos, pRows);
+				det_per_ring, blocks, block1, L, pseudos, pRows, global_factor);
 		}
 		else if (projector_type == 2u) {
 
-			if (nrhs != 46)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 46.");
+			if (nrhs != 47)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 47.");
 
-			const double crystal_size = (double)mxGetScalar(prhs[40]);
+			const double crystal_size = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
-			const double* x_center = (double*)mxGetData(prhs[41]);
+			const double* x_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
-			const double* y_center = (double*)mxGetData(prhs[42]);
+			const double* y_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-			const double* z_center = (double*)mxGetData(prhs[43]);
+			const double* z_center = (double*)mxGetData(prhs[ind]);
+			ind++;
 
-			const double crystal_size_z = (double)mxGetScalar(prhs[44]);
+			const double crystal_size_z = (double)mxGetScalar(prhs[ind]);
+			ind++;
 
-			const int32_t dec_v = (int32_t)mxGetScalar(prhs[45]);
+			const int32_t dec_v = (int32_t)mxGetScalar(prhs[ind]);
+			ind++;
 
 			// run the Orthogonal Siddon algorithm
-			lj = orth_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
-				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw, 
-				det_per_ring, blocks, block1, L, pseudos, pRows, crystal_size, crystal_size_z, y_center, x_center, z_center, dec_v);
+			//lj = orth_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
+			//	yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw, 
+			//	det_per_ring, blocks, block1, L, pseudos, pRows, crystal_size, crystal_size_z, y_center, x_center, z_center, dec_v);
 		}
 		// Original Siddon's ray tracer
 		else if (projector_type == 0u) {
 
-			if (nrhs < 43)
-				mexErrMsgTxt("Too few input arguments.  There must be at least 43.");
+			if (nrhs < 44)
+				mexErrMsgTxt("Too few input arguments.  There must be at least 44.");
 
 			// Voxel numbers in x-direction
-			const double* iij = (double*)mxGetData(prhs[40]);
+			const double* iij = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Voxel numbers in y-direction
-			const double* jji = (double*)mxGetData(prhs[41]);
+			const double* jji = (double*)mxGetData(prhs[ind]);
+			ind++;
 
 			// Voxel numbers in z-direction
-			const double* kkj = (double*)mxGetData(prhs[42]);
+			const double* kkj = (double*)mxGetData(prhs[ind]);
+			ind++;
 
-			const vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[40]));
+			const vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[ind]));
+			ind++;
 
-			const vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[41]));
+			const vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[ind]));
+			ind++;
 
-			const vector<double> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[42]));
+			const vector<double> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[ind]));
+			ind++;
 
 			// run the original Siddon's algorithm
 			lj = original_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
 				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw,
-				det_per_ring, blocks, block1, L, pseudos, pRows, iij_vec, jjk_vec, kkj_vec);
+				det_per_ring, blocks, block1, L, pseudos, pRows, iij_vec, jjk_vec, kkj_vec, global_factor);
 		}
 
 		const size_t outSize1 = static_cast<size_t>(lj) * 2ULL;
@@ -528,6 +730,101 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			mexPrintf("Function elapsed time is %f seconds\n", ((float)time_span.count()));
 			mexEvalString("pause(.001);");
 		}
+
+	}
+	// Precomputation phase
+	else if (type == 3u) {
+		if (nrhs < 49)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 49.");
+		else if (nrhs > 49)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 49.");
+
+		if (nlhs != 3)
+			mexErrMsgTxt("Invalid number of output arguments. There has to be three.");
+
+
+		// Starting ring
+		const uint32_t block1 = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// End ring
+		const uint32_t blocks = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// Projector
+		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
+
+		const double crystal_size = (double)mxGetScalar(prhs[ind]);
+		ind++;
+
+		const double* x_center = (double*)mxGetData(prhs[ind]);
+		ind++;
+
+		const double* y_center = (double*)mxGetData(prhs[ind]);
+		ind++;
+
+		// Coordinates of the pixel centers in z-direction
+		const double* z_center = (double*)mxGetData(prhs[ind]);
+		ind++;
+
+		const double crystal_size_z = (double)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// Width of the TOR in 3D case
+		const double bmin = (double)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// Width of the TOR in 3D case
+		const double bmax = (double)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// Width of the TOR in 3D case
+		const double Vmax = (double)mxGetScalar(prhs[ind]);
+		ind++;
+
+		// Coordinates of the pixel centers in y-direction
+		const double* V = (double*)mxGetData(prhs[ind]);
+		ind++;
+
+		const uint32_t tyyppi = (uint32_t)mxGetScalar(prhs[ind]);
+		ind++;
+
+		if (raw)
+			loop_var_par = numRows / 2ULL;
+		else
+			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(size_x);
+		uint16_t* lor;
+		uint16_t* lor_orth;
+		uint16_t* lor_vol;
+
+		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+
+		if (tyyppi == 0) {
+			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+			plhs[2] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		}
+		else if (tyyppi == 1 || tyyppi == 2) {
+
+			if (tyyppi == 2u)
+				plhs[1] = mxCreateNumericMatrix(loop_var_par * 2LL, 1, mxUINT16_CLASS, mxREAL);
+			else
+				plhs[1] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+			plhs[2] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+
+		}
+		else {
+			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+			plhs[2] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
+		}
+
+		lor = (uint16_t*)mxGetData(plhs[0]);
+		lor_orth = (uint16_t*)mxGetData(plhs[1]);
+		lor_vol = (uint16_t*)mxGetData(plhs[2]);
+
+		improved_siddon_precomputation_phase(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz,
+			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center, 
+			bmin, bmax, Vmax, V);
 
 	}
 }

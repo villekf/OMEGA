@@ -25,13 +25,13 @@
 
 using namespace std;
 
-int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices, 
+int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices,
 	vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const vector<double>& xx_vec, const double dy, 
 	const vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, 
 	const uint32_t *index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, 
 	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows, const vector<double>& iij_vec, const vector<double>& jjk_vec, 
-	const vector<double>& kkj_vec) {
+	const vector<double>& kkj_vec, const double global_factor) {
 
 	int ll;
 	if (raw)
@@ -47,7 +47,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 	Det detectors;
 
 
-	for (uint32_t lo = 0u; lo < loop_var_par; lo++) {
+	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		if (raw)
 			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, ll, pseudos, pRows);
@@ -70,7 +70,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1, lo);
+						normalization, temp_ijk, 1, lo, global_factor);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint32_t ii = 0u; ii < Nx; ii++) {
@@ -79,19 +79,17 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					}
 					lj++;
 
-					//lor[lo][0] = lo + 1;
 					lor[lo] = static_cast<uint16_t>(Nx);
 					continue;
 				}
 			}
 			else if (abs(x_diff) < 1e-8f) {
 
-				//mexPrintf("lo = %d\n", lo);
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(1, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, Nx, lo);
+						normalization, temp_ijk, Nx, lo, global_factor);
 
 					for (uint32_t ii = 0u; ii < Ny; ii++) {
 						indices.emplace_back((tempk + ii * Ny));
@@ -99,7 +97,6 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					}
 					lj++;
 
-					//lor[lo][0] = lo + 1;
 					lor[lo] = static_cast<uint16_t>(Ny);
 					continue;
 				}
@@ -219,6 +216,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 			}
 			if (normalization)
 				temp *= norm_coef[lo];
+			temp *= global_factor;
 
 			for (uint32_t ii = 0u; ii <= koko; ii++) {
 				//indices.emplace_back(temp_koko[i[ii]]);
@@ -364,6 +362,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					}
 					if (normalization)
 						temp *= norm_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii <= koko; ii++) {
 						//indices.emplace_back(temp_koko[i[ii]]);
@@ -513,6 +512,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					}
 					if (normalization)
 						temp *= norm_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii <= koko; ii++) {
 						//indices.emplace_back(temp_koko[i[ii]]);
@@ -666,6 +666,7 @@ int original_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 			}
 			if (normalization)
 				temp *= norm_coef[lo];
+			temp *= global_factor;
 
 			//auto i = sort_indexes(temp_koko);
 
