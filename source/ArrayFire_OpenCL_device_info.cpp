@@ -8,7 +8,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 {
 	const char * c = af::infoString();
 
-	mexPrintf("\n%s\n", c);
+	//mexPrintf("\n%s\n", c);
 
 	plhs[0] = mxCreateString(c);
 }
