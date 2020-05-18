@@ -1,7 +1,7 @@
 /**************************************************************************
-* All the functions needed for the matrix-free OpenCL image reconstruction
+* ArrayFire functions. Used by implementation 2.
 *
-* Copyright(C) 2019  Ville - Veikko Wettenhovi
+* Copyright(C) 2020 Ville - Veikko Wettenhovi
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 // Loads the input data and forms device data variables
 void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0)
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf)
 {
 	// Load the necessary variables if the corresponding reconstruction method is used and set the initial value
 	if (MethodList.MLEM) {
@@ -128,7 +128,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.MRP_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.MRP_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.MRP_RBI(af::span, 0) = x0;
 			
@@ -173,7 +173,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.Quad_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.Quad_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.Quad_RBI(af::span, 0) = x0;
 			
@@ -184,6 +184,51 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			vec.Quad_COSEM(af::span, 0) = x0;
 			
 			beta.Quad_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_cosem"));
+		}
+	}
+
+	if (MethodList.Huber) {
+		if (MethodList.OSLOSEM) {
+			vec.Huber_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_OSEM(af::span, 0) = x0;
+
+			beta.Huber_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_osem"));
+		}
+		if (MethodList.OSLMLEM) {
+			vec.Huber_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_MLEM(af::span, 0) = x0;
+
+			beta.Huber_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mlem"));
+		}
+		if (MethodList.MBSREM) {
+			vec.Huber_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_MBSREM(af::span, 0) = x0;
+
+			beta.Huber_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mbsrem"));
+		}
+		if (MethodList.BSREM) {
+			vec.Huber_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_BSREM(af::span, 0) = x0;
+
+			beta.Huber_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_bsrem"));
+		}
+		if (MethodList.ROSEMMAP) {
+			vec.Huber_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_ROSEM(af::span, 0) = x0;
+
+			beta.Huber_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rosem"));
+		}
+		if (MethodList.RBIOSL) {
+			vec.Huber_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_RBI(af::span, 0) = x0;
+
+			beta.Huber_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rbi"));
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			vec.Huber_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_COSEM(af::span, 0) = x0;
+
+			beta.Huber_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_cosem"));
 		}
 	}
 	
@@ -218,7 +263,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.L_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.L_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.L_RBI(af::span, 0) = x0;
 			
@@ -263,7 +308,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.FMH_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.FMH_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.FMH_RBI(af::span, 0) = x0;
 			
@@ -308,7 +353,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.Weighted_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.Weighted_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.Weighted_RBI(af::span, 0) = x0;
 			
@@ -353,7 +398,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.TV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.TV_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.TV_RBI(af::span, 0) = x0;
 			
@@ -398,7 +443,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.AD_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.AD_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.AD_RBI(af::span, 0) = x0;
 			
@@ -443,7 +488,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.APLS_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.APLS_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.APLS_RBI(af::span, 0) = x0;
 			
@@ -488,7 +533,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			
 			beta.TGV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.TGV_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.TGV_RBI(af::span, 0) = x0;
 			
@@ -533,7 +578,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 			beta.NLM_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.NLM_RBI = af::constant(0.f, im_dim, Niter + 1);
 			vec.NLM_RBI(af::span, 0) = x0;
 
@@ -583,13 +628,13 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			w_vec.Ndy = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndy"));
 			w_vec.Ndz = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndz"));
 			w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
-			w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
 		}
 		if (data.TVtype == 3)
 			data.C = (float)mxGetScalar(mxGetField(options, 0, "C"));
 	}
 	// General variables for neighborhood-based methods
-	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
+	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
 		// Neighborhood size
 		w_vec.Ndx = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndx"));
 		w_vec.Ndy = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndy"));
@@ -598,15 +643,35 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
 		w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 	}
-	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.MRP || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
+	if ((MethodList.L || MethodList.FMH || MethodList.MRP || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
 		// Index values for the neighborhood
 		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
-		if (MethodList.FMH || MethodList.Quad)
+		if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
 			w_vec.inffi = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
 	}
 	// Weights for the various priors
-	if (MethodList.Quad && MethodList.MAP)
-		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+	if (MethodList.Quad && MethodList.MAP) {
+		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);	
+		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
+		af::array weight = w_vec.weights_quad * -1.f;
+		af::array w_quad = af::constant(0.f, pituus);
+		w_quad(af::seq(0, pituus / 2 - 1)) = weight(af::seq(0, pituus / 2 - 1));
+		w_quad(af::seq(pituus / 2 + 1, af::end)) = weight(af::seq(pituus / 2, af::end));
+		w_quad(pituus / 2) = af::abs(af::sum(weight));
+		w_vec.weights_quad = af::moddims(w_quad, w_vec.Ndx * 2U + 1, w_vec.Ndy * 2U + 1, w_vec.Ndz * 2U + 1);
+
+	}
+	if (MethodList.Huber && MethodList.MAP) {
+		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_huber")), afHost);
+		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
+		af::array weight = w_vec.weights_huber * -1.f;
+		af::array w_quad = af::constant(0.f, pituus);
+		w_quad(af::seq(0, pituus / 2 - 1)) = weight(af::seq(0, pituus / 2 - 1));
+		w_quad(af::seq(pituus / 2 + 1, af::end)) = weight(af::seq(pituus / 2, af::end));
+		w_quad(pituus / 2) = af::abs(af::sum(weight));
+		w_vec.weights_huber = af::moddims(w_quad, w_vec.Ndx * 2U + 1, w_vec.Ndy * 2U + 1, w_vec.Ndz * 2U + 1);
+		w_vec.huber_delta = (float)mxGetScalar(mxGetField(options, 0, "huber_delta"));
+	}
 	if (MethodList.L && MethodList.MAP)
 		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "a_L")), afHost);
 	if (MethodList.FMH && MethodList.MAP) {
@@ -617,7 +682,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		w_vec.alku_fmh = static_cast<int>((uint32_t)mxGetScalar(mxGetField(options, 0, "inffi")));
 	}
 	if (MethodList.WeightedMean && MethodList.MAP) {
-		w_vec.weighted_weights = af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost);
+		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
 		// Type of mean used (arithmetic, harmonic or geometric)
 		w_vec.mean_type = (int)mxGetScalar(mxGetField(options, 0, "mean_type"));
 		// Sum of the weights
@@ -645,7 +710,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
 			w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
 	}
-	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBI || MethodList.RBIMAP || MethodList.COSEM
+	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.COSEM
 		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0)
 		w_vec.MBSREM_prepass = (bool)mxGetScalar(mxGetField(options, 0, "MBSREM_prepass"));
 	if (MethodList.MRAMLA || MethodList.MBSREM) {
@@ -654,7 +719,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		// Upper bound
 		w_vec.U = (float)mxGetScalar(mxGetField(options, 0, "U"));
 	}
-	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBI || MethodList.RBIMAP || MethodList.COSEM
+	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.COSEM
 		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0) {
 		// Sum of the rows (measurements) of the system matrix
 		//w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
@@ -688,7 +753,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	}
 	if (MethodList.NLM && MethodList.MAP) {
 		w_vec.NLM_anatomical = (bool)mxGetScalar(mxGetField(options, 0, "NLM_use_anatomical"));
-		w_vec.NLM_gauss = (float)mxGetScalar(mxGetField(options, 0, "NLM_gauss"));
+		//w_vec.NLM_gauss = (float)mxGetScalar(mxGetField(options, 0, "NLM_gauss"));
 		w_vec.NLTV = (bool)mxGetScalar(mxGetField(options, 0, "NLTV"));
 		w_vec.NLM_MRP = (bool)mxGetScalar(mxGetField(options, 0, "NLM_MRP"));
 		if (w_vec.NLM_anatomical)
@@ -698,6 +763,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		w_vec.Nlx = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nlx"));
 		w_vec.Nly = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nly"));
 		w_vec.Nlz = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nlz"));
+		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetData(mxGetField(options, 0, "gaussianNLM")), afHost);
 	}
 	if (MethodList.CUSTOM) {
 		if (MethodList.OSLOSEM) {
@@ -730,7 +796,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 			beta.custom_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_rosem"));
 		}
-		if (MethodList.RBIMAP) {
+		if (MethodList.RBIOSL) {
 			vec.custom_RBI = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_rbi_apu")), afHost);
 			w_vec.dU_RBI = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_RBI")), afHost);
 
@@ -743,8 +809,14 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			beta.custom_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_cosem"));
 			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(mxGetField(options, 0, "C_osl")), afHost);
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIMAP))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
 			w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
+	}
+	if (use_psf) {
+		w_vec.g_dim_x = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_x"));
+		w_vec.g_dim_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_y"));
+		w_vec.g_dim_z = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_z"));
+		w_vec.deconvolution = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
 	}
 }
 
@@ -764,6 +836,7 @@ void get_rec_methods(const mxArray * options, RecMethods &MethodList)
 
 	MethodList.MRP = (bool)mxGetScalar(mxGetField(options, 0, "MRP"));
 	MethodList.Quad = (bool)mxGetScalar(mxGetField(options, 0, "quad"));
+	MethodList.Huber = (bool)mxGetScalar(mxGetField(options, 0, "Huber"));
 	MethodList.L = (bool)mxGetScalar(mxGetField(options, 0, "L"));
 	MethodList.FMH = (bool)mxGetScalar(mxGetField(options, 0, "FMH"));
 	MethodList.WeightedMean = (bool)mxGetScalar(mxGetField(options, 0, "weighted_mean"));
@@ -778,102 +851,12 @@ void get_rec_methods(const mxArray * options, RecMethods &MethodList)
 	MethodList.BSREM = (bool)mxGetScalar(mxGetField(options, 0, "BSREM"));
 	MethodList.MBSREM = (bool)mxGetScalar(mxGetField(options, 0, "MBSREM"));
 	MethodList.ROSEMMAP = (bool)mxGetScalar(mxGetField(options, 0, "ROSEM_MAP"));
-	MethodList.RBIMAP = (bool)mxGetScalar(mxGetField(options, 0, "RBI_MAP"));
-	MethodList.OSLCOSEM = (uint32_t)mxGetScalar(mxGetField(options, 0, "COSEM_MAP"));
+	MethodList.RBIOSL = (bool)mxGetScalar(mxGetField(options, 0, "RBI_OSL"));
+	MethodList.OSLCOSEM = (uint32_t)mxGetScalar(mxGetField(options, 0, "COSEM_OSL"));
 
 	MethodList.MAP = (bool)mxGetScalar(mxGetField(options, 0, "MAP"));
 
 	MethodList.CUSTOM = (bool)mxGetScalar(mxGetField(options, 0, "custom"));
-}
-
-// Update the OpenCL kernel inputs for the current iteration/subset
-// If a method is not used, do nothing
-// Otherwise create an OpenCL buffer pointer from the ArrayFire image estimate and initialize the right-hand side vector
-void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, const bool mlem, const uint32_t im_dim, const uint32_t n_rekos, 
-	const uint32_t n_rekos_mlem, const RecMethods MethodList, const bool atomic_64bit)
-{
-	if (MethodList.CUSTOM) {
-		if (mlem) {
-			vec.im_mlem(af::seq(n_rekos * im_dim - im_dim, n_rekos * im_dim - 1u)) = vec.custom_MLEM;
-		}
-		else {
-			uint32_t yy = n_rekos * im_dim;
-			if (MethodList.OSLCOSEM > 0u) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_COSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.RBIMAP) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_RBI;
-				yy -= im_dim;
-			}
-			if (MethodList.ROSEMMAP) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_ROSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.MBSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_MBSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.BSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_BSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.OSLOSEM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_OSEM;
-				yy -= im_dim;
-			}
-		}
-	}
-	if (mlem) {
-		vec_opencl.d_im_mlem = vec.im_mlem.device<cl_mem>();
-		if (atomic_64bit)
-			vec.rhs_mlem = af::constant(0ULL, im_dim * n_rekos_mlem, 1, u64);
-		else
-			vec.rhs_mlem = af::constant(0.f, im_dim * n_rekos_mlem, 1);
-		vec_opencl.d_rhs_mlem = vec.rhs_mlem.device<cl_mem>();
-	}
-	else {
-		vec_opencl.d_im_os = vec.im_os.device<cl_mem>();
-		if (atomic_64bit)
-			vec.rhs_os = af::constant(0ULL, im_dim * n_rekos, 1, u64);
-		else
-			vec.rhs_os = af::constant(0.f, im_dim * n_rekos, 1);
-		vec_opencl.d_rhs_os = vec.rhs_os.device<cl_mem>();
-	}
-}
-
-// Reconsruction methods as cl_chars
-void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodListOpenCL)
-{
-	MethodListOpenCL.MLEM = static_cast<cl_char>(MethodList.MLEM);
-	MethodListOpenCL.OSEM = static_cast<cl_char>(MethodList.OSEM);
-	MethodListOpenCL.RAMLA = static_cast<cl_char>(MethodList.RAMLA);
-	MethodListOpenCL.MRAMLA = static_cast<cl_char>(MethodList.MRAMLA);
-	MethodListOpenCL.ROSEM = static_cast<cl_char>(MethodList.ROSEM);
-	MethodListOpenCL.RBI = static_cast<cl_char>(MethodList.RBI);
-	MethodListOpenCL.DRAMA = static_cast<cl_char>(MethodList.DRAMA);
-	MethodListOpenCL.COSEM = static_cast<cl_char>(MethodList.COSEM);
-	MethodListOpenCL.ECOSEM = static_cast<cl_char>(MethodList.ECOSEM);
-	MethodListOpenCL.ACOSEM = static_cast<cl_char>(MethodList.ACOSEM);
-
-	MethodListOpenCL.MRP = static_cast<cl_char>(MethodList.MRP);
-	MethodListOpenCL.Quad = static_cast<cl_char>(MethodList.Quad);
-	MethodListOpenCL.L = static_cast<cl_char>(MethodList.L);
-	MethodListOpenCL.FMH = static_cast<cl_char>(MethodList.FMH);
-	MethodListOpenCL.WeightedMean = static_cast<cl_char>(MethodList.WeightedMean);
-	MethodListOpenCL.TV = static_cast<cl_char>(MethodList.TV);
-	MethodListOpenCL.AD = static_cast<cl_char>(MethodList.AD);
-	MethodListOpenCL.APLS = static_cast<cl_char>(MethodList.APLS);
-	MethodListOpenCL.TGV = static_cast<cl_char>(MethodList.TGV);
-	MethodListOpenCL.NLM = static_cast<cl_char>(MethodList.NLM);
-
-	MethodListOpenCL.OSLMLEM = static_cast<cl_char>(MethodList.OSLMLEM);
-	MethodListOpenCL.OSLOSEM = static_cast<cl_char>(MethodList.OSLOSEM);
-	MethodListOpenCL.BSREM = static_cast<cl_char>(MethodList.BSREM);
-	MethodListOpenCL.MBSREM = static_cast<cl_char>(MethodList.MBSREM);
-	MethodListOpenCL.ROSEMMAP = static_cast<cl_char>(MethodList.ROSEMMAP);
-	MethodListOpenCL.RBIMAP = static_cast<cl_char>(MethodList.RBIMAP);
-	MethodListOpenCL.OSLCOSEM = static_cast<cl_char>(MethodList.OSLCOSEM);
 }
 
 // Create the MATLAB output
@@ -944,7 +927,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.mrp_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.mrp_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.RBIMAP)
+	if (MethodList.MRP && MethodList.RBIOSL)
 		ArrayList.mrp_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.mrp_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -973,7 +956,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.quad_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.quad_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.RBIMAP)
+	if (MethodList.Quad && MethodList.RBIOSL)
 		ArrayList.quad_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.quad_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -981,6 +964,35 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.quad_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.quad_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+
+	if (MethodList.Huber && MethodList.OSLOSEM)
+		ArrayList.Huber_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.OSLMLEM)
+		ArrayList.Huber_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.BSREM)
+		ArrayList.Huber_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.MBSREM)
+		ArrayList.Huber_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.ROSEMMAP)
+		ArrayList.Huber_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.RBIOSL)
+		ArrayList.Huber_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+		ArrayList.Huber_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+	else
+		ArrayList.Huber_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 
 	if (MethodList.L && MethodList.OSLOSEM)
 		ArrayList.L_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
@@ -1002,7 +1014,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.L_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.L_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.RBIMAP)
+	if (MethodList.L && MethodList.RBIOSL)
 		ArrayList.L_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.L_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1031,7 +1043,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.fmh_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.fmh_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.RBIMAP)
+	if (MethodList.FMH && MethodList.RBIOSL)
 		ArrayList.fmh_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.fmh_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1060,7 +1072,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.weighted_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.weighted_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.RBIMAP)
+	if (MethodList.WeightedMean && MethodList.RBIOSL)
 		ArrayList.weighted_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.weighted_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1089,7 +1101,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.TV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.TV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.RBIMAP)
+	if (MethodList.TV && MethodList.RBIOSL)
 		ArrayList.TV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.TV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1118,7 +1130,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.AD_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.AD_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.RBIMAP)
+	if (MethodList.AD && MethodList.RBIOSL)
 		ArrayList.AD_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.AD_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1147,7 +1159,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.APLS_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.APLS_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.RBIMAP)
+	if (MethodList.APLS && MethodList.RBIOSL)
 		ArrayList.APLS_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.APLS_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1176,7 +1188,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.TGV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.TGV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RBIMAP)
+	if (MethodList.RBIOSL)
 		ArrayList.TGV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.TGV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1205,7 +1217,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.NLM_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.NLM_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RBIMAP)
+	if (MethodList.RBIOSL)
 		ArrayList.NLM_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 	else
 		ArrayList.NLM_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1235,7 +1247,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 			ArrayList.custom_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 		else
 			ArrayList.custom_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.RBIMAP)
+		if (MethodList.RBIOSL)
 			ArrayList.custom_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 		else
 			ArrayList.custom_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
@@ -1277,7 +1289,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_mrp_mbsrem = (float*)mxGetData(ArrayList.mrp_mbsrem);
 	if (MethodList.MRP && MethodList.ROSEMMAP)
 		ArrayList.ele_mrp_rosem = (float*)mxGetData(ArrayList.mrp_rosem);
-	if (MethodList.MRP && MethodList.RBIMAP)
+	if (MethodList.MRP && MethodList.RBIOSL)
 		ArrayList.ele_mrp_rbi = (float*)mxGetData(ArrayList.mrp_rbi);
 	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_mrp_cosem = (float*)mxGetData(ArrayList.mrp_cosem);
@@ -1292,10 +1304,25 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_quad_mbsrem = (float*)mxGetData(ArrayList.quad_mbsrem);
 	if (MethodList.Quad && MethodList.ROSEMMAP)
 		ArrayList.ele_quad_rosem = (float*)mxGetData(ArrayList.quad_rosem);
-	if (MethodList.Quad && MethodList.RBIMAP)
+	if (MethodList.Quad && MethodList.RBIOSL)
 		ArrayList.ele_quad_rbi = (float*)mxGetData(ArrayList.quad_rbi);
 	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_quad_cosem = (float*)mxGetData(ArrayList.quad_cosem);
+
+	if (MethodList.Huber && MethodList.OSLOSEM)
+		ArrayList.ele_Huber_osem = (float*)mxGetData(ArrayList.Huber_osem);
+	if (MethodList.OSLMLEM && MethodList.Huber)
+		ArrayList.ele_Huber_mlem = (float*)mxGetData(ArrayList.Huber_mlem);
+	if (MethodList.Huber && MethodList.BSREM)
+		ArrayList.ele_Huber_bsrem = (float*)mxGetData(ArrayList.Huber_bsrem);
+	if (MethodList.Huber && MethodList.MBSREM)
+		ArrayList.ele_Huber_mbsrem = (float*)mxGetData(ArrayList.Huber_mbsrem);
+	if (MethodList.Huber && MethodList.ROSEMMAP)
+		ArrayList.ele_Huber_rosem = (float*)mxGetData(ArrayList.Huber_rosem);
+	if (MethodList.Huber && MethodList.RBIOSL)
+		ArrayList.ele_Huber_rbi = (float*)mxGetData(ArrayList.Huber_rbi);
+	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+		ArrayList.ele_Huber_cosem = (float*)mxGetData(ArrayList.Huber_cosem);
 
 	if (MethodList.L && MethodList.OSLOSEM)
 		ArrayList.ele_L_osem = (float*)mxGetData(ArrayList.L_osem);
@@ -1307,7 +1334,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_L_mbsrem = (float*)mxGetData(ArrayList.L_mbsrem);
 	if (MethodList.L && MethodList.ROSEMMAP)
 		ArrayList.ele_L_rosem = (float*)mxGetData(ArrayList.L_rosem);
-	if (MethodList.L && MethodList.RBIMAP)
+	if (MethodList.L && MethodList.RBIOSL)
 		ArrayList.ele_L_rbi = (float*)mxGetData(ArrayList.L_rbi);
 	if (MethodList.L && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_L_cosem = (float*)mxGetData(ArrayList.L_cosem);
@@ -1322,7 +1349,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_fmh_mbsrem = (float*)mxGetData(ArrayList.fmh_mbsrem);
 	if (MethodList.FMH && MethodList.ROSEMMAP)
 		ArrayList.ele_fmh_rosem = (float*)mxGetData(ArrayList.fmh_rosem);
-	if (MethodList.FMH && MethodList.RBIMAP)
+	if (MethodList.FMH && MethodList.RBIOSL)
 		ArrayList.ele_fmh_rbi = (float*)mxGetData(ArrayList.fmh_rbi);
 	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_fmh_cosem = (float*)mxGetData(ArrayList.fmh_cosem);
@@ -1337,7 +1364,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_weighted_mbsrem = (float*)mxGetData(ArrayList.weighted_mbsrem);
 	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
 		ArrayList.ele_weighted_rosem = (float*)mxGetData(ArrayList.weighted_rosem);
-	if (MethodList.WeightedMean && MethodList.RBIMAP)
+	if (MethodList.WeightedMean && MethodList.RBIOSL)
 		ArrayList.ele_weighted_rbi = (float*)mxGetData(ArrayList.weighted_rbi);
 	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_weighted_cosem = (float*)mxGetData(ArrayList.weighted_cosem);
@@ -1352,7 +1379,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_TV_mbsrem = (float*)mxGetData(ArrayList.TV_mbsrem);
 	if (MethodList.TV && MethodList.ROSEMMAP)
 		ArrayList.ele_TV_rosem = (float*)mxGetData(ArrayList.TV_rosem);
-	if (MethodList.TV && MethodList.RBIMAP)
+	if (MethodList.TV && MethodList.RBIOSL)
 		ArrayList.ele_TV_rbi = (float*)mxGetData(ArrayList.TV_rbi);
 	if (MethodList.TV && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_TV_cosem = (float*)mxGetData(ArrayList.TV_cosem);
@@ -1367,7 +1394,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_AD_mbsrem = (float*)mxGetData(ArrayList.AD_mbsrem);
 	if (MethodList.AD && MethodList.ROSEMMAP)
 		ArrayList.ele_AD_rosem = (float*)mxGetData(ArrayList.AD_rosem);
-	if (MethodList.AD && MethodList.RBIMAP)
+	if (MethodList.AD && MethodList.RBIOSL)
 		ArrayList.ele_AD_rbi = (float*)mxGetData(ArrayList.AD_rbi);
 	if (MethodList.AD && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_AD_cosem = (float*)mxGetData(ArrayList.AD_cosem);
@@ -1382,7 +1409,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_APLS_mbsrem = (float*)mxGetData(ArrayList.APLS_mbsrem);
 	if (MethodList.APLS && MethodList.ROSEMMAP)
 		ArrayList.ele_APLS_rosem = (float*)mxGetData(ArrayList.APLS_rosem);
-	if (MethodList.APLS && MethodList.RBIMAP)
+	if (MethodList.APLS && MethodList.RBIOSL)
 		ArrayList.ele_APLS_rbi = (float*)mxGetData(ArrayList.APLS_rbi);
 	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
 		ArrayList.ele_APLS_cosem = (float*)mxGetData(ArrayList.APLS_cosem);
@@ -1397,7 +1424,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_TGV_mbsrem = (float*)mxGetData(ArrayList.TGV_mbsrem);
 	if (MethodList.ROSEMMAP)
 		ArrayList.ele_TGV_rosem = (float*)mxGetData(ArrayList.TGV_rosem);
-	if (MethodList.RBIMAP)
+	if (MethodList.RBIOSL)
 		ArrayList.ele_TGV_rbi = (float*)mxGetData(ArrayList.TGV_rbi);
 	if (MethodList.OSLCOSEM > 0)
 		ArrayList.ele_TGV_cosem = (float*)mxGetData(ArrayList.TGV_cosem);
@@ -1412,7 +1439,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		ArrayList.ele_NLM_mbsrem = (float*)mxGetData(ArrayList.NLM_mbsrem);
 	if (MethodList.ROSEMMAP)
 		ArrayList.ele_NLM_rosem = (float*)mxGetData(ArrayList.NLM_rosem);
-	if (MethodList.RBIMAP)
+	if (MethodList.RBIOSL)
 		ArrayList.ele_NLM_rbi = (float*)mxGetData(ArrayList.NLM_rbi);
 	if (MethodList.OSLCOSEM > 0)
 		ArrayList.ele_NLM_cosem = (float*)mxGetData(ArrayList.NLM_cosem);
@@ -1429,7 +1456,7 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 			ArrayList.ele_custom_mbsrem = (float*)mxGetData(ArrayList.custom_mbsrem);
 		if (MethodList.ROSEMMAP)
 			ArrayList.ele_custom_rosem = (float*)mxGetData(ArrayList.custom_rosem);
-		if (MethodList.RBIMAP)
+		if (MethodList.RBIOSL)
 			ArrayList.ele_custom_rbi = (float*)mxGetData(ArrayList.custom_rbi);
 		if (MethodList.OSLCOSEM > 0) {
 			ArrayList.ele_custom_cosem = (float*)mxGetData(ArrayList.custom_cosem);
@@ -1479,7 +1506,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.MRP_MBSREM.host(ArrayList.ele_mrp_mbsrem);
 	if (MethodList.MRP && MethodList.ROSEMMAP)
 		vec.MRP_ROSEM.host(ArrayList.ele_mrp_rosem);
-	if (MethodList.MRP && MethodList.RBIMAP)
+	if (MethodList.MRP && MethodList.RBIOSL)
 		vec.MRP_RBI.host(ArrayList.ele_mrp_rbi);
 	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
 		vec.MRP_COSEM.host(ArrayList.ele_mrp_cosem);
@@ -1494,10 +1521,25 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.Quad_MBSREM.host(ArrayList.ele_quad_mbsrem);
 	if (MethodList.Quad && MethodList.ROSEMMAP)
 		vec.Quad_ROSEM.host(ArrayList.ele_quad_rosem);
-	if (MethodList.Quad && MethodList.RBIMAP)
+	if (MethodList.Quad && MethodList.RBIOSL)
 		vec.Quad_RBI.host(ArrayList.ele_quad_rbi);
 	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
 		vec.Quad_COSEM.host(ArrayList.ele_quad_cosem);
+
+	if (MethodList.Huber && MethodList.OSLOSEM)
+		vec.Huber_OSEM.host(ArrayList.ele_Huber_osem);
+	if (MethodList.Huber && MethodList.OSLMLEM)
+		vec.Huber_MLEM.host(ArrayList.ele_Huber_mlem);
+	if (MethodList.Huber && MethodList.BSREM)
+		vec.Huber_BSREM.host(ArrayList.ele_Huber_bsrem);
+	if (MethodList.Huber && MethodList.MBSREM)
+		vec.Huber_MBSREM.host(ArrayList.ele_Huber_mbsrem);
+	if (MethodList.Huber && MethodList.ROSEMMAP)
+		vec.Huber_ROSEM.host(ArrayList.ele_Huber_rosem);
+	if (MethodList.Huber && MethodList.RBIOSL)
+		vec.Huber_RBI.host(ArrayList.ele_Huber_rbi);
+	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+		vec.Huber_COSEM.host(ArrayList.ele_Huber_cosem);
 
 	if (MethodList.L && MethodList.OSLOSEM)
 		vec.L_OSEM.host(ArrayList.ele_L_osem);
@@ -1509,7 +1551,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.L_MBSREM.host(ArrayList.ele_L_mbsrem);
 	if (MethodList.L && MethodList.ROSEMMAP)
 		vec.L_ROSEM.host(ArrayList.ele_L_rosem);
-	if (MethodList.L && MethodList.RBIMAP)
+	if (MethodList.L && MethodList.RBIOSL)
 		vec.L_RBI.host(ArrayList.ele_L_rbi);
 	if (MethodList.L && MethodList.OSLCOSEM > 0)
 		vec.L_COSEM.host(ArrayList.ele_L_cosem);
@@ -1524,7 +1566,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.FMH_MBSREM.host(ArrayList.ele_fmh_mbsrem);
 	if (MethodList.FMH && MethodList.ROSEMMAP)
 		vec.FMH_ROSEM.host(ArrayList.ele_fmh_rosem);
-	if (MethodList.FMH && MethodList.RBIMAP)
+	if (MethodList.FMH && MethodList.RBIOSL)
 		vec.FMH_RBI.host(ArrayList.ele_fmh_rbi);
 	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
 		vec.FMH_COSEM.host(ArrayList.ele_fmh_cosem);
@@ -1539,7 +1581,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.Weighted_MBSREM.host(ArrayList.ele_weighted_mbsrem);
 	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
 		vec.Weighted_ROSEM.host(ArrayList.ele_weighted_rosem);
-	if (MethodList.WeightedMean && MethodList.RBIMAP)
+	if (MethodList.WeightedMean && MethodList.RBIOSL)
 		vec.Weighted_RBI.host(ArrayList.ele_weighted_rbi);
 	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
 		vec.Weighted_COSEM.host(ArrayList.ele_weighted_cosem);
@@ -1554,7 +1596,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.TV_MBSREM.host(ArrayList.ele_TV_mbsrem);
 	if (MethodList.TV && MethodList.ROSEMMAP)
 		vec.TV_ROSEM.host(ArrayList.ele_TV_rosem);
-	if (MethodList.TV && MethodList.RBIMAP)
+	if (MethodList.TV && MethodList.RBIOSL)
 		vec.TV_RBI.host(ArrayList.ele_TV_rbi);
 	if (MethodList.TV && MethodList.OSLCOSEM > 0)
 		vec.TV_COSEM.host(ArrayList.ele_TV_cosem);
@@ -1569,7 +1611,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.AD_MBSREM.host(ArrayList.ele_AD_mbsrem);
 	if (MethodList.AD && MethodList.ROSEMMAP)
 		vec.AD_ROSEM.host(ArrayList.ele_AD_rosem);
-	if (MethodList.AD && MethodList.RBIMAP)
+	if (MethodList.AD && MethodList.RBIOSL)
 		vec.AD_RBI.host(ArrayList.ele_AD_rbi);
 	if (MethodList.AD && MethodList.OSLCOSEM > 0)
 		vec.AD_COSEM.host(ArrayList.ele_AD_cosem);
@@ -1584,7 +1626,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.APLS_MBSREM.host(ArrayList.ele_APLS_mbsrem);
 	if (MethodList.APLS && MethodList.ROSEMMAP)
 		vec.APLS_ROSEM.host(ArrayList.ele_APLS_rosem);
-	if (MethodList.APLS && MethodList.RBIMAP)
+	if (MethodList.APLS && MethodList.RBIOSL)
 		vec.APLS_RBI.host(ArrayList.ele_APLS_rbi);
 	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
 		vec.APLS_COSEM.host(ArrayList.ele_APLS_cosem);
@@ -1599,7 +1641,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.TGV_MBSREM.host(ArrayList.ele_TGV_mbsrem);
 	if (MethodList.TGV && MethodList.ROSEMMAP)
 		vec.TGV_ROSEM.host(ArrayList.ele_TGV_rosem);
-	if (MethodList.TGV && MethodList.RBIMAP)
+	if (MethodList.TGV && MethodList.RBIOSL)
 		vec.TGV_RBI.host(ArrayList.ele_TGV_rbi);
 	if (MethodList.TGV && MethodList.OSLCOSEM > 0)
 		vec.TGV_COSEM.host(ArrayList.ele_TGV_cosem);
@@ -1614,7 +1656,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		vec.NLM_MBSREM.host(ArrayList.ele_NLM_mbsrem);
 	if (MethodList.NLM && MethodList.ROSEMMAP)
 		vec.NLM_ROSEM.host(ArrayList.ele_NLM_rosem);
-	if (MethodList.NLM && MethodList.RBIMAP)
+	if (MethodList.NLM && MethodList.RBIOSL)
 		vec.NLM_RBI.host(ArrayList.ele_NLM_rbi);
 	if (MethodList.NLM && MethodList.OSLCOSEM > 0)
 		vec.NLM_COSEM.host(ArrayList.ele_NLM_cosem);
@@ -1630,13 +1672,13 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 			vec.custom_MBSREM.host(ArrayList.ele_custom_mbsrem);
 		if (MethodList.ROSEMMAP)
 			vec.custom_ROSEM.host(ArrayList.ele_custom_rosem);
-		if (MethodList.RBIMAP)
+		if (MethodList.RBIOSL)
 			vec.custom_RBI.host(ArrayList.ele_custom_rbi);
 		if (MethodList.OSLCOSEM > 0) {
 			vec.custom_COSEM.host(ArrayList.ele_custom_cosem);
 			vec.C_osl.host(ArrayList.ele_c_osl_custom);
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIMAP))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
 			w_vec.D.host(ArrayList.ele_D_custom);
 	}
 
@@ -1688,7 +1730,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.MRP && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_rosem));
 	oo++;
-	if (MethodList.MRP && MethodList.RBIMAP)
+	if (MethodList.MRP && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_rbi));
 	oo++;
 	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
@@ -1710,11 +1752,33 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.Quad && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_rosem));
 	oo++;
-	if (MethodList.Quad && MethodList.RBIMAP)
+	if (MethodList.Quad && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_rbi));
 	oo++;
 	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_cosem));
+	oo++;
+
+	if (MethodList.Huber && MethodList.OSLOSEM)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_osem));
+	oo++;
+	if (MethodList.Huber && MethodList.OSLMLEM)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_mlem));
+	oo++;
+	if (MethodList.Huber && MethodList.BSREM)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_bsrem));
+	oo++;
+	if (MethodList.Huber && MethodList.MBSREM)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_mbsrem));
+	oo++;
+	if (MethodList.Huber && MethodList.ROSEMMAP)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_rosem));
+	oo++;
+	if (MethodList.Huber && MethodList.RBIOSL)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_rbi));
+	oo++;
+	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_cosem));
 	oo++;
 
 	if (MethodList.L && MethodList.OSLOSEM)
@@ -1732,7 +1796,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.L && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_rosem));
 	oo++;
-	if (MethodList.L && MethodList.RBIMAP)
+	if (MethodList.L && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_rbi));
 	oo++;
 	if (MethodList.L && MethodList.OSLCOSEM > 0)
@@ -1754,7 +1818,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.FMH && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_rosem));
 	oo++;
-	if (MethodList.FMH && MethodList.RBIMAP)
+	if (MethodList.FMH && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_rbi));
 	oo++;
 	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
@@ -1776,7 +1840,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_rosem));
 	oo++;
-	if (MethodList.WeightedMean && MethodList.RBIMAP)
+	if (MethodList.WeightedMean && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_rbi));
 	oo++;
 	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
@@ -1798,7 +1862,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.TV && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_rosem));
 	oo++;
-	if (MethodList.TV && MethodList.RBIMAP)
+	if (MethodList.TV && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_rbi));
 	oo++;
 	if (MethodList.TV && MethodList.OSLCOSEM > 0)
@@ -1820,7 +1884,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.AD && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_rosem));
 	oo++;
-	if (MethodList.AD && MethodList.RBIMAP)
+	if (MethodList.AD && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_rbi));
 	oo++;
 	if (MethodList.AD && MethodList.OSLCOSEM > 0)
@@ -1842,7 +1906,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.APLS && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_rosem));
 	oo++;
-	if (MethodList.APLS && MethodList.RBIMAP)
+	if (MethodList.APLS && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_rbi));
 	oo++;
 	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
@@ -1864,7 +1928,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.TGV && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_rosem));
 	oo++;
-	if (MethodList.TGV && MethodList.RBIMAP)
+	if (MethodList.TGV && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_rbi));
 	oo++;
 	if (MethodList.TGV && MethodList.OSLCOSEM > 0)
@@ -1886,7 +1950,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 	if (MethodList.NLM && MethodList.ROSEMMAP)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_rosem));
 	oo++;
-	if (MethodList.NLM && MethodList.RBIMAP)
+	if (MethodList.NLM && MethodList.RBIOSL)
 		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_rbi));
 	oo++;
 	if (MethodList.NLM && MethodList.OSLCOSEM > 0)
@@ -1895,12 +1959,11 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 
 
 	if (MethodList.CUSTOM) {
-		//oo += 7u;
-		if (MethodList.OSLMLEM)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_mlem));
-		oo++;
 		if (MethodList.OSLOSEM)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_osem));
+		oo++;
+		if (MethodList.OSLMLEM)
+			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_mlem));
 		oo++;
 		if (MethodList.BSREM)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_bsrem));
@@ -1911,7 +1974,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		if (MethodList.ROSEMMAP)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_rosem));
 		oo++;
-		if (MethodList.RBIMAP)
+		if (MethodList.RBIOSL)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_rbi));
 		oo++;
 		if (MethodList.OSLCOSEM > 0)
@@ -1920,7 +1983,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		if (MethodList.OSLCOSEM > 0)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.c_osl_custom));
 		oo++;
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIMAP))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.D_custom));
 		oo++;
 	}
@@ -1949,884 +2012,10 @@ float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t ra
 	else
 		hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f), batchMinus);
 	af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
-	epsilon = (af::min)(epsilon);
-	epsilon(epsilon <= 0.f) = epps;
-	float* eps;
-	epsilon.host(eps);
-	return *eps;
-}
-
-// Save the OpenCL program as a binary for later use (for the current device)
-cl_int SaveProgramBinary(const bool verbose, const char* k_path, cl_context af_context, cl_device_id af_device_id, const char* fileName, cl_program &program, 
-	bool& atomic_64bit, const uint32_t device, const char* header_directory, const bool force_build) {
-
-
-	std::string kernel_path;
-	std::string new_filename;
-
-	cl_int status = CL_SUCCESS;
-
-	// Create the OpenCL program from the .cl file
-	if (atomic_64bit) {
-		kernel_path = k_path;
-		new_filename = fileName;
-		new_filename += (std::to_string(device) + "_64atom.bin");
-		kernel_path += "_64atom.cl";
-		std::fstream sourceFile(kernel_path.c_str());
-		std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
-		const char* sourceCode = content.c_str();
-		program = clCreateProgramWithSource(af_context, 1, &sourceCode, NULL, &status);
-
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to create OpenCL program\n");
-			return status;
-		}
-		//else if (verbose) {
-		//	mexPrintf("OpenCL program successfully created\n");
-		//	mexEvalString("pause(.0001);");
-		//}
-		//char* build_options = "-I"
-
-		// Build the OpenCL program
-		status = clBuildProgram(program, 1, &af_device_id, header_directory, NULL, NULL);
-		size_t len;
-		char* buffer;
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-		buffer = (char*)calloc(len, sizeof(size_t));
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-		mexPrintf("%s\n", buffer);
-		if (!force_build)
-			return status;
-	}
-	else
-		status = -1;
-	if (status != CL_SUCCESS) {
-		status = CL_SUCCESS;
-		atomic_64bit = false;
-		kernel_path = k_path;
-		new_filename = fileName;
-		new_filename += (std::to_string(device) + ".bin");
-		kernel_path += ".cl";
-		std::fstream sourceFile(kernel_path.c_str());
-		std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
-		const char* sourceCode = content.c_str();
-		program = clCreateProgramWithSource(af_context, 1, &sourceCode, NULL, &status);
-
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to create OpenCL program\n");
-			return status;
-		}
-		//else if (verbose) {
-		//	mexPrintf("OpenCL program successfully created\n");
-		//	mexEvalString("pause(.0001);");
-		//}
-		//char* build_options = "-I"
-		if (verbose) {
-			mexPrintf("Building the OpenCL program...\n");
-			mexEvalString("pause(.0001);");
-		}
-		// Build the OpenCL program
-		status = clBuildProgram(program, 1, &af_device_id, header_directory, NULL, NULL);
-
-
-		// If the build failed, show the build log
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to build OpenCL program. Build log: \n");
-			size_t len;
-			char* buffer;
-			clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-			buffer = (char*)calloc(len, sizeof(size_t));
-			clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-			mexPrintf("%s\n", buffer);
-			return status;
-		}
-		else if (verbose) {
-			//size_t len;
-			//char* buffer;
-			//clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-			//buffer = (char*)calloc(len, sizeof(size_t));
-			//clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-			//mexPrintf("%s\n", buffer);
-			mexPrintf("OpenCL program successfully built\n");
-			mexEvalString("pause(.0001);");
-		}
-	}
-
-	// Get the binary size (in bytes)
-	size_t programBinarySizes;
-	status = clGetProgramInfo(program, CL_PROGRAM_BINARY_SIZES, sizeof(size_t), &programBinarySizes, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-
-	// Allocate the memory for the binary
-	unsigned char **programBinaries;
-	programBinaries = new unsigned char*[programBinarySizes];
-
-	// Get the program binary data and save it in the allocated array
-	status = clGetProgramInfo(program, CL_PROGRAM_BINARIES, sizeof(unsigned char*), &programBinaries, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		delete[] programBinaries;
-		return status;
-	}
-	else if (verbose) {
-		mexPrintf("OpenCL binaries successfully created\n");
-		mexEvalString("pause(.0001);");
-	}
-
-	// Save the binary data in a file
-	FILE *fp = NULL;// = fopen(fileName, "wb");
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
-	errno_t err;
-	err = fopen_s(&fp, new_filename.c_str(), "wb");
-	if (err != 0) {
-		delete[] programBinaries;
-		mexErrMsgTxt("Binaries file could not be created. Make sure you have write privileges to the source-folder.");
-	}
-#else
-	fp = fopen(new_filename.c_str(), "wb");
-	if (fp == NULL) {
-		delete[] programBinaries;
-		mexErrMsgTxt("Binaries file could not be created. Make sure you have write privileges to the source-folder.");
-	}
-#endif
-	fwrite(programBinaries, 1, programBinarySizes, fp);
-	if (verbose) {
-		mexPrintf("Binaries written\n");
-		mexEvalString("pause(.0001);");
-	}
-	fclose(fp);
-
-	delete[] programBinaries;
-
-	return status;
-	//return program;
-}
-
-// Creates the OpenCL program from the binary of the current device
-cl_int CreateProgramFromBinary(cl_context af_context, cl_device_id af_device_id, FILE *fp, cl_program &program) {
-	// Get the size of the binary file
-	size_t binarySize;
-	fseek(fp, 0, SEEK_END);
-	binarySize = ftell(fp);
-	rewind(fp);
-	cl_int status = CL_SUCCESS;
-
-	// Allocate memory for the program
-	unsigned char *programBinary = new unsigned char[binarySize];
-	fread(programBinary, 1, binarySize, fp);
-	fclose(fp);
-
-	cl_int binaryStatus = CL_SUCCESS;
-
-	// Transfer the data from the binary to the program
-	// Program data
-	program = clCreateProgramWithBinary(af_context, 1, &af_device_id, &binarySize, (const unsigned char**)&programBinary, &binaryStatus, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		clReleaseProgram(program);
-		return status;
-	}
-	if (binaryStatus != CL_SUCCESS)	{
-		std::cerr << getErrorString(binaryStatus) << std::endl;
-		std::cerr << "Invalid binary for device" << std::endl;
-		clReleaseProgram(program);
-		return status;
-	}
-
-	// Build the program
-	status = clBuildProgram(program, 0, NULL, NULL, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		mexPrintf("Failed to build OpenCL program. Build log: \n");
-		size_t len;
-		char *buffer;
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-		buffer = (char*)calloc(len, sizeof(size_t));
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-		mexPrintf("%s\n", buffer);
-		return status;
-	}
-
-	delete[] programBinary;
-	return status;
-}
-
-cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kernel_mramla, const bool osem_bool, const cl_program &program, const RecMethods MethodList,
-	const Weighting w_vec, const uint32_t projector_type, const bool mlem_bool, const bool precompute)
-{
-	cl_int status = CL_SUCCESS;
-	// Kernel for the OS-methods (OSEM, RAMLA, RBI, BSREM, etc.)
-	if (osem_bool) {
-
-		if (projector_type == 1u) {
-			if (precompute)
-				kernel = clCreateKernel(program, "siddon", &status);
-			else
-				kernel = clCreateKernel(program, "siddon_noprecomp", &status);
-		}
-		else {
-			if (precompute)
-				kernel = clCreateKernel(program, "orth", &status);
-			else
-				kernel = clCreateKernel(program, "orth_noprecomp", &status);
-		}
-
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to create OS-methods kernel\n");
-			return status;
-		}
-		//else if (verbose) {
-			//mexPrintf("OpenCL kernel successfully created\n");
-			//mexEvalString("pause(.0001);");
-		//}
-	}
-
-	// Kernel for the ML-methods (MLEM, OSL-ML)
-	if (mlem_bool) {
-
-		if (projector_type == 1u)
-			if (precompute)
-				kernel_ml = clCreateKernel(program, "siddon_ml", &status);
-			else
-				kernel_ml = clCreateKernel(program, "siddon_ml_noprecomp", &status);
-		else {
-			if (precompute)
-				kernel_ml = clCreateKernel(program, "orth_ml", &status);
-			else
-				kernel_ml = clCreateKernel(program, "orth_ml_noprecomp", &status);
-		}
-
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to create MLEM kernel\n");
-			return status;
-		}
-		//else if (verbose) {
-		//	mexPrintf("OpenCL kernel successfully created\n");
-		//	mexEvalString("pause(.0001);");
-		//}
-	}
-
-	// Kernel for the prepass phase needed for MRAMLA, MBSREM, RBI, COSEM, ACOSEM and ECOSEM
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBI || MethodList.RBIMAP) && w_vec.MBSREM_prepass ||
-		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
-
-		// Create the prepass kernel
-		if (projector_type == 1) {
-			if (precompute)
-				kernel_mramla = clCreateKernel(program, "MRAMLA_prepass", &status);
-			else
-				kernel_mramla = clCreateKernel(program, "MRAMLA_prepass_noprecomp", &status);
-		}
-		else {
-			if (precompute)
-				kernel_mramla = clCreateKernel(program, "MRAMLA_prepass_orth", &status);
-			else
-				kernel_mramla = clCreateKernel(program, "MRAMLA_prepass_orth_noprecomp", &status);
-		}
-
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			mexPrintf("Failed to create prepass kernel\n");
-			return status;
-		}
-		//else if (verbose) {
-		//	mexPrintf("Prepass kernel successfully created\n");
-		//	mexEvalString("pause(.0001);");
-		//}
-	}
-	return status;
-}
-
-cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<cl_mem>& d_lor, std::vector<cl_mem>& d_L, std::vector<cl_mem>& d_zindex,
-	std::vector<cl_mem>& d_xyindex, std::vector<cl_mem>& d_Sino, std::vector<cl_mem>& d_sc_ra, const uint32_t size_x, const size_t size_z, 
-	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const uint32_t prows, std::vector<size_t>& length, const float* x, const float* y, 
-	const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, 
-	cl_context& af_context, const uint32_t subsets, const uint32_t* pituus, const float* atten, const float* norm, const uint32_t* pseudos,
-	cl_command_queue& af_queue, cl_mem& d_atten, cl_mem& d_norm, cl_mem& d_pseudos, cl_mem& d_xcenter, cl_mem& d_ycenter, cl_mem& d_zcenter, 
-	const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, 
-	const size_t size_of_x, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, cl_mem& d_lor_mlem, 
-	cl_mem& d_L_mlem, cl_mem& d_zindex_mlem, cl_mem& d_xyindex_mlem, cl_mem& d_Sino_mlem, cl_mem& d_sc_ra_mlem, cl_mem& d_reko_type, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint32_t n_rekos)
-{
-	cl_int status = CL_SUCCESS;
-	// Create the necessary buffers
-	// Detector coordinates
-	d_z = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_x = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_of_x, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_y = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_of_x, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_xcenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_ycenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_zcenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	// Attenuation data for image-based attenuation
-	d_atten = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	d_norm = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_norm, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	// Pseudo rings
-	d_pseudos = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	if (osem_bool) {
-		d_reko_type = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint8_t) * n_rekos, NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
-			// How many voxels does each LOR traverse
-			if (precompute)
-				d_lor[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
-			else
-				d_lor[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			// Measurement data
-			d_Sino[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
-			if (randoms_correction == 1u)
-				d_sc_ra[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
-			else
-				d_sc_ra[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
-			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-			if (raw) {
-				d_xyindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
-				d_zindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-				d_L[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-			}
-			else {
-				d_xyindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-				d_zindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-				d_L[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-			}
-		}
-	}
-	if (mlem_bool) {
-		if (precompute)
-			d_lor_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko, NULL, &status);
-		else
-			d_lor_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		// Measurement data
-		d_Sino_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		if (randoms_correction == 1u)
-			d_sc_ra_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
-		else
-			d_sc_ra_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-		if (raw) {
-			d_xyindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			d_zindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			d_L_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko * 2, NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-		}
-		else {
-			d_xyindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * koko, NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			d_zindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko, NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			d_L_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-		}
-	}
-
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		mexPrintf("Buffer creation failed\n");
-		return status;
-	}
-	//else {
-	//	mexPrintf("Buffer creation succeeded\n");
-	//	mexEvalString("pause(.0001);");
-	//}
-
-
-	// assign values to the buffers
-	status = clEnqueueWriteBuffer(af_queue, d_x, CL_FALSE, 0, sizeof(float) * size_of_x, x, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_y, CL_FALSE, 0, sizeof(float) * size_of_x, y, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_z, CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_xcenter, CL_FALSE, 0, sizeof(float) * size_center_x, x_center, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_ycenter, CL_FALSE, 0, sizeof(float) * size_center_y, y_center, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_zcenter, CL_FALSE, 0, sizeof(float) * size_center_z, z_center, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_atten, CL_FALSE, 0, sizeof(float) * size_atten, atten, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_norm, CL_FALSE, 0, sizeof(float) * size_norm, norm, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	status = clEnqueueWriteBuffer(af_queue, d_pseudos, CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return status;
-	}
-	if (osem_bool) {
-		status = clEnqueueWriteBuffer(af_queue, d_reko_type, CL_FALSE, 0, sizeof(uint8_t) * n_rekos, reko_type, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
-			if (raw) {
-				status = clEnqueueWriteBuffer(af_queue, d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
-				status = clEnqueueWriteBuffer(af_queue, d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
-				status = clEnqueueWriteBuffer(af_queue, d_L[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2], 0, NULL, NULL);
-			}
-			else {
-				status = clEnqueueWriteBuffer(af_queue, d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]], 0, NULL, NULL);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-				status = clEnqueueWriteBuffer(af_queue, d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]], 0, NULL, NULL);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-				status = clEnqueueWriteBuffer(af_queue, d_L[kk], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
-				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
-					return status;
-				}
-			}
-			if (precompute)
-				status = clEnqueueWriteBuffer(af_queue, d_lor[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &lor1[pituus[kk]], 0, NULL, NULL);
-			else
-				status = clEnqueueWriteBuffer(af_queue, d_lor[kk], CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-
-			status = clEnqueueWriteBuffer(af_queue, d_Sino[kk], CL_FALSE, 0, sizeof(float) * length[kk], &Sin[pituus[kk]], 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
-			if (randoms_correction)
-				status = clEnqueueWriteBuffer(af_queue, d_sc_ra[kk], CL_FALSE, 0, sizeof(float) * length[kk], &apu[pituus[kk]], 0, NULL, NULL);
-			else
-				status = clEnqueueWriteBuffer(af_queue, d_sc_ra[kk], CL_FALSE, 0, sizeof(float), apu, 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-		}
-	}
-	if (mlem_bool) {
-		if (raw) {
-			status = clEnqueueWriteBuffer(af_queue, d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
-			status = clEnqueueWriteBuffer(af_queue, d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
-			status = clEnqueueWriteBuffer(af_queue, d_L_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko * 2ULL, L, 0, NULL, NULL);
-		}
-		else {
-			status = clEnqueueWriteBuffer(af_queue, d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t) * koko, xy_index, 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			status = clEnqueueWriteBuffer(af_queue, d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko, z_index, 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-			status = clEnqueueWriteBuffer(af_queue, d_L_mlem, CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
-			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
-				return status;
-			}
-		}
-		if (precompute)
-			status = clEnqueueWriteBuffer(af_queue, d_lor_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko, lor1, 0, NULL, NULL);
-		else
-			status = clEnqueueWriteBuffer(af_queue, d_lor_mlem, CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-
-		status = clEnqueueWriteBuffer(af_queue, d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko, Sin, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
-		if (randoms_correction)
-			status = clEnqueueWriteBuffer(af_queue, d_sc_ra_mlem, CL_FALSE, 0, sizeof(float) * koko, apu, 0, NULL, NULL);
-		else
-			status = clEnqueueWriteBuffer(af_queue, d_sc_ra_mlem, CL_FALSE, 0, sizeof(float), apu, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return status;
-		}
-	}
-
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		mexPrintf("Buffer write failed\n");
-		return status;
-	}
-	//else {
-	//	mexPrintf("Buffer write succeeded\n");
-	//	mexEvalString("pause(.0001);");
-	//}
-	return status;
-}
-
-// Prepass phase for MRAMLA, COSEM, ACOSEM, ECOSEM
-void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, const std::vector<cl_mem> &lor, const std::vector<cl_mem> &zindex,
-	const std::vector<cl_mem> &xindex, cl_program program, const cl_command_queue af_queue, const cl_context af_context, Weighting& w_vec, 
-	std::vector<af::array>& Summ, const std::vector<cl_mem> &d_Sino, const size_t koko_l, const af::array& cosem, af::array& C_co, 
-	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl_kernel &kernel_mramla, const std::vector<cl_mem> &L, const uint8_t raw, 
-	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix, 
-	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E) {
-
-	cl_int status = CL_SUCCESS;
-
-	cl_uchar MBSREM_prepass = static_cast<cl_uchar>(w_vec.MBSREM_prepass);
-
-	af::array apu_co, apu_aco, uu, sub_index_array, apu_summa, apu_Amin, apu_summa_m;
-
-	cl_mem * d_cosem = cosem.device<cl_mem>();
-
-	af::array apu;
-
-	uint32_t eka = alku;
-
-	if (alku > 0u) {
-		eka = alku - 1u;
-		apu = af::constant(0.f, length[eka]);
-	}
-	else {
-		apu = af::constant(0.f, 1);
-	}
-	cl_mem * d_ACOSEM_lhs = apu.device<cl_mem>();
-
-	const size_t local_size = 64ULL;
-
-	for (uint32_t osa_iter = eka; osa_iter < subsets; osa_iter++) {
-
-		cl_uint kernelInd_MRAMLA_sub = kernelInd_MRAMLA;
-
-		const size_t global_size = length[osa_iter] + (local_size - length[osa_iter] % local_size);
-
-		const uint64_t m_size = static_cast<uint64_t>(length[osa_iter]);
-
-		if (subsets > 1) {
-
-
-			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && alku == 0u) {
-				apu_Amin = af::constant(0.f, length[osa_iter], 1);
-				apu_summa_m = af::constant(0.f, length[osa_iter], 1);
-			}
-			else {
-				apu_Amin = af::constant(0.f, 1, 1);
-				apu_summa_m = af::constant(0.f, 1, 1);
-			}
-
-			if (w_vec.MBSREM_prepass && alku == 0u) {
-				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, im_dim, 1, u64);
-				}
-				else {
-					apu_summa = af::constant(0.f, im_dim, 1);
-				}
-			}
-			else {
-				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, 1, 1, u64);
-				}
-				else {
-					apu_summa = af::constant(0.f, 1, 1);
-				}
-			}
-
-			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
-				if (atomic_64bit)
-					apu_co = af::constant(0ULL, im_dim, 1, u64);
-				else
-					apu_co = af::constant(0.f, im_dim, 1);
-			}
-			else {
-				if (atomic_64bit)
-					apu_co = af::constant(0ULL, 1, 1, u64);
-				else
-					apu_co = af::constant(0.f, 1, 1);
-			}
-
-			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0u) {
-				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
-				else
-					apu_aco = af::constant(0.f, im_dim, 1);
-			}
-			else {
-				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
-				else
-					apu_aco = af::constant(0.f, 1, 1);
-			}
-		}
-		else {
-
-			if (w_vec.MBSREM_prepass && alku == 0u) {
-				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, im_dim, 1, u64);
-				}
-				else {
-					apu_summa = Summ[0];
-				}
-			}
-			else {
-				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, 1, 1, u64);
-				}
-				else {
-					apu_summa = af::constant(0.f, 1, 1);
-				}
-			}
-			apu_summa_m = E;
-
-			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
-				if (atomic_64bit)
-					apu_co = (C_co * TH).as(u64);
-				else
-					apu_co = C_co;
-			}
-			else {
-				if (atomic_64bit)
-					apu_co = af::constant(0ULL, 1, 1, u64);
-				else
-					apu_co = af::constant(0.f, 1, 1);
-			}
-
-			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0) {
-				if (atomic_64bit)
-					apu_aco = (C_aco * TH).as(u64);
-				else
-					apu_aco = C_aco;
-			}
-			else {
-				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
-				else
-					apu_aco = af::constant(0.f, 1, 1);
-			}
-
-			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && alku == 0u)
-				apu_Amin = w_vec.Amin;
-			else
-				apu_Amin = af::constant(0.f, 1, 1);
-		}
-
-		//af::sync();
-
-		cl_mem * d_apu_co = apu_co.device<cl_mem>();
-		cl_mem * d_apu_aco = apu_aco.device<cl_mem>();
-		cl_mem * d_E = apu_summa_m.device<cl_mem>();
-		cl_mem * d_Amin = apu_Amin.device<cl_mem>();
-		cl_mem* d_Summ = apu_summa.device<cl_mem>();
-
-
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &xindex[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &zindex[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_cosem);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &d_Sino[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &d_sc_ra[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(uint32_t), &alku);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &L[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_uchar), &MBSREM_prepass);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_ACOSEM_lhs);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_Amin);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_apu_co);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_apu_aco);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_Summ);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), &lor[osa_iter]);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(cl_mem), d_E);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(uint64_t), &m_size);
-		status = clEnqueueNDRangeKernel(af_queue, kernel_mramla, 1u, NULL, &global_size, &local_size, 0u, NULL, NULL);
-
-		clFinish(af_queue);
-		apu_co.unlock();
-		apu_aco.unlock();
-		apu_summa.unlock();
-		apu_summa_m.unlock();
-		apu.unlock();
-		apu_Amin.unlock();
-
-		if (alku == 0u) {
-			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM)) {
-				if (atomic_64bit)
-					C_co(af::span, osa_iter) = apu_co.as(f32) / TH;
-				else
-					C_co(af::span, osa_iter) = apu_co;
-			}
-			if (MethodListOpenCL.ACOSEM) {
-				if (atomic_64bit)
-					C_aco(af::span, osa_iter) = apu_aco.as(f32) / TH;
-				else
-					C_aco(af::span, osa_iter) = apu_aco;
-			}
-			if (MethodListOpenCL.OSLCOSEM == 2u) {
-				if (atomic_64bit)
-					C_osl(af::span, osa_iter) = apu_co.as(f32) / TH;
-				else
-					C_osl(af::span, osa_iter) = apu_co;
-			}
-			else if (MethodListOpenCL.OSLCOSEM == 1) {
-				if (atomic_64bit)
-					C_osl(af::span, osa_iter) = apu_aco.as(f32) / TH;
-				else
-					C_osl(af::span, osa_iter) = apu_aco;
-			}
-
-
-			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
-				sub_index_array = af::range(af::dim4(length[osa_iter]), 0, u32) + pituus[osa_iter];
-				if (subsets > 1)
-					w_vec.Amin(sub_index_array) = apu_Amin;
-				else
-					w_vec.Amin = apu_Amin;
-			}
-
-			if (w_vec.MBSREM_prepass) {
-				if (compute_norm_matrix == 0u) {
-					if (atomic_64bit)
-						Summ[osa_iter] = (apu_summa).as(f32) / TH;
-					else
-						Summ[osa_iter] = apu_summa;
-					w_vec.D += Summ[osa_iter];
-				}
-				else {
-					Summ[0] = apu_summa;
-					w_vec.D += apu_summa.as(f32);
-				}
-
-				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
-					if (subsets > 1)
-						E(sub_index_array) = apu_summa_m;
-					else
-						E = apu_summa_m;
-				}
-			}
-		}
-		else {
-			w_vec.ACOSEM_rhs = sum(apu);
-		}
-	}
-	cosem.unlock();
-	return;
+	float eps;
+	eps = af::min<float>(epsilon);
+	eps = eps <= 0.f ? epps : eps;
+	return eps;
 }
 
 // Various batch functions
@@ -2848,6 +2037,59 @@ af::array batchDiv(const af::array &lhs, const af::array &rhs) {
 
 af::array batchNotEqual(const af::array &lhs, const af::array &rhs) {
 	return lhs != rhs;
+}
+
+af::array padding(const af::array& im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz,
+	const bool zero_pad)
+{
+	af::array padd;
+	if (zero_pad == 1) {
+		af::dtype type = im.type();
+		if (Nz == 1) {
+			if (im.dims(1) == 1)
+				padd = moddims(im, Nx, Ny, Nz);
+			else
+				padd = im;
+			padd = moddims(im, Nx, Ny, Nz);
+			af::array out = af::constant(0, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, type);
+			out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1)))) = padd;
+			padd = out;
+		}
+		else {
+			if (im.dims(2) == 1)
+				padd = moddims(im, Nx, Ny, Nz);
+			else
+				padd = im;
+			padd = moddims(im, Nx, Ny, Nz);
+			af::array out = af::constant(0, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, padd.dims(2) + 2 * Ndz, type);
+			out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1))),
+				static_cast<double>(Ndz) + af::seq(static_cast<double>(padd.dims(2)))) = padd;
+			padd = out;
+		}
+	}
+	else {
+		if (im.dims(1) == 1)
+			padd = moddims(im, Nx, Ny, Nz);
+		else
+			padd = im;
+		af::array out = af::join(0, af::flip(padd(af::seq(static_cast<double>(Ndx)), af::span, af::span), 0), padd, af::flip(padd(af::seq(static_cast<double>(padd.dims(0) - Ndx), static_cast<double>(padd.dims(0) - 1)), af::span, af::span), 0));
+		out = af::join(1, af::flip(out(af::span, af::seq(static_cast<double>(Ndy)), af::span), 1), out, af::flip(out(af::span, af::seq(static_cast<double>(out.dims(1) - Ndy), static_cast<double>(out.dims(1) - 1)), af::span), 1));
+		if (Nz == 1 || Ndz == 0) {
+			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy);
+			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1)))) = padd;
+			//out(af::seq(static_cast<double>(Ndx - 1))
+			//padd = out;
+		}
+		else {
+			out = af::join(2, af::flip(out(af::span, af::span, af::seq(static_cast<double>(Ndz))), 2), out, af::flip(out(af::span, af::span, af::seq(static_cast<double>(out.dims(2) - Ndz), static_cast<double>(out.dims(2) - 1))), 2));
+			//padd = moddims(im, Nx, Ny, Nz);
+			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, padd.dims(2) + 2 * Ndz);
+			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1))),
+			//	static_cast<double>(Ndz) + af::seq(static_cast<double>(padd.dims(2)))) = padd;
+		}
+		padd = out;
+	}
+	return padd;
 }
 
 // Compute the (isotropic) TV prior
@@ -2958,41 +2200,44 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 			af::array padd2 = af::flat(padding(S.reference_image, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
 			padd2 = padd2(af::join(1, offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1)), offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL))));
 			padd2 = af::moddims(padd2, ima.dims(0), padd2.dims(0) / ima.dims(0));
-			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.) + af::pow(af::batchFunc(S.reference_image, padd2, batchMinus) / S.T, 2.))), w_vec.weights_quad.T(), batchMul), 1);
+			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.) 
+				+ af::pow(af::batchFunc(S.reference_image, padd2, batchMinus) / S.T, 2.))), w_vec.weights_TV.T(), batchMul), 1);
 		}
 		else {
 			af::array padd = af::flat(padding(ima, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
 			padd = padd(af::join(1, af::flat(offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1))), af::flat(offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL)))));
 			padd = af::moddims(padd, ima.dims(0), padd.dims(0) / ima.dims(0));
-			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.))), w_vec.weights_quad.T(), batchMul), 1);
+			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.))), 
+				w_vec.weights_TV.T(), batchMul), 1);
 		}
 	}
 
 	return gradi;
 }
 
-af::array MLEM(const af::array &im, const af::array &Summ, const af::array &rhs)
+//af::array MLEM(const af::array &im, const af::array &Summ, const af::array &rhs)
+//{
+//	//im = im / Summ * rhs;
+//	return (im / Summ * rhs);
+//}
+
+//af::array OSL_MLEM(const af::array &im, const af::array &Summ, const af::array &rhs, const af::array &dU, const float beta)
+//{
+//	//im = im / (Summ + beta * dU) * rhs;
+//	return (im / (Summ + beta * dU) * rhs);
+//}
+
+af::array EM(const af::array &im, const af::array &Summ, const af::array &rhs)
 {
 	//im = im / Summ * rhs;
 	return (im / Summ * rhs);
 }
 
-af::array OSL_MLEM(const af::array &im, const af::array &Summ, const af::array &rhs, const af::array &dU, const float beta)
+af::array OSL(const af::array &Summ, const af::array &dU, const float beta, const float epps)
 {
-	//im = im / (Summ + beta * dU) * rhs;
-	return (im / (Summ + beta * dU) * rhs);
-}
-
-af::array OSEM(const af::array &im, const af::array &Summ, const af::array &rhs)
-{
-	//im = im / Summ * rhs;
-	return (im / Summ * rhs);
-}
-
-af::array OSL_OSEM(const af::array &im, const af::array &Summ, const af::array &rhs, const af::array &dU, const float beta)
-{
-	//im = im / (Summ + beta * dU) * rhs;
-	return (im / (Summ + beta * dU) * rhs);
+	af::array output = (Summ + beta * dU);
+	output(output < epps) = epps;
+	return output;
 }
 
 af::array MBSREM(const af::array & im, const af::array & rhs, const float U, const af::array & pj3, const float* lam, const uint32_t iter, const uint32_t im_dim,
@@ -3003,15 +2248,15 @@ af::array MBSREM(const af::array & im, const af::array & rhs, const float U, con
 	const af::array pp = im < (U / 2.f);
 	UU(pp) = im(pp) / (pj3(pp));
 	UU(!pp) = (U - im(!pp)) / (pj3(!pp));
-	//if (beta == 0.f)
-	//	im += lam[iter] * UU*rhs;
-	//else
-	//	im += lam[iter]*UU*(rhs - beta*dU);
 	if (beta == 0.f)
-		output = im + lam[iter] * UU*(rhs - Summ);
+		output = im + lam[iter] * UU * rhs;
 	else
-		output = im + lam[iter] * UU*(rhs - Summ - beta * dU);
-	output(output <= 0) = epps;
+		output = im + lam[iter] * UU * (rhs - beta * dU);
+	//if (beta == 0.f)
+	//	output = im + lam[iter] * UU*(rhs - Summ);
+	//else
+	//	output = im + lam[iter] * UU*(rhs - Summ - beta * dU);
+	output(output < epps) = epps;
 	output(output >= U) = U - epps;
 	return output;
 }
@@ -3047,26 +2292,17 @@ af::array ROSEM(const af::array & im, const af::array & Summ, const af::array & 
 	return (im + lam[iter] * im / Summ * (rhs - Summ));
 }
 
-af::array RBI(const af::array & im, const af::array & Summ, const af::array & rhs, const af::array& D, const float beta, const af::array & dU)
+af::array RBI(const af::array & im, const af::array & Summ, const af::array & rhs, const af::array& D, const float beta, const af::array& dU)
 {
 	af::array output = im;
 	if (beta == 0.f) {
-		const float Summa = 1.f / af::max<float>(Summ / D);
-		output += Summa * (im / D) * (rhs - Summ);
+		const float Summa = 1.f / af::max<float>(Summ);
+		output += Summa * (rhs - Summa * Summ);
 	}
 	else {
 		const float Summa = 1.f / af::max<float>((Summ + beta * dU) / (D + beta * dU));
-		output += Summa * (im / (D + beta * dU)) *(rhs - Summ - beta * dU);
+		output += Summa * (im / (D + beta * dU)) * (rhs - Summ - beta * dU);
 	}
-	// Original version
-	//if (beta == 0.f) {
-	//	af::array Summa = af::max((1 / D);
-	//	im += (im / D)*rhs;
-	//}
-	//else {
-	//	af::array Summa = af::max((1 + beta * dU) / (D + beta * dU));
-	//	im += (im / (D + beta * dU))*(rhs - beta * dU);
-	//}
 	return output;
 }
 
@@ -3075,28 +2311,27 @@ af::array DRAMA(const af::array & im, const af::array & Summ, const af::array & 
 	return (im + lam[iter * subsets + sub_iter] * im / Summ * (rhs - Summ));
 }
 
-af::array BSREM_MAP(const af::array & im, const float * lam, const uint32_t iter, const float beta, const af::array & dU, const float epps)
+af::array MAP(const af::array & im, const float lam, const float beta, const af::array & dU, const float epps)
 {
-	af::array output;
-	output = im - beta * lam[iter] * im*dU;
-	output(output <= 0.f) = epps;
+	af::array output = im - beta * lam * im * dU;
+	output(output < epps) = epps;
 	return output;
 }
 
-af::array OSL_COSEM(const af::array & im, const af::array & C_co, const af::array & D, const float h, const uint32_t COSEM_TYPE, const af::array & dU, const float beta)
+af::array COSEM(const af::array & im, const af::array & C_co, const af::array & D, const float h, const uint32_t COSEM_TYPE)
 {
 	af::array output;
 	if (COSEM_TYPE == 1) {
-		if (beta == 0.f)
+		//if (beta == 0.f)
 			output = af::pow(af::sum(C_co, 1) / D, h);
-		else
-			output = af::pow(af::sum(C_co, 1) / (D + beta * dU), h);
+		//else
+			//output = af::pow(af::sum(C_co, 1) / (D + beta * dU), h);
 	}
 	else {
-		if (beta == 0.f)
+		//if (beta == 0.f)
 			output = (af::sum(C_co, 1) / D);
-		else
-			output = (af::sum(C_co, 1) / (D + beta * dU));
+		//else
+			//output = (af::sum(C_co, 1) / (D + beta * dU));
 	}
 	return output;
 }
@@ -3105,8 +2340,13 @@ af::array MRP(const af::array & im, const uint32_t medx, const uint32_t medy, co
 	const af::array& offsets, const bool med_no_norm, const uint32_t im_dim)
 {
 	af::array padd = af::flat(padding(im, Nx, Ny, Nz, medx, medy, medz));
-	padd = af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1));
-	af::array grad = af::median(padd, 1);
+	//af::array grad = af::constant(0.f, im_dim, 1);
+	//gfor(af::seq i, im_dim) {
+	//	af::array apu = offsets(i, af::span);
+	//	af::array testi = padd(apu);
+	//	grad(i) = af::median(testi);
+	//}
+	af::array grad = af::median(af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1)), 1);
 	if (med_no_norm)
 		grad = im - grad;
 	else
@@ -3114,55 +2354,40 @@ af::array MRP(const af::array & im, const uint32_t medx, const uint32_t medy, co
 	return grad;
 }
 
-af::array padding(const af::array & im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, 
-	const bool zero_pad)
-{
-	af::array padd;
-	if (zero_pad == 1) {
-		af::dtype type = im.type();
-		if (Nz == 1) {
-			padd = moddims(im, Nx, Ny, Nz);
-			af::array out = af::constant(0, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, type);
-			out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1)))) = padd;
-			padd = out;
-		}
-		else {
-			padd = moddims(im, Nx, Ny, Nz);
-			af::array out = af::constant(0, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, padd.dims(2) + 2 * Ndz, type);
-			out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1))),
-				static_cast<double>(Ndz) + af::seq(static_cast<double>(padd.dims(2)))) = padd;
-			padd = out;
-		}
-	}
-	else {
-		padd = moddims(im, Nx, Ny, Nz);
-		af::array out = af::join(0, af::flip(padd(af::seq(static_cast<double>(Ndx)), af::span, af::span), 0), padd, af::flip(padd(af::seq(static_cast<double>(padd.dims(0) - Ndx), static_cast<double>(padd.dims(0) - 1)), af::span, af::span), 0));
-		out = af::join(1, af::flip(out(af::span, af::seq(static_cast<double>(Ndy)), af::span), 1), out, af::flip(out(af::span, af::seq(static_cast<double>(out.dims(1) - Ndy), static_cast<double>(out.dims(1) - 1)), af::span), 1));
-		if (Nz == 1) {
-			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy);
-			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1)))) = padd;
-			//out(af::seq(static_cast<double>(Ndx - 1))
-			//padd = out;
-		}
-		else {
-			out = af::join(2, af::flip(out(af::span, af::span, af::seq(static_cast<double>(Ndz))), 2), out, af::flip(out(af::span, af::span, af::seq(static_cast<double>(out.dims(2) - Ndz), static_cast<double>(out.dims(2) - 1))), 2));
-			//padd = moddims(im, Nx, Ny, Nz);
-			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, padd.dims(2) + 2 * Ndz);
-			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1))),
-			//	static_cast<double>(Ndz) + af::seq(static_cast<double>(padd.dims(2)))) = padd;
-		}
-		padd = out;
-	}
-	return padd;
-}
-
 af::array Quadratic_prior(const af::array & im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t inffi,
 	const af::array &offsets, const af::array &weights_quad, const uint32_t im_dim)
 {
-	const af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
-	af::array indeksi1 = offsets.col(inffi);
-	const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
-	af::array grad = af::sum(af::batchFunc(af::batchFunc(apu_pad(indeksi1 + 0), af::moddims(apu_pad(indeksi2), im_dim, weights_quad.dims(0)), batchMinus), af::transpose(weights_quad), batchMul), 1);
+	//const af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
+	//af::array indeksi1 = offsets.col(inffi);
+	//const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
+	//af::array grad = af::sum(af::batchFunc(af::batchFunc(apu_pad(indeksi1 + 0), af::moddims(apu_pad(indeksi2), im_dim, weights_quad.dims(0)), batchMinus), af::transpose(weights_quad), batchMul), 1);
+	//int pituus = (Ndx * 2 + 1) * (Ndy * 2 + 1) * (Ndz * 2 + 1);
+	const af::array apu_pad = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+	af::array grad;
+	if (Ndz == 0 || Nz == 1) {
+		grad = af::convolve2(apu_pad, weights_quad);
+		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
+	}
+	else {
+		grad = af::convolve3(apu_pad, weights_quad);
+		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::seq(Ndz, Nz + Ndz - 1));
+	}
+	grad = af::flat(grad);
+	return grad;
+}
+
+af::array Huber_prior(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t inffi,
+	const af::array& offsets, const af::array& weights_huber, const uint32_t im_dim, const float delta)
+{
+	//const af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
+	//af::array indeksi1 = offsets.col(inffi);
+	//const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
+	//af::array grad = af::sum(af::batchFunc(af::batchFunc(apu_pad(indeksi1 + 0), af::moddims(apu_pad(indeksi2), im_dim, weights_huber.dims(0)), batchMinus), af::transpose(weights_huber), batchMul), 1);
+	af::array grad = Quadratic_prior(im, Ndx, Ndy, Ndz, Nx, Ny, Nz, inffi, offsets, weights_huber, im_dim);
+	if (af::sum<dim_t>(delta >= af::abs(af::flat(grad))) == grad.elements() && af::sum<int>(af::flat(grad)) != 0)
+		mexPrintf("Delta value of Huber prior larger than all the pixel difference values\n");
+	grad(grad > delta) = delta;
+	grad(grad < -delta) = -delta;
 	return grad;
 }
 
@@ -3182,7 +2407,7 @@ af::array FMH(const af::array &im, const uint32_t Ndx, const uint32_t Ndy, const
 		luup = 13;
 	}
 	for (uint32_t ii = 0; ii < luup; ii++) {
-		indeksi1 = af::flat(offsets(af::span, af::seq(Ndx * ii, offsets.dims(1) - Ndx * (ii + 1), alku_fmh / Ndx - ii)));
+		indeksi1 = af::flat(offsets(af::span, af::seq(Ndx * ii, offsets.dims(1) - Ndx * (ii) - 1, alku_fmh / Ndx - ii)));
 		af::array apu_pad = af::moddims(padd(indeksi1 + 0), im_dim, fmh_weights.dims(0));
 		grad(af::span, ii) = af::sum(af::batchFunc(apu_pad, af::transpose(fmh_weights(af::span, ii)), batchMul), 1);
 	}
@@ -3216,19 +2441,41 @@ af::array Weighted_mean(const af::array & im, const uint32_t Ndx, const uint32_t
 	const af::array& weighted_weights, const bool med_no_norm, const uint32_t im_dim, const uint32_t mean_type, const float w_sum)
 {
 	af::array grad;
-	af::array padd = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
-	padd = af::moddims(padd(offsets), im_dim, offsets.dims(1));
-	if (mean_type == 1) {
-		grad = af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1) / w_sum;
+	//af::array padd = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
+	//padd = af::moddims(padd(offsets), im_dim, offsets.dims(1));
+	af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+	if (mean_type == 1U) {
+		if (Ndz == 0 || Nz == 1)
+			grad = af::convolve2(padd, weighted_weights / w_sum);
+		else
+			grad = af::convolve3(padd, weighted_weights / w_sum);
+		//grad = af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1) / w_sum;
 	}
-	else if (mean_type == 2) {
-		grad = w_sum / af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1);
+	else if (mean_type == 2U) {
+		if (Ndz == 0 || Nz == 1)
+			grad = af::convolve2(1.f / padd, w_sum / weighted_weights);
+		else
+			grad = af::convolve3(1.f / padd, w_sum / weighted_weights);
+		//grad = w_sum / af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1);
 	}
-	else if (mean_type == 3) {
-		grad = af::exp(af::sum(af::batchFunc(af::log(padd), af::transpose(weighted_weights), batchMul), 1) / w_sum);
+	else if (mean_type == 3U) {
+		if (Ndz == 0 || Nz == 1)
+			grad = af::exp(af::convolve2(af::log(padd), weighted_weights / w_sum));
+		else
+			grad = af::exp(af::convolve3(af::log(padd), weighted_weights / w_sum));
+		//grad = af::exp(af::sum(af::batchFunc(af::log(padd), af::transpose(weighted_weights), batchMul), 1) / w_sum);
 	}
-	else
-		mexErrMsgTxt("Unsupported mean type");
+	else {
+		mexWarnMsgTxt("Unsupported mean type");
+		grad = af::constant(0.f, Nx + Ndx * 2U, Ny + Ndy * 2U, Nz + Ndz * 2U);
+	}
+	if (Ndz == 0 || Nz == 1) {
+		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
+	}
+	else {
+		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::seq(Ndz, Nz + Ndz - 1));
+	}
+	grad = af::flat(grad);
 	if (med_no_norm)
 		grad = im - grad;
 	else
@@ -3346,260 +2593,401 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 	return -grad;
 }
 
-af::array NLM(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nlx, const uint32_t Nly, const uint32_t Nlz, 
-	const float h2, const float epps, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const bool NLM_anatomical, const float NLM_gauss, 
-	const bool NLTV, const bool NLM_MRP, const af::array& NLM_ref)
-{
-	af::array grad;
-	af::array input = af::moddims(im, Nx, Ny, Nz);
-	af::array pixels = af::flat(input);
-	const uint32_t s = Nx * Ny * Nz;
-	const uint32_t psizex = 2u * Nlx + 1u;
-	const uint32_t psizey = 2u * Nly + 1u;
-	const uint32_t psizez = 2u * Nlz + 1u;
-	const uint32_t nsizex = 2u * Ndx + 1u;
-	const uint32_t nsizey = 2u * Ndy + 1u;
-	const uint32_t nsizez = 2u * Ndz + 1u;
-	af::array indexes = af::range(af::dim4(s), 0, u32) + 1;
-	indexes = padding(indexes, Nx, Ny, Nz, Ndx, Ndy, Ndz, true);
-	indexes = im2col_3D(indexes, nsizex, nsizey, nsizez);
-	indexes = af::moddims(indexes, nsizex * nsizey * nsizez, s);
-	af::array TT = af::range(af::dim4(nsizex * nsizey * nsizez,s), 1, u32) + 1;
-	af::array edges = af::join(1, af::flat(TT), af::flat(indexes));
-	TT = af::flat(TT) >= af::flat(indexes);
-	edges = edges(!TT,af::span) - 1;
-	af::array padInput;
-	if (NLM_anatomical) {
-		padInput = padding(NLM_ref, Nx, Ny, Nz, Nlx, Nly, Nlz);
+//af::array im2col_3D(const af::array& A, const uint32_t blocksize1, const uint32_t blocksize2, const uint32_t blocksize3) {
+//	const uint32_t Nx = A.dims(0);
+//	const uint32_t Ny = A.dims(1);
+//	const uint32_t Nz = A.dims(2);
+//	af::array start_ind = af::flat(af::batchFunc(af::range(af::dim4(Nx - blocksize1 + 1), 0, u32) + 1, af::range(af::dim4(1, Ny - blocksize2 + 1), 1, u32) * Nx, batchPlus));
+//	start_ind = af::reorder(af::transpose(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize1), 1, u32), batchPlus)), 0, 2, 1);
+//	start_ind = af::moddims(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize2), 1, u32) * Nx, batchPlus), blocksize1 * blocksize2, start_ind.dims(2));
+//	start_ind = af::batchFunc(start_ind, Nx * Ny * af::reorder(af::range(af::dim4(1, Nz - blocksize3 + 1), 1, u32), 0, 2, 1), batchPlus);
+//	start_ind = af::tile(start_ind, blocksize3, 1, 1);
+//	af::array apu = af::transpose(af::range(af::dim4(blocksize3), 0, u32) * Nx * Ny);
+//	apu = af::flat(af::tile(apu, blocksize1 * blocksize2, 1));
+//	start_ind = af::batchFunc(start_ind, apu, batchPlus);
+//	return A(start_ind - 1);
+//}
+//
+//af::array sparseSum(const af::array& W, const uint32_t s) {
+//	af::array summa = af::constant(0.f, s, 1, f32);
+//	af::array temp_row = af::sparseGetRowIdx(W);
+//	af::array temp_val = af::sparseGetValues(W);
+//	for (int kk = 0; kk < s; kk++) {
+//		const int32_t* ind1 = temp_row(kk).host<int32_t>();
+//		const int32_t* ind2 = temp_row(kk + 1).host<int32_t>();
+//		if (*ind1 == *ind2)
+//			continue;
+//		summa(kk) = af::sum(temp_val(af::seq(static_cast<double>(*ind1), static_cast<double>(*ind2 - 1))));
+//	}
+//	return summa;
+//}
+
+af::array computeConvolution(const af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, 
+	const uint32_t n_rekos) {
+	af::array apu = af::moddims(vec, Nx, Ny, Nz, n_rekos);
+	//af::dim4 pad_dim1 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
+	//af::dim4 pad_dim2 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
+	//array apu = vec.im_os;
+	for (int ff = 0; ff < n_rekos; ff++) {
+		af::array apu2 = padding(apu(af::span, af::span, af::span, ff), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+		//af::array apu2 = apu(af::span, af::span, af::span, ff);
+		//apu2 = af::pad(apu2, pad_dim1, pad_dim2, AF_PAD_SYM);
+		apu2 = af::convolve3(apu2, g);
+		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
+		apu(af::span, af::span, af::span, ff) = apu2;
 	}
-	else {
-		padInput = padding(im, Nx, Ny, Nz, Nlx, Nly, Nlz);
-	}
-	af::array filter = af::gaussianKernel(psizex, psizey, NLM_gauss, NLM_gauss);
-	filter = af::flat(af::tile(filter, 1, 1, psizez));
-	filter = af::tile(af::sqrt(filter.T()), s);
-	padInput = im2col_3D(padInput, psizex, psizey, psizez);
-	padInput = af::transpose(af::moddims(padInput, psizex * psizey * psizez, s)) * filter;
-	const af::array edge1 = edges(af::span, 0).as(s32);
-	const af::array edge2 = edges(af::span, 1).as(s32);
-	af::array diff = padInput(edge1, af::span) - padInput(edge2, af::span);
-	diff = af::exp(-af::sum(diff * diff, 1, 0) / h2);
-	diff(diff == 0) = af::min<float>(diff(diff > 0));
-	af::array maxv = af::max(diff);
-	af::array W = af::sparseConvertTo(af::sparse(s, s, diff, edge1, edge2, AF_STORAGE_COO), AF_STORAGE_CSR);
-	W = W + af::sparseConvertTo(af::sparse(s, s, diff, edge2, edge1, AF_STORAGE_COO), AF_STORAGE_CSR) + af::sparseConvertTo(af::sparse(s, s, af::tile(maxv, s), af::range(af::dim4(s), 0, s32), af::range(af::dim4(s), 0, s32), AF_STORAGE_COO), AF_STORAGE_CSR);
-	//af::array summa = 1.f / af::sum(W, 1, 0);
-	af::array summa = sparseSum(W, s);
-	if (NLTV) {
-		af::array S = pixels(edge1, af::span) - pixels(edge2, af::span);
-		af::array K = af::sparseConvertTo(af::sparse(s, s, S, edge1, edge2, AF_STORAGE_COO), AF_STORAGE_CSR);
-		//grad = af::sum(W * K, 1, 0) / af::sqrt(af::sum(W * (K * K), 1, 0) + epps) * summa;
-		grad = (sparseSum(W * K, s) * summa) / af::sqrt(sparseSum(W * K * K, s) * summa + epps);
-	}
-	else if (NLM_MRP) {
-		grad = pixels - af::matmul(W, pixels) * summa;
-	}
-	else {
-		af::array S = pixels(edge1, af::span) - pixels(edge2, af::span);
-		af::array K = af::sparseConvertTo(af::sparse(s, s, S, edge1, edge2, AF_STORAGE_COO), AF_STORAGE_CSR);
-		grad = sparseSum(W * K, s) * summa;
-		//grad = af::sum(W * K, 1, 0) * summa;
-	}
-	return grad;
+	return af::flat(apu);
 }
 
-void precomp_siddon(const cl_context &context, const cl_command_queue &commandQueues,
-	uint16_t* lor1, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny,
-	const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz,
-	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices,
-	const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par,
-	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim,
-	const cl_kernel &kernel, const size_t numel_x) {
-
-	cl_int status = CL_SUCCESS;
-	const uint32_t Nxy = Nx * Ny;
-
-	size_t osa_length = loop_var_par;
-
-	cl_mem d_z, d_x, d_y, d_pseudos, d_L, d_lor;
-
-
-	// Create the necessary buffers
-	d_z = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
+void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, const uint32_t subsets) {
+	//af::dim4 pad_dim1 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
+	//af::dim4 pad_dim2 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
+	af::array jelppi = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+	af::array apu = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+	//af::array jelppi = af::moddims(vec(af::span, iter + 1u), Nx, Ny, Nz);
+	//af::array apu = af::moddims(vec(af::span, iter + 1u), Nx, Ny, Nz);
+	//jelppi = af::pad(jelppi, pad_dim1, pad_dim2, AF_PAD_SYM);
+	//apu = af::pad(apu, pad_dim1, pad_dim2, AF_PAD_SYM);
+	for (int kk = 0; kk < (iter + 1u) * subsets; kk++) {
+		af::array apu2 = convolve3(jelppi, g);
+		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
+		apu2 = padding(apu2, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+		jelppi *= af::convolve3(apu / apu2, g);
+		jelppi = jelppi(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
+		if (kk < (iter + 1u) * subsets - 1)
+			jelppi = padding(jelppi, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	}
-	d_x = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	d_y = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	d_pseudos = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	d_lor = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(uint16_t) * osa_length, NULL, &status);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	if (raw) {
-		d_L = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * osa_length * 2, NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return;
-		}
-	}
-	else {
-		d_L = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return;
-		}
-	}
-
-	status = clEnqueueWriteBuffer(commandQueues, d_x, CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	status = clEnqueueWriteBuffer(commandQueues, d_y, CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	status = clEnqueueWriteBuffer(commandQueues, d_z, CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-	status = clEnqueueWriteBuffer(commandQueues, d_pseudos, CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-		return;
-	}
-
-	if (raw) {
-		status = clEnqueueWriteBuffer(commandQueues, d_L, CL_FALSE, 0, sizeof(uint16_t) * osa_length * 2, L, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return;
-		}
-	}
-	else {
-		status = clEnqueueWriteBuffer(commandQueues, d_L, CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
-			return;
-		}
-	}
-
-
-	clSetKernelArg(kernel, 0, sizeof(uint32_t), &Nxy);
-	clSetKernelArg(kernel, 1, sizeof(uint32_t), &im_dim);
-	clSetKernelArg(kernel, 2, sizeof(uint32_t), &Nx);
-	clSetKernelArg(kernel, 3, sizeof(uint32_t), &Ny);
-	clSetKernelArg(kernel, 4, sizeof(uint32_t), &Nz);
-	clSetKernelArg(kernel, 5, sizeof(float), &dz);
-	clSetKernelArg(kernel, 6, sizeof(float), &dx);
-	clSetKernelArg(kernel, 7, sizeof(float), &dy);
-	clSetKernelArg(kernel, 8, sizeof(float), &bz);
-	clSetKernelArg(kernel, 9, sizeof(float), &bx);
-	clSetKernelArg(kernel, 10, sizeof(float), &by);
-	clSetKernelArg(kernel, 11, sizeof(float), &bzb);
-	clSetKernelArg(kernel, 12, sizeof(float), &maxxx);
-	clSetKernelArg(kernel, 13, sizeof(float), &maxyy);
-	clSetKernelArg(kernel, 14, sizeof(float), &zmax);
-	clSetKernelArg(kernel, 15, sizeof(float), &NSlices);
-	clSetKernelArg(kernel, 16, sizeof(uint32_t), &size_x);
-	clSetKernelArg(kernel, 17, sizeof(uint16_t), &TotSinos);
-	clSetKernelArg(kernel, 18, sizeof(uint32_t), &det_per_ring);
-	clSetKernelArg(kernel, 19, sizeof(uint8_t), &raw);
-	clSetKernelArg(kernel, 20, sizeof(uint32_t), &prows);
-
-	cl_event event1;
-
-	clSetKernelArg(kernel, 21, sizeof(cl_mem), &d_pseudos);
-	clSetKernelArg(kernel, 22, sizeof(cl_mem), &d_x);
-	clSetKernelArg(kernel, 23, sizeof(cl_mem), &d_y);
-	clSetKernelArg(kernel, 24, sizeof(cl_mem), &d_z);
-	clSetKernelArg(kernel, 25, sizeof(cl_mem), &d_lor);
-	clSetKernelArg(kernel, 26, sizeof(cl_mem), &d_L);
-	status = clEnqueueNDRangeKernel(commandQueues, kernel, 1, NULL, &osa_length, NULL, 0, NULL, &event1);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-
-		clReleaseEvent(event1);
-
-		clReleaseMemObject(d_z);
-		clReleaseMemObject(d_x);
-		clReleaseMemObject(d_y);
-		clReleaseMemObject(d_pseudos);
-		clReleaseMemObject(d_L);
-		clReleaseMemObject(d_lor);
-		return;
-	}
-
-	status = clEnqueueReadBuffer(commandQueues, d_lor, CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, 1, &event1, NULL);
-	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
-
-		clReleaseEvent(event1);
-
-		clReleaseMemObject(d_z);
-		clReleaseMemObject(d_x);
-		clReleaseMemObject(d_y);
-		clReleaseMemObject(d_pseudos);
-		clReleaseMemObject(d_L);
-		clReleaseMemObject(d_lor);
-		return;
-	}
-
-	clReleaseEvent(event1);
-
-	clReleaseMemObject(d_z);
-	clReleaseMemObject(d_x);
-	clReleaseMemObject(d_y);
-	clReleaseMemObject(d_pseudos);
-	clReleaseMemObject(d_L);
-	clReleaseMemObject(d_lor);
-
-	af::sync();
-	return;
+	jelppi = af::flat(jelppi);
+	vec(af::span, iter + 1u) = jelppi;
 }
 
-af::array im2col_3D(const af::array& A, const uint32_t blocksize1, const uint32_t blocksize2, const uint32_t blocksize3) {
-	const uint32_t Nx = A.dims(0);
-	const uint32_t Ny = A.dims(1);
-	const uint32_t Nz = A.dims(2);
-	af::array start_ind = af::flat(af::batchFunc(af::range(af::dim4(Nx - blocksize1 + 1), 0, u32) + 1, af::range(af::dim4(1, Ny - blocksize2 + 1), 1, u32) * Nx, batchPlus));
-	start_ind = af::reorder(af::transpose(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize1), 1, u32), batchPlus)), 0, 2, 1);
-	start_ind = af::moddims(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize2), 1, u32) * Nx, batchPlus), blocksize1 * blocksize2, start_ind.dims(2));
-	start_ind = af::batchFunc(start_ind, Nx * Ny * af::reorder(af::range(af::dim4(1, Nz - blocksize3 + 1), 1, u32), 0, 2, 1), batchPlus);
-	start_ind = af::tile(start_ind, blocksize3, 1, 1);
-	af::array apu = af::transpose(af::range(af::dim4(blocksize3), 0, u32) * Nx * Ny);
-	apu = af::flat(af::tile(apu, blocksize1 * blocksize2, 1));
-	start_ind = af::batchFunc(start_ind, apu, batchPlus);
-	return A(start_ind - 1);
+void computeDeblur(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets) {
+	if (MethodList.OSEM) {
+		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.MRAMLA) {
+		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.RAMLA) {
+		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.ROSEM) {
+		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.RBI) {
+		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.DRAMA) {
+		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.COSEM) {
+		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.ECOSEM) {
+		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.ACOSEM) {
+		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+	}
+
+	if (MethodList.MRP) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+
+	if (MethodList.Quad) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+
+	if (MethodList.Huber) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+
+	if (MethodList.L) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.FMH) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.WeightedMean) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.TV) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.AD) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.APLS) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.TGV) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.NLM) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.CUSTOM) {
+		if (MethodList.OSLOSEM) {
+			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.BSREM) {
+			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.MBSREM) {
+			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.ROSEMMAP) {
+			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.RBIOSL) {
+			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.OSLCOSEM > 0) {
+			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
 }
 
-af::array sparseSum(const af::array& W, const uint32_t s) {
-	af::array summa = af::constant(0.f, s, 1, f32);
-	af::array temp_row = af::sparseGetRowIdx(W);
-	af::array temp_val = af::sparseGetValues(W);
-	for (int kk = 0; kk < s; kk++) {
-		const int32_t* ind1 = temp_row(kk).host<int32_t>();
-		const int32_t* ind2 = temp_row(kk + 1).host<int32_t>();
-		if (*ind1 == *ind2)
-			continue;
-		summa(kk) = af::sum(temp_val(af::seq(static_cast<double>(*ind1), static_cast<double>(*ind2 - 1))));
+
+void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets) {
+	if (MethodList.MLEM) {
+		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
 	}
-	return summa;
+	if (MethodList.OSLMLEM) {
+		if (MethodList.MRP) {
+			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.Quad) {
+			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.Huber) {
+			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.L) {
+			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.FMH) {
+			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.WeightedMean) {
+			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.TV) {
+			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.AD) {
+			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.APLS) {
+			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.TGV) {
+			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+		if (MethodList.NLM) {
+			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
+	if (MethodList.CUSTOM) {
+		if (MethodList.OSLMLEM) {
+			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		}
+	}
 }

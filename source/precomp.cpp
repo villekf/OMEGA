@@ -22,7 +22,7 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, 
 	const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
 	const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, 
-	const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl_kernel& kernel, const size_t numel_x) {
+	const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl_kernel& kernel, const size_t numel_x, const size_t local_size) {
 
 	cl_int status = CL_SUCCESS;
 	const uint32_t Nxy = Nx * Ny;
@@ -43,9 +43,6 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	cl_mem* d_pseudos = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
 	cl_mem* d_L = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
 	cl_mem* d_lor = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
-
-	//mexPrintf("n_devices = %d\n", num_devices_context);
-	//mexPrintf("length = %d\n", length[0]);
 
 	// Create the necessary buffers
 	for (cl_uint i = 0; i < num_devices_context; i++) {
@@ -136,8 +133,6 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 		}
 	}
 
-	const size_t local_size = 64ULL;
-
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		clFinish(commandQueues[i]);
 	}
@@ -171,7 +166,12 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	cl_event event1;
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		const size_t global_size = length[i] + (local_size - length[i] % local_size);
+		size_t erotus = length[i] % local_size;
+
+		if (erotus > 0)
+			erotus = (local_size - erotus);
+
+		const size_t global_size = length[i] + erotus;
 		const uint64_t m_size = static_cast<uint64_t>(length[i]);
 
 		clSetKernelArg(kernel, 21, sizeof(cl_mem), &d_pseudos[i]);

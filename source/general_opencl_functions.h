@@ -1,7 +1,7 @@
 /**************************************************************************
 * General functions for all the OpenCL kernel files.
 *
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2020  Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -17,10 +17,10 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
-#define THR 0.001f
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
+#ifndef ATOMIC
 inline void atomicAdd_g_f(volatile __global float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -33,65 +33,251 @@ inline void atomicAdd_g_f(volatile __global float *addr, float val) {
 		current.u32 = atomic_cmpxchg((volatile __global unsigned int *)addr, expected.u32, next.u32);
 	} while (current.u32 != expected.u32);
 }
+#endif
 
-// Compute the Euclidean norm of a vector
-inline float e_norm(const float x, const float y, const float z) {
-	return native_sqrt(x * x + y * y + z * z);
+#ifdef AF
+#ifdef MBSREM
+// Struct for boolean operators indicating whether a certain method is selected (OpenCL)
+typedef struct _RecMethodsOpenCL {
+	char MLEM, OSEM, MRAMLA_, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
+	char MRP, Quad, Huber, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
+	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM;
+} RecMethodsOpenCL;
+#endif
+
+#ifndef MBSREM
+// Denominator (forward projection)
+inline void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
+#ifdef NREKOS1
+	ax[0] += (local_ele * d_OSEM[local_ind]);
+#elif defined(NREKOS2)
+	ax[0] += (local_ele * d_OSEM[local_ind]);
+	ax[1] += (local_ele * d_OSEM[local_ind + d_N]);
+#else
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+		ax[kk] += (local_ele * d_OSEM[local_ind]);
+		local_ind += d_N;
+	}
+#endif
 }
 
-// Compute the linear weight for the current voxel
-//inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
-//	const float xp, const float yp, const float zp) {
-//
-//	float x1, y1, z1, x0, y0, z0;
-//
-//	x0 = xp - xs;
-//	y0 = yp - ys;
-//	z0 = zp - zs;
-//
-//	// Cross product
-//	x1 = yl * z0 - zl * y0;
-//	y1 = zl * x0 - xl * z0;
-//	z1 = xl * y0 - yl * x0;
-//
-//	const float normi = e_norm(x1, y1, z1);
-//
-//	return (1.f - normi / crystal_size_z);
-//}
-
-// Gaussian weight
-inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
-	const float xp, const float yp, const float zp) {
-
-	float x1, y1, z1, x0, y0, z0;
-
-	x0 = xp - xs;
-	y0 = yp - ys;
-	z0 = zp - zs;
-
-	// Cross product
-	x1 = yl * z0 - zl * y0;
-	y1 = zl * x0 - xl * z0;
-	z1 = xl * y0 - yl * x0;
-
-	const float normi = e_norm(x1, y1, z1);
-
-	float gauss = 0.f;
-
-	if (normi < crystal_size_z)
-		gauss = (1.f - native_exp(-(normi * normi) / (2 * (crystal_size_z / 2.35482f) * (crystal_size_z / 2.35482f))));
-
-	return gauss;
+// Nominator (backprojection) in MLEM
+inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
+	const float temp, const uint randoms_correction, const __global float* d_sc_ra, const uint idx) {
+	float local_rand = 0.f;
+	if (randoms_correction == 1u)
+		local_rand = d_sc_ra[idx];
+#ifdef NREKOS1
+	if (ax[0] <= 0.f)
+		ax[0] = d_epps;
+	else
+		ax[0] *= temp;
+	if (randoms_correction == 1u)
+		ax[0] += local_rand;
+#ifdef MRAMLA
+	if (MethodList[0] != 1u)
+		ax[0] = d_Sino / ax[0];
+	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
+		if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+		else
+			ax[0] = d_Sino / ax[0];
+	}
+#else
+	ax[0] = d_Sino / ax[0];
+#endif
+#elif defined(NREKOS2)
+	if (ax[0] <= 0.f)
+		ax[0] = d_epps;
+	else
+		ax[0] *= temp;
+	if (randoms_correction == 1u)
+		ax[0] += local_rand;
+#ifdef MRAMLA
+	if (MethodList[0] != 1u)
+		ax[0] = d_Sino / ax[0];
+	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
+		if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+		else
+			ax[0] = d_Sino / ax[0];
+	}
+#else
+	ax[0] = d_Sino / ax[0];
+#endif
+	if (ax[1] <= 0.f)
+		ax[1] = d_epps;
+	else
+		ax[1] *= temp;
+	if (randoms_correction == 1u)
+		ax[1] += local_rand;
+#ifdef MRAMLA
+	if (MethodList[1] != 1u)
+		ax[1] = d_Sino / ax[1];
+	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
+		if (ax[1] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+			ax[1] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
+		else
+			ax[1] = d_Sino / ax[1];
+	}
+#else
+	ax[1] = d_Sino / ax[1];
+#endif
+#else
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+		if (ax[kk] <= 0.f)
+			ax[kk] = d_epps;
+		else
+			ax[kk] *= temp;
+		if (randoms_correction == 1u)
+			ax[kk] += local_rand;
+#ifdef MRAMLA
+		if (MethodList[kk] != 1u)
+			ax[kk] = d_Sino / ax[kk];
+		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
+			if (ax[kk] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+				ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+			else
+				ax[kk] = d_Sino / ax[kk];
+		}
+#else
+		ax[kk] = d_Sino / ax[kk];
+#endif
+	}
+#endif
 }
-
-inline uint compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
-	uint local_ind = tempi * d_N + tempijk + convert_uint_sat(tempk) * Nyx;
-	return local_ind;
+#endif
+#ifdef MBSREM
+// Nominator (backprojection), COSEM
+inline void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const uint d_randoms, const __global float* d_sc_ra,
+	const uint idx) {
+	if (*axCOSEM <= 0.f)
+		* axCOSEM = d_epps;
+	else
+		*axCOSEM *= temp;
+	if (d_randoms == 1u)
+		* axCOSEM += d_sc_ra[idx];
+	*axCOSEM = local_sino / *axCOSEM;
 }
+#endif
+#ifndef MBSREM
+inline void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
+	const uint d_N, __global CAST* d_rhs_OSEM) {
+#ifdef NREKOS1
+//#ifdef COSEM
+//	if (MethodList[0] < 2u)
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele* ax[0] * TH));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele* ax[0]));
+//#endif
+//	else if (MethodList[0] == 2u) // COSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * (local_ele* d_COSEM[local_ind] * TH)));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele* d_COSEM[local_ind])));
+//#endif
+//	else if (MethodList[0] == 3u) //ACOSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * TH* (local_ele* d_ACOSEM[local_ind])));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], ax[0] * (local_ele* d_ACOSEM[local_ind]));
+//#endif
+//#else
+#ifdef ATOMIC
+	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
+#else
+	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
+//#endif
+#endif
+#elif defined(NREKOS2)
+//#ifdef COSEM
+//	if (MethodList[0] < 2u)
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele* ax[0] * TH));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele* ax[0]));
+//#endif
+//	else if (MethodList[0] == 2u) // COSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * (local_ele* d_COSEM[local_ind] * TH)));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele* d_COSEM[local_ind])));
+//#endif
+//	else if (MethodList[0] == 3u) //ACOSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * TH* (local_ele* d_ACOSEM[local_ind])));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], ax[0] * (local_ele* d_ACOSEM[local_ind]));
+//#endif
+//	if (MethodList[1] < 2u)
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(local_ele* ax[1] * TH));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele* ax[1]));
+//#endif
+//	else if (MethodList[1] == 2u) // COSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(ax[1] * (local_ele* d_COSEM[local_ind + d_N] * TH)));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (ax[1] * (local_ele* d_COSEM[local_ind + d_N])));
+//#endif
+//	else if (MethodList[1] == 3u) //ACOSEM
+//#ifdef ATOMIC
+//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(ax[1] * TH* (local_ele* d_ACOSEM[local_ind + d_N])));
+//#else
+//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], ax[1] * (local_ele* d_ACOSEM[local_ind + d_N]));
+//#endif
+//#else
+#ifdef ATOMIC
+	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
+	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(local_ele * ax[1] * TH));
+#else
+	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
+	atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
+#endif
+//#endif
+#else
+	uint yy = local_ind;
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+//#ifdef COSEM
+//		if (MethodList[kk] < 2u)
+//#ifdef ATOMIC
+//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(local_ele * ax[kk] * TH));
+//#else
+//			atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
+//#endif
+//		else if (MethodList[kk] == 2u) // COSEM
+//#ifdef ATOMIC
+//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(ax[kk] * (local_ele * d_COSEM[yy] * TH)));
+//#else
+//			atomicAdd_g_f(&d_rhs_OSEM[yy], (ax[kk] * (local_ele * d_COSEM[yy])));
+//#endif
+//		else if (MethodList[kk] == 3u) // ACOSEM
+//#ifdef ATOMIC
+//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(ax[kk] * TH * (local_ele * d_ACOSEM[yy])));
+//#else
+//			atomicAdd_g_f(&d_rhs_OSEM[yy], ax[kk] * (local_ele * d_ACOSEM[yy]));
+//#endif
+//#else
+#ifdef ATOMIC
+		atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(local_ele * ax[kk] * TH));
+#else
+		atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
+#endif
+//#endif
+		yy += d_N;
+	}
+#endif
+}
+#endif
 
-
+#else
 // Denominator (forward projection), multi-GPU version
-inline void denominator_multi(float local_ele, float* axOSEM, const __global float* d_OSEM) {
+inline void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
 	*axOSEM += (local_ele * *d_OSEM);
 }
 
@@ -104,10 +290,13 @@ inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epp
 		*axOSEM *= temp;
 	if (randoms_correction == 1u)
 		* axOSEM += d_sc_ra[idx];
+#ifdef BP
 	*axOSEM = d_Sino / *axOSEM;
+#endif
 }
+#endif
 
-
+#if defined(RAW) && !defined(N_RAYS)
 // Get the detector coordinates for the current (raw) measurement
 inline void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
@@ -134,9 +323,11 @@ inline void get_detector_coordinates_raw(const __global float *d_x, const __glob
 	*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
 	*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
 }
+#endif
 
 
 
+#if defined(N_RAYS) && defined(RAW)
 // Get the detector coordinates for the current (raw) measurement
 inline void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, 
@@ -158,46 +349,40 @@ inline void get_detector_coordinates_raw_multiray(const __global float* d_x, con
 		*zd = d_zdet[loop2];
 	}
 	// Get the current x- and y-detector coordinates
-	*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
-	*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
-	*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
-	*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
-
-	if (lor == 1) {
-		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
-		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
-		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
-		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
+	if (N_RAYS3D > 1) {
+		ushort rays3D = N_RAYS3D;
+		if (N_RAYS3D % 2 == 0)
+			rays3D++;
+		int r[N_RAYS3D + 1];
+		int hh = 0;
+		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
+			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
+			else {
+				r[hh] = kk;
+				hh++;
+			}
+		}
+		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
+		*zs += (cr_pz * rr);
+		*zd += (cr_pz * rr);
 	}
-	else if (lor == 3u || lor == 5u) {
-		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring * 2u];
-		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring * 2u];
-		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring * 2u];
-		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring * 2u];
-		if (lor == 3u) {
-			*zs -= cr_pz;
-			*zd -= cr_pz;
-		}
-		else {
-			*zs += cr_pz;
-			*zd += cr_pz;
-		}
+	if (N_RAYS2D > 1) {
+		const ushort ll = (lor - 1) / N_RAYS3D;
+		*xs = d_x[detektorit1 - d_det_per_ring * loop1 + d_det_per_ring * ll];
+		*xd = d_x[detektorit2 - d_det_per_ring * loop2 + d_det_per_ring * ll];
+		*ys = d_y[detektorit1 - d_det_per_ring * loop1 + d_det_per_ring * ll];
+		*yd = d_y[detektorit2 - d_det_per_ring * loop2 + d_det_per_ring * ll];
 	}
 	else {
-		*xs = d_x[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring];
-		*xd = d_x[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring];
-		*ys = d_y[detektorit1 - d_det_per_ring * (loop1)+d_det_per_ring];
-		*yd = d_y[detektorit2 - d_det_per_ring * (loop2)+d_det_per_ring];
-		if (lor == 2u) {
-			*zs -= cr_pz;
-			*zd -= cr_pz;
-		}
-		else {
-			*zs += cr_pz;
-			*zd += cr_pz;
-		}
+		*xs = d_x[detektorit1 - d_det_per_ring * loop1];
+		*xd = d_x[detektorit2 - d_det_per_ring * loop2];
+		*ys = d_y[detektorit1 - d_det_per_ring * loop1];
+		*yd = d_y[detektorit2 - d_det_per_ring * loop2];
 	}
 }
+#endif
+
+#if !defined(N_RAYS) && !defined(RAW)
 // Get the detector coordinates for the current sinogram bin
 inline void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
 	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
@@ -224,105 +409,74 @@ inline void get_detector_coordinates(const __global uint *d_xyindex, const __glo
 		*zd = d_zdet[d_zindex[idx] + d_TotSinos];
 	}
 }
+#endif
 
+#if defined(N_RAYS) && !defined(RAW)
 // Get the detector coordinates for the current sinogram bin
 inline void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x,	const uint idx, 
 	const ushort d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float* d_x, const __global float* d_y,
 	const __global float* d_zdet, const ushort lor, const float cr_pz) {
 
-	if (lor == 1u) {
-		if (d_xyindex[idx] >= d_size_x) {
-			*xs = d_x[d_xyindex[idx]];
-			*xd = d_x[d_xyindex[idx] - d_size_x];
-			*ys = d_y[d_xyindex[idx]];
-			*yd = d_y[d_xyindex[idx] - d_size_x];
+	if (N_RAYS3D > 1) {
+		ushort rays3D = N_RAYS3D;
+		if (N_RAYS3D % 2 == 0)
+			rays3D++;
+		int r[N_RAYS3D + 1];
+		int hh = 0;
+		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
+			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
+			else {
+				r[hh] = kk;
+				hh++;
+			}
 		}
-		else {
-			*xs = d_x[d_xyindex[idx]];
-			*xd = d_x[d_xyindex[idx] + d_size_x];
-			*ys = d_y[d_xyindex[idx]];
-			*yd = d_y[d_xyindex[idx] + d_size_x];
-		}
+		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
+		*zs = d_zdet[d_zindex[idx]] + cr_pz * rr;
 		if (d_zindex[idx] >= d_TotSinos) {
-			*zs = d_zdet[d_zindex[idx]];
-			*zd = d_zdet[d_zindex[idx] - d_TotSinos];
+			*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz * rr;
 		}
 		else {
-			*zs = d_zdet[d_zindex[idx]];
-			*zd = d_zdet[d_zindex[idx] + d_TotSinos];
-		}
-	}
-	else if (lor == 3u || lor == 5u) {
-		if (d_xyindex[idx] >= d_size_x) {
-			*xs = d_x[d_xyindex[idx] + d_size_x * 4u];
-			*xd = d_x[d_xyindex[idx] + d_size_x * 3u];
-			*ys = d_y[d_xyindex[idx] + d_size_x * 4u];
-			*yd = d_y[d_xyindex[idx] + d_size_x * 3u];
-		}
-		else {
-			*xs = d_x[d_xyindex[idx] + d_size_x * 4u];
-			*xd = d_x[d_xyindex[idx] + d_size_x * 5u];
-			*ys = d_y[d_xyindex[idx] + d_size_x * 4u];
-			*yd = d_y[d_xyindex[idx] + d_size_x * 5u];
-		}
-		if (lor == 3u) {
-			if (d_zindex[idx] >= d_TotSinos) {
-				*zs = d_zdet[d_zindex[idx]] - cr_pz;
-				*zd = d_zdet[d_zindex[idx] - d_TotSinos] - cr_pz;
-			}
-			else {
-				*zs = d_zdet[d_zindex[idx]] - cr_pz;
-				*zd = d_zdet[d_zindex[idx] + d_TotSinos] - cr_pz;
-			}
-		}
-		else {
-			if (d_zindex[idx] >= d_TotSinos) {
-				*zs = d_zdet[d_zindex[idx]] + cr_pz;
-				*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz;
-			}
-			else {
-				*zs = d_zdet[d_zindex[idx]] + cr_pz;
-				*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz;
-			}
+			*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz * rr;
 		}
 	}
 	else {
-		if (d_xyindex[idx] >= d_size_x) {
-			*xs = d_x[d_xyindex[idx] + d_size_x * 2u];
-			*xd = d_x[d_xyindex[idx] + d_size_x];
-			*ys = d_y[d_xyindex[idx] + d_size_x * 2u];
-			*yd = d_y[d_xyindex[idx] + d_size_x];
+		*zs = d_zdet[d_zindex[idx]];
+		if (d_zindex[idx] >= d_TotSinos) {
+			*zd = d_zdet[d_zindex[idx] - d_TotSinos];
 		}
 		else {
-			*xs = d_x[d_xyindex[idx] + d_size_x * 2u];
-			*xd = d_x[d_xyindex[idx] + d_size_x * 3u];
-			*ys = d_y[d_xyindex[idx] + d_size_x * 2u];
-			*yd = d_y[d_xyindex[idx] + d_size_x * 3u];
-		}
-		if (lor == 2u) {
-			if (d_zindex[idx] >= d_TotSinos) {
-				*zs = d_zdet[d_zindex[idx]] - cr_pz;
-				*zd = d_zdet[d_zindex[idx] - d_TotSinos] - cr_pz;
-			}
-			else {
-				*zs = d_zdet[d_zindex[idx]] - cr_pz;
-				*zd = d_zdet[d_zindex[idx] + d_TotSinos] - cr_pz;
-			}
-		}
-		else {
-			if (d_zindex[idx] >= d_TotSinos) {
-				*zs = d_zdet[d_zindex[idx]] + cr_pz;
-				*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz;
-			}
-			else {
-				*zs = d_zdet[d_zindex[idx]] + cr_pz;
-				*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz;
-			}
+			*zd = d_zdet[d_zindex[idx] + d_TotSinos];
 		}
 	}
-
+	if (N_RAYS2D > 1) {
+		const ushort ll = (lor - 1) / N_RAYS3D * 2;
+		*xs = d_x[d_xyindex[idx] + d_size_x * ll];
+		*ys = d_y[d_xyindex[idx] + d_size_x * ll];
+		if (d_xyindex[idx] >= d_size_x) {
+			*xd = d_x[d_xyindex[idx] + d_size_x * (ll - 1)];
+			*yd = d_y[d_xyindex[idx] + d_size_x * (ll - 1)];
+		}
+		else {
+			*xd = d_x[d_xyindex[idx] + d_size_x * (ll + 1)];
+			*yd = d_y[d_xyindex[idx] + d_size_x * (ll + 1)];
+		}
+	}
+	else {
+		*xs = d_x[d_xyindex[idx]];
+		*ys = d_y[d_xyindex[idx]];
+		if (d_xyindex[idx] >= d_size_x) {
+			*xd = d_x[d_xyindex[idx] - d_size_x];
+			*yd = d_y[d_xyindex[idx] - d_size_x];
+		}
+		else {
+			*xd = d_x[d_xyindex[idx] + d_size_x];
+			*yd = d_y[d_xyindex[idx] + d_size_x];
+		}
+	}
 }
+#endif
 
+#ifdef FIND_LORS
 // Get the detector coordinates for the current measurement (precomputation phase)
 inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
 	float* zd, const __global float *d_x, const __global float *d_y, const __global float *d_zdet) {
@@ -336,6 +490,7 @@ inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx
 	*zs = d_zdet[idz];
 	*zd = d_zdet[idz + d_TotSinos];
 }
+#endif
 
 // Compute the voxel index where the current perpendicular measurement starts
 inline int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
@@ -354,7 +509,7 @@ inline int perpendicular_start(const float d_b, const float d, const float d_d, 
 // Compute the probability for the perpendicular elements
 inline void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, 
-	const uint d_normalization, const __global float* d_norm, const uint idx) {
+	const uint d_normalization, const __global float* d_norm, const uint idx, const float global_factor) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	//float start = d_b - d + d_d1;
 	//// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
@@ -379,9 +534,11 @@ inline void perpendicular_elements(const float d_b, const float d_d1, const uint
 	}
 	if (d_normalization == 1u)
 		temp *= d_norm[idx];
+	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
 }
 
+#ifdef N_RAYS
 // Compute the probability for the perpendicular elements
 inline float perpendicular_elements_multiray(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	const __global float* d_atten, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, float* jelppi) {
@@ -407,6 +564,7 @@ inline float perpendicular_elements_multiray(const float d_b, const float d_d1, 
 
 	return d_d2 * convert_float(d_N2);
 }
+#endif
 
 // Compute functions (9) and (29) (detector larger than source)
 inline void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, int* v_u, const float diff, const float b, const float d, const float s) {
@@ -523,6 +681,7 @@ inline void s_g_d_precomp(const float tmin, const float t_min, const float tmax,
 inline uint compute_ind(const int tempj, const int tempi, const int tempk, const uint d_N1, const uint d_N2, const uint d_N, const uint d_Nx, 
 	const uint d_Nyx) {
 	uint local_ind = convert_uint_sat(tempj) * d_Nx + convert_uint_sat(tempi) + convert_uint_sat(tempk) * d_Nyx;
+#ifndef PRECOMPUTE
 	if (local_ind >= d_N) {
 		if (local_ind - d_N1 >= d_N)
 			local_ind -= (d_N1 * d_N2);
@@ -539,9 +698,23 @@ inline uint compute_ind(const int tempj, const int tempi, const int tempk, const
 	//	else
 	//		local_ind++;
 	//}
+#endif
 	return local_ind;
 }
 
+#ifdef ATN
+inline float compute_matrix_element(const float t0, const float tc, const float L) {
+	return (t0 - tc) * L;
+}
+
+inline void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
+	const uint Nyx, const __global float* d_atten) {
+	*jelppi += (compute_matrix_element(t0, *tc, LL) * -d_atten[tempi + tempj * Nx + Nyx * tempk]);
+	*tc = t0;
+}
+#endif
+
+#ifdef SIDDON
 // compute the distance that the ray traverses in the current voxel
 inline float compute_element(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, float* temp) {
 	float local_ele = (*t0 - *tc) * L;
@@ -552,16 +725,6 @@ inline float compute_element(float* t0, float* tc, const float L, const float tu
 	return local_ele;
 }
 
-inline float compute_matrix_element(const float t0, const float tc, const float L) {
-	return (t0 - tc) * L;
-}
-
-inline void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
-	const uint Nyx, const __global float* d_atten) {
-	*jelppi += (compute_matrix_element(t0, *tc, LL) * -d_atten[tempi + tempj * Nx + Nyx * tempk]);
-	*tc = t0;
-}
-
 // compute the probability of emission in the current voxel
 inline float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
 	float local_ele = (*t0 - *tc) * L * temp;
@@ -570,39 +733,16 @@ inline float compute_element_2nd(float* t0, float* tc, const float L, const floa
 	*t0 += tu;
 	return local_ele;
 }
+#endif
 
 // compute the initial voxel index (beginning of the ray)
 inline int voxel_index(const float pt, const float diff, const float d, const float apu) {
 	return convert_int_rtz((pt * diff - apu) / d);
 }
 
-// compute voxel index, orthogonal distance based ray tracer
-inline uint compute_ind_orth(const int tempi, const uint temp_ijk, const uint d_N1, const uint d_N2, const uint d_N) {
-	uint local_ind = convert_uint_sat(tempi) * d_N + temp_ijk;
-	//if (local_ind >= d_N) {
-	//	if (local_ind - d_N1 >= d_N)
-	//		local_ind -= (d_N1 * d_N2);
-	//	else
-	//		local_ind--;
-	//}
-	//else if (local_ind < 0) {
-	//	if (local_ind + d_N1 < 0)
-	//		local_ind += (d_N1 * d_N2);
-	//	else
-	//		local_ind++;
-	//}
-	return local_ind;
-}
-
-// compute orthogonal distance
-inline float compute_element_orth(const float x_diff, const float y_diff, const float x_center, const float length_) {
-	float local_ele = 1.f - fabs(x_diff + y_diff * x_center) / length_;
-	return local_ele;
-}
-
 inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
 	const float d1, const float d2, const uint N1, const uint N2, int* temp1, int* temp2, float* t1u, float* t2u, uint* Np,
-	const int TYPE, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20) {
+	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20) {
 	// If neither x- nor y-directions are perpendicular
 // Correspond to the equations (9) and (10) from reference [2]
 	const float apu_tx = b1 - xs;
@@ -624,7 +764,7 @@ inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 
 	uint imin, imax, jmin, jmax;
 
-	if (TYPE == 0) {
+	if (TYYPPI == 0) {
 		// If true, then the ray/LOR does not intersect the pixel space --> continue to the next LOR
 		if (*tc >= tmax) {
 			return true;
@@ -671,7 +811,7 @@ inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	*t1u = d1 / fabs(diff1);
 	*t2u = d2 / fabs(diff2);
 
-	if (TYPE == 0) {
+	if (TYYPPI == 0) {
 		if (*temp1 < 0 || *temp2 < 0 || *temp1 >= N1 || *temp2 >= N2)
 			return true;
 	}
@@ -682,10 +822,10 @@ inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	return false;
 }
 
-bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
+inline bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
 	const float maxxx, const float maxyy, const float bzb, const float dx, const float dy, const float dz,
 	const uint Nx, const uint Ny, const uint Nz, int* tempi, int* tempj, int* tempk, float* tyu, float* txu, float* tzu,
-	uint* Np, const int TYPE, const float ys, const float xs, const float yd, const float xd, const float zs, const float zd, float* tc, 
+	uint* Np, const int TYYPPI, const float ys, const float xs, const float yd, const float xd, const float zs, const float zd, float* tc, 
 	int* iu, int* ju, int* ku, float* tx0, float* ty0, float* tz0) {
 
 	const float apu_tx = bx - xs;
@@ -710,7 +850,7 @@ bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const fl
 
 	uint imin, imax, jmin, jmax, kmin, kmax;
 
-	if (TYPE == 0) {
+	if (TYYPPI == 0) {
 		if (*tc >= tmax) {
 			return true;
 		}
@@ -755,7 +895,7 @@ bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const fl
 	*tempj = voxel_index(pt, y_diff, dy, apu_ty);
 	*tempk = voxel_index(pt, z_diff, dz, apu_tz);
 
-	if (TYPE == 0) {
+	if (TYYPPI == 0) {
 		if (*tempi < 0 || *tempj < 0 || *tempk < 0 || *tempi >= Nx || *tempj >= Ny || *tempk >= Nz)
 			return true;
 	}

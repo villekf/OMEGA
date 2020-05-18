@@ -25,7 +25,8 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-#include "mex.h"
+
+constexpr auto TH = 100000000000.f;
 
 const char *getErrorString(cl_int error);
 
