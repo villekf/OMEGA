@@ -121,6 +121,16 @@ if options.use_raw_data == false && options.precompute_lor
                     end
                 end
             end
+            if options.projector_type == 3 && options.implementation == 1
+                if any(ismember('lor_vol', variableInfo))
+                    load(lor_file,'lor_vol')
+                else
+                    lor_pixel_count_prepass(options);
+                    load(lor_file,'lor_vol')
+                end
+                lor_orth = lor_vol;
+                clear lor_vol
+            end
         else
             variableInfo = who('-file', lor_file);
             if any(ismember('lor_opencl', variableInfo))
@@ -148,6 +158,14 @@ if options.use_raw_data == false && options.precompute_lor
                     end
                 end
             end
+            if options.projector_type == 3 && options.implementation == 1
+                load(lor_file,'lor_vol')
+                lor_orth = lor_vol;
+                clear lor_vol
+                if length(lor_orth) > options.Nang*options.Ndist*options.NSinos
+                    lor_orth = lor_orth(options.Nang*options.Ndist*options.NSinos+1:end);
+                end
+            end
         else
             load(lor_file,'lor_opencl')
             lor = lor_opencl;
@@ -156,7 +174,7 @@ if options.use_raw_data == false && options.precompute_lor
     end
     if subsets > 1 || fpbp
         lor_a = (lor(index));
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(index));
         end
         if options.normalization_correction && options.corrections_during_reconstruction
@@ -209,7 +227,7 @@ if options.use_raw_data == false && options.precompute_lor
             discard = discard(1:options.NSinos*options.Ndist*options.Nang);
         end
         lor_a = (lor(discard));
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
                 lor_orth = lor_orth(1:options.NSinos*options.Ndist*options.Nang);
             end
@@ -302,21 +320,21 @@ if options.use_raw_data == false && options.precompute_lor
     
     if subsets > 1 && length(pituus) > 1 || fpbp
         for kk = 1 : subsets
-            if options.projector_type == 2 && options.implementation == 1
+            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
                 summa(kk) = uint64(sum(uint64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
             else
                 summa(kk) = uint64(sum(uint64(lor_a(pituus(kk)+1:pituus(kk+1)))));
             end
         end
     else
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             summa = uint64(sum(int64(lor_orth)));
         else
             summa = uint64(sum(int64(lor_a)));
         end
         pituus = uint32([0;length(lor_a)]);
     end
-    if options.projector_type == 2 && options.implementation == 1
+    if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
         varargout{2} = lor_orth;
     end
     
@@ -365,6 +383,16 @@ elseif options.use_raw_data && options.precompute_lor
                     end
                 end
             end
+            if options.projector_type == 3 && options.implementation == 1
+                if any(ismember('lor_vol', variableInfo))
+                    load(lor_file,'lor_vol')
+                else
+                    lor_pixel_count_prepass(options);
+                    load(lor_file,'lor_vol')
+                end
+                lor_orth = lor_vol;
+                clear lor_vol
+            end
         else
             if ismember('lor_opencl', variableInfo)
                 load(lor_file,'lor_opencl')
@@ -390,6 +418,11 @@ elseif options.use_raw_data && options.precompute_lor
                         lor_orth = lor_orth(length(lor)+1:end);
                     end
                 end
+            end
+            if options.projector_type == 3 && options.implementation == 1
+                load(lor_file,'lor_vol')
+                lor_orth = lor_vol;
+                clear lor_vol
             end
         else
             load(lor_file,'lor_opencl')
@@ -418,7 +451,7 @@ elseif options.use_raw_data && options.precompute_lor
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(discard);
         end
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(discard));
         end
         if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
@@ -466,7 +499,7 @@ elseif options.use_raw_data && options.precompute_lor
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(index);
         end
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(index));
         end
         clear lor
@@ -522,7 +555,7 @@ elseif options.use_raw_data && options.precompute_lor
             end
         end
         pituus = uint32([0;length(lor_a)]);
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(discard));
         end
         clear lor
@@ -540,7 +573,7 @@ elseif options.use_raw_data && options.precompute_lor
         apu2(y_i,:) = fliplr(apu2(y_i,:));
         apu(idx,:) = apu2;
         LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
-        if options.projector_type == 2 && options.implementation == 1
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
         else
             summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
@@ -553,7 +586,7 @@ elseif options.use_raw_data && options.precompute_lor
     LL = LL(:);
     xy_index =  [];
     z_index = [];
-    if options.projector_type == 2 && options.implementation == 1
+    if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
         varargout{2} = lor_orth;
     end
 elseif options.use_raw_data == false && ~options.precompute_lor

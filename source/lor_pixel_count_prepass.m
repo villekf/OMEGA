@@ -49,6 +49,9 @@ pseudot = uint32(options.pseudot);
 % NSinos = options.NSinos;
 TotSinos = options.TotSinos;
 det_per_ring = options.det_per_ring;
+if options.use_raw_data
+    rings = rings - sum(options.pseudot);
+end
 
 temp = pseudot;
 if sum(temp) > 0
@@ -65,9 +68,9 @@ FOVay=double(FOVay);
 % Axial FOV (mm)
 axial_fov = double(axial_fov);
 % Number of axial rings
-blocks=uint32(rings + length(pseudot));
+blocks=uint32(rings - 1);
 % First ring
-block1=uint32(1);
+block1=uint32(0);
 
 % NSinos = uint32(NSinos);
 NSlices = uint32(Nz);
@@ -92,7 +95,7 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     % Detector coordinates
     [x, y, z] = get_coordinates(options, blocks);
     
-    blocks = uint32(rings);
+%     blocks = uint32(rings);
     
     x=double(x);
     y=double(y);
@@ -104,10 +107,10 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     etaisyys=(R-FOVay)/2;
     yy=linspace(etaisyys,R-etaisyys,Ny+1);
     zz=linspace(double(0),double(axial_fov),Nz+1);
-    zz=zz(2*block1-1:2*blocks);
+%     zz=zz(2*block1-1:2*blocks);
     
     % Distance of adjacent pixels
-    d = diff(xx(1:2));
+    dx = diff(xx(1:2));
     dy = diff(yy(1:2));
     dz = diff(zz(1:2));
     
@@ -141,7 +144,7 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
         else
             type = uint(0);
         end
-        x_center = xx(1:end-1)'+d/2;
+        x_center = xx(1:end-1)'+dx/2;
         y_center = yy(1:end-1)'+dy/2;
         z_center = zz(1 : end - 1)' + dz/2;
         V = 0;
@@ -154,7 +157,7 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
         else
             type = uint32(0);
         end
-        x_center = xx(1:end-1)'+d/2;
+        x_center = xx(1:end-1)'+dx/2;
         y_center = yy(1:end-1)'+dy/2;
         z_center = zz(1 : end - 1)' + dz/2;
         options.voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
@@ -170,7 +173,7 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     % Determine which LORs go through the FOV
     LL = LL';
     LL = LL(:);
-    [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+    [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
         zmax, 0, 0, 0, uint32(0), false, false, false, 0, uint16(0), uint32(0), uint32(0), TotSinos, LL, pseudot, uint32(det_per_ring), options.verbose, ...
         options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
         bmin, bmax, Vmax, V, type);
@@ -252,13 +255,7 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         end
         [x, y, z] = get_coordinates(options, blocks);
         
-        if options.use_raw_data && sum(pseudot) > 0
-            z(pseudot) = [];
-        end
-        blocks = uint32(rings);
-        if min(min(z)) == 0
-            z = z + (axial_fov - max(max(z)))/2;
-        end
+%         blocks = uint32(rings);
         
         x=single(x);
         y=single(y);
@@ -270,10 +267,10 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         etaisyys = (R-FOVay)/2;
         yy = single(linspace(etaisyys,R-etaisyys,Ny+1));
         zz = linspace(single(0),single(axial_fov),Nz+1);
-        zz = zz(2*block1-1:2*blocks);
+%         zz = zz(2*block1-1:2*blocks);
         
         % Distance of adjacent pixels
-        d = diff(xx(1:2));
+        dx = diff(xx(1:2));
         dy = diff(yy(1:2));
         dz = diff(zz(1:2));
         
@@ -305,11 +302,11 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         LL = LL';
         LL = LL(:);
         if options.implementation == 3
-            [lor_opencl] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
+            [lor_opencl] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
                 single(NSlices), size_x, zmax, options.verbose, LL, pseudot, uint32(det_per_ring), uint32(options.use_device), filename, uint8(1), ...
                 single(options.cpu_to_gpu_factor), uint32(2), header_directory, block1, blocks, uint32(options.NSinos), uint16(TotSinos));
         elseif options.implementation == 2
-            lor_opencl = OpenCL_matrixfree( kernel_path, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
+            lor_opencl = OpenCL_matrixfree( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
                 TotSinos, single(NSlices), size_x, zmax, TotSinos, options.verbose, LL, pseudot, uint32(det_per_ring), uint32(options.use_device), uint8(1), ...
                 filename, uint32(2), false, header_directory, block1, blocks, uint32(options.NSinos), uint16(TotSinos));
         end
@@ -339,12 +336,7 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
 end
 %% Sinogram data, non-OpenCL
 if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
-    [x, y, z] = get_coordinates(options, options.rings);
-    
-    
-    if min(min(z)) == 0
-        z = z + (axial_fov - max(max(z)))/2;
-    end
+    [x, y, z] = get_coordinates(options, options.rings - 1);
     
     x=double(x);
     y=double(y);
@@ -360,7 +352,7 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
     zz=linspace(double(0),double(axial_fov),Nz+1);
     
     % Distance of adjacent pixels
-    d=diff(xx(1:2));
+    dx=diff(xx(1:2));
     dy=diff(yy(1:2));
     dz=diff(zz(1:2));
     
@@ -392,8 +384,8 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
         else
             type = uint32(0);
         end
-        x_center = xx(1:end-1)'+d/2;
-        y_center = yy(1:end-1)'+dy/2;
+        x_center = xx(1 : end - 1)' + dx/2;
+        y_center = yy(1 : end - 1)' + dy/2;
         z_center = zz(1 : end - 1)' + dz/2;
         V = 0;
         Vmax = 0;
@@ -405,10 +397,11 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
         else
             type = uint32(0);
         end
-        x_center = xx(1:end-1)'+d/2;
-        y_center = yy(1:end-1)'+dy/2;
+        x_center = xx(1 : end - 1)' + dx/2;
+        y_center = yy(1 : end - 1)' + dy/2;
         z_center = zz(1 : end - 1)' + dz/2;
-        options.voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
+        dp = max([dx,dy,dz]);
+        options.voxel_radius = (sqrt(2) * options.voxel_radius * dp) / 2;
         bmax = options.tube_radius + options.voxel_radius;
         b = linspace(0, bmax, 10000)';
         b(options.tube_radius > (b + options.voxel_radius)) = [];
@@ -420,7 +413,7 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
     
     % Determine which LORs go through the FOV
     
-    [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+    [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
         zmax, 0, 0, 0, uint32(0), false, false, false, 0, uint16(0), uint32(0), uint32(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), options.verbose, ...
         options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
         bmin, bmax, Vmax, V, type);
@@ -496,10 +489,6 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
         [x, y, z] = get_coordinates(options, blocks);
         
-        if min(min(z)) == 0
-            z = z + (axial_fov - max(max(z)))/2;
-        end
-        
         x = single(x);
         y = single(y);
         z_det = single(z);
@@ -512,10 +501,10 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
         etaisyys = (R-FOVay)/2;
         yy = single(linspace(etaisyys,R-etaisyys,Ny+1));
         zz = linspace(single(0),single(axial_fov),Nz+1);
-        zz = zz(2*block1-1:2*blocks);
+%         zz = zz(2*block1-1:2*blocks);
         
         % Distance of adjacent pixels
-        d = diff(xx(1:2));
+        dx = diff(xx(1:2));
         dy = diff(yy(1:2));
         dz = diff(zz(1:2));
         
@@ -546,11 +535,11 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
         % Determine which LORs go through the FOV
         
         if options.implementation == 3
-            [lor_opencl] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
+            [lor_opencl] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
                 single(NSlices), size_x, zmax, options.verbose, uint16(0), pseudot, uint32(det_per_ring), uint32(options.use_device), filename, uint8(0),...
                 single(options.cpu_to_gpu_factor), uint32(2), header_directory, block1, blocks, uint32(options.NSinos), uint16(TotSinos));
         elseif options.implementation == 2
-            [lor_opencl] = OpenCL_matrixfree( kernel_path, Ny, Nx, Nz, d, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
+            [lor_opencl] = OpenCL_matrixfree( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
                 TotSinos, single(NSlices), size_x, zmax, TotSinos, options.verbose, uint16(0), pseudot, uint32(det_per_ring), uint32(options.use_device), uint8(0),...
                 filename, uint32(2), true, header_directory, block1, blocks, uint32(options.NSinos), uint16(TotSinos));
         end
