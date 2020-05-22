@@ -68,6 +68,9 @@
 
 - Custom detector coordinates are now easier to include
 
+- Running main-files with error checking now produces much more information on the selected features
+  - The user will be shown the selected data type (sinogram or raw), selected algorithm and prior, projector, corrections, device, etc.
+
 ### Bug fixes and enhancements
 
 - Renamed `main_nongate.m` to `main_PET.m`
