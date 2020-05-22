@@ -846,7 +846,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				else
 					apu_sum_mlem.unlock();
 
-				vec.im_mlem.unlock();
+				if (use_psf)
+					vec.im_mlem_blurred.unlock();
+				else
+					vec.im_mlem.unlock();
 				vec.rhs_mlem.unlock();
 				if (atomic_64bit)
 					vec.rhs_mlem = vec.rhs_mlem.as(f32) / TH;
@@ -888,13 +891,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	//unlock_AF_im_vectors(vec, MethodList, true, mlem_bool, osem_bool, 0u);
 
 	// Clear OpenCL buffers
-	status = clReleaseMemObject(d_z);
-	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
 	status = clReleaseMemObject(d_x);
 	if (status != CL_SUCCESS)
 		std::cerr << getErrorString(status) << std::endl;
 	status = clReleaseMemObject(d_y);
+	if (status != CL_SUCCESS)
+		std::cerr << getErrorString(status) << std::endl;
+	status = clReleaseMemObject(d_z);
 	if (status != CL_SUCCESS)
 		std::cerr << getErrorString(status) << std::endl;
 	status = clReleaseMemObject(d_atten);
@@ -910,6 +913,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	if (status != CL_SUCCESS)
 		std::cerr << getErrorString(status) << std::endl;
 	status = clReleaseMemObject(d_zcenter);
+	if (status != CL_SUCCESS)
+		std::cerr << getErrorString(status) << std::endl;
+	status = clReleaseMemObject(d_V);
 	if (status != CL_SUCCESS)
 		std::cerr << getErrorString(status) << std::endl;
 	if (osem_bool) {
@@ -992,7 +998,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			mexPrintf("Failed to release OS kernel\n");
 		}
 	}
-	if (MethodList.MLEM || MethodList.OSLMLEM) {
+	if (mlem_bool) {
 		status = clReleaseKernel(kernel_ml);
 		if (status != CL_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
