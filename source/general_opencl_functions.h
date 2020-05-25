@@ -301,7 +301,6 @@ inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epp
 inline void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
 	float* zd) {
-	uint ps = 0;
 	// Get the current detector numbers
 	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
 	const uint detektorit2 = convert_uint(d_L[idx * 2u + 1u]) - 1u;
