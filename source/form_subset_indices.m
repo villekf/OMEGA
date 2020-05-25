@@ -278,11 +278,7 @@ if options.use_raw_data == false && options.precompute_lor
         end
         clear lor
     end
-    [~, I] = sort(y, 2);
-    sy = size(y);
-    I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
-    
-    xy_index = uint32(I(:,1));
+    xy_index = uint32(1:size_x)';
     if options.span > 1
         xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
         xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
@@ -290,11 +286,7 @@ if options.use_raw_data == false && options.precompute_lor
         xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
         xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
     end
-    [~, I] = sort(z_det, 2);
-    sy = size(z_det);
-    I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
-    
-    z_index = uint16(I(:,1));
+    z_index = uint16(1:size(z_det,1))';
     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
         z_index = repeat_elem(z_index, size_x);
     else
@@ -305,7 +297,6 @@ if options.use_raw_data == false && options.precompute_lor
     else
         z_index = (z_index(discard));
     end
-    apu = z_index > options.NSinos;
     z_index = z_index - 1;
     
     if subsets > 1 || fpbp
@@ -313,7 +304,6 @@ if options.use_raw_data == false && options.precompute_lor
     else
         xy_index = (xy_index(discard));
     end
-    xy_index(apu) = xy_index(apu) + uint32(size_x);
     xy_index = xy_index - 1;
     
     summa = zeros(subsets, 1, 'uint64');
@@ -702,11 +692,7 @@ elseif options.use_raw_data == false && ~options.precompute_lor
             end
         end
     end
-    [~, I] = sort(y, 2);
-    sy = size(y);
-    I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
-    
-    xy_index = uint32(I(:,1));
+    xy_index = uint32(1:size_x)';
     if options.span > 1
         xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
         xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
@@ -714,11 +700,7 @@ elseif options.use_raw_data == false && ~options.precompute_lor
         xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
         xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
     end
-    [~, I] = sort(z_det, 2);
-    sy = size(z_det);
-    I = sub2ind(sy, repmat((1:sy(1)).', 1, sy(2)), I);
-    
-    z_index = uint16(I(:,1));
+    z_index = uint16(1:size(z_det,1))';
     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
         z_index = repeat_elem(z_index, size_x);
     else
@@ -727,13 +709,11 @@ elseif options.use_raw_data == false && ~options.precompute_lor
     if subsets > 1 || fpbp
         z_index = z_index(index);
     end
-    apu = z_index > options.NSinos;
     z_index = z_index - 1;
     
     if subsets > 1 || fpbp
         xy_index = xy_index(index);
     end
-    xy_index(apu) = xy_index(apu) + uint32(size_x);
     xy_index = xy_index - 1;
     
     summa = zeros(subsets, 1, 'uint64');

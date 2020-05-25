@@ -33,56 +33,69 @@ ring_difference = options.ring_difference;
 %% Compute the 3D coordinates
 
 if options.span > 1
-    dif = cr_pz/2;
-    % Michelogram row/column indices for each segment
-    p = zeros(floor((ring_difference-ceil(span/2))/span) + 2,1);
-    for kk = 0 : floor((ring_difference-ceil(span/2))/span)
-        p(kk+2) = ceil(span/2)*2 + (span*2)*kk;
+    % Ring coordinates
+    z_length = double(options.rings + 1 + sum(options.pseudot)) * options.cr_pz;
+    z = linspace(0, z_length, options.rings + 2 + sum(options.pseudot))';
+    if sum(options.pseudot) > 0
+        z(options.pseudot) = [];
     end
+    if min(z(:)) == 0
+        z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
+    end
+    z = z(1 : options.rings + sum(options.pseudot));
+    ringsp = options.rings;
+    z_ring = zeros(options.rings, options.rings, 2);
+    % Create ring combinations
+    z_ring(:,:,1) = repmat(z, 1, options.rings);
+    z_ring(:,:,2) = repmat(z', options.rings, 1);
+    z_ring = reshape(z_ring, options.rings * options.rings, 2);
+    kkj = zeros(floor((options.ring_difference-ceil(options.span/2))/options.span) + 1, 1);
+    for kk = 1 : floor((options.ring_difference-ceil(options.span/2))/options.span) + 1
+        kkj(kk) = ceil(options.span/2) + options.span*(kk - 1);
+    end
+    offset2 = cumsum(options.segment_table);
     
+    % Perpendicular rings
     z = zeros(options.NSinos,2);
-    
-    % Parallel sinograms
-    if exist('OCTAVE_VERSION', 'builtin') == 0
-        z(1:options.Nz,:) = [round((0:dif:(Nz-1)*dif)',5) round((0:dif:(Nz-1)*dif)',5)];
-    else
-        z(1:options.Nz,:) = [round((0:dif:(Nz-1)*dif)'.*10e5)./10e5 round((0:dif:(Nz-1)*dif)'.*10e5)./10e5];
+    z(1:2:Nz,1) = z_ring(1:ringsp+1:ringsp^2,1);
+    z(1:2:Nz,2) = z_ring(1:ringsp+1:ringsp^2,2);
+    mean_jh = zeros(options.NSinos,1);
+    mean_jh(1:2:options.Nz) = 1;
+    % Then the detectors on adjacent rings
+    for jh=1:floor(options.span/2)
+        apu = z_ring(jh*ringsp+1:ringsp+1:ringsp^2, 1);
+        apu2 = z_ring(jh+1:ringsp+1:(ringsp-jh)*ringsp, 1);
+        z(jh+1:2:offset2(1)-jh,1) = z(jh+1:2:offset2(1)-jh, 1) + apu + apu2;
+        apu = z_ring(jh*ringsp+1:ringsp+1:ringsp^2, 2);
+        apu2 = z_ring(jh+1:ringsp+1:(ringsp-jh)*ringsp, 2);
+        z(jh+1:2:offset2(1)-jh,2) = z(jh+1:2:offset2(1)-jh, 2) + apu + apu2;
+        loc = ismember(1:options.Nz,jh+1:2:offset2(1)-jh);
+        mean_jh(loc) = mean_jh(loc) + 2;
     end
-    
-    % Oblique sinograms
-    for t=2:ceil(length(options.segment_table)/2)
-        % If the last segment is only partially filled, take less initial
-        % sinograms
-        if floor(options.segment_table(t*2-1)/2) < span-2
-            maara = floor((options.segment_table(t*2-1) - 3)/4);
-        else
-            maara = floor(span/2) - 1;
+    % Lastly the rest of the detectors with the amount of combined LORs
+    % specified with the span value
+    for ih=1:floor(length(options.segment_table)/2)
+        for jh=1:options.span
+            apu = z_ring((kkj(ih)+jh-1)*options.rings+1:options.rings+1:end, 1);
+            loc = ismember(1:options.NSinos,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1);
+            mean_jh(loc) = mean_jh(loc) + 1;
+            z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) = z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) + (apu);
+            apu2 = z_ring(kkj(ih)+jh:options.rings+1:(options.rings-kkj(ih)-jh+1)*options.rings, 1);
+            loc = ismember(1:options.NSinos,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1);
+            mean_jh(loc) = mean_jh(loc) + 1;
+            z(offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1, 1) = z(offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1, 1) + (apu2);
+            apu = z_ring((kkj(ih)+jh-1)*options.rings+1:options.rings+1:end, 2);
+            z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 2) = z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 2) + (apu);
+            apu2 = z_ring(kkj(ih)+jh:options.rings+1:(options.rings-kkj(ih)-jh+1)*options.rings, 2);
+            z(offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1, 2) = z(offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1, 2) + (apu2);
         end
-        % There's uneven amount of initial sinograms that do not yet follow the
-        % floor(span/2) -> ceil(span/2) pattern
-        ddd = zeros(maara*2+1,2);
-        % The first element is present in all cases (span >= 3)
-        ddd(1,:) = [0 dif*p(t)];
-        for i=1:maara
-            ddd(2*i,:) = [dif*(i-1) dif*(p(t)+i*2+(i-1))];
-            ddd(2*i+1,:) = [dif*i dif*(p(t)+i*2+1+(i-1))];
-        end
-        % Mirror image
-        if exist('OCTAVE_VERSION', 'builtin') == 0
-            ddd2 = round((Nz-1)*dif-rot90(ddd,2), 5);
-        else
-            ddd2 = round((Nz-1)*dif-rot90(ddd,2).*10e5)./10e5;
-        end
-        % Sinograms in the middle of the intial sinograms
-        % There'a always a minimum of 3 of these
-        d1 = [(ddd(end,1):dif:ddd2(1,1)-2*dif)' (ddd(end,2)+dif*2:dif:ddd2(1,2))'];
-        if exist('OCTAVE_VERSION', 'builtin') == 0
-            d = round([ddd;d1;ddd2],5);
-        else
-            d = round([ddd;d1;ddd2].*10e5)./10e5;
-        end
-        z(sum(options.segment_table(1:2*t-3))+1:sum(options.segment_table(1:2*t-1)),:) = [d;fliplr(d)];
     end
+    mean_jh(mean_jh == 0) = 1;
+    % Take the mean value of coordinates
+    z(:,1) = z(:,1) ./ mean_jh;
+    z(:,2) = z(:,2) ./ mean_jh;
+    z(z(:,1)>z(:,2),:) = fliplr(z(z(:,1)>z(:,2),:));
+    
 else
     
     dif = cr_pz;

@@ -107,29 +107,6 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 			detectors.zs = z_det[idz];
 			detectors.zd = z_det[idz + TotSinos];
 		}
-		
-		if (detectors.yd < detectors.ys) {
-			double tempa = detectors.zd;
-			detectors.zd = detectors.zs;
-			detectors.zs = tempa;
-			tempa = detectors.xd;
-			detectors.xd = detectors.xs;
-			detectors.xs = tempa;
-			tempa = detectors.yd;
-			detectors.yd = detectors.ys;
-			detectors.ys = tempa;
-		}
-		if (detectors.zd < detectors.zs) {
-			double tempa = detectors.zd;
-			detectors.zd = detectors.zs;
-			detectors.zs = tempa;
-			tempa = detectors.xd;
-			detectors.xd = detectors.xs;
-			detectors.xs = tempa;
-			tempa = detectors.yd;
-			detectors.yd = detectors.ys;
-			detectors.ys = tempa;
-		}
 
 
 		const double x_diff = (detectors.xd - detectors.xs);
