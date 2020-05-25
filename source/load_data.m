@@ -121,9 +121,9 @@ if options.use_machine == 1
     % options.detectors matrix in unsigned short (u16) format.
     % Contains counts for each detector pair
     if partitions == 1
-        prompts = LL1;
+        prompts = LL1';
         if options.randoms_correction
-            delays = DD1;
+            delays = DD1';
         end
         clear LL1 LL2 DD1 DD2
         % Else the outputs are vectors LL1 and LL2 containing the detector
