@@ -181,7 +181,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		if (raw)
 			koko = numRows / 2;
 		else
-			koko = mxGetM(prhs[40]);
+			koko = mxGetNumberOfElements(prhs[40]);
 
 		const size_t outSize = static_cast<size_t>(Nx) * static_cast<size_t>(Ny) * static_cast<size_t>(Nz);
 		const size_t outSize2 = static_cast<size_t>(Niter) + 1ULL;
