@@ -46,7 +46,7 @@
   - Compilation times are significantly faster
 
 - Implementation 4 now supports all algorithms except MBSREM and MRAMLA
-  - All algorithms are also now slightly faster
+  - All algorithms are also slightly faster
 
 - COSEM and its variants are faster when using implementation 1 and use much less memory
   
@@ -70,6 +70,9 @@
 
 - Running main-files with error checking now produces much more information on the selected features
   - The user will be shown the selected data type (sinogram or raw), selected algorithm and prior, projector, corrections, device, etc.
+  
+- Sinogram reconstruction should now work as originally intended
+  - Unintentional blurring was caused by incorrect transaxial coordinates with half of oblique sinograms
 
 ### Bug fixes and enhancements
 
