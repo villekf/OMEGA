@@ -8,7 +8,7 @@ OMEGA is a software for MATLAB and Octave to reconstruct data obtained with a po
 The algorithms implemented so far are:
 - Improved Siddon's algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
 - Orthogonal distance-based ray tracer [3]
-- Volume of interaction ray tracer (THOR) [28].
+- Volume of intersection ray tracer (THOR) [28].
 - Maximum Likelihood Expectation Maximization (MLEM) [4,5]
 - Ordered Subsets Expectation Maximization (OSEM) [6]
 - Complete-data Ordered Subsets Expectation Maximization (COSEM) [7]
