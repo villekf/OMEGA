@@ -62,7 +62,7 @@ function saveImage(img, varargin)
 % See also saveInterfile, importData, saveSinogram, niftiwrite, save_nii
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -105,6 +105,7 @@ if iscell(img)
 else
     pituus = 1;
 end
+% Loop through all the algorithms
 for kk = 1 : pituus
     origin = [0 0 0];
     description = 'OMEGA reconstruction';
@@ -112,6 +113,7 @@ for kk = 1 : pituus
         if isempty(img{kk,1})
             continue
         end
+        % Dynamic case
         if prop.n_time_steps > 1
             kuva = img(kk,:);
             kuva = reshape(kuva, 1, 1, 1, 1, prop.n_time_steps);
@@ -119,6 +121,7 @@ for kk = 1 : pituus
         else
             kuva = img{kk};
         end
+        % Last iteration
         kuva = squeeze(kuva(:,:,:,end,:));
         voxel_size = [prop.FOV_x/prop.Nx prop.FOV_y/prop.Ny prop.axial_FOV/prop.Ny];
         reko = algorithms_char();
@@ -127,6 +130,7 @@ for kk = 1 : pituus
         filename = [orig_filename '_' reko];
     else
         kuva = img;
+        % Last iteration
         if size(kuva,5) > 1
             kuva = squeeze(kuva(:,:,:,end,:));
         elseif size(kuva,4) > 1
@@ -151,6 +155,7 @@ for kk = 1 : pituus
             reko = [];
         end
     end
+    % NIfTI
     if strcmp(type, 'nifti')
         filename = [filename '.nii'];
         kuva = rot90(kuva,1);
@@ -164,10 +169,12 @@ for kk = 1 : pituus
             nii = make_nii(kuva, voxel_size, origin, [], description);
             save_nii(nii, filename);
         end
+        % Analyze 7.5
     elseif strcmp(type, 'analyze')
         filename = [filename '.img'];
         ana = make_ana(kuva, voxel_size, origin, [], description);
         save_untouch_nii(ana, filename);
+        % DICOM
     elseif strcmp(type, 'dicom')
         if size(kuva,4) > 1
             error('4D data is not supported by DICOM conversion')
@@ -176,6 +183,7 @@ for kk = 1 : pituus
         for ll = 1 : size(kuva,3)
             dicomwrite(kuva(:,:,ll), [filename '_slice' num2str(ll) '.dcm']);
         end
+        % Interfile
     elseif strcmp(type,'interfile')
         if iscell(img)
             saveInterfile(filename, kuva, reko, class(kuva), prop)
@@ -184,8 +192,10 @@ for kk = 1 : pituus
         else
             saveInterfile(filename, kuva, reko, class(kuva))
         end
+        % MetaImage
     elseif strcmp(type, 'metaimage')
         saveMetaImage(filename,kuva);
+        % Binary
     elseif strcmp(type, 'raw')
         filename = [filename '.raw'];
         fid = fopen(filename);
