@@ -1,16 +1,17 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Examples</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
-.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Examples</span></h1><div  class = 'S1'><span>GATE users should use the </span><span style=' font-family: monospace;'>gate_main.m</span><span> file to import and reconstruct GATE data. For non-GATE users, the file you should start with is </span><span style=' font-family: monospace;'>main_nongate.m</span><span>. For computing the forward and/or backward projections use </span><span style=' font-family: monospace;'>forward_backward_projections_example.m</span><span>. For custom (gradient-based) priors, use </span><span style=' font-family: monospace;'>custom_prior_test_main.m</span><span>. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in </span><span style=' font-family: monospace;'>gate_main_simple.m</span><span>. Inveon PET data should be used with </span><span style=' font-family: monospace;'>Inveon_PET_main.m</span><span>.</span></div><div  class = 'S1'><span>A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material  database needs to be in the same folder as the macros) and then run the </span><span style=' font-family: monospace;'>gate_main_example.m</span><span> to load and reconstruct the data. By default, ASCII data is used for compatibility.</span></div><div  class = 'S1'><span>Example MAT-files for non-GATE situation can be found from </span><a href = "https://doi.org/10.5281/zenodo.3522199"><span>https://doi.org/10.5281/zenodo.3522199</span></a><span>. These files are based on the above GATE-example. The original simulated GATE data can be found from </span><a href = "https://doi.org/10.5281/zenodo.3526859."><span>https://doi.org/10.5281/zenodo.3526859.</span></a></div><div  class = 'S1'><span>For further help, see </span><a href = "functions.html"><span>functions</span></a><span>.</span></div></div>
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Examples</span></h1><div  class = 'S1'><span>GATE users should use the </span><span style=' font-family: monospace;'>gate_main.m</span><span> file to import and reconstruct GATE data. For any other PET data, the file you should start with is </span><span style=' font-family: monospace;'>main_PET.m</span><span>. For computing the forward and/or backward projections use </span><span style=' font-family: monospace;'>forward_backward_projections_example.m</span><span>. For custom (gradient-based) priors, use </span><span style=' font-family: monospace;'>custom_prior_test_main.m</span><span>. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in </span><span style=' font-family: monospace;'>gate_main_simple.m</span><span>. Inveon PET data should be used with </span><span style=' font-family: monospace;'>Inveon_PET_main.m </span><span>while Biograph mCT data can be used with </span><span style=' font-family: monospace;'>Biograph_mCT_main.m</span><span> and Biograph Vision with </span><span style=' font-family: monospace;'>Biograph_Vision_main.m</span><span>.</span></div><div  class = 'S1'><span>A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material  database needs to be in the same folder as the macros) and then run the </span><span style=' font-family: monospace;'>gate_main_example.m</span><span> to load and reconstruct the data. By default, ASCII data is used for compatibility.</span></div><div  class = 'S1'><span>Example MAT-files for non-GATE situation can be found from </span><a href = "https://doi.org/10.5281/zenodo.3522199"><span>https://doi.org/10.5281/zenodo.3522199</span></a><span>. These files are based on the above GATE-example. The original simulated GATE data can be found from </span><a href = "https://doi.org/10.5281/zenodo.3526859"><span>https://doi.org/10.5281/zenodo.3526859</span></a><span>. </span></div><div  class = 'S1'><span>Open preclinical PET data measured with Siemens Inveon PET can be found from </span><a href = "https://doi.org/10.5281/zenodo.3528056"><span>https://doi.org/10.5281/zenodo.3528056</span></a><span>.</span></div><div  class = 'S1'><span>Sinograms created with v0.9 need to be transposed for them to work.</span></div><div  class = 'S1'><span>For further help, see </span><a href = "functions.html"><span>functions</span></a><span>.</span></div></div>
 <br>
 <!-- 
 ##### SOURCE BEGIN #####
 %% Examples
 % GATE users should use the |gate_main.m| file to import and reconstruct GATE 
-% data. For non-GATE users, the file you should start with is |main_nongate.m|. 
+% data. For any other PET data, the file you should start with is |main_PET.m|. 
 % For computing the forward and/or backward projections use |forward_backward_projections_example.m|. 
 % For custom (gradient-based) priors, use |custom_prior_test_main.m|. A more simplified 
 % main-file for GATE data (simple OSEM reconstruction) is available in |gate_main_simple.m|. 
-% Inveon PET data should be used with |Inveon_PET_main.m|.
+% Inveon PET data should be used with |Inveon_PET_main.m |while Biograph mCT data 
+% can be used with |Biograph_mCT_main.m| and Biograph Vision with |Biograph_Vision_main.m|.
 % 
 % A GATE example with GATE macros is available in exampleGATE-folder. Simply 
 % run the GATE macros as a GATE simulation (the GATE material  database needs 
@@ -19,8 +20,13 @@
 % 
 % Example MAT-files for non-GATE situation can be found from <https://doi.org/10.5281/zenodo.3522199 
 % https://doi.org/10.5281/zenodo.3522199>. These files are based on the above 
-% GATE-example. The original simulated GATE data can be found from <https://doi.org/10.5281/zenodo.3526859. 
-% https://doi.org/10.5281/zenodo.3526859.>
+% GATE-example. The original simulated GATE data can be found from <https://doi.org/10.5281/zenodo.3526859 
+% https://doi.org/10.5281/zenodo.3526859>. 
+% 
+% Open preclinical PET data measured with Siemens Inveon PET can be found from 
+% <https://doi.org/10.5281/zenodo.3528056 https://doi.org/10.5281/zenodo.3528056>.
+% 
+% Sinograms created with v0.9 need to be transposed for them to work.
 % 
 % For further help, see <functions.html functions>.
 ##### SOURCE END #####

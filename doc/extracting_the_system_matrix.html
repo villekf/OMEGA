@@ -1,0 +1,34 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Extracting the system matrix</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Extracting the system matrix</span></h1><div  class = 'S1'><span>This page details how you can extract only the system matrix (or a subset of it) and use it manually in your own algorithms/code.</span></div><div  class = 'S1'><span>When extracting the system matrix, it is recommended to use main_PET.m and follow its general workflow. This means that you should input the necessary parameters to the initial section (machine properties, sinogram/raw data properties, etc.). It is also recommended to set </span><span style=' font-family: monospace;'>options.only_system_matrix = true</span><span>. Precompute step should be computed if you have set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. The reconstruction step (</span><span style=' font-family: monospace;'>reconstructions_main</span><span>) should be ignored.</span></div><div  class = 'S1'><span>After the reconstruction step, there is a specific section for the system matrix creation and (optionally) to separately compute any selected algorithms. It is important to run the </span><span style=' font-family: monospace;'>custom_prior_prepass</span><span> phase before the system matrix is created.</span></div><div  class = 'S1'><span>The subset of the system matrix can then be obtained with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options, current_subset)</span><span> or the entire system matrix with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options)</span><span>. This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any selected corrections (attenuation, normalization, scatter) are applied to the system matrix automatically.</span></div><div  class = 'S1'><span>Sinses implementation 1, it is HIGHLY recommended to set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. Furthermore, other projectors than improved Siddon are not recommended. PSF blurring needs to be added manually, though you can use PSFKernel function to obtain the Gaussian convolution kernel.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Extracting the system matrix
+% This page details how you can extract only the system matrix (or a subset 
+% of it) and use it manually in your own algorithms/code.
+% 
+% When extracting the system matrix, it is recommended to use main_PET.m and 
+% follow its general workflow. This means that you should input the necessary 
+% parameters to the initial section (machine properties, sinogram/raw data properties, 
+% etc.). It is also recommended to set |options.only_system_matrix = true|. Precompute 
+% step should be computed if you have set |options.precompute_lor = true|. The 
+% reconstruction step (|reconstructions_main|) should be ignored.
+% 
+% After the reconstruction step, there is a specific section for the system 
+% matrix creation and (optionally) to separately compute any selected algorithms. 
+% It is important to run the |custom_prior_prepass| phase before the system matrix 
+% is created.
+% 
+% The subset of the system matrix can then be obtained with |A = observation_matrix_formation(options, 
+% current_subset)| or the entire system matrix with |A = observation_matrix_formation(options)|. 
+% This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any selected 
+% corrections (attenuation, normalization, scatter) are applied to the system 
+% matrix automatically.
+% 
+% Sinses implementation 1, it is HIGHLY recommended to set |options.precompute_lor 
+% = true|. Furthermore, other projectors than improved Siddon are not recommended. 
+% PSF blurring needs to be added manually, though you can use PSFKernel function 
+% to obtain the Gaussian convolution kernel.
+##### SOURCE END #####
+--></body></html>

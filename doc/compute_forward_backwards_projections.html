@@ -1,0 +1,55 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Computing the forward and/or backward projections</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Computing the forward and/or backward projections</span></h1><div  class = 'S1'><span>This page details on how to separately compute the forward and/or backward projections when using OMEGA.</span></div><div  class = 'S1'><span>When you are manually computing the forward and/or backward projections, it is recommended to use the </span><span style=' font-family: monospace;'>forward_backward_projections_example.m</span><span> and modify it according to your specifications.</span></div><div  class = 'S1'><span>The initial part works very much like </span><span style=' font-family: monospace;'>main_PET.m</span><span>, however, there are no adjustments for the reconstruction algorithms. You still need to input the necessary information (machine properties, sinogram/raw data properties, corrections, etc.) before proceeding. For </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span> you also need to perform the precomputation phase if it hasn't been performed before. </span></div><div  class = 'S1'><span>For the reconstruction, implementations 1 and 3 are supported with 3 recommended.</span></div><div  class = 'S1'><span>You'll need to run the </span><span style=' font-family: monospace;'>index_maker</span><span> as specified to get the necessary subset indices. The line </span><span style=' font-family: monospace;'>[gaussK, options] = PSFKernel(options);</span><span> is only applicable if PSF reconstruction is used as it creates the PSF kernel </span><span style=' font-family: monospace;'>gaussK</span><span>.</span></div><div  class = 'S1'><span>To use your own measurement data, replace </span><span style=' font-family: monospace;'>load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')</span><span> with your own custom load or simply run the code up to that and manually load your data. You should either name your measurement data as </span><span style=' font-family: monospace;'>raw_SinM</span><span> or rename all instances of </span><span style=' font-family: monospace;'>raw_SinM</span><span> to the same name as your input measurement data. Your input data needs to be oriented the same way as the measurement data used in OMEGA. For sinograms that is thus </span><span style=' font-family: monospace;'>options.Ndist x options.Nang x options.NSinos</span><span>. Dynamic data needs to be manually correctly formatted.</span></div><div  class = 'S1'><span>After the above steps, simply use the functions </span><span style=' font-family: monospace;'>forward_project</span><span> and </span><span style=' font-family: monospace;'>backproject</span><span> as you like. The example provided uses them the same way as in OSEM, but as they simply implement the operations </span><span style=' font-style: italic;'>y = Ax</span><span> and </span><span style=' font-style: italic;'>x = A^Tb</span><span>, respectively, you can implement any algorithm that uses these matrix-vector operations. An example of PSF reconstruction is included as well. Sensitivity image is obtained with backprojection, but can also be omitted by simply having only one output parameter.</span></div><div  class = 'S1'><span>All selected corrections are applied to the forward and/or backward projections. If you wish to use different projectors for the forward or backward projections, you need to manually set options.projector_type between them. E.g. compute forward projection when </span><span style=' font-family: monospace;'>options.projector_type = 2</span><span> and then set </span><span style=' font-family: monospace;'>options.projector_type = 1</span><span> and compute backprojection. This, however, is untested and may especially not work when using implementation 1. If you wish to use different projectors, it is recommended to use implementation 3 and set </span><span style=' font-family: monospace;'>options.precompute_lor = false</span><span>.</span></div><div  class = 'S1'><span>The optional PSF deblurring phase can also be performed and an example of that is also included.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Computing the forward and/or backward projections
+% This page details on how to separately compute the forward and/or backward 
+% projections when using OMEGA.
+% 
+% When you are manually computing the forward and/or backward projections, it 
+% is recommended to use the |forward_backward_projections_example.m| and modify 
+% it according to your specifications.
+% 
+% The initial part works very much like |main_PET.m|, however, there are no 
+% adjustments for the reconstruction algorithms. You still need to input the necessary 
+% information (machine properties, sinogram/raw data properties, corrections, 
+% etc.) before proceeding. For |options.precompute_lor = true| you also need to 
+% perform the precomputation phase if it hasn't been performed before. 
+% 
+% For the reconstruction, implementations 1 and 3 are supported with 3 recommended.
+% 
+% You'll need to run the |index_maker| as specified to get the necessary subset 
+% indices. The line |[gaussK, options] = PSFKernel(options);| is only applicable 
+% if PSF reconstruction is used as it creates the PSF kernel |gaussK|.
+% 
+% To use your own measurement data, replace |load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')| 
+% with your own custom load or simply run the code up to that and manually load 
+% your data. You should either name your measurement data as |raw_SinM| or rename 
+% all instances of |raw_SinM| to the same name as your input measurement data. 
+% Your input data needs to be oriented the same way as the measurement data used 
+% in OMEGA. For sinograms that is thus |options.Ndist x options.Nang x options.NSinos|. 
+% Dynamic data needs to be manually correctly formatted.
+% 
+% After the above steps, simply use the functions |forward_project| and |backproject| 
+% as you like. The example provided uses them the same way as in OSEM, but as 
+% they simply implement the operations _y = Ax_ and _x = A^Tb_, respectively, 
+% you can implement any algorithm that uses these matrix-vector operations. An 
+% example of PSF reconstruction is included as well. Sensitivity image is obtained 
+% with backprojection, but can also be omitted by simply having only one output 
+% parameter.
+% 
+% All selected corrections are applied to the forward and/or backward projections. 
+% If you wish to use different projectors for the forward or backward projections, 
+% you need to manually set options.projector_type between them. E.g. compute forward 
+% projection when |options.projector_type = 2| and then set |options.projector_type 
+% = 1| and compute backprojection. This, however, is untested and may especially 
+% not work when using implementation 1. If you wish to use different projectors, 
+% it is recommended to use implementation 3 and set |options.precompute_lor = 
+% false|.
+% 
+% The optional PSF deblurring phase can also be performed and an example of 
+% that is also included.
+##### SOURCE END #####
+--></body></html>
