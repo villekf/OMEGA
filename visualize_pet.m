@@ -3,7 +3,7 @@
 % Only a specific section should be run at a time
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -34,44 +34,50 @@ algo_char = algorithms_char();
 % 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = MRP-OSL-OSEM, 12 = MRP-OSL-MLEM, 
 % 13 = MRP-BSREM, 14 = MRP-MBSREM, 15 = MRP-ROSEM, 16 = MRP-RBI, 17 = MRP-OSL-COSEM, 
 % 18 = QP (OSL-OSEM), 19 = QP (OSL-MLEM), 20 = QP (BSREM), 21 = QP (MBSREM), 
-% 22 = QP (ROSEM), 23 = QP (RBI), 24 =  QP (OSL-COSEM), 25 = L-filter (OSL-OSEM), 
-% 26 = L-filter (OSL-MLEM), 27 =  L-filter (BSREM), 28 =  L-filter (MBSREM), 
-% 29 = L-filter (ROSEM), 30 = L-filter (RBI), 31 = L-filter (OSL-COSEM), 
-% 32 = FMH (OSL-OSEM), 33 = FMH (OSL-MLEM), 34 = FMH (BSREM), 35 = FMH (MBSREM), 
-% 36 = FMH (ROSEM), 37 = FMH (RBI), 38 = FMH (OSL-COSEM), 39 = Weighted mean (OSL-OSEM), 
-% 40 = Weighted mean (OSL-MLEM), 41 = Weighted mean (BSREM), 42 = Weighted mean (MBSREM), 
-% 43 = Weighted mean (ROSEM), 44 = Weighted mean (RBI), 45 = Weighted mean (OSL-COSEM), 
-% 46 = Total variation (OSL-OSEM), 447 = Total variation (OSL-MLEM), 48 = Total variation (BSREM), 
-% 49 = Total variation (MBSREM), 50 = Total variation (ROSEM), 51 = Total variation (RBI), 
-% 52 = Total variation (OSL-COSEM), 53 = Anisotropic Diffusion (OSL-OSEM), 
-% 54 = Anisotropic Diffusion (OSL-MLEM), 55 = Anisotropic Diffusion (BSREM), 
-% 56 = Anisotropic Diffusion (MBSREM), 57 = Anisotropic Diffusion (ROSEM), 
-% 58 = Anisotropic Diffusion (RBI), 59 = Anisotropic Diffusion (OSL-COSEM), 
-% 60 = APLS (OSL-OSEM), 61 = APLS (OSL-MLEM), 62 = APLS (BSREM), 63 = APLS (MBSREM), 
-% 64 = APLS (ROSEM), 65 = APLS (RBI), 66 = APLS (OSL-COSEM), 67 = TGV (OSL-OSEM), 
-% 68 = TGV (OSL-MLEM), 69 = TGV (BSREM), 70 = TGV (MBSREM), 71 = TGV (ROSEM), 
-% 72 = TGV (RBI), 73 = TGV (OSL-COSEM), 74 = NLM (OSL-OSEM), 75 =  NLM (OSL-MLEM), 
-% 76 = NLM (BSREM), 77 = NLM (MBSREM), 78 = NLM (ROSEM), 79 = NLM (RBI), 80 = NLM (OSL-COSEM), 
-% 81 = Custom prior (OSL-OSEM), 82 =  Custom prior (OSL-MLEM), 83 = Custom prior (BSREM), 
-% 84 = Custom prior (MBSREM), 85 = Custom prior (ROSEM), 86 = Custom prior (RBI), 
-% 87 = Custom prior (OSL-COSEM)
+% 22 = QP (ROSEM), 23 = QP (RBI), 24 =  QP (OSL-COSEM), % 25 = HP (OSL-OSEM), 
+% 26 = HP (OSL-MLEM), 27 = HP (BSREM), 28 = HP (MBSREM), 29 = HP (ROSEM), 
+% 30 = HP (RBI), 31 =  HP (OSL-COSEM), 32 = L-filter (OSL-OSEM), 
+% 33 = L-filter (OSL-MLEM), 34 =  L-filter (BSREM), 35 =  L-filter (MBSREM), 
+% 36 = L-filter (ROSEM), 37 = L-filter (RBI), 38 = L-filter (OSL-COSEM), 
+% 39 = FMH (OSL-OSEM), 40 = FMH (OSL-MLEM), 41 = FMH (BSREM), 42 = FMH (MBSREM), 
+% 43 = FMH (ROSEM), 44 = FMH (RBI), 45 = FMH (OSL-COSEM), 46 = Weighted mean (OSL-OSEM), 
+% 47 = Weighted mean (OSL-MLEM), 48 = Weighted mean (BSREM), 49 = Weighted mean (MBSREM), 
+% 50 = Weighted mean (ROSEM), 51 = Weighted mean (RBI), 52 = Weighted mean (OSL-COSEM), 
+% 53 = Total variation (OSL-OSEM), 54 = Total variation (OSL-MLEM), 55 = Total variation (BSREM), 
+% 56 = Total variation (MBSREM), 57 = Total variation (ROSEM), 58 = Total variation (RBI), 
+% 59 = Total variation (OSL-COSEM), 60 = Anisotropic Diffusion (OSL-OSEM), 
+% 61 = Anisotropic Diffusion (OSL-MLEM), 62 = Anisotropic Diffusion (BSREM), 
+% 63 = Anisotropic Diffusion (MBSREM), 64 = Anisotropic Diffusion (ROSEM), 
+% 65 = Anisotropic Diffusion (RBI), 66 = Anisotropic Diffusion (OSL-COSEM), 
+% 67 = APLS (OSL-OSEM), 68 = APLS (OSL-MLEM), 69 = APLS (BSREM), 70 = APLS (MBSREM), 
+% 71 = APLS (ROSEM), 72 = APLS (RBI), 73 = APLS (OSL-COSEM), 74 = TGV (OSL-OSEM), 
+% 75 = TGV (OSL-MLEM), 76 = TGV (BSREM), 77 = TGV (MBSREM), 78 = TGV (ROSEM), 
+% 79 = TGV (RBI), 80 = TGV (OSL-COSEM), 81 = NLM (OSL-OSEM), 82 =  NLM (OSL-MLEM), 
+% 83 = NLM (BSREM), 84 = NLM (MBSREM), 85 = NLM (ROSEM), 86 = NLM (RBI), 87 = NLM (OSL-COSEM), 
+% 88 = Custom prior (OSL-OSEM), 89 =  Custom prior (OSL-MLEM), 90 = Custom prior (BSREM), 
+% 92 = Custom prior (MBSREM), 92 = Custom prior (ROSEM), 93 = Custom prior (RBI), 
+% 94 = Custom prior (OSL-COSEM)
+% Inputing algorithm number that does not exist in the cell array shows all
+% the available algorithms present in the cell array
 algorithms = [2];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
 color_scale = 1;
 % From which reconstruction should the color scale be taken
+% If zero, then each algorithm has its own color scala (from zero to their
+% own maximum value, i.e. there is no global limit)
 % NOTE: The numbering is according to the length of the above algorithms
 % vector, e.g. if you have algorithms = [2, 4, 5] and color_from_algo = 2
 % then the scale will be taken from RAMLA reconstruction (second element of
 % algorithms) 
-color_from_algo = 1;
+color_from_algo = 0;
 % Visualization plane
 % Choose the plane where the visualization takes place
 % 1 = Transverse, 2 = Coronal/frontal, 3 = Sagittal
 v_plane = 1;
 
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
 img = check_algorithms(pz, algorithms, color_from_algo);
@@ -80,13 +86,13 @@ if isempty(img)
 end
 
 
-if length(algorithms) > 2
+if length(algorithms) > 3
     hh = 2;
 else
     hh = 1;
 end
 if length(algorithms) > 1
-    jj = max(2, round(length(algorithms) / 2));
+    jj = max(3, round(length(algorithms) / 3));
 else
     jj = 1;
 end
@@ -118,11 +124,16 @@ for kk = 1 : koko
             img = permute(img, [1 3 2 4]);
         end
         subplot(hh, jj, ll)
-        imagesc(img(:,:,kk,end),clim)
-        axis image
+        if color_from_algo == 0
+            clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+            imagesc(img(:,:,kk,end),clim)
+        else
+            imagesc(img(:,:,kk,end),clim)
+        end
+        axis image off
         title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk)])
     end
-    pause%(0.25)
+    pause%(0.1)
     drawnow
 end
 
@@ -143,12 +154,12 @@ v_plane = 1;
 % How many iterations in the image 
 % Initial values can be included as iterations as they are saved as such
 % N_iter LAST iterations will be used for visualization
-N_iter = 2;
+N_iter = 4;
 
 
 color_from_algo = 1;
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
 img = check_algorithms(pz, algorithms, color_from_algo);
@@ -156,15 +167,14 @@ if isempty(img)
     return
 end
 
-% clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
 
-if N_iter > 2
+if N_iter > 3
     hh = 2;
 else
     hh = 1;
 end
 if N_iter > 1
-    jj = max(2, round(N_iter / 2));
+    jj = max(3, round(N_iter / 3));
 else
     jj = 1;
 end
@@ -229,13 +239,17 @@ color_from_algo = 1;
 % 7 = Form the source image by using the true coincidences (requires
 % obtain_trues = true)
 source_coordinates = 1;
+% Visualization plane
+% Choose the plane where the visualization takes place
+% 1 = Transverse, 2 = Coronal/frontal, 3 = Sagittal
+v_plane = 1;
 
 % The source data was obtained from
 % 1 = ASCII, 2 = LMF, 3 = ROOT
 source = 1;
 
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
 img = check_algorithms(pz, algorithms, color_from_algo);
@@ -243,12 +257,12 @@ if isempty(img)
     return
 end
 
-if length(algorithms) + 1 > 2
+if length(algorithms) + 1 > 3
     hh = 2;
 else
     hh = 1;
 end
-jj = max(2, round((length(algorithms)+1) / 2));
+jj = max(3, round((length(algorithms)+1) / 3));
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
 if jj > 4
@@ -304,7 +318,12 @@ for kk = 1 : koko
             img = permute(img, [1 3 2 4]);
         end
         subplot(hh, jj, ll)
-        imagesc(img(:,:,kk,end),clim)
+        if color_from_algo == 0
+            clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+            imagesc(img(:,:,kk,end),clim)
+        else
+            imagesc(img(:,:,kk,end),clim)
+        end
         axis image
         title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk)])
     end
@@ -330,20 +349,24 @@ algorithms = 2;
 alpha_scale = 10;
 
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
-img = check_algorithms(pz, algorithms, color_from_algo);
+img = check_algorithms(pz, algorithms, 1);
 if isempty(img)
     return
 end
 
 alpha_scaling = max(max(max(img(:,:,:,end)))) * alpha_scale;
-alpha = img(:,:,:,end);
+alpha = permute(img(:,:,:,end), [3 2 1 4]);
 alpha = alpha./alpha_scaling;
 alpha(alpha > 1) = 1;
 
-vol3d('CData', img(:,:,:,end), 'Alpha', alpha);
+figure;vol3d('CData', permute(img(:,:,:,end), [3 2 1 4]), 'Alpha', alpha);
+set(gca, 'View', [45 30]);
+set(gca, 'XLim', [60 200]);
+set(gca, 'ZLim', [80 200]);
+set(gcf, 'Color', 'w');
 
 %% Visualize simultanously all the views for n algorithms
 % NOTE: Due to likely different number of slices, the smallers views will
@@ -352,8 +375,6 @@ vol3d('CData', img(:,:,:,end), 'Alpha', alpha);
 algo_char = algorithms_char();
 
 algorithms = [2];
-% algorithms = [2,3,4,5,6,7];
-% algorithms = [8,9,10,11,12,13,14,15];
 % Use this value to scale the color scale in the image (higher values make
 % low count areas brighter)
 color_scale = 1;
@@ -365,7 +386,7 @@ color_scale = 1;
 color_from_algo = 1;
 
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
 img = check_algorithms(pz, algorithms, color_from_algo);
@@ -380,6 +401,10 @@ gg = get(0,'ScreenSize');
 im_size = gg(4)/2.5;
 figure
 set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, gg(4)), im_size * jj, im_size * hh]);
+img = pz{algorithms(1)};
+koko1 = size(img,1);
+koko2 = size(img,2);
+koko3 = size(img,3);
 
 clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
 for kk = 1 : max([koko1, koko2, koko3])
@@ -390,35 +415,65 @@ for kk = 1 : max([koko1, koko2, koko3])
         koko3 = size(img,3);
         if kk <= koko3
             subplot(hh, jj, 1 + jj*(ll - 1))
-            imagesc(img(:,:,kk,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,kk,end),clim)
+            else
+                imagesc(img(:,:,kk,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', transverse'])
         else
             subplot(hh, jj, 1 + jj*(ll - 1))
-            imagesc(img(:,:,koko3,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,koko3,end),clim)
+            else
+                imagesc(img(:,:,koko3,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko1) ', transverse'])
         end
         axis image
         if kk <= koko1
             img = rot90(permute(img, [3 2 1 4]),2);
             subplot(hh, jj, 2 + jj*(ll - 1))
-            imagesc(img(:,:,kk,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,kk,end),clim)
+            else
+                imagesc(img(:,:,kk,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', frontal'])
         else
             img = rot90(permute(img, [3 2 1 4]),2);
             subplot(hh, jj, 2 + jj*(ll - 1))
-            imagesc(img(:,:,koko1,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,koko1,end),clim)
+            else
+                imagesc(img(:,:,koko1,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko1) ', frontal'])
         end
         axis image
         if kk <= koko2
-            img = permute(img, [1 3 2 4]);
+            img = permute(img, [3 1 2 4]);
             subplot(hh, jj, 3 + jj*(ll - 1))
-            imagesc(img(:,:,kk,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,kk,end),clim)
+            else
+                imagesc(img(:,:,kk,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(kk) ', sagittal'])
         else
-            img = permute(img, [1 3 2 4]);
+            img = permute(img, [3 1 2 4]);
             subplot(hh, jj, 3 + jj*(ll - 1))
-            imagesc(img(:,:,koko2,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,koko2,end),clim)
+            else
+                imagesc(img(:,:,koko2,end),clim)
+            end
             title([char(algo_char(algorithms(ll))) ' slice = ' num2str(koko2) ', sagittal'])
         end
         axis image
@@ -466,7 +521,7 @@ source = 0;
 source_coordinates = 1;
 
 if exist('f_osem','var') && ~exist('pz','var')
-    pz = cell(88,1);
+    pz = cell(95,1);
     pz{2} = f_osem;
 end
 img = pz{algorithms(color_from_algo)};
@@ -483,13 +538,13 @@ for jj = 1:numel(algorithms)
     end
 end
 
-if length(algorithms) + nnz(source) > 2
-    hh = 2;
+if length(algorithms) + nnz(source) > 3
+    hh = 3;
 else
     hh = 1;
 end
 if length(algorithms) + nnz(source) > 1
-    jj = max(2, round((length(algorithms) + nnz(source)) / 2));
+    jj = max(3, round((length(algorithms) + nnz(source)) / 3));
 else
     jj = 1;
 end
@@ -535,7 +590,12 @@ for kk = 1 : image_properties.n_time_steps
             img = permute(img, [1 3 2 4]);
         end
         subplot(hh, jj, ll)
-        imagesc(img(:,:,slice,end),clim)
+            if color_from_algo == 0
+                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                imagesc(img(:,:,slice,end),clim)
+            else
+                imagesc(img(:,:,slice,end),clim)
+            end
         axis image
         title([char(algo_char(algorithms(ll))) ' time step = ' num2str(kk)])
     end
