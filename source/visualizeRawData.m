@@ -18,6 +18,7 @@ clear L
 true_coincidences = sparse(I,J,V,detectors,detectors);
 clear I J V
 
+figure
 if isempty(varargin)
     imagesc(true_coincidences)
 else
