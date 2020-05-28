@@ -97,6 +97,7 @@ if options.use_machine ~= 2
     
     ringsp = rings;
     ScatterProp.smoothing = false;
+    ScatterProp.variance_reduction = false;
     RandProp.variance_reduction = false;
     RandProp.smoothing = false;
     
@@ -107,6 +108,10 @@ if options.use_machine ~= 2
         end
     elseif temp == 0
         pseudot = [];
+    end
+    
+    if options.det_w_pseudo / options.Nang / 2 > 1
+        appliedCorrections.mashing = options.det_w_pseudo / options.Nang / 2;
     end
     
     % Sinograms are reformed
@@ -292,19 +297,25 @@ if options.use_machine ~= 2
                     end
                 end
             else
-                try
-                    SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
-                catch
-                    options = loadDelayedData(options);
+                if (RandProp.variance_reduction && ~options.variance_reduction) || (RandProp.smoothing && ~options.randoms_smoothing)
+                    try
+                        SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
+                    catch
+                        options = loadDelayedData(options);
+                    end
+                else
+                    SinDelayed = loadStructFromFile(sinoFile, 'SinDelayed');
                 end
             end
         end
         if options.scatter_correction
-            options.ScatterC = loadStructFromFile(sinoFile, 'SinScatter');
             try
+                if ~isfield(options,'ScatterC')
+                    options.ScatterC = loadStructFromFile(sinoFile, 'SinScatter');
+                end
                 ScatterProp = loadStructFromFile(sinoFile, 'ScatterProp');
-                variableList = [variableList, {'ScatterProp'}];
             end
+            variableList = [variableList, {'ScatterProp'}];
         end
         SinM = cell(partitions,1);
     elseif data_load
@@ -478,32 +489,36 @@ if options.use_machine ~= 2
             
             %%
             Sinog = cat(3,Sinog{:});
-            Sin = zeros(Ndist,Nang,NSlices,'uint16');
             
             
-            kkj = zeros(floor((ring_difference-ceil(span/2))/span) + 1, 1);
-            for kk = 1 : floor((ring_difference-ceil(span/2))/span) + 1
-                kkj(kk) = ceil(span/2) + span*(kk - 1);
-            end
-            offset2 = cumsum(segment_table);
-            % Create the sinograms
-            % First the detectors on the same ring
-            Sin(:,:,1:2:Nz) = Sinog(:,:,1:ringsp+1:ringsp^2);
-            % Then the detectors on adjacent rings
-            for jh=1:floor(span/2)
-                apu = Sinog(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-                apu2 = Sinog(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-                Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-            end
-            % Lastly the rest of the detectors with the amount of combined LORs
-            % specified with the span value
-            for ih=1:floor(length(segment_table)/2)
-                for jh=1:span
-                    apu = Sinog(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                    Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                    apu2 = Sinog(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                    Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+            if span > 1
+                Sin = zeros(Ndist,Nang,NSlices,'uint16');
+                kkj = zeros(floor((ring_difference-ceil(span/2))/span) + 1, 1);
+                for kk = 1 : floor((ring_difference-ceil(span/2))/span) + 1
+                    kkj(kk) = ceil(span/2) + span*(kk - 1);
                 end
+                offset2 = cumsum(segment_table);
+                % Create the sinograms
+                % First the detectors on the same ring
+                Sin(:,:,1:2:Nz) = Sinog(:,:,1:ringsp+1:ringsp^2);
+                % Then the detectors on adjacent rings
+                for jh=1:floor(span/2)
+                    apu = Sinog(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
+                    apu2 = Sinog(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
+                    Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
+                end
+                % Lastly the rest of the detectors with the amount of combined LORs
+                % specified with the span value
+                for ih=1:floor(length(segment_table)/2)
+                    for jh=1:span
+                        apu = Sinog(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
+                        Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
+                        apu2 = Sinog(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
+                        Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                    end
+                end
+            else
+                Sin = Sinog;
             end
             clear Sinog
             if partitions > 1
@@ -567,7 +582,7 @@ if options.use_machine ~= 2
                     SinD = single(randoms_smoothing(double(SinD), options));
                     RandProp.smoothing = true;
                     if options.variance_reduction
-                        appliedCorrections.randoms = 'and smoothing';
+                        appliedCorrections.randoms = [appliedCorrections.randoms ' and smoothing'];
                     else
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
@@ -606,7 +621,7 @@ if options.use_machine ~= 2
                     options.SinDelayed{llo} = randoms_smoothing(options.SinDelayed{llo}, options);
                     RandProp.smoothing = true;
                     if options.variance_reduction
-                        appliedCorrections.randoms = 'and smoothing';
+                        appliedCorrections.randoms = [appliedCorrections.randoms ' and smoothing'];
                     else
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
@@ -627,7 +642,7 @@ if options.use_machine ~= 2
                     options.SinDelayed = randoms_smoothing(options.SinDelayed, options);
                     RandProp.smoothing = true;
                     if options.variance_reduction
-                        appliedCorrections.randoms = 'and smoothing';
+                        appliedCorrections.randoms = [appliedCorrections.randoms ' and smoothing'];
                     else
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
@@ -652,7 +667,7 @@ if options.use_machine ~= 2
                     error('Size mismatch between scatter sinogram and specified sinogram')
                 end
                 if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
-                    options.ScatterC{llo} = Randoms_variance_reduction(double(options.ScatterC{llo}), options);
+                    options.ScatterC{llo} = Randoms_variance_reduction(single(options.ScatterC{llo}), options);
                     ScatterProp.variance_reduction = true;
                     appliedCorrections.scatter = 'scatter correction with variance reduction';
                 end
@@ -660,7 +675,7 @@ if options.use_machine ~= 2
                     options.ScatterC{llo} = randoms_smoothing(options.ScatterC{llo}, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'scatter correction with smoothing';
                     end
@@ -669,7 +684,11 @@ if options.use_machine ~= 2
                         appliedCorrections.scatter = 'scatter correction';
                     end
                 end
-                Sin = Sin - single(options.ScatterC{llo});
+                if options.subtract_scatter
+                    Sin = Sin - single(options.ScatterC{llo});
+                else
+                    Sin = Sin .* single(options.ScatterC{llo});
+                end
             else
                 if size(options.ScatterC,2) ~= Nang && size(options.ScatterC,1) ~= Ndist && numel(options.ScatterC) == numel(Sin)
                     options.ScatterC = reshape(options.ScatterC, Ndist,Nang,NSlices);
@@ -677,7 +696,7 @@ if options.use_machine ~= 2
                     error('Size mismatch between scatter sinogram and specified sinogram')
                 end
                 if options.variance_reduction && ~ScatterProp.variance_reduction
-                    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                    options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
                     ScatterProp.variance_reduction = true;
                     appliedCorrections.scatter = 'scatter correction with variance reduction';
                 end
@@ -685,7 +704,7 @@ if options.use_machine ~= 2
                     options.ScatterC = randoms_smoothing(options.ScatterC, options);
                     ScatterProp.smoothing = true;
                     if options.scatter_variance_reduction
-                        appliedCorrections.scatter = 'and smoothing';
+                        appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                     else
                         appliedCorrections.scatter = 'scatter correction with smoothing';
                     end
@@ -694,7 +713,11 @@ if options.use_machine ~= 2
                         appliedCorrections.scatter = 'scatter correction';
                     end
                 end
-                Sin = Sin - single(options.ScatterC);
+                if options.subtract_scatter
+                    Sin = Sin - single(options.ScatterC);
+                else
+                    Sin = Sin .* single(options.ScatterC);
+                end
             end
             if options.verbose
                 disp('Scatter correction applied to sinogram')
@@ -784,7 +807,11 @@ if options.use_machine ~= 2
                         appliedCorrections.scatter = 'normalized scatter correction';
                     end
                 end
-                Sin = Sin - single(options.ScatterC{llo});
+                if options.subtract_scatter
+                    Sin = Sin - single(options.ScatterC{llo});
+                else
+                    Sin = Sin .* single(options.ScatterC{llo});
+                end
             else
                 if size(options.ScatterC,2) ~= Nang && size(options.ScatterC,1) ~= Ndist && numel(options.ScatterC) == numel(Sin)
                     options.ScatterC = reshape(options.ScatterC, Ndist,Nang,NSlices);
@@ -813,19 +840,23 @@ if options.use_machine ~= 2
                         appliedCorrections.scatter = 'normalized scatter correction';
                     end
                 end
-                Sin = Sin - single(options.ScatterC);
+                if options.subtract_scatter
+                    Sin = Sin - single(options.ScatterC);
+                else
+                    Sin = Sin .* single(options.ScatterC);
+                end
             end
             if options.verbose
                 disp('Scatter correction applied to sinogram')
             end
         end
         if isfield(options,'global_correction_factor') && ~isempty(options.global_correction_factor) && options.global_correction_factor > 0 && ~options.corrections_during_reconstruction
-            Sin = Sin * options.global_correction_factor;
+            Sin = Sin .* options.global_correction_factor;
         end
         % Fill sinogram gaps if pseudo detectors are present and the user
         % has seleced gap filling
         
-        if options.fill_sinogram_gaps && sum(pseudot) > 0
+        if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
             if llo == 1
                 gaps = [];
             end
@@ -1088,7 +1119,7 @@ else
                         error('Size mismatch between scatter sinogram and and specified sinogram')
                     end
                     if options.scatter_variance_reduction
-                        options.ScatterC{llo} = Randoms_variance_reduction(double(options.ScatterC{llo}), options);
+                        options.ScatterC{llo} = Randoms_variance_reduction(single(options.ScatterC{llo}), options);
                         ScatterProp.variance_reduction = true;
                         appliedCorrections.scatter = 'scatter correction with variance reduction';
                     end
@@ -1096,7 +1127,7 @@ else
                         options.ScatterC{llo} = randoms_smoothing(options.ScatterC{llo}, options);
                         ScatterProp.smoothing = true;
                         if options.scatter_variance_reduction
-                            appliedCorrections.scatter = 'and smoothing';
+                            appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                         else
                             appliedCorrections.scatter = 'scatter correction with smoothing';
                         end
@@ -1106,10 +1137,18 @@ else
                         end
                     end
                     
-                    if options.partitions > 1
-                        SinM{llo} = single(SinM{llo}) - single(options.ScatterC{llo});
+                    if options.subtract_scatter
+                        if options.partitions > 1
+                            SinM = SinM - single(options.ScatterC{llo});
+                        else
+                            SinM = single(SinM) - single(options.ScatterC{1});
+                        end
                     else
-                        SinM = single(SinM) - single(options.ScatterC{1});
+                        if options.partitions > 1
+                            SinM = SinM .* single(options.ScatterC{llo});
+                        else
+                            SinM = single(SinM) .* single(options.ScatterC{1});
+                        end
                     end
                 end
             else
@@ -1119,7 +1158,7 @@ else
                     error('Size mismatch between scatter sinogram and and specified sinogram')
                 end
                 if options.scatter_variance_reduction
-                    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                    options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
                     ScatterProp.variance_reduction = true;
                     appliedCorrections.scatter = 'scatter correction with variance reduction';
                 end
@@ -1136,12 +1175,22 @@ else
                         appliedCorrections.scatter = 'scatter correction';
                     end
                 end
-                if options.partitions > 1
-                    for llo = 1 : options.partitions
-                        SinM{llo} = single(SinM{llo}) - single(options.ScatterC);
+                if options.subtract_scatter
+                    if options.partitions > 1
+                        for llo = 1 : options.partitions
+                            SinM{llo} = single(SinM{llo}) - single(options.ScatterC);
+                        end
+                    else
+                        SinM = single(SinM) - single(options.ScatterC);
                     end
                 else
-                    SinM = single(SinM) - single(options.ScatterC);
+                    if options.partitions > 1
+                        for llo = 1 : options.partitions
+                            SinM{llo} = single(SinM{llo}) .* single(options.ScatterC);
+                        end
+                    else
+                        SinM = SinM .* single(options.ScatterC);
+                    end
                 end
             end
             if options.verbose
@@ -1179,7 +1228,6 @@ else
                 normalization = loadStructFromFile(norm_file,'normalization');
             else
                 normalization = normalization_coefficients(options);
-                %                 normalization = loadStructFromFile(norm_file,'normalization');
             end
         end
         if options.partitions > 1
@@ -1206,7 +1254,7 @@ else
                 ScatterProp.normalization = true;
             end
             if options.scatter_variance_reduction
-                options.ScatterC{llo} = Randoms_variance_reduction(double(options.ScatterC{llo}), options);
+                options.ScatterC{llo} = Randoms_variance_reduction(single(options.ScatterC{llo}), options);
                 ScatterProp.variance_reduction = true;
                 appliedCorrections.scatter = 'normalized scatter correction with variance reduction';
             end
@@ -1214,7 +1262,7 @@ else
                 options.ScatterC{llo} = randoms_smoothing(options.ScatterC{llo}, options);
                 ScatterProp.smoothing = true;
                 if options.scatter_variance_reduction
-                    appliedCorrections.scatter = 'and smoothing';
+                    appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                 else
                     appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                 end
@@ -1223,7 +1271,11 @@ else
                     appliedCorrections.scatter = 'normalized scatter correction';
                 end
             end
-            SinM = SinM - single(options.ScatterC{llo});
+            if options.subtract_scatter
+                SinM = SinM - single(options.ScatterC{llo});
+            else
+                SinM = SinM .* single(options.ScatterC{llo});
+            end
         else
             if size(options.ScatterC,2) ~= options.Nang && size(options.ScatterC,1) ~= options.Ndist && numel(options.ScatterC) == numel(SinM)
                 options.ScatterC = reshape(options.ScatterC, options.Ndist,options.Nang,options.NSlices);
@@ -1235,7 +1287,7 @@ else
                 ScatterProp.normalization = true;
             end
             if options.scatter_variance_reduction
-                options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
+                options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
                 ScatterProp.variance_reduction = true;
                 appliedCorrections.scatter = 'normalized scatter correction with variance reduction';
             end
@@ -1243,7 +1295,7 @@ else
                 options.ScatterC = randoms_smoothing(options.ScatterC, options);
                 ScatterProp.smoothing = true;
                 if options.scatter_variance_reduction
-                    appliedCorrections.scatter = 'and smoothing';
+                    appliedCorrections.scatter = [appliedCorrections.scatter ' and smoothing'];
                 else
                     appliedCorrections.scatter = 'normalized scatter correction with smoothing';
                 end
@@ -1252,7 +1304,11 @@ else
                     appliedCorrections.scatter = 'normalized scatter correction';
                 end
             end
-            SinM = SinM - single(options.ScatterC);
+            if options.subtract_scatter
+                SinM = SinM - single(options.ScatterC);
+            else
+                SinM = SinM .* single(options.ScatterC);
+            end
         end
         if options.verbose
             disp('Scatter correction applied to sinogram')
