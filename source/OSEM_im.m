@@ -52,6 +52,7 @@ if nargin >= 7
         FP = varargin{1} * im_apu;
         BP = varargin{1}' * (varargin{3} ./ (FP + varargin{2} + varargin{5})) + varargin{2};
     end
+    % Compute PSF blurring
     if length(varargin) > 6 && ~isempty(varargin{7}) && varargin{7}.use_psf
         BP = computeConvolution(BP, varargin{7}, varargin{8}, varargin{9}, varargin{10}, varargin{11});
     end
