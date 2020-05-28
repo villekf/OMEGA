@@ -2,14 +2,14 @@
 <productinfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
              xsi:noNamespaceSchemaLocation="optional">
     <?xml-stylesheet type="text/xsl"href="optional"?>
-    <!-- info.xml file for the mytoolbox toolbox -->
-    <!-- Version 1.0 -->
-    <!-- Copyright (date) (owner).-->
+    <!-- info.xml file for the OMEGA toolbox -->
+    <!-- Version 1.1 -->
+    <!-- Copyright 2020 Ville-Veikko Wettenhovi.-->
     
     <!-- Supply the following six elements in the order specified -->
     <!-- (Required) Release of MATLAB. Not currently used but required -->
     <!-- to parse the file -->
-    <matlabrelease>2019a</matlabrelease>
+    <matlabrelease>2019b</matlabrelease>
     <!-- (Required) Title of toolbox. Appears in the Contents pane -->
     <name>OMEGA</name>
     <!-- (Required) Label for the toolbox. pick one: -->
