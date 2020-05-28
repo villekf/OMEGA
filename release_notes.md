@@ -74,6 +74,10 @@
 - Sinogram reconstruction should now work as originally intended
   - Unintentional blurring was caused by incorrect transaxial coordinates with half of oblique sinograms
 
+- Added ability to add scatter correction to the system matrix as a diagonal matrix
+
+- Added ability to visualize each algorithm in `visualize_pet.m` with their own color limits (set `color_from_algo = 0`)
+
 ### Bug fixes and enhancements
 
 - Renamed `main_nongate.m` to `main_PET.m`

@@ -222,6 +222,8 @@ algorithms = [2];
 % low count areas brighter)
 color_scale = 1;
 % From according to which reconstruction should the color scale be taken
+% If zero, then each algorithm has its own color scala (from zero to their
+% own maximum value, i.e. there is no global limit)
 % NOTE: The numbering is according to the length of algorithms vector, e.g.
 % if you have algorithms = [2, 4, 5] and color_from_algo = 2 then the scale
 % will be taken from RAMLA reconstruction (second element of algorithms)
@@ -379,6 +381,8 @@ algorithms = [2];
 % low count areas brighter)
 color_scale = 1;
 % From which reconstruction should the color scale be taken
+% If zero, then each algorithm has its own color scala (from zero to their
+% own maximum value, i.e. there is no global limit)
 % NOTE: The numbering is according to the length of the above algorithms
 % vector, e.g. if you have algorithms = [2, 4, 5] and color_from_algo = 2
 % then the scale will be taken from RAMLA reconstruction (second element of
@@ -493,6 +497,8 @@ algorithms = [2];
 % low count areas brighter)
 color_scale = 1;
 % From according to which reconstruction should the color scale be taken
+% If zero, then each algorithm has its own color scala (from zero to their
+% own maximum value, i.e. there is no global limit)
 % NOTE: The numbering is according to the length of algorithms vector, e.g.
 % if you have algorithms = [2, 4, 5] and color_from_algo = 2 then the scale
 % will be taken from RAMLA reconstruction (second element of algorithms)
