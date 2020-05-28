@@ -45,6 +45,9 @@ if strcmp(scatter_file(end-3:end), '.scn')
             end
         else
             temp = sum(options.ScatterC,4,'native');
+            if ~options.subtract_scatter
+                temp = temp / s_length;
+            end
         end
         options.ScatterC = temp;
     end
