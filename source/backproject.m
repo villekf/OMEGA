@@ -147,6 +147,24 @@ else
     end
 end
 
+if scatter_correction && ~options.subtract_scatter
+    if options.implementation == 1
+        scatter_input = options.ScatterC(nn(1) : nn(2));
+    else
+        if iscell(options.SinDelayed)
+            options.ScatterFB{1} = {single(options.ScatterC{1}(nn(1) : nn(2)))};
+        else
+            options.ScatterFB{1} = {single(options.ScatterC(nn(1) : nn(2)))};
+        end
+    end
+else
+    if options.implementation == 1
+        scatter_input = 0;
+    else
+        options.ScatterFB{1} = single(0);
+    end
+end
+
 if options.use_raw_data
     size_x = uint32(options.det_per_ring);
 else
@@ -299,7 +317,7 @@ if options.implementation == 1
             if options.projector_type == 1 || options.projector_type == 0
                 [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                     zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, ...
-                    randoms_correction, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                    randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
                     use_raw_data, uint32(2), ind_size, block1, blocks, index, ...
                     uint32(options.projector_type), iij, jji, kkj);
             else
@@ -312,7 +330,7 @@ if options.implementation == 1
             if options.projector_type == 1
                 [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                     zmax, options.vaimennus, normalization, SinDelayed, uint32(0), attenuation_correction, normalization_correction, ...
-                    randoms_correction, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
+                    randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
                     use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
             else
                 error('Unsupported projector type')
@@ -363,7 +381,7 @@ if options.implementation == 1
         end
         [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
             normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction,...
-            randoms_correction, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, ...
+            randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, ...
             LL, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa, false, ...
             uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
         clear lor2
