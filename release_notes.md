@@ -32,10 +32,10 @@
   - 3D version is slower, but more accurate than the previous one (no more line artifacts)
   - Removed support for implementation 1 when precompute_lor = false
   
+- Added a volume-of-intersection ray tracer (THOR)
+  
 - Added preliminary CUDA support for implementation 2 (run-time compilation, does not require NVCC)
   - Currently improved Siddon is faster than OpenCL, but orthogonal/volume-based is slower
-  
-- Added a volume-based ray tracer (THOR)
 
 - Added PSF reconstruction for all implementations and projectors
   - Optional deblurring phase possible
@@ -118,7 +118,7 @@
 - Orthogonal distance-based ray tracer now works correctly
 
 - Compilation should produce less warnings when using Visual studio
-  - Older versions (2013) of Visual studio should now work better
+  - Older versions (2013) of Visual studio should now work better (untested)
 
 - Fixed implementation 2 when using custom prior
 
@@ -139,6 +139,8 @@
 - Sinogram creation can now load data created from different file type than specified (e.g. if ROOT data is selected, but no ROOT raw list-mode data is found, but ASCII is available then the ASCII data is used)
 
 - Enhanced the `main_PET` single reconstruction section
+
+- Improved documentation
 
 ## 1.0
 
