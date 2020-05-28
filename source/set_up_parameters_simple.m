@@ -6,6 +6,7 @@ options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
 options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
 options.rings = options.linear_multip * options.cryst_per_block;
 options.detectors = options.det_per_ring*options.rings;
+options.sampling_raw = 1;
 options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
@@ -27,6 +28,7 @@ options.randoms_smoothing = false;
 options.scatter_correction = false;
 options.normalize_scatter = false;
 options.scatter_smoothing = false;
+options.subtract_scatter = true;
 options.attenuation_correction = false;
 options.attenuation_datafile = '';
 options.compute_normalization = false;

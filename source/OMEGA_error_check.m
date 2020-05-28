@@ -219,10 +219,10 @@ end
 if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file not found. Run install_mex first.')
 end
-if options.use_root && exist('GATE_root_matlab','file') ~= 3
+if options.use_root && exist('GATE_root_matlab','file') ~= 3 && options.use_machine == 0
     warning('ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file.')
 end
-if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3
+if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0
     error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
 end
 if options.implementation == 2 && exist('OpenCL_matrixfree','file') ~= 3
@@ -267,9 +267,91 @@ if options.verbose
         disp('Using LMF data.')
     elseif options.use_root && options.use_machine == 0
         disp('Using ROOT data.')
+    elseif options.use_machine == 1
+        disp('Using data obtained from list-mode file.')
+    elseif options.use_machine == 2
+        disp('Using machine created sinogram data.')
+    elseif options.use_machine == 3
+        disp('Using 32-bit list-mode data.')
     end
     if ~options.compute_normalization
-        disp(['Using implementation ' num2str(options.implementation) '.'])
+        dispaus = (['Using implementation ' num2str(options.implementation)]);
+        if options.implementation == 1 || options.implementation == 4
+            dispaus = [dispaus, '.'];
+        elseif options.implementation == 2
+            inffo = ArrayFire_OpenCL_device_info();
+            k2 = strfind(inffo, 'MB');
+            if options.use_device == 0
+                k1 = strfind(inffo, '[0]');
+                dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(1)+1)];
+            else
+                k1 = strfind(inffo, ['-' num2str(options.use_device) '-']);
+                dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(options.use_device + 1)+1)];
+            end
+        elseif options.implementation == 3
+            inffo = OpenCL_device_info();
+            k6 = strfind(inffo, 'No. platforms: ');
+            k2 = strfind(inffo, 'MB');
+            k1 = strfind(inffo, 'Platform') + 12;
+            k3 = strfind(inffo, 'Device');
+            k4 = strfind(inffo, 'No. devices:');
+            n_platforms = str2double(inffo(k6+15:k1(1)-15));
+            n_devices = [];
+            hh = 1;
+            for kk = 1 : n_platforms
+                n_devices = [n_devices ; str2double(inffo(k4(kk)+14:k3(hh)-2))];
+                hh = hh + n_devices(kk);
+            end
+            k5 = strfind(inffo, 'with ');
+            MB = [];
+            hh = 1;
+            for kk = 1 : n_platforms
+                if kk == options.use_device + 1
+                    for ll = 1 : n_devices(kk)
+                        MB = [MB; str2double(inffo(k5(hh + ll - 1)+5:k2(hh + ll - 1)-2))];
+                    end
+                end
+                hh = hh + n_devices(kk);
+            end
+            kumulatiivinen = cumsum(n_devices);
+            if options.cpu_to_gpu_factor == 0
+                [~, loc] = max(MB);
+                ll = kumulatiivinen(options.use_device + 1) - n_devices(options.use_device + 1) + loc;
+                if n_devices(options.use_device + 1) > 1
+                    dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2), ...
+                        sprintf('\n'), inffo(k3(ll):k3(ll + 1) - 2)];
+                else
+                    if options.use_device + 1 == n_platforms
+                        dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2), ...
+                            sprintf('\n'), inffo(k3(kumulatiivinen(end)):end - 1)];
+                    else
+                        dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2), ...
+                            sprintf('\n'), inffo(k3(kumulatiivinen(options.use_device + 1)):k1(options.use_device + 2) - 15)];
+                    end
+                end
+            else
+                loc = MB > 2048;
+                if n_devices(options.use_device + 1) > 1
+                    dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2)];
+                    for hh = 1 : n_devices(options.use_device + 1)
+                        if loc(hh) == 0 
+                            continue;
+                        end
+                        ll = kumulatiivinen(options.use_device + 1) - n_devices(options.use_device + 1) + hh;
+                        dispaus = [dispaus, sprintf('\n'), inffo(k3(ll):k3(ll + 1) - 2)];
+                    end
+                else
+                    if options.use_device + 1 == n_platforms
+                        dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2), ...
+                            sprintf('\n'), inffo(k3(kumulatiivinen(end)):end - 1)];
+                    else
+                        dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2), ...
+                            sprintf('\n'), inffo(k3(kumulatiivinen(options.use_device + 1)):k1(options.use_device + 2) - 15)];
+                    end
+                end
+            end
+        end
+        disp(dispaus);
         reko = {};
         if options.mlem
             if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
@@ -575,6 +657,9 @@ if options.verbose
                 dispi = [dispi, ' with smoothing.'];
             end
             disp(dispi)
+        end
+        if options.fill_sinogram_gaps
+            disp('Sinogram gap filling ON.')
         end
     end
     if options.normalization_correction && ~options.compute_normalization
