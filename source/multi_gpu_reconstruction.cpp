@@ -74,10 +74,13 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	cl_program program = NULL;
 	cl_command_queue *commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
 
+
+	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+
 	// Build the program and get the command queues
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 
 		projector_type, header_directory, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, 
-		false, cr_pz, dx, use_psf);
+		false, cr_pz, dx, use_psf, scatter, randoms_correction);
 
 	if (status != CL_SUCCESS) {
 		status = clReleaseContext(context);
@@ -194,7 +197,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		normalization, atten, size_atten, norm, size_norm, subsets, epps, Nt, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel, kernel_sum, 
 		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, atomic_64bit,
 		compute_norm_matrix, precompute, dec, projector_type, n_rays, n_rays3D, cr_pz, cell, osem_bool, global_factor, bmin, bmax, Vmax, V, size_V, local_size, 
-		use_psf, gaussian, size_gauss);
+		use_psf, gaussian, size_gauss, scatter);
 
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
@@ -260,7 +263,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute, 
 	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, const float bmin,
-	const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf) {
+	const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf, const mxArray* options) {
 	// This functions very similarly to the above function
 
 	const uint32_t im_dim = Nx * Ny * Nz;
@@ -294,11 +297,14 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		return;
 	}
 
+
+	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+
 	cl_program program = NULL;
 	cl_command_queue* commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, projector_type, header_directory, crystal_size_z, 
-		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf);
+		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction);
 
 	if (status != CL_SUCCESS) {
 		status = clReleaseContext(context);
@@ -368,7 +374,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
 		normalization, atten, size_atten, norm, size_norm, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel_sum, kernel, output,  
 		size_rhs, no_norm, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, precompute, dec, 
-		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size);
+		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter);
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
@@ -438,7 +444,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	cl_command_queue *commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 50u, header_directory, 0.f, false, raw, 
-		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false);
+		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0);
 
 	if (status != CL_SUCCESS) {
 		status = clReleaseContext(context);

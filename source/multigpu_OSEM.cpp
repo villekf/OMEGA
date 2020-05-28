@@ -32,7 +32,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit,
 	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D,
 	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V,
-	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss) {
+	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter) {
 
 	cl_int status = CL_SUCCESS;
 	cl_float zero = 0.f;
@@ -108,6 +108,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		}
 	}
 
+	size_t size_scat = 1ULL;
+	if (scatter == 1U) {
+		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	}
+
 	// Memory allocation
 	cl_mem d_gauss;
 	std::vector<cl_mem> d0_rhs, d0_Summ, d_Summ;
@@ -126,6 +131,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	std::vector<cl_mem> d_Sino(subsets * num_devices_context, 0);
 	std::vector<cl_mem> d_sc_ra(subsets * num_devices_context, 0);
 	std::vector<cl_mem> d_norm(subsets * num_devices_context, 0);
+	std::vector<cl_mem> d_scat(subsets * num_devices_context, 0);
 	std::vector<cl_mem> d_lor(subsets * num_devices_context, 0);
 	std::vector<cl_mem> d_xyindex(subsets * num_devices_context, 0);
 	std::vector<cl_mem> d_zindex(subsets * num_devices_context, 0);
@@ -139,32 +145,6 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		d0_rhs.resize(num_devices_context - 1u);
 		d0_Summ.resize(num_devices_context - 1u);
 	}
-	//cl_mem* d_z = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_x = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_y = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_xcenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_ycenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_zcenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_V = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_atten = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_pseudos = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_rhs = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_mlem = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//if (compute_norm_matrix == 0u)
-	//	d_Summ = (cl_mem*)malloc(subsets * num_devices_context * sizeof(cl_mem));
-	//else
-	//	d_Summ = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_Sino = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_sc_ra = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_norm = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_lor = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_xyindex = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_zindex = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_L = (cl_mem*)malloc((subsets * num_devices_context) * sizeof(cl_mem));
-	//if (num_devices_context > 1u) {
-	//	d0_rhs = (cl_mem*)malloc((num_devices_context - 1u) * sizeof(cl_mem));
-	//	d0_Summ = (cl_mem*)malloc((num_devices_context - 1u) * sizeof(cl_mem));
-	//}
 
 	// Create the necessary buffers
 	for (cl_uint kk = 0u; kk < subsets; kk++) {
@@ -327,6 +307,21 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			}
 			else {
 				d_sc_ra[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
+				if (status != CL_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return;
+				}
+			}
+			if (scatter == 1u) {
+				d_scat[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL,
+					&status);
+				if (status != CL_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return;
+				}
+			}
+			else {
+				d_scat[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 				if (status != CL_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return;
@@ -588,9 +583,6 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	clSetKernelArg(kernel, kernelInd++, sizeof(float), &NSlices);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &size_x);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint16_t), &TotSinos);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &attenuation_correction);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &normalization);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &randoms_correction);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &det_per_ring);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &prows);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Nxy);
@@ -676,6 +668,22 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				else {
 					status = clEnqueueFillBuffer(commandQueues[i], d_sc_ra[kk * num_devices_context + i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 					//status = clEnqueueWriteBuffer(commandQueues[i], d_sc_ra[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float), S_R, 0, NULL, NULL);
+					if (status != CL_SUCCESS) {
+						std::cerr << getErrorString(status) << std::endl;
+						return;
+					}
+				}
+				if (scatter == 1u) {
+					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+					status = clEnqueueWriteBuffer(commandQueues[i], d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) *
+						length[kk * num_devices_context + i], &scat[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
+					if (status != CL_SUCCESS) {
+						std::cerr << getErrorString(status) << std::endl;
+						return;
+					}
+				}
+				else {
+					status = clEnqueueFillBuffer(commandQueues[i], d_scat[kk * num_devices_context + i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
 						std::cerr << getErrorString(status) << std::endl;
 						return;
@@ -831,6 +839,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 					clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_reko_type[i]);
 					clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_norm[osa_iter * num_devices_context + i]);
+					clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_scat[osa_iter * num_devices_context + i]);
 					if (compute_norm_matrix == 0u)
 						clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_Summ[osa_iter * num_devices_context + i]);
 					else
@@ -883,6 +892,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 								clReleaseMemObject(d_Sino[kk * num_devices_context + i]);
 								clReleaseMemObject(d_sc_ra[kk * num_devices_context + i]);
 								clReleaseMemObject(d_norm[kk * num_devices_context + i]);
+								clReleaseMemObject(d_scat[kk * num_devices_context + i]);
 							}
 						}
 						return;
@@ -1110,6 +1120,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							clReleaseMemObject(d_Sino[kk * num_devices_context + i]);
 							clReleaseMemObject(d_sc_ra[kk * num_devices_context + i]);
 							clReleaseMemObject(d_norm[kk * num_devices_context + i]);
+							clReleaseMemObject(d_scat[kk * num_devices_context + i]);
 						}
 					}
 					return;
@@ -1318,6 +1329,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			clReleaseMemObject(d_Sino[kk * num_devices_context + i]);
 			clReleaseMemObject(d_sc_ra[kk * num_devices_context + i]);
 			clReleaseMemObject(d_norm[kk * num_devices_context + i]);
+			clReleaseMemObject(d_scat[kk * num_devices_context + i]);
 		}
 	}
 	for (cl_uint i = 0u; i < num_devices_context; i++) {

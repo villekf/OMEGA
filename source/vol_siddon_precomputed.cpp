@@ -45,7 +45,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos,
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size,
 	const double crystal_size_z, const double* y_center, const double* x_center, const double* z_center, const double global_factor, const double bmin, 
-	const double bmax, const double Vmax, const double* V) {
+	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -118,7 +118,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, N2);
+						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef, N2);
 				}
 			}
 			// Same as for the y-case above
@@ -127,7 +127,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, N2);
+						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef, N2);
 				}
 			}
 			else {
@@ -176,6 +176,8 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				for (size_t ii = 0u; ii < idx; ii++) {
 					rhs[N2 + ii] *= temp;
@@ -266,6 +268,8 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					for (size_t ii = 0u; ii < idx; ii++) {
 						rhs[N2 + ii] *= temp;
@@ -357,6 +361,8 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					for (size_t ii = 0u; ii < idx; ii++) {
 						rhs[N2 + ii] *= temp;
@@ -448,6 +454,8 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				for (size_t ii = 0u; ii < idx; ii++) {
 					rhs[N2 + ii] *= temp;

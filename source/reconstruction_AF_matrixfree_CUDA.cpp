@@ -183,6 +183,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 	}
 
+	float* scat = nullptr;
+	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+	size_t size_scat = 1ULL;
+	scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	if (scatter == 1U) {
+		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	}
+
 	std::vector<array> Summ;
 	array Summ_mlem;
 
@@ -196,7 +204,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	status1 = createProgramCUDA(verbose, k_path, fileName, program_os, program_ml, program_mbsrem, atomic_64bit, header_directory,
 		projector_type, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, local_size, n_rays, n_rays3D, MethodList, osem_bool,
-		mlem_bool, n_rekos, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf);
+		mlem_bool, n_rekos, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction);
 	if (status1 != NVRTC_SUCCESS) {
 		std::cerr << "Error while creating program" << std::endl;
 		return;
@@ -232,7 +240,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	CUresult status = CUDA_SUCCESS;
 
 	// Create and write buffers
-	CUdeviceptr d_x, d_y, d_z, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_Sino_mlem, d_sc_ra_mlem, d_V;
+	CUdeviceptr d_x, d_y, d_z, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_Sino_mlem, d_sc_ra_mlem, d_V, d_scat_mlem;
 	CUdeviceptr* d_Summ, * d_Summ_mlem;
 	CUdeviceptr d_lor_mlem, d_L_mlem, d_zindex_mlem;
 	CUdeviceptr d_xyindex_mlem, d_pseudos;
@@ -245,14 +253,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	std::vector<CUdeviceptr> d_Sino(subsets);
 	std::vector<CUdeviceptr> d_sc_ra(subsets);
 	std::vector<CUdeviceptr> d_norm(subsets);
+	std::vector<CUdeviceptr> d_scat(subsets);
 
 	float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
 
 	status = createAndWriteBuffers(d_x, d_y, d_z, d_lor, d_L, d_zindex, d_xyindex, d_Sino, d_sc_ra, size_x, size_z, TotSinos, size_atten,
-		size_norm, prows, length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, subsets, pituus, atten, norm, pseudos, V, d_atten, d_norm, d_pseudos, d_V,
+		size_norm, size_scat, prows, length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, subsets, pituus, atten, norm, scat, pseudos, V, d_atten, d_norm, d_scat, d_pseudos, d_V,
 		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, randoms_correction,
 		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem,
-		d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko, reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem);
+		d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko, reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem);
 	if (status != CUDA_SUCCESS) {
 		mexPrintf("Failed to load buffers\n");
 		return;
@@ -286,7 +295,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, x00, vec.C_co,
 				vec.C_aco, vec.C_osl, alku, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 				prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-				attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+				d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 				d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem,
 				atomic_64bit, use_psf, g);
 
@@ -337,6 +346,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					if (status != CUDA_SUCCESS) {
 						std::cerr << getErrorString(status) << std::endl;
 					}
+					if (scatter == 1u) {
+						scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+						status = cuMemcpyHtoD(d_scat[kk], &scat[pituus[kk]], sizeof(float) * length[kk]);
+						if (status != CUDA_SUCCESS) {
+							std::cerr << getErrorString(status) << std::endl;
+						}
+					}
 				}
 				vec.im_os = constant(0.f, im_dim * n_rekos2, 1);
 				for (int kk = 0; kk < n_rekos2; kk++) {
@@ -356,6 +372,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					status = cuMemcpyHtoD(d_sc_ra_mlem, &zerof, sizeof(float));
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
+				}
+				if (scatter == 1u) {
+					scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+					status = cuMemcpyHtoD(d_scat_mlem, scat, sizeof(float) * koko);
+					if (status != CUDA_SUCCESS) {
+						std::cerr << getErrorString(status) << std::endl;
+					}
 				}
 				vec.im_mlem = constant(0.f, im_dim * n_rekos_mlem, 1);
 				for (int kk = 0; kk < n_rekos_mlem; kk++) {
@@ -396,6 +419,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					gpuErrchk(cuMemFree(d_zindex[kk]));
 					gpuErrchk(cuMemFree(d_L[kk]));
 					gpuErrchk(cuMemFree(d_norm[kk]));
+					gpuErrchk(cuMemFree(d_scat[kk]));
 					gpuErrchk(cuMemFree(d_Sino[kk]));
 					//if (randoms_correction)
 					gpuErrchk(cuMemFree(d_sc_ra[kk]));
@@ -408,6 +432,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				gpuErrchk(cuMemFree(d_zindex_mlem));
 				gpuErrchk(cuMemFree(d_L_mlem));
 				gpuErrchk(cuMemFree(d_norm_mlem));
+				gpuErrchk(cuMemFree(d_scat_mlem));
 				gpuErrchk(cuMemFree(d_Sino_mlem));
 				gpuErrchk(cuMemFree(d_sc_ra_mlem));
 			}
@@ -479,24 +504,22 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					af::sync();
 
-					//float tes = 0.f;
-
 					// Set kernel arguments
 					// Compute the kernel
 					if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 						void* args[] = { (void*)&global_factor, (void*)&epps, &im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
-							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, (void*)&attenuation_correction,
-							(void*)&normalization, (void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width,
+							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width,
 							(void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, (void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter,
-							&d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter],
+							&d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter],
 							&d_L[osa_iter], &d_Sino[osa_iter], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os), reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size };
 						status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 					}
 					else {
 						void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
-							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, (void*)&attenuation_correction,
-							(void*)&normalization, (void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
-							&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter],
+							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
+							&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter],
 							&d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[osa_iter], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os),
 							reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size };
 						status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
@@ -521,6 +544,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 								gpuErrchk(cuMemFree(d_zindex[kk]));
 								gpuErrchk(cuMemFree(d_L[kk]));
 								gpuErrchk(cuMemFree(d_norm[kk]));
+								gpuErrchk(cuMemFree(d_scat[kk]));
 								gpuErrchk(cuMemFree(d_Sino[kk]));
 								//if (randoms_correction)
 								gpuErrchk(cuMemFree(d_sc_ra[kk]));
@@ -533,6 +557,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_zindex_mlem));
 							gpuErrchk(cuMemFree(d_L_mlem));
 							gpuErrchk(cuMemFree(d_norm_mlem));
+							gpuErrchk(cuMemFree(d_scat_mlem));
 							gpuErrchk(cuMemFree(d_Sino_mlem));
 							gpuErrchk(cuMemFree(d_sc_ra_mlem));
 						}
@@ -559,6 +584,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 								gpuErrchk(cuMemFree(d_zindex[kk]));
 								gpuErrchk(cuMemFree(d_L[kk]));
 								gpuErrchk(cuMemFree(d_norm[kk]));
+								gpuErrchk(cuMemFree(d_scat[kk]));
 								gpuErrchk(cuMemFree(d_Sino[kk]));
 								//if (randoms_correction)
 								gpuErrchk(cuMemFree(d_sc_ra[kk]));
@@ -571,6 +597,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_zindex_mlem));
 							gpuErrchk(cuMemFree(d_L_mlem));
 							gpuErrchk(cuMemFree(d_norm_mlem));
+							gpuErrchk(cuMemFree(d_scat_mlem));
 							gpuErrchk(cuMemFree(d_Sino_mlem));
 							gpuErrchk(cuMemFree(d_sc_ra_mlem));
 						}
@@ -615,7 +642,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						testi = &Summ[osa_iter];
 						eval(*testi);
 					}
-					vec.im_os.unlock();
+					if (use_psf)
+						vec.im_os_blurred.unlock();
+					else
+						vec.im_os.unlock();
 					vec.rhs_os.unlock();
 					if (atomic_64bit)
 						vec.rhs_os = vec.rhs_os.as(f32) / TH;
@@ -627,8 +657,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					computeOSEstimatesCUDA(vec, w_vec, MethodList, MethodListOpenCL, im_dim, testi, epps, iter, osa_iter, subsets, beta, Nx, Ny, Nz, data, length, d_Sino, break_iter, pj3,
 						n_rekos2, pituus, d_lor, d_zindex, d_xyindex, af_cuda_stream, Summ, kernel_mbsrem, d_L, raw, koko, atomic_64bit,
-						compute_norm_matrix, d_sc_ra, E, d_norm, det_per_ring, d_pseudos, prows, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x,
-						TotSinos, attenuation_correction, normalization, randoms_correction, d_atten, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax, d_xcenter, d_ycenter,
+						compute_norm_matrix, d_sc_ra, E, d_norm, d_scat, det_per_ring, d_pseudos, prows, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x,
+						TotSinos, d_atten, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax, d_xcenter, d_ycenter,
 						d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, global_factor, d_reko_type, kernel_mbsrem, use_psf, g, CUDAStruct);
 
 					vec.im_os(vec.im_os < epps) = epps;
@@ -703,15 +733,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 				if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 					void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
-						(void*)&attenuation_correction, (void*)&normalization, (void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, (void*)&Vmax,
-						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type_mlem, &d_norm_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
+						(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, (void*)&Vmax,
+						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type_mlem, &d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
 						&d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
 					status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 				}
 				else {
 					void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
-						(void*)&attenuation_correction, (void*)&normalization, (void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
-						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type_mlem, &d_norm_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
+						(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
+						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type_mlem, &d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
 						&d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
 					status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 				}
@@ -736,6 +766,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_zindex[kk]));
 							gpuErrchk(cuMemFree(d_L[kk]));
 							gpuErrchk(cuMemFree(d_norm[kk]));
+							gpuErrchk(cuMemFree(d_scat[kk]));
 							gpuErrchk(cuMemFree(d_Sino[kk]));
 							//if (randoms_correction)
 							gpuErrchk(cuMemFree(d_sc_ra[kk]));
@@ -748,6 +779,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_zindex_mlem));
 						gpuErrchk(cuMemFree(d_L_mlem));
 						gpuErrchk(cuMemFree(d_norm_mlem));
+						gpuErrchk(cuMemFree(d_scat_mlem));
 						gpuErrchk(cuMemFree(d_Sino_mlem));
 						gpuErrchk(cuMemFree(d_sc_ra_mlem));
 					}
@@ -773,7 +805,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				else
 					apu_sum_mlem.unlock();
 
-				vec.im_mlem.unlock();
+				if (use_psf)
+					vec.im_mlem_blurred.unlock();
+				else
+					vec.im_mlem.unlock();
 				vec.rhs_mlem.unlock();
 				if (atomic_64bit)
 					vec.rhs_mlem = vec.rhs_mlem.as(f32) / TH;
@@ -834,6 +869,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			gpuErrchk(cuMemFree(d_zindex[kk]));
 			gpuErrchk(cuMemFree(d_L[kk]));
 			gpuErrchk(cuMemFree(d_norm[kk]));
+			gpuErrchk(cuMemFree(d_scat[kk]));
 			gpuErrchk(cuMemFree(d_Sino[kk]));
 			//if (randoms_correction)
 			gpuErrchk(cuMemFree(d_sc_ra[kk]));
@@ -846,6 +882,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		gpuErrchk(cuMemFree(d_zindex_mlem));
 		gpuErrchk(cuMemFree(d_L_mlem));
 		gpuErrchk(cuMemFree(d_norm_mlem));
+		gpuErrchk(cuMemFree(d_scat_mlem));
 		gpuErrchk(cuMemFree(d_Sino_mlem));
 		//if (randoms_correction)
 		gpuErrchk(cuMemFree(d_sc_ra_mlem));

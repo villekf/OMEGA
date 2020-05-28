@@ -191,9 +191,17 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 	}
 
+	float* scat = nullptr;
+	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+	size_t size_scat = 1ULL;
+	scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	if (scatter == 1U) {
+		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	}
+
 	status = createProgram(verbose, k_path, af_context, af_device_id, fileName, program_os, program_ml, program_mbsrem, atomic_64bit, device, header_directory,
 		projector_type, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, local_size, n_rays, n_rays3D, false, MethodList, osem_bool, 
-		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf);
+		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction);
 	if (status != CL_SUCCESS) {
 		std::cerr << "Error while creating program" << std::endl;
 		return;
@@ -240,7 +248,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	}
 
 	// Create and write buffers
-	cl_mem d_x, d_y, d_z, d_pseudos, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_reko_type, d_reko_type_mlem, d_V;
+	cl_mem d_x, d_y, d_z, d_pseudos, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_reko_type, d_reko_type_mlem, d_V, d_scat_mlem;
 	cl_mem* d_Summ, *d_Summ_mlem;
 	cl_mem d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem;
 
@@ -251,14 +259,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	std::vector<cl_mem> d_Sino(subsets);
 	std::vector<cl_mem> d_sc_ra(subsets);
 	std::vector<cl_mem> d_norm(subsets);
+	std::vector<cl_mem> d_scat(subsets);
 
 	float *apu = (float*)mxGetData(mxGetCell(Sin, 0));
 
-	status = createAndWriteBuffers(d_x, d_y, d_z, d_lor, d_L, d_zindex, d_xyindex, d_Sino, d_sc_ra, size_x, size_z, TotSinos, size_atten, size_norm, prows, 
-		length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, af_context, subsets, pituus, atten, norm, pseudos, V, af_queue, d_atten, d_norm, d_pseudos, d_V, 
+	status = createAndWriteBuffers(d_x, d_y, d_z, d_lor, d_L, d_zindex, d_xyindex, d_Sino, d_sc_ra, size_x, size_z, TotSinos, size_atten, size_norm, size_scat, prows, 
+		length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, af_context, subsets, pituus, atten, norm, scat, pseudos, V, af_queue, d_atten, d_norm, d_scat, d_pseudos, d_V, 
 		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, atomic_64bit, randoms_correction, 
 		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem, d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko,
-		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem);
+		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem);
 	if (status != CL_SUCCESS) {
 		clReleaseProgram(program_os);
 		clReleaseProgram(program_ml);
@@ -300,9 +309,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(float), &NSlices);
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &size_x);
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint16_t), &TotSinos);
-		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &attenuation_correction);
-		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &normalization);
-		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &randoms_correction);
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &det_per_ring);
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &prows);
 		clSetKernelArg(kernel, kernelInd_OSEM++, sizeof(uint32_t), &Nxy);
@@ -349,9 +355,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(float), &NSlices);
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &size_x);
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint16_t), &TotSinos);
-		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &attenuation_correction);
-		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &normalization);
-		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &randoms_correction);
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &det_per_ring);
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &prows);
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &Nxy);
@@ -402,9 +405,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(float), &NSlices);
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &size_x);
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint16_t), &TotSinos);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &attenuation_correction);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &normalization);
-		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &randoms_correction);
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &det_per_ring);
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &prows);
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA++, sizeof(uint32_t), &Nxy);
@@ -442,7 +442,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		// Run the prepass phase
 		MRAMLA_prepass(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino, koko, x00, vec.C_co,
 			vec.C_aco, vec.C_osl, alku, kernel_mramla, d_L, raw, MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, 
-			d_norm, use_psf, g, Nx, Ny, Nz, epps);
+			d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 
 
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && tt == 0) {
@@ -494,6 +494,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						std::cerr << getErrorString(status) << std::endl;
 						return;
 					}
+					if (scatter == 1u) {
+						scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+						status = clEnqueueWriteBuffer(af_queue, d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &scat[pituus[kk]], 0, NULL, NULL);
+						if (status != CL_SUCCESS) {
+							std::cerr << getErrorString(status) << std::endl;
+							return;
+						}
+					}
 				}
 				vec.im_os = constant(0.f, im_dim * n_rekos2, 1);
 				for (int kk = 0; kk < n_rekos2; kk++) {
@@ -515,6 +523,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				if (status != CL_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return;
+				}
+				if (scatter == 1u) {
+					scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+					status = clEnqueueWriteBuffer(af_queue, d_scat_mlem, CL_TRUE, 0, sizeof(float) * koko, scat, 0, NULL, NULL);
+					if (status != CL_SUCCESS) {
+						std::cerr << getErrorString(status) << std::endl;
+						return;
+					}
 				}
 				vec.im_mlem = constant(0.f, im_dim * n_rekos_mlem, 1);
 				for (int kk = 0; kk < n_rekos_mlem; kk++) {
@@ -637,6 +653,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					// Set kernel arguments
 					clSetKernelArg(kernel, kernelInd_OSEMSubIter++, sizeof(cl_mem), &d_norm[osa_iter]);
+					clSetKernelArg(kernel, kernelInd_OSEMSubIter++, sizeof(cl_mem), &d_scat[osa_iter]);
 					clSetKernelArg(kernel, kernelInd_OSEMSubIter++, sizeof(cl_mem), d_Summ);
 					clSetKernelArg(kernel, kernelInd_OSEMSubIter++, sizeof(cl_mem), &d_lor[osa_iter]);
 					clSetKernelArg(kernel, kernelInd_OSEMSubIter++, sizeof(cl_mem), &d_xyindex[osa_iter]);
@@ -719,7 +736,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					computeOSEstimates(vec, w_vec, MethodList, im_dim, testi, epps, iter, osa_iter, subsets, beta, Nx, Ny, Nz, data, length, d_Sino, break_iter, pj3,
 						n_rekos2, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, Summ, kernel_mramla, d_L, raw, MethodListOpenCL, koko, atomic_64bit,
-						compute_norm_matrix, OpenCLStruct.kernelNLM, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, OpenCLStruct);
+						compute_norm_matrix, OpenCLStruct.kernelNLM, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, OpenCLStruct);
 
 					vec.im_os(vec.im_os < epps) = epps;
 
@@ -800,6 +817,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				update_opencl_inputs(vec, vec_opencl, true, im_dim, n_rekos, n_rekos_mlem, MethodList, atomic_64bit, use_psf);
 
 				clSetKernelArg(kernel_ml, kernelInd_MLEMSubIter++, sizeof(cl_mem), &d_norm_mlem);
+				clSetKernelArg(kernel_ml, kernelInd_MLEMSubIter++, sizeof(cl_mem), &d_scat_mlem);
 				clSetKernelArg(kernel_ml, kernelInd_MLEMSubIter++, sizeof(cl_mem), d_Summ_mlem);
 				clSetKernelArg(kernel_ml, kernelInd_MLEMSubIter++, sizeof(cl_mem), &d_lor_mlem);
 				clSetKernelArg(kernel_ml, kernelInd_MLEMSubIter++, sizeof(cl_mem), &d_xyindex_mlem);
@@ -929,6 +947,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			status = clReleaseMemObject(d_norm[kk]);
 			if (status != CL_SUCCESS)
 				std::cerr << getErrorString(status) << std::endl;
+			status = clReleaseMemObject(d_scat[kk]);
+			if (status != CL_SUCCESS)
+				std::cerr << getErrorString(status) << std::endl;
 			status = clReleaseMemObject(d_xyindex[kk]);
 			if (status != CL_SUCCESS)
 				std::cerr << getErrorString(status) << std::endl;
@@ -964,6 +985,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		if (status != CL_SUCCESS)
 			std::cerr << getErrorString(status) << std::endl;
 		status = clReleaseMemObject(d_norm_mlem);
+		if (status != CL_SUCCESS)
+			std::cerr << getErrorString(status) << std::endl;
+		status = clReleaseMemObject(d_scat_mlem);
 		if (status != CL_SUCCESS)
 			std::cerr << getErrorString(status) << std::endl;
 		status = clReleaseMemObject(d_Sino_mlem);

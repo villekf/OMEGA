@@ -46,17 +46,18 @@ __device__ void denominator(float local_ele, float* ax, unsigned int local_ind, 
 
 // Nominator (backprojection) in MLEM
 __device__ void nominator(const unsigned char* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps,
-	const float temp, const unsigned int randoms_correction, const float* d_sc_ra, const unsigned int idx) {
+	const float temp, const float* d_sc_ra, const unsigned int idx) {
 	float local_rand = 0.f;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		local_rand = d_sc_ra[idx];
+#endif
 #ifdef NREKOS1
+		ax[0] *= temp;
 	if (ax[0] <= 0.f)
 		ax[0] = d_epps;
-	else
-		ax[0] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[0] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
@@ -70,12 +71,12 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 	ax[0] = d_Sino / ax[0];
 #endif
 #elif defined(NREKOS2)
+		ax[0] *= temp;
 	if (ax[0] <= 0.f)
 		ax[0] = d_epps;
-	else
-		ax[0] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[0] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
@@ -88,12 +89,12 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 #else
 	ax[0] = d_Sino / ax[0];
 #endif
+	ax[1] *= temp;
 	if (ax[1] <= 0.f)
 		ax[1] = d_epps;
-	else
-		ax[1] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[1] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[1] != 1u)
 		ax[1] = d_Sino / ax[1];
@@ -109,12 +110,12 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 #else
 #pragma unroll N_REKOS
 	for (unsigned int kk = 0; kk < N_REKOS; kk++) {
+		ax[kk] *= temp;
 		if (ax[kk] <= 0.f)
 			ax[kk] = d_epps;
-		else
-			ax[kk] *= temp;
-		if (randoms_correction == 1u)
+#ifdef RANDOMS
 			ax[kk] += local_rand;
+#endif
 #ifdef MRAMLA
 		if (MethodList[kk] != 1u)
 			ax[kk] = d_Sino / ax[kk];
@@ -133,14 +134,14 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 #endif
 #ifdef MBSREM
 // Nominator (backprojection), COSEM
-__device__ void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const unsigned int d_randoms, const float* d_sc_ra,
+__device__ void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const float* d_sc_ra,
 	const unsigned int idx) {
+	*axCOSEM *= temp;
 	if (*axCOSEM <= 0.f)
 		*axCOSEM = d_epps;
-	else
-		*axCOSEM *= temp;
-	if (d_randoms == 1u)
+#ifdef RANDOMS
 		*axCOSEM += d_sc_ra[idx];
+#endif
 	*axCOSEM = local_sino / *axCOSEM;
 }
 #endif
@@ -148,111 +149,28 @@ __device__ void nominator_cosem(float* axCOSEM, const float local_sino, const fl
 __device__ void rhs(const unsigned char* MethodList, const float local_ele, const float* ax, const unsigned int local_ind,
 	const unsigned int d_N, CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
-//#ifdef COSEM
-//	if (MethodList[0] < 2u)
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(local_ele * ax[0] * TH));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
-//#endif
-//	else if (MethodList[0] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(ax[0] * (local_ele * d_ACOSEM[local_ind] * TH)));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele * d_ACOSEM[local_ind])));
-//#endif
-//	else if (MethodList[0] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(ax[0] * TH * (local_ele * powf(d_ACOSEM[local_ind], d_h))));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], ax[0] * (local_ele * powf(d_ACOSEM[local_ind], d_h)));
-//#endif
-//#else
 #ifdef ATOMIC
 	atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(local_ele * ax[0] * TH));
 #else
 	atomicAdd(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
-//#endif
 #endif
 #elif defined(NREKOS2)
-//#ifdef COSEM
-//	if (MethodList[0] < 2u)
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(local_ele * ax[0] * TH));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
-//#endif
-//	else if (MethodList[0] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(ax[0] * (local_ele * d_ACOSEM[local_ind] * TH)));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele * d_ACOSEM[local_ind])));
-//#endif
-//	else if (MethodList[0] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(ax[0] * TH * (local_ele * powf(d_ACOSEM[local_ind], d_h))));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind], ax[0] * (local_ele * powf(d_ACOSEM[local_ind], d_h)));
-//#endif
-//	if (MethodList[1] < 2u)
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], __float2ull_rn(local_ele * ax[1] * TH));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
-//#endif
-//	else if (MethodList[1] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], __float2ull_rn(ax[1] * (local_ele * d_ACOSEM[local_ind + d_N] * TH)));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], (ax[1] * (local_ele * d_ACOSEM[local_ind + d_N])));
-//#endif
-//	else if (MethodList[1] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], __float2ull_rn(ax[1] * TH * (local_ele * powf(d_ACOSEM[local_ind + d_N], d_h))));
-//#else
-//		atomicAdd(&d_rhs_OSEM[local_ind + d_N], ax[1] * (local_ele * powf(d_ACOSEM[local_ind + d_N], d_h)));
-//#endif
-//#else
 #ifdef ATOMIC
 	atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(local_ele * ax[0] * TH));
 	atomicAdd(&d_rhs_OSEM[local_ind + d_N], __float2ull_rn(local_ele * ax[1] * TH));
 #else
-	//if (local_ind + d_N < d_N * 2) {
 		atomicAdd(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 		atomicAdd(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
-	//}
 #endif
-//#endif
 #else
 	unsigned int yy = local_ind;
 #pragma unroll N_REKOS
 	for (unsigned int kk = 0; kk < N_REKOS; kk++) {
-//#ifdef COSEM
-//		if (MethodList[kk] < 2u)
-//#ifdef ATOMIC
-//			atomicAdd(&d_rhs_OSEM[yy], __float2ull_rn(local_ele * ax[kk] * TH));
-//#else
-//			atomicAdd(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
-//#endif
-//		else if (MethodList[kk] == 2u) // COSEM
-//#ifdef ATOMIC
-//			atomicAdd(&d_rhs_OSEM[yy], __float2ull_rn(ax[kk] * (local_ele * d_ACOSEM[yy] * TH)));
-//#else
-//			atomicAdd(&d_rhs_OSEM[yy], (ax[kk] * (local_ele * d_ACOSEM[yy])));
-//#endif
-//		else if (MethodList[kk] == 3u) // ACOSEM
-//#ifdef ATOMIC
-//			atomicAdd(&d_rhs_OSEM[yy], __float2ull_rn(ax[kk] * TH * (local_ele * powf(d_ACOSEM[yy], d_h))));
-//#else
-//			atomicAdd(&d_rhs_OSEM[yy], ax[kk] * (local_ele * powf(d_ACOSEM[yy], d_h)));
-//#endif
-//#else
 #ifdef ATOMIC
 		atomicAdd(&d_rhs_OSEM[yy], __float2ull_rn(local_ele * ax[kk] * TH));
 #else
 		atomicAdd(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
 #endif
-//#endif
 		yy += d_N;
 	}
 #endif
@@ -469,8 +387,8 @@ __device__ int perpendicular_start(const float d_b, const float d, const float d
 
 // Compute the probability for the perpendicular elements
 __device__ void perpendicular_elements(const float d_b, const float d_d1, const unsigned int d_N1, const float d, const float d_d2, const unsigned int d_N2,
-	const float* d_atten, float* templ_ijk, unsigned int* tempk, const unsigned int d_attenuation_correction, const unsigned int z_loop, const unsigned int d_N, const unsigned int d_NN,
-	const unsigned int d_normalization, const float* d_norm, const unsigned int idx, const float global_factor) {
+	const float* d_atten, float* templ_ijk, unsigned int* tempk, const unsigned int z_loop, const unsigned int d_N, const unsigned int d_NN,
+	const float* d_norm, const unsigned int idx, const float global_factor) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	//float start = d_b - d + d_d1;
 	//// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
@@ -486,15 +404,16 @@ __device__ void perpendicular_elements(const float d_b, const float d_d1, const 
 	float temp = d_d2 * (float)(d_N2);
 	// Probability
 	temp = 1.f / temp;
-	if (d_attenuation_correction == 1u) {
+#ifdef ATN
 		float jelppi = 0.f;
 		for (unsigned int iii = 0u; iii < d_N2; iii++) {
 			jelppi += (*templ_ijk * (-d_atten[*tempk + iii * d_NN]));
 		}
 		temp *= expf(jelppi);
-	}
-	if (d_normalization == 1u)
+#endif
+#ifdef NORM
 		temp *= d_norm[idx];
+#endif
 	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
 }
@@ -502,26 +421,10 @@ __device__ void perpendicular_elements(const float d_b, const float d_d1, const 
 #ifdef N_RAYS
 // Compute the probability for the perpendicular elements
 __device__ float perpendicular_elements_multiray(const float d_b, const float d_d1, const unsigned int d_N1, const float d, const float d_d2, const unsigned int d_N2,
-	const float* d_atten, unsigned int* tempk, const unsigned int d_attenuation_correction, const unsigned int z_loop, const unsigned int d_N, const unsigned int d_NN, float* jelppi) {
+	const float* d_atten, unsigned int* tempk, const unsigned int z_loop, const unsigned int d_N, const unsigned int d_NN, float* jelppi) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
-	//int apu = 0;
-	//float start = d_b - d + d_d1;
-	//for (unsigned int ii = 0u; ii < d_N1; ii++) {
-	//	if (start > 0.f) {
-	//		//apu = (int)(ii);
-	//		break;
-	//	}
-	//	start += d_d1;
-	//}
 
 	* tempk = (unsigned int)(apu) * d_N + z_loop * d_N1 * d_N2;
-
-	// Correct for attenuation if applicable
-	//if (d_attenuation_correction == 1u) {
-	//	for (unsigned int iii = 0u; iii < d_N2; iii++) {
-	//		*jelppi += (d_d2 * (-d_atten[*tempk + iii * d_NN]));
-	//	}
-	//}
 
 	return d_d2 * (float)(d_N2);
 }

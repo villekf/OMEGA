@@ -24,11 +24,6 @@
 * d_NSlices = the number of image slices,
 * d_size_x = the number of detector elements,
 * d_TotSinos = Total number of sinograms,
-* d_attenuation_correction = if attenuation is included this is 1 otherwise
-* 0,
-* d_normalization = if normalization is included this is 1 otherwise 0,
-* d_randoms = if randoms/scatter correction is included this is 1
-* otherwise 0,
 * d_det_per_ring = number of detectors per ring,
 * pRows = number of pseudo rings,
 * d_Nxy = d_Nx * d_Ny,
@@ -85,10 +80,10 @@
 extern "C" __global__
 void siddon_multi(const float global_factor, const float d_epps, const unsigned int d_N, const unsigned int d_Nx, const unsigned int d_Ny, const unsigned int d_Nz, const float d_dz, const float d_dx,
 	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, const float d_maxyy,
-	const float d_zmax, const float d_NSlices, const unsigned int d_size_x, const unsigned short d_TotSinos, const unsigned int d_attenuation_correction, const unsigned int d_normalization,
-	const unsigned int d_randoms, const unsigned int d_det_per_ring, const unsigned int d_pRows, const unsigned int d_Nxy, const unsigned char fp, const float dc_z, const unsigned short n_rays, const float d_epsilon_mramla, 
+	const float d_zmax, const float d_NSlices, const unsigned int d_size_x, const unsigned short d_TotSinos, 
+	const unsigned int d_det_per_ring, const unsigned int d_pRows, const unsigned int d_Nxy, const unsigned char fp, const float dc_z, const unsigned short n_rays, const float d_epsilon_mramla, 
 	const float* d_atten, const unsigned int* d_pseudos, const float* d_x, const float* d_y, const float* d_zdet,
-	const unsigned char* MethodList, const float* d_norm, CAST* d_Summ, const unsigned short* d_lor,
+	const unsigned char* MethodList, const float* d_norm, const float* d_scat, CAST* d_Summ, const unsigned short* d_lor,
 	const unsigned int* d_xyindex, const unsigned short* d_zindex, const unsigned short* d_L, const float* d_Sino, const float* d_sc_ra, const float* d_OSEM,
 #ifndef MBSREM
 	CAST* d_rhs_OSEM, const unsigned char no_norm, const unsigned long long int m_size
@@ -199,7 +194,7 @@ void siddon_multi(const float global_factor, const float d_epps, const unsigned 
 				Np_n[lor] = d_N1;
 				unsigned int tempk = (unsigned int)((zs / d_zmax) * (d_NSlices - 1.f));
 				unsigned int apu = 0u;
-				const float element = perpendicular_elements_multiray(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &apu, d_attenuation_correction, tempk, d_N2, d_N3, &jelppi);
+				const float element = perpendicular_elements_multiray(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &apu, tempk, d_N2, d_N3, &jelppi);
 				temp += element;
 				tempk_a[lor] = apu;
 #ifdef MBSREM
@@ -326,17 +321,17 @@ void siddon_multi(const float global_factor, const float d_epps, const unsigned 
 				temp *= global_factor;
 #ifdef MBSREM
 				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f && d_alku == 0u) {
+					axCOSEM *= temp;
 					if (axCOSEM == 0.f)
 						axCOSEM = d_epps;
-					else
-						axCOSEM *= temp;
-					if (d_randoms == 1u)
+#ifdef RANDOMS
 						axCOSEM += d_sc_ra[idx];
+#endif
 					axCOSEM = local_sino / axCOSEM;
 				}
 #else
 				if (RHS) {
-					nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_randoms, d_sc_ra, idx);
+					nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
 				}
 #endif
 				alku = false;
@@ -541,8 +536,9 @@ void siddon_multi(const float global_factor, const float d_epps, const unsigned 
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
 			d_Amin[idx] = minimi;
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			if (d_randoms == 1u)
+#ifdef RANDOMS
 				axACOSEM += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = axACOSEM;
 		}
 	}

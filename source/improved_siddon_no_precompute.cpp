@@ -24,16 +24,16 @@
 #include "projector_functions.h"
 
 // if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
-constexpr int TYPE = 0;
+const static int TYPE = 0;
 
 using namespace std;
 
-int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices, 
+int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices,
 	vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const vector<double>& xx_vec, const double dy,
 	const vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, 
 	const uint32_t *index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, 
-	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows) {
+	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows, const double global_factor, const bool scatter, const double* scatter_coef) {
 
 	int ll;
 	if (raw)
@@ -55,10 +55,10 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 	uint32_t Np = 0u;
 	double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
 
-	for (uint32_t lo = 0u; lo < loop_var_par; lo++) {
+	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		if (raw)
-			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, ll, pseudos, pRows);
+			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows);
 		else
 			get_detector_coordinates_noalloc(x, y, z_det, size_x, detectors, ll, index, lz, TotSinos, lo);
 
@@ -66,6 +66,10 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 		const double y_diff = (detectors.yd - detectors.ys);
 		const double x_diff = (detectors.xd - detectors.xs);
 		const double z_diff = (detectors.zd - detectors.zs);
+		
+		if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.)) {
+			continue;
+		}
 
 		// If the measurement is on the same ring
 		if (fabs(z_diff) < 1e-8) {
@@ -81,7 +85,7 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					uint32_t temp_ijk = 0;
 
 					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1u, lo);
+						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint32_t ii = 0u; ii < Nx; ii++) {
@@ -102,7 +106,7 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, Nx, lo);
+						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint32_t ii = 0u; ii < Ny_max; ii += Ny) {
 						indices.emplace_back((temp_ijk + ii));
@@ -190,6 +194,7 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 				att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
 			if (normalization)
 				temp *= norm_coef[lo];
+			temp *= global_factor;
 
 			for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
 				elements.emplace_back((fabs(templ_ijk[ii]) * temp));
@@ -276,6 +281,9 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 						att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
 						elements.emplace_back((fabs(templ_ijk[ii]) * temp));
@@ -365,6 +373,9 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 						att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
+					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
 						elements.emplace_back((fabs(templ_ijk[ii]) * temp));
@@ -457,6 +468,7 @@ int improved_siddon_no_precompute(const uint32_t loop_var_par, const uint32_t si
 				att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
 			if (normalization)
 				temp *= norm_coef[lo];
+			temp *= global_factor;
 
 			for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
 				elements.emplace_back((fabs(templ_ijk[ii]) * temp));

@@ -122,18 +122,18 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 }
 
 
-CUresult createAndWriteBuffers(CUdeviceptr&d_x, CUdeviceptr&d_y, CUdeviceptr&d_z, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_L, 
-	std::vector<CUdeviceptr>& d_zindex,	std::vector<CUdeviceptr>& d_xyindex, std::vector<CUdeviceptr>& d_Sino, std::vector<CUdeviceptr>& d_sc_ra, 
-	const uint32_t size_x, const size_t size_z,	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const uint32_t prows, 
-	std::vector<size_t>& length, const float* x, const float* y, const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, 
-	const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const uint32_t* pituus, const float* atten, 
-	const float* norm, const uint32_t* pseudos, const float* V,	CUdeviceptr&d_atten, std::vector<CUdeviceptr>& d_norm, CUdeviceptr&d_pseudos, CUdeviceptr&d_V, 
-	CUdeviceptr&d_xcenter, CUdeviceptr&d_ycenter, CUdeviceptr&d_zcenter, const float* x_center, const float* y_center, const float* z_center, 
-	const size_t size_center_x, const size_t size_center_y, const size_t size_center_z,	const size_t size_of_x, const size_t size_V, 
-	const bool randoms_correction, const mxArray* sc_ra, const bool precompute, CUdeviceptr&d_lor_mlem,	CUdeviceptr&d_L_mlem, CUdeviceptr&d_zindex_mlem, 
-	CUdeviceptr&d_xyindex_mlem, CUdeviceptr&d_Sino_mlem, CUdeviceptr&d_sc_ra_mlem, CUdeviceptr&d_reko_type, CUdeviceptr&d_reko_type_mlem, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem, 
-	CUdeviceptr&d_norm_mlem)
+CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_L,
+	std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, std::vector<CUdeviceptr>& d_Sino, std::vector<CUdeviceptr>& d_sc_ra,
+	const uint32_t size_x, const size_t size_z, const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows,
+	std::vector<size_t>& length, const float* x, const float* y, const float* z_det, const uint32_t* xy_index, const uint16_t* z_index,
+	const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const uint32_t* pituus, const float* atten,
+	const float* norm, const float* scat, const uint32_t* pseudos, const float* V, CUdeviceptr& d_atten, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, CUdeviceptr& d_pseudos, CUdeviceptr& d_V,
+	CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, const float* x_center, const float* y_center, const float* z_center,
+	const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const size_t size_of_x, const size_t size_V,
+	const bool randoms_correction, const mxArray* sc_ra, const bool precompute, CUdeviceptr& d_lor_mlem, CUdeviceptr& d_L_mlem, CUdeviceptr& d_zindex_mlem,
+	CUdeviceptr& d_xyindex_mlem, CUdeviceptr& d_Sino_mlem, CUdeviceptr& d_sc_ra_mlem, CUdeviceptr& d_reko_type, CUdeviceptr& d_reko_type_mlem, const bool osem_bool,
+	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
+	CUdeviceptr& d_norm_mlem, CUdeviceptr& d_scat_mlem)
 {
 	// Create the necessary buffers
 	// Detector coordinates
@@ -205,6 +205,14 @@ CUresult createAndWriteBuffers(CUdeviceptr&d_x, CUdeviceptr&d_y, CUdeviceptr&d_z
 				status = cuMemAlloc(&d_norm[kk], sizeof(float) * length[kk]);
 			else
 				status = cuMemAlloc(&d_norm[kk], sizeof(float) * size_norm);
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+			if (size_scat > 1)
+				status = cuMemAlloc(&d_scat[kk], sizeof(float) * length[kk]);
+			else
+				status = cuMemAlloc(&d_scat[kk], sizeof(float) * size_scat);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
@@ -289,6 +297,7 @@ CUresult createAndWriteBuffers(CUdeviceptr&d_x, CUdeviceptr&d_y, CUdeviceptr&d_z
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
+		status = cuMemAlloc(&d_scat_mlem, sizeof(float) * size_scat);
 		// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 		if (raw) {
 			status = cuMemAlloc(&d_xyindex_mlem, sizeof(uint32_t));
@@ -432,6 +441,14 @@ CUresult createAndWriteBuffers(CUdeviceptr&d_x, CUdeviceptr&d_y, CUdeviceptr&d_z
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
 			}
+			if (size_scat > 1)
+				status = cuMemcpyHtoD(d_scat[kk], &scat[pituus[kk]], sizeof(float) * length[kk]);
+			else
+				status = cuMemcpyHtoD(d_scat[kk], scat, sizeof(float) * size_scat);
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
 			if (precompute)
 				status = cuMemcpyHtoD(d_lor[kk], &lor1[pituus[kk]], sizeof(uint16_t) * length[kk]);
 			else
@@ -479,6 +496,11 @@ CUresult createAndWriteBuffers(CUdeviceptr&d_x, CUdeviceptr&d_y, CUdeviceptr&d_z
 			return status;
 		}
 		status = cuMemcpyHtoD(d_norm_mlem, norm, sizeof(float) * size_norm);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
+			return status;
+		}
+		status = cuMemcpyHtoD(d_scat_mlem, norm, sizeof(float) * size_scat);
 		if (status != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
@@ -547,8 +569,8 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 	std::vector<size_t> length, uint8_t compute_norm_matrix, std::vector<CUdeviceptr>& d_sc_ra, af::array& E, const uint32_t det_per_ring, CUdeviceptr& d_pseudos,
 	const uint32_t prows, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dz, const float dx, const float dy, const float bz, const float bx,
 	const float by, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, const uint32_t size_x,
-	const uint32_t TotSinos, const uint32_t attenuation_correction, const uint32_t normalization, const uint32_t randoms_correction, CUdeviceptr& d_atten,
-	std::vector<CUdeviceptr>& d_norm, const float epps, const uint32_t Nxy, const float tube_width, const float crystal_size_z, const float bmin, const float bmax,
+	const uint32_t TotSinos, CUdeviceptr& d_atten,
+	std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const float epps, const uint32_t Nxy, const float tube_width, const float crystal_size_z, const float bmin, const float bmax,
 	const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool precompute, const uint32_t projector_type, const CUstream& af_cuda_stream, const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, 
 	const bool atomic_64bit, const bool use_psf, const af::array& g) {
@@ -714,14 +736,11 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 
 		af::sync();
 
-		mexPrintf("osa_iter = %u\n", osa_iter);
-		mexEvalString("pause(.0001);");
-
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, 
-				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, (void*)&attenuation_correction, (void*)&normalization, 
-				(void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, 
-				(void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], 
+				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, 
+				(void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], 
 				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[osa_iter], &d_sc_ra[osa_iter], 
 				reinterpret_cast<void*>(&d_cosem), &alku, &MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co), 
 				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList};
@@ -729,16 +748,14 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 		}
 		else {
 			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by,
-				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, (void*)&attenuation_correction, (void*)&normalization,
-				(void*)&randoms_correction, (void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
-				&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter],
+				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
+				&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
 				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter],& d_xyindex[osa_iter],& d_zindex[osa_iter],& d_L[osa_iter],& d_Sino[osa_iter],& d_sc_ra[osa_iter],
 				reinterpret_cast<void*>(&d_cosem),& alku,& MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co),
 				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList };
 			status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 		}
-		mexPrintf("osa_iter2 = %u\n", osa_iter);
-		mexEvalString("pause(.0001);");
 		if ((status != CUDA_SUCCESS)) {
 			std::cerr << getErrorString(status) << std::endl;
 			mexPrintf("Failed to launch the prepass kernel\n");
@@ -759,9 +776,6 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 		apu.unlock();
 		apu_Amin.unlock();
 		cosem_psf.unlock();
-
-		mexPrintf("osa_iter3 = %u\n", osa_iter);
-		mexEvalString("pause(.0001);");
 
 		if (alku == 0u) {
 			if ((MethodList.COSEM || MethodList.ECOSEM)) {
@@ -853,7 +867,7 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction,
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf) {
+	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
 
 	nvrtcResult status = NVRTC_SUCCESS;
 
@@ -882,6 +896,10 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		options.emplace_back("-DATN");
 	if (normalization_correction == 1u)
 		options.emplace_back("-DNORM");
+	if (randoms_correction == 1u)
+		options.emplace_back("-DRANDOMS");
+	if (scatter == 1u)
+		options.emplace_back("-DSCATTER");
 	if (MethodList.NLM) {
 		options.emplace_back("-DNLM_");
 	}

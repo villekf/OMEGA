@@ -19,7 +19,7 @@
 #pragma once
 
 __device__ void vol_perpendicular_multi_3D(const float* center1, const float center2, const float* z_center,
-	float* temp, const unsigned int d_attenuation_correction, const unsigned int d_normalization, float* ax, const float d_b, const float d, const float d_d1,
+	float* temp, float* ax, const float d_b, const float d, const float d_d1,
 	const unsigned int d_N1, const unsigned int d_N2, const unsigned int z_loop, const float* d_atten, const float d_norm, const float local_sino, const unsigned int d_N,
 	const unsigned int d_NN, const float* d_OSEM, const float xs, const float ys, const float zs, const float xl, const float yl, const float zl,
 	const float crystal_size_z, const unsigned int Nyx, const unsigned int Nz, const unsigned char no_norm, CAST* Summ, CAST* d_rhs_OSEM,
@@ -41,8 +41,10 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 			if (FP) {
 				*temp += (local_ele * d_N2);
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
-					if (d_attenuation_correction && zz == (int)(z_loop) && uu == (int)(apu))
+#ifdef ATN
+					if (zz == (int)(z_loop) && uu == (int)(apu))
 						jelppi += (d_d1 * -d_atten[local_ind]);
+#endif
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
 					}
@@ -220,10 +222,12 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 	}
 	if (FP) {
 		*temp = 1. / *temp;
-		if (d_attenuation_correction)
+#ifdef ATN
 			*temp *= native_exp(jelppi);
-		if (d_normalization == 1u)
+#endif
+#ifdef NORM
 			*temp *= d_norm;
+#endif
 		*temp *= global_factor;
 	}
 }

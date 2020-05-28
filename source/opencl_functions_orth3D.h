@@ -307,7 +307,7 @@ void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, c
 
 #ifdef CRYSTZ
 void orth_distance_perpendicular_multi_3D(__constant float* center1, const float center2, __constant float* z_center,
-	float* temp, const uint d_attenuation_correction, const uint d_normalization, float* ax, const float d_b, const float d, const float d_d1,
+	float* temp, float* ax, const float d_b, const float d, const float d_d1,
 	const uint d_N1, const uint d_N2, const uint z_loop, const __global float* d_atten, const float d_norm, const float local_sino, const uint d_N, 
 	const uint d_NN, const __global float* d_OSEM, const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, 
 	const float crystal_size_z, const uint d_N1x, const uint d_N4, const uchar no_norm, __global CAST* Summ, 
@@ -315,7 +315,7 @@ void orth_distance_perpendicular_multi_3D(__constant float* center1, const float
 #ifdef MBSREM
 	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, float* axCOSEM,
 	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uchar MBSREM_prepass,
-	const __global float* d_sc_ra, const uint d_randoms, __global float* d_Amin, __global float* d_ACOSEM_lhs, const uint idx
+	const __global float* d_sc_ra, __global float* d_Amin, __global float* d_ACOSEM_lhs, const uint idx
 #else
 	__global CAST* d_rhs_OSEM, const uint im_dim, __constant uchar* MethodList
 #endif
@@ -342,8 +342,10 @@ void orth_distance_perpendicular_multi_3D(__constant float* center1, const float
 				*temp += (local_ele * d_N2);
 #if defined(ATN) || defined(FP)
 				for (uint kk = 0u; kk < d_N2; kk++) {
-					if (d_attenuation_correction && zz == convert_int_sat(z_loop) && uu == convert_int_sat(apu))
+#ifdef ATN
+					if (zz == convert_int_sat(z_loop) && uu == convert_int_sat(apu))
 						jelppi += (d_d1 * -d_atten[local_ind]);
+#endif
 #ifdef MBSREM
 					if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 						*axCOSEM += (local_ele * d_OSEM[local_ind]);
@@ -734,7 +736,10 @@ void orth_distance_perpendicular_multi_3D(__constant float* center1, const float
 			* temp *= native_exp(jelppi);
 #endif
 #ifdef NORM
-			* temp *= d_norm[idx];
+			* temp *= d_norm;
+#endif
+#ifdef SCATTER
+			* temp *= d_scat[idx];
 #endif
 		*temp *= global_factor;
 	}
@@ -742,8 +747,9 @@ void orth_distance_perpendicular_multi_3D(__constant float* center1, const float
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
 			d_Amin[idx] = *minimi;
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			if (d_randoms == 1u)
+#ifdef RANDOMS
 				* ax += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = *ax;
 		}
 	}
@@ -755,6 +761,9 @@ void orth_distance_perpendicular_multi_3D(__constant float* center1, const float
 #endif
 #ifdef NORM
 			* temp *= d_norm;
+#endif
+#ifdef SCATTER
+			* temp *= d_scat[idx];
 #endif
 		*temp *= global_factor;
 	}

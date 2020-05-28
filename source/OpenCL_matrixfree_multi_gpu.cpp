@@ -317,8 +317,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 		if (type == 0) {
 
-			if (nrhs != 59)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 59.");
+			if (nrhs != 60)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 60.");
 
 			// Right hand side for forward or backprojections
 			const float* rhs = (float*)mxGetData(prhs[ind]);
@@ -367,7 +367,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 				koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm,
 				size_norm, k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, output, size_rhs, no_norm, numel_x,
 				tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, projector_type, header_directory,
-				precompute_var, dec, n_rays, n_rays3D, cr_pz, Sin, use_64bit_atomics, global_factor, bmin, bmax, Vmax, V, size_V, local_size, false);
+				precompute_var, dec, n_rays, n_rays3D, cr_pz, Sin, use_64bit_atomics, global_factor, bmin, bmax, Vmax, V, size_V, local_size, false, prhs[ind]);
 			plhs[0] = output;
 
 		}

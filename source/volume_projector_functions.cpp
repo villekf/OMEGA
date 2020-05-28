@@ -577,7 +577,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
 	double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const double bmax, const double bmin, const double Vmax, 
-	const double* V, uint64_t N2) {
+	const double* V, const bool scatter, const double* scatter_coef, uint64_t N2) {
 
 	//const uint32_t zz = z_loop * d_N2 * d_N1;
 	const uint32_t apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -674,6 +674,8 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 		temp *= exp(jelppi);
 	if (normalization)
 		temp *= norm_coef[lo];
+	if (scatter)
+		temp *= scatter_coef[lo];
 	temp *= global_factor;
 	if (PRECOMPUTE) {
 		for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {

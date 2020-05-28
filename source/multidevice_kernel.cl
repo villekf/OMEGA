@@ -14,6 +14,13 @@
 * this same file. 64-bit atomics are also currently included in the same
 * file and used if supported.
 *
+* Compiler preprocessing is utilized heavily, for example all the 
+* corrections are implemented as compiler preprocesses. The code for 
+* specific correction is thus only applied if it has been selected. The
+* kernels are always compiled on-the-fly, though when using same input 
+* parameters the kernel should be loaded from cache leading to a slightly
+* faster startup time.
+*
 * INPUTS:
 * global_factor = a global correction factor, e.g. dead time
 * d_epps = a small constant to prevent division by zero,
@@ -29,11 +36,6 @@
 * d_NSlices = the number of image slices,
 * d_size_x = the number of detector elements,
 * d_TotSinos = Total number of sinograms,
-* d_attenuation_correction = if attenuation is included this is 1 otherwise
-* 0,
-* d_normalization = if normalization is included this is 1 otherwise 0,
-* d_randoms = if randoms/scatter correction is included this is 1
-* otherwise 0,
 * d_det_per_ring = number of detectors per ring,
 * d_raw = if 1 then raw list-mode data is used otherwise sinogram
 * data
@@ -133,13 +135,13 @@ void siddon_precomp(const uint d_Nxy, const uint d_N, const uint d_Nx, const uin
 
 void kernel_multi(const float global_factor, const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, 
 	const float d_dz, const float d_dx,	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, 
-	const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_attenuation_correction, 
-	const uint d_normalization, const uint d_randoms, const uint d_det_per_ring, const uint d_pRows, const uint d_Nxy, const uchar fp,
+	const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, 
+	const uint d_det_per_ring, const uint d_pRows, const uint d_Nxy, const uchar fp,
 	const float tube_width_xy, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, const float d_epsilon_mramla, 
 	const __global float* d_atten, __constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet, 
 	__constant float* x_center, __constant float* y_center, __constant float* z_center, __constant float* V, __constant uchar * MethodList, 
-	const __global float* d_norm, __global CAST* d_Summ, const __global ushort* d_lor, const __global uint* d_xyindex, const __global ushort* d_zindex, 
-	const __global ushort* d_L, const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM, 
+	const __global float* d_norm, const __global float* d_scat, __global CAST* d_Summ, const __global ushort* d_lor, const __global uint* d_xyindex, 
+	const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM, 
 #ifndef MBSREM
 	__global CAST* d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
@@ -351,11 +353,10 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		}
 		else
 			return;
-		//atomicAdd_g_f(&d_Summ[0], (10.f));
 		float templ_ijk = 0.f;
 		uint z_loop = 0u;
-		perpendicular_elements(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &templ_ijk, &z_loop, d_attenuation_correction, tempk, d_N2, d_N3,
-			d_normalization, d_norm, idx, global_factor);
+		perpendicular_elements(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &templ_ijk, &z_loop, tempk, d_N2, d_N3,
+			d_norm, idx, global_factor, d_scat);
 #ifdef MBSREM
 		if (d_alku == 0u && ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0 ||
 			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1))) && local_sino > 0.f) {
@@ -382,8 +383,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) {
 				if (axCOSEM == 0.f)
 					axCOSEM = d_epps;
-				if (d_randoms == 1u)
-					axCOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+				axCOSEM += d_sc_ra[idx];
+#endif
 				axCOSEM = local_sino / axCOSEM;
 			}
 			local_ele = templ_ijk;
@@ -430,8 +432,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				axACOSEM += (local_ele * d_OSEM[local_ind]);
 				local_ind += d_N3;
 			}
-			if (d_randoms == 1u)
+#ifdef RANDOMS
 				axACOSEM += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = axACOSEM;
 		}
 #else
@@ -443,7 +446,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind]);
 				local_ind += d_N3;
 			}
-			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_sc_ra, idx);
 			d_rhs_OSEM[idx] = axOSEM;
 			return;
 		}
@@ -470,11 +473,11 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			}
 #ifdef AF // Implementation 2
 
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, 1.f, d_randoms, d_sc_ra, idx);
+			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, 1.f, d_sc_ra, idx);
 
 #else // Implementation 3
 
-			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_sc_ra, idx);
 
 #endif
 			local_ind = z_loop;
@@ -547,17 +550,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifdef AF
 #ifdef MBSREM
-		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, &axACOSEM,
+		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, &axACOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, 0,
 			d_Summ, true, false, global_factor, MethodListOpenCL, d_alku, &axCOSEM, d_E,
-			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_randoms, d_Amin, d_ACOSEM_lhs, idx);
+			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_Amin, d_ACOSEM_lhs, idx);
 #else
-		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, ax,
+		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, ax,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 			d_Summ, true, false, global_factor, d_rhs_OSEM, d_N, MethodList);
 #endif
 #else
-		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, &axOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 			d_Summ, true, false, global_factor, d_rhs_OSEM, d_N, MethodList);
 
@@ -567,17 +570,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifdef AF
 #ifdef MBSREM
-		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, &axACOSEM,
+		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, &axACOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 			d_Nz, 0, d_Summ, true, false, global_factor, bmin, bmax, Vmax, V, MethodListOpenCL, d_alku, &axCOSEM, d_E,
-			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_randoms, d_Amin, d_ACOSEM_lhs, idx);
+			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_Amin, d_ACOSEM_lhs, idx);
 #else
-		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, ax,
+		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, ax,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 			d_Nz, no_norm, d_Summ, true, false, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #endif
 #else
-		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, &axOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 			d_Nz, no_norm, d_Summ, true, false, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #endif
@@ -586,7 +589,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifndef AF
 		if (fp == 1) {
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 			d_rhs_OSEM[idx] = axOSEM;
 			return;
 		}
@@ -594,18 +597,18 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef MBSREM
 		if (d_alku == 0 && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1
 			|| MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f) {
-			nominator_cosem(&axCOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator_cosem(&axCOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 		}
 #ifdef CRYST // 2.5D orthogonal
-		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, &axACOSEM,
+		orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, &axACOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, 0,
 			d_Summ, false, true, global_factor, MethodListOpenCL, d_alku, &axCOSEM, d_E,
-			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_randoms, d_Amin, d_ACOSEM_lhs, idx);
+			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_Amin, d_ACOSEM_lhs, idx);
 #else
-		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, &axACOSEM,
+		orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, &axACOSEM,
 			d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 			d_Nz, 0, d_Summ, false, true, global_factor, bmin, bmax, Vmax, V, MethodListOpenCL, d_alku, &axCOSEM, d_E,
-			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_randoms, d_Amin, d_ACOSEM_lhs, idx);
+			d_co, d_aco, &minimi, MBSREM_prepass, d_sc_ra, d_Amin, d_ACOSEM_lhs, idx);
 #endif
 
 #else
@@ -613,9 +616,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef FP // Forward projection
 
 #ifdef AF
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
 #else
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 #endif
 
 #endif
@@ -623,22 +626,22 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef CRYST // 2.5D orthogonal
 
 #ifdef AF
-			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, ax,
+			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, ax,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 				d_Summ, false, true, global_factor, d_rhs_OSEM, d_N, MethodList);
 #else
-			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, &axOSEM,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 				d_Summ, false, true, global_factor, d_rhs_OSEM, d_N, MethodList);
 #endif
 
 #else
 #ifdef AF
-			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, ax,
+			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, ax,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 				d_Nz, no_norm, d_Summ, false, true, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #else
-			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, &axOSEM,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 				d_Nz, no_norm, d_Summ, false, true, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #endif
@@ -647,22 +650,22 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		else {
 #ifdef CRYST
 #ifdef AF
-			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, ax,
+			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, ax,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 				d_Summ, false, false, global_factor, d_rhs_OSEM, d_N, MethodList);
 #else
-			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+			orth_distance_perpendicular_multi(xcenter, center2, z_center, kerroin, &temp, &axOSEM,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, xs, ys, zs, x_diff, y_diff, z_diff, d_N2, d_N3, d_OSEM, no_norm,
 				d_Summ, false, false, global_factor, d_rhs_OSEM, d_N, MethodList);
 #endif
 
 #else
 #ifdef AF
-			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, ax,
+			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, ax,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 				d_Nz, no_norm, d_Summ, false, false, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #else
-			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, d_attenuation_correction, d_normalization, &axOSEM,
+			orth_distance_perpendicular_multi_3D(xcenter, center2, z_center, &temp, &axOSEM,
 				d_b, dd, d_d, d_N0, d_N1, tempk, d_atten, local_norm, local_sino, d_N2, d_N3, d_OSEM, xs, ys, zs, x_diff, y_diff, z_diff, kerroin, d_Nxy,
 				d_Nz, no_norm, d_Summ, false, false, global_factor, bmin, bmax, Vmax, V, d_rhs_OSEM, d_N, MethodList);
 #endif
@@ -975,6 +978,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef NORM
 		temp *= local_norm;
 #endif
+#ifdef SCATTER
+		temp *= d_scat[idx];
+#endif
 		temp *= global_factor;
 #if defined(SIDDON) || !defined(DEC)
 		tx0 = tx0_a, ty0 = ty0_a, tz0 = tz0_a;
@@ -992,12 +998,12 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #ifdef MBSREM
 		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f && d_alku == 0u) {
+			axCOSEM *= temp;
 			if (axCOSEM == 0.f)
 				axCOSEM = d_epps;
-			else
-				axCOSEM *= temp;
-			if (d_randoms == 1u)
-				axCOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+			axCOSEM += d_sc_ra[idx];
+#endif
 			axCOSEM = local_sino / axCOSEM;
 		}
 		RHS = true;
@@ -1005,7 +1011,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifndef AF
 		if (fp == 1) {
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 			d_rhs_OSEM[idx] = axOSEM;
 			return;
 		}
@@ -1014,9 +1020,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		if (local_sino > 0.f) {
 #ifdef FP
 #ifdef AF
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
 #else
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_randoms, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 #endif
 #endif
 			RHS = true;
@@ -1142,8 +1148,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
 			d_Amin[idx] = minimi;
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			if (d_randoms == 1u)
+#ifdef RANDOMS
 				axACOSEM += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = axACOSEM;
 		}
 #endif
@@ -1177,13 +1184,13 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					}
 					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino > 0.f)
 #ifdef ATOMIC
-						atom_add(&d_co[local_ind], convert_ulong_sat(axCOSEM* local_ele* TH));
+						atom_add(&d_co[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
 					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino > 0.f)
 #ifdef ATOMIC
-						atom_add(&d_aco[local_ind], convert_ulong_sat(axCOSEM* local_ele* TH));
+						atom_add(&d_aco[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -1203,9 +1210,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 
 #ifdef ATOMIC
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele* axOSEM* TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * axOSEM * TH));
 #else
-				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele* axOSEM));
+				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
 
 #endif
@@ -1217,8 +1224,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
 				d_Amin[idx] = minimi;
 			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-				if (d_randoms == 1u)
-					axACOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+				axACOSEM += d_sc_ra[idx];
+#endif
 				d_ACOSEM_lhs[idx] = axACOSEM;
 			}
 #endif

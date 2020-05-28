@@ -39,7 +39,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit, 
 	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V, 
-	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss);
+	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter);
 
 void f_b_project(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl_context& context, const cl_command_queue* commandQueues,
 	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, const uint32_t Nx,
@@ -52,7 +52,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
 	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
-	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size);
+	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter);
 
 cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_context& context, size_t& size, int& cpu_device,
 	cl_uint& num_devices_context, cl_device_id* devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz, const uint32_t subsets, 
@@ -64,7 +64,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 	const cl_device_id* devices, const bool verbose, cl_command_queue* commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory, 
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction, 
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float dc_z, 
-	const float dx, const bool use_psf);
+	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction);
 
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, 
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, 
@@ -90,7 +90,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute,
 	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, const float bmin,
-	const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf);
+	const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf, const mxArray* options);
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny,	const uint32_t Nz, const float dx, 
 	const float dy, const float dz, const float bx, const float by, const float bz,	const float bzb, const float maxxx, const float maxyy, const float zmax, 

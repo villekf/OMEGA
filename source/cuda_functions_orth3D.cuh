@@ -274,7 +274,7 @@ __device__ void orth_distance_multi_3D(int tempi, const unsigned int d_N0, const
 }
 
 __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const float center2, const float* z_center,
-	float* temp, const unsigned int d_attenuation_correction, const unsigned int d_normalization, float* ax, const float d_b, const float d, const float d_d1,
+	float* temp, float* ax, const float d_b, const float d, const float d_d1,
 	const unsigned int d_N1, const unsigned int d_N2, const unsigned int z_loop, const float* d_atten, const float d_norm, const float local_sino, const unsigned int d_N,
 	const unsigned int d_NN, const float* d_OSEM, const float xs, const float ys, const float zs, const float xl, const float yl, const float zl,
 	const float crystal_size_z, const unsigned int d_N1x, const unsigned int d_N4, const unsigned char no_norm, CAST* Summ,
@@ -282,7 +282,7 @@ __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const
 #ifdef MBSREM
 	const RecMethodsOpenCL MethodListOpenCL, const unsigned int d_alku, float* axCOSEM, 
 	float* d_E, CAST* d_co, CAST* d_aco, float* minimi, const unsigned char MBSREM_prepass,
-	const float* d_sc_ra, const unsigned int d_randoms, float* d_Amin, float* d_ACOSEM_lhs, const unsigned int idx
+	const float* d_sc_ra, float* d_Amin, float* d_ACOSEM_lhs, const unsigned int idx
 #else
 	CAST* d_rhs_OSEM, const unsigned int im_dim, const unsigned char* MethodList
 #endif
@@ -309,8 +309,10 @@ __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const
 				*temp += (local_ele * d_N2);
 #if defined(ATN) || defined(MBSREM)
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
-					if (d_attenuation_correction && zz == (int)(z_loop) && uu == (int)(apu))
+#ifdef ATN
+					if (zz == (int)(z_loop) && uu == (int)(apu))
 						jelppi += (d_d1 * -d_atten[local_ind]);
+#endif
 #ifdef MBSREM
 					if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 						*axCOSEM += (local_ele * d_OSEM[local_ind]);
@@ -661,8 +663,9 @@ __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
 			d_Amin[idx] = *minimi;
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			if (d_randoms == 1u)
+#ifdef RANDOMS
 				*ax += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = *ax;
 		}
 	}

@@ -529,7 +529,7 @@ void att_corr_scalar_orth(uint32_t tempk, const double* atten, double& temp, con
 // Compute the probability for one emission in perpendicular detector case
 double perpendicular_elements(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring, 
 	const uint32_t N1, const uint32_t N2, const double* atten, const double* norm_coef, const bool attenuation_correction, const bool normalization, 
-	uint32_t& tempk, const uint32_t NN, const size_t lo, const double global_factor) {
+	uint32_t& tempk, const uint32_t NN, const size_t lo, const double global_factor, const bool scatter, const double* scatter_coef) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
 	for (size_t ii = 0ULL; ii < static_cast<size_t>(N2); ii++) {
@@ -549,6 +549,8 @@ double perpendicular_elements(const uint32_t N, const double dd, const std::vect
 		att_corr_scalar(d, tempk, atten, temp, N2, NN);
 	if (normalization)
 		temp *= norm_coef[lo];
+	if (scatter)
+		temp *= scatter_coef[lo];
 	temp *= global_factor;
 
 
@@ -1682,7 +1684,8 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 	double& temp, const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1,
 	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, const Det detectors, const double xl, const double yl, const double zl, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, 
-	const uint32_t tid, uint32_t& ind, double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const uint64_t N2) {
+	const uint32_t tid, uint32_t& ind, double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, 
+	const double* scatter_coef, const uint64_t N2) {
 
 	const uint32_t zz = z_loop * d_N2 * d_N1;
 	const uint32_t apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -1730,6 +1733,8 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 		temp *= exp(jelppi);
 	if (normalization)
 		temp *= norm_coef[lo];
+	if (scatter)
+		temp *= scatter_coef[lo];
 	temp *= global_factor;
 	if (PRECOMPUTE) {
 		uint32_t hpk = N2;
@@ -1812,7 +1817,8 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
-	double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, uint64_t N2) {
+	double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
+	uint64_t N2) {
 
 	//const uint32_t zz = z_loop * d_N2 * d_N1;
 	const uint32_t apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -1901,6 +1907,8 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 		temp *= exp(jelppi);
 	if (normalization)
 		temp *= norm_coef[lo];
+	if (scatter)
+		temp *= scatter_coef[lo];
 	temp *= global_factor;
 	if (PRECOMPUTE) {
 		for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {

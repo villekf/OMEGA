@@ -30,7 +30,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
 	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
-	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size) {
+	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter) {
 
 	const uint32_t Nxy = Nx * Ny;
 	cl_int status = CL_SUCCESS;
@@ -105,6 +105,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		cumsum[i + 1U] = cumsum[i] + length[i];
 	}
+	size_t size_scat = 1ULL;
+	if (scatter == 1U) {
+		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));
+	}
 
 
 	std::vector<cl_mem> d0_output, d0_Summ;
@@ -123,6 +127,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<cl_mem> d_Sino(num_devices_context, 0);
 	std::vector<cl_mem> d_sc_ra(num_devices_context, 0);
 	std::vector<cl_mem> d_norm(num_devices_context, 0);
+	std::vector<cl_mem> d_scat(num_devices_context, 0);
 	std::vector<cl_mem> d_lor(num_devices_context, 0);
 	std::vector<cl_mem> d_xyindex(num_devices_context, 0);
 	std::vector<cl_mem> d_zindex(num_devices_context, 0);
@@ -132,30 +137,6 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		d0_output.resize(num_devices_context - 1u);
 		d0_Summ.resize(num_devices_context - 1u);
 	}
-	//cl_mem* d0_output, * d0_Summ;
-	//cl_mem* d_z = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_x = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_y = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_xcenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_ycenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_zcenter = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_V = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_atten = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_pseudos = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_rhs = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_output = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_Summ = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_lor = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//if (num_devices_context > 1u) {
-	//	d0_output = (cl_mem*)malloc((num_devices_context - 1) * sizeof(cl_mem));
-	//	d0_Summ = (cl_mem*)malloc((num_devices_context - 1) * sizeof(cl_mem));
-	//}
-	//cl_mem* d_Sino = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_xyindex = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_zindex = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_L = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	//cl_mem* d_sc_ra = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
-	//cl_mem* d_norm = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
 
 	// Create the necessary buffers
 	for (cl_uint i = 0U; i < num_devices_context; i++) {
@@ -285,6 +266,20 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		else {
 			d_norm[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
+			if (status != CL_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return;
+			}
+		}
+		if (scatter == 1u) {
+			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
+			if (status != CL_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return;
+			}
+		}
+		else {
+			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
 			if (status != CL_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return;
@@ -484,9 +479,6 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	clSetKernelArg(kernel, kernelInd++, sizeof(float), &NSlices);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &size_x);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint16_t), &TotSinos);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &attenuation_correction);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &normalization);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &randoms_correction);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &det_per_ring);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &prows);
 	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Nxy);
@@ -556,12 +548,21 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-
-		//status = clFlush(commandQueues[i]);
-		//if (status != CL_SUCCESS) {
-		//	std::cerr << getErrorString(status) << std::endl;
-		//	return;
-		//}
+		if (scatter == 1u) {
+			float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));
+			status = clEnqueueWriteBuffer(commandQueues[i], d_scat[i], CL_FALSE, 0, sizeof(float) * length[i], &scat[cumsum[i]], 0, NULL, NULL);
+			if (status != CL_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return;
+			}
+		}
+		else {
+			status = clEnqueueFillBuffer(commandQueues[i], d_scat[i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
+			if (status != CL_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return;
+			}
+		}
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
@@ -603,6 +604,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_reko_type[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_norm[i]);
+		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_scat[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_Summ[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_lor[i]);
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_xyindex[i]);
@@ -629,6 +631,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				clReleaseMemObject(d_V[i]);
 				clReleaseMemObject(d_atten[i]);
 				clReleaseMemObject(d_norm[i]);
+				clReleaseMemObject(d_scat[i]);
 				clReleaseMemObject(d_pseudos[i]);
 				clReleaseMemObject(d_Summ[i]);
 				clReleaseMemObject(d_rhs[i]);
@@ -766,6 +769,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		clReleaseMemObject(d_V[i]);
 		clReleaseMemObject(d_atten[i]);
 		clReleaseMemObject(d_norm[i]);
+		clReleaseMemObject(d_scat[i]);
 		clReleaseMemObject(d_pseudos[i]);
 		clReleaseMemObject(d_Summ[i]);
 		clReleaseMemObject(d_rhs[i]);

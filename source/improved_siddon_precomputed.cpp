@@ -35,7 +35,8 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
-	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor) {
+	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor, 
+	const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -83,7 +84,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1u, lo, global_factor);
+						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint64_t ii = 0ULL; ii < static_cast<uint64_t>(Nx); ii++) {
@@ -99,7 +100,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, Nx, lo, global_factor);
+						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
 						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii * static_cast<uint64_t>(Nx);
@@ -163,6 +164,8 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 
 
@@ -241,6 +244,8 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
@@ -313,6 +318,8 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
@@ -382,6 +389,8 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 
 				for (uint32_t ii = 0u; ii < Np; ii++) {

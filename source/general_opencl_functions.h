@@ -64,17 +64,18 @@ inline void denominator(float local_ele, float* ax, uint local_ind, const uint d
 
 // Nominator (backprojection) in MLEM
 inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
-	const float temp, const uint randoms_correction, const __global float* d_sc_ra, const uint idx) {
+	const float temp, const __global float* d_sc_ra, const uint idx) {
 	float local_rand = 0.f;
-	if (randoms_correction == 1u)
-		local_rand = d_sc_ra[idx];
+#ifdef RANDOMS
+	local_rand = d_sc_ra[idx];
+#endif
 #ifdef NREKOS1
+	ax[0] *= temp;
 	if (ax[0] <= 0.f)
 		ax[0] = d_epps;
-	else
-		ax[0] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[0] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
@@ -88,12 +89,12 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 	ax[0] = d_Sino / ax[0];
 #endif
 #elif defined(NREKOS2)
+	ax[0] *= temp;
 	if (ax[0] <= 0.f)
 		ax[0] = d_epps;
-	else
-		ax[0] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[0] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
@@ -106,12 +107,12 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #else
 	ax[0] = d_Sino / ax[0];
 #endif
+	ax[1] *= temp;
 	if (ax[1] <= 0.f)
 		ax[1] = d_epps;
-	else
-		ax[1] *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		ax[1] += local_rand;
+#endif
 #ifdef MRAMLA
 	if (MethodList[1] != 1u)
 		ax[1] = d_Sino / ax[1];
@@ -127,12 +128,12 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #else
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
+		ax[kk] *= temp;
 		if (ax[kk] <= 0.f)
 			ax[kk] = d_epps;
-		else
-			ax[kk] *= temp;
-		if (randoms_correction == 1u)
+#ifdef RANDOMS
 			ax[kk] += local_rand;
+#endif
 #ifdef MRAMLA
 		if (MethodList[kk] != 1u)
 			ax[kk] = d_Sino / ax[kk];
@@ -151,14 +152,14 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #endif
 #ifdef MBSREM
 // Nominator (backprojection), COSEM
-inline void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const uint d_randoms, const __global float* d_sc_ra,
+inline void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
 	const uint idx) {
+	*axCOSEM *= temp;
 	if (*axCOSEM <= 0.f)
 		* axCOSEM = d_epps;
-	else
-		*axCOSEM *= temp;
-	if (d_randoms == 1u)
-		* axCOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+	* axCOSEM += d_sc_ra[idx];
+#endif
 	*axCOSEM = local_sino / *axCOSEM;
 }
 #endif
@@ -166,71 +167,12 @@ inline void nominator_cosem(float* axCOSEM, const float local_sino, const float 
 inline void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
 	const uint d_N, __global CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
-//#ifdef COSEM
-//	if (MethodList[0] < 2u)
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele* ax[0] * TH));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele* ax[0]));
-//#endif
-//	else if (MethodList[0] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * (local_ele* d_COSEM[local_ind] * TH)));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele* d_COSEM[local_ind])));
-//#endif
-//	else if (MethodList[0] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * TH* (local_ele* d_ACOSEM[local_ind])));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], ax[0] * (local_ele* d_ACOSEM[local_ind]));
-//#endif
-//#else
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
-//#endif
 #endif
 #elif defined(NREKOS2)
-//#ifdef COSEM
-//	if (MethodList[0] < 2u)
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele* ax[0] * TH));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele* ax[0]));
-//#endif
-//	else if (MethodList[0] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * (local_ele* d_COSEM[local_ind] * TH)));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (ax[0] * (local_ele* d_COSEM[local_ind])));
-//#endif
-//	else if (MethodList[0] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(ax[0] * TH* (local_ele* d_ACOSEM[local_ind])));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind], ax[0] * (local_ele* d_ACOSEM[local_ind]));
-//#endif
-//	if (MethodList[1] < 2u)
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(local_ele* ax[1] * TH));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele* ax[1]));
-//#endif
-//	else if (MethodList[1] == 2u) // COSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(ax[1] * (local_ele* d_COSEM[local_ind + d_N] * TH)));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (ax[1] * (local_ele* d_COSEM[local_ind + d_N])));
-//#endif
-//	else if (MethodList[1] == 3u) //ACOSEM
-//#ifdef ATOMIC
-//		atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(ax[1] * TH* (local_ele* d_ACOSEM[local_ind + d_N])));
-//#else
-//		atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], ax[1] * (local_ele* d_ACOSEM[local_ind + d_N]));
-//#endif
-//#else
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
 	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(local_ele * ax[1] * TH));
@@ -238,37 +180,15 @@ inline void rhs(__constant uchar* MethodList, const float local_ele, const float
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
 #endif
-//#endif
 #else
 	uint yy = local_ind;
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
-//#ifdef COSEM
-//		if (MethodList[kk] < 2u)
-//#ifdef ATOMIC
-//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(local_ele * ax[kk] * TH));
-//#else
-//			atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
-//#endif
-//		else if (MethodList[kk] == 2u) // COSEM
-//#ifdef ATOMIC
-//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(ax[kk] * (local_ele * d_COSEM[yy] * TH)));
-//#else
-//			atomicAdd_g_f(&d_rhs_OSEM[yy], (ax[kk] * (local_ele * d_COSEM[yy])));
-//#endif
-//		else if (MethodList[kk] == 3u) // ACOSEM
-//#ifdef ATOMIC
-//			atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(ax[kk] * TH * (local_ele * d_ACOSEM[yy])));
-//#else
-//			atomicAdd_g_f(&d_rhs_OSEM[yy], ax[kk] * (local_ele * d_ACOSEM[yy]));
-//#endif
-//#else
 #ifdef ATOMIC
 		atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(local_ele * ax[kk] * TH));
 #else
 		atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
 #endif
-//#endif
 		yy += d_N;
 	}
 #endif
@@ -282,14 +202,14 @@ inline void denominator_multi(const float local_ele, float* axOSEM, const __glob
 }
 
 // Nominator (backprojection), multi-GPU version
-inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const uint randoms_correction, const __global float* d_sc_ra, 
+inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
 	const uint idx) {
+	*axOSEM *= temp;
 	if (*axOSEM == 0.f)
 		* axOSEM = d_epps;
-	else
-		*axOSEM *= temp;
-	if (randoms_correction == 1u)
+#ifdef RANDOMS
 		* axOSEM += d_sc_ra[idx];
+#endif
 #ifdef BP
 	*axOSEM = d_Sino / *axOSEM;
 #endif
@@ -507,32 +427,26 @@ inline int perpendicular_start(const float d_b, const float d, const float d_d, 
 
 // Compute the probability for the perpendicular elements
 inline void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
-	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, 
-	const uint d_normalization, const __global float* d_norm, const uint idx, const float global_factor) {
+	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, 
+	const __global float* d_norm, const uint idx, const float global_factor, const __global float* d_scat) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
-	//float start = d_b - d + d_d1;
-	//// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
-	//for (int ii = 0; ii < d_N1; ii++) {
-	//	if (start > 0.f) {
-	//		apu = ii;
-	//		break;
-	//	}
-	//	start += d_d1;
-	//}
-	//*templ_ijk = d_d2;
 	*tempk = convert_uint_sat(apu) * d_N + z_loop * d_N1 * d_N2;
 	float temp = d_d2 * convert_float(d_N2);
 	// Probability
 	temp = 1.f / temp;
-	if (d_attenuation_correction == 1u) {
+#ifdef ATN
 		float jelppi = 0.f;
 		for (uint iii = 0u; iii < d_N2; iii++) {
 			jelppi += (*templ_ijk * (-d_atten[*tempk + iii * d_NN]));
 		}
 		temp *= native_exp(jelppi);
-	}
-	if (d_normalization == 1u)
+#endif
+#ifdef NORM
 		temp *= d_norm[idx];
+#endif
+#ifdef SCATTER
+		temp *= d_scat[idx];
+#endif
 	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
 }
@@ -540,26 +454,10 @@ inline void perpendicular_elements(const float d_b, const float d_d1, const uint
 #ifdef N_RAYS
 // Compute the probability for the perpendicular elements
 inline float perpendicular_elements_multiray(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
-	const __global float* d_atten, uint* tempk, const uint d_attenuation_correction, const uint z_loop, const uint d_N, const uint d_NN, float* jelppi) {
+	const __global float* d_atten, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, float* jelppi) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
-	//int apu = 0;
-	//float start = d_b - d + d_d1;
-	//for (uint ii = 0u; ii < d_N1; ii++) {
-	//	if (start > 0.f) {
-	//		//apu = convert_int(ii);
-	//		break;
-	//	}
-	//	start += d_d1;
-	//}
 
 	*tempk = convert_uint_sat(apu) * d_N + z_loop * d_N1 * d_N2;
-
-	// Correct for attenuation if applicable
-	//if (d_attenuation_correction == 1u) {
-	//	for (uint iii = 0u; iii < d_N2; iii++) {
-	//		*jelppi += (d_d2 * (-d_atten[*tempk + iii * d_NN]));
-	//	}
-	//}
 
 	return d_d2 * convert_float(d_N2);
 }
@@ -577,15 +475,6 @@ inline void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, 
 		// (12)
 		*v_min = convert_uint_sat_rtp((p_t - b) / d);
 	}
-	//if (tmax == t_max)
-	//	// (13)
-	//	*v_max = N;
-	//else {
-	//	// (2) and (19)
-	//	p_t = s + tmax * (diff);
-	//	// (14)
-	//	*v_max = convert_int_rtz((p_t - b) / d);
-	//}
 	// (9)
 	*t_0 += ((convert_float(*v_min) * d) / (diff));
 	//  (29)
@@ -605,15 +494,6 @@ inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, 
 		// (16)
 		*v_max = convert_uint_sat_rtz((p_t - b) / d);
 	}
-	//if (tmax == t_max)
-	//	// (17)
-	//	*v_min = 0;
-	//else {
-	//	// (2) and (19)
-	//	p_t = s + tmax * (diff);
-	//	// (18)
-	//	*v_min = convert_int_rtp((p_t - b) / d);
-	//}
 	// (9)
 	*t_0 += ((convert_float(*v_max) * d) / (diff));
 	// (29)
@@ -689,14 +569,6 @@ inline uint compute_ind(const int tempj, const int tempi, const int tempk, const
 		else
 			local_ind--;
 	}
-	//else if (local_ind < 0) {
-	//	if (local_ind + d_N1 < 0)
-	//		local_ind += (d_N1 * d_N2);
-	//	else if (local_ind + 1 < 0)
-	//		local_ind += d_N1;
-	//	else
-	//		local_ind++;
-	//}
 #endif
 	return local_ind;
 }

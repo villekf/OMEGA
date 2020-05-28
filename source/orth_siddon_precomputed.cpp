@@ -44,7 +44,8 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size, 
-	const double crystal_size_z, const double* y_center, const double* x_center, const double* z_center, const double global_factor) {
+	const double crystal_size_z, const double* y_center, const double* x_center, const double* z_center, const double global_factor, const bool scatter, 
+	const double* scatter_coef) {
 
 	setThreads();
 
@@ -121,12 +122,12 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 					if (crystal_size_z == 0.) {
 						orth_distance_denominator_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
-							ind, rhs, indices, lo, PRECOMPUTE, global_factor, N2);
+							ind, rhs, indices, lo, PRECOMPUTE, global_factor, scatter, scatter_coef, N2);
 					}
 					else {
 						orth_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-							ind, rhs, indices, lo, PRECOMPUTE, global_factor, N2);
+							ind, rhs, indices, lo, PRECOMPUTE, global_factor, scatter, scatter_coef, N2);
 					}
 				}
 			}
@@ -137,12 +138,12 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 					if (crystal_size_z == 0.) {
 						orth_distance_denominator_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
-							ind, rhs, indices, lo, PRECOMPUTE, global_factor, N2);
+							ind, rhs, indices, lo, PRECOMPUTE, global_factor, scatter, scatter_coef, N2);
 					}
 					else {
 						orth_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-							ind, rhs, indices, lo, PRECOMPUTE, global_factor, N2);
+							ind, rhs, indices, lo, PRECOMPUTE, global_factor, scatter, scatter_coef, N2);
 					}
 				}
 			}
@@ -194,6 +195,8 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				for (size_t ii = 0u; ii < idx; ii++) {
 					rhs[N2 + ii] *= temp;
@@ -287,6 +290,8 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					for (size_t ii = 0u; ii < idx; ii++) {
 						rhs[N2 + ii] *= temp;
@@ -382,6 +387,8 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					for (size_t ii = 0u; ii < idx; ii++) {
 						rhs[N2 + ii] *= temp;
@@ -476,6 +483,8 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				for (size_t ii = 0u; ii < idx; ii++) {
 					rhs[N2 + ii] *= temp;

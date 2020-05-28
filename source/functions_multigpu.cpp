@@ -268,7 +268,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 	const cl_device_id* devices, const bool verbose, cl_command_queue* commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
-	const float dx, const bool use_psf) {
+	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
 	cl_int status = CL_SUCCESS;
 
 
@@ -313,6 +313,10 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 		options += " -DFIND_LORS";
 	if (use_psf)
 		options += " -DPSF";
+	if (scatter == 1u)
+		options += " -DSCATTER";
+	if (randoms_correction == 1u)
+		options += " -DRANDOMS";
 	//if (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1)) {
 	//	options += " -DORTH";
 	//	options += " -DCRYSTZ";

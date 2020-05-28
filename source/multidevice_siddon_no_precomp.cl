@@ -9,6 +9,13 @@
 * This version goes through all the LORs and determines on-the-fly if they
 * intersect with the voxel space. Uses (optionally) multiple rays.
 *
+* Compiler preprocessing is utilized heavily, for example all the 
+* corrections are implemented as compiler preprocesses. The code for 
+* specific correction is thus only applied if it has been selected. The
+* kernels are always compiled on-the-fly, though when using same input 
+* parameters the kernel should be loaded from cache leading to a slightly
+* faster startup time.
+*
 * INPUTS:
 * global_factor = a global correction factor, e.g. dead time
 * d_epps = a small constant to prevent division by zero,
@@ -24,11 +31,6 @@
 * d_NSlices = the number of image slices,
 * d_size_x = the number of detector elements,
 * d_TotSinos = Total number of sinograms,
-* d_attenuation_correction = if attenuation is included this is 1 otherwise
-* 0,
-* d_normalization = if normalization is included this is 1 otherwise 0,
-* d_randoms = if randoms/scatter correction is included this is 1
-* otherwise 0,
 * d_det_per_ring = number of detectors per ring,
 * d_raw = if 1 then raw list-mode data is used otherwise sinogram
 * data
@@ -89,18 +91,18 @@
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 void siddon_multi(const float global_factor, const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dz, const float d_dx,
 	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, const float d_maxyy,
-	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_attenuation_correction, const uint d_normalization,
-	const uint d_randoms, const uint d_det_per_ring, const uint d_pRows, const uint d_Nxy, const uchar fp, const float dc_z, const ushort n_rays,const float d_epsilon_mramla, 
-	const __global float* d_atten, __constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet, 
-	__constant uchar * MethodList, const __global float* d_norm, __global CAST* d_Summ, const __global ushort* d_lor, 
+	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_det_per_ring, const uint d_pRows,
+	const uint d_Nxy, const uchar fp, const float dc_z, const ushort n_rays, const float d_epsilon_mramla,
+	const __global float* d_atten, __constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet,
+	__constant uchar* MethodList, const __global float* d_norm, const __global float* d_scat, __global CAST* d_Summ, const __global ushort* d_lor,
 	const __global uint* d_xyindex, const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM,
 #ifndef MBSREM
 	__global CAST* d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
-	const uint d_alku, const uchar MBSREM_prepass, __global float* d_ACOSEM_lhs, __global float* d_Amin, __global CAST* d_co, 
+	const uint d_alku, const uchar MBSREM_prepass, __global float* d_ACOSEM_lhs, __global float* d_Amin, __global CAST* d_co,
 	__global CAST* d_aco, __global float* d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL
 #endif
-	) {
+) {
 	// Get the current global index
 	uint idx = get_global_id(0);
 	if (idx >= m_size)
@@ -213,7 +215,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 				Np_n[lor] = d_N1;
 				uint tempk = convert_uint((zs / d_zmax) * (d_NSlices - 1.f));
 				uint apu = 0u;
-				const float element = perpendicular_elements_multiray(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &apu, d_attenuation_correction, tempk, d_N2, d_N3, &jelppi);
+				const float element = perpendicular_elements_multiray(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &apu, tempk, d_N2, d_N3, &jelppi);
 				temp += element;
 				tempk_a[lor] = apu;
 #ifdef FP
@@ -351,6 +353,9 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef NORM
 				temp *= d_norm[idx];
 #endif
+#ifdef SCATTER
+				temp *= d_scat[idx];
+#endif
 				temp *= global_factor;
 #ifdef FP
 #ifdef MBSREM
@@ -359,14 +364,15 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 						axCOSEM = d_epps;
 					else
 						axCOSEM *= temp;
-					if (d_randoms == 1u)
-						axCOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+					axCOSEM += d_sc_ra[idx];
+#endif
 					axCOSEM = local_sino / axCOSEM;
 				}
 #else
 #ifdef AF
 				if (RHS) {
-					nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_randoms, d_sc_ra, idx);
+					nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
 				}
 #else
 				if (RHS) {
@@ -376,8 +382,9 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 					else {
 						axOSEM *= temp;
 					}
-					if (d_randoms == 1u)
-						axOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+					axOSEM += d_sc_ra[idx];
+#endif
 					if (fp == 1)
 						d_rhs_OSEM[idx] = axOSEM;
 					else {
@@ -617,8 +624,9 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
 			d_Amin[idx] = minimi;
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			if (d_randoms == 1u)
-				axACOSEM += d_sc_ra[idx];
+#ifdef RANDOMS
+			axACOSEM += d_sc_ra[idx];
+#endif
 			d_ACOSEM_lhs[idx] = axACOSEM;
 		}
 	}

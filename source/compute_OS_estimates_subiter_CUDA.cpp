@@ -7,10 +7,10 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 	const TVdata& data, std::vector<size_t>& length, std::vector<CUdeviceptr>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const uint32_t* pituus,
 	std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, const CUstream& af_cuda_stream, std::vector<af::array>& Summ,
 	CUfunction& kernel_mramla, std::vector<CUdeviceptr>& d_L, const uint8_t raw, const size_t koko, const bool atomic_64bit, const uint8_t compute_norm_matrix,
-	std::vector<CUdeviceptr>& d_sc_ra, af::array& E, std::vector<CUdeviceptr>& d_norm, const uint32_t det_per_ring, CUdeviceptr& d_pseudos, const uint32_t prows,
+	std::vector<CUdeviceptr>& d_sc_ra, af::array& E, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const uint32_t det_per_ring, CUdeviceptr& d_pseudos, const uint32_t prows,
 	const float dz, const float dx, const float dy, const float bz, const float bx, const float by, const float bzb, const float maxxx, const float maxyy,
 	const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, const uint32_t size_x, const uint32_t TotSinos,
-	const uint32_t attenuation_correction, const uint32_t normalization, const uint32_t randoms_correction, CUdeviceptr& d_atten, const uint32_t Nxy,
+	CUdeviceptr& d_atten, const uint32_t Nxy,
 	const float tube_width, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter,
 	CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, const bool precompute, const uint32_t projector_type,
 	const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, const bool use_psf, const af::array& g, const kernelStruct& CUDAStruct) {
@@ -92,7 +92,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 			vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 			prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-			attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+			d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 			d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 		w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -145,7 +145,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), a_Summa / w_vec.ACOSEM_rhs, batchMul);
@@ -199,7 +199,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -254,7 +254,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -309,7 +309,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -364,7 +364,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -419,7 +419,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -470,7 +470,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -543,7 +543,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 					MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 						vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 						prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-						attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+						d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -560,7 +560,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 					MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 						vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 						prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-						attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+						d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -612,7 +612,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -663,7 +663,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -714,7 +714,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
@@ -761,7 +761,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
-					attenuation_correction, normalization, randoms_correction, d_atten, d_norm, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
+					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;

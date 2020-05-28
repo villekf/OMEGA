@@ -45,7 +45,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring,
-	const bool raw, const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const bool fp, const bool list_mode_format) {
+	const bool raw, const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const bool fp, 
+	const bool list_mode_format, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -488,6 +489,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					// Include normalization
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					// Global correction factor
 					temp *= global_factor;
 					// Special, only forward projection, case
@@ -793,7 +796,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double crystal_size_xy, const double* x_center, const double* y_center, const double* z_center, const double crystal_size_z,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -863,7 +866,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
-							ind, rhs, 0, lo, PRECOMPUTE, global_factor);
+							ind, rhs, 0, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp) {
 							if (ax == 0.)
 								ax = epps;
@@ -888,7 +891,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-							ind, rhs, 0, lo, PRECOMPUTE, global_factor);
+							ind, rhs, 0, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp) {
 							if (ax == 0.)
 								ax = epps;
@@ -917,7 +920,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
-							ind, rhs, 0, lo, PRECOMPUTE, global_factor);
+							ind, rhs, 0, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp) {
 							if (ax == 0.)
 								ax = epps;
@@ -942,7 +945,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-							ind, rhs, 0, lo, PRECOMPUTE, global_factor);
+							ind, rhs, 0, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp) {
 							if (ax == 0.)
 								ax = epps;
@@ -1021,6 +1024,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 
 				if (fp) {
@@ -1142,6 +1147,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					if (fp) {
 						if (ax == 0.)
@@ -1263,6 +1270,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					if (fp) {
 						if (ax == 0.)
@@ -1382,6 +1391,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				if (fp) {
 					if (ax == 0.)
@@ -1414,7 +1425,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -1478,7 +1489,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-						ind, rhs, 0, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V);
+						ind, rhs, 0, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
 					if (fp) {
 						if (ax == 0.)
 							ax = epps;
@@ -1505,7 +1516,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
-						ind, rhs, 0, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V);
+						ind, rhs, 0, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
 					if (fp) {
 						if (ax == 0.)
 							ax = epps;
@@ -1574,6 +1585,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 
 				if (fp) {
@@ -1686,6 +1699,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					if (fp) {
 						if (ax == 0.)
@@ -1801,6 +1816,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 						temp *= exp(jelppi);
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 					if (fp) {
 						if (ax == 0.)
@@ -1913,6 +1930,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					temp *= exp(jelppi);
 				if (normalization)
 					temp *= norm_coef[lo];
+				if (scatter)
+					temp *= scatter_coef[lo];
 				temp *= global_factor;
 				if (fp) {
 					if (ax == 0.)

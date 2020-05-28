@@ -31,7 +31,7 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, 
 	const uint32_t *index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, 
 	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows, const vector<double>& iij_vec, const vector<double>& jjk_vec, 
-	const vector<double>& kkj_vec, const double global_factor) {
+	const vector<double>& kkj_vec, const double global_factor, const bool scatter, const double* scatter_coef) {
 
 	int ll;
 	if (raw)
@@ -70,7 +70,7 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, 1, lo, global_factor);
+						normalization, temp_ijk, 1, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint32_t ii = 0u; ii < Nx; ii++) {
@@ -89,7 +89,7 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					uint32_t temp_ijk = 0u;
 
 					const double element = perpendicular_elements(1, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
-						normalization, temp_ijk, Nx, lo, global_factor);
+						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint32_t ii = 0u; ii < Ny; ii++) {
 						indices.emplace_back((tempk + ii * Ny));
@@ -362,6 +362,8 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					}
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii <= koko; ii++) {
@@ -512,6 +514,8 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					}
 					if (normalization)
 						temp *= norm_coef[lo];
+					if (scatter)
+						temp *= scatter_coef[lo];
 					temp *= global_factor;
 
 					for (uint32_t ii = 0u; ii <= koko; ii++) {

@@ -8,8 +8,8 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	const std::vector<cl_mem>& d_lor, const std::vector<cl_mem>& d_zindex, const std::vector<cl_mem>& d_xyindex, cl_program& program_mbsrem, const cl_command_queue& af_queue,
 	const cl_context& af_context, std::vector<af::array>& Summ, cl_kernel& kernel_mramla, const std::vector<cl_mem>& d_L, const uint8_t raw,
 	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl_kernel& kernelNLM, 
-	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl_mem>& d_norm, const bool use_psf, const af::array& g,
-	const kernelStruct& OpenCLStruct) {
+	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl_mem>& d_norm, const std::vector<cl_mem>& d_scat, const bool use_psf, 
+	const af::array& g, const kernelStruct& OpenCLStruct) {
 
 	uint64_t yy = 0u;
 	float uu;
@@ -80,7 +80,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 		MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino,
 			koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL, length,
-			atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+			atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 		w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
 		yy += im_dim;
@@ -146,7 +146,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), uu / w_vec.ACOSEM_rhs, batchMul);
 			}
@@ -159,7 +159,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), uu / w_vec.ACOSEM_rhs, batchMul);
 			}
@@ -211,7 +211,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -264,7 +264,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -317,7 +317,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -370,7 +370,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -423,7 +423,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw,
-					MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -472,7 +472,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -543,7 +543,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 					array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 					MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 						d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-						length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+						length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -558,7 +558,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 					array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 					MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 						d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-						length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+						length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -608,7 +608,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino,
 					koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL, length, atomic_64bit,
-					compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -657,7 +657,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -706,7 +706,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
@@ -751,7 +751,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 				MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
 					d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, use_psf, g, Nx, Ny, Nz, epps);
+					length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (uu / w_vec.ACOSEM_rhs);
