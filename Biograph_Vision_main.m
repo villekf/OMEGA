@@ -642,9 +642,9 @@ options.precompute = true;
 % folder is also checked. If no files are detected there either, an error
 % is thrown.
 if ispc % Windows
-    options.fpath = 'I:\Väikkäri\MAT-tiedostot\PET\KYS';
+    options.fpath = 'C:\path\to\GATE\output';
 else % Unix/MAC
-    options.fpath = '/wrk/GATE/output/KYS';
+    options.fpath = '/path/to/GATE/output/';
 end
 
 %%% Form only sinograms and raw data matrix (no reconstructions)
