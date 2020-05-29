@@ -439,7 +439,7 @@ options.scatter_correction = false;
 %%% Variance reduction
 % If set to true, variance reduction will be performed to scatter data if
 % scatter correction is selected.
-options.scatter_variance_reduction = true;
+options.scatter_variance_reduction = false;
 
 %%% Scatter normalization
 % If set to true, normalizes the scatter coincidences data during data
