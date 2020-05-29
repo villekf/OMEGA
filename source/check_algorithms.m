@@ -5,7 +5,11 @@ function img = check_algorithms(pz, algorithms, color_from_algo)
 %   displayed.
 
 algo_char = algorithms_char();
-img = pz{algorithms(color_from_algo)};
+if color_from_algo == 0
+    img = pz{algorithms(1)};
+else
+    img = pz{algorithms(color_from_algo)};
+end
 for jj = 1:numel(algorithms)
     if isempty(pz{algorithms(jj)})
         warning('The current selected algorithm does not contain any estimes!')
