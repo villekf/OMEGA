@@ -332,7 +332,7 @@ options.NSinos = options.TotSinos;
 % device. If you see a slight shift in the sinograms when comparing with
 % the machine sinograms then use the other option here. For mCT, this
 % should be 1.
-options.ndist_side = 1;
+options.ndist_side = -1;
 
 %%% Increase the sampling rate of the sinogram
 % Increasing this interpolates additional rows to the sinogram.
