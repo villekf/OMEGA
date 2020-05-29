@@ -481,7 +481,11 @@ else
         if isfield(options,'SinM') == 0
             if ((options.randoms_correction || options.scatter_correction || options.normalization_correction) && ~options.corrections_during_reconstruction) ...
                     || options.fill_sinogram_gaps
-                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'SinM','appliedCorrections');
+                try
+                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'SinM','appliedCorrections');
+                catch
+                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                end
             else
                 options.SinM = loadStructFromFile(sinoFile, 'raw_SinM');
                 appliedCorrections = [];
