@@ -92,7 +92,7 @@ else
     hh = 1;
 end
 if length(algorithms) > 1
-    jj = max(3, round(length(algorithms) / 3));
+    jj = max(3, length(algorithms));
 else
     jj = 1;
 end
@@ -264,7 +264,7 @@ if length(algorithms) + 1 > 3
 else
     hh = 1;
 end
-jj = max(3, round((length(algorithms)+1) / 3));
+jj = max(3, length(algorithms) + 1);
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
 if jj > 4
@@ -550,7 +550,7 @@ else
     hh = 1;
 end
 if length(algorithms) + nnz(source) > 1
-    jj = max(3, round((length(algorithms) + nnz(source)) / 3));
+    jj = max(3, length(algorithms) + nnz(source));
 else
     jj = 1;
 end
