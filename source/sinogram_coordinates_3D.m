@@ -34,15 +34,12 @@ ring_difference = options.ring_difference;
 
 if options.span > 1
     % Ring coordinates
-    z_length = double(options.rings + 1 + sum(options.pseudot)) * options.cr_pz;
-    z = linspace(0, z_length, options.rings + 2 + sum(options.pseudot))';
-    if sum(options.pseudot) > 0
-        z(options.pseudot) = [];
-    end
+    z_length = double(options.rings + 1) * options.cr_pz;
+    z = linspace(0, z_length, options.rings + 2)';
     if min(z(:)) == 0
         z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
     end
-    z = z(1 : options.rings + sum(options.pseudot));
+    z = z(1 : options.rings);
     ringsp = options.rings;
     z_ring = zeros(options.rings, options.rings, 2);
     % Create ring combinations
