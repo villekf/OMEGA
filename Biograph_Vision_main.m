@@ -274,6 +274,7 @@ options.flip_image = false;
 % You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for machine list-mode data.
+% Positive values perform the rotation in clockwise direction
 options.offangle = options.det_w_pseudo * (3/4);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

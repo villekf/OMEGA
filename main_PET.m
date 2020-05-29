@@ -100,6 +100,7 @@ options.flip_image = false;
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
+% Positive values perform the rotation in clockwise direction
 options.offangle = options.det_w_pseudo * (3/4);
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
