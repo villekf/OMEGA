@@ -180,7 +180,8 @@ if options.use_raw_data == false && options.precompute_lor
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(index);
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -199,7 +200,8 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction && options.corrections_during_reconstruction && ~options.subtract_scatter
+        if options.scatter_correction && options.corrections_during_reconstruction && ~options.subtract_scatter ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -258,7 +260,8 @@ if options.use_raw_data == false && options.precompute_lor
             end
             options.normalization = options.normalization(discard);
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -277,7 +280,8 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction && options.corrections_during_reconstruction && ~options.subtract_scatter
+        if options.scatter_correction && options.corrections_during_reconstruction && ~options.subtract_scatter ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -482,7 +486,8 @@ elseif options.use_raw_data && options.precompute_lor
         if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(discard));
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -501,7 +506,8 @@ elseif options.use_raw_data && options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction
+        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -585,7 +591,8 @@ elseif options.use_raw_data && options.precompute_lor
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(discard);
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -601,7 +608,8 @@ elseif options.use_raw_data && options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction
+        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -662,7 +670,8 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 options.normalization = options.normalization(index);
             end
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -691,7 +700,8 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction
+        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -750,7 +760,8 @@ elseif options.use_raw_data == false && ~options.precompute_lor
             end
             options.normalization = options.normalization(:);
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -775,7 +786,8 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction
+        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};
@@ -863,7 +875,8 @@ elseif options.use_raw_data && ~options.precompute_lor
         if options.normalization_correction && options.corrections_during_reconstruction
             options.normalization = options.normalization(index);
         end
-        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction
+        if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = options.SinDelayed{ff};
@@ -879,7 +892,8 @@ elseif options.use_raw_data && ~options.precompute_lor
                 end
             end
         end
-        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction
+        if options.scatter_correction  && ~options.subtract_scatter && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
                     temp = options.ScatterC{ff};

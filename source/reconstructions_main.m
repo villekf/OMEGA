@@ -439,12 +439,12 @@ if options.use_raw_data
     clear coincidences options.coincidences true_coincidences delayed_coincidences
     % Sinogram data
 else
+    RandProp.smoothing = false;
+    RandProp.variance_reduction = false;
+    ScatterProp.smoothing = false;
+    ScatterProp.variance_reduction = false;
+    ScatterProp.normalization = false;
     if ~options.reconstruct_trues && ~options.reconstruct_scatter
-        RandProp.smoothing = false;
-        RandProp.variance_reduction = false;
-        ScatterProp.smoothing = false;
-        ScatterProp.variance_reduction = false;
-        ScatterProp.normalization = false;
         if options.partitions == 1
             if options.use_machine == 0
                 sinoFile = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
@@ -4389,7 +4389,8 @@ else
             end
             LL = uint16(0);
         end
-        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             randoms = uint32(1);
         else
             randoms = uint32(0);
@@ -4534,7 +4535,8 @@ else
             end
             LL = uint16(0);
         end
-        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             randoms = uint32(1);
         else
             randoms = uint32(0);
