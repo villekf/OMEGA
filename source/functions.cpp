@@ -740,7 +740,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	}
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
-		w_vec.lambda = (float*)mxGetData(mxGetField(options, 0, "lam"));
+		w_vec.lambda_BSREM = (float*)mxGetData(mxGetField(options, 0, "lam"));
 	if (MethodList.ROSEM || MethodList.ROSEMMAP)
 		w_vec.lambda_ROSEM = (float*)mxGetData(mxGetField(options, 0, "lam_rosem"));
 	// Power factor for ACOSEM
