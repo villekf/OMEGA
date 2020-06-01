@@ -2,7 +2,7 @@
 * ROOT file import into MATLAB. This file contains the C++ implementation.
 * Requires MATLAB 2019a or later.
 *
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,14 @@ public:
 		const bool store_randoms = inputs[13][0];
 		const matlab::data::TypedArray<bool> scatter_components = std::move(inputs[14]);
 		const bool randoms_correction = inputs[15][0];
+		const bool store_coordinates = inputs[16][0];
 		size_t outsize2 = (loppu - alku) / vali;
+		bool large_case = false;
+		if (static_cast<uint64_t>(detectors) * static_cast<uint64_t>(detectors) * 2ULL >= 1024ULL * 1024ULL * 1024ULL * 2ULL) {
+			large_case = true;
+		}
+
+		bool dynamic = false;
 
 
 		matlab::data::CharArray newName(inputs[0]);
@@ -80,8 +87,14 @@ public:
 		matlab::data::TypedArray<uint16_t> Lscatter = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> Ldelay1 = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<float> x1 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<float> x2 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<float> y1 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<float> y2 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<float> z1 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<float> z2 = factory.createArray<float>({ 1, 1 });
 
-		if (outsize2 == 1ULL) {
+		if (outsize2 == 1ULL && !large_case) {
 			if (obtain_trues) {
 				Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
 			}
@@ -161,6 +174,15 @@ public:
 			//	matlab::data::TypedArray<uint16_t> Ldelay1 = factory.createArray<uint16_t>({ 1, 1 });
 			//	matlab::data::TypedArray<uint16_t> Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
 			//}
+			dynamic = true;
+		}
+		if (store_coordinates) {
+			x1 = factory.createArray<float>({ Nentries, 1 });
+			x2 = factory.createArray<float>({ Nentries, 1 });
+			y1 = factory.createArray<float>({ Nentries, 1 });
+			y2 = factory.createArray<float>({ Nentries, 1 });
+			z1 = factory.createArray<float>({ Nentries, 1 });
+			z2 = factory.createArray<float>({ Nentries, 1 });
 		}
 		//plhs[2] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 		matlab::data::TypedArray<uint32_t> tpoints = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
@@ -225,8 +247,13 @@ public:
 
 		histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S,
 			Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter,
-			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc);
+			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, x1, x2, 
+			y1, y2, z1, z2, store_coordinates, dynamic, large_case);
 
+
+		//std::ostringstream stream;
+		//stream << "Data loaded" << std::endl;
+		//displayOnMATLAB(stream);
 
 		delete Coincidences;
 		if (randoms_correction)
@@ -247,43 +274,62 @@ public:
 		outputs[12] = std::move(tpoints_delay);
 		outputs[13] = std::move(randoms_loc);
 		outputs[14] = std::move(scatter_loc);
+		outputs[15] = std::move(x1);
+		outputs[16] = std::move(x2);
+		outputs[17] = std::move(y1);
+		outputs[18] = std::move(y2);
+		outputs[19] = std::move(z1);
+		outputs[20] = std::move(z2);
 
 		//mexEvalString("pause(.001);");
-		gROOT->Reset();
+
+		//std::ostringstream stream1;
+		//stream1 << "Outputs formed" << std::endl;
+		//displayOnMATLAB(stream1);
+		//gROOT->Reset();
 
 	}
 
 	void checkArguments(matlab::mex::ArgumentList& outputs, matlab::mex::ArgumentList& inputs) {
-		if (inputs.size() != 16) {
-			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("16 inputs required") }));
+		if (inputs.size() != 17) {
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("17 inputs required") }));
 		}
 
-		if (outputs.size() > 16) {
+		if (outputs.size() > 21) {
 			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("Too many output arguments") }));
 		}
 
 		if (inputs[0].getType() != matlab::data::ArrayType::CHAR) {
-			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("Input must be char") }));
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("First input must be char") }));
 		}
 	}
 
 	void histogram(matlab::data::TypedArray<uint16_t>& LL1, matlab::data::TypedArray<uint16_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu, const size_t outsize2,
-		const uint32_t detectors, const bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,
+		const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,
 		const uint32_t det_per_ring, matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
-		const bool obtain_trues, const bool store_scatter, const bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, matlab::data::TypedArray<uint16_t>& Lscatter,
+		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, matlab::data::TypedArray<uint16_t>& Lscatter,
 		matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2,
-		matlab::data::TypedArray<int32_t>& int_loc_delay, matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc)
+		matlab::data::TypedArray<int32_t>& int_loc_delay, matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc, 
+		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
+		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case)
 	{
 
 		Int_t crystalID1, crystalID2, moduleID1, moduleID2, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
-		Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2;
-		Double_t time1, time2;
+		Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
+		Double_t time1 = alku, time2 = alku;
 
 		int any = 0;
 		int next = 0;
+		bool no_time = false;
 
-		Coincidences->SetBranchAddress("crystalID1", &crystalID1);
+		if (Coincidences->GetBranchStatus("crystalID1"))
+			Coincidences->SetBranchAddress("crystalID1", &crystalID1);
+		else {
+			std::ostringstream stream;
+			stream << "No crystal location information was found from file. Aborting." << std::endl;
+			return;
+		}
 		Coincidences->SetBranchAddress("crystalID2", &crystalID2);
 		Coincidences->SetBranchAddress("moduleID1", &moduleID1);
 		Coincidences->SetBranchAddress("moduleID2", &moduleID2);
@@ -297,17 +343,124 @@ public:
 			no_modules = true;
 		Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 		Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
-		Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
-		Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX2);
-		Coincidences->SetBranchAddress("sourcePosY1", &sourcePosY1);
-		Coincidences->SetBranchAddress("sourcePosY2", &sourcePosY2);
-		Coincidences->SetBranchAddress("sourcePosZ1", &sourcePosZ1);
-		Coincidences->SetBranchAddress("sourcePosZ2", &sourcePosZ2);
+		if (source) {
+			if (Coincidences->GetBranchStatus("sourcePosX1"))
+				Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
+			else {
+				std::ostringstream stream;
+				stream << "No X-source coordinates saved for first photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+			if (Coincidences->GetBranchStatus("sourcePosX2"))
+				Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX1);
+			else {
+				std::ostringstream stream;
+				stream << "No X-source coordinates saved for second photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+			if (Coincidences->GetBranchStatus("sourcePosY1"))
+				Coincidences->SetBranchAddress("sourcePosY1", &sourcePosY1);
+			else {
+				std::ostringstream stream;
+				stream << "No Y-source coordinates saved for first photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+			if (Coincidences->GetBranchStatus("sourcePosY2"))
+				Coincidences->SetBranchAddress("sourcePosY2", &sourcePosY2);
+			else {
+				std::ostringstream stream;
+				stream << "No Y-source coordinates saved for second photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+			if (Coincidences->GetBranchStatus("sourcePosZ1"))
+				Coincidences->SetBranchAddress("sourcePosZ1", &sourcePosZ1);
+			else {
+				std::ostringstream stream;
+				stream << "No Z-source coordinates saved for first photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+			if (Coincidences->GetBranchStatus("sourcePosZ2"))
+				Coincidences->SetBranchAddress("sourcePosZ2", &sourcePosZ2);
+			else {
+				std::ostringstream stream;
+				stream << "No Z-source coordinates saved for second photon, unable to save source coordinates" << std::endl;
+				source = false;
+			}
+		}
 		//Coincidences->SetBranchAddress("time1", &time1);
-		Coincidences->SetBranchAddress("time2", &time2);
+		if (Coincidences->GetBranchStatus("time2"))
+			Coincidences->SetBranchAddress("time2", &time2);
+		else {
+			if (dynamic) {
+				std::ostringstream stream;
+				stream << "Dynamic examination selected, but no time information was found from file. Aborting." << std::endl;
+				return;
+			}
+			no_time = true;
+		}
+		if (store_coordinates) {
+			if (Coincidences->GetBranchStatus("globalPosX1"))
+				Coincidences->SetBranchAddress("globalPosX1", &globalPosX1);
+			else {
+				std::ostringstream stream;
+				stream << "No X-source coordinates saved for first photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+			if (Coincidences->GetBranchStatus("globalPosX2"))
+				Coincidences->SetBranchAddress("globalPosX2", &globalPosX2);
+			else {
+				std::ostringstream stream;
+				stream << "No X-source coordinates saved for second photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+			if (Coincidences->GetBranchStatus("globalPosY1"))
+				Coincidences->SetBranchAddress("globalPosY1", &globalPosY1);
+			else {
+				std::ostringstream stream;
+				stream << "No Y-source coordinates saved for first photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+			if (Coincidences->GetBranchStatus("globalPosY2"))
+				Coincidences->SetBranchAddress("globalPosY2", &globalPosY2);
+			else {
+				std::ostringstream stream;
+				stream << "No Y-source coordinates saved for second photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+			if (Coincidences->GetBranchStatus("globalPosZ1"))
+				Coincidences->SetBranchAddress("globalPosZ1", &globalPosZ1);
+			else {
+				std::ostringstream stream;
+				stream << "No Z-source coordinates saved for first photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+			if (Coincidences->GetBranchStatus("globalPosZ2"))
+				Coincidences->SetBranchAddress("globalPosZ2", &globalPosZ2);
+			else {
+				std::ostringstream stream;
+				stream << "No Z-source coordinates saved for second photon interaction, unable to save interaction coordinates" << std::endl;
+				store_coordinates = false;
+			}
+		}
 		if (obtain_trues || store_scatter || store_randoms) {
-			Coincidences->SetBranchAddress("eventID1", &eventID1);
-			Coincidences->SetBranchAddress("eventID2", &eventID2);
+			if (Coincidences->GetBranchStatus("eventID1"))
+				Coincidences->SetBranchAddress("eventID1", &eventID1);
+			else {
+				std::ostringstream stream;
+				stream << "No event IDs saved for first photon, unable to save trues/scatter/randoms" << std::endl;
+				obtain_trues = false;
+				store_scatter = false;
+				store_randoms = false;
+			}
+			if (Coincidences->GetBranchStatus("eventID2"))
+				Coincidences->SetBranchAddress("eventID2", &eventID2);
+			else {
+				std::ostringstream stream;
+				stream << "No event IDs saved for second photon, unable to save trues/scatter/randoms" << std::endl;
+				obtain_trues = false;
+				store_scatter = false;
+				store_randoms = false;
+			}
 		}
 		if (obtain_trues || store_scatter) {
 			//if (scatter_components[0]) {
@@ -388,6 +541,7 @@ public:
 				std::ostringstream stream;
 				stream << "Store scatter selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
+				store_scatter = false;
 			}
 
 		}
@@ -401,11 +555,26 @@ public:
 		double aika = 0.;
 		int_loc[0] = 1;
 		tpoints[ll] = 0;
+		float ff = 0.01f;
+		uint64_t NN = Nentries * ff;
 
 		for (uint64_t kk = 0; kk < Nentries; kk++) {
 
 			jj++;
 			nbytes += Coincidences->GetEntry(kk);
+
+			//if (kk == NN) {
+			//	ff += 0.01f;
+			//	NN = Nentries * ff; 
+			//	std::ostringstream stream;
+			//	stream << static_cast<uint32_t>(ff * 100.f) << "%" << std::endl;
+			//	displayOnMATLAB(stream);
+			//}
+			//if (kk == 0) {
+			//	std::ostringstream stream;
+			//	stream << "ROOT file load started" << std::endl;
+			//	displayOnMATLAB(stream);
+			//}
 
 			if (time2 < alku)
 				continue;
@@ -441,8 +610,13 @@ public:
 			const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
 			const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
 			// Detector numbers
-			const uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-			const uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+			uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
+			uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+			if (L2 > L1) {
+				const uint32_t L3 = L1;
+				L1 = L2;
+				L2 = L3;
+			}
 			if (begin) {
 				while (time2 >= time_intervals[pa])
 					pa++;
@@ -488,12 +662,18 @@ public:
 					//}
 					if (outsize2 == 1ULL) {
 						if (event_true && obtain_trues) {
-							Ltrues[L1][L2]++;
+							if (large_case)
+								Ltrues[kk] = 1u;
+							else
+								Ltrues[L1][L2]++;
 							if (source)
 								trues_loc[kk] = true;
 						}
 						else if (event_scattered && store_scatter) {
-							Lscatter[L1][L2]++;
+							if (large_case)
+								Lscatter[kk] = 1u;
+							else
+								Lscatter[L1][L2]++;
 							if (source)
 								scatter_loc[kk] = true;
 						}
@@ -507,7 +687,10 @@ public:
 				}
 				else if (!event_true && store_randoms) {
 					if (outsize2 == 1ULL) {
-						Lrandoms[L1][L2]++;
+						if (large_case)
+							Lrandoms[kk] = 1u;
+						else
+							Lrandoms[L1][L2]++;
 						if (source)
 							randoms_loc[kk] = true;
 					}
@@ -516,13 +699,18 @@ public:
 				}
 			}
 			if (outsize2 == 1) {
-				LL1[L1][L2]++;
+				if (large_case) {
+					LL1[kk] = static_cast<uint16_t>(L1 + 1);
+					LL2[kk] = static_cast<uint16_t>(L2 + 1);
+				}
+				else
+					LL1[L1][L2]++;
 			}
 			else {
 				LL1[kk] = static_cast<uint16_t>(L1 + 1);
 				LL2[kk] = static_cast<uint16_t>(L2 + 1);
 			}
-			if (time2 >= aika && outsize2 > 1ULL) {
+			if (outsize2 > 1ULL && time2 >= aika) {
 				tpoints[ll++] = static_cast<uint32_t>(jj);
 				aika = time_intervals[++pa];
 			}
@@ -533,6 +721,14 @@ public:
 				S[kk][3] = sourcePosX2;
 				S[kk][4] = sourcePosY2;
 				S[kk][5] = sourcePosZ2;
+			}
+			if (store_coordinates) {
+				x1[kk] = globalPosX1;
+				x2[kk] = globalPosX2;
+				y1[kk] = globalPosY1;
+				y2[kk] = globalPosY2;
+				z1[kk] = globalPosZ1;
+				z2[kk] = globalPosZ2;
 			}
 		}
 		if (pa == 0)
@@ -545,6 +741,9 @@ public:
 			int_loc[0] = 0;
 			int_loc[1] = 0;
 		}
+		//std::ostringstream stream5;
+		//stream5 << "ROOT file load finished" << std::endl;
+		//displayOnMATLAB(stream5);
 
 
 		if (randoms_correction) {
@@ -554,7 +753,8 @@ public:
 			delay->SetBranchAddress("moduleID2", &moduleID2);
 			delay->SetBranchAddress("rsectorID1", &rsectorID1);
 			delay->SetBranchAddress("rsectorID2", &rsectorID2);
-			delay->SetBranchAddress("time2", &time2);
+			if (delay->GetBranchStatus("time2"))
+				delay->SetBranchAddress("time2", &time2);
 
 			nbytes = 0;
 			bool begin = false;
@@ -601,8 +801,13 @@ public:
 				}
 				const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
 				const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
-				const uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-				const uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+				uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
+				uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+				if (L2 > L1) {
+					const uint32_t L3 = L1;
+					L1 = L2;
+					L2 = L3;
+				}
 				if (begin) {
 					while (time2 >= time_intervals[pa])
 						pa++;
@@ -613,7 +818,12 @@ public:
 					int_loc_delay[0] = pa;
 				}
 				if (outsize2 == 1) {
-					Ldelay1[L1][L2]++;
+					if (large_case) {
+						Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
+						Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
+					}
+					else
+						Ldelay1[L1][L2]++;
 				}
 				else {
 					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);

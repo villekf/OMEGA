@@ -24,22 +24,29 @@
 
 
 void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, const double alku, const double loppu, const size_t outsize2, 
-	const uint32_t detectors, const bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring, 
+	const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring, 
 	const uint32_t det_per_ring, float* S, float* output, TTree *Coincidences, const int64_t Nentries, const double* time_intervals, int* int_loc, 
-	const bool obtain_trues, const bool store_scatter, const bool store_randoms, const bool* scatter_components, uint16_t* Ltrues, uint16_t* Lscatter, 
+	bool obtain_trues, bool store_scatter, bool store_randoms, const bool* scatter_components, uint16_t* Ltrues, uint16_t* Lscatter, 
 	uint16_t* Lrandoms, bool* trues_loc, const int64_t Ndelays, bool randoms_correction, TTree *delay, uint16_t * Ldelay1, uint16_t * Ldelay2,
-	int* int_loc_delay, uint32_t * tpoints_delay, bool* randoms_loc, bool* scatter_loc)
+	int* int_loc_delay, uint32_t * tpoints_delay, bool* randoms_loc, bool* scatter_loc, float* x1, float* x2, float* y1, float* y2, float* z1, float* z2, 
+	bool store_coordinates, const bool dynamic)
 {
 
 	Int_t crystalID1, crystalID2, moduleID1, moduleID2, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
-	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2;
-	Double_t time1, time2;
+	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
+	Double_t time1 = alku, time2 = alku;
 
 	int any = 0;
 	int next = 0;
+	bool no_time = false;
 
-	Coincidences->SetBranchAddress("crystalID1", &crystalID1);
+	if (Coincidences->GetBranchStatus("crystalID1"))
+		Coincidences->SetBranchAddress("crystalID1", &crystalID1);
+	else {
+		mexPrintf("No crystal location information was found from file. Aborting.\n");
+		return;
+	}
 	Coincidences->SetBranchAddress("crystalID2", &crystalID2);
 	Coincidences->SetBranchAddress("moduleID1", &moduleID1);
 	Coincidences->SetBranchAddress("moduleID2", &moduleID2);
@@ -53,18 +60,111 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		no_modules = true;
 	Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 	Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
-	Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
-	Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX2);
-	Coincidences->SetBranchAddress("sourcePosY1", &sourcePosY1);
-	Coincidences->SetBranchAddress("sourcePosY2", &sourcePosY2);
-	Coincidences->SetBranchAddress("sourcePosZ1", &sourcePosZ1);
-	Coincidences->SetBranchAddress("sourcePosZ2", &sourcePosZ2);
+	if (source) {
+		if (Coincidences->GetBranchStatus("sourcePosX1"))
+			Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
+		else {
+			mexPrintf("No X-source coordinates saved for first photon, unable to save source coordinates\n");
+			source = false;
+		}
+		if (Coincidences->GetBranchStatus("sourcePosX2"))
+			Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX1);
+		else {
+			mexPrintf("No X-source coordinates saved for second photon, unable to save source coordinates\n");
+			source = false;
+		}
+		if (Coincidences->GetBranchStatus("sourcePosY1"))
+			Coincidences->SetBranchAddress("sourcePosY1", &sourcePosY1);
+		else {
+			mexPrintf("No Y-source coordinates saved for first photon, unable to save source coordinates\n");
+			source = false;
+		}
+		if (Coincidences->GetBranchStatus("sourcePosY2"))
+			Coincidences->SetBranchAddress("sourcePosY2", &sourcePosY2);
+		else {
+			mexPrintf("No Y-source coordinates saved for second photon, unable to save source coordinates\n");
+			source = false;
+		}
+		if (Coincidences->GetBranchStatus("sourcePosZ1"))
+			Coincidences->SetBranchAddress("sourcePosZ1", &sourcePosZ1);
+		else {
+			mexPrintf("No Z-source coordinates saved for first photon, unable to save source coordinates\n");
+			source = false;
+		}
+		if (Coincidences->GetBranchStatus("sourcePosZ2"))
+			Coincidences->SetBranchAddress("sourcePosZ2", &sourcePosZ2);
+		else {
+			mexPrintf("No Z-source coordinates saved for second photon, unable to save source coordinates\n");
+			source = false;
+		}
+	}
 	//Coincidences->SetBranchAddress("time1", &time1);
-	Coincidences->SetBranchAddress("time2", &time2);
+	if (Coincidences->GetBranchStatus("time2"))
+		Coincidences->SetBranchAddress("time2", &time2);
+	else {
+		if (dynamic) {
+			mexPrintf("Dynamic examination selected, but no time information was found from file. Aborting.\n");
+			return;
+		}
+		no_time = true;
+	}
+	if (store_coordinates) {
+		if (Coincidences->GetBranchStatus("globalPosX1"))
+			Coincidences->SetBranchAddress("globalPosX1", &globalPosX1);
+		else {
+			mexPrintf("No X-source coordinates saved for first photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+		if (Coincidences->GetBranchStatus("globalPosX2"))
+			Coincidences->SetBranchAddress("globalPosX2", &globalPosX2);
+		else {
+			mexPrintf("No X-source coordinates saved for second photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+		if (Coincidences->GetBranchStatus("globalPosY1"))
+			Coincidences->SetBranchAddress("globalPosY1", &globalPosY1);
+		else {
+			mexPrintf("No Y-source coordinates saved for first photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+		if (Coincidences->GetBranchStatus("globalPosY2"))
+			Coincidences->SetBranchAddress("globalPosY2", &globalPosY2);
+		else {
+			mexPrintf("No Y-source coordinates saved for second photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+		if (Coincidences->GetBranchStatus("globalPosZ1"))
+			Coincidences->SetBranchAddress("globalPosZ1", &globalPosZ1);
+		else {
+			mexPrintf("No Z-source coordinates saved for first photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+		if (Coincidences->GetBranchStatus("globalPosZ2"))
+			Coincidences->SetBranchAddress("globalPosZ2", &globalPosZ2);
+		else {
+			mexPrintf("No Z-source coordinates saved for second photon interaction, unable to save interaction coordinates\n");
+			store_coordinates = false;
+		}
+	}
 	if (obtain_trues || store_scatter || store_randoms) {
-		Coincidences->SetBranchAddress("eventID1", &eventID1);
-		Coincidences->SetBranchAddress("eventID2", &eventID2);
-	}if (obtain_trues || store_scatter) {
+		if (Coincidences->GetBranchStatus("eventID1"))
+			Coincidences->SetBranchAddress("eventID1", &eventID1);
+		else {
+			mexPrintf("No event IDs saved for first photon, unable to save trues/scatter/randoms\n");
+			obtain_trues = false;
+			store_scatter = false;
+			store_randoms = false;
+		}
+		if (Coincidences->GetBranchStatus("eventID2"))
+			Coincidences->SetBranchAddress("eventID2", &eventID2);
+		else {
+			mexPrintf("No event IDs saved for second photon, unable to save trues/scatter/randoms\n");
+			obtain_trues = false;
+			store_scatter = false;
+			store_randoms = false;
+		}
+	}
+	if (obtain_trues || store_scatter) {
 		//if (scatter_components[0]) {
 		if (Coincidences->GetBranchStatus("comptonPhantom1"))
 			Coincidences->SetBranchAddress("comptonPhantom1", &comptonPhantom1);
@@ -181,10 +281,15 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			ring_number1 = (moduleID1 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
 			ring_number2 = (moduleID2 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
 		}
-		const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring)*cryst_per_block + (crystalID1 % cryst_per_block);
-		const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring)*cryst_per_block + (crystalID2 % cryst_per_block);
-		const uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-		const uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+		const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
+		const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
+		uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
+		uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+		if (L2 > L1) {
+			const uint32_t L3 = L1;
+			L1 = L2;
+			L2 = L3;
+		}
 		if (begin) {
 			while (time2 >= time_intervals[pa])
 				pa++;
@@ -230,12 +335,12 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				//}
 				if (outsize2 == 1ULL) {
 					if (event_true && obtain_trues) {
-						Ltrues[L1*detectors + L2] = Ltrues[L1*detectors + L2] + static_cast<uint16_t>(1);
+						Ltrues[L1 * detectors + L2] = Ltrues[L1 * detectors + L2] + static_cast<uint16_t>(1);
 						if (source)
 							trues_loc[kk] = true;
 					}
 					else if (event_scattered && store_scatter) {
-						Lscatter[L1*detectors + L2] = Lscatter[L1*detectors + L2] + static_cast<uint16_t>(1);
+						Lscatter[L1 * detectors + L2] = Lscatter[L1 * detectors + L2] + static_cast<uint16_t>(1);
 						if (source)
 							scatter_loc[kk] = true;
 					}
@@ -249,7 +354,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			}
 			else if (!event_true && store_randoms) {
 				if (outsize2 == 1ULL) {
-					Lrandoms[L1*detectors + L2] = Lrandoms[L1*detectors + L2] + static_cast<uint16_t>(1);
+					Lrandoms[L1 * detectors + L2] = Lrandoms[L1 * detectors + L2] + static_cast<uint16_t>(1);
 					if (source)
 						randoms_loc[kk] = true;
 				}
@@ -258,13 +363,13 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			}
 		}
 		if (outsize2 == 1ULL) {
-			LL1[L1*detectors + L2] = LL1[L1*detectors + L2] + static_cast<uint16_t>(1);
+			LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
 		}
 		else {
 			LL1[kk] = static_cast<uint16_t>(L1 + 1);
 			LL2[kk] = static_cast<uint16_t>(L2 + 1);
 		}
-		if (time2 >= aika && outsize2 > 1ULL) {
+		if (outsize2 > 1ULL && time2 >= aika) {
 			tpoints[ll++] = jj;
 			aika = time_intervals[++pa];
 		}
@@ -275,6 +380,14 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			S[kk + Nentries * 3] = sourcePosX2;
 			S[kk + Nentries * 4] = sourcePosY2;
 			S[kk + Nentries * 5] = sourcePosZ2;
+		}
+		if (store_coordinates) {
+			x1[kk] = globalPosX1;
+			x2[kk] = globalPosX2;
+			y1[kk] = globalPosY1;
+			y2[kk] = globalPosY2;
+			z1[kk] = globalPosZ1;
+			z2[kk] = globalPosZ2;
 		}
 	}
 	if (pa == 0)
@@ -296,7 +409,8 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		delay->SetBranchAddress("moduleID2", &moduleID2);
 		delay->SetBranchAddress("rsectorID1", &rsectorID1);
 		delay->SetBranchAddress("rsectorID2", &rsectorID2);
-		delay->SetBranchAddress("time2", &time2);
+		if (delay->GetBranchStatus("time2"))
+			delay->SetBranchAddress("time2", &time2);
 
 		nbytes = 0;
 		bool begin = false;
@@ -342,8 +456,13 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			}
 			const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring)*cryst_per_block + (crystalID1 % cryst_per_block);
 			const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring)*cryst_per_block + (crystalID2 % cryst_per_block);
-			const uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-			const uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+			uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
+			uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
+			if (L2 > L1) {
+				const uint32_t L3 = L1;
+				L1 = L2;
+				L2 = L3;
+			}
 			if (begin) {
 				while (time2 >= time_intervals[pa])
 					pa++;
@@ -387,11 +506,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 16) {
+	if (nrhs != 17) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"16 input arguments required.");
+			"17 input arguments required.");
 	}
-	else if (nlhs > 16) {
+	else if (nlhs > 21) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
 			"Too many output arguments.");
 	}
@@ -413,6 +532,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	bool store_randoms = (bool)mxGetScalar(prhs[13]);
 	bool* scatter_components = (bool*)mxGetData(prhs[14]);
 	bool randoms_correction = (bool)mxGetScalar(prhs[15]);
+	bool store_coordinates = (bool)mxGetScalar(prhs[16]);
 	size_t outsize2 = (loppu - alku) / vali;
 
 	// Count inputs and check for char type
@@ -428,6 +548,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	TChain *delay;
 	int64_t Ndelays = 0LL;
+	bool dynamic = false;
 
 	if (randoms_correction) {
 		delay = new TChain("delay");
@@ -487,6 +608,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 			plhs[9] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 			plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		}
+		dynamic = true;
 	}
 	plhs[2] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 	if (randoms_correction)
@@ -502,12 +624,30 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	plhs[11] = mxCreateNumericMatrix(2, 1, mxINT32_CLASS, mxREAL);
 
+	if (store_coordinates) {
+		plhs[15] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[16] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[17] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[18] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[19] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[20] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
+	}
+	else {
+		plhs[15] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[16] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[17] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[18] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[19] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		plhs[20] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+	}
+
 	/* Assign pointers to the various parameters */
 	uint16_t * LL1 = (uint16_t*)mxGetData(plhs[0]);
 	uint16_t * LL2 = (uint16_t*)mxGetData(plhs[1]);
 	uint32_t * tpoints = (uint32_t*)mxGetData(plhs[2]);
-	float* S = 0;
-	float * output = 0;
+	float* S = nullptr;
+	float * output = nullptr;
+	float* x1 = nullptr, * x2 = nullptr, * y1 = nullptr, * y2 = nullptr, * z1 = nullptr, * z2 = nullptr;
 	bool* trues_loc, *randoms_loc, *scatter_loc;
 	if (source)
 		S = (float*)mxGetData(plhs[3]);
@@ -541,6 +681,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		scatter_loc = 0;
 		plhs[14] = mxCreateNumericMatrix(1, 1, mxLOGICAL_CLASS, mxREAL);
 	}
+	if (store_coordinates) {
+		x1 = (float*)mxGetData(plhs[15]);
+		x2 = (float*)mxGetData(plhs[16]);
+		y1 = (float*)mxGetData(plhs[17]);
+		y2 = (float*)mxGetData(plhs[18]);
+		z1 = (float*)mxGetData(plhs[19]);
+		z2 = (float*)mxGetData(plhs[20]);
+	}
 	uint16_t * Ldelay1 = (uint16_t*)mxGetData(plhs[9]);
 	uint16_t * Ldelay2 = (uint16_t*)mxGetData(plhs[10]);
 	int *int_loc_delay = (int*)mxGetData(plhs[11]);
@@ -548,7 +696,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S, 
 		output, Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter, 
-		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc);
+		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, 
+		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic);
 
 
 	delete Coincidences;
