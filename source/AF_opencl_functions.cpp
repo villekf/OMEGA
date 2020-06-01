@@ -744,7 +744,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0u) {
 				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
+					apu_aco = af::constant(0ULL, im_dim, 1, u64);
 				else
 					apu_aco = af::constant(0.f, im_dim, 1);
 			}
