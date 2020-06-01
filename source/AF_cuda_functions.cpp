@@ -1235,8 +1235,6 @@ af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uin
 	size_t global_size = (N * M * K) + erotus;
 
 	global_size = global_size / local_size;
-	//std::string joku = af::toString("gaussianNLM", w_vec.gaussianNLM);
-	//mexPrintf("%s\n", joku.c_str());
 	const int window_x = w_vec.Ndx + w_vec.Nlx;
 	const int window_y = w_vec.Ndy + w_vec.Nly;
 	const int window_z = w_vec.Ndz + w_vec.Nlz;
@@ -1252,9 +1250,6 @@ af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uin
 	CUdeviceptr* d_input = input.device<CUdeviceptr>();
 	CUdeviceptr* d_padInput = padInput.device<CUdeviceptr>();
 	CUdeviceptr* d_gaussianNLM = w_vec.gaussianNLM.device<CUdeviceptr>();
-	//size_t global_size[] = { N, M, K };
-	//size_t global_size = N * M * K;
-	//size_t global_offset[] = { window_z , 0, 0 };
 	af::sync();
 	// Compute the kernel
 	void* args[] = { reinterpret_cast<void*>(&d_W), reinterpret_cast<void*>(&d_input) , reinterpret_cast<void*>(&d_padInput),

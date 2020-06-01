@@ -1331,8 +1331,6 @@ af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uin
 	else
 		type = 0;
 	input = af::flat(input);
-	//std::string joku = af::toString("gaussianNLM", w_vec.gaussianNLM);
-	//mexPrintf("%s\n", joku.c_str());
 	const int window_x = w_vec.Ndx + w_vec.Nlx;
 	const int window_y = w_vec.Ndy + w_vec.Nly;
 	const int window_z = w_vec.Ndz + w_vec.Nlz;
@@ -1348,9 +1346,7 @@ af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uin
 	cl_mem* d_input = input.device<cl_mem>();
 	cl_mem* d_padInput = padInput.device<cl_mem>();
 	cl_mem* d_gaussianNLM = w_vec.gaussianNLM.device<cl_mem>();
-	//size_t global_size[] = { N, M, K };
 	size_t global_size = N * M * K;
-	//size_t global_offset[] = { window_z , 0, 0 };
 	af::sync();
 	clSetKernelArg(OpenCLStruct.kernelNLM, kernelIndNLM++, sizeof(cl_mem), d_W);
 	clSetKernelArg(OpenCLStruct.kernelNLM, kernelIndNLM++, sizeof(cl_mem), d_input);
