@@ -2641,7 +2641,8 @@ af::array computeConvolution(const af::array& vec, const af::array& g, const uin
 	return af::flat(apu);
 }
 
-void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, const uint32_t subsets) {
+void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, 
+	const uint32_t subsets, const float epps) {
 	//af::dim4 pad_dim1 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
 	//af::dim4 pad_dim2 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
 	af::array jelppi = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
@@ -2651,7 +2652,7 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 	//jelppi = af::pad(jelppi, pad_dim1, pad_dim2, AF_PAD_SYM);
 	//apu = af::pad(apu, pad_dim1, pad_dim2, AF_PAD_SYM);
 	for (int kk = 0; kk < subsets; kk++) {
-		af::array apu2 = convolve3(jelppi, g);
+		af::array apu2 = convolve3(jelppi, g) + epps;
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
 		apu2 = padding(apu2, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 		jelppi *= af::convolve3(apu / apu2, g);
@@ -2664,332 +2665,332 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 }
 
 void computeDeblur(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets) {
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps) {
 	if (MethodList.OSEM) {
-		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.MRAMLA) {
-		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.RAMLA) {
-		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.ROSEM) {
-		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.RBI) {
-		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.DRAMA) {
-		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.COSEM) {
-		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.ECOSEM) {
-		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.ACOSEM) {
-		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 
 	if (MethodList.MRP) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 
 	if (MethodList.Quad) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 
 	if (MethodList.Huber) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 
 	if (MethodList.L) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.FMH) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.WeightedMean) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.TV) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.AD) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.APLS) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.TGV) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.NLM) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.CUSTOM) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 }
 
 
 void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets) {
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps) {
 	if (MethodList.MLEM) {
-		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 	}
 	if (MethodList.OSLMLEM) {
 		if (MethodList.MRP) {
-			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.Quad) {
-			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.Huber) {
-			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.L) {
-			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.FMH) {
-			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.WeightedMean) {
-			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.TV) {
-			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.AD) {
-			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.APLS) {
-			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.TGV) {
-			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 		if (MethodList.NLM) {
-			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 	if (MethodList.CUSTOM) {
 		if (MethodList.OSLMLEM) {
-			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets);
+			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
 		}
 	}
 }

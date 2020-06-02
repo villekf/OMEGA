@@ -44,7 +44,7 @@ else
 end
 apu = padding(apu, [options.g_dim_x options.g_dim_y options.g_dim_z]);
 for kk = 1 : options.deblur_iterations
-    apu2 = convn(padding(jelppi, [options.g_dim_x options.g_dim_y options.g_dim_z]), gaussK, 'valid');
+    apu2 = convn(padding(jelppi, [options.g_dim_x options.g_dim_y options.g_dim_z]), gaussK, 'valid') + options.epps;
     apu2 = padding(apu2, [options.g_dim_x options.g_dim_y options.g_dim_z]);
     jelppi = jelppi .* convn(apu ./ apu2, gaussK, 'valid');
 end

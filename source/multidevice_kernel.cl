@@ -359,7 +359,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			d_norm, idx, global_factor, d_scat);
 #ifdef MBSREM
 		if (d_alku == 0u && ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0 ||
-			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1))) && local_sino > 0.f) {
+			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1 || MethodListOpenCL.RBI == 1))) && local_sino > 0.f) {
 			local_ele = templ_ijk;
 			local_ind = z_loop;
 			for (uint ii = 0u; ii < Np; ii++) {
@@ -1393,9 +1393,9 @@ __kernel void Convolution3D_f(const __global float* input, __global float* outpu
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = result;
 }
 
-__kernel void vectorDiv(const __global float* input, __global float* output) {
+__kernel void vectorDiv(const __global float* input, __global float* output, const float epps) {
 	uint id = get_global_id(0);
-	output[id] = output[id] / input[id];
+	output[id] = output[id] / (input[id] + epps);
 }
 
 __kernel void vectorMult(const __global float* input, __global float* output) {

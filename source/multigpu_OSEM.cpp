@@ -1251,6 +1251,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clFinish(commandQueues[0]);
 					clSetKernelArg(kernel_vectorDiv, 0, sizeof(cl_mem), &d_mlem_apu);
 					clSetKernelArg(kernel_vectorDiv, 1, sizeof(cl_mem), &d_mlem_apu_kolmas);
+					clSetKernelArg(kernel_vectorDiv, 2, sizeof(float), &epps);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_vectorDiv, 1ULL, NULL, &vector_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
