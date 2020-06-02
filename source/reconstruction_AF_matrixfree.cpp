@@ -7,7 +7,7 @@
 * Unlike the non-OpenCL versions, this one uses (32-bit) floats and thus
 * can be slightly more inaccurate.
 *
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -105,7 +105,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	cl_ulong mem_loc;
 	status = clGetDeviceInfo(af_device_id, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	if ((static_cast<cl_float>(mem) * mem_portions) > image_bytes && !MethodList.CUSTOM)
@@ -113,7 +113,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	status = clGetDeviceInfo(af_device_id, CL_DEVICE_LOCAL_MEM_SIZE, sizeof(cl_ulong), &mem_loc, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -330,12 +330,12 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		// Set the kernel parameters that do not change
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(float), &global_factor);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(float), &epps);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clSetKernelArg(kernel_ml, kernelInd_MLEM++, sizeof(uint32_t), &im_dim);
@@ -382,7 +382,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Loop through each time-step
 	for (uint32_t tt = t0; tt < Nt; tt++) {
 	// Compute the prepass phase for MRAMLA, MBSREM, RBI, COSEM, ACOSEM or ECOSEM if applicable
-	if (((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+	if (((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) && (!MethodList.CUSTOM || osa_iter0 == 0u)) {
 
 		// Set the kernel parameters that do not change
@@ -439,6 +439,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass)
 			w_vec.Amin = constant(0.f, koko, 1);
 
+		mexPrintf("n_rekos2 = %d\n", n_rekos2);
+		mexEvalString("pause(.0001);");
+
 		// Run the prepass phase
 		MRAMLA_prepass(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino, koko, x00, vec.C_co,
 			vec.C_aco, vec.C_osl, alku, kernel_mramla, d_L, raw, MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, 
@@ -481,7 +484,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				for (uint32_t kk = 0u; kk < subsets; kk++) {
 					status = clEnqueueWriteBuffer(af_queue, d_Sino[kk], CL_TRUE, 0, sizeof(float) * length[kk], &apu[pituus[kk]], 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 					if (randoms_correction) {
@@ -491,14 +494,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					else
 						status = clEnqueueFillBuffer(af_queue, d_sc_ra[kk], &zerof, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 					if (scatter == 1u) {
 						scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
 						status = clEnqueueWriteBuffer(af_queue, d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &scat[pituus[kk]], 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -511,7 +514,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			if (mlem_bool) {
 				status = clEnqueueWriteBuffer(af_queue, d_Sino_mlem, CL_TRUE, 0, sizeof(float) * koko, apu, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				if (randoms_correction) {
@@ -521,14 +524,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				else
 					status = clEnqueueFillBuffer(af_queue, d_sc_ra_mlem, &zerof, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				if (scatter == 1u) {
 					scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
 					status = clEnqueueWriteBuffer(af_queue, d_scat_mlem, CL_TRUE, 0, sizeof(float) * koko, scat, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
@@ -584,10 +587,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		status = clFinish(af_queue);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Queue finish failed\n");
 			mexEvalString("pause(.0001);");
 			return;
+		}
+		else if (status == CL_SUCCESS) {
+			//getErrorString(status);
+			mexPrintf("Queue finish succeeded\n");
+			mexEvalString("pause(.0001);");
 		}
 
 		// Loop through each iteration
@@ -629,12 +637,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							d_Summ = Summ[osa_iter].device<cl_mem>();
 					}
 
-					//array apu = moddims(vec.im_os, Nx, Ny, Nz);
-					//apu = pad(apu, 3, 3, AF_PAD_ZERO);
 					if (use_psf) {
 						vec.im_os_blurred = computeConvolution(vec.im_os, g, Nx, Ny, Nz, w_vec, n_rekos2);
 						af::sync();
 					}
+
 
 					update_opencl_inputs(vec, vec_opencl, false, im_dim, n_rekos2, n_rekos_mlem, MethodList, atomic_64bit, use_psf);
 
@@ -670,18 +677,18 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					status = clEnqueueNDRangeKernel(af_queue, kernel, 1u, NULL, &global_size, &local_size, 0, NULL, NULL);
 
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the OS kernel\n");
 						mexEvalString("pause(.0001);");
 						break;
 					}
-					//else if (verbose) {
-					//	mexPrintf("OS kernel launched successfully\n");
-					//	mexEvalString("pause(.0001);");
-					//}
+					else if (verbose) {
+						mexPrintf("OS kernel launched successfully\n");
+						mexEvalString("pause(.0001);");
+					}
 					status = clFinish(af_queue);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Queue finish failed after kernel\n");
 						mexEvalString("pause(.0001);");
 						break;
@@ -717,7 +724,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						else
 							apu_sum.unlock();
 						// Prevent division by zero
-						//array apuva = moddims(Summ[osa_iter], Nx, Ny, Nz);
 						testi = &Summ[osa_iter];
 						eval(*testi);
 					}
@@ -833,7 +839,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				status = clEnqueueNDRangeKernel(af_queue, kernel_ml, 1, NULL, &global_size, &local_size, 0, NULL, NULL);
 
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					mexPrintf("Failed to launch the MLEM kernel\n");
 					mexEvalString("pause(.0001);");
 					break;
@@ -844,7 +850,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				//}
 				status = clFinish(af_queue);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					mexPrintf("Queue finish failed after kernel\n");
 					mexEvalString("pause(.0001);");
 					break;
@@ -911,136 +917,136 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Clear OpenCL buffers
 	status = clReleaseMemObject(d_x);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_y);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_z);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_atten);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_pseudos);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_xcenter);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_ycenter);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_zcenter);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	status = clReleaseMemObject(d_V);
 	if (status != CL_SUCCESS)
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	if (osem_bool) {
 		status = clReleaseMemObject(d_reko_type);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		for (uint32_t kk = 0u; kk < subsets; kk++) {
 			status = clReleaseMemObject(d_lor[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_norm[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_scat[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_xyindex[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_zindex[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_L[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			status = clReleaseMemObject(d_Sino[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 			//if (randoms_correction)
 			status = clReleaseMemObject(d_sc_ra[kk]);
 			if (status != CL_SUCCESS)
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 		}
 	}
 	if (mlem_bool) {
 		status = clReleaseMemObject(d_reko_type_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_lor_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_xyindex_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_zindex_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_L_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_norm_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_scat_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		status = clReleaseMemObject(d_Sino_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		//if (randoms_correction)
 		status = clReleaseMemObject(d_sc_ra_mlem);
 		if (status != CL_SUCCESS)
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 	}
 
 	// Release program and kernels
 	clReleaseProgram(program_os);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to release OS program\n");
 	}
 	clReleaseProgram(program_ml);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to release ML program\n");
 	}
 	clReleaseProgram(program_mbsrem);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to release prepass program\n");
 	}
 	if (osem_bool) {
 		status = clReleaseKernel(kernel);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to release OS kernel\n");
 		}
 	}
 	if (mlem_bool) {
 		status = clReleaseKernel(kernel_ml);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to release MLEM kernel\n");
 		}
 	}
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 		status = clReleaseKernel(kernel_mramla);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to release prepass kernel\n");
 		}
 	}
 	if (MethodList.NLM) {
 		status = clReleaseKernel(OpenCLStruct.kernelNLM);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to release NLM kernel\n");
 		}
 	}

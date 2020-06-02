@@ -22,7 +22,8 @@
 
 #include "opencl_error.hpp"
 
-const char *getErrorString(cl_int error)
+
+const char * gpuErrchk(cl_int error)
 {
 	switch (error) {
 		// run-time and JIT compiler errors
@@ -122,6 +123,14 @@ const char *getErrorString(cl_int error)
 	case -1101: return "CL_VA_API_MEDIA_SURFACE_NOT_ACQUIRED_INTEL";
 	default: return "Unknown OpenCL error";
 	}
+}
+
+
+void gpuAssert(cl_int code, const char* file, int line)
+{
+		const char* errstr = gpuErrchk(code);
+		std::cerr << "GPUassert: " << errstr << ", " << file << ", line " << line << std::endl;
+		//mexPrintf("GPUassert: %s %s %d\n", errstr, file, line);
 }
 
 std::string header_to_string(const char* header_directory) {

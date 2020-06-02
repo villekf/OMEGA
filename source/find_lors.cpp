@@ -62,7 +62,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	sourceCode = content.c_str();
 	program = clCreateProgramWithSource(context, 1, (const char**)& sourceCode, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	std::string options = header_directory;
@@ -73,7 +73,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	options += " -DCAST=float";
 	status = clBuildProgram(program, num_devices_context, &af_device_id, options.c_str(), NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to build OpenCL program. Build log: \n");
 		size_t len;
 		char* buffer;
@@ -86,7 +86,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	kernel = clCreateKernel(program, "siddon_precomp", &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to create OpenCL kernel\n");
 		return;
 	}
@@ -105,12 +105,12 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	status = clReleaseProgram(program);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	}
 
 	status = clReleaseKernel(kernel);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 	}
 	return;
 }

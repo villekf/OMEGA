@@ -17,7 +17,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	status = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -28,7 +28,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	status = clGetPlatformIDs(num_platforms, platforms, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -36,20 +36,20 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	for (int kk = 0; kk < num_platforms; kk++) {
 		status = clGetPlatformInfo(platforms[kk], CL_PLATFORM_NAME, 0, NULL, &size);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		char * name = (char *)alloca(sizeof(char) * size);
 		status = clGetPlatformInfo(platforms[kk], CL_PLATFORM_NAME, size, name, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		//mexPrintf("\nPlatform %d: %s\n", kk, name);
 		output_string += "\nPlatform " + std::to_string(kk) + ": " + name + "\n";
 		status = clGetDeviceIDs(platforms[kk], CL_DEVICE_TYPE_ALL, 0, NULL, &num_devices);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		output_string += "No. devices:  " + std::to_string(num_devices) + "\n";
@@ -58,7 +58,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		status = clGetDeviceIDs(platforms[kk], CL_DEVICE_TYPE_ALL, num_devices, devices, NULL);
 		if (status != CL_SUCCESS) {
 			delete[] devices;
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 
@@ -68,20 +68,20 @@ void mexFunction(int nlhs, mxArray *plhs[],
 			status = clGetDeviceInfo(devices[ii], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 			if (status != CL_SUCCESS) {
 				delete[] devices;
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			status = clGetDeviceInfo(devices[ii], CL_DEVICE_NAME, 0, NULL, &size2);
 			if (status != CL_SUCCESS) {
 				delete[] devices;
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			char * name2 = (char *)alloca(sizeof(char) * size2);
 			status = clGetDeviceInfo(devices[ii], CL_DEVICE_NAME, size2, name2, NULL);
 			if (status != CL_SUCCESS) {
 				delete[] devices;
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			mem = mem / (1024 * 1024);

@@ -25,9 +25,14 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include "mex.h"
 
 constexpr auto TH = 100000000000.f;
 
-const char *getErrorString(cl_int error);
+#define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+
+void gpuAssert(cl_int code, const char* file, int line);
+
+//const char *getErrorString(cl_int error);
 
 std::string header_to_string(const char* header_directory);

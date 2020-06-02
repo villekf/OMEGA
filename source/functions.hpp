@@ -20,7 +20,6 @@
 #include <arrayfire.h>
 #include <algorithm>
 #include <vector>
-#include "mex.h"
 #include <cmath>
 #ifdef OPENCL
 #include "precomp.h"
@@ -30,6 +29,7 @@
 #include <cublas.h>
 #include <cuda.h>
 #include <af/cuda.h>
+#include <mex.h>
 #endif
 
 #pragma pack(1)

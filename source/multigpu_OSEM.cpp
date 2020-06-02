@@ -153,92 +153,92 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				if (i == 0 && use_psf) {
 					d_gauss = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_gauss, NULL, &status);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
 				d_reko_type[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_z[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_x[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_y[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_xcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_ycenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_zcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_V[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_atten[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_pseudos[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_mlem[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_mlem_blurred[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				if (atomic_64bit) {
 					d_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 					if (compute_norm_matrix == 1u) {
 						d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
 					if (i < num_devices_context - 1) {
 						d0_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -246,25 +246,25 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				else {
 					d_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 					if (compute_norm_matrix == 1u) {
 						d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
 					if (i < num_devices_context - 1) {
 						d0_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -273,27 +273,27 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					d_rhs[i] };
 				status = clEnqueueMigrateMemObjects(commandQueues[i], 10, siirrettavat, 0, 0, nullptr, nullptr);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			d_Sino[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			if (normalization == 1u) {
 				d_norm[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL,
 					&status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			else {
 				d_norm[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -301,14 +301,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				d_sc_ra[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL,
 					&status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			else {
 				d_sc_ra[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -316,14 +316,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				d_scat[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL,
 					&status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			else {
 				d_scat[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -333,7 +333,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			else
 				d_lor[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			if (compute_norm_matrix == 0u) {
@@ -344,25 +344,25 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					d_Summ[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * im_dim, NULL, &status);
 				}
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			if (raw) {
 				d_xyindex[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_zindex[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_L[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk * num_devices_context + i] * 2, NULL,
 					&status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -370,18 +370,18 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				d_xyindex[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk * num_devices_context + i],
 					NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_zindex[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk * num_devices_context + i],
 					NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d_L[kk * num_devices_context + i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -390,14 +390,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				d_L[kk * num_devices_context + i] };
 			status = clEnqueueMigrateMemObjects(commandQueues[i], 7, siirrettavat, 0, 0, nullptr, nullptr);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 	}
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -408,64 +408,64 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				if (i == 0 && use_psf) {
 					status = clEnqueueWriteBuffer(commandQueues[i], d_gauss, CL_FALSE, 0, sizeof(float) * size_gauss, gaussian, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_ycenter[i], CL_FALSE, 0, sizeof(float) * size_center_y, y_center, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_zcenter[i], CL_FALSE, 0, sizeof(float) * size_center_z, z_center, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_V[i], CL_FALSE, 0, sizeof(float) * size_V, V, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_atten[i], CL_FALSE, 0, sizeof(float) * size_atten, atten, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")),
 					0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -475,14 +475,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			else
 				status = clEnqueueWriteBuffer(commandQueues[i], d_lor[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			if (normalization == 1u) {
 				status = clEnqueueWriteBuffer(commandQueues[i], d_norm[kk * num_devices_context + i], CL_FALSE, 0, sizeof(cl_float) *
 					length[kk * num_devices_context + i], &norm[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -490,7 +490,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				status = clEnqueueWriteBuffer(commandQueues[i], d_norm[kk * num_devices_context + i], CL_FALSE, 0, sizeof(cl_float) * size_norm, norm, 0,
 					NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -498,18 +498,18 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			if (raw) {
 				status = clEnqueueWriteBuffer(commandQueues[i], d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_zindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_L[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t) *
 					length[kk * num_devices_context + i] * 2, &L[cumsum[kk * num_devices_context + i] * 2], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -517,25 +517,25 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				status = clEnqueueWriteBuffer(commandQueues[i], d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t) *
 					length[kk * num_devices_context + i], &xy_index[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_zindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t) *
 					length[kk * num_devices_context + i], &z_index[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[i], d_L[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 
 			status = clFlush(commandQueues[i]);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -624,7 +624,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = clEnqueueFillBuffer(commandQueues[i], d_Summ[osa_iter * num_devices_context + i], &zero, sizeof(cl_float), 0,
 						sizeof(cl_float) * im_dim, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -652,7 +652,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				status = clEnqueueWriteBuffer(commandQueues[i], d_Sino[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) *
 					length[kk * num_devices_context + i], &Sino[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				// Randoms
@@ -661,7 +661,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = clEnqueueWriteBuffer(commandQueues[i], d_sc_ra[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) *
 						length[kk * num_devices_context + i], &S_R[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
@@ -669,7 +669,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = clEnqueueFillBuffer(commandQueues[i], d_sc_ra[kk * num_devices_context + i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 					//status = clEnqueueWriteBuffer(commandQueues[i], d_sc_ra[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float), S_R, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
@@ -678,20 +678,20 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = clEnqueueWriteBuffer(commandQueues[i], d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) *
 						length[kk * num_devices_context + i], &scat[cumsum[kk * num_devices_context + i]], 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
 				else {
 					status = clEnqueueFillBuffer(commandQueues[i], d_scat[kk * num_devices_context + i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
 				status = clFlush(commandQueues[i]);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -704,7 +704,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				status = clEnqueueWriteBuffer(commandQueues[i], d_mlem[i], CL_TRUE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")),
 					0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -740,12 +740,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							status = clEnqueueFillBuffer(commandQueues[i], d_Summ[i], &zerou, sizeof(cl_ulong), 0, sizeof(cl_ulong) * im_dim, 0, NULL, NULL);
 						}
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						status = clEnqueueFillBuffer(commandQueues[i], d_rhs[i], &zerou, sizeof(cl_ulong), 0, sizeof(cl_ulong) * im_dim, 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -754,19 +754,19 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							status = clEnqueueFillBuffer(commandQueues[i], d_Summ[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * im_dim, 0, NULL, NULL);
 						}
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						status = clEnqueueFillBuffer(commandQueues[i], d_rhs[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * im_dim, 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
 
 					status = clFlush(commandQueues[i]);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
@@ -782,7 +782,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					if (use_psf) {
 						status = clFinish(commandQueues[i]);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						size_t convn_size[] = { Nx, Ny, Nz };
@@ -794,7 +794,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						clSetKernelArg(kernel_convolution_f, 5, sizeof(int32_t), &w_size_z);
 						status = clEnqueueNDRangeKernel(commandQueues[i], kernel_convolution_f, 3ULL, NULL, convn_size, NULL, 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							mexPrintf("Failed to launch the convolution kernel\n");
 							return;
 						}
@@ -802,13 +802,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					else {
 						status = clEnqueueCopyBuffer(commandQueues[i], d_mlem[i], d_mlem_blurred[i], 0, 0, im_dim * sizeof(float), 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
 					status = clFinish(commandQueues[i]);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 
@@ -858,7 +858,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					// Compute the RHS and normalization constant
 					status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1u, NULL, &global_size, &local_size, 0u, NULL, &events[i][0]);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the OS kernel\n");
 						for (cl_uint kk = 0u; kk < subsets; kk++) {
 							for (cl_uint i = 0u; i < num_devices_context; i++) {
@@ -910,27 +910,27 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 								status = clEnqueueReadBuffer(commandQueues[i], d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_ulong) * im_dim,
 									testi_summ_u[i - 1u].data(), 1, &events[i][0], NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							if ((compute_norm_matrix == 0u && iter == 0u) || compute_norm_matrix == 1u) {
 								status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1u], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ_u[i - 1u].data(),
 									0, NULL, NULL);
 								if (status != CL_SUCCESS) {
-									std::cerr << getErrorString(status) << std::endl;
+									getErrorString(status);
 									return;
 								}
 							}
 							status = clEnqueueReadBuffer(commandQueues[i], d_rhs[i], CL_TRUE, 0, sizeof(cl_ulong) * im_dim, testi_rhs_u[i - 1u].data(), 1,
 								&events[i][0], NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							status = clEnqueueWriteBuffer(commandQueues[0], d0_rhs[i - 1u], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_rhs_u[i - 1u].data(), 0,
 								NULL, NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 						}
@@ -942,27 +942,27 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 								status = clEnqueueReadBuffer(commandQueues[i], d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(float) * im_dim,
 									testi_summ[i - 1u].data(), 1, &events[i][0], NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							if ((compute_norm_matrix == 0u && iter == 0u) || compute_norm_matrix == 1u) {
 								status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1u], CL_FALSE, 0, sizeof(float) * im_dim, testi_summ[i - 1u].data(),
 									0, NULL, NULL);
 								if (status != CL_SUCCESS) {
-									std::cerr << getErrorString(status) << std::endl;
+									getErrorString(status);
 									return;
 								}
 							}
 							status = clEnqueueReadBuffer(commandQueues[i], d_rhs[i], CL_TRUE, 0, sizeof(float) * im_dim, testi_rhs[i - 1u].data(), 1,
 								&events[i][0], NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							status = clEnqueueWriteBuffer(commandQueues[0], d0_rhs[i - 1u], CL_FALSE, 0, sizeof(float) * im_dim, testi_rhs[i - 1u].data(), 0,
 								NULL, NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 						}
@@ -988,7 +988,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						clSetKernelArg(kernel_sum, 5, sizeof(cl_uchar), &no_norm);
 						status = clEnqueueNDRangeKernel(commandQueues[0], kernel_sum, 1, NULL, &sum_dim, NULL, 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							mexPrintf("Failed to launch the merge kernel\n");
 							return;
 						}
@@ -1004,7 +1004,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					if (atomic_64bit) {
 						d_rhs_apu = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_ulong) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						status = clEnqueueCopyBuffer(commandQueues[0], d_rhs[0], d_rhs_apu, 0, 0, im_dim * sizeof(cl_ulong), 0, NULL, NULL);
@@ -1012,7 +1012,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					else {
 						d_rhs_apu = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						status = clEnqueueCopyBuffer(commandQueues[0], d_rhs[0], d_rhs_apu, 0, 0, im_dim * sizeof(float), 0, NULL, NULL);
@@ -1027,7 +1027,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clSetKernelArg(kernel_convolution, 5, sizeof(int32_t), &w_size_z);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_convolution, 3, NULL, convn_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the convolution kernel\n");
 						return;
 					}
@@ -1036,7 +1036,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						if (atomic_64bit) {
 							d_Summ_apu = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_ulong) * im_dim, NULL, &status);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							if (compute_norm_matrix == 1u)
@@ -1047,7 +1047,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						else {
 							d_Summ_apu = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * im_dim, NULL, &status);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 							if (compute_norm_matrix == 1u)
@@ -1056,7 +1056,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 								status = clEnqueueCopyBuffer(commandQueues[0], d_Summ[osa_iter * num_devices_context], d_Summ_apu, 0, 0, im_dim * sizeof(float), 0, NULL, NULL);
 						}
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 						clFinish(commandQueues[0]);
@@ -1067,7 +1067,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							clSetKernelArg(kernel_convolution, 1, sizeof(cl_mem), &d_Summ[osa_iter * num_devices_context]);
 						status = clEnqueueNDRangeKernel(commandQueues[0], kernel_convolution, 3, NULL, convn_size, NULL, 0, NULL, NULL);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							mexPrintf("Failed to launch the convolution kernel\n");
 							return;
 						}
@@ -1087,7 +1087,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				clSetKernelArg(kernel_mlem, 2, sizeof(cl_mem), &d_mlem[0]);
 				status = clEnqueueNDRangeKernel(commandQueues[0], kernel_mlem, 1, NULL, &sum_dim, NULL, 0, NULL, &events[0][1]);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					for (cl_uint kk = 0u; kk < subsets; kk++) {
 						for (cl_uint i = 0u; i < num_devices_context; i++) {
 							if (kk == 0) {
@@ -1132,7 +1132,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						status = clEnqueueReadBuffer(commandQueues[0], d_Summ[osa_iter * num_devices_context], CL_FALSE, 0, sizeof(cl_ulong) * im_dim,
 							testi_summ[0].data(), 1, &events[0][1], &summ_event);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -1140,7 +1140,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						status = clEnqueueReadBuffer(commandQueues[0], d_Summ[osa_iter * num_devices_context], CL_FALSE, 0, sizeof(float) * im_dim,
 							testi_summ[0].data(), 1, &events[0][1], &summ_event);
 						if (status != CL_SUCCESS) {
-							std::cerr << getErrorString(status) << std::endl;
+							getErrorString(status);
 							return;
 						}
 					}
@@ -1149,7 +1149,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							status = clEnqueueWriteBuffer(commandQueues[0], d_Summ[osa_iter * num_devices_context + i], CL_FALSE, 0, sizeof(cl_ulong) * im_dim,
 								testi_summ[0].data(), 1, &summ_event, NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 						}
@@ -1157,7 +1157,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 							status = clEnqueueWriteBuffer(commandQueues[0], d_Summ[osa_iter * num_devices_context + i], CL_FALSE, 0, sizeof(float) * im_dim,
 								testi_summ[0].data(), 1, &summ_event, NULL);
 							if (status != CL_SUCCESS) {
-								std::cerr << getErrorString(status) << std::endl;
+								getErrorString(status);
 								return;
 							}
 						}
@@ -1170,7 +1170,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				status = clEnqueueReadBuffer(commandQueues[0], d_mlem[0], CL_TRUE, 0, sizeof(float) * im_dim, &ele_ml[im_dim * (iter + 1u)], 1, &events[0][1],
 					&events[0][2]);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 
@@ -1179,7 +1179,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = clEnqueueWriteBuffer(commandQueues[i], d_mlem[i], CL_FALSE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * (iter + 1u)], 1,
 						&events[0][2], NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						return;
 					}
 				}
@@ -1207,23 +1207,23 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			if (use_psf && deblur) {
 				cl_mem d_mlem_apu = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				//cl_mem d_mlem_apu_toka = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * im_dim, NULL, &status);
 				cl_mem d_mlem_apu_kolmas = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				//status = clEnqueueCopyBuffer(commandQueues[0], d_mlem[0], d_mlem_apu_toka, 0, 0, im_dim * sizeof(float), NULL, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueCopyBuffer(commandQueues[0], d_mlem[0], d_mlem_blurred[0], 0, 0, im_dim * sizeof(float), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				size_t convn_size[] = { Nx, Ny, Nz };
@@ -1239,7 +1239,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clSetKernelArg(kernel_convolution_f, 1, sizeof(cl_mem), &d_mlem_apu);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_convolution_f, 3ULL, NULL, convn_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the convolution kernel\n");
 						return;
 					}
@@ -1248,7 +1248,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clSetKernelArg(kernel_vectorDiv, 1, sizeof(cl_mem), &d_mlem_apu_kolmas);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_vectorDiv, 1ULL, NULL, &vector_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the division kernel\n");
 						return;
 					}
@@ -1257,7 +1257,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clSetKernelArg(kernel_convolution_f, 1, sizeof(cl_mem), &d_mlem_apu);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_convolution_f, 3ULL, NULL, convn_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the convolution kernel\n");
 						return;
 					}
@@ -1266,7 +1266,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					clSetKernelArg(kernel_vectorMult, 1, sizeof(cl_mem), &d_mlem_blurred[0]);
 					status = clEnqueueNDRangeKernel(commandQueues[0], kernel_vectorMult, 1ULL, NULL, &vector_size, NULL, 0, NULL, NULL);
 					if (status != CL_SUCCESS) {
-						std::cerr << getErrorString(status) << std::endl;
+						getErrorString(status);
 						mexPrintf("Failed to launch the multiplication kernel\n");
 						return;
 					}
@@ -1276,7 +1276,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				clFinish(commandQueues[0]);
 				status = clEnqueueReadBuffer(commandQueues[0], d_mlem_blurred[0], CL_TRUE, 0, sizeof(float) * im_dim, &ele_ml[im_dim * (iter + 1u)], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -1335,11 +1335,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	for (cl_uint i = 0u; i < num_devices_context; i++) {
 		status = clFlush(commandQueues[i]);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		}
 		status = clFinish(commandQueues[i]);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 		}
 	}
 	mxDestroyArray(mlem);

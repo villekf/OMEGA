@@ -39,7 +39,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	// Get the number of platforms
 	status = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 
@@ -48,7 +48,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	// Get the platform IDs
 	status = clGetPlatformIDs(num_platforms, platforms, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		delete[] platforms;
 		return status;
 	}
@@ -75,20 +75,20 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	else
 		context = clCreateContextFromType(properties, CL_DEVICE_TYPE_ALL, NULL, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	// Get the size of the device ID variable
 	status = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	// Get device IDs
 	cl_device_id * devices2 = (cl_device_id*)alloca(size / sizeof(cl_device_id));
 	status = clGetContextInfo(context, CL_CONTEXT_DEVICES, size, devices2, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 
@@ -109,7 +109,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 			case CL_DEVICE_TYPE_GPU:
 				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				if ((mem / (1024ULL * 1024ULL)) < 2000ULL || (kerroin == 0.f && mem < mem_max)) {
@@ -129,7 +129,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 			case CL_DEVICE_TYPE_CPU:
 				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				cpu_device = static_cast<int>(i);
@@ -147,7 +147,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 		cl_ulong mem;
 		status = clGetDeviceInfo(devices2[0], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		if ((static_cast<cl_float>(mem) * mem_portions) > image_bytes)
@@ -161,7 +161,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	// Get the number of devices
 	status = clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, sizeof(cl_uint), &num_devices_context, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 
@@ -189,7 +189,7 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 
 	status = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 
@@ -202,7 +202,7 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 
 	status = clGetPlatformIDs(num_platforms, platforms, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		delete[] platforms;
 		return status;
 	}
@@ -225,7 +225,7 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 				cl_ulong mem;
 				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					delete[] platforms;
 					return status;
 				}
@@ -251,7 +251,7 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 
 	context = clCreateContext(properties, 1, devices, NULL, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		delete[] platforms;
 		return status;
 	}
@@ -354,7 +354,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 		// Build the program
 		status = clBuildProgram(program, num_devices_context, devices2.data(), options.c_str(), NULL, NULL);
 		if (status != CL_SUCCESS) {
-			//std::cerr << getErrorString(status) << std::endl;
+			//getErrorString(status);
 			//mexPrintf("Failed to build OpenCL program. Build log: \n");
 			//size_t len;
 			//char* buffer;
@@ -388,14 +388,14 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 		sourceCode = content.c_str();
 		program = clCreateProgramWithSource(context, 1, (const char**)& sourceCode, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		//mexPrintf("%s\n", options.c_str());
 		status = clBuildProgram(program, num_devices_context, devices2.data(), options.c_str(), NULL, NULL);
 		// Build log in case of failure
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to build OpenCL program. Build log: \n");
 			size_t len;
 			char* buffer;
@@ -414,7 +414,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 	for (size_t i = 0; i < num_devices_context; i++) {
 		commandQueues[i] = clCreateCommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 	}

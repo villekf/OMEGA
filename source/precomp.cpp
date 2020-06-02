@@ -48,40 +48,40 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		d_z[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_x[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_y[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_pseudos[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_lor[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (raw) {
 			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -90,22 +90,22 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		status = clEnqueueWriteBuffer(commandQueues[i], d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 
@@ -114,21 +114,21 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 		if (raw) {
 			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 
 		status = clFlush(commandQueues[i]);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
@@ -183,7 +183,7 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 		clSetKernelArg(kernel, 27, sizeof(uint64_t), &m_size);
 		status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1, NULL, &global_size, &local_size, 0, NULL, &event1);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
@@ -194,7 +194,7 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 
 	status = clEnqueueReadBuffer(commandQueues[0], d_lor[0], CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, 1, &event1, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 

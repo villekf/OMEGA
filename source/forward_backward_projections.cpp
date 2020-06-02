@@ -142,79 +142,79 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	for (cl_uint i = 0U; i < num_devices_context; i++) {
 		d_reko_type[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_z[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_x[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_y[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_xcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_ycenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_zcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_V[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_atten[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_pseudos[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		d_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_rhs, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (atomic_64bit) {
 			d_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			if (i < num_devices_context - 1) {
 				d0_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -222,23 +222,23 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		else {
 			d_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_output, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			if (i < num_devices_context - 1) {
 				d0_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_output, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -246,48 +246,48 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		if (randoms_correction == 1u) {
 			d_sc_ra[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			d_sc_ra[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		if (normalization == 1u) {
 			d_norm[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			d_norm[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		if (scatter == 1u) {
 			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		d_Sino[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (precompute)
@@ -295,7 +295,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		else
 			d_lor[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (raw) {
@@ -306,17 +306,17 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		else {
 			d_xyindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			d_zindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -324,7 +324,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -333,57 +333,57 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		status = clEnqueueWriteBuffer(commandQueues[i], d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_ycenter[i], CL_FALSE, 0, sizeof(float) * size_center_y, y_center, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_zcenter[i], CL_FALSE, 0, sizeof(float) * size_center_z, z_center, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_V[i], CL_FALSE, 0, sizeof(float) * size_V, V, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_atten[i], CL_FALSE, 0, sizeof(float) * size_atten, atten, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_rhs[i], CL_FALSE, 0, sizeof(float) * size_rhs, rhs, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueWriteBuffer(commandQueues[i], d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]], 0, NULL, NULL);
@@ -397,17 +397,17 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		else {
 			status = clEnqueueWriteBuffer(commandQueues[i], d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t) * length[i], &xy_index[cumsum[i]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			status = clEnqueueWriteBuffer(commandQueues[i], d_zindex[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &z_index[cumsum[i]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -416,20 +416,20 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		else
 			status = clEnqueueWriteBuffer(commandQueues[i], d_lor[i], CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (normalization == 1u) {
 			status = clEnqueueWriteBuffer(commandQueues[i], d_norm[i], CL_FALSE, 0, sizeof(cl_float) * length[i], &norm[cumsum[i]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			status = clEnqueueWriteBuffer(commandQueues[i], d_norm[i], CL_FALSE, 0, sizeof(cl_float), norm, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -496,7 +496,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 	clSetKernelArg(kernel, kernelInd++, sizeof(float), &zero);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
@@ -516,20 +516,20 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		status = clEnqueueFillBuffer(commandQueues[i], d_Summ[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * im_dim, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		if (atomic_64bit) {
 			status = clEnqueueFillBuffer(commandQueues[i], d_output[i], &zeroULL, sizeof(cl_ulong), 0, sizeof(cl_ulong) * size_output, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			status = clEnqueueFillBuffer(commandQueues[i], d_output[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * size_output, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -537,14 +537,14 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			float* S_R = (float*)mxGetData(mxGetCell(sc_ra, 0));
 			status = clEnqueueWriteBuffer(commandQueues[i], d_sc_ra[i], CL_FALSE, 0, sizeof(float) * length[i], &S_R[cumsum[i]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			status = clEnqueueFillBuffer(commandQueues[i], d_sc_ra[i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -552,14 +552,14 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));
 			status = clEnqueueWriteBuffer(commandQueues[i], d_scat[i], CL_FALSE, 0, sizeof(float) * length[i], &scat[cumsum[i]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
 		else {
 			status = clEnqueueFillBuffer(commandQueues[i], d_scat[i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return;
 			}
 		}
@@ -619,7 +619,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &st);
 		status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1, NULL, &global_size, &local_size, 0, NULL, &events[i]);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			for (cl_uint i = 0; i < num_devices_context; i++) {
 				clReleaseMemObject(d_reko_type[i]);
 				clReleaseMemObject(d_z[i]);
@@ -656,44 +656,44 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			if (atomic_64bit) {
 				status = clEnqueueReadBuffer(commandQueues[i], d_Summ[i], CL_TRUE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1].data(), 1, &events[i], NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueReadBuffer(commandQueues[i], d_output[i], CL_TRUE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1].data(), 1, &events[i], NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1], CL_FALSE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1].data(), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[0], d0_output[i - 1], CL_FALSE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1].data(), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
 			else {
 				status = clEnqueueReadBuffer(commandQueues[i], d_Summ[i], CL_TRUE, 0, sizeof(float) * im_dim, testi_summ[i - 1].data(), 1, &events[i], NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueReadBuffer(commandQueues[i], d_output[i], CL_TRUE, 0, sizeof(float) * size_output, testi_rhs[i - 1].data(), 1, &events[i], NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1], CL_FALSE, 0, sizeof(float) * im_dim, testi_summ[i - 1].data(), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 				status = clEnqueueWriteBuffer(commandQueues[0], d0_output[i - 1], CL_FALSE, 0, sizeof(float) * size_output, testi_rhs[i - 1].data(), 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return;
 				}
 			}
@@ -722,7 +722,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		clSetKernelArg(kernel_sum, 8, sizeof(uint8_t), &fp);
 		status = clEnqueueNDRangeKernel(commandQueues[0], kernel_sum, 1, NULL, &summa_pituus, NULL, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		clFinish(commandQueues[0]);
@@ -731,24 +731,24 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	if (atomic_64bit) {
 		status = clEnqueueReadBuffer(commandQueues[0], d_output[0], CL_FALSE, 0, sizeof(uint64_t) * size_output, output_u, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueReadBuffer(commandQueues[0], d_Summ[0], CL_FALSE, 0, sizeof(uint64_t) * im_dim, normalizer_u, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
 	else {
 		status = clEnqueueReadBuffer(commandQueues[0], d_output[0], CL_FALSE, 0, sizeof(float) * size_output, output_f, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 		status = clEnqueueReadBuffer(commandQueues[0], d_Summ[0], CL_FALSE, 0, sizeof(float) * im_dim, normalizer_f, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}

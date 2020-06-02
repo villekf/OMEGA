@@ -130,7 +130,7 @@ cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kern
 			kernel = clCreateKernel(program_os, "siddon_multi", &status);
 
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to create OS-methods kernel\n");
 			return status;
 		}
@@ -148,7 +148,7 @@ cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kern
 		else
 			kernel_ml = clCreateKernel(program_ml, "siddon_multi", &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to create MLEM kernel\n");
 			return status;
 		}
@@ -159,7 +159,7 @@ cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kern
 	}
 
 	// Kernel for the prepass phase needed for MRAMLA, MBSREM, RBI, COSEM, ACOSEM and ECOSEM
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 
 		// Create the prepass kernel
@@ -169,7 +169,7 @@ cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kern
 			kernel_mramla = clCreateKernel(program_mbsrem, "siddon_multi", &status);
 
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to create prepass kernel\n");
 			return status;
 		}
@@ -185,7 +185,7 @@ cl_int createKernels(cl_kernel & kernel_ml, cl_kernel & kernel, cl_kernel & kern
 			kernelNLM = clCreateKernel(program_ml, "NLM", &status);
 
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to create NLM kernel\n");
 			return status;
 		}
@@ -213,55 +213,55 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 	// Detector coordinates
 	d_V = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_z = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_x = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_of_x, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_y = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_of_x, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_xcenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_ycenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	d_zcenter = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	// Attenuation data for image-based attenuation
 	d_atten = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	// Pseudo rings
 	d_pseudos = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	if (osem_bool) {
 		d_reko_type = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint8_t) * n_rekos, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		for (uint32_t kk = 0; kk < subsets; kk++) {
@@ -271,7 +271,7 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 			else
 				d_lor[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			if (size_norm > 1) {
@@ -287,13 +287,13 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 				d_scat[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_scat, NULL, &status);
 			}
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			// Measurement data
 			d_Sino[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			if (randoms_correction == 1u)
@@ -301,41 +301,41 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 			else
 				d_sc_ra[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 			if (raw) {
 				d_xyindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				d_zindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				d_L[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 			}
 			else {
 				d_xyindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				d_zindex[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				d_L[kk] = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 			}
@@ -344,7 +344,7 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 	if (mlem_bool) {
 		d_reko_type_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint8_t) * n_rekos_mlem, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		if (precompute)
@@ -352,23 +352,23 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 		else
 			d_lor_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		// Measurement data
 		d_Sino_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		d_norm_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_norm, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		d_scat_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_scat, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		if (randoms_correction == 1u)
@@ -376,48 +376,48 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 		else
 			d_sc_ra_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 		if (raw) {
 			d_xyindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			d_zindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			d_L_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko * 2, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 		}
 		else {
 			d_xyindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * koko, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			d_zindex_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko, NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			d_L_mlem = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 		}
 	}
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Buffer creation failed\n");
 		return status;
 	}
@@ -430,87 +430,87 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 	// assign values to the buffers
 	status = clEnqueueWriteBuffer(af_queue, d_V, CL_FALSE, 0, sizeof(float) * size_V, V, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_x, CL_FALSE, 0, sizeof(float) * size_of_x, x, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_y, CL_FALSE, 0, sizeof(float) * size_of_x, y, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_z, CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_xcenter, CL_FALSE, 0, sizeof(float) * size_center_x, x_center, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_ycenter, CL_FALSE, 0, sizeof(float) * size_center_y, y_center, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_zcenter, CL_FALSE, 0, sizeof(float) * size_center_z, z_center, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_atten, CL_FALSE, 0, sizeof(float) * size_atten, atten, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	status = clEnqueueWriteBuffer(af_queue, d_pseudos, CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return status;
 	}
 	if (osem_bool) {
 		status = clEnqueueWriteBuffer(af_queue, d_reko_type, CL_FALSE, 0, sizeof(uint8_t) * n_rekos, reko_type, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		for (uint32_t kk = 0; kk < subsets; kk++) {
 			if (raw) {
 				status = clEnqueueWriteBuffer(af_queue, d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				status = clEnqueueWriteBuffer(af_queue, d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				status = clEnqueueWriteBuffer(af_queue, d_L[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 			}
 			else {
 				status = clEnqueueWriteBuffer(af_queue, d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				status = clEnqueueWriteBuffer(af_queue, d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]], 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 				status = clEnqueueWriteBuffer(af_queue, d_L[kk], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 				if (status != CL_SUCCESS) {
-					std::cerr << getErrorString(status) << std::endl;
+					getErrorString(status);
 					return status;
 				}
 			}
@@ -519,7 +519,7 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 			else
 				status = clEnqueueWriteBuffer(af_queue, d_lor[kk], CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			if (size_norm > 1) {
@@ -528,6 +528,10 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 			else {
 				status = clEnqueueWriteBuffer(af_queue, d_norm[kk], CL_FALSE, 0, sizeof(float) * size_norm, norm, 0, NULL, NULL);
 			}
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
 			if (size_scat > 1) {
 				status = clEnqueueWriteBuffer(af_queue, d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk], &scat[pituus[kk]], 0, NULL, NULL);
 			}
@@ -535,13 +539,13 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 				status = clEnqueueWriteBuffer(af_queue, d_scat[kk], CL_FALSE, 0, sizeof(float) * size_scat, scat, 0, NULL, NULL);
 			}
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 
 			status = clEnqueueWriteBuffer(af_queue, d_Sino[kk], CL_FALSE, 0, sizeof(float) * length[kk], &Sin[pituus[kk]], 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -550,7 +554,7 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 			else
 				status = clEnqueueWriteBuffer(af_queue, d_sc_ra[kk], CL_FALSE, 0, sizeof(float), apu, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 		}
@@ -558,12 +562,12 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 	if (mlem_bool) {
 		status = clFinish(af_queue);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		status = clEnqueueWriteBuffer(af_queue, d_reko_type_mlem, CL_FALSE, 0, sizeof(uint8_t) * n_rekos_mlem, reko_type_mlem, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		if (precompute)
@@ -571,23 +575,23 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 		else
 			status = clEnqueueWriteBuffer(af_queue, d_lor_mlem, CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 
 		status = clEnqueueWriteBuffer(af_queue, d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko, Sin, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		status = clEnqueueWriteBuffer(af_queue, d_norm_mlem, CL_FALSE, 0, sizeof(float) * size_norm, norm, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		status = clEnqueueWriteBuffer(af_queue, d_scat_mlem, CL_FALSE, 0, sizeof(float) * size_scat, scat, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -596,47 +600,47 @@ cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<
 		else
 			status = clEnqueueWriteBuffer(af_queue, d_sc_ra_mlem, CL_FALSE, 0, sizeof(float), apu, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		if (raw) {
 			status = clEnqueueWriteBuffer(af_queue, d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			status = clEnqueueWriteBuffer(af_queue, d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			status = clEnqueueWriteBuffer(af_queue, d_L_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko * 2ULL, L, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 		}
 		else {
 			status = clEnqueueWriteBuffer(af_queue, d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t) * koko, xy_index, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			status = clEnqueueWriteBuffer(af_queue, d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko, z_index, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 			status = clEnqueueWriteBuffer(af_queue, d_L_mlem, CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				return status;
 			}
 		}
 	}
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Buffer write failed\n");
 		return status;
 	}
@@ -836,7 +840,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 		clSetKernelArg(kernel_mramla, kernelInd_MRAMLA_sub++, sizeof(MethodListOpenCL), &MethodListOpenCL);
 		status = clEnqueueNDRangeKernel(af_queue, kernel_mramla, 1u, NULL, &global_size, &local_size, 0u, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to launch the prepass kernel\n");
 			return;
 		}
@@ -957,76 +961,76 @@ void precomp_siddon(const cl_context &context, const cl_command_queue &commandQu
 	// Create the necessary buffers
 	d_z = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	d_x = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	d_y = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	d_pseudos = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	d_lor = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(uint16_t) * osa_length, NULL, &status);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	if (raw) {
 		d_L = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * osa_length * 2, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
 	else {
 		d_L = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
 
 	status = clEnqueueWriteBuffer(commandQueues, d_x, CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	status = clEnqueueWriteBuffer(commandQueues, d_y, CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	status = clEnqueueWriteBuffer(commandQueues, d_z, CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 	status = clEnqueueWriteBuffer(commandQueues, d_pseudos, CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		return;
 	}
 
 	if (raw) {
 		status = clEnqueueWriteBuffer(commandQueues, d_L, CL_FALSE, 0, sizeof(uint16_t) * osa_length * 2, L, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
 	else {
 		status = clEnqueueWriteBuffer(commandQueues, d_L, CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return;
 		}
 	}
@@ -1064,7 +1068,7 @@ void precomp_siddon(const cl_context &context, const cl_command_queue &commandQu
 	clSetKernelArg(kernel, 26, sizeof(cl_mem), &d_L);
 	status = clEnqueueNDRangeKernel(commandQueues, kernel, 1, NULL, &osa_length, NULL, 0, NULL, &event1);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 
 		clReleaseEvent(event1);
 
@@ -1079,7 +1083,7 @@ void precomp_siddon(const cl_context &context, const cl_command_queue &commandQu
 
 	status = clEnqueueReadBuffer(commandQueues, d_lor, CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, 1, &event1, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 
 		clReleaseEvent(event1);
 
@@ -1189,7 +1193,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl_context& af_cont
 
 		status = buildProgram(verbose, k_path, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
 	}
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 		options += " -DAF";
 		options += " -DMBSREM";
@@ -1230,14 +1234,14 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl_context& af_conte
 		// Create the program from the source
 		program = clCreateProgramWithSource(af_context, 1, (const char**)&sourceCode_atom, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 
 		// Build the program
 		status = clBuildProgram(program, 1, &af_device_id, options.c_str(), NULL, NULL);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to build OpenCL program. Build log: \n");
 			size_t len;
 			char* buffer;
@@ -1271,14 +1275,14 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl_context& af_conte
 		sourceCode = content.c_str();
 		program = clCreateProgramWithSource(af_context, 1, (const char**)&sourceCode, NULL, &status);
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			return status;
 		}
 		//mexPrintf("%s\n", options.c_str());
 		status = clBuildProgram(program, 1, &af_device_id, options.c_str(), NULL, NULL);
 		// Build log in case of failure
 		if (status != CL_SUCCESS) {
-			std::cerr << getErrorString(status) << std::endl;
+			getErrorString(status);
 			mexPrintf("Failed to build OpenCL program. Build log: \n");
 			size_t len;
 			char* buffer;
@@ -1374,13 +1378,13 @@ af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uin
 	// Compute the kernel
 	status = clEnqueueNDRangeKernel(*OpenCLStruct.af_queue, OpenCLStruct.kernelNLM, 1u, NULL, &global_size, NULL, 0, NULL, NULL);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to launch the NLM kernel\n");
 		mexEvalString("pause(.0001);");
 	}
 	status = clFinish(*OpenCLStruct.af_queue);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Queue finish failed after kernel\n");
 		mexEvalString("pause(.0001);");
 	}
