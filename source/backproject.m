@@ -147,7 +147,7 @@ else
     end
 end
 
-if scatter_correction && ~options.subtract_scatter
+if options.scatter_correction && ~options.subtract_scatter
     if options.implementation == 1
         scatter_input = options.ScatterC(nn(1) : nn(2));
     else
@@ -454,7 +454,7 @@ else
         single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...
         uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...
         uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), rhs, no_norm, ...
-        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf);
+        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf, options);
     toc
     if isa(output{1},'uint64')
         bp = single(output{1}) / 100000000000;

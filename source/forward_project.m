@@ -152,7 +152,7 @@ else
     end
 end
 
-if scatter_correction && ~options.subtract_scatter
+if options.scatter_correction && ~options.subtract_scatter
     if options.implementation == 1
         scatter_input = options.ScatterC(nn(1) : nn(2));
     else
@@ -452,12 +452,12 @@ elseif options.implementation == 3
     header_directory = strcat(header_directory,'"');
     
     tic
-    [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ...
-        single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), ...
-        single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...
-        uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...
-        uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, true, ...
-        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf);
+    [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ... 15
+        single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), ...25
+        single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...32
+        uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...43
+        uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, true, ...53
+        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf, options);
     toc
     if isa(output{1},'uint64')
         varargout{1} = single(output{1}) / 100000000000;
