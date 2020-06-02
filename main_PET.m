@@ -2593,7 +2593,6 @@ if options.only_system_matrix || options.single_reconstructions
         end
         % Output is contained in pz, just like in gate_main.m
         [options, pz] = save_custom_prior_iterations(options, llo, pz);
-        pz{end} = 0;
         if options.partitions > 1
             options.im_vectors = form_image_vectors(options, options.N);
         end
