@@ -961,7 +961,7 @@ options.COSEM_OSL = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Median Root Prior (MRP)
-options.MRP = false;
+options.MRP = true;
 
 %%% Quadratic Prior (QP)
 options.quad = false;
