@@ -3,7 +3,7 @@ Open-source MATLAB Emission Tomography Software
 
 ## Introduction
 
-OMEGA is a software for MATLAB and Octave to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from GATE simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
+OMEGA is a software for [MATLAB](https://www.mathworks.com/) and [GNU Octave](https://www.gnu.org/software/octave/) to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from GATE simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
 The algorithms implemented so far are:
 - Improved Siddon's algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
@@ -125,7 +125,7 @@ https://arrayfire.com/download/
 and the source code from here:  
 https://github.com/arrayfire/arrayfire
 
-Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`).
+Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`).
 
 
 
@@ -140,6 +140,8 @@ C++11 compiler is required.
 OpenCL SDK/headers are required for OpenCL functionality.
 
 ArrayFire is required for implementation 2.
+
+For OpenCL, an OpenCL 1.2 compatible device is required.
 
 The following third-party MATLAB codes are NOT required, but can be useful as they can be optionally used:  
 https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
@@ -160,7 +162,7 @@ Multi-device/GPU reconstruction only supports OSEM and MLEM.
 
 Implementation 4 (OpenMP CPU) supports only one prior/algorithm at a time.
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
+LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
@@ -197,6 +199,8 @@ Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due
 Status messages usually only appear after the function has finished.
 
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
+
+MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
 
 
 ## Upcoming Features
