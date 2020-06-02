@@ -141,6 +141,8 @@ OpenCL SDK/headers are required for OpenCL functionality.
 
 ArrayFire is required for implementation 2.
 
+For OpenCL, an OpenCL 1.2 compatible device is required.
+
 The following third-party MATLAB codes are NOT required, but can be useful as they can be optionally used:  
 https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
 https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
