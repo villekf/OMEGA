@@ -396,7 +396,7 @@ options.sampling_interpolation_method_raw = 'linear';
 % If set to true, stores the delayed coincidences during data load and
 % later corrects for randoms during the data formation/load or during
 % reconstruction. Delayes need to be stored in GATE data for this to work.
-options.randoms_correction = true;
+options.randoms_correction = false;
 
 %%% Variance reduction
 % If set to true, variance reduction will be performed to delayed
@@ -666,7 +666,7 @@ options.use_raw_data = false;
 % and image resolution, it is not necessary to do it again. Recommended for
 % raw list-mode data, but speeds up sinogram reconstruction as well. HIGHLY
 % recommended when using implementation 1.
-options.precompute_lor = false;
+options.precompute_lor = true;
 
 %%% Precompute all
 % Set this option to true if you want to precompute all possible
@@ -705,7 +705,7 @@ options.verbose = true;
 % 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
 % (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
 % with MinGW as well (cannot use the prebuilt binaries)).
-options.implementation = 4;
+options.implementation = 1;
 
 % Applies to implementation 2 ONLY
 %%% Device used (this is applicable to implementation 2)
