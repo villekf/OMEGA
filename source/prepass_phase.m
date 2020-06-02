@@ -589,6 +589,8 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             end
             options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
             clear offsets tr_ind s c1 c2
+        else
+            options.tr_offsets = uint32(0);
         end
         if options.quad || (options.TV && options.TVtype == 3)
             if options.empty_weight

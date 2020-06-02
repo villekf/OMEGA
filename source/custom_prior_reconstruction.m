@@ -74,14 +74,34 @@ if options.implementation == 1
         SinD = 0;
     end
     
+    if options.normalization_correction
+        normalization = options.normalization(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
+    else
+        normalization = 0;
+    end
+    
+    if options.scatter_correction && ~options.subtract_scatter
+        if options.implementation == 1
+            scatter_input = options.ScatterC(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
+        else
+            if iscell(options.SinDelayed)
+                options.ScatterFB{1} = {single(options.ScatterC{1}(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)))};
+            else
+                options.ScatterFB{1} = {single(options.ScatterC(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)))};
+            end
+        end
+    else
+        scatter_input = 0;
+    end
+    
     if options.precompute_lor == false
         if options.use_raw_data == false
             if options.projector_type == 1 || options.projector_type == 0
                 if exist('projector_mex','file') == 3
                 [ lor, indices, alkiot] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, ...
                     options.x, options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, ...
-                    options.normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
-                    options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, options.verbose, ...
+                    normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
+                    options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, options.verbose, ...
                     options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
                 else
                     % The below lines allow for pure MATLAB
@@ -108,8 +128,8 @@ if options.implementation == 1
             %                         L = L(:);
             if options.projector_type == 1
             [ lor, indices, alkiot] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, ...
-                options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, options.normalization, SinD, ...
-                uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.global_correction_factor, uint16(0), uint32(0), ...
+                options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, normalization, SinD, ...
+                uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), ...
                 uint32(0), options.NSinos, L, options.pseudot, options.det_per_ring, options.verbose, options.use_raw_data, uint32(2), options.ind_size, options.block1, ...
                 options.blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
             else
@@ -168,9 +188,9 @@ if options.implementation == 1
             lor2 = [0; cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
         end
         [A, ~] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, options.y, ...
-            options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, options.normalization, SinD, ...
+            options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, normalization, SinD, ...
             options.pituus(osa_iter + 1) - options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
-            options.global_correction_factor, options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)), xy_index_input, z_index_input, options.NSinos, ...
+            options.scatter, scatter_input, options.global_correction_factor, options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)), xy_index_input, z_index_input, options.NSinos, ...
             L_input, options.pseudot, options.det_per_ring, options.verbose, options.use_raw_data, uint32(0), lor2, options.summa(osa_iter), options.attenuation_phase, ...
             uint32(options.projector_type), options.tube_width_xy, options.x_center, options.y_center, options.z_center, options.tube_width_z, int32(0), options.bmin, ...
             options.bmax, options.Vmax, options.V);
@@ -297,12 +317,12 @@ if options.implementation == 1
         end
     end
     % Compute OSL with MRP
-    if options.MRP && options.OSEM_im
+    if options.MRP && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
         med = MRP(options.im_vectors.MRP_OSL_apu, options.medx, options.medy, options.medz, options.Nx, options.Ny, options.Nz, options.epps, options.tr_offsets, options.med_no_norm);
-        options.im_vectors.MRP_OSL_apu = OSEM_im(im_vectors.MRP_OSL_apu, A, options.epps, uu, OSL(Summ, options.beta_mrp_osem, med, options.epps), SinD, ...
+        options.im_vectors.MRP_OSL_apu = OSEM_im(options.im_vectors.MRP_OSL_apu, A, options.epps, uu, OSL(Summ, options.beta_mrp_osem, med, options.epps), SinD, ...
             options.is_transposed, options, Nx, Ny, Nz, gaussK);
         if options.verbose
             tElapsed = toc(tStart);
@@ -389,7 +409,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with Quadratic prior
-    if options.quad && options.OSEM_im
+    if options.quad && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -485,7 +505,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with Huber prior
-    if options.Huber && options.OSEM_im
+    if options.Huber && options.OSL_OSEM
         if verbose
             tStart = tic;
         end
@@ -581,7 +601,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with L-filter prior
-    if options.L && options.OSEM_im
+    if options.L && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -677,7 +697,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with FMH prior
-    if options.FMH && options.OSEM_im
+    if options.FMH && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -768,7 +788,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with weighted mean prior
-    if options.weighted_mean && options.OSEM_im
+    if options.weighted_mean && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -859,7 +879,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with TV prior
-    if options.TV && options.OSEM_im
+    if options.TV && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -950,7 +970,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with MRP-AD prior
-    if options.AD && options.OSEM_im
+    if options.AD && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -1054,7 +1074,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with APLS prior
-    if options.APLS && options.OSEM_im
+    if options.APLS && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -1141,7 +1161,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with TGV prior
-    if options.TGV && options.OSEM_im
+    if options.TGV && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -1228,7 +1248,7 @@ if options.implementation == 1
         end
     end
     % Compute OSL with NLM prior
-    if options.NLM && options.OSEM_im
+    if options.NLM && options.OSL_OSEM
         if options.verbose
             tStart = tic;
         end
@@ -1318,7 +1338,7 @@ if options.implementation == 1
             disp(['COSEM-OSL NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
         end
     end
-    if options.OSEM_im && options.custom
+    if options.OSL_OSEM && options.custom
         if options.verbose
             tStart = tic;
         end
