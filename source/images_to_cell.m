@@ -2,7 +2,7 @@ function pz = images_to_cell(im_vectors, llo, pz, options)
 %IMAGES_TO_CELL Save the images at current time-step to a cell vector
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2019 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -79,11 +79,11 @@ if options.MRP && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.MRP_ROSEM;
 end
 gg = gg + 1;
-if options.MRP && options.RBI_MAP
+if options.MRP && options.RBI_OSL
     pz{gg, llo} = im_vectors.MRP_RBI;
 end
 gg = gg + 1;
-if options.MRP && any(options.COSEM_MAP)
+if options.MRP && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.MRP_COSEM;
 end
 
@@ -108,12 +108,41 @@ if options.quad && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.Quad_ROSEM;
 end
 gg = gg + 1;
-if options.quad && options.RBI_MAP
+if options.quad && options.RBI_OSL
     pz{gg, llo} = im_vectors.Quad_RBI;
 end
 gg = gg + 1;
-if options.quad && any(options.COSEM_MAP)
+if options.quad && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.Quad_COSEM;
+end
+
+gg = gg + 1;
+if options.Huber && options.OSL_OSEM
+    pz{gg, llo} = im_vectors.Huber_OSL;
+end
+gg = gg + 1;
+if options.Huber && options.OSL_MLEM
+    pz{gg, llo} = im_vectors.Huber_MLEM;
+end
+gg = gg + 1;
+if options.Huber && options.BSREM
+    pz{gg, llo} = im_vectors.Huber_BSREM;
+end
+gg = gg + 1;
+if options.Huber && options.MBSREM
+    pz{gg, llo} = im_vectors.Huber_MBSREM;
+end
+gg = gg + 1;
+if options.Huber && options.ROSEM_MAP
+    pz{gg, llo} = im_vectors.Huber_ROSEM;
+end
+gg = gg + 1;
+if options.Huber && options.RBI_OSL
+    pz{gg, llo} = im_vectors.Huber_RBI;
+end
+gg = gg + 1;
+if options.Huber && any(options.COSEM_OSL)
+    pz{gg, llo} = im_vectors.Huber_COSEM;
 end
 
 gg = gg + 1;
@@ -137,11 +166,11 @@ if options.L && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.L_ROSEM;
 end
 gg = gg + 1;
-if options.L && options.RBI_MAP
+if options.L && options.RBI_OSL
     pz{gg, llo} = im_vectors.L_RBI;
 end
 gg = gg + 1;
-if options.L && any(options.COSEM_MAP)
+if options.L && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.L_COSEM;
 end
 
@@ -166,11 +195,11 @@ if options.FMH && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.FMH_ROSEM;
 end
 gg = gg + 1;
-if options.FMH && options.RBI_MAP
+if options.FMH && options.RBI_OSL
     pz{gg, llo} = im_vectors.FMH_RBI;
 end
 gg = gg + 1;
-if options.FMH && any(options.COSEM_MAP)
+if options.FMH && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.FMH_COSEM;
 end
 
@@ -195,11 +224,11 @@ if options.weighted_mean && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.Weighted_ROSEM;
 end
 gg = gg + 1;
-if options.weighted_mean && options.RBI_MAP
+if options.weighted_mean && options.RBI_OSL
     pz{gg, llo} = im_vectors.Weighted_RBI;
 end
 gg = gg + 1;
-if options.weighted_mean && any(options.COSEM_MAP)
+if options.weighted_mean && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.Weighted_COSEM;
 end
 
@@ -224,11 +253,11 @@ if options.TV && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.TV_ROSEM;
 end
 gg = gg + 1;
-if options.TV && options.RBI_MAP
+if options.TV && options.RBI_OSL
     pz{gg, llo} = im_vectors.TV_RBI;
 end
 gg = gg + 1;
-if options.TV && any(options.COSEM_MAP)
+if options.TV && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.TV_COSEM;
 end
 
@@ -253,11 +282,11 @@ if options.AD && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.AD_ROSEM;
 end
 gg = gg + 1;
-if options.AD && options.RBI_MAP
+if options.AD && options.RBI_OSL
     pz{gg, llo} = im_vectors.AD_RBI;
 end
 gg = gg + 1;
-if options.AD && any(options.COSEM_MAP)
+if options.AD && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.AD_COSEM;
 end
 
@@ -282,11 +311,11 @@ if options.APLS && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.APLS_ROSEM;
 end
 gg = gg + 1;
-if options.APLS && options.RBI_MAP
+if options.APLS && options.RBI_OSL
     pz{gg, llo} = im_vectors.APLS_RBI;
 end
 gg = gg + 1;
-if options.APLS && any(options.COSEM_MAP)
+if options.APLS && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.APLS_COSEM;
 end
 
@@ -311,11 +340,11 @@ if options.TGV && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.TGV_ROSEM;
 end
 gg = gg + 1;
-if options.TGV && options.RBI_MAP
+if options.TGV && options.RBI_OSL
     pz{gg, llo} = im_vectors.TGV_RBI;
 end
 gg = gg + 1;
-if options.TGV && any(options.COSEM_MAP)
+if options.TGV && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.TGV_COSEM;
 end
 
@@ -340,10 +369,10 @@ if options.NLM && options.ROSEM_MAP
     pz{gg, llo} = im_vectors.NLM_ROSEM;
 end
 gg = gg + 1;
-if options.NLM && options.RBI_MAP
+if options.NLM && options.RBI_OSL
     pz{gg, llo} = im_vectors.NLM_RBI;
 end
 gg = gg + 1;
-if options.NLM && any(options.COSEM_MAP)
+if options.NLM && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.NLM_COSEM;
 end
