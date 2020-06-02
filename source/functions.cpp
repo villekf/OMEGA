@@ -710,7 +710,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
 			w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
 	}
-	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.COSEM
+	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.COSEM
 		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0)
 		w_vec.MBSREM_prepass = (bool)mxGetScalar(mxGetField(options, 0, "MBSREM_prepass"));
 	if (MethodList.MRAMLA || MethodList.MBSREM) {
@@ -719,7 +719,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		// Upper bound
 		w_vec.U = (float)mxGetScalar(mxGetField(options, 0, "U"));
 	}
-	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.COSEM
+	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.COSEM
 		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0) {
 		// Sum of the rows (measurements) of the system matrix
 		//w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
@@ -809,7 +809,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			beta.custom_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_cosem"));
 			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(mxGetField(options, 0, "C_osl")), afHost);
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI))
 			w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
 	}
 	if (use_psf) {
@@ -2296,8 +2296,10 @@ af::array RBI(const af::array & im, const af::array & Summ, const af::array & rh
 {
 	af::array output = im;
 	if (beta == 0.f) {
-		const float Summa = 1.f / af::max<float>(Summ);
-		output += Summa * (rhs - Summa * Summ);
+		const float Summa = 1.f / af::max<float>(Summ / D);
+		//output += Summa * (rhs - Summa * Summ);
+		//output += (im / Summa) * (rhs - Summ);
+		output += Summa * (im / D) * (rhs - Summ);
 	}
 	else {
 		const float Summa = 1.f / af::max<float>((Summ + beta * dU) / (D + beta * dU));
