@@ -59,6 +59,30 @@ iij = double(0:options.Nx);
 jji = double(0:options.Ny);
 kkj = double(0:options.Nz);
 
+if options.subsets > 1
+    if options.normalization_correction
+        norm_input = options.normalization(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
+    else
+        norm_input = 0;
+    end
+    if options.scatter_correction && ~options.subtract_scatter
+        scatter_input = options.ScatterC(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
+    else
+        scatter_input = 0;
+    end
+else
+    if options.normalization_correction
+        norm_input = options.normalization;
+    else
+        norm_input = 0;
+    end
+    if options.scatter_correction && ~options.subtract_scatter
+        scatter_input = options.ScatterC;
+    else
+        scatter_input = 0;
+    end
+end
+
 if options.precompute_lor == false
     if ~isfield(options, 'index') || length(options.index) == 1 || (iscell(options.index) && length(options.index{osa_iter}) == 1)
         if options.use_raw_data
@@ -72,8 +96,8 @@ if options.precompute_lor == false
             if exist('projector_mex','file') == 3
                 [ lor, indices, alkiot] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, ...
                     options.x, options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, ...
-                    options.normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
-                    options.scatter, options.ScatterC, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, options.verbose, ...
+                    options.normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, norm_input, options.randoms_correction, ...
+                    options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, options.verbose, ...
                     options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
             else
                 % The below lines allow for pure MATLAB
@@ -102,8 +126,8 @@ if options.precompute_lor == false
         end
         if options.projector_type == 1
             [ lor, indices, alkiot] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, ...
-                options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, options.normalization, SinD, ...
-                uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.scatter, options.ScatterC, options.global_correction_factor, uint16(0), uint32(0), ...
+                options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, norm_input, SinD, ...
+                uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), ...
                 uint32(0), options.NSinos, L, options.pseudot, options.det_per_ring, options.verbose, options.use_raw_data, uint32(2), options.ind_size, options.block1, ...
                 options.blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
         else
@@ -150,18 +174,6 @@ else
         L_input = uint16(0);
         xy_index_input = options.xy_index(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
         z_index_input = options.z_index(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
-    end
-    if options.subsets > 1
-        if normalization_correction
-            norm_input = options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1));
-        else
-            norm_input = 0;
-        end
-        if options.scatter_correction && ~options.subtract_scatter
-            scatter_input = options.ScatterC(pituus(osa_iter)+1:pituus(osa_iter + 1));
-        else
-            scatter_input = 0;
-        end
     end
     if (options.projector_type == 2 || options.projector_type == 3) && options.subsets > 1
         lor2 = [0; cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
