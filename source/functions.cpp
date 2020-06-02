@@ -2650,13 +2650,13 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 	//af::array apu = af::moddims(vec(af::span, iter + 1u), Nx, Ny, Nz);
 	//jelppi = af::pad(jelppi, pad_dim1, pad_dim2, AF_PAD_SYM);
 	//apu = af::pad(apu, pad_dim1, pad_dim2, AF_PAD_SYM);
-	for (int kk = 0; kk < (iter + 1u) * subsets; kk++) {
+	for (int kk = 0; kk < subsets; kk++) {
 		af::array apu2 = convolve3(jelppi, g);
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
 		apu2 = padding(apu2, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 		jelppi *= af::convolve3(apu / apu2, g);
 		jelppi = jelppi(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
-		if (kk < (iter + 1u) * subsets - 1)
+		if (kk < subsets - 1)
 			jelppi = padding(jelppi, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	}
 	jelppi = af::flat(jelppi);

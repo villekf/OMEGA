@@ -420,7 +420,7 @@ if ~custom
     options.scatter_correction = false;
 end
 
-[options.normalization_correction, options.randoms_correction, options] = set_up_corrections(options, options.blocks);
+[options.normalization_correction, options.randoms_correction, options] = set_up_corrections(options, options.blocks, [], []);
 
 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
     options.x = single(x);

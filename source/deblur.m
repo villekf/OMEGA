@@ -1,4 +1,4 @@
-function vec = deblur(vec, options, iter, subsets, gaussK, Nx, Ny, Nz)
+function vec = deblur(vec, options, ~, ~, gaussK, Nx, Ny, Nz)
 %DEBLUR Computes the deblur phase for the PSF reconstruction for the input
 %image/vector. Performs symmetric padding.
 %
@@ -8,8 +8,8 @@ function vec = deblur(vec, options, iter, subsets, gaussK, Nx, Ny, Nz)
 % INPUTS:
 %   vec = The image estimes
 %   options = Size of PSF kernel
-%   iter = Current iteration number
-%   subset = Total number of subsets
+%   iter = Current iteration number (unused)
+%   subset = Total number of subsets (unused)
 %   gaussK = The Gaussian kernel
 %   Nx/y/z = Image size in x/y/z direction
 %
@@ -43,7 +43,7 @@ else
     apu = vec;
 end
 apu = padding(apu, [options.g_dim_x options.g_dim_y options.g_dim_z]);
-for kk = 1 : iter * subsets
+for kk = 1 : options.deblur_iterations
     apu2 = convn(padding(jelppi, [options.g_dim_x options.g_dim_y options.g_dim_z]), gaussK, 'valid');
     apu2 = padding(apu2, [options.g_dim_x options.g_dim_y options.g_dim_z]);
     jelppi = jelppi .* convn(apu ./ apu2, gaussK, 'valid');

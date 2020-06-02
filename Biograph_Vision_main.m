@@ -801,6 +801,9 @@ options.FWHM = [options.cr_p options.cr_p options.cr_pz];
 % are NOT used in the reconstruction phase). This is used ONLY when PSF
 % blurring is used.
 options.deblurring = false;
+% Number of deblurring iterations
+% How many iterations of the deblurring step is performed
+options.deblur_iterations = 10;
 
 % Orthogonal ray tracer (projector_type = 2) only
 %%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are

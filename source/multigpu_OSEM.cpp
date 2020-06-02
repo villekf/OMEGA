@@ -113,6 +113,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
 	}
 
+	uint32_t deblur_iterations = 0U;
+	if (use_psf && deblur) {
+		deblur_iterations = (uint32_t)mxGetScalar(mxGetField(options, 0, "deblur_iterations"));
+	}
+
 	// Memory allocation
 	cl_mem d_gauss;
 	std::vector<cl_mem> d0_rhs, d0_Summ, d_Summ;
@@ -1232,7 +1237,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				clSetKernelArg(kernel_convolution_f, 3, sizeof(int32_t), &w_size_x);
 				clSetKernelArg(kernel_convolution_f, 4, sizeof(int32_t), &w_size_y);
 				clSetKernelArg(kernel_convolution_f, 5, sizeof(int32_t), &w_size_z);
-				for (int ss = 0; ss < (iter + 1u) * subsets; ss++) {
+				for (int ss = 0; ss < deblur_iterations; ss++) {
 					status = clEnqueueCopyBuffer(commandQueues[0], d_mlem[0], d_mlem_apu_kolmas, 0, 0, im_dim * sizeof(float), 0, NULL, NULL);
 					clFinish(commandQueues[0]);
 					clSetKernelArg(kernel_convolution_f, 0, sizeof(cl_mem), &d_mlem_blurred[0]);

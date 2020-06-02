@@ -584,7 +584,7 @@ options.projector_type = 1;
 %%% Use point spread function (PSF) blurring
 % Applies PSF blurring through convolution to the image space. This is the
 % same as multiplying the geometric matrix with an image blurring matrix.
-options.use_psf = true;
+options.use_psf = false;
 
 % FWHM of the Gaussian used in PSF blurring in all three dimensions
 options.FWHM = [options.cr_p options.cr_p options.cr_pz];
@@ -594,7 +594,10 @@ options.FWHM = [options.cr_p options.cr_p options.cr_pz];
 % completed. This step is performed for all iterations (deblurred estimates
 % are NOT used in the reconstruction phase). This is used ONLY when PSF
 % blurring is used.
-options.deblurring = true;
+options.deblurring = false;
+% Number of deblurring iterations
+% How many iterations of the deblurring step is performed
+options.deblur_iterations = 10;
 
 % Orthogonal ray tracer (projector_type = 2) only
 %%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are

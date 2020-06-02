@@ -272,6 +272,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	if (use_psf) {
 		g = moddims(g, w_vec.g_dim_x * 2u + 1u, w_vec.g_dim_y * 2u + 1u, w_vec.g_dim_z * 2u + 1u);
 	}
+	uint32_t deblur_iterations = 0U;
+	if (use_psf && w_vec.deconvolution) {
+		deblur_iterations = (uint32_t)mxGetScalar(mxGetField(options, 0, "deblur_iterations"));
+	}
 
 	if (mlem_bool) {
 		if (atomic_64bit)
@@ -681,7 +685,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				computeOSEstimatesIter(vec, w_vec, MethodList, im_dim, epps, iter, osa_iter0, subsets, beta, Nx, Ny, Nz, data, n_rekos2, CUDAStruct);
 
 				if (use_psf && w_vec.deconvolution && osem_bool) {
-					computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, subsets);
+					computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations);
 				}
 
 				if (osem_bool && compute_norm_matrix == 0u)
@@ -825,7 +829,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					no_norm_mlem = 1u;
 
 				if (use_psf && w_vec.deconvolution) {
-					computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, subsets);
+					computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations);
 				}
 				if (verbose) {
 					mexPrintf("MLEM iteration %d complete\n", iter + 1u);
