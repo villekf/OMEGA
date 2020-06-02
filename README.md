@@ -162,7 +162,7 @@ Multi-device/GPU reconstruction only supports OSEM and MLEM.
 
 Implementation 4 (OpenMP CPU) supports only one prior/algorithm at a time.
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be include if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
+LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
@@ -199,6 +199,8 @@ Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due
 Status messages usually only appear after the function has finished.
 
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
+
+MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
 
 
 ## Upcoming Features
