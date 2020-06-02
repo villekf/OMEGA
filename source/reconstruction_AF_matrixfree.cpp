@@ -592,11 +592,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			mexEvalString("pause(.0001);");
 			return;
 		}
-		else if (status == CL_SUCCESS) {
-			//getErrorString(status);
-			mexPrintf("Queue finish succeeded\n");
-			mexEvalString("pause(.0001);");
-		}
+		//else if (status == CL_SUCCESS) {
+		//	//getErrorString(status);
+		//	mexPrintf("Queue finish succeeded\n");
+		//	mexEvalString("pause(.0001);");
+		//}
 
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < Niter; iter++) {
@@ -682,10 +682,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						mexEvalString("pause(.0001);");
 						break;
 					}
-					else if (verbose) {
-						mexPrintf("OS kernel launched successfully\n");
-						mexEvalString("pause(.0001);");
-					}
+					//else if (verbose) {
+					//	mexPrintf("OS kernel launched successfully\n");
+					//	mexEvalString("pause(.0001);");
+					//}
 					status = clFinish(af_queue);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
