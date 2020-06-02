@@ -42,14 +42,25 @@ function im = BSREM_subiter(im, lambda, epps, iter, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 8
-    if varargin{4}
-        im = im + lambda(iter).*im.*(varargin{1}*(varargin{2}./(varargin{1}'*im + epps + varargin{3}) - 1));
+if nargin >= 9
+    if ~isempty(varargin{5}) && varargin{5}.use_psf
+        im_apu = computeConvolution(im, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});
     else
-        im = im + lambda(iter).*im.*(varargin{1}'*(varargin{2}./(varargin{1}*im + epps + varargin{3}) - 1));
+        im_apu = im;
     end
+    if varargin{4}
+        FP = varargin{1}' * im_apu;
+        BP = varargin{1} * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+    else
+        FP = varargin{1} * im_apu;
+        BP = varargin{1}' * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+    end
+    if ~isempty(varargin{5}) && varargin{5}.use_psf
+        BP = computeConvolution(BP, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});
+    end
+    im = im + lambda(iter) .* im .* BP;
 elseif nargin == 6
-    im = im + lambda(iter).*im.*((varargin{2} + epps) - varargin{1});
+    im = im + lambda(iter).*im.*(varargin{2} - varargin{1});
 else
     error('Invalid number of input arguments')
 end

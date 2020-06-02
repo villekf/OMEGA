@@ -26,7 +26,7 @@ function epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, randoms
 % I = find(Sino);
 if randoms_correction == 1
     P_Sino = double(Sino(Sino > 0 & randoms == 0));
-    apu = D + randoms;
+    apu = D + double(randoms);
     apu = sum(double(Sino) .* log(apu) - apu);
 else
     P_Sino = double(Sino(Sino > 0));

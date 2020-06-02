@@ -31,7 +31,7 @@ E = [];
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.ramla || options.MBSREM || options.mramla || options.rosem || options.drama || options.ROSEM_MAP || options.ecosem ...
-        || options.cosem || options.acosem || options.AD || any(options.COSEM_OSL) || options.NLM)
+        || options.cosem || options.acosem || options.AD || any(options.COSEM_OSL) || options.NLM || options.RBI_OSL || options.rbi)
     
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -147,7 +147,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     % COSEM algorithms
     % E.g. for COSEM compute the complete data matrix, for RBI-OSL compute
     % the sum of all the rows of the system matrix
-    if ((options.mramla || options.MBSREM || options.RBI_OSL) && options.MBSREM_prepass || options.ecosem || options.cosem ...
+    if ((options.mramla || options.MBSREM || options.RBI_OSL || options.rbi) && options.MBSREM_prepass || options.ecosem || options.cosem ...
             || options.acosem || any(options.COSEM_OSL))  && options.implementation == 1
         
         if options.acosem
@@ -184,10 +184,18 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
         
         D = zeros(N,1);
-        if normalization_correction || options.attenuation_correction
-            E = zeros(options.Nang*options.Ndist*options.NSinos,1);
+        if options.precompute_lor
+            if normalization_correction || options.attenuation_correction
+                E = zeros(length(lor_a),1);
+            else
+                E = ones(length(lor_a),1);
+            end
         else
-            E = ones(options.Nang*options.Ndist*options.NSinos,1);
+            if normalization_correction || options.attenuation_correction
+                E = zeros(options.Nang*options.Ndist*options.NSinos,1);
+            else
+                E = ones(options.Nang*options.Ndist*options.NSinos,1);
+            end
         end
         
         if verbose
@@ -223,13 +231,18 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             else
                 norm_input = 0;
             end
+            if options.scatter_correction && ~options.subtract_scatter
+                scatter_input = double(options.ScatterC(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+            else
+                scatter_input = 0;
+            end
             if options.precompute_lor == false
                 if use_raw_data == false
                     if options.projector_type == 1 || options.projector_type == 0
                         if exist('projector_mex','file') == 3
                             [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                                 zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                                randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                                randoms_correction, options.scatter, scatter_input, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
                                 use_raw_data, uint32(2), ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), uint32(options.projector_type));
                         else
                             % The below lines allow for pure MATLAB
@@ -249,7 +262,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     elseif options.projector_type == 2
                         [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                             zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                            randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                            randoms_correction, options.scatter, scatter_input, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
                             use_raw_data, uint32(2), ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), uint32(options.projector_type), ...
                             options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0));
                     else
@@ -260,12 +273,12 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     if options.projector_type == 1
                         [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                             zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                            randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, L, pseudot, det_per_ring, options.verbose, ...
+                            randoms_correction, options.scatter, scatter_input, uint16(0), uint32(0), uint32(0), NSinos, L, pseudot, det_per_ring, options.verbose, ...
                             use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type));
                     elseif options.projector_type == 2
                         [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                             zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                            randoms_correction, uint16(0), uint32(0), uint32(0), NSinos, L, pseudot, det_per_ring, options.verbose, ...
+                            randoms_correction, options.scatter, scatter_input, uint16(0), uint32(0), uint32(0), NSinos, L, pseudot, det_per_ring, options.verbose, ...
                             use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), options.tube_width_xy, ...
                             x_center, y_center, z_center, options.tube_width_z, int32(0));
                     else
@@ -313,9 +326,10 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 end
                 [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
                     norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
-                    randoms_correction, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, z_index_input, uint32(NSinos), ...
-                    L_input, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa(osa_iter), options.attenuation_phase, ...
-                    uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
+                    randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
+                    z_index_input, uint32(NSinos), L_input, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa(osa_iter), ...
+                    options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
+                    options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
 %                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                 clear lor2
             end
@@ -323,21 +337,13 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 % Sensitivity image
                 D = D + A * ones(size(A,2),1,'double');
                 % Required for MRAMLA/MBSREM epsilon value
-                if normalization_correction || options.attenuation_correction
-                    if options.precompute_lor
-                        E(index{osa_iter}) = full(sum(A,1))';
-                    else
-                        E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,1))';
-                    end
+                if (normalization_correction || options.attenuation_correction) && (options.mramla || options.MBSREM)
+                    E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,1))';
                 end
             else
                 D = D + full(sum(A,1))';
-                if normalization_correction || options.attenuation_correction
-                    if options.precompute_lor
-                        E(index{osa_iter}) = full(sum(A,2))';
-                    else
-                        E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,2))';
-                    end
+                if normalization_correction || options.attenuation_correction && (options.mramla || options.MBSREM)
+                    E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,2))';
                 end
             end
             if options.ecosem || options.cosem || options.acosem || any(options.COSEM_OSL)
@@ -441,7 +447,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         if options.implementation == 2
             options.lam = single(lam);
         else
-            options.lambda0 = lam;
+            options.lam = lam;
         end
     elseif (options.BSREM || options.ramla) && options.implementation == 2
         options.lam = single(options.lam);
