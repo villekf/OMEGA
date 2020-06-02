@@ -1133,7 +1133,7 @@ else
         zmax, size_x, block1, blocks, normalization_correction, randoms_correction, xy_index, z_index, lor_a, lor_orth, summa, LL, is_transposed, x_center, y_center, ...
         z_center, ind_size, gaussK, bmin, bmax, Vmax, V);
     
-    if options.use_psf && ((options.mramla || options.MBSREM || options.RBI_OSL) && options.MBSREM_prepass || options.ecosem || options.cosem ...
+    if options.use_psf && ((options.mramla || options.MBSREM || options.RBI_OSL || options.rbi) && options.MBSREM_prepass || options.ecosem || options.cosem ...
             || options.acosem || any(options.COSEM_OSL)) && options.implementation == 1
         D = computeConvolution(D, options, Nx, Ny, Nz, gaussK);
     end
@@ -3004,7 +3004,7 @@ else
                 options.n_rays_transaxial = uint16(options.n_rays_transaxial);
                 options.n_rays_axial = uint16(options.n_rays_axial);
                 dc_z = z_det(2,1) - z_det(1,1);
-                if options.cosem || options.ecosem || options.acosem || options.RBI_OSL || any(options.COSEM_OSL)
+                if options.cosem || options.ecosem || options.acosem || options.RBI_OSL || options.rbi || any(options.COSEM_OSL)
                     if llo == 1
                         f_Summ = zeros(Nx*Ny*Nz,subsets);
                     end
@@ -3239,7 +3239,7 @@ else
                                 end
                                 % Compute RBI
                             elseif options.rbi
-                                im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], [], [], []);
+                                im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], []);
                                 if verbose
                                     tElapsed = toc(tStart);
                                     disp(['RBI sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])

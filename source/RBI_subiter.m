@@ -52,23 +52,23 @@ function im = RBI_subiter(im, A, uu, epps, Summ, D, SinDelayed, is_transposed, v
 %%%% original version (as in the articles by Byrne).
 if isempty(epps) && isempty(is_transposed)
     if ~isempty(D) && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
-        A = max((A + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
+        AA = max((A + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
     else
-        A = max(A);
+        AA = max(A ./ D);
         %     Summ = max(Summ ./ D);
     end
     if ~isempty(D) && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
-        im = im + (1 / A) .* (im ./ (D + varargin{1} .* varargin{2})) .* (uu - varargin{1} .* varargin{2});
+        im = im + (1 / AA) .* (im ./ (D + varargin{1} .* varargin{2})) .* (uu - A - varargin{1} .* varargin{2});
     else
-        im = im + (im / A) .* uu;
-        %     im = im + (1 / Summ) .* (im ./ D) .* BP;
+        % im = im + (im / AA) .* (uu - A);
+        im = im + (1 / AA) .* (im ./ (D)) .* (uu - A);
     end
 else
     if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
         Summ = max((Summ + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
     else
-        Summ = max(Summ);
-        %     Summ = max(Summ ./ D);
+%         Summ = max(Summ);
+        Summ = max(Summ ./ D);
     end
     if length(varargin) > 2 && ~isempty(varargin{3}) && varargin{3}.use_psf
         im_apu = computeConvolution(im, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7});
@@ -88,7 +88,7 @@ else
     if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
         im = im + (1 / Summ) .* (im ./ (D + varargin{1} .* varargin{2})) .* (BP - varargin{1} .* varargin{2});
     else
-        im = im + (im / Summ) .* BP;
-        %     im = im + (1 / Summ) .* (im ./ D) .* BP;
+%         im = im + (im / Summ) .* BP;
+        im = im + (1 / Summ) .* (im ./ D) .* BP;
     end
 end
