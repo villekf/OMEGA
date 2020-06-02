@@ -91,10 +91,10 @@ if length(algorithms) > 3
 else
     hh = 1;
 end
-if length(algorithms) > 1
-    jj = max(3, length(algorithms));
+if length(algorithms) < 4
+    jj = min(3, length(algorithms));
 else
-    jj = 1;
+    jj = 3;
 end
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
@@ -173,10 +173,10 @@ if N_iter > 3
 else
     hh = 1;
 end
-if N_iter > 1
-    jj = max(3, round(N_iter / 3));
+if N_iter < 4
+    jj = min(3, N_iter);
 else
-    jj = 1;
+    jj = 3;
 end
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
@@ -264,7 +264,11 @@ if length(algorithms) + 1 > 3
 else
     hh = 1;
 end
-jj = max(3, length(algorithms) + 1);
+if length(algorithms) + 1 < 4
+    jj = min(3, length(algorithms) + 1);
+else
+    jj = 3;
+end
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
 if jj > 4
@@ -530,18 +534,9 @@ if exist('f_osem','var') && ~exist('pz','var')
     pz = cell(95,1);
     pz{2} = f_osem;
 end
-img = pz{algorithms(color_from_algo)};
-for jj = 1:numel(algorithms)
-    if isempty(pz{algorithms(jj)})
-        warning('The current selected algorithm does not contain any estimes!')
-        fprintf('The following are contained in the input array:\n')
-        char_ar = algo_char(~cellfun(@isempty,pz(:,1)));
-        loc = find(~cellfun(@isempty,pz(1:end-1,1)));
-        for kk = 1 : nnz(~cellfun(@isempty,pz(:,1)))-1
-            fprintf('Element %d: %s\n', loc(kk), char_ar{kk})
-        end
-        return
-    end
+img = check_algorithms(pz, algorithms, color_from_algo);
+if isempty(img)
+    return
 end
 
 if length(algorithms) + nnz(source) > 3
@@ -549,10 +544,10 @@ if length(algorithms) + nnz(source) > 3
 else
     hh = 1;
 end
-if length(algorithms) + nnz(source) > 1
-    jj = max(3, length(algorithms) + nnz(source));
+if length(algorithms) + nnz(source) < 4
+    jj = min(3, length(algorithms) + nnz(source));
 else
-    jj = 1;
+    jj = 3;
 end
 set(0,'units','pixels')
 gg = get(0,'ScreenSize');
