@@ -558,7 +558,11 @@ if options.implementation == 2 || options.implementation == 3
     options.global_correction_factor = single(options.global_correction_factor);
 end
 if ~isfield(options, 'ScatterC')
-    options.ScatterC = 0;
+    if options.implementation == 2 || options.implementation == 3
+        options.ScatterC = {single(0)};
+    else
+        options.ScatterC = 0;
+    end
 end
 if ~isfield(options, 'scatter')
     options.scatter = false;

@@ -34,6 +34,7 @@ gg = gg + 1;
 if any(options.COSEM_OSL) && options.custom
     pz{gg, llo} = reshape(options.im_vectors.custom_COSEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
 end
+pz{end,1} = 0;
 
 if options.partitions > 1 && llo < options.partitions
     

@@ -222,14 +222,14 @@ if custom
                             if numel(options.SinD{kk}) ~= numel(options.SinM{kk})
                                 error('Size mismatch between randoms correction data and measurement data')
                             end
-                            options.SinM{kk} = options.SinM{kk} - double(options.SinD{kk}(:));
+                            options.SinM{kk} = options.SinM{kk} - single(options.SinD{kk}(:));
                             options.SinM{kk}(options.SinM{kk} < 0) = 0;
                         end
                     else
                         if numel(options.SinD{1}) ~= numel(options.SinM)
                             error('Size mismatch between randoms correction data and measurement data')
                         end
-                        options.SinM = options.SinM - double(options.SinD{1}(:));
+                        options.SinM = options.SinM - single(options.SinD{1}(:));
                         options.SinM(options.SinM < 0) = 0;
                     end
                 else
@@ -238,14 +238,14 @@ if custom
                             if numel(options.SinD) ~= numel(options.SinM{kk})
                                 error('Size mismatch between randoms correction data and measurement data')
                             end
-                            options.SinM{kk} = options.SinM{kk} - double(options.SinD(:));
+                            options.SinM{kk} = options.SinM{kk} - single(options.SinD(:));
                             options.SinM{kk}(options.SinM{kk} < 0) = 0;
                         end
                     else
                         if numel(options.SinD) ~= numel(options.SinM)
                             error('Size mismatch between randoms correction data and measurement data')
                         end
-                        options.SinM = options.SinM - double(options.SinD(:));
+                        options.SinM = options.SinM - single(options.SinD(:));
                         options.SinM(options.SinM < 0) = 0;
                     end
                 end
@@ -258,14 +258,14 @@ if custom
                         if numel(options.ScatterC{kk}) ~= numel(options.SinM{kk})
                             error('Size mismatch between scatter correction data and measurement data')
                         end
-                        options.SinM{kk} = options.SinM{kk} - double(options.ScatterC{kk}(:));
+                        options.SinM{kk} = options.SinM{kk} - single(options.ScatterC{kk}(:));
                         options.SinM{kk}(options.SinM{kk} < 0) = 0;
                     end
                 else
                     if numel(options.ScatterC{1}) ~= numel(options.SinM)
                         error('Size mismatch between scatter correction data and measurement data')
                     end
-                    options.SinM = options.SinM - double(options.ScatterC{1}(:));
+                    options.SinM = options.SinM - single(options.ScatterC{1}(:));
                     options.SinM(options.SinM < 0) = 0;
                 end
             else
@@ -274,14 +274,14 @@ if custom
                         if numel(options.ScatterC) ~= numel(options.SinM{kk})
                             error('Size mismatch between scatter correction data and measurement data')
                         end
-                        options.SinM{kk} = options.SinM{kk} - double(options.ScatterC(:));
+                        options.SinM{kk} = options.SinM{kk} - single(options.ScatterC(:));
                         options.SinM{kk}(options.SinM{kk} < 0) = 0;
                     end
                 else
                     if numel(options.ScatterC) ~= numel(options.SinM)
                         error('Size mismatch between scatter correction data and measurement data')
                     end
-                    options.SinM = options.SinM - double(options.ScatterC(:));
+                    options.SinM = options.SinM - single(options.ScatterC(:));
                     options.SinM(options.SinM < 0) = 0;
                 end
             end
@@ -311,7 +311,7 @@ if custom
                         error('The provided delayed coincidence file contains more than one variable and none of them are named "SinDelayed".')
                     end
                 else
-                    options.SinDelayed = double(data.(variables{1}));
+                    options.SinDelayed = single(data.(variables{1}));
                 end
                 clear data variables
             end
@@ -333,12 +333,12 @@ if custom
                 variables = fields(data);
                 if length(variables) > 1
                     if (any(strcmp('SinDelayed',variables)))
-                        options.SinDelayed = double(data.(variables{strcmp('SinDelayed',variables)}));
+                        options.SinDelayed = single(data.(variables{strcmp('SinDelayed',variables)}));
                     else
                         error('The provided delayed coincidence file contains more than one variable and none of them are named "SinDelayed".')
                     end
                 else
-                    options.SinDelayed = double(data.(variables{1}));
+                    options.SinDelayed = single(data.(variables{1}));
                 end
                 clear data variables
                 if length(options.SinDelayed) < options.partitions && iscell(options.SinDelayed)
@@ -519,16 +519,16 @@ if options.zmax==0
 end
 % Coordinates of the centers of the voxels
 if options.projector_type == 2
-    options.x_center = options.xx(1 : end - 1)' + dx/2;
-    options.y_center = options.yy(1 : end - 1)' + dy/2;
-    options.z_center = options.zz(1 : end - 1)' + dz/2;
+    options.x_center = options.xx(1 : end - 1)' + options.dx/2;
+    options.y_center = options.yy(1 : end - 1)' + options.dy/2;
+    options.z_center = options.zz(1 : end - 1)' + options.dz/2;
     temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
     if options.tube_width_z > 0
         temppi = max([1,round(options.tube_width_z / temppi)]);
     else
         temppi = max([1,round(options.tube_width_xy / temppi)]);
     end
-    temppi = temppi * temppi * 4;
+    temppi = temppi * temppi * 3;
     if options.apply_acceleration
         if options.tube_width_z == 0
             options.dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
@@ -547,12 +547,16 @@ end
 
 
 if options.projector_type == 3
-    options.voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
+    dp = max([options.dx,options.dy,options.dz]);
+    options.voxel_radius = sqrt(2) * options.voxel_radius * (dp / 2);
     bmax = options.tube_radius + options.voxel_radius;
     b = linspace(0, bmax, 10000)';
     b(options.tube_radius > (b + options.voxel_radius)) = [];
     b = unique(round(b*10^3)/10^3);
     V = volumeIntersection(options.tube_radius, options.voxel_radius, b);
+    diffis = [diff(V);0];
+    b = b(diffis <= 0);
+    V = V(diffis <= 0);
     Vmax = (4*pi)/3*options.voxel_radius^3;
     bmin = min(b);
 else

@@ -107,6 +107,35 @@ if options.quad && any(options.COSEM_OSL)
 end
 oo = oo + 1;
 
+if options.Huber && options.OSL_OSEM
+    im_vectors.Huber_OSL_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && options.OSL_MLEM
+    im_vectors.Huber_MLEM_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && options.MBSREM
+    im_vectors.Huber_MBSREM_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && options.BSREM
+    im_vectors.Huber_BSREM_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && options.ROSEM_MAP
+    im_vectors.Huber_ROSEM_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && options.RBI_OSL
+    im_vectors.Huber_RBI_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+if options.Huber && any(options.COSEM_OSL)
+    im_vectors.Huber_COSEM_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
+end
+oo = oo + 1;
+
 if options.L && options.OSL_OSEM
     im_vectors.L_OSL_apu = reshape(pz{oo}(:,:,:,iter + 1), options.Nx*options.Ny*options.Nz, 1);
 end

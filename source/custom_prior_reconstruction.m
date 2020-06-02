@@ -1404,6 +1404,7 @@ if options.implementation == 1
 else
     %%
     options = double_to_single(options);
+    rekot = reko_maker(options);
     
     if t == 1 && iter == 1 && osa_iter == 1
         options.im_vectors = initialize_im_vectors(options.im_vectors, iter, options);
@@ -1414,7 +1415,7 @@ else
         options.x0 = updateInitialValue(options.im_vectors, options);
     end
     
-    if isfield(options, 'grad_OSEM') && options.OSEM_im
+    if isfield(options, 'grad_OSEM') && options.OSL_OSEM
         options.grad_OSEM = single(options.grad_OSEM);
         options.beta_custom_osem = single(options.beta_custom_osem);
         options.custom_osl_apu = options.im_vectors.custom_OSL_apu;
@@ -1464,7 +1465,8 @@ else
         if ~iscell(options.SinM)
             options.SinM = {options.SinM};
         end
-        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+        if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
             apu = single(full(options.SinDelayed));
             options.SinDelayed = cell(1,1);
             options.SinDelayed{1} = apu;
@@ -1480,7 +1482,8 @@ else
             options.SinM{kk} = single(options.SinM{kk});
         end
     end
-    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
         if issparse(options.SinDelayed{1})
             for kk = 1 : length(options.SinDelayed)
                 options.SinDelayed{kk} = single(full(options.SinDelayed{kk}));
@@ -1496,13 +1499,15 @@ else
         end
         options.LL = uint16(0);
     end
-    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
+                && ~options.reconstruct_trues && ~options.reconstruct_scatter
         randoms = uint32(1);
     else
         randoms = uint32(0);
     end
-    n_rays = uint16(options.n_rays);
-    if options.n_rays > 1 && ~options.precompute_lor && options.projector_type == 1
+    n_rays = uint16(options.n_rays_transaxial);
+    n_rays3D = uint16(options.n_rays_axial);
+    if n_rays * n_rays3D > 1 && ~options.precompute_lor && options.projector_type == 1
         [x,y] = getMultirayCoordinates(options);
         options.x = single(x(:));
         options.y = single(y(:));
@@ -1570,7 +1575,7 @@ else
             header_directory, options.vaimennus, options.normalization, options.pituus, uint32(options.attenuation_correction), uint32(options.normalization_correction), ...
             uint32(options.Niter), uint32(options.subsets), uint8(rekot), single(options.epps), options.lor_a, options.xy_index, options.z_index, any(n_rekos), tube_width_xy, ...
             crystal_size_z, options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            int32(options.dec), n_rays, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
+            int32(options.dec), n_rays, n_rays3D, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
             reko_type_mlem, options.global_correction_factor, options.bmin, options.bmax, options.Vmax, options.V, gaussK);
     else
         [pz] = CUDA_matrixfree( kernel_path, options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx,options. bz, options.z_det, options.x, ...
@@ -1579,7 +1584,7 @@ else
             header_directory, options.vaimennus, options.normalization, options.pituus, uint32(options.attenuation_correction), uint32(options.normalization_correction), ...
             uint32(options.Niter), uint32(options.subsets), uint8(rekot), single(options.epps), options.lor_a, options.xy_index, options.z_index, any(n_rekos), tube_width_xy, ...
             crystal_size_z, options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            int32(options.dec), n_rays, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
+            int32(options.dec), n_rays, n_rays3D, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
             reko_type_mlem, options.global_correction_factor, options.bmin, options.bmax, options.Vmax, options.V, gaussK);
     end
     toc
@@ -1595,7 +1600,7 @@ else
     if any(options.COSEM_OSL)
         options.C_osl = pz{end-1};
     end
-    if (options.mramla || options.MBSREM || options.RBI_OSL || options.cosem || options.ecosem...
+    if (options.mramla || options.MBSREM || options.RBI_OSL || options.rbi || options.cosem || options.ecosem...
             || options.acosem || any(options.COSEM_OSL)) && options.MBSREM_prepass && osa_iter == 1 && iter == 1 && t == 1
         options.D = pz{end};
     end
