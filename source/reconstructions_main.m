@@ -1487,7 +1487,7 @@ else
                                     Nx, Ny, Nz, gaussK);
                             end
                             if any(im_vectors.MRP_BSREM_apu < 0)
-                                error('Negative values in BSREM, lower lambda value!')
+                                warning('Negative values in BSREM, lower lambda value!')
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1516,7 +1516,7 @@ else
                                 tStart = tic;
                             end
                             med = MRP(im_vectors.MRP_RBI_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_RBI_apu = RBI_subiter(im_vectors.MRP_RBI_apu, A, uu, epps, Summ, options.beta_mrp_rbi, med, D, SinD, is_transposed, options, ...
+                            im_vectors.MRP_RBI_apu = RBI_subiter(im_vectors.MRP_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_mrp_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1609,7 +1609,7 @@ else
                                 tStart = tic;
                             end
                             med = Quadratic_prior(im_vectors.Quad_RBI_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_RBI_apu = RBI_subiter(im_vectors.Quad_RBI_apu, A, uu, epps, Summ, options.beta_quad_rbi, med, D, SinD, is_transposed, ...
+                            im_vectors.Quad_RBI_apu = RBI_subiter(im_vectors.Quad_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_quad_rbi, med, ...
                                 options, Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1702,7 +1702,7 @@ else
                                 tStart = tic;
                             end
                             med = Huber_prior(im_vectors.Huber_RBI_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_RBI_apu = RBI_subiter(im_vectors.Huber_RBI_apu, A, uu, epps, Summ, options.beta_huber_rbi, med, D, SinD, is_transposed, ...
+                            im_vectors.Huber_RBI_apu = RBI_subiter(im_vectors.Huber_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_huber_rbi, med, ...
                                 options, Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1794,7 +1794,7 @@ else
                                 tStart = tic;
                             end
                             med = L_filter(im_vectors.L_RBI_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_RBI_apu = RBI_subiter(im_vectors.L_RBI_apu, A, uu, epps, Summ, options.beta_L_rbi, med, D, SinD, is_transposed, options, ...
+                            im_vectors.L_RBI_apu = RBI_subiter(im_vectors.L_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_L_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1886,7 +1886,7 @@ else
                             end
                             med = FMH(im_vectors.FMH_RBI_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_RBI_apu = RBI_subiter(im_vectors.FMH_RBI_apu, A, uu, epps, Summ, options.beta_fmh_rbi, med, D, SinD, is_transposed, options, ...
+                            im_vectors.FMH_RBI_apu = RBI_subiter(im_vectors.FMH_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_fmh_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -1979,8 +1979,8 @@ else
                             end
                             med = Weighted_mean(im_vectors.Weighted_RBI_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.w_sum, options.med_no_norm);
-                            im_vectors.Weighted_RBI_apu = RBI_subiter(im_vectors.Weighted_RBI_apu, A, uu, epps, Summ, options.beta_weighted_rbi, ...
-                                med, D, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
+                            im_vectors.Weighted_RBI_apu = RBI_subiter(im_vectors.Weighted_RBI_apu, A, uu, epps, Summ, ...
+                                D, SinD, is_transposed, options.beta_weighted_rbi, med, options, Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['RBI-OSL weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2071,7 +2071,7 @@ else
                             end
                             grad = TVpriorFinal(im_vectors.TV_RBI_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
                                 options.tr_offsets);
-                            im_vectors.TV_RBI_apu = RBI_subiter(im_vectors.TV_RBI_apu, A, uu, epps, Summ, options.beta_TV_rbi, grad, D, SinD, is_transposed, options, ...
+                            im_vectors.TV_RBI_apu = RBI_subiter(im_vectors.TV_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_TV_rbi, grad, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2107,7 +2107,7 @@ else
                                     options, Nx, Ny, Nz, gaussK);
                                 %                                 im_vectors.AD_OSL_apu = OSL_OSEM(im_vectors.AD_OSL_apu, Summ, options.beta_ad_osem, med, epps, A, uu, SinD, is_transposed);
                             else
-                                im_vectors.AD_OSL_apu = OSEM_im(im_vectors.AD_OSL_apu, A, epps, uu, Summ);
+                                im_vectors.AD_OSL_apu = OSEM_im(im_vectors.AD_OSL_apu, A, epps, uu, Summ, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
                             end
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2168,7 +2168,7 @@ else
                                 tStart = tic;
                             end
                             med = AD(im_vectors.AD_RBI_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_RBI_apu = RBI_subiter(im_vectors.AD_RBI_apu, A, uu, epps, Summ, options.beta_ad_rbi, med, D, SinD, is_transposed, options, ...
+                            im_vectors.AD_RBI_apu = RBI_subiter(im_vectors.AD_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_ad_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2256,8 +2256,8 @@ else
                                 tStart = tic;
                             end
                             grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, 4);
-                            im_vectors.APLS_RBI_apu = RBI_subiter(im_vectors.APLS_RBI_apu, A, uu, epps, Summ, SinD, options.beta_APLS_rbi, grad, D, ...
-                                is_transposed, options, Nx, Ny, Nz, gaussK);
+                            im_vectors.APLS_RBI_apu = RBI_subiter(im_vectors.APLS_RBI_apu, A, uu, epps, Summ, SinD, D, ...
+                                is_transposed, options.beta_APLS_rbi, grad, options, Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['RBI-OSL APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2343,7 +2343,7 @@ else
                                 tStart = tic;
                             end
                             grad = TGV(im_vectors.TGV_RBI_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_RBI_apu = RBI_subiter(im_vectors.TGV_RBI_apu, A, uu, epps, Summ, options.beta_TGV_rbi, grad, D, SinD, is_transposed, options, ...
+                            im_vectors.TGV_RBI_apu = RBI_subiter(im_vectors.TGV_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_TGV_rbi, grad, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -2434,7 +2434,7 @@ else
                             end
                             med = NLM(im_vectors.NLM_RBI_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_RBI_apu = RBI_subiter(im_vectors.NLM_RBI_apu, A, uu, epps, Summ, options.beta_NLM_rbi, med, D, SinD, is_transposed, options, ...
+                            im_vectors.NLM_RBI_apu = RBI_subiter(im_vectors.NLM_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_NLM_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
                             if verbose
                                 tElapsed = toc(tStart);
@@ -3223,7 +3223,7 @@ else
                             elseif options.ramla
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, f_Summ(:,osa_iter), rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error(['Negative values in RAMLA, lower lambda value! lambda <= ' num2str(min(1./f_Summ(:,osa_iter)))])
+                                    warning(['Negative values in RAMLA, lower lambda value! lambda <= ' num2str(min(1./f_Summ(:,osa_iter)))])
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3342,7 +3342,7 @@ else
                             elseif options.MRP && options.BSREM
                                 im_vectors.OSEM_apu = BSREM_subiter(im_vectors.OSEM_apu, options.lam, epps, iter, rhs);
                                 if any(im_vectors.OSEM_apu < 0)
-                                    error('Negative values in BSREM, lower lambda value!')
+                                    warning('Negative values in BSREM, lower lambda value!')
                                 end
                                 if verbose
                                     tElapsed = toc(tStart);

@@ -65,10 +65,10 @@ if isempty(epps) && isempty(is_transposed)
     end
 else
     if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
-        Summ = max((Summ + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
+        AA = max((Summ + varargin{1} .* varargin{2}) ./ (D + varargin{1} .* varargin{2}));
     else
 %         Summ = max(Summ);
-        Summ = max(Summ ./ D);
+        AA = max(Summ ./ D);
     end
     if length(varargin) > 2 && ~isempty(varargin{3}) && varargin{3}.use_psf
         im_apu = computeConvolution(im, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7});
@@ -86,9 +86,9 @@ else
         BP = computeConvolution(BP, varargin{3}, varargin{4}, varargin{5}, varargin{6}, varargin{7});
     end
     if ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
-        im = im + (1 / Summ) .* (im ./ (D + varargin{1} .* varargin{2})) .* (BP - varargin{1} .* varargin{2});
+        im = im + (1 / AA) .* (im ./ (D + varargin{1} .* varargin{2})) .* (BP - varargin{1} .* varargin{2});
     else
 %         im = im + (im / Summ) .* BP;
-        im = im + (1 / Summ) .* (im ./ D) .* BP;
+        im = im + (1 / AA) .* (im ./ D) .* BP;
     end
 end

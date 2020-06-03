@@ -42,9 +42,11 @@ if Nz==1
 else
     im = padding(reshape(im,Nx,Ny,Nz),[Ndx Ndy Ndz]);
 end
-grad = bsxfun(@minus,im(tr_offsets(:,isinf(weights))), im(tr_offsets(:,[1:(find(isinf(weights)) - 1) (find(isinf(weights)) + 1):end]))) * weights_huber;
+grad = convn(im, weights_huber, 'valid');
+% grad = bsxfun(@minus,im(tr_offsets(:,isinf(weights))), im(tr_offsets(:,[1:(find(isinf(weights)) - 1) (find(isinf(weights)) + 1):end]))) * weights_huber;
 if sum(delta >= abs(grad(:))) == numel(grad) && sum(grad(:)) ~= 0
     warning('Delta value of Huber prior larger than all the pixel difference values')
 end
+grad = grad(:);
 grad(grad > delta) = delta;
 grad(grad < -delta) = -delta;
