@@ -1,57 +1,85 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Help contents</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
-.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Help contents</span></h1><div  class = 'S1'><a href = "getting_started.html"><span>Getting started</span></a></div><div  class = 'S1'><span>Basic information on the toolbox</span></div><div  class = 'S1'><a href = "tutorials.html"><span>Tutorials</span></a></div><div  class = 'S1'><span>A simple and a slightly more advanced tutorials</span></div><div  class = 'S1'><a href = "functions.html"><span>Functions</span></a></div><div  class = 'S1'><span>List of functions available and their help</span></div><div  class = 'S1'><a href = "extract_GATE_data.html"><span>Extracting GATE scatter, randoms and trues data</span></a></div><div  class = 'S1'><span>Help on extracting GATE specific information</span></div><div  class = 'S1'><a href = "useful_information.html"><span>Useful information</span></a></div><div  class = 'S1'><span>Specifies some useful information that should be taken into account when using the toolbox.</span></div><div  class = 'S1'><a href = "using_inveon_data.html"><span>Using Inveon data</span></a></div><div  class = 'S1'><span>Short help describing the use of the Siemens Inveon PET data</span></div><div  class = 'S1'><a href = "extracting_the_system_matrix.html"><span>Extracting the system matrix</span></a></div><div  class = 'S1'><span>Article describing on how to obtain only the system matrix for the desired machine.</span></div><div  class = 'S1'><a href = "compute_forward_backwards_projections.html"><span>Computing the forward and/or backward projections</span></a></div><div  class = 'S1'><span>Describes the process in obtaining the forward and/or backward projections only. These can then be used to perform matrix operations </span><span style=' font-style: italic;'>y = Ax</span><span> and </span><span style=' font-style: italic;'>x = A^Tb</span><span>.</span></div><div  class = 'S1'><a href = "using_custom_gradient_based_priors.html"><span>Using custom gradient-based priors</span></a></div><div  class = 'S1'><span>Tutorial on how to use your own gradient-based priors.</span></div><div  class = 'S1'><a href = "non-cylindrical_scanners.html"><span>Using non-cylindrical scanners</span></a></div><div  class = 'S1'><span>Short tutorial on how to use non-cylindrical scanners</span></div><div  class = 'S1'><a href = "contributing.html"><span>Contributing code to OMEGA</span></a></div><div  class = 'S1'><span>Instructions on how to proceed if you want to include your code to OMEGA</span></div></div>
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Help contents</span></h1><div  class = 'S1'><a href = "getting_started.html"><span>Getting started</span></a></div><div  class = 'S1'><span>Basic information on the toolbox. You should read this first.</span></div><div  class = 'S1'><a href = "toolbox_overview.html"><span>Toolbox overview</span></a></div><div  class = 'S1'><span>This page explains the general workings of the toolbox, i.e. how the  toolbox actually works. It also explains some of the technical aspects  of the toolbox.</span></div><div  class = 'S1'><a href = "tutorials.html"><span>Tutorials</span></a></div><div  class = 'S1'><span>This page contains a simple tutorial and an advanced example.</span></div><div  class = 'S1'><a href = "functions.html"><span>Functions</span></a></div><div  class = 'S1'><span>This article explains what each variable in the main-files (e.g. </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main.m"><span style=' text-decoration: underline; font-family: monospace;'>gate_main.m</span></a><span>) does and also explains what each function in OMEGA actually does.  Additional help can be obtained from MATLAB/Octave itself by typing </span><span style=' font-family: monospace;'>help function_name</span><span>, e.g. </span><span style=' font-family: monospace;'>help plotMichelogram</span><span>.</span></div><div  class = 'S1'><a href = "extract_GATE_data.html"><span>Extracting GATE scatter, randoms and trues data</span></a></div><div  class = 'S1'><span>This page explains how you can obtain the scatter, randoms and/or trues data from the GATE input.</span></div><div  class = 'S1'><a href = "useful_information.html"><span>Useful information</span></a></div><div  class = 'S1'><span>This page contains information that should be useful when starting to  use the toolbox. It contains recommendations on choosing the right  projector and implementation as well as general tips and things to take  into consideration when using OMEGA.</span></div><div  class = 'S1'><a href = "extracting_the_system_matrix.html"><span>Extracting the system matrix</span></a></div><div  class = 'S1'><span>If you want to obtain a system matrix for your PET system, this page  explains how that can be achieved. The system matrix is the matrix </span><span style=' font-style: italic;'>A</span><span> in the equation </span><span style=' font-style: italic;'>y</span><span> = </span><span style=' font-style: italic;'>Ax</span><span>, where </span><span style=' font-style: italic;'>y</span><span> are the measurements and </span><span style=' font-style: italic;'>x</span><span> the reconstructed image.</span></div><div  class = 'S1'><a href = "compute_forward_backwards_projections.html"><span>Computing the forward and/or backward projections</span></a></div><div  class = 'S1'><span>This page explains how you can compute the matrix-vector operations </span><span style=' font-style: italic;'>y</span><span> = </span><span style=' font-style: italic;'>Ax</span><span> and </span><span style=' font-style: italic;'>x</span><span> = </span><span style=' font-style: italic;'>A^Tz</span><span>, i.e. forward and backprojections (</span><span style=' font-style: italic;'>T</span><span> is the transpose operator). Any input vectors </span><span style=' font-style: italic;'>x</span><span> and </span><span style=' font-style: italic;'>z</span><span> can be used, while the system matrix </span><span style=' font-style: italic;'>A</span><span> is computed by OMEGA. Contrary to the above system matrix extraction, this can be performed completely matrix free.</span></div><div  class = 'S1'><a href = "using_custom_gradient_based_priors.html"><span>Using custom gradient-based priors</span></a></div><div  class = 'S1'><span>Here you can find tutorial on how to implement your own gradient-based  priors with any or all of the OMEGA MAP-algorithms. Any gradient-based  priors implemented in MATLAB/Octave can be input into OMEGA and also  computed matrix free.</span></div><div  class = 'S1'><a href = "non-cylindrical_scanners.html"><span>Using non-cylindrical scanners</span></a></div><div  class = 'S1'><span>This short article explains how to use non-cylindrical scanners or  scanners that do not have discrete detectors (e.g. continuous  detectors).</span></div><div  class = 'S1'><a href = "using_inveon_data.html"><span>Using Inveon data</span></a></div><div  class = 'S1'><span>This page explains the contents of the </span><a href = "https://doi.org/10.5281/zenodo.3528056"><span>open PET data</span></a><span>, how to reconstruct it, and also some recommendations on how to reconstruct it for best results.</span></div><div  class = 'S1'><a href = "using_biograph_data.html"><span>Using Biograph data</span></a></div><div  class = 'S1'><span>Here you can find short instructions on how to extract measurement data from the Biograph mCT or Vision list-mode data.</span></div><div  class = 'S1'><a href = "contributing.html"><span>Contributing code to OMEGA</span></a></div><div  class = 'S1'><span>Instructions on how to proceed if you want to include your code to OMEGA</span></div><div  class = 'S1'><a href = "https://github.com/villekf/OMEGA/wiki/Getting-started#contact"><span>Contact</span></a></div><div  class = 'S1'><span>Contact information.</span></div></div>
 <br>
 <!-- 
 ##### SOURCE BEGIN #####
 %% Help contents
 % <getting_started.html Getting started>
 % 
-% Basic information on the toolbox
+% Basic information on the toolbox. You should read this first.
+% 
+% <toolbox_overview.html Toolbox overview>
+% 
+% This page explains the general workings of the toolbox, i.e. how the  toolbox 
+% actually works. It also explains some of the technical aspects  of the toolbox.
 % 
 % <tutorials.html Tutorials>
 % 
-% A simple and a slightly more advanced tutorials
+% This page contains a simple tutorial and an advanced example.
 % 
 % <functions.html Functions>
 % 
-% List of functions available and their help
+% This article explains what each variable in the main-files (e.g. <https://github.com/villekf/OMEGA/blob/master/gate_main.m 
+% |gate_main.m|>) does and also explains what each function in OMEGA actually 
+% does.  Additional help can be obtained from MATLAB/Octave itself by typing |help 
+% function_name|, e.g. |help plotMichelogram|.
 % 
 % <extract_GATE_data.html Extracting GATE scatter, randoms and trues data>
 % 
-% Help on extracting GATE specific information
+% This page explains how you can obtain the scatter, randoms and/or trues data 
+% from the GATE input.
 % 
 % <useful_information.html Useful information>
 % 
-% Specifies some useful information that should be taken into account when using 
-% the toolbox.
-% 
-% <using_inveon_data.html Using Inveon data>
-% 
-% Short help describing the use of the Siemens Inveon PET data
+% This page contains information that should be useful when starting to  use 
+% the toolbox. It contains recommendations on choosing the right  projector and 
+% implementation as well as general tips and things to take  into consideration 
+% when using OMEGA.
 % 
 % <extracting_the_system_matrix.html Extracting the system matrix>
 % 
-% Article describing on how to obtain only the system matrix for the desired 
-% machine.
+% If you want to obtain a system matrix for your PET system, this page  explains 
+% how that can be achieved. The system matrix is the matrix _A_ in the equation 
+% _y_ = _Ax_, where _y_ are the measurements and _x_ the reconstructed image.
 % 
 % <compute_forward_backwards_projections.html Computing the forward and/or backward 
 % projections>
 % 
-% Describes the process in obtaining the forward and/or backward projections 
-% only. These can then be used to perform matrix operations _y = Ax_ and _x = 
-% A^Tb_.
+% This page explains how you can compute the matrix-vector operations _y_ = 
+% _Ax_ and _x_ = _A^Tz_, i.e. forward and backprojections (_T_ is the transpose 
+% operator). Any input vectors _x_ and _z_ can be used, while the system matrix 
+% _A_ is computed by OMEGA. Contrary to the above system matrix extraction, this 
+% can be performed completely matrix free.
 % 
 % <using_custom_gradient_based_priors.html Using custom gradient-based priors>
 % 
-% Tutorial on how to use your own gradient-based priors.
+% Here you can find tutorial on how to implement your own gradient-based  priors 
+% with any or all of the OMEGA MAP-algorithms. Any gradient-based  priors implemented 
+% in MATLAB/Octave can be input into OMEGA and also  computed matrix free.
 % 
 % <non-cylindrical_scanners.html Using non-cylindrical scanners>
 % 
-% Short tutorial on how to use non-cylindrical scanners
+% This short article explains how to use non-cylindrical scanners or  scanners 
+% that do not have discrete detectors (e.g. continuous  detectors).
+% 
+% <using_inveon_data.html Using Inveon data>
+% 
+% This page explains the contents of the <https://doi.org/10.5281/zenodo.3528056 
+% open PET data>, how to reconstruct it, and also some recommendations on how 
+% to reconstruct it for best results.
+% 
+% <using_biograph_data.html Using Biograph data>
+% 
+% Here you can find short instructions on how to extract measurement data from 
+% the Biograph mCT or Vision list-mode data.
 % 
 % <contributing.html Contributing code to OMEGA>
 % 
 % Instructions on how to proceed if you want to include your code to OMEGA
+% 
+% <https://github.com/villekf/OMEGA/wiki/Getting-started#contact Contact>
+% 
+% Contact information.
 ##### SOURCE END #####
 --></body></html>

@@ -4,7 +4,7 @@ function output = importData(type, varargin)
 %   specified type into a MATLAB matrix.
 %
 %   Available types are DICOM, NIfTI, Analyze 7.5, Interfile, MetaImage and
-%   raw data format.
+%   raw binary data format.
 %
 %   Loading DICOM files requires image processing toolbox on MATLAB or the
 %   dicom-package on Octave (untested). NIfTI requires either image
@@ -14,6 +14,7 @@ function output = importData(type, varargin)
 %   (https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image)
 %
 % Examples:
+%   output = importData(type,format,N1,N2,N3,N4,N5,skip)
 %   output = importData('nifti')
 %   output = importData('raw','uint32',N1,N2,N3,N4,N5,skip)
 %
@@ -40,7 +41,7 @@ function output = importData(type, varargin)
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by

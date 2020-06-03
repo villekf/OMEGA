@@ -19,6 +19,7 @@ function saveImage(img, varargin)
 %
 % Examples:
 %   saveImage(img)
+%   saveImage(img, type, filename, options)
 %   saveImage(img, 'nifti', 'outputFileName', options)
 %
 % Inputs:

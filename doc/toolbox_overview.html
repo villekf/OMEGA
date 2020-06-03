@@ -1,0 +1,48 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Toolbox overview</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Toolbox overview</span></h1><div  class = 'S1'><span>The general structure of OMEGA can be divided into three different layers. The top layer is the MATLAB/Octave user-interface that contains the scripts and functions necessary to call the lower layers. The middle layer is the MATLAB (C) MEX-interface that calls and computes the C++ code and then sends it back to the top layer. The bottom layer, which is not always used, contains the OpenCL kernels that compute the OpenCL code and then send the output data (reconstructed images) to the middle layer. The bottom layer is only used if OpenCL code is used. The middle layer can also be ignored, but this is not recommended and not enabled by default as the pure MATLAB/Octave implementation is extremely slow.</span></div><div  class = 'S1'><span>For the user, only the top layer is exposed. This is achieved in the form of scripts that are referred to as </span><span style=' font-style: italic;'>main-files</span><span>. These include </span><span style=' font-family: monospace;'>gate_main.m</span><span>, </span><span style=' font-family: monospace;'>main_PET.m</span><span>, </span><span style=' font-family: monospace;'>Inveon_PET_main.m</span><span>, </span><span style=' font-family: monospace;'>Biograph_mCT_main.m</span><span>, </span><span style=' font-family: monospace;'>Biograph_Vision_main.m</span><span>, </span><span style=' font-family: monospace;'>custom_prior_test_main.m</span><span>, and </span><span style=' font-family: monospace;'>forward_backward_projections_example.m</span><span>. It is from these main-files that the actual functions are called. This is achieved by storing all the user selected parameters to a MATLAB/Octave struct called options, which is then input to the functions (e.g. when loading data or performing image reconstruction). </span></div><div  class = 'S1'><span>In the main-files most parameters are set either with numerical values (e.g. </span><span style=' font-family: monospace;'>blocks_per_ring</span><span>, </span><span style=' font-family: monospace;'>span</span><span>, </span><span style=' font-family: monospace;'>tube_radius</span><span>) or as a true/false selection, where true means that the feature is included and false that it is omitted (e.g. </span><span style=' font-family: monospace;'>randoms_correction</span><span>, </span><span style=' font-family: monospace;'>scatter_smoothing</span><span>, </span><span style=' font-family: monospace;'>osem</span><span>). The main-files are divided into "sections" with specific labels (MACHINE PROPERTIES, IMAGE PROPERTIES, SINOGRAM PROPERTIES, etc.) that control different aspects. Many of these sections are completely optional, e.g. CORRECTIONS section can be omitted if the user does not wish to use any corrections. The only compulsory ones are MACHINE PROPERTIES and either SINOGRAM or RAW DATA PROPERTIES. For reconstruction it is also advisable to inspect the RECONSTRUCTION PROPERTIES section, but the default values should always output a working OSEM estimate. By default all non-compulsory options are set as false (with the exception of the Inveon main-file which has several corrections enabled by default).</span></div><div  class = 'S1'><span>There are also several functions that work very independently without the need for the main-files. These include file import and export functions, visualization functions and many reconstruction algorithm functions. For help on many of these functions, you should use </span><span style=' font-family: monospace;'>help function_name</span><span> or alternatively </span><span style=' font-family: monospace;'>doc function_name</span><span>. E.g. </span><span style=' font-family: monospace;'>help saveImage</span><span>.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Toolbox overview
+% The general structure of OMEGA can be divided into three different layers. 
+% The top layer is the MATLAB/Octave user-interface that contains the scripts 
+% and functions necessary to call the lower layers. The middle layer is the MATLAB 
+% (C) MEX-interface that calls and computes the C++ code and then sends it back 
+% to the top layer. The bottom layer, which is not always used, contains the OpenCL 
+% kernels that compute the OpenCL code and then send the output data (reconstructed 
+% images) to the middle layer. The bottom layer is only used if OpenCL code is 
+% used. The middle layer can also be ignored, but this is not recommended and 
+% not enabled by default as the pure MATLAB/Octave implementation is extremely 
+% slow.
+% 
+% For the user, only the top layer is exposed. This is achieved in the form 
+% of scripts that are referred to as _main-files_. These include |gate_main.m|, 
+% |main_PET.m|, |Inveon_PET_main.m|, |Biograph_mCT_main.m|, |Biograph_Vision_main.m|, 
+% |custom_prior_test_main.m|, and |forward_backward_projections_example.m|. It 
+% is from these main-files that the actual functions are called. This is achieved 
+% by storing all the user selected parameters to a MATLAB/Octave struct called 
+% options, which is then input to the functions (e.g. when loading data or performing 
+% image reconstruction). 
+% 
+% In the main-files most parameters are set either with numerical values (e.g. 
+% |blocks_per_ring|, |span|, |tube_radius|) or as a true/false selection, where 
+% true means that the feature is included and false that it is omitted (e.g. |randoms_correction|, 
+% |scatter_smoothing|, |osem|). The main-files are divided into "sections" with 
+% specific labels (MACHINE PROPERTIES, IMAGE PROPERTIES, SINOGRAM PROPERTIES, 
+% etc.) that control different aspects. Many of these sections are completely 
+% optional, e.g. CORRECTIONS section can be omitted if the user does not wish 
+% to use any corrections. The only compulsory ones are MACHINE PROPERTIES and 
+% either SINOGRAM or RAW DATA PROPERTIES. For reconstruction it is also advisable 
+% to inspect the RECONSTRUCTION PROPERTIES section, but the default values should 
+% always output a working OSEM estimate. By default all non-compulsory options 
+% are set as false (with the exception of the Inveon main-file which has several 
+% corrections enabled by default).
+% 
+% There are also several functions that work very independently without the 
+% need for the main-files. These include file import and export functions, visualization 
+% functions and many reconstruction algorithm functions. For help on many of these 
+% functions, you should use |help function_name| or alternatively |doc function_name|. 
+% E.g. |help saveImage|.
+##### SOURCE END #####
+--></body></html>

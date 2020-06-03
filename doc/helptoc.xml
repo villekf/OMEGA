@@ -98,11 +98,23 @@
         <tocitem target="useful_information.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Useful information
         </tocitem>
-        <tocitem target="using_inveon_data.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon data
+        <tocitem target="extracting_the_system_matrix.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting the system matrix
+        </tocitem>
+        <tocitem target="compute_forward_backwards_projections.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Computing the forward and/or backward projections
+        </tocitem>
+        <tocitem target="using_custom_gradient_based_priors.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using custom gradient-based priors
         </tocitem>
         <tocitem target="non-cylindrical_scanners.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Using non-cylindrical scanners
+        </tocitem>
+        <tocitem target="using_inveon_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon data
+        </tocitem>
+        <tocitem target="using_biograph_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Biograph data
         </tocitem>
         <tocitem target="contributing.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Contributing code to OMEGA
@@ -111,6 +123,10 @@
                  image="HelpIcon.HelpIcon.RELEASE_NOTES">Release notes
         </tocitem>
         <!-- Optional link or links to your or other Web sites -->
+        <tocitem target="https://github.com/villekf/OMEGA/wiki/Getting-started#contact" 
+                 image="$toolbox/matlab/icons/webicon.gif">
+        Contact
+        </tocitem>
         <tocitem target="https://github.com/villekf/OMEGA" 
                  image="$toolbox/matlab/icons/webicon.gif">
         OMEGA on GitHub
