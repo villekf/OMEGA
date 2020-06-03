@@ -53,10 +53,10 @@ if options.span > 1
     offset2 = cumsum(options.segment_table);
     
     % Perpendicular rings
-    z = zeros(options.NSinos,2);
+    z = zeros(options.TotSinos,2);
     z(1:2:Nz,1) = z_ring(1:ringsp+1:ringsp^2,1);
     z(1:2:Nz,2) = z_ring(1:ringsp+1:ringsp^2,2);
-    mean_jh = zeros(options.NSinos,1);
+    mean_jh = zeros(options.TotSinos,1);
     mean_jh(1:2:options.Nz) = 1;
     % Then the detectors on adjacent rings
     for jh=1:floor(options.span/2)
@@ -74,11 +74,11 @@ if options.span > 1
     for ih=1:floor(length(options.segment_table)/2)
         for jh=1:options.span
             apu = z_ring((kkj(ih)+jh-1)*options.rings+1:options.rings+1:end, 1);
-            loc = ismember(1:options.NSinos,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1);
+            loc = ismember(1:options.TotSinos,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1);
             mean_jh(loc) = mean_jh(loc) + 1;
             z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) = z(offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1, 1) + (apu);
             apu2 = z_ring(kkj(ih)+jh:options.rings+1:(options.rings-kkj(ih)-jh+1)*options.rings, 1);
-            loc = ismember(1:options.NSinos,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1);
+            loc = ismember(1:options.TotSinos,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1);
             mean_jh(loc) = mean_jh(loc) + 1;
             z(offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1, 1) = z(offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1, 1) + (apu2);
             apu = z_ring((kkj(ih)+jh-1)*options.rings+1:options.rings+1:end, 2);
@@ -91,7 +91,9 @@ if options.span > 1
     % Take the mean value of coordinates
     z(:,1) = z(:,1) ./ mean_jh;
     z(:,2) = z(:,2) ./ mean_jh;
-    z(z(:,1)>z(:,2),:) = fliplr(z(z(:,1)>z(:,2),:));
+    ind1 = z(:,1)>z(:,2);
+    z(z(:,1)<z(:,2),:) = fliplr(z(z(:,1)<z(:,2),:));
+    z(ind1,:) = fliplr(z(ind1,:));
     
 else
     
