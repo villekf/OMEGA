@@ -177,15 +177,15 @@ if options.use_machine == 1
     if options.randoms_correction
         tot_delayed = 0;
     end
-    for llo=1:partitions
         
-        if ~options.use_raw_data
-            if options.randoms_correction
-                form_sinograms(options, false, prompts, delays);
-            else
-                form_sinograms(options, false, prompts);
-            end
+    if ~options.use_raw_data
+        if options.randoms_correction
+            form_sinograms(options, false, prompts, delays);
+        else
+            form_sinograms(options, false, prompts);
         end
+    end
+    for llo=1:partitions
         
         if iscell(prompts)
             prompts{llo} = (prompts{llo}(tril(true(size(prompts{llo})), 0)));

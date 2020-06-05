@@ -1620,12 +1620,12 @@ end
     if options.randoms_correction && (~options.use_LMF || options.use_machine == 1)
         tot_delayed = 0;
     end
+        
+    if ~options.use_raw_data
+        form_sinograms(options, false, prompts, delays, trues, scatter, randoms);
+    end
     
     for llo=1:partitions
-        
-        if ~options.use_raw_data
-            form_sinograms(options, false, prompts, delays, trues, scatter, randoms);
-        end
         
         % Take only the lower triangular part and store as a sparse vector
         if partitions > 1
