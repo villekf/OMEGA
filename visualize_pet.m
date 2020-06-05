@@ -492,7 +492,7 @@ end
 
 %% Dynamic visualization
 % Time series of images, n reconstructions, optionally also the
-% "true" image
+% "true" image. This section requires image_properties to be loaded.
 
 algo_char = algorithms_char();
 
@@ -567,16 +567,24 @@ elseif source == 3
     load([image_properties.machine_name '_Ideal_image_coordinates_' image_properties.name '_ROOT.mat'])
 end
 
-if source > 0
-    clim2 = [0 max(max(max(max(FOV(:,:,:)))))/color_scale];
-end
-clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
 if v_plane == 2
     koko = size(img,1);
+	if source > 0
+		clim2 = [0 max(max(max(max(FOV(slice,:,:)))))/color_scale];
+	end
+	clim = [0 max(max(max(max(img(slice,:,:,end)))))/color_scale];
 elseif v_plane == 3
     koko = size(img,2);
+	if source > 0
+		clim2 = [0 max(max(max(max(FOV(:,slice,:)))))/color_scale];
+	end
+	clim = [0 max(max(max(max(img(:,slice,:,end)))))/color_scale];
 else
     koko = size(img,3);
+	if source > 0
+		clim2 = [0 max(max(max(max(FOV(:,:,slice)))))/color_scale];
+	end
+	clim = [0 max(max(max(max(img(:,:,slice,end)))))/color_scale];
 end
 if slice > koko
     error("Selected slice exceeds image size in the specified dimension/plane")
