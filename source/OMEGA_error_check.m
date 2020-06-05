@@ -184,7 +184,7 @@ if options.implementation == 3
         warning('Both OSEM and MLEM selected with implementation 3, using only MLEM');
         options.osem = false;
     end
-    if options.mlem && options.subsets > 1
+    if options.mlem && options.subsets > 1 && (options.implementation == 3 || options.implementation == 1)
         options.subsets = 1;
     end
     if options.osem && options.subsets == 1
@@ -361,7 +361,7 @@ if options.verbose
                     error('No other reconstruction algorithms selected. Select an ordered subsets algorithm.')
                 end
             else
-                if ~OS || options.implementation ~= 2
+                if ~OS || (options.implementation ~= 2 && options.implementation ~= 4)
                     options.subsets = 1;
                 end
                 reko = [reko;{'MLEM'}];
