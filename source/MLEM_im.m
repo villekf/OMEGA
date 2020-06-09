@@ -3,14 +3,20 @@ function im = MLEM_im(im, Summ, epps, varargin)
 %estimates
 %
 % Example:
-%   im = MLEM_im(im, A, epps, uu, Summ)
+%   im = MLEM_im(im, Summ, epps, A, uu, is_transposed)
 % INPUTS:
 %   im = The current estimate
-%   Summ = sum(A,2) (normalization)
+%   Summ = sum(A,2) when is_transposed = true and sum(A,1)' when false
+%   (sensitivity image)
 %   epps = Small constant to prevent division by zero
 %   A = The (transpose of the) (sparse) system matrix at current subset
-%   uu = Measurements at current subset
+%   uu = Measurement data
 %   is_transposed = true if A matrix is the transpose of it, false if not
+%   options = use_psf is used
+%   Nx = Image size in x-direction
+%   Ny = y-direction
+%   Nz = z-direction
+%   gaussK = PSF kernel
 %
 % OUTPUTS:
 %   im = The updated estimate
@@ -35,7 +41,7 @@ function im = MLEM_im(im, Summ, epps, varargin)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if nargin >= 6
-    if ~isempty(varargin) && ~isempty(varargin{4}) && varargin{4}.use_psf
+    if ~isempty(varargin) && length(varargin) > 3 && ~isempty(varargin{4}) && varargin{4}.use_psf
         im_apu = computeConvolution(im, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});
     else
         im_apu = im;
@@ -45,7 +51,7 @@ if nargin >= 6
     else
         RHS = (varargin{1}' * (varargin{2} ./ (varargin{1} * im_apu + epps)));
     end
-    if ~isempty(varargin) && ~isempty(varargin{4}) && varargin{4}.use_psf
+    if ~isempty(varargin) && length(varargin) > 3 && ~isempty(varargin{4}) && varargin{4}.use_psf
         RHS = computeConvolution(im, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});
     end
     im = (im ./ Summ) .* RHS;
