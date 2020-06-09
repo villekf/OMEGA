@@ -490,7 +490,7 @@ elseif options.use_raw_data && options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = options.SinDelayed{ff};
+                    temp = single(full(options.SinDelayed{ff}));
                     temp = temp(discard);
                     temp = temp(index);
                     options.SinDelayed{ff} = temp;
@@ -510,7 +510,7 @@ elseif options.use_raw_data && options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
-                    temp = options.ScatterC{ff};
+                    temp = single(full(options.ScatterC{ff}));
                     temp = temp(discard);
                     temp = temp(index);
                     options.ScatterC{ff} = temp;
@@ -531,7 +531,7 @@ elseif options.use_raw_data && options.precompute_lor
         if nargout >= 8
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = single(full(varargin{1}{ff}));
                     temp = temp(discard);
                     if subsets > 1 || fpbp
                         temp = temp(index);
@@ -541,11 +541,21 @@ elseif options.use_raw_data && options.precompute_lor
                 clear temp
             else
                 if iscell(varargin{1})
-                    varargout{1}{1} = varargin{1}{1}(discard);
-                    varargout{1}{1} = varargout{1}{1}(index);
+                    temp = single(full(varargin{1}{1}));
+                    temp = temp(discard);
+                    temp = temp(index);
+                    varargout{1}{1} = temp;
+                    clear temp
+%                     varargout{1}{1} = varargin{1}{1}(discard);
+%                     varargout{1}{1} = varargout{1}{1}(index);
                 else
-                    varargout{1} = varargin{1}(discard);
-                    varargout{1} = varargout{1}(index);
+                    temp = single(full(varargin{1}));
+                    temp = temp(discard);
+                    temp = temp(index);
+                    varargout{1} = temp;
+                    clear temp
+%                     varargout{1} = varargin{1}(discard);
+%                     varargout{1} = varargout{1}(index);
                 end
             end
         end
@@ -563,28 +573,20 @@ elseif options.use_raw_data && options.precompute_lor
         end
         if options.partitions > 1
             for ff = 1 : options.partitions
-                temp = varargin{1}{ff};
+                temp = single(full(varargin{1}{ff}));
                 temp = temp(discard);
                 varargout{1}{ff} = temp;
             end
             clear temp
         else
             if iscell(varargin{1})
-                if issparse(varargin{1}{1})
-                    apu = full(varargin{1}{1});
-                    varargout{1}{1} = sparse(apu(discard));
-                    clear apu
-                else
-                    varargout{1}{1} = varargin{1}{1}(discard);
-                end
+                apu = single(full(varargin{1}{1}));
+                varargout{1}{1} = (apu(discard));
+                clear apu
             else
-                if issparse(varargin{1})
-                    apu = full(varargin{1});
-                    varargout{1} = sparse(apu(discard));
-                    clear apu
-                else
-                    varargout{1} = varargin{1}(discard);
-                end
+                apu = single(full(varargin{1}));
+                varargout{1} = (apu(discard));
+                clear apu
             end
         end
         lor_a = lor(discard);
@@ -595,16 +597,24 @@ elseif options.use_raw_data && options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = options.SinDelayed{ff};
+                    temp = single(full(options.SinDelayed{ff}));
                     temp = temp(discard);
                     options.SinDelayed{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.SinDelayed)
-                    options.SinDelayed{1} = options.SinDelayed{1}(discard);
+%                     options.SinDelayed{1} = options.SinDelayed{1}(discard);
+                    temp = single(full(options.SinDelayed{1}));
+                    temp = temp(discard);
+                    options.SinDelayed{1} = temp;
+                    clear temp
                 else
-                    options.SinDelayed = options.SinDelayed(discard);
+%                     options.SinDelayed = options.SinDelayed(discard);
+                    temp = single(full(options.SinDelayed));
+                    temp = temp(discard);
+                    options.SinDelayed = temp;
+                    clear temp
                 end
             end
         end
@@ -612,16 +622,24 @@ elseif options.use_raw_data && options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
-                    temp = options.ScatterC{ff};
+                    temp = single(full(options.ScatterC{ff}));
                     temp = temp(discard);
                     options.ScatterC{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.ScatterC)
-                    options.ScatterC = options.ScatterC{1}(discard);
+%                     options.ScatterC = options.ScatterC{1}(discard);
+                    temp = single(full(options.ScatterC{1}));
+                    temp = temp(discard);
+                    options.ScatterC{1} = temp;
+                    clear temp
                 else
-                    options.ScatterC = options.ScatterC(discard);
+%                     options.ScatterC = options.ScatterC(discard);
+                    temp = single(full(options.ScatterC));
+                    temp = temp(discard);
+                    options.ScatterC = temp;
+                    clear temp
                 end
             end
         end
@@ -879,16 +897,24 @@ elseif options.use_raw_data && ~options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = options.SinDelayed{ff};
+                    temp = single(full(options.SinDelayed{ff}));
                     temp = temp(index);
                     options.SinDelayed{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.SinDelayed)
-                    options.SinDelayed{1} = options.SinDelayed{1}(index);
+%                     options.SinDelayed{1} = options.SinDelayed{1}(index);
+                    temp = single(full(options.SinDelayed{1}));
+                    temp = temp(index);
+                    options.SinDelayed{1} = temp;
+                    clear temp
                 else
-                    options.SinDelayed = options.SinDelayed(index);
+%                     options.SinDelayed = options.SinDelayed(index);
+                    temp = single(full(options.SinDelayed));
+                    temp = temp(index);
+                    options.SinDelayed = temp;
+                    clear temp
                 end
             end
         end
@@ -896,23 +922,31 @@ elseif options.use_raw_data && ~options.precompute_lor
                 && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if options.partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
                 for ff = 1 : options.partitions
-                    temp = options.ScatterC{ff};
+                    temp = single(full(options.ScatterC{ff}));
                     temp = temp(index);
                     options.ScatterC{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.SinDelayed)
-                    options.ScatterC = options.ScatterC{1}(index);
+%                     options.ScatterC = options.ScatterC{1}(index);
+                    temp = single(full(options.ScatterC{1}));
+                    temp = temp(index);
+                    options.ScatterC{1} = temp;
+                    clear temp
                 else
-                    options.ScatterC = options.ScatterC(index);
+%                     options.ScatterC = options.ScatterC(index);
+                    temp = single(full(options.ScatterC));
+                    temp = temp(index);
+                    options.ScatterC = temp;
+                    clear temp
                 end
             end
         end
         if nargout >= 8
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = single(full(varargin{1}{ff}));
                     if subsets > 1 || fpbp
                         temp = temp(index);
                     end
@@ -921,21 +955,13 @@ elseif options.use_raw_data && ~options.precompute_lor
                 clear temp
             else
                 if iscell(varargin{1})
-                    if issparse(varargin{1}{1})
-                        apu = full(varargin{1}{1});
-                        varargout{1}{1} = sparse(apu(index));
-                        clear apu
-                    else
-                        varargout{1}{1} = varargin{1}{1}(index);
-                    end
+                    apu = single(full(varargin{1}{1}));
+                    varargout{1}{1} = (apu(index));
+                    clear apu
                 else
-                    if issparse(varargin{1})
-                        apu = full(varargin{1});
-                        varargout{1} = sparse(apu(index));
-                        clear apu
-                    else
-                        varargout{1} = varargin{1}(index);
-                    end
+                    apu = single(full(varargin{1}));
+                    varargout{1} = (apu(index));
+                    clear apu
                 end
             end
         end
