@@ -49,6 +49,8 @@
   - All algorithms are also slightly faster
 
 - COSEM and its variants are faster when using implementation 1 and use much less memory
+
+- Quadratic prior and weighted mean use less memory, especially with larger neighborhoods
   
 - Inveon data now supports Inveon CT UMAP-images as attenuation data
 
