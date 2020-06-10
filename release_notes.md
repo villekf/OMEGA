@@ -81,6 +81,7 @@
 - Added depth of interaction (DOI) support
   - This is the depth where the photon is assumed to have fully absorbed
   - Default value is 0, but can be set manually with `options.DOI`
+  - Precomputed data with different DOI will not work
 
 ### Bug fixes and enhancements
 
