@@ -72,11 +72,15 @@
   - The user will be shown the selected data type (sinogram or raw), selected algorithm and prior, projector, corrections, device, etc.
   
 - Sinogram reconstruction should now work as originally intended
-  - Unintentional blurring was caused by incorrect transaxial coordinates with half of oblique sinograms
+  - Unintentional blurring was caused by incorrect transaxial coordinates with the oblique sinograms
 
 - Added ability to add scatter correction to the system matrix as a diagonal matrix
 
 - Added ability to visualize each algorithm in `visualize_pet.m` with their own color limits (set `color_from_algo = 0`)
+
+- Added depth of interaction (DOI) support
+  - This is the depth where the photon is assumed to have fully absorbed
+  - Default value is 0, but can be set manually with `options.DOI`
 
 ### Bug fixes and enhancements
 
@@ -112,6 +116,7 @@
 
 - Gap filling should now work properly
   - fillmissing now uses 1D interpolation in two directions
+  - Uses normalization data if available and selected
 
 - Implementation 2 didn't work previously without randoms correction
 
@@ -141,6 +146,8 @@
 - Enhanced the `main_PET` single reconstruction section
 
 - Improved documentation
+
+- Improved dynamic visualization
 
 ## 1.0
 
