@@ -589,7 +589,7 @@ end
 if slice > koko
     error("Selected slice exceeds image size in the specified dimension/plane")
 end
-for kk = 1 : image_properties.n_time_steps
+for kk = 1 : size(pz,2)
     for ll = 1 : length(algorithms)
         
         img = pz{algorithms(ll),kk};
