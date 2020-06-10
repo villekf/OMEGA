@@ -1,0 +1,73 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Visualization in OMEGA</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }
+.S2 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Visualization in OMEGA</span></h1><div  class = 'S1'><span>OMEGA includes several ready-made visualization codes in </span><a href = "https://github.com/villekf/OMEGA/blob/master/visualize_pet.m"><span style=' text-decoration: underline; font-family: monospace;'>visualize_pet.m</span></a><span>. These are divided into sections separated by the double percentage sign (%%). All visualization is performed in loops, where all the slices  from the selected view (transverse, sagittal or coronal) are looped  through starting from the first slice.</span></div><div  class = 'S1'><span>The first section simply loads the struct variable that contains  various information about the reconstruction that was saved. These  include e.g. number of iterations, number of time steps, data type  (sinogram or raw), projector used, implementation used, FOV size, etc.  You can modify </span><a href = "https://github.com/villekf/OMEGA/blob/master/source/save_image_properties.m"><span style=' text-decoration: underline; font-family: monospace;'>save_image_properties.m</span></a><span> to add your own information.</span></div><div  class = 'S1'><span>The second section visualizes the selected algorithms for all slices  at the last iteration. Any number of algorithms can be selected, though  using more than 8 will most likely cause the image to be too small.  Color scale (</span><span style=' font-family: monospace;'>color_scale</span><span> variable) can be adjusted as well as the algorithm from where the color scale is taken (</span><span style=' font-family: monospace;'>color_from_algo</span><span>). Using </span><span style=' font-family: monospace;'>color_from_algo = 0</span><span> causes the color scale to be individual to each algorithm, i.e. there is no unified color scale.</span></div><div  class = 'S1'><span>Running any of the sections with algorithms selected that are not included in the input </span><span style=' font-family: monospace;'>pz</span><span> variable will show a message indicating what algorithms, and their cell numbers, are included.</span></div><div  class = 'S1'><span>Third section visualizes N last iterations of one algorithm.</span></div><div  class = 'S1'><span>Fourth section is similar to second, except now the original source  image can be included to the visualization as well. The original source  image always uses its own color scale.</span></div><div  class = 'S1'><span>Fifth section includes a 3D volumetric visualization with the help of </span><a href = "https://www.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2"><span style=' text-decoration: underline; font-family: monospace;'>vol3d v2</span></a><span>. You need to download the function from file exchange and put it in the  MATLAB/Octave path in order for it to work. Alpha scale can be adjusted  in order to make areas with less counts more transparent.</span></div><div  class = 'S1'><span>Sixth section allows you to visualize all three different views  (transverse, coronal, sagittal) at the same time for the selected  algorithms.</span></div><div  class = 'S1'><span>Last section is dedicated to dynamic visualization and allows the  selected slice to be viewed as a function of time. Original source image and different views are supported as well.</span></div><h1  class = 'S2'><span>Other visualization possibilities</span></h1><div  class = 'S1'><span>It is also possible to visualize the data with tools that are not  included in OMEGA. Here are some tips that might be useful, but as the  images are simple matrices you can use anything that can visualize  matrices.</span></div><div  class = 'S1'><span>The reconstructed images are structured as follows: the </span><span style=' font-family: monospace;'>pz</span><span>-cell array contains all the algorithms that were reconstructed. Each cell element is of size N</span><span>x</span><span> x N</span><span>y</span><span> x N</span><span>z</span><span> x N</span><span>iter</span><span> x N</span><span>t</span><span>, where N</span><span>x/y/z</span><span> is the image size in x/y/z-direction, N</span><span>iter</span><span> is the number of iterations (including initial value) and N</span><span>t</span><span> is the number of time steps/slices (omitted if static reconstruction). Last iteration can be obtained with </span><span style=' font-family: monospace;'>end</span><span>, e.g. </span><span style=' font-family: monospace;'>A = pz{2}(:,:,:,end)</span><span> will extract the 3D OSEM image at the last iteration.</span></div><div  class = 'S1'><span>In case you wish to visualize the 3D images as slices with mouse  control for the slice numbers, there are several different functions  available. From MATLAB R2019b and up you can use </span><a href = "https://www.mathworks.com/help/images/ref/sliceviewer.html"><span style=' text-decoration: underline; font-family: monospace;'>sliceViewer</span></a><span> if you have the image processing toolbox. Alternatively you can try </span><a href = "https://www.mathworks.com/matlabcentral/fileexchange/47463-imshow3dfull"><span style=' text-decoration: underline; font-family: monospace;'>imshow3dfull</span></a><span>, </span><a href = "https://www.mathworks.com/matlabcentral/fileexchange/21993-viewer3d"><span style=' text-decoration: underline; font-family: monospace;'>viewer3d</span></a><span> and </span><a href = "https://www.mathworks.com/matlabcentral/fileexchange/72978-volview"><span style=' text-decoration: underline; font-family: monospace;'>volview</span></a><span>. For 3D volumetric viewing, you can also use the </span><a href = "https://www.mathworks.com/help/images/ref/volumeviewer-app.html"><span style=' text-decoration: underline; font-family: monospace;'>volumeViewer</span></a><span> app in MATLAB if you have image processing toolbox and at least MATLAB R2017a.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Visualization in OMEGA
+% OMEGA includes several ready-made visualization codes in <https://github.com/villekf/OMEGA/blob/master/visualize_pet.m 
+% |visualize_pet.m|>. These are divided into sections separated by the double 
+% percentage sign (%%). All visualization is performed in loops, where all the 
+% slices  from the selected view (transverse, sagittal or coronal) are looped  
+% through starting from the first slice.
+% 
+% The first section simply loads the struct variable that contains  various 
+% information about the reconstruction that was saved. These  include e.g. number 
+% of iterations, number of time steps, data type  (sinogram or raw), projector 
+% used, implementation used, FOV size, etc.  You can modify <https://github.com/villekf/OMEGA/blob/master/source/save_image_properties.m 
+% |save_image_properties.m|> to add your own information.
+% 
+% The second section visualizes the selected algorithms for all slices  at the 
+% last iteration. Any number of algorithms can be selected, though  using more 
+% than 8 will most likely cause the image to be too small.  Color scale (|color_scale| 
+% variable) can be adjusted as well as the algorithm from where the color scale 
+% is taken (|color_from_algo|). Using |color_from_algo = 0| causes the color scale 
+% to be individual to each algorithm, i.e. there is no unified color scale.
+% 
+% Running any of the sections with algorithms selected that are not included 
+% in the input |pz| variable will show a message indicating what algorithms, and 
+% their cell numbers, are included.
+% 
+% Third section visualizes N last iterations of one algorithm.
+% 
+% Fourth section is similar to second, except now the original source  image 
+% can be included to the visualization as well. The original source  image always 
+% uses its own color scale.
+% 
+% Fifth section includes a 3D volumetric visualization with the help of <https://www.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 
+% |vol3d v2|>. You need to download the function from file exchange and put it 
+% in the  MATLAB/Octave path in order for it to work. Alpha scale can be adjusted  
+% in order to make areas with less counts more transparent.
+% 
+% Sixth section allows you to visualize all three different views  (transverse, 
+% coronal, sagittal) at the same time for the selected  algorithms.
+% 
+% Last section is dedicated to dynamic visualization and allows the  selected 
+% slice to be viewed as a function of time. Original source image and different 
+% views are supported as well.
+%% Other visualization possibilities
+% It is also possible to visualize the data with tools that are not  included 
+% in OMEGA. Here are some tips that might be useful, but as the  images are simple 
+% matrices you can use anything that can visualize  matrices.
+% 
+% The reconstructed images are structured as follows: the |pz|-cell array contains 
+% all the algorithms that were reconstructed. Each cell element is of size Nx 
+% x Ny x Nz x Niter x Nt, where Nx/y/z is the image size in x/y/z-direction, Niter 
+% is the number of iterations (including initial value) and Nt is the number of 
+% time steps/slices (omitted if static reconstruction). Last iteration can be 
+% obtained with |end|, e.g. |A = pz{2}(:,:,:,end)| will extract the 3D OSEM image 
+% at the last iteration.
+% 
+% In case you wish to visualize the 3D images as slices with mouse  control 
+% for the slice numbers, there are several different functions  available. From 
+% MATLAB R2019b and up you can use <https://www.mathworks.com/help/images/ref/sliceviewer.html 
+% |sliceViewer|> if you have the image processing toolbox. Alternatively you can 
+% try <https://www.mathworks.com/matlabcentral/fileexchange/47463-imshow3dfull 
+% |imshow3dfull|>, <https://www.mathworks.com/matlabcentral/fileexchange/21993-viewer3d 
+% |viewer3d|> and <https://www.mathworks.com/matlabcentral/fileexchange/72978-volview 
+% |volview|>. For 3D volumetric viewing, you can also use the <https://www.mathworks.com/help/images/ref/volumeviewer-app.html 
+% |volumeViewer|> app in MATLAB if you have image processing toolbox and at least 
+% MATLAB R2017a.
+##### SOURCE END #####
+--></body></html>

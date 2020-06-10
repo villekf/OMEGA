@@ -98,6 +98,9 @@
         <tocitem target="useful_information.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Useful information
         </tocitem>
+        <tocitem target="visualization.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Visualization
+        </tocitem>
         <tocitem target="extracting_the_system_matrix.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Extracting the system matrix
         </tocitem>
