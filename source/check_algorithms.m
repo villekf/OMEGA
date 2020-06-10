@@ -14,9 +14,11 @@ for jj = 1:numel(algorithms)
     if isempty(pz{algorithms(jj)})
         warning('The current selected algorithm does not contain any estimes!')
         fprintf('The following are contained in the input array:\n')
-        char_ar = algo_char(~cellfun(@isempty,pz));
-        loc = find(~cellfun(@isempty,pz));
-        for kk = 1 : nnz(~cellfun(@isempty,pz))-1
+        indeksi = ~cellfun(@isempty,pz);
+        indeksi = indeksi(:,1);
+        char_ar = algo_char(indeksi);
+        loc = find(indeksi);
+        for kk = 1 : nnz(indeksi)-1
             fprintf('Element %d: %s\n', loc(kk), char_ar{kk})
         end
         img = [];
