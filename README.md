@@ -101,7 +101,7 @@ On Ubuntu Linux you can alternatively just install the OpenCL headers (NOTE: UNT
 `sudo apt-get install opencl-headers`
 
 and then the library:  
-`sudo apt-get install ocl-icd-libopencl1`
+`sudo apt-get install ocl-icd-opencl-dev`
 
 The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to `install_mex` by adding `-I/path/to/CL` and `-L/path/to/OpenCLlib` before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command `find / -iname cl.h 2>/dev/null` to find the required cl.h file and `find / -iname libOpenCL.so 2>/dev/null` to find the required library file. See `install_mex.m` for further details.
 
