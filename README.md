@@ -97,11 +97,18 @@ and then add the OMEGA folder and subfolders to MATLAB/Octave path. Finally, run
 
 In order to enable OpenCL support, you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). 
 
-On Ubuntu Linux you can alternatively just install the OpenCL headers (NOTE: UNTESTED):  
+On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for others as well.
+
+Headers:
 `sudo apt-get install opencl-headers`
 
 and then the library:  
 `sudo apt-get install ocl-icd-opencl-dev`
+
+Alternative libraries in case the above one fails:
+`sudo apt-get install nvidia-opencl-dev`
+or
+`sudo apt-get install intel-opencl-icd`
 
 The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to `install_mex` by adding `-I/path/to/CL` and `-L/path/to/OpenCLlib` before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command `find / -iname cl.h 2>/dev/null` to find the required cl.h file and `find / -iname libOpenCL.so 2>/dev/null` to find the required library file. See `install_mex.m` for further details.
 
@@ -125,7 +132,9 @@ https://arrayfire.com/download/
 and the source code from here:  
 https://github.com/arrayfire/arrayfire
 
-Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`).
+Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`). Alternatively, on Linux, you can also build/install it directly into the `/usr/local/` folder.
+
+Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the CUDA folder should be on the system path. `install_mex` always attempts to build the CUDA code as well so no additional input is required from the user if all the header and library data is found.
 
 
 
@@ -141,7 +150,7 @@ OpenCL SDK/headers are required for OpenCL functionality.
 
 ArrayFire is required for implementation 2.
 
-For OpenCL, an OpenCL 1.2 compatible device is required.
+For OpenCL, an OpenCL 1.2 compatible device is required. For CUDA, compute capability of 2.0 or higher is required.
 
 The following third-party MATLAB codes are NOT required, but can be useful as they can be optionally used:  
 https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
