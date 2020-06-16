@@ -26,7 +26,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint16_t TotSinos, const bool verbose,
 	const uint32_t randoms_correction, const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten,
 	const float* norm, const size_t size_norm, const uint32_t subsets, const float epps, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring,
-	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl_kernel kernel, const cl_kernel& kernel_sum,
+	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl_kernel& kernel, const cl_kernel& kernel_sum,
 	const cl_kernel& kernel_mlem, const cl_kernel& kernel_convolution, const cl_kernel& kernel_convolution_f, const cl_kernel& kernel_vectorMult,
 	const cl_kernel& kernel_vectorDiv, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center,
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit,
@@ -868,6 +868,9 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						for (cl_uint kk = 0u; kk < subsets; kk++) {
 							for (cl_uint i = 0u; i < num_devices_context; i++) {
 								if (kk == 0) {
+									if (i == 0 && use_psf) {
+										clReleaseMemObject(d_gauss);
+									}
 									clReleaseMemObject(d_reko_type[i]);
 									clReleaseMemObject(d_z[i]);
 									clReleaseMemObject(d_x[i]);
@@ -1096,6 +1099,9 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					for (cl_uint kk = 0u; kk < subsets; kk++) {
 						for (cl_uint i = 0u; i < num_devices_context; i++) {
 							if (kk == 0) {
+								if (i == 0 && use_psf) {
+									clReleaseMemObject(d_gauss);
+								}
 								clReleaseMemObject(d_reko_type[i]);
 								clReleaseMemObject(d_z[i]);
 								clReleaseMemObject(d_x[i]);
@@ -1285,6 +1291,8 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
+				clReleaseMemObject(d_mlem_apu);
+				clReleaseMemObject(d_mlem_apu_kolmas);
 			}
 			if (verbose) {
 				mexPrintf("Iteration %u complete\n", iter + 1u);

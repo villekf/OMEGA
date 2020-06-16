@@ -27,7 +27,7 @@
 #include <fstream>
 #include "mex.h"
 
-constexpr auto TH = 100000000000.f;
+#define TH 100000000000.f
 
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 

@@ -1339,7 +1339,7 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 				else if (ind_uus.x < 0)
 					ind_uus.x = ind.x - (i + 1);
 				uint indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
-				float p = input[indeksi];
+				float p = convert_float(input[indeksi]) / TH;
 				p *= convolution_window[c];
 				result += p;
 				c++;

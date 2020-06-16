@@ -47,7 +47,11 @@ void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, c
 	float zs_apu = zs;
 	float x_diff_apu = x_diff;
 	float ys_apu = ys;
+#ifdef CRYST
+	const int zz = tempk;
+#else
 	for (int zz = tempk; zz < start; zz++) {
+#endif
 		zs_apu = (z_center[zz] - zs);
 		x_diff_apu = x_diff * zs_apu;
 		zs_apu *= y_diff;
@@ -110,8 +114,10 @@ void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, c
 				}
 			}
 			if (breikki1 && breikki2) {
+#ifdef CRYSTZ
 				if (yy1 == alku_y1)
 					breikki3 = true;
+#endif
 				break;
 			}
 		}
@@ -166,15 +172,23 @@ void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, c
 				}
 			}
 			if (breikki1 && breikki2) {
+#ifdef CRYSTZ
 				if (yy2 == alku_y2)
 					breikki4 = true;
+#endif
 				break;
 			}
 		}
+#ifdef CRYSTZ
 		if (breikki3 && breikki4) {
 			break;
 		}
+#endif
+#ifdef CRYST
+#else
 	}
+#endif
+#ifdef CRYSTZ
 	for (int zz = tempk - 1; zz >= loppu; zz--) {
 		zs_apu = (z_center[zz] - zs);
 		x_diff_apu = x_diff * zs_apu;
@@ -303,6 +317,7 @@ void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, c
 			break;
 		}
 	}
+#endif
 }
 
 #ifdef CRYSTZ

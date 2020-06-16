@@ -282,7 +282,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 	options += " -cl-single-precision-constant";
 	if (crystal_size_z == 0.f && projector_type == 2u)
 		options += " -DCRYST";
-	if (crystal_size_z > 0.f && (projector_type == 2u || projector_type == 3u))
+	if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u)
 		options += " -DCRYSTZ";
 	if (projector_type == 3u)
 		options += " -DVOL";

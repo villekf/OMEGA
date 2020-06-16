@@ -47,7 +47,11 @@ __device__ void orth_distance_multi_3D(int tempi, const unsigned int d_N0, const
 	float zs_apu = zs;
 	float x_diff_apu = x_diff;
 	float ys_apu = ys;
+#ifdef CRYST
+	const int zz = tempk;
+#else
 	for (int zz = tempk; zz < start; zz++) {
+#endif
 		zs_apu = (z_center[zz] - zs);
 		x_diff_apu = x_diff * zs_apu;
 		zs_apu *= y_diff;
@@ -102,8 +106,10 @@ __device__ void orth_distance_multi_3D(int tempi, const unsigned int d_N0, const
 				}
 			}
 			if (breikki1 && breikki2) {
+#ifdef CRYSTZ
 				if (yy1 == alku_y1)
 					breikki3 = true;
+#endif
 				break;
 			}
 		}
@@ -150,15 +156,23 @@ __device__ void orth_distance_multi_3D(int tempi, const unsigned int d_N0, const
 				}
 			}
 			if (breikki1 && breikki2) {
+#ifdef CRYSTZ
 				if (yy2 == alku_y2)
 					breikki4 = true;
+#endif
 				break;
 			}
 		}
+#ifdef CRYSTZ
 		if (breikki3 && breikki4) {
 			break;
 		}
+#endif
+#ifdef CRYST
+#else
 	}
+#endif
+#ifdef CRYSTZ
 	for (int zz = tempk - 1; zz >= loppu; zz--) {
 		zs_apu = (z_center[zz] - zs);
 		x_diff_apu = x_diff * zs_apu;
@@ -271,6 +285,7 @@ __device__ void orth_distance_multi_3D(int tempi, const unsigned int d_N0, const
 			break;
 		}
 	}
+#endif
 }
 
 __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const float center2, const float* z_center,

@@ -203,7 +203,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 	unsigned int d_N2 = 1u;
 	unsigned int d_N3 = d_Nx;
 
-#ifdef CRYSTZ // 3D Orthogonal
+#ifdef ORTH // 3D Orthogonal
 	unsigned int d_N4 = d_Nz;
 #endif
 
