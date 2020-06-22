@@ -15,6 +15,7 @@ function output = loadInterfile(filename)
 %   filename = Name of the image (.img or .i33) or header file (.hdr or
 %   .h33)
 %
+% See also loadMetaImage
 tline = 0;
 ll = 1;
 M = cell(1,1);
@@ -138,6 +139,15 @@ for kk = 1 : length(M)
         elseif any(strfind(apu,'BIGENDIAN'))
             machinefmt = 'b';
         end
+    elseif ~cellfun('isempty',strfind(M{kk},'name of data file'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        f_name = (apu(koko+2:end));
+        f_name = f_name(strfind(f_name, ' ') + 1 : end);
+        if any(strfind(f_name, '/'))
+            f_name = f_name(strfind(f_name, '/') + 1 : end);
+        end
+        f_name = [fileparts(filename) '/' f_name];
     end
 end
 
@@ -170,7 +180,10 @@ if fid == - 1
     filename = [filename(1:end-3) 'i33'];
     fid = fopen(filename);
     if fid == -1
-        error(['Could not find either ' filename ' or ' [filename(1:end-3) 'img']])
+        fid = fopen(f_name);
+        if fid == -1
+            error(['Could not find either ' filename ' or ' [filename(1:end-3) 'img or ' f_name]])
+        end
     end
 end
 output = fread(fid, inf, [type '=>' type], 0, machinefmt);
