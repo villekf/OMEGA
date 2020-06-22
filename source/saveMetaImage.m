@@ -32,6 +32,8 @@ function saveMetaImage(filename, img, varargin)
 %  windows_format = Text file format. Default is UNIX style (LF), but
 %  setting this value to true uses Windows file format (CR LF). Omitting
 %  will use UNIX style.
+%
+% See also saveImage, saveInterfile
 
 if nargin > 2 && ~isempty(varargin{1})
     type = varargin{1};
