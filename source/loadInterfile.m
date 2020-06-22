@@ -41,6 +41,7 @@ n_dim2 = 1;
 n_dim3 = 1;
 n_dim4 = 1;
 n_dim5 = 1;
+machinefmt = 'l';
 
 for kk = 1 : length(M)
     if ~cellfun('isempty',strfind(M{kk},'number format'))
@@ -89,25 +90,73 @@ for kk = 1 : length(M)
 %         apu = cell2mat(M{kk});
 %         n_dim = str2double(apu(end));
     elseif ~cellfun('isempty',strfind(M{kk},'matrix size[1]'))
-        koko = length('matrix size[1]:=');
+        koko = cell2mat(strfind(M{kk},':='));
         apu = cell2mat(M{kk});
-        n_dim1 = str2double(apu(koko+1:end));
+        n_dim1 = str2double(apu(koko+2:end));
     elseif ~cellfun('isempty',strfind(M{kk},'matrix size[2]'))
-        koko = length('matrix size[2]:=');
+        koko = cell2mat(strfind(M{kk},':='));
         apu = cell2mat(M{kk});
-        n_dim2 = str2double(apu(koko+1:end));
+        n_dim2 = str2double(apu(koko+2:end));
     elseif ~cellfun('isempty',strfind(M{kk},'matrix size[3]'))
-        koko = length('matrix size[3]:=');
+        koko = cell2mat(strfind(M{kk},':='));
         apu = cell2mat(M{kk});
-        n_dim3 = str2double(apu(koko+1:end));
+        n_dim3 = str2double(apu(koko+2:end));
     elseif ~cellfun('isempty',strfind(M{kk},'matrix size[4]'))
-        koko = length('matrix size[4]:=');
+        koko = cell2mat(strfind(M{kk},':='));
         apu = cell2mat(M{kk});
-        n_dim4 = str2double(apu(koko+1:end));
+        n_dim4 = str2double(apu(koko+2:end));
     elseif ~cellfun('isempty',strfind(M{kk},'matrix size[5]'))
-        koko = length('matrix size[5]:=');
+        koko = cell2mat(strfind(M{kk},':='));
         apu = cell2mat(M{kk});
-        n_dim5 = str2double(apu(koko+1:end));
+        n_dim5 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'matrix size [1]'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        n_dim1 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'matrix size [2]'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        n_dim2 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'matrix size [3]'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        n_dim3 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'matrix size [4]'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        n_dim4 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'matrix size [5]'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        n_dim5 = str2double(apu(koko+2:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'imagedata byte order')) || ~cellfun('isempty',strfind(M{kk},'image data byte order'))
+        koko = cell2mat(strfind(M{kk},':='));
+        apu = cell2mat(M{kk});
+        apu = apu(koko+2:end);
+        if any(strfind(apu,'LITTLEENDIAN'))
+            machinefmt = 'l';
+        elseif any(strfind(apu,'BIGENDIAN'))
+            machinefmt = 'b';
+        end
+    end
+end
+
+if n_dim3 == 1
+    for kk = 1 : length(M)
+        if ~cellfun('isempty',strfind(M{kk},'number of slices'))
+            koko = cell2mat(strfind(M{kk},':='));
+            apu = cell2mat(M{kk});
+            n_dim3 = str2double(apu(koko+2:end));
+        end
+    end
+    if n_dim3 == 1 && n_dim4 == 1 && n_dim5 == 1
+        for kk = 1 : length(M)
+            if ~cellfun('isempty',strfind(M{kk},'total number of images'))
+                koko = cell2mat(strfind(M{kk},':='));
+                apu = cell2mat(M{kk});
+                n_dim3 = str2double(apu(koko+2:end));
+            end
+        end
     end
 end
 
@@ -124,6 +173,6 @@ if fid == - 1
         error(['Could not find either ' filename ' or ' [filename(1:end-3) 'img']])
     end
 end
-output = fread(fid, inf, [type '=>' type]);
+output = fread(fid, inf, [type '=>' type], 0, machinefmt);
 output = reshape(output, n_dim1, n_dim2, n_dim3, n_dim4, n_dim5);
 fclose(fid);

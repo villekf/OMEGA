@@ -19,7 +19,7 @@ function output = loadMetaImage(filename)
 % Input:
 %   filename = Name of the header file (.mhd or .mha)
 %
-element_types=struct('MET_DOUBLE','double','MET_FLOAT', 'single', 'MET_CHAR','int8','MET_UCHAR','uint8','MET_SHORT','int16','MET_USHORT','uint16','MET_INT','int32','MET_UINT','uint32',...
+element_types = struct('MET_DOUBLE','double','MET_FLOAT', 'single', 'MET_CHAR','int8','MET_UCHAR','uint8','MET_SHORT','int16','MET_USHORT','uint16','MET_INT','int32','MET_UINT','uint32',...
     'MET_LONG', 'int64', 'MET_ULONG','uint64');
 n_bytes = struct('double',8,'single', 4, 'int8',1,'uint8',1,'int16',2,'uint16',2,'int32',4,'uint32',4, 'int64',8, 'uint64', 8);
 tline = 0;
@@ -34,7 +34,7 @@ if fid < 0
 end
 while sum(tline ~= -1) >= 1 || isempty(tline ~= -1)
     tline = fgetl(fid);
-    M{ll} = {tline};
+    M{ll} = {lower(tline)};
     ll = ll + 1;
 end
 fclose(fid);
@@ -42,18 +42,20 @@ M = M(1:end-1);
 NDims = [];
 skip = 0;
 type = 'single';
+endian = 'l';
+transformmatrix = [];
 
 for kk = 1 : length(M)
     apu = cell2mat(M{kk});
     ind = strfind(apu,'=');
-    if ~cellfun('isempty',strfind(M{kk},'NDims'))
+    if ~cellfun('isempty',strfind(M{kk},'ndims'))
         NDims = str2double(apu(ind(1) + 1:end));
-    elseif ~cellfun('isempty',strfind(M{kk},'DimSize'))
+    elseif ~cellfun('isempty',strfind(M{kk},'dimsize'))
         if isempty(NDims)
             for ii = 1 : length(M)
                 apu2 = cell2mat(M{ii});
                 ind = strfind(apu2,'=');
-                if ~cellfun('isempty',strfind(M{ii},'NDims'))
+                if ~cellfun('isempty',strfind(M{ii},'ndims'))
                     NDims = str2double(apu2(ind(1) + 1:end));
                 end
             end
@@ -65,19 +67,34 @@ for kk = 1 : length(M)
         for ll = 1 : NDims
             Dims(ll) = str2double(apu(ind(ll):ind(ll + 1)));
         end
-    elseif ~cellfun('isempty',strfind(M{kk},'HeaderSize'))
+    elseif ~cellfun('isempty',strfind(M{kk},'headersize'))
         skip = str2double(apu(ind(1) + 1:end));
-    elseif ~cellfun('isempty',strfind(M{kk},'ElementType'))
+    elseif ~cellfun('isempty',strfind(M{kk},'elementtype'))
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
-        type = apu(ind + 1:end);
+        type = upper(apu(ind + 1:end));
         type = element_types.(type);
-    elseif ~cellfun('isempty',strfind(M{kk},'ElementDataFile'))
+    elseif ~cellfun('isempty',strfind(M{kk},'elementdatafile'))
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
         raw_filename = apu(ind + 1:end);
+    elseif ~cellfun('isempty',strfind(M{kk},'transformmatrix'))
+        apu = apu(ind+1:end);
+        ind = strfind(apu,' ');
+        transformmatrix = str2num(apu(ind + 1:end));
+    elseif ~cellfun('isempty',strfind(M{kk},'elementbyteordermsb'))
+        apu = apu(ind+1:end);
+        if any(strfind(apu,'True'))
+            endian = 'b';
+        end
     end
 end
+
+if isempty(transformmatrix)
+    transformmatrix = reshape(eye(NDims), 1,NDims*NDims);
+end
+
+transformmatrix = reshape(transformmatrix, NDims, NDims);
 
 D = dir(filename);
 filename = [D.folder '/' raw_filename];
@@ -90,6 +107,9 @@ if skip == -1
     skip = D.bytes - n_bytes.(type) * prod(Dims);
 end
 
-output = fread(fid, prod(Dims), [type '=>' type], skip);
+output = fread(fid, prod(Dims), [type '=>' type], skip, endian);
+output = reshape(output, Dims');
+output = reshape(output, NDims, numel(output)/NDims);
+output = cast(double(transformmatrix) * double(output), type);
 output = reshape(output, Dims');
 fclose(fid);
