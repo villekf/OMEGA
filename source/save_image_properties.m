@@ -79,6 +79,13 @@ image_properties.raw_data = options.use_raw_data;
 image_properties.name = options.name;
 image_properties.machine_name = options.machine_name;
 image_properties.n_time_steps = options.partitions;
+image_properties.start_time = options.start;
+image_properties.machine_rings = options.rings;
+image_properties.detectors_per_ring = options.det_w_pseudo;
+image_properties.bore_diameter = options.diameter;
+image_properties.blocks_per_ring = options.blocks_per_ring;
+image_properties.axial_blocks = options.linear_multip;
+image_properties.crystals_per_block = options.cryst_per_block;
 image_properties.attenuation = options.attenuation_correction;
 image_properties.arc = options.arc_correction;
 image_properties.total_time = options.tot_time;
@@ -86,6 +93,9 @@ image_properties.subset_type = options.subset_type;
 image_properties.normalization = options.normalization_correction;
 image_properties.randoms = options.randoms_correction;
 image_properties.scatter = options.scatter_correction;
+if isfield(options,'DOI')
+    image_properties.DOI = options.DOI;
+end
 if options.corrections_during_reconstruction
     image_properties.correction_weighted_reconstruction = true;
 else
