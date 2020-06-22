@@ -1123,7 +1123,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl_context& af_cont
 
 	if (crystal_size_z == 0.f && projector_type == 2u)
 		options += " -DCRYST";
-	if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u)
+	else if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u)
 		options += " -DCRYSTZ";
 	if (projector_type == 3u)
 		options += " -DVOL";

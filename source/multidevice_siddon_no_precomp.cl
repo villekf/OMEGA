@@ -711,7 +711,11 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 				else if (ind_uus.z < 0)
 					ind_uus.z = ind.z - (k + 1);
 				uint indeksi = ind_uus.x + ind_uus.y * get_global_size(0) + ind_uus.z * Nyx;
+#ifdef ATOMIC
+				float p = convert_float(input[indeksi]) / TH;
+#else
 				float p = input[indeksi];
+#endif
 				p *= convolution_window[c];
 				result += p;
 				c++;

@@ -112,9 +112,10 @@
 #ifdef VOL
 #define CC 1e3f
 #endif
-#ifdef PSF_LIMIT
-#include "opencl_functions_psf.h"
-#elif defined CRYST
+//#ifdef PSF_LIMIT
+//#include "opencl_functions_psf.h"
+//#elif defined CRYST
+#if defined CRYST
 #include "opencl_functions_orth25D.h"
 #include "opencl_functions_orth3D.h"
 #elif defined CRYSTZ
@@ -243,12 +244,12 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 	int tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
 
-#ifdef PSF_LIMIT
-	float local_psf[PSF_LIMIT + 1];
-	local_psf[0] = 1.f;
-	for (uint kk = 1; kk <= PSF_LIMIT; kk++)
-		local_psf[kk] = native_exp(-.5f * native_powr((convert_float(kk) * X) / SIGMA, 2));
-#endif
+//#ifdef PSF_LIMIT
+//	float local_psf[PSF_LIMIT + 1];
+//	local_psf[0] = 1.f;
+//	for (uint kk = 1; kk <= PSF_LIMIT; kk++)
+//		local_psf[kk] = native_exp(-.5f * native_powr((convert_float(kk) * X) / SIGMA, 2));
+//#endif
 
 #ifndef FIND_LORS // Not the precomputation phase
 
@@ -991,9 +992,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #if !defined(DEC)
 		xyz = 0u;
-#if defined(PSF_LIMIT)
-		tc = tc_a;
-#endif
+//#if defined(PSF_LIMIT)
+//		tc = tc_a;
+//#endif
 #endif
 #endif
 #ifdef MBSREM
@@ -1339,7 +1340,11 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 				else if (ind_uus.x < 0)
 					ind_uus.x = ind.x - (i + 1);
 				uint indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
+#ifdef ATOMIC
 				float p = convert_float(input[indeksi]) / TH;
+#else
+				float p = input[indeksi];
+#endif
 				p *= convolution_window[c];
 				result += p;
 				c++;
