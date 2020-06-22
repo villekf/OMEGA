@@ -1,14 +1,17 @@
 function saveMetaImage(filename, img, varargin)
 %SAVEMETAIMAGE Saves the input matrix as a MetaImage format image
-%   This file saves the input 3D or 4D image into MetaImage format (32-bit
-%   float by default). This code is based on the code from MathWorks file
-%   exchange by Alberto Gomez:
+%   This file saves the input 3D or 4D image into MetaImage format. By
+%   default the header file is always saved in UNIX text format. You can
+%   (optionally) change this into Windows format, regardless of your
+%   current OS. This code is based on the code from MathWorks file exchange
+%   by Alberto Gomez: 
 %   https://se.mathworks.com/matlabcentral/fileexchange/41594-medical-image-processing-toolbox
 %
 % Examples:
 %   saveInterfile(filename, img)
 %   saveInterfile(filename, img, type)
 %   saveInterfile(filename, img, [], options)
+%   saveInterfile(filename, img, type, options, windows_format)
 %
 % Input:
 %   filename = Name of the image and header files (without file type).
@@ -18,22 +21,32 @@ function saveMetaImage(filename, img, varargin)
 %   img = The 3D or 4D image
 %
 %   type = Data type, e.g. 'single', 'int8', 'uint32', etc. Default is
-%   the same type as the input image.
+%   the same type as the input image. If omitted, will use the default
+%   value.
 %
 %   options/image_properties = Either the options struct created by the
 %   main files or the image_properties struct saved in the cell-matrix
 %   (optional). Necessary if any of the optional values are to be saved
 %   (voxel size).
+%
+%  windows_format = Text file format. Default is UNIX style (LF), but
+%  setting this value to true uses Windows file format (CR LF). Omitting
+%  will use UNIX style.
 
+if nargin > 2 && ~isempty(varargin{1})
+    type = varargin{1};
+else
+    type = class(img);
+end
 if nargin > 3 && ~isempty(varargin{2})
     prop = varargin{2};
 else
     prop = [];
 end
-if nargin > 2 && ~isempty(varargin{1})
-    type = varargin{1};
+if nargin > 4 && ~isempty(varargin{3})
+    windows_format = varargin{3};
 else
-    type = class(img);
+    windows_format = false;
 end
 img = cast(img,type);
 koko = size(img);
@@ -43,14 +56,14 @@ fclose(fid);
 hdrFile = [filename '.mhd'];
 
 if nargin > 3
-    writeMetaImageHeader(hdrFile, koko, type, prop);
+    writeMetaImageHeader(hdrFile, koko, type, windows_format, prop);
 else
-    writeMetaImageHeader(hdrFile, koko, type);
+    writeMetaImageHeader(hdrFile, koko, type, windows_format);
 end
 end
 
-function writeMetaImageHeader(hdrFile, koko, type, varargin)
-if nargin >= 4 && ~isempty(varargin{1})
+function writeMetaImageHeader(hdrFile, koko, type, windows_format, varargin)
+if nargin >= 5 && ~isempty(varargin{1})
     prop = varargin{1};
 else
     prop = [];
@@ -67,6 +80,11 @@ for kk = 1 : length(koko)
     s = [s, ' ' num2str(koko(kk))];
 end
 fprintf(fid,[s '\r\n']);
+fprintf(fid,'BinaryData = true\n');
+fprintf(fid,'BinaryDataByteOrderMSB = false\n');
+fprintf(fid,'CompressedData = false\n');
+fprintf(fid,'TransformMatrix = 1 0 0 0 1 0 0 0 1\n');
+fprintf(fid,'CenterOfRotation = 0 0 0\n');
 fprintf(fid,['ElementType = ' element_types.(type) '\r\n']);
 fprintf(fid,'HeaderSize = 0\r\n');
 if nargin >= 4
@@ -80,8 +98,26 @@ if nargin >= 4
 else
     fprintf(fid,['ElementSpacing = 1 1 1\r\n']);
 end
+fprintf(fid,'ElementNumberOfChannels = 1\n');
 fprintf(fid,'ElementByteOrderMSB = False\r\n');
 fprintf(fid,['ElementDataFile = ' hdrFile(1:end-3) 'raw\r\n']);
 fclose(fid);
+if (ispc && ~windows_format) || ((isunix || ismac) && windows_format)
+    fid = fopen(hdrFile,'r');
+    % This part of code is from: https://www.mathworks.com/matlabcentral/fileexchange/13651-unix2dos
+    fcontent = fread(fid,'uint8');
+    fclose(fid);
+    if ispc && ~windows_format
+        CR = char(13);
+        fcontent(fcontent==CR) = [];
+    elseif (isunix || ismac) && windows_format
+        CR = char(13);
+        LF = char(10);
+        fcontent = strrep(char(row(fcontent)),LF,[CR LF]);
+    end
+    fid=fopen(hdrFile,'w');
+    fwrite(fid,fcontent,'uint8');
+    fclose(fid);
+end
 
 end
