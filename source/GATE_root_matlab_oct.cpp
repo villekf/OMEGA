@@ -56,7 +56,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			source = false;
 		}
 		if (Coincidences->GetBranchStatus("sourcePosX2"))
-			Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX1);
+			Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX2);
 		else {
 			octave_stdout << "No X-source coordinates saved for second photon, unable to save source coordinates\n";
 			source = false;

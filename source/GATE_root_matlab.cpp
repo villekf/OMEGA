@@ -21,6 +21,7 @@
 #include "mexAdapter.hpp"
 #include <stdint.h>
 #include <cmath>
+#include <algorithm>
 #include <TROOT.h>
 #include "TChain.h"
 
@@ -97,6 +98,7 @@ public:
 		if (outsize2 == 1ULL && !large_case) {
 			if (obtain_trues) {
 				Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
 			else {
 				//plhs[5] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -106,6 +108,7 @@ public:
 			if (store_randoms) {
 				//plhs[6] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 				Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -114,6 +117,7 @@ public:
 			if (store_scatter) {
 				//plhs[7] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 				Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -123,7 +127,8 @@ public:
 				//plhs[9] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 				//plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 				Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
-				Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
+				Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
+				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[9] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -132,16 +137,20 @@ public:
 			//	Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
 			//}
 			LL1 = factory.createArray<uint16_t>({ detectors, detectors });
+			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
 		}
 		else {
 			//plhs[0] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 			//plhs[1] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 			LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
 			LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
+			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+			std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
 
 			if (obtain_trues) {
 			//	//plhs[5] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 				Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	matlab::data::TypedArray<uint16_t> Ltrues = factory.createArray<uint16_t>({ 1, 1 });
@@ -149,6 +158,7 @@ public:
 			if (store_randoms) {
 				//plhs[6] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 				Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -157,6 +167,7 @@ public:
 			if (store_scatter) {
 				//plhs[7] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 				Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -167,6 +178,8 @@ public:
 				//plhs[10] = mxCreateNumericMatrix(Ndelays, 1, mxUINT16_CLASS, mxREAL);
 				Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
 				Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
+				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+				std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
 			}
 			//else {
 			//	//plhs[9] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
@@ -178,22 +191,30 @@ public:
 		}
 		if (store_coordinates) {
 			x1 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(x1.begin(), x1.end(), 0.f);
 			x2 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(x2.begin(), x2.end(), 0.f);
 			y1 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(y1.begin(), y1.end(), 0.f);
 			y2 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(y2.begin(), y2.end(), 0.f);
 			z1 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(z1.begin(), z1.end(), 0.f);
 			z2 = factory.createArray<float>({ Nentries, 1 });
+			std::fill(z2.begin(), z2.end(), 0.f);
 		}
 		//plhs[2] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 		matlab::data::TypedArray<uint32_t> tpoints = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
-		matlab::data::TypedArray<uint32_t> tpoints_delay = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<float> S = factory.createArray<float>({ 1, 1 });
-		matlab::data::TypedArray<bool> trues_loc = factory.createArray<bool>({ 1, 1 });
-		matlab::data::TypedArray<bool> randoms_loc = factory.createArray<bool>({ 1, 1 });
-		matlab::data::TypedArray<bool> scatter_loc = factory.createArray<bool>({ 1, 1 });
+		std::fill(tpoints.begin(), tpoints.end(), 0U);
+		matlab::data::TypedArray<uint32_t> tpoints_delay = factory.createArray<uint32_t>({ 1, 1 }, { 0 });
+		matlab::data::TypedArray<float> S = factory.createArray<float>({ 1, 1 }, { 0.f });
+		matlab::data::TypedArray<uint8_t> trues_loc = factory.createArray<uint8_t>({ 1, 1 }, { static_cast<uint8_t>(0) });
+		matlab::data::TypedArray<uint8_t> randoms_loc = factory.createArray<uint8_t>({ 1, 1 }, { static_cast<uint8_t>(0) });
+		matlab::data::TypedArray<uint8_t> scatter_loc = factory.createArray<uint8_t>({ 1, 1 }, { static_cast<uint8_t>(0) });
 		if (randoms_correction) {
 			//plhs[12] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 			tpoints_delay = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
+			std::fill(tpoints_delay.begin(), tpoints_delay.end(), 0U);
 		}
 		//else {
 		//	//plhs[12] = mxCreateNumericMatrix(1, 1, mxUINT32_CLASS, mxREAL);
@@ -203,21 +224,23 @@ public:
 		if (source) {
 			//plhs[3] = mxCreateNumericMatrix(Nentries, 6, mxSINGLE_CLASS, mxREAL);
 			S = factory.createArray<float>({ Nentries, 6 });
+			std::fill(S.begin(), S.end(), 0.f);
 		}
 		//else {
 		//	//plhs[3] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 		//	matlab::data::TypedArray<float> S = factory.createArray<float>({ 1, 1 });
 		//}
 		//plhs[4] = mxCreateNumericMatrix(2, 1, mxINT32_CLASS, mxREAL);
-		matlab::data::TypedArray<int32_t> int_loc = factory.createArray<int32_t>({ 2, 1 });
+		matlab::data::TypedArray<int32_t> int_loc = factory.createArray<int32_t>({ 2, 1 }, { 0, 0 });
 
 		//plhs[11] = mxCreateNumericMatrix(2, 1, mxINT32_CLASS, mxREAL);
-		matlab::data::TypedArray<int32_t> int_loc_delay = factory.createArray<int32_t>({ 2, 1 });
+		matlab::data::TypedArray<int32_t> int_loc_delay = factory.createArray<int32_t>({ 2, 1 }, { 0, 0 });
 
 		if (obtain_trues && source && outsize2 == 1ULL) {
 			//plhs[8] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
 			//trues_loc = (bool*)mxGetData(plhs[8]);
-			trues_loc = factory.createArray<bool>({ Nentries, 1 });
+			trues_loc = factory.createArray<uint8_t>({ Nentries, 1 });
+			std::fill(trues_loc.begin(), trues_loc.end(), static_cast<uint8_t>(0));
 		}
 		//else {
 		//	//trues_loc = 0;
@@ -227,7 +250,8 @@ public:
 		if (store_randoms && source && outsize2 == 1ULL) {
 			//plhs[13] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
 			//randoms_loc = (bool*)mxGetData(plhs[13]);
-			randoms_loc = factory.createArray<bool>({ Nentries, 1 });
+			randoms_loc = factory.createArray<uint8_t>({ Nentries, 1 });
+			std::fill(randoms_loc.begin(), randoms_loc.end(), static_cast<uint8_t>(0));
 		}
 		//else {
 		//	//randoms_loc = 0;
@@ -237,7 +261,8 @@ public:
 		if (store_scatter && source && outsize2 == 1) {
 			//plhs[14] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
 			//scatter_loc = (bool*)mxGetData(plhs[14]);
-			scatter_loc = factory.createArray<bool>({ Nentries, 1 });
+			scatter_loc = factory.createArray<uint8_t>({ Nentries, 1 });
+			std::fill(scatter_loc.begin(), scatter_loc.end(), static_cast<uint8_t>(0));
 		}
 		//else {
 		//	//scatter_loc = 0;
@@ -308,8 +333,8 @@ public:
 		const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,
 		const uint32_t det_per_ring, matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
 		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, matlab::data::TypedArray<uint16_t>& Lscatter,
-		matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2,
-		matlab::data::TypedArray<int32_t>& int_loc_delay, matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc, 
+		matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<uint8_t>& trues_loc, const size_t Ndelays, bool randoms_correction, TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2,
+		matlab::data::TypedArray<int32_t>& int_loc_delay, matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<uint8_t>& randoms_loc, matlab::data::TypedArray<uint8_t>& scatter_loc,
 		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
 		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case)
 	{
@@ -352,7 +377,7 @@ public:
 				source = false;
 			}
 			if (Coincidences->GetBranchStatus("sourcePosX2"))
-				Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX1);
+				Coincidences->SetBranchAddress("sourcePosX2", &sourcePosX2);
 			else {
 				std::ostringstream stream;
 				stream << "No X-source coordinates saved for second photon, unable to save source coordinates" << std::endl;
@@ -667,7 +692,7 @@ public:
 							else
 								Ltrues[L1][L2]++;
 							if (source)
-								trues_loc[kk] = true;
+								trues_loc[kk] = 1u;
 						}
 						else if (event_scattered && store_scatter) {
 							if (large_case)
@@ -675,7 +700,7 @@ public:
 							else
 								Lscatter[L1][L2]++;
 							if (source)
-								scatter_loc[kk] = true;
+								scatter_loc[kk] = 1u;
 						}
 					}
 					else {
@@ -692,11 +717,17 @@ public:
 						else
 							Lrandoms[L1][L2]++;
 						if (source)
-							randoms_loc[kk] = true;
+							randoms_loc[kk] = 1u;
 					}
 					else
 						Lrandoms[kk] = 1u;
 				}
+				//if (!event_true && obtain_trues && source && outsize2 == 1ULL)
+				//	trues_loc[kk] = 0u;
+				//if (!event_scattered && store_scatter && source && outsize2 == 1ULL)
+				//	scatter_loc[kk] = 0u;
+				//if (event_true && store_randoms && source && outsize2 == 1ULL)
+				//	randoms_loc[kk] = 0u;
 			}
 			if (outsize2 == 1) {
 				if (large_case) {
