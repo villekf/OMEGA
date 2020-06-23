@@ -81,9 +81,13 @@
 - Added ability to visualize each algorithm in `visualize_pet.m` with their own color limits (set `color_from_algo = 0`)
 
 - Added depth of interaction (DOI) support
-  - This is the depth where the photon is assumed to have fully absorbed
-  - Default value is 0, but can be set manually with `options.DOI`
-  - Precomputed data with different DOI will not work
+  - This is the depth (mm) where the photon is assumed to have fully absorbed
+  - Default value is 0, but can be set manually with `options.DOI`, e.g. `options.DOI = 2` assumes absorption at 2 mm depth
+  - Precomputed data with different DOI will (most likely) not work
+  
+- Added functions to automatically create GATE compatible voxelized phantoms and/or sources
+  - Supports either Interfile or MetaImage output
+  - Input can be binary 32-bit floats, DICOM images or BMP/PNG/TIFF (grayscale) images
 
 ### Bug fixes and enhancements
 
@@ -151,6 +155,10 @@
 - Improved documentation
 
 - Improved dynamic visualization
+
+- Improved Interfile import and export
+
+- Added a function to convert COO sparse row indices to CSR sparse row indices
 
 ## 1.0
 
