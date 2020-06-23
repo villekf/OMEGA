@@ -13,7 +13,7 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   form the Attrange.dat file. The phantom is saved in Interfile or
 %   MetaImage format with automatically created header file that can be
 %   input into GATE. Negative values are removed by adding the smallest
-%   (largest negative) value to the phantom. The header files use UNIX file
+%   (largest negative) value to the phantom. The header files use Unix file
 %   format by default, but this can be (optionally) altered to Windows file
 %   format instead. Interfile format is the default output format.
 %
@@ -25,10 +25,9 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   you do not need to input pixdim or pixsize. Does not support dynamic
 %   frames. DICOM images should have either .dcm or .ima file types.
 %
-%   Alternative BMP, PNG or TIFF images can be used. The requirements are
-%   the same as in DICOM case, but image processing toolbox is NOT
-%   required and pixsize is required. Does not support dynamic
-%   frames.
+%   Alternatively BMP, PNG or TIFF images can be used. The requirements and
+%   usage are the same as in DICOM case, but image processing toolbox is
+%   NOT required and pixsize is required. Does not support dynamic frames.
 %
 % Examples:
 %   A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize)
@@ -43,17 +42,21 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   0.01 0.01], [], [], [], [], 'metaimage')
 %   Voxelized_phantom_handle('image_001.dcm', 'phantom_dicom')
 %
-% Input:
+% Inputs:
 %   input_name = Full name of the input data file, e.g. 'phantom_1.bin'.
 %   Include full path if the file is not in MATLAB/Octave path. Input file
-%   is always assumed to be in 32-bit float format.
+%   is always assumed to be in 32-bit float format (images can be in any
+%   format supported by the image format itself).
 %
 %   output_name = Name of the output file. The image and header will have
 %   the same name, but different file ending (.i33 for image and .h33 for
-%   header file). Use the header file in GATE.
+%   header file when using Interfile and .mhd and .raw when using
+%   MetaImage). Use the header file in GATE. 
 %
 %   pixdim = The image width and height (pixels), e.g. [256 256] if you
-%   have 256x256 images.
+%   have 256x256 images. In case of DICOM images, it is taken from the info
+%   header and in case of bitmap images, it is taken from the image size.
+%   All input images need to be of the same size.
 %
 %   pixsize = The size (in cm) of each voxel in each ([x y z]) dimension.
 %
@@ -78,9 +81,12 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   (default) or MetaImage is used. For Interfile use 'interfile' and for
 %   MetaImage use 'metaimage'.
 %
-%   windows_format = Text file format. Default is UNIX style (LF), but
+%   windows_format = Text file format. Default is Unix style (LF), but
 %   setting this value to true uses Windows file format (CR LF). Omitting
-%   will use UNIX style.
+%   will use Unix style.
+%
+% Output:
+%   A = The same image (matrix) that was stored in the output file.
 %
 %
 % See also saveInterfile, saveMetaImage, Voxelized_source_handle
@@ -206,6 +212,7 @@ if strcmpi(f_type, 'dcm') || strcmpi(f_type, 'ima')
         X = dicomread(F);
         A(:,:,k) = single(X);
     end
+    tt = 1;
 elseif strcmpi(f_type, 'bmp') || strcmp(f_type, 'png') || strcmp(f_type, 'tiff') || strcmp(f_type, 'tif')
     f_path = fileparts(which(input_name));
     if isempty(f_path)
@@ -223,6 +230,7 @@ elseif strcmpi(f_type, 'bmp') || strcmp(f_type, 'png') || strcmp(f_type, 'tiff')
         X = imread(F);
         A(:,:,k) = single(X);
     end
+    tt = 1;
 else
     fid = fopen(input_name);
     A = fread(fid,inf,'single=>single',0,'l');
@@ -339,18 +347,15 @@ for ll=2:tt
     else
         A = uint16(10000*A(row1:row2,col1:col2,slice1:slice2));
     end
-    if nargin >= 8
-        A = [zeros(size(A,1),gap,size(A,3)) A];
-        A = A+uint16(peti);
-    end
+%     if nargin >= 8
+%         A = [zeros(size(A,1),gap,size(A,3)) A];
+%         A = A+uint16(peti);
+%     end
     if strcmpi(output_type, 'metaimage')
         saveMetaImage([output_name '_frame_' num2str(ll)], A, [], prop, windows_format)
     else
         saveInterfile([output_name '_frame_' num2str(ll)], A, [], [], prop, windows_format)
     end
-    %     fid = fopen(output_name,'w+');
-    %     fwrite(fid,A,'uint16');
-    %     fclose(fid);
 end
 end
 

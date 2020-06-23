@@ -4,15 +4,19 @@ function A = Voxelized_source_handle(input_name, output_name, pixdim, pixsize, v
 % format.
 %
 %   A voxelized source can be e.g. XCAT or MOBY source. This function
-%   automatically crops the phantoms such that there are no empty
+%   automatically crops the source images such that there are no empty
 %   rows/columns/slices. Supports both static and dynamic data, though with
-%   dynamic data there is slight air gaps in the phantom to make sure there
-%   is no cut-off due to motion. The source is saved in Interfile format
-%   with automatically created header file that can be input into GATE.
-%   This is practically identical with the Voxelized_phantom_handle, but no
-%   scaling will be done and lesions will completely replace the voxels
-%   they occupy, i.e. the lesion values higher than zero will replace the
-%   corresponding voxel values in the original activity image.
+%   dynamic data there is slight air gaps in the image to make sure there
+%   is no cut-off due to motion. The source is saved in Interfile or
+%   MetaImage format with automatically created header file that can be
+%   input into GATE. This is practically identical with the
+%   Voxelized_phantom_handle, but no scaling will be done and lesions will
+%   completely replace the voxels they occupy, i.e. the lesion values 
+%   higher than zero will replace the corresponding voxel values in the
+%   original activity image. 
+%
+%   Like the phantom version, this function also supports both DICOM and
+%   BMP/PNG/TIFF formats with the same requirements and restrictions.
 %
 % Examples:
 %   Voxelized_source_handle(input_name, output_name, pixdim, pixsize)
@@ -23,43 +27,49 @@ function A = Voxelized_source_handle(input_name, output_name, pixdim, pixsize, v
 %   Voxelized_source_handle('act_1.bin', 'act', [256 256], [0.01
 %   0.01 0.01], [], [], [], 'act_lesion_1.bin')
 %
-% Input:
+% Inputs:
 %   input_name = Full name of the input data file, e.g. 'act_1.bin'.
 %   Include full path if the file is not in MATLAB/Octave path. Input file
-%   is always assumed to be in 32-bit float format.
+%   is always assumed to be in 32-bit float format (images can be in any
+%   format supported by the image format itself).
 %
 %   output_name = Name of the output file. The image and header will have
 %   the same name, but different file ending (.i33 for image and .h33 for
-%   header file). Use the header file in GATE.
+%   header file when using Interfile and .mhd and .raw when using
+%   MetaImage). Use the header file in GATE. 
 %
 %   pixdim = The image width and height (pixels), e.g. [256 256].
 %
 %   pixsize = The size (in cm) of each voxel in each ([x y z]) dimension. 
 %
-%   first_slice = (optional) Crop the phantom starting from this slice. No
+%   first_slice = (optional) Crop the source starting from this slice. No
 %   further cropping will be performed, even if the specified slice is
-%   empty.
+%   empty. Can be omitted.
 %
-%   end_slice = (optional) Crop the phantom ending to this slice. No
+%   end_slice = (optional) Crop the source ending to this slice. No
 %   further cropping will be performed, even if the specified slice is
-%   empty.
+%   empty. Can be omitted.
 %
 %   time_frames = (optional) The number of time frames (files) in a dynamic
 %   case. Each different time frame/step is assumed to be in a different
 %   file with _1, _2, _3, etc. suffix.
 %
 %   lesion_input_file = (optional) Full name of the input file containing
-%   the lesion data that will be added to the input_name file. Works like
-%   input_name and has to have exactly the same properties as the main
-%   input file (same sizes, same number of time frames, same file type).
+%   the lesion data that will replace the corresponding non-zero voxels in
+%   input_name file. Works like input_name and has to have exactly the same
+%   properties as the main input file (same sizes, same number of time
+%   frames, same file type). 
 %
 %   output_type = (optional) A text string that specifies whether Interfile
 %   (default) or MetaImage is used. For Interfile use 'interfile' and for
 %   MetaImage use 'metaimage'.
 %
-%   windows_format = Text file format. Default is UNIX style (LF), but
+%   windows_format = Text file format. Default is Unix style (LF), but
 %   setting this value to true uses Windows file format (CR LF). Omitting
-%   will use UNIX style.
+%   will use Unix style.
+%
+% Output:
+%   A = The same image (matrix) that was stored in the output file.
 %   
 %
 % See also saveInterfile, saveMetaImage, Voxelized_phantom_handle
@@ -322,18 +332,15 @@ for ll=2:tt
     else
         A = uint16(A(row1:row2,col1:col2,slice1:slice2));
     end
-    if nargin >= 8
-        A = [zeros(size(A,1),gap,size(A,3)) A];
-        A = A+uint16(peti);
-    end
+%     if nargin >= 8
+%         A = [zeros(size(A,1),gap,size(A,3)) A];
+%         A = A+uint16(peti);
+%     end
     if strcmpi(output_type, 'metaimage')
         saveMetaImage([output_name '_frame_' num2str(ll)], A, [], prop, windows_format)
     else
         saveInterfile([output_name '_frame_' num2str(ll)], A, [], [], prop, windows_format)
     end
-    %     fid = fopen(output_name,'w+');
-    %     fwrite(fid,A,'uint16');
-    %     fclose(fid);
 end
 
 x1 = -(pixsize(1) * 10)*size(A,1) / 2;
