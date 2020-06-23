@@ -163,7 +163,7 @@ else
     if exist(cuda_path,'dir') == 0
         breikki = false;
         for kk = 20 : -1 : 7
-            for ll = 5 : -1 : 1
+            for ll = 5 : -1 : 0
                 cuda_path = ['/usr/local/cuda-' num2str(kk) '.' num2str(ll)];
                 if exist(cuda_path,'dir') == 7
                     breikki = true;
