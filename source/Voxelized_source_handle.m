@@ -218,6 +218,7 @@ else
     fclose(fid);
 end
 
+% Replace the original activity values with the lesion values
 if nargin >= 8
     ind = B > 0;
     A(ind) = B(ind);
@@ -320,6 +321,7 @@ for ll=2:tt
     fid = fopen([input_name '_' num2str(ll) '.' f_type]);
     A = fread(fid,inf,'single=>single',0,'l');
     fclose(fid);
+    % Replace the original activity values with the lesion values
     if nargin >= 8
         ind = B > 0;
         A(ind) = B(ind);

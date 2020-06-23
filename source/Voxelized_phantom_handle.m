@@ -236,6 +236,7 @@ else
     A = fread(fid,inf,'single=>single',0,'l');
     fclose(fid);
 end
+% Add the lesion values to the original values
 if nargin >= 8 && ~isempty(varargin{4})
     A = A + B;
 end
@@ -336,6 +337,7 @@ for ll=2:tt
     fid = fopen([input_name '_' num2str(ll) '.' f_type]);
     A = fread(fid,inf,'single=>single',0,'l');
     fclose(fid);
+    % Add the lesion values to the original values
     if nargin >= 8
         A = A + B;
     end
