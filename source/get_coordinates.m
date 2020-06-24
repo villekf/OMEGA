@@ -77,19 +77,19 @@ else
             [x, y, options] = increaseSampling(options, x, y, true);
         end
         
-        z_length = double(rings + 1) * options.cr_pz;
-        z = linspace(0, z_length, rings + 2)';
+        z_length = double(rings + 1 + sum(options.pseudot)) * options.cr_pz;
+        z = linspace(0, z_length, rings + 2 + sum(options.pseudot))';
         if sum(pseudot) > 0
             z(pseudot) = [];
         end
     end
-    
     if min(z(:)) == 0
-        z = z + (options.axial_fov - max(max(z)))/2;
+        z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
     end
     
     if options.use_raw_data
-        z = z + options.cr_pz/2;
+        
+%         z = z + options.cr_pz/2;
         z(end) = [];
     end
 end
