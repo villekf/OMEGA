@@ -172,7 +172,7 @@ end
 %% Scale stacked data (when using sinograms)
 
 [GATE_vars, I] = sort([options.use_ASCII, options.use_root, options.use_LMF],'descend');
-GATE_char = ['ASCII';'root';'LMF'];
+GATE_char = ["ASCII";"root";"LMF"];
 GATE_char = GATE_char(I);
 
 if options.use_raw_data
@@ -967,13 +967,13 @@ if (options.normalization_scatter_correction || ~isempty(normalization_attenuati
             
         else
             
-            warning('Scatter correction is not supported for non-cylinder source')
+            warning("Scatter correction is not supported for non-cylinder source")
             
         end
         
     else
         
-        disp('Normalization coefficients are calculated without scatter correction')
+        disp("Normalization coefficients are calculated without scatter correction")
         
     end
     
@@ -3514,8 +3514,6 @@ if options.verbose
     disp('Saving normalization data')
 end
 
-norm_components = options.normalization_options;
-
 if options.use_raw_data
     norm_file = [folder options.machine_name '_normalization_listmode.mat'];
     normalization = ((normalization(tril(true(size(normalization)), 0))));
@@ -3523,9 +3521,9 @@ else
     norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(Nang) '_span' num2str(options.span) '.mat'];
 end
 if exist('OCTAVE_VERSION','builtin') == 0
-    save(norm_file, 'normalization','norm_components','-v7.3')
+    save(norm_file, 'normalization','-v7.3')
 else
-    save(norm_file, 'normalization','norm_components')
+    save(norm_file, 'normalization')
 end
 
 
