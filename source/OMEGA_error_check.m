@@ -220,7 +220,8 @@ if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file not found. Run install_mex first.')
 end
 if options.use_root && exist('GATE_root_matlab','file') ~= 3 && options.use_machine == 0
-    warning('ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file.')
+    warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
+    'simply loading a mat-file containing measurement data from ROOT files.'])
 end
 if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0
     error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
@@ -642,20 +643,22 @@ if options.verbose
         if options.randoms_correction
             dispi = 'Randoms correction ON';
             if options.variance_reduction
-                dispi = [dispi, ' with variance reduction.'];
+                dispi = [dispi, ' with variance reduction'];
                 if options.randoms_smoothing
-                    dispi = [dispi, ' and smoothing.'];
+                    dispi = [dispi, ' and smoothing'];
                 end
             elseif options.randoms_smoothing
-                dispi = [dispi, ' with smoothing.'];
+                dispi = [dispi, ' with smoothing'];
             end
+            dispi = [dispi, '.'];
             disp(dispi)
         end
         if options.scatter_correction
             dispi = 'Scatter correction ON';
             if options.scatter_smoothing
-                dispi = [dispi, ' with smoothing.'];
+                dispi = [dispi, ' with smoothing'];
             end
+            dispi = [dispi, '.'];
             disp(dispi)
         end
         if options.fill_sinogram_gaps
@@ -673,31 +676,63 @@ if options.verbose
     if options.compute_normalization && sum(options.normalization_options) == 0
         error('Normalization computation selected, but no normalization components selected.')
     end
+    if options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
+        disp('Corrections applied during reconstruction (ordinary Poisson).')
+    elseif ~options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
+        disp('Corrections applied to the measurement data.')
+    end
     if options.arc_correction && ~options.use_raw_data
         disp('Arc correction ON.')
     end
     if options.use_raw_data
-        dispi = 'Using raw list-mode data';
+        if options.partitions == 1
+            dispi = 'Using STATIC raw list-mode data';
+        else
+            dispi = 'Using DYNAMIC raw list-mode data';
+        end
         if options.reconstruct_trues
-            dispi = strcat(dispi, ' (trues).');
+            dispi = strcat(dispi, ' (trues)');
+        elseif options.reconstruct_scatter
+            dispi = strcat(dispi, ' (scatter)');
+        else
+            dispi = strcat(dispi, ' (prompts)');
+        end
+        if options.sampling_raw > 1
+            dispi = strcat(dispi, [' with ' num2str(options.sampling_raw) 'x sampling']);
+        end
+        if options.partitions > 1
+            if options.sampling_raw > 1
+                dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
+            else
+                dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+            end
+        end
+        dispi = strcat(dispi, '.');
+        disp(dispi)
+    else
+        if options.partitions == 1
+            dispi = 'Using STATIC sinogram data';
+        else
+            dispi = 'Using DYNAMIC sinogram data';
+        end
+        if options.reconstruct_trues
+            dispi = strcat(dispi, ' (trues)');
         elseif options.reconstruct_scatter
             dispi = strcat(dispi, ' (scatter).');
         else
-            dispi = strcat(dispi, ' (prompts).');
+            dispi = strcat(dispi, ' (prompts)');
         end
-        disp(dispi)
-    else
-        dispi = 'Using sinogram data';
         if options.sampling > 1
             dispi = strcat(dispi, [' with ' num2str(options.sampling) 'x sampling']);
         end
-        if options.reconstruct_trues
-            dispi = strcat(dispi, ' (trues).');
-        elseif options.reconstruct_scatter
-            dispi = strcat(dispi, ' (scatter).');
-        else
-            dispi = strcat(dispi, ' (prompts).');
+        if options.partitions > 1
+            if options.sampling > 1
+                dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
+            else
+                dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+            end
         end
+        dispi = strcat(dispi, '.');
         disp(dispi)
     end
     disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
