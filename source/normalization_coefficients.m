@@ -15,8 +15,8 @@ function [varargout] = normalization_coefficients(options)
 %options.normalization_options(1): apply axial geometric correction (yes = 1 | no = 0)
 
 %options.normalization_options(2): apply detector effiency correction. (Fansum = 1 | SPC = 2 | no = 0)
-%Fan_sum uses 3-D fansum method for both data types or SPC "single-plane
-%Casey" method for list mode-data (SPC computationally more expensive). SPC is
+%Fan_sum uses 3-D fansum method for both data types or SPC 'single-plane
+%Casey' method for list mode-data (SPC computationally more expensive). SPC is
 %supposed to be used with FOV covering source
 %Fansum version includes block profile correction. Using
 %options.normalization_options(2)=2 with fansum uses block profile correction
@@ -172,7 +172,7 @@ end
 %% Scale stacked data (when using sinograms)
 
 [GATE_vars, I] = sort([options.use_ASCII, options.use_root, options.use_LMF],'descend');
-GATE_char = ["ASCII";"root";"LMF"];
+GATE_char = ['ASCII';'root';'LMF'];
 GATE_char = GATE_char(I);
 
 if options.use_raw_data
@@ -967,13 +967,13 @@ if (options.normalization_scatter_correction || ~isempty(normalization_attenuati
             
         else
             
-            warning("Scatter correction is not supported for non-cylinder source")
+            warning('Scatter correction is not supported for non-cylinder source')
             
         end
         
     else
         
-        disp("Normalization coefficients are calculated without scatter correction")
+        disp('Normalization coefficients are calculated without scatter correction')
         
     end
     
@@ -2756,7 +2756,7 @@ if options.normalization_options(2)~=0
                     
                     if u~=1
                         
-                        %Upper "rod" counts
+                        %Upper 'rod' counts
                         
                         for j=start_ind_right_row(1):max(end_ind_right_row)
                             
@@ -3514,6 +3514,8 @@ if options.verbose
     disp('Saving normalization data')
 end
 
+norm_components = options.normalization_options;
+
 if options.use_raw_data
     norm_file = [folder options.machine_name '_normalization_listmode.mat'];
     normalization = ((normalization(tril(true(size(normalization)), 0))));
@@ -3521,9 +3523,9 @@ else
     norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(Nang) '_span' num2str(options.span) '.mat'];
 end
 if exist('OCTAVE_VERSION','builtin') == 0
-    save(norm_file, 'normalization','-v7.3')
+    save(norm_file, 'normalization','norm_components','-v7.3')
 else
-    save(norm_file, 'normalization')
+    save(norm_file, 'normalization','norm_components')
 end
 
 
