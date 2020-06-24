@@ -15,8 +15,8 @@ function [varargout] = normalization_coefficients(options)
 %options.normalization_options(1): apply axial geometric correction (yes = 1 | no = 0)
 
 %options.normalization_options(2): apply detector effiency correction. (Fansum = 1 | SPC = 2 | no = 0)
-%Fan_sum uses 3-D fansum method for both data types or SPC 'single-plane
-%Casey' method for list mode-data (SPC computationally more expensive). SPC is
+%Fan_sum uses 3-D fansum method for both data types or SPC "single-plane
+%Casey" method for list mode-data (SPC computationally more expensive). SPC is
 %supposed to be used with FOV covering source
 %Fansum version includes block profile correction. Using
 %options.normalization_options(2)=2 with fansum uses block profile correction
@@ -2756,7 +2756,7 @@ if options.normalization_options(2)~=0
                     
                     if u~=1
                         
-                        %Upper 'rod' counts
+                        %Upper "rod" counts
                         
                         for j=start_ind_right_row(1):max(end_ind_right_row)
                             
