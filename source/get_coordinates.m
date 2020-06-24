@@ -84,7 +84,7 @@ else
         end
     end
     if min(z(:)) == 0
-        z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
+        z = z + (options.axial_fov - (options.rings + sum(options.pseudot)) * options.cr_pz)/2 + options.cr_pz/2;
     end
     
     if options.use_raw_data
