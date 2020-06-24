@@ -562,6 +562,29 @@ else
                 num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
                 num2str(options.span) '.mat'], 'SinTrues');
         end
+        if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
+            if options.verbose
+                disp('Performing sinogram gap filling on trues data')
+            end
+            [~, ~, xp, yp] = detector_coordinates(options);
+            for llo = 1 : options.partitions
+                if llo == 1
+                    gaps = [];
+                end
+                if options.partitions > 1
+                    Sin = options.SinM{llo};
+                else
+                    Sin = options.SinM;
+                end
+                [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
+                if options.partitions > 1
+                    options.SinM{llo} = Sin;
+                else
+                    options.SinM = Sin;
+                end
+            end
+            clear Sin
+        end
     elseif options.reconstruct_scatter && options.use_machine == 0
         if options.partitions == 1 && isfield(options, 'SinScatter') == 0
             options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
@@ -570,6 +593,29 @@ else
             options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
                 num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
                 num2str(options.span) '.mat'], 'SinScatter');
+        end
+        if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
+            if options.verbose
+                disp('Performing sinogram gap filling on scatter data')
+            end
+            [~, ~, xp, yp] = detector_coordinates(options);
+            for llo = 1 : options.partitions
+                if llo == 1
+                    gaps = [];
+                end
+                if options.partitions > 1
+                    Sin = options.SinM{llo};
+                else
+                    Sin = options.SinM;
+                end
+                [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
+                if options.partitions > 1
+                    options.SinM{llo} = Sin;
+                else
+                    options.SinM = Sin;
+                end
+            end
+            clear Sin
         end
     end
     if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
@@ -3003,7 +3049,11 @@ else
                 end
                 options.n_rays_transaxial = uint16(options.n_rays_transaxial);
                 options.n_rays_axial = uint16(options.n_rays_axial);
-                dc_z = z_det(2,1) - z_det(1,1);
+                if options.rings > 1
+                    dc_z = z_det(2,1) - z_det(1,1);
+                else
+                    dc_z = options.cr_pz;
+                end
                 if options.cosem || options.ecosem || options.acosem || options.RBI_OSL || options.rbi || any(options.COSEM_OSL)
                     if llo == 1
                         f_Summ = zeros(Nx*Ny*Nz,subsets);
