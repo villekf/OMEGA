@@ -201,10 +201,10 @@ if options.flip_image
 end
 % Rotate the image if desired
 if options.offangle ~= 0
-    x = circshift(x, options.offangle);
-    xp = circshift(xp, options.offangle);
-    y = circshift(y, options.offangle);
-    yp = circshift(yp, options.offangle);
+    x = circshift(x, round(options.offangle));
+    xp = circshift(xp, round(options.offangle));
+    y = circshift(y, round(options.offangle));
+    yp = circshift(yp, round(options.offangle));
 end
 
 if nargout >= 1
