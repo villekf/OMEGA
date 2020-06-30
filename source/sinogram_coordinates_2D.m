@@ -160,64 +160,19 @@ if mashing > 1
     
     % Make the coordinate space continuous
     testi = abs(diff(xx1));
-    [I,J] = find(testi > options.cr_p*2);
-    testi2 = abs(diff(J));
-    ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-    if xx1(1,J(ind1)) <= xx1(1,J(ind1) + 1)
-        indices2 = J(ind1) + 1 : - 1 : 1;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
-        end
-    elseif xx1(1,J(ind1)) <= xx1(2,J(ind1))
-        indices2 = J(ind1) : - 1 : 1;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
-        end
-    else
-        indices2 = J(ind1) : - 1 : 1;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
-        end
-    end
-    indices1 = false(size(xx1));
-    for kk = 1 : I(1)
-        indices1(kk,1:indices2(kk)) = true(indices2(kk),1);
+    ind1 = find(testi(:,1) == max(testi(:,1)));
+    indices2 = false(options.Ndist, Nang);
+    for ll = 0 : options.Ndist/4 - 1
+        indices2(1:ind1 - ll*2,ll + 1) = true;
     end
     testi = abs(diff(fliplr(xx1)));
-    [I,J] = find(testi > options.cr_p*2);
-    testi2 = abs(diff(J));
-    ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-    if xx1(1,Nang - J(ind1) + 1) >= xx1(2,Nang - J(ind1) + 1)
-        indices2 = Nang - J(ind1) + 1 : Nang;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing)'];
-        end
-    elseif xx1(1,Nang - J(ind1) + 1) >= xx1(1,Nang - J(ind1))
-        indices2 = Nang - J(ind1) + 1 : Nang;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
-        end
-    else
-        indices2 = Nang - J(ind1) + 1 : Nang;
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            indices2 = [indices2(1);repeat_elem(indices2(2:end),mashing,1)'];
-        else
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing)'];
-        end
+    ind1 = find(testi(:,1) == max(testi(:,1)));
+    indices1 = false(options.Ndist, Nang);
+    for ll = 0 : options.Ndist/4 - 1
+        indices1(1:ind1 - ll*2,ll + 1) = true;
     end
-    for kk = 1 : I(1)
-        indices1(kk,indices2(kk):end) = true(length(indices1(kk,indices2(kk):end)),1);
-    end
+    indices1 = fliplr(indices1);
+    indices1 = logical(indices1 + indices2);
     temp = xx1(indices1);
     x(indices1) = xx2(indices1);
     x2(indices1) = temp;
