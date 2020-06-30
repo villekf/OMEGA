@@ -525,7 +525,25 @@ else
                 error('Normalized scatter correction selected, but no normalization has been performed')
             end
             if ~appliedCorrections.gapFilling && options.fill_sinogram_gaps
-                error('Gap filling selected, but no gap filling applied to the sinogram')
+                appliedCorrections.gapFilling = true;
+                [~, ~, xp, yp] = detector_coordinates(options);
+                for llo = 1 : options.partitions
+                    if llo == 1
+                        gaps = [];
+                    end
+                    if options.partitions > 1
+                        Sin = options.SinM{llo};
+                    else
+                        Sin = options.SinM;
+                    end
+                    [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
+                    if options.partitions > 1
+                        options.SinM{llo} = Sin;
+                    else
+                        options.SinM = Sin;
+                    end
+                end
+                clear Sin
             end
         elseif options.corrections_during_reconstruction && ~isempty(appliedCorrections)
             if (appliedCorrections.normalization || ~isempty(appliedCorrections.randoms) || ~isempty(appliedCorrections.scatter) || ~appliedCorrections.gapFilling) ...
@@ -4622,7 +4640,7 @@ else
             LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), single(options.cpu_to_gpu_factor), uint32(1), header_directory, ...
             options.vaimennus, options.normalization, pituus, uint32(attenuation_correction), uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, ...
             crystal_size_z, x_center, y_center, z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            int32(dec), n_rays, n_rays3D, dc_z, options.SinM, logical(options.use_64bit_atomics), NSinos, uint16(NSinos), uint32(Niter), uint32(subsets), uint8(rekot), ...
+            int32(dec), n_rays, n_rays3D, dc_z, options.SinM, logical(options.use_64bit_atomics), NSinos, NSinos, uint32(Niter), uint32(subsets), uint8(rekot), ...
             single(epps), uint32(partitions), options.osem, options.use_psf, options.global_correction_factor, bmin, bmax, Vmax, V, gaussK, options);
         toc
         
