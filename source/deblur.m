@@ -42,6 +42,9 @@ else
     jelppi = vec;
     apu = vec;
 end
+if size(gaussK,2) == 1
+    gaussK = reshape(gaussK, options.g_dim_x*2 + 1, options.g_dim_y*2 + 1, options.g_dim_z*2 + 1);
+end
 apu = padding(apu, [options.g_dim_x options.g_dim_y options.g_dim_z]);
 for kk = 1 : options.deblur_iterations
     apu2 = convn(padding(jelppi, [options.g_dim_x options.g_dim_y options.g_dim_z]), gaussK, 'valid') + options.epps;
