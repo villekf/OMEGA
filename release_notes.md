@@ -160,6 +160,19 @@
 
 - Added a function to convert COO sparse row indices to CSR sparse row indices
 
+- Converted OpenCL code to the C++ API
+  - Does not require any actions from the user
+  - Implementation 3 should now clear all memory after computations
+  - Implementation 2 still leaves residual memory to the device that is cleared when MATLAB/Octave is closed
+  
+- Fixed corrections in the forward and backward projection case
+
+- Gap filling can now be performed before the image reconstruction step without needing to separately redo the corrections
+
+- Normalization correction should work better with mashed data
+
+- Compilation should work more reliably in Unix platforms with less warnings
+
 ## 1.0
 
 ### New features
