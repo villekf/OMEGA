@@ -115,14 +115,24 @@ if ~options.use_raw_data
     rings = options.rings;
 else
     
-    if sum(options.pseudot) > 0
-        rings = options.rings - sum(options.pseudot);
-    else
-        rings = options.rings;
+    temp = options.pseudot;
+    if ~isempty(temp) && sum(temp) > 0
+        for kk = uint32(1) : temp
+            pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
+        end
+    elseif temp == 0
+        pseudot = [];
     end
-    %z
-    z_length = rings * options.cr_pz;
-    z = linspace(0, z_length, rings + 1);
+    
+    z_length = double(options.rings + 1 + sum(options.pseudot)) * options.cr_pz;
+    z = linspace(0, z_length, options.rings + 2 + sum(options.pseudot))';
+    if sum(pseudot) > 0
+        z(pseudot) = [];
+    end
+    if min(z(:)) == 0
+        z = z + (options.axial_fov - (options.rings + sum(options.pseudot)) * options.cr_pz)/2 + options.cr_pz/2;
+    end
+    
     
     z = single(z./10);
     
@@ -172,7 +182,7 @@ end
 %% Scale stacked data (when using sinograms)
 
 [GATE_vars, I] = sort([options.use_ASCII, options.use_root, options.use_LMF],'descend');
-GATE_char = ["ASCII";"root";"LMF"];
+GATE_char = {'ASCII';'root';'LMF'};
 GATE_char = GATE_char(I);
 
 if options.use_raw_data
@@ -205,37 +215,85 @@ else
         if options.partitions == 1 && isfield(options, 'SinM') == 0
             if options.use_machine < 2
                 if options.use_machine == 0
-                    load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                        num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'raw_SinM')
+                    try
+                        load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
+                            num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'raw_SinM')
+                    catch ME
+                        if mashing > 1
+                            error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                        else
+                            error(ME)
+                        end
+                    end
                 elseif  options.use_machine == 1
-                    load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                        num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'raw_SinM')
+                    try
+                        load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
+                            num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'raw_SinM')
+                    catch ME
+                        if mashing > 1
+                            error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                        else
+                            error(ME)
+                        end
+                    end
                 end
                 options.SinM = raw_SinM;
                 clear raw_SinM
             else
-                load([options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'],'SinM')
+                try
+                    load([options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
+                        num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'],'SinM')
+                catch ME
+                    if mashing > 1
+                        error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                    else
+                        error(ME)
+                    end
+                end
                 options.SinM = SinM;
                 clear SinM
             end
         elseif isfield(options, 'SinM') == 0
             if options.use_machine < 2
                 if options.use_machine == 0
-                    load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ '
-                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                        num2str(options.span) '.mat'], 'raw_SinM')
+                    try
+                        load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ '
+                            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
+                            num2str(options.span) '.mat'], 'raw_SinM')
+                    catch ME
+                        if mashing > 1
+                            error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                        else
+                            error(ME)
+                        end
+                    end
                 elseif  options.use_machine == 1
-                    load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                        num2str(options.span) '_listmode.mat'], 'raw_SinM')
+                    try
+                        load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
+                            num2str(options.span) '_listmode.mat'], 'raw_SinM')
+                    catch ME
+                        if mashing > 1
+                            error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                        else
+                            error(ME)
+                        end
+                    end
                 end
                 options.SinM = raw_SinM;
                 clear raw_SinM
             else
-                load([options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_machine_sinogram.mat'], 'SinM')
+                try
+                    load([options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
+                        num2str(options.span) '_machine_sinogram.mat'], 'SinM')
+                catch ME
+                    if mashing > 1
+                        error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
+                    else
+                        error(ME)
+                    end
+                end
                 options.SinM = SinM;
                 clear SinM
             end
@@ -967,13 +1025,13 @@ if (options.normalization_scatter_correction || ~isempty(normalization_attenuati
             
         else
             
-            warning("Scatter correction is not supported for non-cylinder source")
+            warning('Scatter correction is not supported for non-cylinder source')
             
         end
         
     else
         
-        disp("Normalization coefficients are calculated without scatter correction")
+        disp('Normalization coefficients are calculated without scatter correction')
         
     end
     
@@ -3514,6 +3572,8 @@ if options.verbose
     disp('Saving normalization data')
 end
 
+norm_components = options.normalization_options;
+
 if options.use_raw_data
     norm_file = [folder options.machine_name '_normalization_listmode.mat'];
     normalization = ((normalization(tril(true(size(normalization)), 0))));
@@ -3521,9 +3581,9 @@ else
     norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(Nang) '_span' num2str(options.span) '.mat'];
 end
 if exist('OCTAVE_VERSION','builtin') == 0
-    save(norm_file, 'normalization','-v7.3')
+    save(norm_file, 'normalization','norm_components','-v7.3')
 else
-    save(norm_file, 'normalization')
+    save(norm_file, 'normalization','norm_components')
 end
 
 
