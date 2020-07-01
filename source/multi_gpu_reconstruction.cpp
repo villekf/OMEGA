@@ -26,7 +26,7 @@ using namespace std;
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, 
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, const float dy, 
 	const float dz, const float bx, const float by, const float bz,	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, 
-	const uint32_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint16_t TotSinos, 
+	const uint32_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, 
 	mxArray* cell, const bool verbose, const uint32_t randoms_correction,  const uint32_t attenuation_correction, 
 	const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm, const uint32_t subsets, 
 	const float epps, const uint8_t* rekot,	const char* k_path, const size_t size_rekot, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring, 
@@ -40,14 +40,14 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	const uint32_t im_dim = Nx * Ny * Nz;
 
 	cl_int status = CL_SUCCESS;
-	cl_context context = NULL;
+	cl::Context context;
 	cl_uint num_devices_context;
-	cl_kernel kernel;
-	cl_kernel kernel_sum;
-	cl_kernel kernel_mlem;
-	cl_kernel kernel_3Dconvolution;
-	cl_kernel kernel_3Dconvolution_f;
-	cl_kernel kernel_vectorMult, kernel_vectorDiv;
+	cl::Kernel kernel;
+	cl::Kernel kernel_sum;
+	cl::Kernel kernel_mlem;
+	cl::Kernel kernel_3Dconvolution;
+	cl::Kernel kernel_3Dconvolution_f;
+	cl::Kernel kernel_vectorMult, kernel_vectorDiv;
 	int cpu_device = -1;
 	bool atomic_64bit = use_64bit_atomics;
 	cl_uchar compute_norm_matrix = 1u;
@@ -57,22 +57,21 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	size_t size;
 
 	// Maximum of 16 devices
-	cl_device_id * devices = (cl_device_id*)malloc(16 * sizeof(cl_device_id));
+
+	std::vector<cl::Device> devices;
 
 	// Get the OpenCL context
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, subsets,
 		raw);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
-		free(devices);
 		mexPrintf("Failed to get platforms\n");
 		return;
 	}
 
 	// Create the same number of command queues as there are devices
-	cl_program program = NULL;
-	cl_command_queue *commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
+	cl::Program program;
+	std::vector<cl::CommandQueue> commandQueues;
 
 
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
@@ -83,14 +82,6 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		false, cr_pz, dx, use_psf, scatter, randoms_correction);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
-		//status = clReleaseProgram(program);
-		for (size_t i = 0ULL; i < num_devices_context; i++) {
-			//status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		free(commandQueues);
-		free(devices);
 		mexPrintf("Failed to build programs\n");
 		return;
 	}
@@ -98,88 +89,48 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	// Create kernels
 	// Orthogonal distance based
 	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1)))) {
-		kernel = clCreateKernel(program, "kernel_multi", &status);
+		kernel = cl::Kernel(program, "kernel_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (size_t i = 0ULL; i < num_devices_context; i++) {
-				status = clReleaseCommandQueue(commandQueues[i]);
-				status = clReleaseDevice(devices[i]);
-			}
-			status = clReleaseProgram(program);
-			status = clReleaseContext(context);
 			mexPrintf("Failed to create orthogonal OpenCL kernel\n");
-			free(commandQueues);
-			free(devices);
 			return;
 		}
 	}
 	// Improved Siddon's ray tracer
 	else {
-		kernel = clCreateKernel(program, "siddon_multi", &status);
+		kernel = cl::Kernel(program, "siddon_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (size_t i = 0ULL; i < num_devices_context; i++) {
-				status = clReleaseCommandQueue(commandQueues[i]);
-				status = clReleaseDevice(devices[i]);
-			}
-			status = clReleaseContext(context);
-			status = clReleaseProgram(program);
 			mexPrintf("Failed to create Siddon OpenCL kernel\n");
-			free(commandQueues);
-			free(devices);
 			return;
 		}
 	}
 
 	if (use_psf) {
-		kernel_3Dconvolution = clCreateKernel(program, "Convolution3D", &status);
-		kernel_3Dconvolution_f = clCreateKernel(program, "Convolution3D_f", &status);
-		kernel_vectorMult = clCreateKernel(program, "vectorMult", &status);
-		kernel_vectorDiv = clCreateKernel(program, "vectorDiv", &status);
+		kernel_3Dconvolution = cl::Kernel(program, "Convolution3D", &status);
+		kernel_3Dconvolution_f = cl::Kernel(program, "Convolution3D_f", &status);
+		kernel_vectorMult = cl::Kernel(program, "vectorMult", &status);
+		kernel_vectorDiv = cl::Kernel(program, "vectorDiv", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (size_t i = 0ULL; i < num_devices_context; i++) {
-				status = clReleaseCommandQueue(commandQueues[i]);
-				status = clReleaseDevice(devices[i]);
-			}
-			status = clReleaseContext(context);
-			status = clReleaseProgram(program);
 			mexPrintf("Failed to create convolution OpenCL kernel\n");
-			free(commandQueues);
-			free(devices);
 			return;
 		}
 	}
 
 	// Kernel for the summing (combination) of data from different devices
-	kernel_sum = clCreateKernel(program, "summa", &status);
+	kernel_sum = cl::Kernel(program, "summa", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
-		for (size_t i = 0ULL; i < num_devices_context; i++) {
-			status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		status = clReleaseContext(context);
-		status = clReleaseProgram(program);
 		mexPrintf("Failed to create OpenCL kernel\n");
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 
 	// MLEM/OSEM kernel
-	kernel_mlem = clCreateKernel(program, "mlem", &status);
+	kernel_mlem = cl::Kernel(program, "mlem", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
-		for (size_t i = 0ULL; i < num_devices_context; i++) {
-			status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		status = clReleaseContext(context);
-		status = clReleaseProgram(program);
 		mexPrintf("Failed to create OSEM/MLEM OpenCL kernel\n");
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 	if (verbose) {
@@ -188,7 +139,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	}
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	// Compute the estimates
@@ -201,54 +152,8 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
-
-	// Release kernels
-	status = clReleaseKernel(kernel);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	status = clReleaseKernel(kernel_sum);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	status = clReleaseKernel(kernel_mlem);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	if (use_psf) {
-		status = clReleaseKernel(kernel_3Dconvolution);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-		}
-	}
-
-	// Release program
-	status = clReleaseProgram(program);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	// Release queues and devices
-	for (size_t i = 0ULL; i < num_devices_context; i++) {
-		status = clReleaseCommandQueue(commandQueues[i]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-		}
-		status = clReleaseDevice(devices[i]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-		}
-	}
-
-	// Release context
-	status = clReleaseContext(context);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	free(commandQueues);
-	free(devices);
 	return;
 }
 
@@ -256,7 +161,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, 
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz,
 	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t* pituus, const size_t koko_l,
-	const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t randoms_correction,
+	const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose, const uint32_t randoms_correction,
 	const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
 	const char* k_path, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, 
 	const char* fileName, const uint32_t device, float kerroin, mxArray* output, const size_t size_rhs, const bool no_norm, const size_t numel_x, 
@@ -269,9 +174,9 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	const uint32_t im_dim = Nx * Ny * Nz;
 
 	cl_int status = CL_SUCCESS;
-	cl_context context = NULL;
+	cl::Context context;
 	cl_uint num_devices_context;
-	cl_kernel kernel, kernel_sum;
+	cl::Kernel kernel, kernel_sum;
 	int cpu_device = -1;
 	bool atomic_64bit = use_64bit_atomics;
 	cl_uchar compute_norm_matrix = 1u;
@@ -286,88 +191,54 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 
 	size_t size;
 
-	cl_device_id* devices = (cl_device_id*)malloc(16 * sizeof(cl_device_id));
+	std::vector<cl::Device> devices;
 
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, 1u,
 		raw);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
-		free(devices);
 		return;
 	}
 
 
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 
-	cl_program program = NULL;
-	cl_command_queue* commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
+	cl::Program program;
+	std::vector<cl::CommandQueue> commandQueues;
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, projector_type, header_directory, crystal_size_z, 
 		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
-		//status = clReleaseProgram(program);
-		for (size_t i = 0; i < num_devices_context; i++) {
-			//status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 
 	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1)))) {
-		kernel = clCreateKernel(program, "kernel_multi", &status);
+		kernel = cl::Kernel(program, "kernel_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (size_t i = 0ULL; i < num_devices_context; i++) {
-				status = clReleaseCommandQueue(commandQueues[i]);
-				status = clReleaseDevice(devices[i]);
-			}
-			status = clReleaseContext(context);
-			status = clReleaseProgram(program);
 			mexPrintf("Failed to create OpenCL kernel\n");
-			free(commandQueues);
-			free(devices);
 			return;
 		}
 	}
 	else {
-		kernel = clCreateKernel(program, "siddon_multi", &status);
+		kernel = cl::Kernel(program, "siddon_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (size_t i = 0ULL; i < num_devices_context; i++) {
-				status = clReleaseCommandQueue(commandQueues[i]);
-				status = clReleaseDevice(devices[i]);
-			}
-			status = clReleaseContext(context);
-			status = clReleaseProgram(program);
 			mexPrintf("Failed to create Siddon OpenCL kernel\n");
-			free(commandQueues);
-			free(devices);
 			return;
 		}
 	}
 
-	kernel_sum = clCreateKernel(program, "summa", &status);
+	kernel_sum = cl::Kernel(program, "summa", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
-		for (size_t i = 0ULL; i < num_devices_context; i++) {
-			status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		status = clReleaseContext(context);
-		status = clReleaseProgram(program);
 		mexPrintf("Failed to create sum OpenCL kernel\n");
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	f_b_project(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, rhs, sc_ra, Nx, Ny, Nz, dx, dy, dz, bx, by,
@@ -378,35 +249,9 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
-
-	for (size_t i = 0; i < num_devices_context; i++)
-		status = clReleaseCommandQueue(commandQueues[i]);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseContext(context);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseProgram(program);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseKernel(kernel_sum);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	status = clReleaseKernel(kernel);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	free(commandQueues);
-	free(devices);
+	return;
 }
 
 
@@ -414,7 +259,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, 
 	const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz, 
 	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
-	const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path, const uint32_t* pseudos, 
+	const uint32_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path, const uint32_t* pseudos, 
 	const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const char* fileName, 
 	const uint32_t device, const size_t numel_x, const char* header_directory, const size_t local_size) {
 
@@ -424,58 +269,41 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	bool atomic_64bit = false;
 
 	cl_int status = CL_SUCCESS;
-	cl_context context = NULL;
+	cl::Context context;
 	cl_uint num_devices_context;
-	cl_kernel kernel;
+	cl::Kernel kernel;
 
-	cl_device_id * devices = (cl_device_id*)malloc(sizeof(cl_device_id));
+	std::vector<cl::Device> devices;
 
 	// Get the context for a single device
 	status = clGetPlatformsContextSingle(device, context, num_devices_context, devices);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
 		mexPrintf("Error while getting platforms\n");
 		return;
 	}
 
 	// Get queues
-	cl_program program = NULL;
-	cl_command_queue *commandQueues = (cl_command_queue*)malloc(sizeof(cl_command_queue) * num_devices_context);
+	cl::Program program;
+	std::vector<cl::CommandQueue> commandQueues;
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 50u, header_directory, 0.f, false, raw, 
 		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0);
 
 	if (status != CL_SUCCESS) {
-		status = clReleaseContext(context);
-		status = clReleaseProgram(program);
-		for (size_t i = 0; i < num_devices_context; i++) {
-			status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
 		mexPrintf("Error while building or getting queues\n");
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 
-	kernel = clCreateKernel(program, "siddon_precomp", &status);
+	kernel = cl::Kernel(program, "siddon_precomp", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Failed to create OpenCL kernel\n");
-		for (size_t i = 0ULL; i < num_devices_context; i++) {
-			status = clReleaseCommandQueue(commandQueues[i]);
-			status = clReleaseDevice(devices[i]);
-		}
-		status = clReleaseContext(context);
-		status = clReleaseProgram(program);
-		free(commandQueues);
-		free(devices);
 		return;
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	// Compute the voxel count
@@ -485,35 +313,8 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
-	for (size_t i = 0; i < num_devices_context; i++) {
-		status = clReleaseCommandQueue(commandQueues[i]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-		}
-		status = clReleaseDevice(devices[i]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-		}
-	}
-
-	status = clReleaseContext(context);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseProgram(program);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseKernel(kernel);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-	free(commandQueues);
-	free(devices);
 	return;
 }

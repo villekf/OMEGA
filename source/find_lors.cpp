@@ -39,17 +39,22 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	const uint64_t local_size = 64ULL;
 
 	cl_int status = CL_SUCCESS;
-	cl_kernel kernel;
+	cl::Kernel kernel;
 	cl_uint num_devices_context = 1u;
 
-	cl_context context = afcl::getContext();
-	cl_device_id af_device_id = afcl::getDeviceId();
-	cl_command_queue commandQueue = afcl::getQueue();
+	cl::Context context(afcl::getContext(true));
+	std::vector<cl::Device> devices = context.getInfo<CL_CONTEXT_DEVICES>(&status);
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		return;
+	}
+	cl::Device af_device_id = devices[0];
+	cl::CommandQueue af_queue(afcl::getQueue(true));
 
-	cl_program program = NULL;
-	cl_command_queue* commandQueues = (cl_command_queue*)alloca(sizeof(cl_command_queue) * num_devices_context);
+	cl::Program program;
+	std::vector<cl::CommandQueue> commandQueues;
 
-	commandQueues[0] = commandQueue;
+	commandQueues[0] = af_queue;
 
 	std::string kernel_path;
 
@@ -58,33 +63,41 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	std::fstream sourceFile(kernel_path.c_str());
 	std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
-	const char* sourceCode = new char[content.size()];
-	sourceCode = content.c_str();
-	program = clCreateProgramWithSource(context, 1, (const char**)& sourceCode, NULL, &status);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-		return;
-	}
+	std::vector<std::string> testi;
+	testi.push_back(content);
+	cl::Program::Sources source(testi);
+	program = cl::Program(context, source);
 	std::string options = header_directory;
 	if (raw == 1)
 		options += " -DRAW";
 	options += " -DFIND_LORS";
 	options += (" -DLOCAL_SIZE=" + std::to_string(local_size));
 	options += " -DCAST=float";
-	status = clBuildProgram(program, num_devices_context, &af_device_id, options.c_str(), NULL, NULL);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-		mexPrintf("Failed to build OpenCL program. Build log: \n");
-		size_t len;
-		char* buffer;
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-		buffer = (char*)calloc(len, sizeof(size_t));
-		clGetProgramBuildInfo(program, af_device_id, CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-		mexPrintf("%s\n", buffer);
+	//try {
+		status = program.build(options.c_str());
+		if (status != CL_SUCCESS) {
+			mexPrintf("OpenCL program built\n");
+		}
+	//}
+	//catch (cl::Error& e) {
+		else {
+			mexPrintf("Failed to build OpenCL program.\n");
+			std::vector<cl::Device> dev;
+			context.getInfo(CL_CONTEXT_DEVICES, &dev);
+			for (int ll = 0; ll < dev.size(); ll++) {
+				cl_build_status status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
+				if (status != CL_BUILD_ERROR)
+					continue;
+				std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
+				std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
+				mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
+			}
+		}
+		//mexPrintf("%s\n", e.what());
 		return;
-	}
+	//}
 
-	kernel = clCreateKernel(program, "siddon_precomp", &status);
+	kernel = cl::Kernel(program, "siddon_precomp", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Failed to create OpenCL kernel\n");
@@ -92,7 +105,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	precomp_siddon(num_devices_context, context, commandQueues, lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, 
@@ -100,17 +113,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
-	}
-
-	status = clReleaseProgram(program);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-	}
-
-	status = clReleaseKernel(kernel);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
+		commandQueues[i].finish();
 	}
 	return;
 }

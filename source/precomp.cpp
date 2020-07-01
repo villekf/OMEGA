@@ -18,11 +18,11 @@
 ***************************************************************************/
 #include "functions_multigpu.hpp"
 
-void precomp_siddon(const cl_uint& num_devices_context, const cl_context& context, const cl_command_queue* commandQueues, uint16_t* lor1, const float* z_det, 
+void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues, uint16_t* lor1, const float* z_det,
 	const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, 
 	const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
-	const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, 
-	const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl_kernel& kernel, const size_t numel_x, const size_t local_size) {
+	const uint32_t TotSinos, const bool verbose, const uint32_t loop_var_par, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, 
+	const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl::Kernel& kernel, const size_t numel_x, const size_t local_size) {
 
 	cl_int status = CL_SUCCESS;
 	const uint32_t Nxy = Nx * Ny;
@@ -37,49 +37,49 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 		cumsum[i + 1] = cumsum[i] + length[i];
 	}
 
-	cl_mem* d_z = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	cl_mem* d_x = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	cl_mem* d_y = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	cl_mem* d_pseudos = (cl_mem*)malloc(num_devices_context * sizeof(cl_mem));
-	cl_mem* d_L = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
-	cl_mem* d_lor = (cl_mem*)malloc((num_devices_context) * sizeof(cl_mem));
+	std::vector<cl::Buffer> d_z(num_devices_context);
+	std::vector<cl::Buffer> d_x(num_devices_context);
+	std::vector<cl::Buffer> d_y(num_devices_context);
+	std::vector<cl::Buffer> d_pseudos(num_devices_context);
+	std::vector<cl::Buffer> d_L(num_devices_context);
+	std::vector<cl::Buffer> d_lor(num_devices_context);
 
 	// Create the necessary buffers
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		d_z[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
+		d_z[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_x[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
+		d_x[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_y[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
+		d_y[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_pseudos[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
+		d_pseudos[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_lor[i] = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
+		d_lor[i] = cl::Buffer(context, CL_MEM_WRITE_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 		if (raw) {
-			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
+			d_L[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+			d_L[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -88,22 +88,22 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		status = clEnqueueWriteBuffer(commandQueues[i], d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -112,58 +112,59 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 		//status = clEnqueueFillBuffer(commandQueues[i], d_lor[i], &zero, sizeof(cl_ushort), 0, sizeof(cl_ushort) * length[num_devices_context + i], 0, NULL, NULL);
 
 		if (raw) {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_L[i], CL_FALSE, 0, sizeof(uint16_t), L);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 
-		status = clFlush(commandQueues[i]);
+		status = commandQueues[i].flush();
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 	}
 
+	cl::Kernel kernel_ = kernel;
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
-	clSetKernelArg(kernel, 0, sizeof(uint32_t), &Nxy);
-	clSetKernelArg(kernel, 1, sizeof(uint32_t), &im_dim);
-	clSetKernelArg(kernel, 2, sizeof(uint32_t), &Nx);
-	clSetKernelArg(kernel, 3, sizeof(uint32_t), &Ny);
-	clSetKernelArg(kernel, 4, sizeof(uint32_t), &Nz);
-	clSetKernelArg(kernel, 5, sizeof(float), &dz);
-	clSetKernelArg(kernel, 6, sizeof(float), &dx);
-	clSetKernelArg(kernel, 7, sizeof(float), &dy);
-	clSetKernelArg(kernel, 8, sizeof(float), &bz);
-	clSetKernelArg(kernel, 9, sizeof(float), &bx);
-	clSetKernelArg(kernel, 10, sizeof(float), &by);
-	clSetKernelArg(kernel, 11, sizeof(float), &bzb);
-	clSetKernelArg(kernel, 12, sizeof(float), &maxxx);
-	clSetKernelArg(kernel, 13, sizeof(float), &maxyy);
-	clSetKernelArg(kernel, 14, sizeof(float), &zmax);
-	clSetKernelArg(kernel, 15, sizeof(float), &NSlices);
-	clSetKernelArg(kernel, 16, sizeof(uint32_t), &size_x);
-	clSetKernelArg(kernel, 17, sizeof(uint16_t), &TotSinos);
-	clSetKernelArg(kernel, 18, sizeof(uint32_t), &det_per_ring);
-	clSetKernelArg(kernel, 19, sizeof(uint8_t), &raw);
-	clSetKernelArg(kernel, 20, sizeof(uint32_t), &prows);
+	kernel_.setArg(0, Nxy);
+	kernel_.setArg(1, im_dim);
+	kernel_.setArg(2, Nx);
+	kernel_.setArg(3, Ny);
+	kernel_.setArg(4, Nz);
+	kernel_.setArg(5, dz);
+	kernel_.setArg(6, dx);
+	kernel_.setArg(7, dy);
+	kernel_.setArg(8, bz);
+	kernel_.setArg(9, bx);
+	kernel_.setArg(10, by);
+	kernel_.setArg(11, bzb);
+	kernel_.setArg(12, maxxx);
+	kernel_.setArg(13, maxyy);
+	kernel_.setArg(14, zmax);
+	kernel_.setArg(15, NSlices);
+	kernel_.setArg(16, size_x);
+	kernel_.setArg(17, TotSinos);
+	kernel_.setArg(18, det_per_ring);
+	kernel_.setArg(19, raw);
+	kernel_.setArg(20, prows);
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
-	cl_event event1;
+	std::vector<cl::Event> event1(1);
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		size_t erotus = length[i] % local_size;
@@ -173,15 +174,17 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 
 		const size_t global_size = length[i] + erotus;
 		const uint64_t m_size = static_cast<uint64_t>(length[i]);
+		cl::NDRange global(global_size);
+		cl::NDRange local(local_size);
 
-		clSetKernelArg(kernel, 21, sizeof(cl_mem), &d_pseudos[i]);
-		clSetKernelArg(kernel, 22, sizeof(cl_mem), &d_x[i]);
-		clSetKernelArg(kernel, 23, sizeof(cl_mem), &d_y[i]);
-		clSetKernelArg(kernel, 24, sizeof(cl_mem), &d_z[i]);
-		clSetKernelArg(kernel, 25, sizeof(cl_mem), &d_lor[i]);
-		clSetKernelArg(kernel, 26, sizeof(cl_mem), &d_L[i]);
-		clSetKernelArg(kernel, 27, sizeof(uint64_t), &m_size);
-		status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1, NULL, &global_size, &local_size, 0, NULL, &event1);
+		kernel_.setArg(21, d_pseudos[i]);
+		kernel_.setArg(22, d_x[i]);
+		kernel_.setArg(23, d_y[i]);
+		kernel_.setArg(24, d_z[i]);
+		kernel_.setArg(25, d_lor[i]);
+		kernel_.setArg(26, d_L[i]);
+		kernel_.setArg(27, sizeof(uint64_t), &m_size);
+		status = commandQueues[i].enqueueNDRangeKernel(kernel_, 0, global, local, NULL, &event1[0]);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -192,24 +195,13 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl_context& contex
 	//	clFinish(commandQueues[i]);
 	//}
 
-	status = clEnqueueReadBuffer(commandQueues[0], d_lor[0], CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, 1, &event1, NULL);
+	status = commandQueues[0].enqueueReadBuffer(d_lor[0], CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, &event1);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return;
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
-	}
-
-	clReleaseEvent(event1);
-
-	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clReleaseMemObject(d_z[i]);
-		clReleaseMemObject(d_x[i]);
-		clReleaseMemObject(d_y[i]);
-		clReleaseMemObject(d_pseudos[i]);
-		clReleaseMemObject(d_L[i]);
-		clReleaseMemObject(d_lor[i]);
+		commandQueues[i].finish();
 	}
 }

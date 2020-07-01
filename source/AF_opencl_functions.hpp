@@ -27,7 +27,7 @@
 
 // Struct for the various estimates used in OpenCL kernels
 typedef struct _OpenCL_im_vectors {
-	cl_mem* d_im_mlem, * d_rhs_mlem, * d_im_os, * d_rhs_os;
+	cl::Buffer d_im_mlem, d_rhs_mlem, d_im_os, d_rhs_os;
 } OpenCL_im_vectors;
 
 // Struct for boolean operators indicating whether a certain method is selected (OpenCL)
@@ -52,28 +52,28 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 // Load the OpenCL binary and create an OpenCL program from it
 //cl_int CreateProgramFromBinary(cl_context af_context, cl_device_id af_device_id, FILE *fp, cl_program &program);
 
-cl_int createKernels(cl_kernel& kernel_ml, cl_kernel& kernel, cl_kernel& kernel_mramla, cl_kernel& kernelNLM, const bool osem_bool, const cl_program& program_os, const cl_program& program_ml,
-	const cl_program& program_mbsrem, const RecMethods MethodList, const Weighting w_vec, const uint32_t projector_type, const bool mlem_bool, const bool precompute,
+cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel& kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, const bool osem_bool, const cl::Program& program_os, const cl::Program& program_ml,
+	const cl::Program& program_mbsrem, const RecMethods MethodList, const Weighting w_vec, const uint32_t projector_type, const bool mlem_bool, const bool precompute,
 	const uint16_t n_rays, const uint16_t n_rays3D);
 
-cl_int createAndWriteBuffers(cl_mem& d_x, cl_mem& d_y, cl_mem& d_z, std::vector<cl_mem>& d_lor, std::vector<cl_mem>& d_L, std::vector<cl_mem>& d_zindex,
-	std::vector<cl_mem>& d_xyindex, std::vector<cl_mem>& d_Sino, std::vector<cl_mem>& d_sc_ra, const uint32_t size_x, const size_t size_z,
+cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, std::vector<cl::Buffer>& d_lor, std::vector<cl::Buffer>& d_L, std::vector<cl::Buffer>& d_zindex,
+	std::vector<cl::Buffer>& d_xyindex, std::vector<cl::Buffer>& d_Sino, std::vector<cl::Buffer>& d_sc_ra, const uint32_t size_x, const size_t size_z,
 	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows, std::vector<size_t>& length, const float* x, const float* y,
 	const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw,
-	cl_context& af_context, const uint32_t subsets, const uint32_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
-	cl_command_queue& af_queue, cl_mem& d_atten, std::vector<cl_mem>& d_norm, std::vector<cl_mem>& d_scat, cl_mem& d_pseudos, cl_mem& d_V, cl_mem& d_xcenter, cl_mem& d_ycenter, cl_mem& d_zcenter,
+	cl::Context& af_context, const uint32_t subsets, const uint32_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
+	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, cl::Buffer& d_ycenter, cl::Buffer& d_zcenter,
 	const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z,
-	const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, cl_mem& d_lor_mlem,
-	cl_mem& d_L_mlem, cl_mem& d_zindex_mlem, cl_mem& d_xyindex_mlem, cl_mem& d_Sino_mlem, cl_mem& d_sc_ra_mlem, cl_mem& d_reko_type, cl_mem& d_reko_type_mlem, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem, cl_mem& d_norm_mlem, cl_mem& d_scat_mlem);
+	const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, cl::Buffer& d_lor_mlem,
+	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, cl::Buffer& d_reko_type_mlem, const bool osem_bool,
+	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem);
 
 // Prepass phase for MRAMLA, MBSREM, COSEM, ACOSEM, ECOSEM, RBI
-void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, const std::vector<cl_mem>& lor, const std::vector<cl_mem>& zindex,
-	const std::vector<cl_mem>& xindex, cl_program program, const cl_command_queue& af_queue, const cl_context af_context, Weighting& w_vec,
-	std::vector<af::array>& Summ, const std::vector<cl_mem>& d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
-	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl_kernel& kernel_mramla, const std::vector<cl_mem>& L, const uint8_t raw,
+void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, const std::vector<cl::Buffer>& lor, const std::vector<cl::Buffer>& zindex,
+	const std::vector<cl::Buffer>& xindex, cl::Program program, const cl::CommandQueue& af_queue, const cl::Context af_context, Weighting& w_vec,
+	std::vector<af::array>& Summ, const std::vector<cl::Buffer>& d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
+	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& L, const uint8_t raw,
 	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix,
-	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl_mem>& d_norm, const std::vector<cl_mem>& d_scat, const bool use_psf,
+	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps);
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx,
@@ -82,21 +82,21 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z,
 	const char* fileName, const uint32_t device, const size_t numel_x, const char* header_directory);
 
-cl_int createProgram(const bool verbose, const char* k_path, cl_context& af_context, cl_device_id& af_device_id, const char* fileName,
-	cl_program& program_os, cl_program& program_ml, cl_program& program_mbsrem, bool& atomic_64bit, const uint32_t device, const char* header_directory,
+cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_context, cl::Device& af_device_id, const char* fileName,
+	cl::Program& program_os, cl::Program& program_ml, cl::Program& program_mbsrem, bool& atomic_64bit, const uint32_t device, const char* header_directory,
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction,
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
 	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction);
 
-cl_int buildProgram(const bool verbose, const char* k_path, cl_context& af_context, cl_device_id& af_device_id, cl_program& program,
+cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
 	bool& atomic_64bit, std::string options);
 
 void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, af::array* testi, const float epps,
 	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
-	const TVdata& data, std::vector<size_t>& length, std::vector<cl_mem>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const uint32_t* pituus,
-	const std::vector<cl_mem>& d_lor, const std::vector<cl_mem>& d_zindex, const std::vector<cl_mem>& d_xyindex, cl_program& program_mbsrem, const cl_command_queue& af_queue,
-	const cl_context& af_context, std::vector<af::array>& Summ, cl_kernel& kernel_mramla, const std::vector<cl_mem>& d_L, const uint8_t raw,
-	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl_kernel& kernelNLM,
-	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl_mem>& d_norm, const std::vector<cl_mem>& d_scat, const bool use_psf, 
+	const TVdata& data, std::vector<size_t>& length, std::vector<cl::Buffer>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const uint32_t* pituus,
+	const std::vector<cl::Buffer>& d_lor, const std::vector<cl::Buffer>& d_zindex, const std::vector<cl::Buffer>& d_xyindex, cl::Program& program_mbsrem, const cl::CommandQueue& af_queue,
+	const cl::Context& af_context, std::vector<af::array>& Summ, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& d_L, const uint8_t raw,
+	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl::Kernel& kernelNLM,
+	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const kernelStruct& OpenCLStruct);

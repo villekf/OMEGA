@@ -23,8 +23,8 @@
 #include "functions_multigpu.hpp"
 
 // Get the OpenCL context for the current platform
-cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_context& context, size_t& size, int& cpu_device, 
-	cl_uint& num_devices_context, cl_device_id* devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz, 
+cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Context& context, size_t& size, int& cpu_device, 
+	cl_uint& num_devices_context, std::vector<cl::Device> &devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz,
 	const uint32_t subsets, const uint8_t raw) {
 	cl_int status = CL_SUCCESS;
 	cl_uint num_platforms;
@@ -36,57 +36,42 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 		mem_portions = 0.2f;
 	cl_float image_bytes = static_cast<cl_float>(Nxyz) * 8.f;
 
-	// Get the number of platforms
-	status = clGetPlatformIDs(0, NULL, &num_platforms);
+	// Get the number of platforms 
+	std::vector<cl::Platform> platforms;
+	status = cl::Platform::get(&platforms);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
 
-	cl_platform_id *platforms = new cl_platform_id[num_platforms];
-
-	// Get the platform IDs
-	status = clGetPlatformIDs(num_platforms, platforms, NULL);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-		delete[] platforms;
-		return status;
-	}
-
-	if (device > num_platforms) {
+	if (device > platforms.size() - 1) {
 		std::cerr << "The specified platform number is greater than the available platform numbers!" << std::endl;
-		delete[] platforms;
+		status = -1;
 		return status;
 	}
 
 	// Get context properties from the chosen platform
-	cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platforms[device], 0 };
+	cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, reinterpret_cast <cl_context_properties>(platforms[device]()), 0 };
 
 	// Create context from the chosen platform
 	if (kerroin == 0.f) {
 		// If a single device was selected (options.cpu_to_gpu_factor = 0), use GPU if possible
-		context = clCreateContextFromType(properties, CL_DEVICE_TYPE_GPU, NULL, NULL, &status);
+		context = cl::Context(CL_DEVICE_TYPE_GPU, properties, NULL, NULL, &status);
 		if (status != CL_SUCCESS) {
 			// Otherwise CPU
-			context = clCreateContextFromType(properties, CL_DEVICE_TYPE_CPU, NULL, NULL, &status);
+			context = cl::Context(CL_DEVICE_TYPE_CPU, properties, NULL, NULL, &status);
 		}
 	}
 	// Use all devices if options.cpu_to_gpu_factor > 0
 	else
-		context = clCreateContextFromType(properties, CL_DEVICE_TYPE_ALL, NULL, NULL, &status);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-		return status;
-	}
-	// Get the size of the device ID variable
-	status = clGetContextInfo(context, CL_CONTEXT_DEVICES, 0, NULL, &size);
+		context = cl::Context(CL_DEVICE_TYPE_ALL, properties, NULL, NULL, &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
 	// Get device IDs
-	cl_device_id * devices2 = (cl_device_id*)alloca(size / sizeof(cl_device_id));
-	status = clGetContextInfo(context, CL_CONTEXT_DEVICES, size, devices2, NULL);
+	std::vector<cl::Device> devices2;
+	status = context.getInfo(CL_CONTEXT_DEVICES, &devices2);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
@@ -96,18 +81,17 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	// Also check global memory size and the feasibility of storing the normalization constants
 	cl_int n_ignores = 0;
 	cl_int n_gpus = 0;
-	std::vector<cl_int> ignores(size / sizeof(cl_device_id));
-	if (size / sizeof(cl_device_id) > 1ULL) {
+	std::vector<cl_int> ignores(devices2.size());
+	if (devices2.size() > 1ULL) {
 		cl_ulong mem_max = 0ULL;
-		for (size_t i = 0ULL; i < size / sizeof(cl_device_id); i++)
+		for (size_t i = 0ULL; i < devices2.size(); i++)
 		{
 			cl_device_type type;
 			cl_ulong mem;
-			clGetDeviceInfo(devices2[i], CL_DEVICE_TYPE, sizeof(cl_device_type), &type, NULL);
-			switch (type)
-			{
+			status = devices2[i].getInfo(CL_DEVICE_TYPE, &type);
+			switch (type) {
 			case CL_DEVICE_TYPE_GPU:
-				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
+				status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
@@ -127,7 +111,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 				n_gpus++;
 				break;
 			case CL_DEVICE_TYPE_CPU:
-				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
+				status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
@@ -145,7 +129,7 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 	}
 	else {
 		cl_ulong mem;
-		status = clGetDeviceInfo(devices2[0], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
+		status = devices2[0].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return status;
@@ -156,10 +140,8 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 			compute_norm_matrix = 1u;
 	}
 
-	delete[] platforms;
-
 	// Get the number of devices
-	status = clGetContextInfo(context, CL_CONTEXT_NUM_DEVICES, sizeof(cl_uint), &num_devices_context, NULL);
+	status = context.getInfo(CL_CONTEXT_NUM_DEVICES, &num_devices_context);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
@@ -172,46 +154,36 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl_cont
 			num_devices_context--;
 		}
 		else {
-			devices[ll] = devices2[i];
+			devices.push_back(devices2[i]);
 		}
-		ll++;
 	}
 
 	return status;
 }
 
 // Get context for a single device
-cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, cl_uint& num_devices_context, cl_device_id* devices) {
+cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, cl_uint& num_devices_context, std::vector<cl::Device>& devices) {
 	cl_int status = CL_SUCCESS;
 	cl_uint num_platforms = 0;
 
 	cl_uint num_devices = 0;
+	std::vector<cl::Platform> platforms;
+	status = cl::Platform::get(&platforms);
 
-	status = clGetPlatformIDs(0, NULL, &num_platforms);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
 
-	if (device >= num_platforms || device < 0) {
+	if (device > platforms.size() - 1 || device < 0) {
 		std::cerr << "The specified platform number is greater or smaller than the available platform numbers!" << std::endl;
 		return -1;
 	}
 
-	cl_platform_id *platforms = new cl_platform_id[num_platforms];
+	platforms[device].getInfo(CL_DEVICE_TYPE_ALL, &num_devices);
 
-	status = clGetPlatformIDs(num_platforms, platforms, NULL);
-	if (status != CL_SUCCESS) {
-		getErrorString(status);
-		delete[] platforms;
-		return status;
-	}
-
-	clGetDeviceIDs(platforms[device], CL_DEVICE_TYPE_ALL, 0, NULL, &num_devices);
-
-	cl_device_id * devices2 = (cl_device_id*)alloca(num_devices * sizeof(cl_device_id));
-
-	clGetDeviceIDs(platforms[device], CL_DEVICE_TYPE_ALL, num_devices, devices2, NULL);
+	std::vector<cl::Device> devices2;
+	status = platforms[device].getDevices(CL_DEVICE_TYPE_ALL, &devices2);
 
 	// Choose the GPU with highest amount of memory
 	// If no GPU, use CPU
@@ -219,14 +191,13 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 		cl_ulong mem_prev = 0;
 		for (size_t i = 0; i < num_devices; i++) {
 			cl_device_type type;
-			clGetDeviceInfo(devices2[i], CL_DEVICE_TYPE, sizeof(cl_device_type), &type, NULL);
+			status = devices2[i].getInfo(CL_DEVICE_TYPE, &type);
 			switch (type) {
 			case CL_DEVICE_TYPE_GPU:
 				cl_ulong mem;
-				status = clGetDeviceInfo(devices2[i], CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &mem, NULL);
+				status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
-					delete[] platforms;
 					return status;
 				}
 				if (mem_prev < mem) {
@@ -247,16 +218,13 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 		devices[0] = devices2[0];
 
 
-	cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, (cl_context_properties)platforms[device], 0 };
+	cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, reinterpret_cast <cl_context_properties>(platforms[device]()), 0 };
 
-	context = clCreateContext(properties, 1, devices, NULL, NULL, &status);
+	context = cl::Context(devices, properties, NULL, NULL, &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
-		delete[] platforms;
 		return status;
 	}
-
-	delete[] platforms;
 
 	num_devices_context = 1;
 
@@ -264,8 +232,8 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl_context& context, c
 }
 
 // Build the programs and get the command queues
-cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl_context context, const cl_uint num_devices_context,
-	const cl_device_id* devices, const bool verbose, cl_command_queue* commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
+cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
+	const std::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
 	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
@@ -273,9 +241,9 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 
 
 	//cl_device_id* devices2 = (cl_device_id*)alloca(num_devices_context * sizeof(cl_device_id));
-	std::vector<cl_device_id> devices2(num_devices_context, nullptr);
+	std::vector<cl::Device> devices2;
 	for (size_t i = 0; i < num_devices_context; i++) {
-		devices2[i] = devices[i];
+		devices2.push_back(devices[i]);
 	}
 
 	std::string options = header_directory;
@@ -346,30 +314,28 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 		// Load the source text file
 		std::fstream sourceFile_atom(kernel_path_atom.c_str());
 		std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
-		const char* sourceCode_atom = new char[content_atom.size()];
-		sourceCode_atom = content_atom.c_str();
+		std::vector<std::string> testi;
+		testi.push_back(content_atom);
+		cl::Program::Sources source(testi);
 		// Create the program from the source
-		program = clCreateProgramWithSource(context, 1, (const char**)& sourceCode_atom, NULL, &status);
-
 		// Build the program
-		status = clBuildProgram(program, num_devices_context, devices2.data(), options.c_str(), NULL, NULL);
-		if (status != CL_SUCCESS) {
-			//getErrorString(status);
-			//mexPrintf("Failed to build OpenCL program. Build log: \n");
-			//size_t len;
-			//char* buffer;
-			//clGetProgramBuildInfo(program, devices2[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-			//buffer = (char*)calloc(len, sizeof(size_t));
-			//clGetProgramBuildInfo(program, devices2[0], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-			//mexPrintf("%s\n", buffer);
-			////return status;
-			options.erase(pituus, options.size() + 1);
-			options += " -DCAST=float";
-			//mexPrintf("%s\n", options.c_str());
-			mexPrintf("Failed to build 64-bit atomics program.\n");
-		}
-		else if (verbose)
-			mexPrintf("OpenCL program (64-bit atomics) built\n");
+		program = cl::Program(context, source);
+		//try {
+			status = program.build(options.c_str());
+			if (status != CL_SUCCESS) {
+				mexPrintf("Failed to build 64-bit atomics program.\n");
+			}
+			else {
+				mexPrintf("OpenCL program (64-bit atomics) built\n");
+			}
+		//}
+		//catch (cl::Error& e) {
+		//	//mexPrintf("%s\n", e.what());
+		//	options.erase(pituus, options.size() + 1);
+		//	options += " -DCAST=float";
+		//	mexPrintf("Failed to build 64-bit atomics program.\n");
+		//	status = -1;
+		//}
 	}
 	else
 		status = -1;
@@ -384,35 +350,42 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 		kernel_path += ".cl";
 		std::fstream sourceFile(kernel_path.c_str());
 		std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
-		const char* sourceCode = new char[content.size()];
-		sourceCode = content.c_str();
-		program = clCreateProgramWithSource(context, 1, (const char**)& sourceCode, NULL, &status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return status;
-		}
-		//mexPrintf("%s\n", options.c_str());
-		status = clBuildProgram(program, num_devices_context, devices2.data(), options.c_str(), NULL, NULL);
-		// Build log in case of failure
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrintf("Failed to build OpenCL program. Build log: \n");
-			size_t len;
-			char* buffer;
-			clGetProgramBuildInfo(program, devices2[0], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
-			buffer = (char*)calloc(len, sizeof(size_t));
-			clGetProgramBuildInfo(program, devices2[0], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
-			mexPrintf("%s\n", buffer);
-			return status;
-		}
-		else if (verbose)
-			mexPrintf("OpenCL program built\n");
+		std::vector<std::string> testi;
+		testi.push_back(content);
+		cl::Program::Sources source(testi);
+		program = cl::Program(context, source);
+		//try {
+			status = program.build(options.c_str());
+			if (status == CL_SUCCESS) {
+				mexPrintf("OpenCL program built\n");
+			}
+			else {
+				getErrorString(status);
+				mexPrintf("Failed to build OpenCL program.\n");
+				std::vector<cl::Device> dev;
+				context.getInfo(CL_CONTEXT_DEVICES, &dev);
+				for (int ll = 0; ll < dev.size(); ll++) {
+					cl_build_status b_status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
+					if (b_status != CL_BUILD_ERROR)
+						continue;
+					std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
+					std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
+					mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
+				}
+				return status;
+
+			}
+		//}
+		//catch (cl::Error& e) {
+		//	mexPrintf("%s\n", e.what());
+		//	status = -1;
+		//}
 	}
 
 	// Create the command queues
 	// Enable out of order execution (devices can compute kernels at the same time)
 	for (size_t i = 0; i < num_devices_context; i++) {
-		commandQueues[i] = clCreateCommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status);
+		commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return status;
@@ -420,7 +393,7 @@ cl_int ClBuildProgramGetQueues(cl_program& program, const char* k_path, const cl
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	return status;

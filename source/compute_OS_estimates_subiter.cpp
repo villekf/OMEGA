@@ -4,17 +4,17 @@ using namespace af;
 
 void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, array* testi, const float epps, 
 	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
-	const TVdata& data, std::vector<size_t>& length, std::vector<cl_mem>& d_Sino, bool& break_iter, array& pj3, const uint32_t n_rekos2, const uint32_t* pituus, 
-	const std::vector<cl_mem>& d_lor, const std::vector<cl_mem>& d_zindex, const std::vector<cl_mem>& d_xyindex, cl_program& program_mbsrem, const cl_command_queue& af_queue,
-	const cl_context& af_context, std::vector<af::array>& Summ, cl_kernel& kernel_mramla, const std::vector<cl_mem>& d_L, const uint8_t raw,
-	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl_kernel& kernelNLM, 
-	const std::vector<cl_mem>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl_mem>& d_norm, const std::vector<cl_mem>& d_scat, const bool use_psf, 
+	const TVdata& data, std::vector<size_t>& length, std::vector<cl::Buffer>& d_Sino, bool& break_iter, array& pj3, const uint32_t n_rekos2, const uint32_t* pituus, 
+	const std::vector<cl::Buffer>& d_lor, const std::vector<cl::Buffer>& d_zindex, const std::vector<cl::Buffer>& d_xyindex, cl::Program& program_mbsrem, const cl::CommandQueue& af_queue,
+	const cl::Context& af_context, std::vector<af::array>& Summ, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& d_L, const uint8_t raw,
+	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl::Kernel& kernelNLM, 
+	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const kernelStruct& OpenCLStruct) {
 
 	uint64_t yy = 0u;
 	float uu;
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM == 1u) {
-		array u1 = afcl::array(length[osa_iter], d_Sino[osa_iter], f32, true);
+		array u1 = afcl::array(length[osa_iter], d_Sino[osa_iter].get(), f32, true);
 		uu = af::sum<float>(u1);
 	}
 

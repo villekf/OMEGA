@@ -19,14 +19,14 @@
 #include "functions_multigpu.hpp"
 
 // Forward/backward projections
-void f_b_project(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl_context& context, const cl_command_queue* commandQueues,
+void f_b_project(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues,
 	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, const uint32_t Nx,
 	const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz, const float bzb,
 	const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t* pituus, const size_t koko_l, const uint32_t* xy_index,
-	const uint16_t* z_index, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t randoms_correction,
+	const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose, const uint32_t randoms_correction,
 	const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim,
-	const cl_kernel& kernel_sum, const cl_kernel& kernel, mxArray* output, const size_t size_rhs, const bool no_norm, const size_t numel_x,
+	const cl::Kernel& kernel_sum, const cl::Kernel& kernel, mxArray* output, const size_t size_rhs, const bool no_norm, const size_t numel_x,
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
 	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
@@ -70,7 +70,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	// Essentially the same as above, but without subsets
 	std::vector<size_t> cumsum((num_devices_context + 1U), 0);
-	std::vector<size_t> length(num_devices_context, 0);
+	std::vector<size_t> length(num_devices_context);
 
 	size_t meas_per_gpu;
 	size_t meas_per_cpu = 0ULL;
@@ -111,28 +111,28 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 
 
-	std::vector<cl_mem> d0_output, d0_Summ;
-	std::vector<cl_mem> d_z(num_devices_context, 0);
-	std::vector<cl_mem> d_x(num_devices_context, 0);
-	std::vector<cl_mem> d_y(num_devices_context, 0);
-	std::vector<cl_mem> d_xcenter(num_devices_context, 0);
-	std::vector<cl_mem> d_ycenter(num_devices_context, 0);
-	std::vector<cl_mem> d_zcenter(num_devices_context, 0);
-	std::vector<cl_mem> d_V(num_devices_context, 0);
-	std::vector<cl_mem> d_atten(num_devices_context, 0);
-	std::vector<cl_mem> d_pseudos(num_devices_context, 0);
-	std::vector<cl_mem> d_rhs(num_devices_context, 0);
-	std::vector<cl_mem> d_output(num_devices_context, 0);
-	std::vector<cl_mem> d_Summ(num_devices_context, 0);
-	std::vector<cl_mem> d_Sino(num_devices_context, 0);
-	std::vector<cl_mem> d_sc_ra(num_devices_context, 0);
-	std::vector<cl_mem> d_norm(num_devices_context, 0);
-	std::vector<cl_mem> d_scat(num_devices_context, 0);
-	std::vector<cl_mem> d_lor(num_devices_context, 0);
-	std::vector<cl_mem> d_xyindex(num_devices_context, 0);
-	std::vector<cl_mem> d_zindex(num_devices_context, 0);
-	std::vector<cl_mem> d_L(num_devices_context, 0);
-	std::vector<cl_mem> d_reko_type(num_devices_context, 0);
+	std::vector<cl::Buffer> d0_output, d0_Summ;
+	std::vector<cl::Buffer> d_z(num_devices_context);
+	std::vector<cl::Buffer> d_x(num_devices_context);
+	std::vector<cl::Buffer> d_y(num_devices_context);
+	std::vector<cl::Buffer> d_xcenter(num_devices_context);
+	std::vector<cl::Buffer> d_ycenter(num_devices_context);
+	std::vector<cl::Buffer> d_zcenter(num_devices_context);
+	std::vector<cl::Buffer> d_V(num_devices_context);
+	std::vector<cl::Buffer> d_atten(num_devices_context);
+	std::vector<cl::Buffer> d_pseudos(num_devices_context);
+	std::vector<cl::Buffer> d_rhs(num_devices_context);
+	std::vector<cl::Buffer> d_output(num_devices_context);
+	std::vector<cl::Buffer> d_Summ(num_devices_context);
+	std::vector<cl::Buffer> d_Sino(num_devices_context);
+	std::vector<cl::Buffer> d_sc_ra(num_devices_context);
+	std::vector<cl::Buffer> d_norm(num_devices_context);
+	std::vector<cl::Buffer> d_scat(num_devices_context);
+	std::vector<cl::Buffer> d_lor(num_devices_context);
+	std::vector<cl::Buffer> d_xyindex(num_devices_context);
+	std::vector<cl::Buffer> d_zindex(num_devices_context);
+	std::vector<cl::Buffer> d_L(num_devices_context);
+	std::vector<cl::Buffer> d_reko_type(num_devices_context);
 	if (num_devices_context > 1u) {
 		d0_output.resize(num_devices_context - 1u);
 		d0_Summ.resize(num_devices_context - 1u);
@@ -140,79 +140,79 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	// Create the necessary buffers
 	for (cl_uint i = 0U; i < num_devices_context; i++) {
-		d_reko_type[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
+		d_reko_type[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_z[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
+		d_z[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_x[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
+		d_x[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_y[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
+		d_y[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * numel_x, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_xcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
+		d_xcenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_ycenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
+		d_ycenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_y, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_zcenter[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
+		d_zcenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_z, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_V[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
+		d_V[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_atten[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
+		d_atten[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_pseudos[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
+		d_pseudos[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		d_rhs[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_rhs, NULL, &status);
+		d_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_rhs, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 		if (atomic_64bit) {
-			d_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
+			d_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
+			d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 			if (i < num_devices_context - 1) {
-				d0_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
+				d0_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * size_output, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
+				d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -220,23 +220,23 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		else {
-			d_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_output, NULL, &status);
+			d_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * size_output, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			d_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
+			d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * im_dim, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 			if (i < num_devices_context - 1) {
-				d0_output[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * size_output, NULL, &status);
+				d0_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * size_output, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				d0_Summ[i] = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
+				d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -244,77 +244,77 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		if (randoms_correction == 1u) {
-			d_sc_ra[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
+			d_sc_ra[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			d_sc_ra[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
+			d_sc_ra[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		if (normalization == 1u) {
-			d_norm[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
+			d_norm[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			d_norm[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
+			d_norm[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		if (scatter == 1u) {
-			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
+			d_scat[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			d_scat[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
+			d_scat[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
-		d_Sino[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
+		d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 		if (precompute)
-			d_lor[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
+			d_lor[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 		else
-			d_lor[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+			d_lor[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 		if (raw) {
-			d_xyindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
-			d_zindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
-			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
+			d_xyindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
+			d_zindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+			d_L[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
 		}
 		else {
-			d_xyindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[i], NULL, &status);
+			d_xyindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			d_zindex[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
+			d_zindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			d_L[i] = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+			d_L[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -328,113 +328,127 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		return;
 	}
 
+	cl::Kernel kernel_ = kernel;
+	cl::Kernel kernel_sum_ = kernel_sum;
 	const float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(0)));
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		status = clEnqueueWriteBuffer(commandQueues[i], d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_x[i], CL_FALSE, 0, sizeof(float) * numel_x, x);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_y[i], CL_FALSE, 0, sizeof(float) * numel_x, y);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_ycenter[i], CL_FALSE, 0, sizeof(float) * size_center_y, y_center, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_ycenter[i], CL_FALSE, 0, sizeof(float) * size_center_y, y_center);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_zcenter[i], CL_FALSE, 0, sizeof(float) * size_center_z, z_center, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_zcenter[i], CL_FALSE, 0, sizeof(float) * size_center_z, z_center);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_V[i], CL_FALSE, 0, sizeof(float) * size_V, V, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_V[i], CL_FALSE, 0, sizeof(float) * size_V, V);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_atten[i], CL_FALSE, 0, sizeof(float) * size_atten, atten, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_atten[i], CL_FALSE, 0, sizeof(float) * size_atten, atten);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_rhs[i], CL_FALSE, 0, sizeof(float) * size_rhs, rhs, 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_rhs[i], CL_FALSE, 0, sizeof(float) * size_rhs, rhs);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueWriteBuffer(commandQueues[i], d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]], 0, NULL, NULL);
+		status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]]);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 
 
 		if (raw) {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t), xy_index, 0, NULL, NULL);
-			status = clEnqueueWriteBuffer(commandQueues[i], d_zindex[i], CL_FALSE, 0, sizeof(uint16_t), z_index, 0, NULL, NULL);
-			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t), xy_index);
+			status = commandQueues[i].enqueueWriteBuffer(d_zindex[i], CL_FALSE, 0, sizeof(uint16_t), z_index);
+			status = commandQueues[i].enqueueWriteBuffer(d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2]);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
 		}
 		else {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t) * length[i], &xy_index[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t) * length[i], &xy_index[cumsum[i]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			status = clEnqueueWriteBuffer(commandQueues[i], d_zindex[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &z_index[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_zindex[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &z_index[cumsum[i]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			status = clEnqueueWriteBuffer(commandQueues[i], d_L[i], CL_FALSE, 0, sizeof(uint16_t), L, 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_L[i], CL_FALSE, 0, sizeof(uint16_t), L);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		if (precompute)
-			status = clEnqueueWriteBuffer(commandQueues[i], d_lor[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &lor1[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_lor[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &lor1[cumsum[i]]);
 		else
-			status = clEnqueueWriteBuffer(commandQueues[i], d_lor[i], CL_FALSE, 0, sizeof(uint16_t), lor1, 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_lor[i], CL_FALSE, 0, sizeof(uint16_t), lor1);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 		if (normalization == 1u) {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_norm[i], CL_FALSE, 0, sizeof(cl_float) * length[i], &norm[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_norm[i], CL_FALSE, 0, sizeof(cl_float) * length[i], norm);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			status = clEnqueueWriteBuffer(commandQueues[i], d_norm[i], CL_FALSE, 0, sizeof(cl_float), norm, 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_norm[i], CL_FALSE, 0, sizeof(cl_float), norm);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 
-		status = clFlush(commandQueues[i]);
+		status = commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	uint64_t size_rhs_i = static_cast<uint64_t>(size_rhs);
@@ -444,64 +458,73 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<std::vector<float>> testi_rhs;
 	std::vector<std::vector<uint64_t>> testi_summ_u;
 	std::vector<std::vector<uint64_t>> testi_rhs_u;
-	if (atomic_64bit) {
-		testi_summ_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
-		testi_rhs_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
+	if (num_devices_context > 1u) {
+		if (atomic_64bit) {
+			testi_summ_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
+			testi_rhs_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
+		}
+		else {
+			testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));
+			testi_rhs.resize(num_devices_context - 1u, std::vector<float>(im_dim));
+		}
 	}
-	else {
-		testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));
-		testi_rhs.resize(num_devices_context - 1u, std::vector<float>(im_dim));
-	}
-
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		status = commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	cl_uint kernelInd = 0U;
 
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &global_factor);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &epps);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &im_dim);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Nx);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Ny);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Nz);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &dz);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &dx);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &dy);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &bz);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &bx);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &by);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &bzb);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &maxxx);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &maxyy);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &zmax);
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &NSlices);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &size_x);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint16_t), &TotSinos);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &det_per_ring);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &prows);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint32_t), &Nxy);
-	clSetKernelArg(kernel, kernelInd++, sizeof(uint8_t), &fp);
+	kernel_.setArg(kernelInd++, global_factor);
+	kernel_.setArg(kernelInd++, epps);
+	kernel_.setArg(kernelInd++, im_dim);
+	kernel_.setArg(kernelInd++, Nx);
+	kernel_.setArg(kernelInd++, Ny);
+	kernel_.setArg(kernelInd++, Nz);
+	kernel_.setArg(kernelInd++, dz);
+	kernel_.setArg(kernelInd++, dx);
+	kernel_.setArg(kernelInd++, dy);
+	kernel_.setArg(kernelInd++, bz);
+	kernel_.setArg(kernelInd++, bx);
+	kernel_.setArg(kernelInd++, by);
+	kernel_.setArg(kernelInd++, bzb);
+	kernel_.setArg(kernelInd++, maxxx);
+	kernel_.setArg(kernelInd++, maxyy);
+	kernel_.setArg(kernelInd++, zmax);
+	kernel_.setArg(kernelInd++, NSlices);
+	kernel_.setArg(kernelInd++, size_x);
+	kernel_.setArg(kernelInd++, TotSinos);
+	kernel_.setArg(kernelInd++, det_per_ring);
+	kernel_.setArg(kernelInd++, prows);
+	kernel_.setArg(kernelInd++, Nxy);
+	kernel_.setArg(kernelInd++, fp);
 	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &tube_width);
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &crystal_size_z);
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &bmin);
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &bmax);
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &Vmax);
+		kernel_.setArg(kernelInd++, tube_width);
+		kernel_.setArg(kernelInd++, crystal_size_z);
+		kernel_.setArg(kernelInd++, bmin);
+		kernel_.setArg(kernelInd++, bmax);
+		kernel_.setArg(kernelInd++, Vmax);
 	}
 	else if (projector_type == 1u && !precompute) {
-		clSetKernelArg(kernel, kernelInd++, sizeof(float), &dc_z);
-		clSetKernelArg(kernel, kernelInd++, sizeof(uint16_t), &n_rays);
+		kernel_.setArg(kernelInd++, dc_z);
+		kernel_.setArg(kernelInd++, n_rays);
 	}
-	clSetKernelArg(kernel, kernelInd++, sizeof(float), &zero);
+	kernel_.setArg(kernelInd++, zero);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return;
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		status = commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	cl_uint event_count = (1u);
@@ -511,23 +534,28 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	//for (cl_uint i = 0u; i < num_devices_context; i++) {
 	//	events[i] = (cl_event*)malloc(event_count * sizeof(cl_event * *));
 	//}
-	std::vector<cl_event> events(num_devices_context, NULL);
+	std::vector<std::vector<cl::Event>> events(num_devices_context, std::vector<cl::Event>(1));
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		status = clEnqueueFillBuffer(commandQueues[i], d_Summ[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * im_dim, 0, NULL, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
-		}
 		if (atomic_64bit) {
-			status = clEnqueueFillBuffer(commandQueues[i], d_output[i], &zeroULL, sizeof(cl_ulong), 0, sizeof(cl_ulong) * size_output, 0, NULL, NULL);
+			status = commandQueues[i].enqueueFillBuffer(d_output[i], zeroULL, 0, sizeof(cl_ulong) * size_output);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+			status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zeroULL, 0, sizeof(cl_ulong) * im_dim);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			status = clEnqueueFillBuffer(commandQueues[i], d_output[i], &zero, sizeof(cl_float), 0, sizeof(cl_float) * size_output, 0, NULL, NULL);
+			status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zero, 0, sizeof(cl_float) * im_dim);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+			status = commandQueues[i].enqueueFillBuffer(d_output[i], zero, 0, sizeof(cl_float) * size_output);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -535,14 +563,14 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		if (randoms_correction == 1u) {
 			float* S_R = (float*)mxGetData(mxGetCell(sc_ra, 0));
-			status = clEnqueueWriteBuffer(commandQueues[i], d_sc_ra[i], CL_FALSE, 0, sizeof(float) * length[i], &S_R[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_sc_ra[i], CL_FALSE, 0, sizeof(float) * length[i], S_R);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			status = clEnqueueFillBuffer(commandQueues[i], d_sc_ra[i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
+			status = commandQueues[i].enqueueFillBuffer(d_sc_ra[i], zero, 0, sizeof(cl_float));
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -550,14 +578,14 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		if (scatter == 1u) {
 			float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));
-			status = clEnqueueWriteBuffer(commandQueues[i], d_scat[i], CL_FALSE, 0, sizeof(float) * length[i], &scat[cumsum[i]], 0, NULL, NULL);
+			status = commandQueues[i].enqueueWriteBuffer(d_scat[i], CL_FALSE, 0, sizeof(float) * length[i], scat);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
 		}
 		else {
-			status = clEnqueueFillBuffer(commandQueues[i], d_scat[i], &zero, sizeof(cl_float), 0, sizeof(cl_float), 0, NULL, NULL);
+			status = commandQueues[i].enqueueFillBuffer(d_scat[i], zero, 0, sizeof(cl_float));
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -566,7 +594,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
+		commandQueues[i].finish();
 	}
 
 	std::vector<cl_ulong> globals(num_devices_context, 0ULL);
@@ -590,63 +618,38 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			globals[i] = globals[i - 1ULL] + m_size;
 		else
 			globals[i] = m_size;
+		cl::NDRange global(global_size);
+		cl::NDRange local(local_size);
 
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_atten[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_pseudos[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_x[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_y[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_z[i]);
+		kernel_.setArg(kernelIndSubIter++, d_atten[i]);
+		kernel_.setArg(kernelIndSubIter++, d_pseudos[i]);
+		kernel_.setArg(kernelIndSubIter++, d_x[i]);
+		kernel_.setArg(kernelIndSubIter++, d_y[i]);
+		kernel_.setArg(kernelIndSubIter++, d_z[i]);
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
-			clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_xcenter[i]);
-			clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_ycenter[i]);
-			clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_zcenter[i]);
-			clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_V[i]);
+			kernel_.setArg(kernelIndSubIter++, d_xcenter[i]);
+			kernel_.setArg(kernelIndSubIter++, d_ycenter[i]);
+			kernel_.setArg(kernelIndSubIter++, d_zcenter[i]);
+			kernel_.setArg(kernelIndSubIter++, d_V[i]);
 		}
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_reko_type[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_norm[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_scat[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_Summ[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_lor[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_xyindex[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_zindex[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_L[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_Sino[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_sc_ra[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_rhs[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_mem), &d_output[i]);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(cl_uchar), &no_norm);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &m_size);
-		clSetKernelArg(kernel, kernelIndSubIter++, sizeof(uint64_t), &st);
-		status = clEnqueueNDRangeKernel(commandQueues[i], kernel, 1, NULL, &global_size, &local_size, 0, NULL, &events[i]);
+		kernel_.setArg(kernelIndSubIter++, d_reko_type[i]);
+		kernel_.setArg(kernelIndSubIter++, d_norm[i]);
+		kernel_.setArg(kernelIndSubIter++, d_scat[i]);
+		kernel_.setArg(kernelIndSubIter++, d_Summ[i]);
+		kernel_.setArg(kernelIndSubIter++, d_lor[i]);
+		kernel_.setArg(kernelIndSubIter++, d_xyindex[i]);
+		kernel_.setArg(kernelIndSubIter++, d_zindex[i]);
+		kernel_.setArg(kernelIndSubIter++, d_L[i]);
+		kernel_.setArg(kernelIndSubIter++, d_Sino[i]);
+		kernel_.setArg(kernelIndSubIter++, d_sc_ra[i]);
+		kernel_.setArg(kernelIndSubIter++, d_rhs[i]);
+		kernel_.setArg(kernelIndSubIter++, d_output[i]);
+		kernel_.setArg(kernelIndSubIter++, no_norm);
+		kernel_.setArg(kernelIndSubIter++, m_size);
+		kernel_.setArg(kernelIndSubIter++, st);
+		status = commandQueues[i].enqueueNDRangeKernel(kernel_, cl::NullRange, global, local, NULL, &events[i][0]);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
-			for (cl_uint i = 0; i < num_devices_context; i++) {
-				clReleaseMemObject(d_reko_type[i]);
-				clReleaseMemObject(d_z[i]);
-				clReleaseMemObject(d_x[i]);
-				clReleaseMemObject(d_y[i]);
-				clReleaseMemObject(d_xcenter[i]);
-				clReleaseMemObject(d_ycenter[i]);
-				clReleaseMemObject(d_zcenter[i]);
-				clReleaseMemObject(d_V[i]);
-				clReleaseMemObject(d_atten[i]);
-				clReleaseMemObject(d_norm[i]);
-				clReleaseMemObject(d_scat[i]);
-				clReleaseMemObject(d_pseudos[i]);
-				clReleaseMemObject(d_Summ[i]);
-				clReleaseMemObject(d_rhs[i]);
-				clReleaseMemObject(d_output[i]);
-				clReleaseMemObject(d_xyindex[i]);
-				clReleaseMemObject(d_zindex[i]);
-				clReleaseMemObject(d_L[i]);
-				clReleaseMemObject(d_sc_ra[i]);
-				clReleaseMemObject(d_lor[i]);
-				clReleaseMemObject(d_Sino[i]);
-				if (i < num_devices_context - 1) {
-					clReleaseMemObject(d0_Summ[i]);
-					clReleaseMemObject(d0_output[i]);
-				}
-			}
 			return;
 		}
 	}
@@ -654,56 +657,56 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	if (num_devices_context > 1u) {
 		for (cl_uint i = 1; i < num_devices_context; i++) {
 			if (atomic_64bit) {
-				status = clEnqueueReadBuffer(commandQueues[i], d_Summ[i], CL_TRUE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1].data(), 1, &events[i], NULL);
+				status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueReadBuffer(commandQueues[i], d_output[i], CL_TRUE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1].data(), 1, &events[i], NULL);
+				status = commandQueues[i].enqueueReadBuffer(d_output[i], CL_TRUE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1], CL_FALSE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1].data(), 0, NULL, NULL);
+				status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueWriteBuffer(commandQueues[0], d0_output[i - 1], CL_FALSE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1].data(), 0, NULL, NULL);
+				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
 			}
 			else {
-				status = clEnqueueReadBuffer(commandQueues[i], d_Summ[i], CL_TRUE, 0, sizeof(float) * im_dim, testi_summ[i - 1].data(), 1, &events[i], NULL);
+				status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(float) * im_dim, testi_summ[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueReadBuffer(commandQueues[i], d_output[i], CL_TRUE, 0, sizeof(float) * size_output, testi_rhs[i - 1].data(), 1, &events[i], NULL);
+				status = commandQueues[i].enqueueReadBuffer(d_output[i], CL_TRUE, 0, sizeof(float) * size_output, testi_rhs[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueWriteBuffer(commandQueues[0], d0_Summ[i - 1], CL_FALSE, 0, sizeof(float) * im_dim, testi_summ[i - 1].data(), 0, NULL, NULL);
+				status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(float) * im_dim, testi_summ_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = clEnqueueWriteBuffer(commandQueues[0], d0_output[i - 1], CL_FALSE, 0, sizeof(float) * size_output, testi_rhs[i - 1].data(), 0, NULL, NULL);
+				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(float) * size_output, testi_rhs_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
 			}
 			for (cl_uint i = 0ULL; i < num_devices_context; i++) {
-				clFinish(commandQueues[i]);
+				commandQueues[i].finish();
 			}
 		}
 	}
 
-	clWaitForEvents(1, &events[0]);
+	events[0][0].waitForEvents(events[0]);
 
 	for (cl_uint i = 1; i < num_devices_context; i++) {
 		size_t summa_pituus;
@@ -711,42 +714,43 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			summa_pituus = length[i];
 		else
 			summa_pituus = size_rhs;
-		clSetKernelArg(kernel_sum, 0, sizeof(cl_mem), &d0_Summ[i - 1]);
-		clSetKernelArg(kernel_sum, 1, sizeof(cl_mem), &d_Summ[0]);
-		clSetKernelArg(kernel_sum, 2, sizeof(cl_mem), &d0_output[i - 1]);
-		clSetKernelArg(kernel_sum, 3, sizeof(cl_mem), &d_output[0]);
-		clSetKernelArg(kernel_sum, 4, sizeof(uint64_t), &size_rhs_i);
-		clSetKernelArg(kernel_sum, 5, sizeof(uint32_t), &im_dim);
-		clSetKernelArg(kernel_sum, 6, sizeof(cl_uchar), &no_norm);
-		clSetKernelArg(kernel_sum, 7, sizeof(uint64_t), &globals[i - 1ULL]);
-		clSetKernelArg(kernel_sum, 8, sizeof(uint8_t), &fp);
-		status = clEnqueueNDRangeKernel(commandQueues[0], kernel_sum, 1, NULL, &summa_pituus, NULL, 0, NULL, NULL);
+		cl::NDRange global(summa_pituus);
+		kernel_sum_.setArg(0, d0_Summ[i - 1]);
+		kernel_sum_.setArg(1, d_Summ[0]);
+		kernel_sum_.setArg(2, d0_output[i - 1]);
+		kernel_sum_.setArg(3, d_output[0]);
+		kernel_sum_.setArg(4, size_rhs_i);
+		kernel_sum_.setArg(5, im_dim);
+		kernel_sum_.setArg(6, no_norm);
+		kernel_sum_.setArg(7, globals[i - 1ULL]);
+		kernel_sum_.setArg(8, fp);
+		status = commandQueues[0].enqueueNDRangeKernel(kernel_, cl::NullRange, global);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		clFinish(commandQueues[0]);
+		commandQueues[i].finish();
 	}
 
 	if (atomic_64bit) {
-		status = clEnqueueReadBuffer(commandQueues[0], d_output[0], CL_FALSE, 0, sizeof(uint64_t) * size_output, output_u, 0, NULL, NULL);
+		status = commandQueues[0].enqueueReadBuffer(d_output[0], CL_FALSE, 0, sizeof(cl_ulong) * size_output, output_u);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueReadBuffer(commandQueues[0], d_Summ[0], CL_FALSE, 0, sizeof(uint64_t) * im_dim, normalizer_u, 0, NULL, NULL);
+		status = commandQueues[0].enqueueReadBuffer(d_Summ[0], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, normalizer_u);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 	}
 	else {
-		status = clEnqueueReadBuffer(commandQueues[0], d_output[0], CL_FALSE, 0, sizeof(float) * size_output, output_f, 0, NULL, NULL);
+		status = commandQueues[0].enqueueReadBuffer(d_output[0], CL_FALSE, 0, sizeof(float) * size_output, output_f);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = clEnqueueReadBuffer(commandQueues[0], d_Summ[0], CL_FALSE, 0, sizeof(float) * im_dim, normalizer_f, 0, NULL, NULL);
+		status = commandQueues[0].enqueueReadBuffer(d_Summ[0], CL_FALSE, 0, sizeof(float) * im_dim, normalizer_f);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -754,37 +758,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 
 	for (cl_uint i = 0u; i < num_devices_context; i++) {
-		clFinish(commandQueues[i]);
-		clReleaseEvent(events[i]);
+		commandQueues[i].finish();
 	}
 
-	for (cl_uint i = 0; i < num_devices_context; i++) {
-		clReleaseMemObject(d_reko_type[i]);
-		clReleaseMemObject(d_z[i]);
-		clReleaseMemObject(d_x[i]);
-		clReleaseMemObject(d_y[i]);
-		clReleaseMemObject(d_xcenter[i]);
-		clReleaseMemObject(d_ycenter[i]);
-		clReleaseMemObject(d_zcenter[i]);
-		clReleaseMemObject(d_V[i]);
-		clReleaseMemObject(d_atten[i]);
-		clReleaseMemObject(d_norm[i]);
-		clReleaseMemObject(d_scat[i]);
-		clReleaseMemObject(d_pseudos[i]);
-		clReleaseMemObject(d_Summ[i]);
-		clReleaseMemObject(d_rhs[i]);
-		clReleaseMemObject(d_output[i]);
-		clReleaseMemObject(d_xyindex[i]);
-		clReleaseMemObject(d_zindex[i]);
-		clReleaseMemObject(d_L[i]);
-		clReleaseMemObject(d_sc_ra[i]);
-		clReleaseMemObject(d_lor[i]);
-		clReleaseMemObject(d_Sino[i]);
-		if (i < num_devices_context - 1) {
-			clReleaseMemObject(d0_Summ[i]);
-			clReleaseMemObject(d0_output[i]);
-		}
-	}
 	mxSetCell(output, 0, output_m);
 	mxSetCell(output, 1, normalizer_m);
+	return;
 }

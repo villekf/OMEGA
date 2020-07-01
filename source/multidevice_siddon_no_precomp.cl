@@ -91,7 +91,7 @@
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 void siddon_multi(const float global_factor, const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dz, const float d_dx,
 	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, const float d_maxyy,
-	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_det_per_ring, const uint d_pRows,
+	const float d_zmax, const float d_NSlices, const uint d_size_x, const uint d_TotSinos, const uint d_det_per_ring, const uint d_pRows,
 	const uint d_Nxy, const uchar fp, const float dc_z, const ushort n_rays, const float d_epsilon_mramla,
 	const __global float* d_atten, __constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet,
 	__constant uchar* MethodList, const __global float* d_norm, const __global float* d_scat, __global CAST* d_Summ, const __global ushort* d_lor,

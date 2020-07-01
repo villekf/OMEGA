@@ -130,8 +130,8 @@ typedef struct {
 
 typedef struct _kernelStruct {
 #ifdef OPENCL
-	cl_kernel kernelNLM = NULL;
-	cl_command_queue* af_queue = nullptr;
+	cl::Kernel kernelNLM;
+	cl::CommandQueue* af_queue;
 #else
 	CUfunction kernelNLM = NULL;
 	CUstream* af_cuda_stream = nullptr;

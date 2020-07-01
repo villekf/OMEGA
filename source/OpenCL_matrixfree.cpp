@@ -95,7 +95,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 	const uint8_t raw = (uint8_t)mxGetScalar(prhs[25]);
 
-	af::setDevice(device);
+	//af::setDevice(device);
 
 	const char *fileName = mxArrayToString(prhs[26]);
 
@@ -282,7 +282,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	}
 
 	// Clear ArrayFire memory
-	af::deviceGC();
+	//af::deviceGC();
 
 	return;
 }

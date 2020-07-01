@@ -17,11 +17,16 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
-#if defined(__APPLE__) || defined(__MACOSX)
-#include <OpenCL/cl.h>
-#else
-#include <CL/cl.h>
-#endif
+//#define CL_HPP_ENABLE_EXCEPTIONS
+#define CL_HPP_MINIMUM_OPENCL_VERSION 120
+#define CL_HPP_TARGET_OPENCL_VERSION 120
+//#if defined(__APPLE__) || defined(__MACOSX)
+//#include <OpenCL/cl.h>
+//#else
+//#include <CL/cl.h>
+//#endif
+//#include <CL/cl.hpp>
+#include "cl2.hpp"
 #include <string>
 #include <iostream>
 #include <fstream>
