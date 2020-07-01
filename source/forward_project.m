@@ -96,6 +96,10 @@ blocks=uint32(rings + length(pseudot) - 1);
 % First ring
 block1=uint32(0);
 
+save_norm = false;
+save_rand = false;
+save_scat = false;
+
 NSinos = uint32(options.NSinos);
 % TotSinos = int32(options.TotSinos);
 
@@ -118,56 +122,36 @@ else
     z_det = options.z_det;
 end
 
+if ~isfield(options,'normalization')
+    save_norm = true;
+end
+if ~isfield(options,'SinDelayed')
+    save_rand = true;
+end
+if ~isfield(options,'ScatterC')
+    save_scat = true;
+end
+
+if isfield(options,'norm_full')
+    options.normalization = options.norm_full;
+end
+if isfield(options,'rand_full')
+    options.SinDelayed = options.rand_full;
+end
+if isfield(options,'scat_full')
+    options.ScatterC = options.scat_full;
+end
+
 [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
 
-if randoms_correction
-    if iscell(options.SinDelayed)
-        if options.implementation == 1
-            SinDelayed = options.SinDelayed{1}(nn(1) : nn(2));
-        else
-            SinDelayed{1} = single(options.SinDelayed{1}(nn(1) : nn(2)));
-        end
-    else
-        if options.implementation == 1
-            SinDelayed = options.SinDelayed(nn(1) : nn(2));
-        else
-            SinDelayed{1} = single(options.SinDelayed(nn(1) : nn(2)));
-        end
-    end
-else
-    if options.implementation == 1
-        SinDelayed = 0;
-    else
-        SinDelayed{1} = single(0);
-    end
+if save_norm
+    options.norm_full = options.normalization;
 end
-
-if normalization_correction
-    normalization = options.normalization(nn(1) : nn(2));
-else
-    if options.implementation == 1
-        normalization = 0;
-    else
-        normalization = single(0);
-    end
+if save_rand
+    options.rand_full = options.SinDelayed;
 end
-
-if options.scatter_correction && ~options.subtract_scatter
-    if options.implementation == 1
-        scatter_input = options.ScatterC(nn(1) : nn(2));
-    else
-        if iscell(options.SinDelayed)
-            options.ScatterFB{1} = {single(options.ScatterC{1}(nn(1) : nn(2)))};
-        else
-            options.ScatterFB{1} = {single(options.ScatterC(nn(1) : nn(2)))};
-        end
-    end
-else
-    if options.implementation == 1
-        scatter_input = 0;
-    else
-        options.ScatterFB{1} = single(0);
-    end
+if save_scat
+    options.scat_full = options.ScatterC;
 end
 
 if options.use_raw_data
@@ -196,6 +180,56 @@ if ~options.precompute_lor
     lor_a = uint16(0);
 end
 
+
+if normalization_correction
+    normalization = options.normalization;
+else
+    if options.implementation == 1
+        normalization = 0;
+    else
+        normalization = single(0);
+    end
+end
+
+if randoms_correction
+    if iscell(options.SinDelayed)
+        if options.implementation == 1
+            SinDelayed = options.SinDelayed{1};
+        else
+            SinDelayed{1} = single(options.SinDelayed{1});
+        end
+    else
+        if options.implementation == 1
+            SinDelayed = options.SinDelayed;
+        else
+            SinDelayed{1} = single(options.SinDelayed);
+        end
+    end
+else
+    if options.implementation == 1
+        SinDelayed = 0;
+    else
+        SinDelayed{1} = single(0);
+    end
+end
+
+if options.scatter_correction && ~options.subtract_scatter
+    if options.implementation == 1
+        scatter_input = options.ScatterC;
+    else
+        if iscell(options.ScatterFB)
+            options.ScatterFB{1} = {single(options.ScatterC{1})};
+        else
+            options.ScatterFB{1} = {single(options.ScatterC)};
+        end
+    end
+else
+    if options.implementation == 1
+        scatter_input = 0;
+    else
+        options.ScatterFB{1} = single(0);
+    end
+end
 
 % Pixels
 etaisyys_x=(R-FOVax)/2;
