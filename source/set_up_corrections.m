@@ -28,6 +28,13 @@ folder = fileparts(which('set_up_corrections.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
+if ~isfield(options,'reconstruct_trues')
+    options.reconstruct_trues = false;
+end
+if ~isfield(options,'reconstruct_scatter')
+    options.reconstruct_scatter = false;
+end
+
 
 % options.use_psf = false;
 block1 = 0;
@@ -195,11 +202,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
     else
         options.scatter = false;
     end
-    if isempty(RandProp)
+    if exist('RandProp','var') == 0 || isempty(RandProp)
         RandProp.smoothing = false;
         RandProp.variance_reduction = false;
     end
-    if isempty(ScatterProp)
+    if exist('ScatterProp','var') == 0 || isempty(ScatterProp)
         ScatterProp.smoothing = false;
         ScatterProp.variance_reduction = false;
         ScatterProp.normalization = false;
