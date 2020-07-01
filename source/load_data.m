@@ -542,7 +542,7 @@ elseif options.use_machine == 0
                 fpath = [fpath '/'];
                 delay_names = dir([fpath '*delay*.dat']);
                 if size(delay_names,1) == 0
-                    error('No ASCII (.dat) coincidence files were found. Check your filepath (options.fpath) or current folder.')
+                    error('No ASCII (.dat) delayed coincidence files were found. Check your filepath (options.fpath) or current folder.')
                 end
             end
         end
@@ -628,7 +628,7 @@ elseif options.use_machine == 0
                     clear B
                 end
             else
-                M = readmatrix([fpath fnames(lk).name]);
+                M = readmatrix([fpath fnames(lk).name],'Encoding','UTF-8');
                 if sum(isnan(M(:,end))) > 0 && sum(isnan(M(:,end))) > round(size(M,1)/2)
                     [rows, ~] = find(~isnan(M(:,end)));
                     for kg = 1 : length(rows)
@@ -736,6 +736,9 @@ elseif options.use_machine == 0
                     t3 = all([abs(S(:,4))<=max_x abs(S(:,5))<=max_y abs(S(:,6))<=max_z],2);
                     t = (t1+t2+t3==3);
                     CC = CC(t);
+                    % Find the minimum distance from each pixel center
+                    % The smallest distance means it is in the same
+                    % pixel
                     [~,i] = min(abs(bsxfun(@minus,x.',S(t,1))),[],2);
                     [~,j] = min(abs(bsxfun(@minus,y.',S(t,2))),[],2);
                     [~,k] = min(abs(bsxfun(@minus,z.',S(t,3))),[],2);
@@ -810,8 +813,11 @@ elseif options.use_machine == 0
                         CC = ones(length(S),1,'int16');
                         CC = CC(trues_index);
                         SS = S(trues_index,:);
-                        t= all([abs(SS(:,1))<=max_x abs(SS(:,2))<=max_y abs(SS(:,3))<=max_z],2);
+                        t = all([abs(SS(:,1)) <= max_x, abs(SS(:,2)) <= max_y, abs(SS(:,3)) <= max_z],2);
                         CC = CC(t);
+                        % Find the minimum distance from each pixel center
+                        % The smallest distance means it is in the same
+                        % pixel
                         [~,i] = min(abs(bsxfun(@minus,x.',SS(t,1))),[],2);
                         [~,j] = min(abs(bsxfun(@minus,y.',SS(t,2))),[],2);
                         [~,k] = min(abs(bsxfun(@minus,z.',SS(t,3))),[],2);
@@ -861,7 +867,7 @@ elseif options.use_machine == 0
                         CC = ones(length(S),1,'int16');
                         CC = CC(randoms_index);
                         SS = S(randoms_index,:);
-                        t= all([abs(SS(:,1))<=max_x abs(SS(:,2))<=max_y abs(SS(:,3))<=max_z],2);
+                        t = all([abs(SS(:,1)) <= max_x abs(SS(:,2)) <= max_y abs(SS(:,3))<=max_z],2);
                         CC = CC(t);
                         [~,i] = min(abs(bsxfun(@minus,x.',SS(t,1))),[],2);
                         [~,j] = min(abs(bsxfun(@minus,y.',SS(t,2))),[],2);
@@ -1636,9 +1642,9 @@ end
         
         if options.verbose
             if partitions > 1
-                counts = sum(prompts{llo},'all');
+                counts = sum(prompts{llo}(:));
             else
-                counts = sum(prompts,'all');
+                counts = sum(prompts(:));
             end
         end
         
@@ -1655,9 +1661,9 @@ end
             end
             if options.verbose
                 if partitions > 1
-                    Tcounts = sum(trues{llo},'all');
+                    Tcounts = sum(trues{llo}(:));
                 else
-                    Tcounts = sum(trues,'all');
+                    Tcounts = sum(trues(:));
                 end
                 disp(['Total number of trues at time point ' num2str(llo) ' is ' num2str(Tcounts) '.'])
                 tot_trues = tot_trues + Tcounts;
@@ -1671,9 +1677,9 @@ end
             end
             if options.verbose
                 if partitions > 1
-                    Scounts = sum(scatter{llo},'all');
+                    Scounts = sum(scatter{llo}(:));
                 else
-                    Scounts = sum(scatter,'all');
+                    Scounts = sum(scatter(:));
                 end
                 disp(['Total number of scattered coincidences at time point ' num2str(llo) ' is ' num2str(Scounts) '.'])
                 tot_scatter = tot_scatter + Scounts;
@@ -1687,9 +1693,9 @@ end
             end
             if options.verbose
                 if partitions > 1
-                    Rcounts = sum(randoms{llo},'all');
+                    Rcounts = sum(randoms{llo}(:));
                 else
-                    Rcounts = sum(randoms,'all');
+                    Rcounts = sum(randoms(:));
                 end
                 disp(['Total number of randoms at time point ' num2str(llo) ' is ' num2str(Rcounts) '.'])
                 tot_randoms = tot_randoms + Rcounts;
@@ -1703,9 +1709,9 @@ end
             end
             if options.verbose
                 if partitions > 1
-                    Dcounts = sum(delays{llo},'all');
+                    Dcounts = sum(delays{llo}(:));
                 else
-                    Dcounts = sum(delays,'all');
+                    Dcounts = sum(delays(:));
                 end
                 disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(Dcounts) '.'])
                 tot_delayed = tot_delayed + Dcounts;
