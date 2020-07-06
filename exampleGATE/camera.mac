@@ -52,7 +52,7 @@
 /gate/crystal/cubicArray/setRepeatNumberX 1 
 /gate/crystal/cubicArray/setRepeatNumberY 8 
 /gate/crystal/cubicArray/setRepeatNumberZ 8 
-/gate/crystal/cubicArray/setRepeatVector 10. 2.4 2.4 mm
+/gate/crystal/cubicArray/setRepeatVector 0. 2.4 2.4 mm
 
 # R E P E A T M O D U L E 
 /gate/module/repeaters/insert cubicArray 
