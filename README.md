@@ -1,12 +1,16 @@
 # OMEGA
 Open-source MATLAB Emission Tomography Software
 
+## Purpose
+
+The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any PET data, including simulated GATE data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
+
 ## Introduction
 
 OMEGA is a software for [MATLAB](https://www.mathworks.com/) and [GNU Octave](https://www.gnu.org/software/octave/) to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from GATE simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
 The algorithms implemented so far are:
-- Improved Siddon's algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
+- Improved Siddon's ray tracer algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
 - Orthogonal distance-based ray tracer [3]
 - Volume of intersection ray tracer (THOR) [28].
 - Maximum Likelihood Expectation Maximization (MLEM) [4,5]
