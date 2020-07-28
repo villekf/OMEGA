@@ -22,6 +22,18 @@ function options = OMEGA_error_check(options)
 if ~isfield(options, 'custom')
     options.custom = false;
 end
+if ~isfield(options, 'store_raw_data')
+    options.store_raw_data = options.use_raw_data;
+end
+if ~isfield(options, 'Huber')
+    options.Huber = false;
+end
+if ~isfield(options, 'NLM')
+    options.NLM = false;
+end
+if ~isfield(options, 'no_data_load')
+    options.no_data_load = false;
+end
 MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 PRIOR = (options.MRP || options.quad || options.Huber || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS ...
@@ -503,11 +515,11 @@ if options.verbose
             options.FMH = false;
         end
         if options.weighted_mean && MAP
-            if options.mean_type == 1
+            if options.mean_type == 1 || options.mean_type == 4
                 priori = [priori;{'Weighted (arithmetic) mean'}];
-            elseif options.mean_type == 2
+            elseif options.mean_type == 2 || options.mean_type == 5
                 priori = [priori;{'Weighted (harmonic) mean'}];
-            elseif options.mean_type == 3
+            elseif options.mean_type == 3 || options.mean_type == 6
                 priori = [priori;{'Weighted (geometric) mean'}];
             else
                 error('Unsupported mean type selected.')
@@ -532,6 +544,8 @@ if options.verbose
                     priori = [priori;{'TV'}];
                 elseif options.TVtype == 3
                     priori = [priori;{'Weighted TV'}];
+                elseif options.TVtype == 4
+                    priori = [priori;{'SATV'}];
                 else
                     error('Unsupported TV type selected.')
                 end
