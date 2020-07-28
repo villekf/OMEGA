@@ -16,6 +16,7 @@ ascii_ind.event_index2 = 0;
 ascii_ind.source_index1 = 0;
 ascii_ind.source_index2 = 0;
 ascii_ind.time_index = 0;
+ascii_ind.time_index2 = 0;
 ascii_ind.energy_index1 = 0;
 ascii_ind.world_index1 = 0;
 ascii_ind.base_ind1 = 0;
@@ -120,7 +121,7 @@ for kk = 1 : pituus
    elseif kk == 24 && coincidence_mask(kk) == 1 && (coincidence_mask(kk-1) == 0 || coincidence_mask(kk-2) == 0)
        error('Only one source index is selected! All three need to be selected')
    elseif kk == 25 && coincidence_mask(kk) == 1
-       ascii_ind.time_index = 1 + summa;
+       ascii_ind.time_index2 = 1 + summa;
        summa = summa + 1;
    elseif kk == 26 && coincidence_mask(kk) == 1
        ascii_ind.energy_index2 = 1 + summa;
