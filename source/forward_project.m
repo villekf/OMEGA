@@ -1,4 +1,4 @@
-function varargout = forward_project(options, index, n_meas, f, nn, iternn, SinM)
+function varargout = forward_project(options, index, n_meas, f, nn, iternn, varargin)
 %FORWARD_PROJECT Calculates the forward projection
 % Examples:
 %   fp = forward_project(options, index, n_meas, f, nn)
@@ -47,6 +47,17 @@ if nargout > 2
 end
 if nargout == 0
     error('Too few output arguments')
+end
+
+if nargin >= 7 && ~isempty(varargin{1}) && islogical(varargin{1})
+    luokka = varargin{1};
+else
+    luokka = false;
+end
+if nargin >= 8 && ~isempty(varargin{2}) && islogical(varargin{2}) && options.implementation == 1
+    store_matrix = varargin{1};
+else
+    store_matrix = false;
 end
 
 % folder = fileparts(which('reconstructions_main.m'));
@@ -103,33 +114,39 @@ save_scat = false;
 NSinos = uint32(options.NSinos);
 % TotSinos = int32(options.TotSinos);
 
-if numel(f) ~= Nx*Ny*Nz
+if numel(f) ~= Nx*Ny*Nz && ~isempty(f)
     error('Estimate has different amount of elements than the image size')
 end
 
-if iternn == 1 || (options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1)
-    if (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && isfield(options,'x') && isfield(options,'y')
-        options = rmfield(options, 'x');
-        options = rmfield(options, 'y');
+if ~luokka
+    if iternn == 1 || (options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1)
+        if (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && isfield(options,'x') && isfield(options,'y')
+            options = rmfield(options, 'x');
+            options = rmfield(options, 'y');
+        end
+        [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
+        options.x = x;
+        options.y = y;
+        options.z_det = z_det;
+    else
+        x = options.x;
+        y = options.y;
+        z_det = options.z_det;
     end
-    [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
-    options.x = x;
-    options.y = y;
-    options.z_det = z_det;
+    
+    if ~isfield(options,'normalization')
+        save_norm = true;
+    end
+    if ~isfield(options,'SinDelayed')
+        save_rand = true;
+    end
+    if ~isfield(options,'ScatterC')
+        save_scat = true;
+    end
 else
     x = options.x;
     y = options.y;
     z_det = options.z_det;
-end
-
-if ~isfield(options,'normalization')
-    save_norm = true;
-end
-if ~isfield(options,'SinDelayed')
-    save_rand = true;
-end
-if ~isfield(options,'ScatterC')
-    save_scat = true;
 end
 
 if isfield(options,'norm_full')
@@ -142,16 +159,22 @@ if isfield(options,'scat_full')
     options.ScatterC = options.scat_full;
 end
 
-[normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
-
-if save_norm
-    options.norm_full = options.normalization;
-end
-if save_rand
-    options.rand_full = options.SinDelayed;
-end
-if save_scat
-    options.scat_full = options.ScatterC;
+if ~luokka
+    [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
+    
+    
+    if save_norm
+        options.norm_full = options.normalization;
+    end
+    if save_rand
+        options.rand_full = options.SinDelayed;
+    end
+    if save_scat
+        options.scat_full = options.ScatterC;
+    end
+else
+    normalization_correction = options.normalization_correction;
+    randoms_correction = options.randoms_correction;
 end
 
 if options.use_raw_data
@@ -175,59 +198,123 @@ if use_raw_data
     end
 end
 
-[options, lor_a, xy_index, z_index, LL, summa, n_meas] = form_subset_indices(options, n_meas, 1, index, size_x, y, z_det, blocks, true);
-if ~options.precompute_lor
-    lor_a = uint16(0);
-end
-
-
-if normalization_correction
-    normalization = options.normalization;
-else
-    if options.implementation == 1
-        normalization = 0;
-    else
-        normalization = single(0);
+if ~luokka
+    [options, lor_a, xy_index, z_index, LL, summa, n_meas] = form_subset_indices(options, n_meas, 1, index, size_x, y, z_det, blocks, true);
+    if ~options.precompute_lor
+        lor_a = uint16(0);
     end
-end
-
-if randoms_correction
-    if iscell(options.SinDelayed)
-        if options.implementation == 1
-            SinDelayed = options.SinDelayed{1};
-        else
-            SinDelayed{1} = single(options.SinDelayed{1});
-        end
+    if normalization_correction
+        normalization = options.normalization;
     else
         if options.implementation == 1
-            SinDelayed = options.SinDelayed;
+            normalization = 0;
         else
-            SinDelayed{1} = single(options.SinDelayed);
+            normalization = single(0);
+        end
+    end
+    
+    if randoms_correction
+        if iscell(options.SinDelayed)
+            if options.implementation == 1
+                SinDelayed = options.SinDelayed{1};
+            else
+                SinDelayed{1} = single(options.SinDelayed{1});
+            end
+        else
+            if options.implementation == 1
+                SinDelayed = options.SinDelayed;
+            else
+                SinDelayed{1} = single(options.SinDelayed);
+            end
+        end
+    else
+        if options.implementation == 1
+            SinDelayed = 0;
+        else
+            SinDelayed{1} = single(0);
+        end
+    end
+    
+    if options.scatter_correction && ~options.subtract_scatter
+        if options.implementation == 1
+            scatter_input = options.ScatterC;
+        else
+            if iscell(options.ScatterFB)
+                options.ScatterFB{1} = {single(options.ScatterC{1})};
+            else
+                options.ScatterFB{1} = {single(options.ScatterC)};
+            end
+        end
+    else
+        if options.implementation == 1
+            scatter_input = 0;
+        else
+            options.ScatterFB{1} = single(0);
         end
     end
 else
-    if options.implementation == 1
-        SinDelayed = 0;
+    if normalization_correction
+        normalization = options.normalization(nn(1) : nn(2));
     else
-        SinDelayed{1} = single(0);
-    end
-end
-
-if options.scatter_correction && ~options.subtract_scatter
-    if options.implementation == 1
-        scatter_input = options.ScatterC;
-    else
-        if iscell(options.ScatterFB)
-            options.ScatterFB{1} = {single(options.ScatterC{1})};
+        if options.implementation == 1
+            normalization = 0;
         else
-            options.ScatterFB{1} = {single(options.ScatterC)};
+            normalization = single(0);
         end
     end
-else
-    if options.implementation == 1
-        scatter_input = 0;
+    
+    if randoms_correction
+        if iscell(options.SinDelayed)
+            if options.implementation == 1
+                SinDelayed = options.SinDelayed{1}(nn(1) : nn(2));
+            else
+                SinDelayed{1} = single(options.SinDelayed{1}(nn(1) : nn(2)));
+            end
+        else
+            if options.implementation == 1
+                SinDelayed = options.SinDelayed(nn(1) : nn(2));
+            else
+                SinDelayed{1} = single(options.SinDelayed(nn(1) : nn(2)));
+            end
+        end
     else
-        options.ScatterFB{1} = single(0);
+        if options.implementation == 1
+            SinDelayed = 0;
+        else
+            SinDelayed{1} = single(0);
+        end
+    end
+    
+    if options.scatter_correction && ~options.subtract_scatter
+        if options.implementation == 1
+            scatter_input = options.ScatterC(nn(1) : nn(2));
+        else
+            if iscell(options.ScatterFB)
+                options.ScatterFB{1} = {single(options.ScatterC{1}(nn(1) : nn(2)))};
+            else
+                options.ScatterFB{1} = {single(options.ScatterC(nn(1) : nn(2)))};
+            end
+        end
+    else
+        if options.implementation == 1
+            scatter_input = 0;
+        else
+            options.ScatterFB{1} = single(0);
+        end
+    end
+    if options.use_raw_data
+        LL = options.LL(nn(1) : nn(2));
+    else
+        xy_index = options.xy_index(nn(1) : nn(2));
+        z_index = options.z_index(nn(1) : nn(2));
+    end
+    if options.implementation == 1
+        summa = options.summa(iternn);
+    end
+    if options.precompute_lor
+        lor_a = options.lor_a(nn(1) : nn(2));
+    else
+        lor_a = uint16(0);
     end
 end
 
@@ -264,10 +351,12 @@ N=(Nx)*(Ny)*(Nz);
 det_per_ring = uint32(det_per_ring);
 
 % How much memory is preallocated
-if use_raw_data == false
-    ind_size = uint32(NSinos/8*(det_per_ring)* Nx * (Ny));
-else
-    ind_size = uint32((det_per_ring)^2/8* Nx * (Ny));
+if options.implementation == 1
+    if use_raw_data == false
+        ind_size = uint32(NSinos/8*(det_per_ring)* Nx * (Ny));
+    else
+        ind_size = uint32((det_per_ring)^2/8* Nx * (Ny));
+    end
 end
 
 
@@ -279,68 +368,78 @@ if zmax==0
         zmax = double(1);
     end
 end
-
-if options.projector_type == 2 || options.projector_type == 3
-    x_center = xx(1 : end - 1)' + dx/2;
-    y_center = yy(1 : end - 1)' + dy/2;
-%     if options.tube_width_z > 0
+if ~luokka
+    if options.projector_type == 2 || options.projector_type == 3
+        x_center = xx(1 : end - 1)' + dx/2;
+        y_center = yy(1 : end - 1)' + dy/2;
+        %     if options.tube_width_z > 0
         z_center = zz(1 : end - 1)' + dz/2;
-%     else
-%         z_center = zz(1);
-%     end
-    temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
-    if options.tube_width_z > 0
-        temppi = max([1,round(options.tube_width_z / temppi)]);
-    else
-        temppi = max([1,round(options.tube_width_xy / temppi)]);
-    end
-    temppi = temppi * temppi * 4;
-    if options.apply_acceleration
-        if options.tube_width_z == 0
-            dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
+        %     else
+        %         z_center = zz(1);
+        %     end
+        temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
+        if options.tube_width_z > 0
+            temppi = max([1,round(options.tube_width_z / temppi)]);
         else
-            dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * temppi);
+            temppi = max([1,round(options.tube_width_xy / temppi)]);
+        end
+        temppi = temppi * temppi * 4;
+        if options.apply_acceleration
+            if options.tube_width_z == 0
+                dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
+            else
+                dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * temppi);
+            end
+        else
+            dec = uint32(0);
         end
     else
+        x_center = xx(1);
+        y_center = yy(1);
+        z_center = zz(1);
+        %     if options.use_psf && options.apply_acceleration
+        %         dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * ((ceil(options.cr_pz / dx) * 2 + 1)^2));
+        %     else
         dec = uint32(0);
+        %     end
+    end
+    
+    if options.projector_type == 3
+        voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
+        bmax = options.tube_radius + voxel_radius;
+        b = linspace(0, bmax, 10000)';
+        b(options.tube_radius > (b + voxel_radius)) = [];
+        b = unique(round(b*10^3)/10^3);
+        V = volumeIntersection(options.tube_radius, voxel_radius, b);
+        Vmax = (4*pi)/3*voxel_radius^3;
+        bmin = min(b);
+    else
+        V = 0;
+        Vmax = 0;
+        bmin = 0;
+        bmax = 0;
+    end
+    if options.implementation == 2 || options.implementation == 3
+        V = single(V);
+        Vmax = single(Vmax);
+        bmin = single(bmin);
+        bmax = single(bmax);
+    end
+    % Multi-ray Siddon
+    if options.implementation > 1 && options.n_rays_transaxial > 1 && ~options.precompute_lor && options.projector_type == 1
+        [x,y] = getMultirayCoordinates(options);
+        options.x = x;
+        options.y = y;
     end
 else
-    x_center = xx(1);
-    y_center = yy(1);
-    z_center = zz(1);
-%     if options.use_psf && options.apply_acceleration
-%         dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * ((ceil(options.cr_pz / dx) * 2 + 1)^2));
-%     else
-        dec = uint32(0);
-%     end
-end
-
-if options.projector_type == 3
-    voxel_radius = (sqrt(2) * options.voxel_radius * dx) / 2;
-    bmax = options.tube_radius + voxel_radius;
-    b = linspace(0, bmax, 10000)';
-    b(options.tube_radius > (b + voxel_radius)) = [];
-    b = unique(round(b*10^3)/10^3);
-    V = volumeIntersection(options.tube_radius, voxel_radius, b);
-    Vmax = (4*pi)/3*voxel_radius^3;
-    bmin = min(b);
-else
-    V = 0;
-    Vmax = 0;
-    bmin = 0;
-    bmax = 0;
-end
-if options.implementation == 2 || options.implementation == 3
-    V = single(V);
-    Vmax = single(Vmax);
-    bmin = single(bmin);
-    bmax = single(bmax);
-end
-% Multi-ray Siddon
-if options.implementation > 1 && options.n_rays_transaxial > 1 && ~options.precompute_lor && options.projector_type == 1
-    [x,y] = getMultirayCoordinates(options);
-    options.x = x;
-    options.y = y;
+    x_center = options.x_center;
+    y_center = options.y_center;
+    z_center = options.z_center;
+    dec = options.dec;
+    V = options.V;
+    Vmax = options.Vmax;
+    bmin = options.bmin;
+    bmax = options.bmax;
 end
 
 if options.implementation == 1
@@ -359,7 +458,7 @@ if options.implementation == 1
                 error('Unsupported projector type')
             end
         else
-%             L = LL(index,:);
+            %             L = LL(index,:);
             LL = LL';
             LL = LL(:);
             if options.projector_type == 1
@@ -379,7 +478,7 @@ if options.implementation == 1
             lor = repelem(uint32(1:length(lor)),uint32(lor))';
         end
         
-        A_length = length(SinM);
+        A_length = double(n_meas(end));
         if options.verbose
             tStart = tic;
         end
@@ -422,21 +521,18 @@ if options.implementation == 1
         clear lor2
     end
     
-    
-    if size(A,2) ~= size(f,1)
-%         if no_norm
-%             varargout{1} = A' * f;
-%         else
-            varargout{1} = A' * f;
-%         end
+    if store_matrix
+        varargout{1} = A;
     else
-%         if no_norm
-%             varargout{1} = A * f;
-%         else
+        if size(A,2) ~= size(f,1)
+            varargout{1} = A' * f;
+        else
             varargout{1} = A * f;
-%         end
+        end
     end
-    varargout{2} = options;
+    if nargout >= 2
+        varargout{2} = options;
+    end
 elseif options.implementation == 3
     %     options = double_to_single(options);
     
@@ -450,9 +546,10 @@ elseif options.implementation == 3
         end
         LL = uint16(0);
     end
-    if ~iscell(SinM)
-        SinM = {single(SinM)};
-    end
+    %     if ~iscell(SinM)
+    %         SinM = {single(SinM)};
+    %     end
+    SinM = {ones(n_meas(end),1,'single')};
     tube_width_xy = single(options.tube_width_xy);
     crystal_size_z = single(options.tube_width_z);
     n_rays = uint16(options.n_rays_transaxial);
@@ -485,20 +582,26 @@ elseif options.implementation == 3
     header_directory = strcat('-I "', header_directory);
     header_directory = strcat(header_directory,'"');
     
-    tic
+    if options.verbose
+        tStart = tic;
+    end
     [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ... 15
         single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), ...25
         single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...32
         uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...43
         uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, true, ...53
         options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf, options);
-    toc
-    if isa(output{1},'uint64')
+    if options.verbose
+        toc(tStart)
+    end
+    if isa(output{1},'int64')
         varargout{1} = single(output{1}) / 100000000000;
     else
         varargout{1} = output{1};
     end
-    varargout{2} = options;
+    if nargout >= 2
+        varargout{2} = options;
+    end
 else
     error('Only implementations 1 and 3 are available in forward/backward projection')
 end
