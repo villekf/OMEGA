@@ -31,11 +31,12 @@ function A = padding(A,sizeP,varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if nargin == 2 || (nargin >= 3 && (isempty(varargin{1}) || ~strcmp(varargin{1},'zeros')))
-    A = [flipud(A(1:sizeP(2),:,:));A;flipud(A(end-sizeP(2) + 1:end,:,:))];
-    A = [fliplr(A(:,1:sizeP(1),:)),A,fliplr(A(:,end-sizeP(1) + 1:end,:))];
+    
+    A = [flipud(A(1:sizeP(2),:,:,:));A;flipud(A(end-sizeP(2) + 1:end,:,:,:))];
+    A = [fliplr(A(:,1:sizeP(1),:,:)),A,fliplr(A(:,end-sizeP(1) + 1:end,:,:))];
     if length(sizeP) == 3 && sizeP(3) ~= 0
-        A = cat(3, flip(A(:,:,1:sizeP(3)),3), A);
-        A = cat(3, A, flip(A(:,:,end - sizeP(3) + 1: end),3));
+        A = cat(3, flip(A(:,:,1:sizeP(3),:),3), A);
+        A = cat(3, A, flip(A(:,:,end - sizeP(3) + 1: end,:),3));
     end
 else
     [x, y , z] = size(A);
