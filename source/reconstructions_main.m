@@ -873,7 +873,7 @@ if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isf
     pituus = [repmat(pituus,subsets - 1,1);det_per_ring - pituus*(subsets - 1)];
     list_mode_format = true;
     if options.implementation ~= 4
-        error('List-mode reconstruction with custom detectors currently supports only implementation 4.')
+        error('List-mode reconstruction with custom detectors is currently supported only with implementation 4.')
     end
 else
     [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
@@ -1097,6 +1097,7 @@ if precompute_obs_matrix && options.implementation == 1
                 options.Nz = Nz;
                 options.N = N;
                 options.zmax = zmax;
+                options.summa = summa;
                 options.normalization_correction = normalization_correction;
                 %             options.randoms_correction = false;
                 %             options.scatter_correction = false;
@@ -1119,6 +1120,10 @@ if precompute_obs_matrix && options.implementation == 1
                 options.bx = bx;
                 options.by = by;
                 options.bz = bz;
+                options.bmin = 0;
+                options.bmax = 0;
+                options.Vmax = 0;
+                options.V = 0;
                 
                 A = observation_matrix_formation(options);
                 D = full(sum(A,1))';
@@ -1610,7 +1615,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Quadratic_prior(im_vectors.Quad_OSL_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.Quad_OSL_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.Quad_OSL_apu = OSEM_im(im_vectors.Quad_OSL_apu, A, epps, uu, OSL(Summ, options.beta_quad_osem, med, epps), SinD, is_transposed, ...
                                 options, Nx, Ny, Nz, gaussK);
                             %                             im_vectors.Quad_OSL_apu = OSL_OSEM(im_vectors.Quad_OSL_apu, Summ, options.beta_quad_osem, med, epps, A, uu, SinD, is_transposed);
@@ -1624,7 +1629,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Quadratic_prior(im_vectors.Quad_MBSREM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.Quad_MBSREM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.Quad_MBSREM_apu = MBSREM(im_vectors.Quad_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
                                 iter, SinD, randoms_correction, is_transposed, options.beta_quad_mbsrem, med, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -1672,7 +1677,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Quadratic_prior(im_vectors.Quad_RBI_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.Quad_RBI_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.Quad_RBI_apu = RBI_subiter(im_vectors.Quad_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_quad_rbi, med, ...
                                 options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -1685,7 +1690,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Quadratic_prior(im_vectors.Quad_COSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.Quad_COSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             if options.COSEM_OSL == 1
                                 [im_vectors.Quad_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Quad_COSEM_apu, D, options.beta_quad_cosem, med, epps, A, uu, ...
                                     C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
@@ -1703,7 +1708,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Huber_prior(im_vectors.Huber_OSL_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huber_prior(im_vectors.Huber_OSL_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.Huber_OSL_apu = OSEM_im(im_vectors.Huber_OSL_apu, A, epps, uu, OSL(Summ, options.beta_huber_osem, med, epps), SinD, is_transposed, ...
                                 options, Nx, Ny, Nz, gaussK);
                             %                             im_vectors.Huber_OSL_apu = OSL_OSEM(im_vectors.Huber_OSL_apu, Summ, options.beta_huber_osem, med, epps, A, uu, SinD, is_transposed);
@@ -1717,7 +1722,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Huber_prior(im_vectors.Huber_MBSREM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huber_prior(im_vectors.Huber_MBSREM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.Huber_MBSREM_apu = MBSREM(im_vectors.Huber_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
                                 iter, SinD, randoms_correction, is_transposed, options.beta_huber_mbsrem, med, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -1765,7 +1770,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Huber_prior(im_vectors.Huber_RBI_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huber_prior(im_vectors.Huber_RBI_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.Huber_RBI_apu = RBI_subiter(im_vectors.Huber_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_huber_rbi, med, ...
                                 options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -1778,7 +1783,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Huber_prior(im_vectors.Huber_COSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huber_prior(im_vectors.Huber_COSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             if options.COSEM_OSL == 1
                                 [im_vectors.Huber_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Huber_COSEM_apu, D, options.beta_huber_cosem, med, epps, A, uu, ...
                                     C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
@@ -1888,7 +1893,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = FMH(im_vectors.FMH_OSL_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.FMH_OSL_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.FMH_OSL_apu = OSEM_im(im_vectors.FMH_OSL_apu, A, epps, uu, OSL(Summ, options.beta_fmh_osem, med, epps), SinD, is_transposed, options, ...
                                 Nx, Ny, Nz, gaussK);
@@ -1902,7 +1907,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = FMH(im_vectors.FMH_MBSREM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.FMH_MBSREM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.FMH_MBSREM_apu = MBSREM(im_vectors.FMH_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
                                 iter, SinD, randoms_correction, is_transposed, options.beta_fmh_mbsrem, med, options, Nx, Ny, Nz, gaussK);
@@ -1948,7 +1953,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = FMH(im_vectors.FMH_RBI_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.FMH_RBI_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.FMH_RBI_apu = RBI_subiter(im_vectors.FMH_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_fmh_rbi, med, options, ...
                                 Nx, Ny, Nz, gaussK);
@@ -1961,7 +1966,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = FMH(im_vectors.FMH_COSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.FMH_COSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             if options.COSEM_OSL == 1
                                 [im_vectors.FMH_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.FMH_COSEM_apu, D, options.beta_fmh_cosem, med, epps, A, uu, ...
@@ -1980,8 +1985,8 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Weighted_mean(im_vectors.Weighted_OSL_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.Weighted_OSL_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.Weighted_OSL_apu = OSEM_im(im_vectors.Weighted_OSL_apu, A, epps, uu, OSL(Summ, options.beta_weighted_osem, med, epps), SinD, ...
                                 is_transposed, options, Nx, Ny, Nz, gaussK);
                             %                             im_vectors.Weighted_OSL_apu = OSL_OSEM(im_vectors.Weighted_OSL_apu, Summ, options.beta_weighted_osem, med, epps, A, uu, SinD, ...
@@ -1995,8 +2000,8 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Weighted_mean(im_vectors.Weighted_MBSREM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.Weighted_MBSREM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.Weighted_MBSREM_apu = MBSREM(im_vectors.Weighted_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, ...
                                 options.lam_mbsrem, iter, SinD, randoms_correction, is_transposed, options.beta_weighted_mbsrem, med, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2041,8 +2046,8 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Weighted_mean(im_vectors.Weighted_RBI_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.Weighted_RBI_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.Weighted_RBI_apu = RBI_subiter(im_vectors.Weighted_RBI_apu, A, uu, epps, Summ, ...
                                 D, SinD, is_transposed, options.beta_weighted_rbi, med, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2054,8 +2059,8 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Weighted_mean(im_vectors.Weighted_COSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.Weighted_COSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             if options.COSEM_OSL == 1
                                 [im_vectors.Weighted_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Weighted_COSEM_apu, D, options.beta_weighted_cosem, ...
                                     med, epps, A, uu, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
@@ -2261,7 +2266,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_OSL_apu, [], Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.APLS_OSL_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.APLS_OSL_apu = OSEM_im(im_vectors.APLS_OSL_apu, A, epps, uu, OSL(Summ, options.beta_APLS_osem, grad, epps), SinD, is_transposed, options, ...
                                 Nx, Ny, Nz, gaussK);
                             %                             im_vectors.APLS_OSL_apu = OSL_OSEM(im_vectors.APLS_OSL_apu, Summ, options.beta_APLS_osem, grad, epps, A, uu, SinD, is_transposed);
@@ -2274,7 +2279,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_MBSREM_apu, [], Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.APLS_MBSREM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.APLS_MBSREM_apu = MBSREM(im_vectors.APLS_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
                                 iter, SinD, randoms_correction, is_transposed, options.beta_APLS_mbsrem, grad, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2319,7 +2324,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.APLS_RBI_apu = RBI_subiter(im_vectors.APLS_RBI_apu, A, uu, epps, Summ, SinD, D, ...
                                 is_transposed, options.beta_APLS_rbi, grad, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2331,7 +2336,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_COSEM_apu, [], Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.APLS_COSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             if options.COSEM_OSL == 1
                                 [im_vectors.APLS_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.APLS_COSEM_apu, D, options.beta_APLS_cosem, grad, A, uu, ...
                                     epps, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
@@ -2619,7 +2624,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Quadratic_prior(im_vectors.Quad_BSREM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                        med = Quadratic_prior(im_vectors.Quad_BSREM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                         im_vectors.Quad_BSREM(:,iter+1) = BSREM_iter(im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2633,7 +2638,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Quadratic_prior(im_vectors.Quad_ROSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                        med = Quadratic_prior(im_vectors.Quad_ROSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                         im_vectors.Quad_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2662,7 +2667,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Huber_prior(im_vectors.Huber_BSREM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                        med = Huber_prior(im_vectors.Huber_BSREM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                         im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2676,7 +2681,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Huber_prior(im_vectors.Huber_ROSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                        med = Huber_prior(im_vectors.Huber_ROSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                         im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2748,7 +2753,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = FMH(im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                        med = FMH(im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                             options.med_no_norm);
                         im_vectors.FMH_BSREM(:,iter+1) = BSREM_iter(im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, epps);
                         if verbose
@@ -2763,7 +2768,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = FMH(im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                        med = FMH(im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                             options.med_no_norm);
                         im_vectors.FMH_ROSEM(:,iter+1) = BSREM_iter(im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, epps);
                         if verbose
@@ -2793,8 +2798,8 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Weighted_mean(im_vectors.Weighted_BSREM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                            options.mean_type, epps, options.w_sum, options.med_no_norm);
+                        med = Weighted_mean(im_vectors.Weighted_BSREM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                            options.mean_type, epps, options.med_no_norm);
                         im_vectors.Weighted_BSREM(:,iter+1) = BSREM_iter(im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, ...
                             med, epps);
                         if verbose
@@ -2809,8 +2814,8 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        med = Weighted_mean(im_vectors.Weighted_ROSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                            options.mean_type, epps, options.w_sum, options.med_no_norm);
+                        med = Weighted_mean(im_vectors.Weighted_ROSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                            options.mean_type, epps, options.med_no_norm);
                         im_vectors.Weighted_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, ...
                             med, epps);
                         if verbose
@@ -2921,7 +2926,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, 4);
+                        grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
                         im_vectors.APLS_BSREM(:, iter + 1) = BSREM_iter(im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2934,7 +2939,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, 4);
+                        grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
                         im_vectors.APLS_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, ...
                             epps);
                         if verbose
@@ -3029,7 +3034,7 @@ else
                         im_vectors.NLM_COSEM(:, iter + 1) = im_vectors.NLM_COSEM_apu;
                     end
                     if options.use_psf && options.deblurring
-                        im_vectors = computeDeblur(im_vectors, options, iter, subsets, gaussK, Nx, Ny, Nz);
+                        im_vectors = computeDeblur(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                     end
                     disp(['Iteration ' num2str(iter) ' finished'])
                 end
@@ -3452,7 +3457,7 @@ else
                                     disp(['COSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.quad && options.OSL_OSEM
-                                med = Quadratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                                med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_quad_osem, med, epps, rhs);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3478,7 +3483,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Quadratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                                med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_quad_rbi, med);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3489,7 +3494,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Quadratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                                med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_quad_cosem, med, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
                                 if options.COSEM_OSL == 1
@@ -3503,7 +3508,7 @@ else
                                     disp(['COSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.Huber && options.OSL_OSEM
-                                med = Huber_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                                med = Huber_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_huber_osem, med, epps, rhs);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3529,7 +3534,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Huber_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                                med = Huber_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_huber_rbi, med);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3540,7 +3545,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Huber_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                                med = Huber_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_huber_cosem, med, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
                                 if options.COSEM_OSL == 1
@@ -3605,7 +3610,7 @@ else
                                     disp(['COSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.FMH && options.OSL_OSEM
-                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                     options.med_no_norm);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
                                 if verbose
@@ -3632,7 +3637,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                     options.med_no_norm);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_fmh_rbi, med);
                                 if verbose
@@ -3644,7 +3649,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                                med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                     options.med_no_norm);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_fmh_cosem, med, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
@@ -3659,8 +3664,8 @@ else
                                     disp(['COSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.weighted_mean && options.OSL_OSEM
-                                med = Weighted_mean(im_vectors.OSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                    options.mean_type, epps, options.w_sum, options.med_no_norm);
+                                med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                    options.mean_type, epps, options.med_no_norm);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_weighted_osem, med, epps, rhs);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3686,8 +3691,8 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Weighted_mean(im_vectors.OSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                    options.mean_type, epps, options.w_sum, options.med_no_norm);
+                                med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                    options.mean_type, epps, options.med_no_norm);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_weighted_rbi, med);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3698,8 +3703,8 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                med = Weighted_mean(im_vectors.OSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                    options.mean_type, epps, options.w_sum, options.med_no_norm);
+                                med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                    options.mean_type, epps, options.med_no_norm);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_weighted_cosem, med, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
                                 if options.COSEM_OSL == 1
@@ -3838,7 +3843,7 @@ else
                                     disp(['COSEM-OSL AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.APLS && options.OSL_OSEM
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 4);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_APLS_osem, grad, epps, rhs);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3864,7 +3869,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 4);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_APLS_rbi, grad);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -3875,7 +3880,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 4);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_APLS_cosem, grad, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
                                 if options.COSEM_OSL == 1
@@ -4033,12 +4038,12 @@ else
                         elseif options.quad && options.OSL_OSEM
                             im_vectors.Quad_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.quad && options.BSREM
-                            med = Quadratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.Quad_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_quad_bsrem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.Quad_BSREM(:,iter+1);
                         elseif options.quad && options.ROSEM_MAP
-                            med = Quadratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.Quad_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_quad_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Quad_ROSEM(:,iter+1);
@@ -4049,12 +4054,12 @@ else
                         elseif options.Huber && options.OSL_OSEM
                             im_vectors.Huber_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.Huber && options.BSREM
-                            med = Huberratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_huber_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Huber_BSREM(:,iter+1);
                         elseif options.Huber && options.ROSEM_MAP
-                            med = Huberratic_prior(im_vectors.OSEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_huber_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Huber_ROSEM(:,iter+1);
@@ -4081,13 +4086,13 @@ else
                         elseif options.FMH && options.OSL_OSEM
                             im_vectors.FMH_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.FMH && options.BSREM
-                            med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.FMH_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_fmh_bsrem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.FMH_BSREM(:,iter+1);
                         elseif options.FMH && options.ROSEM_MAP
-                            med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.FMH_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_fmh_rosem, med, epps);
@@ -4099,14 +4104,14 @@ else
                         elseif options.weighted_mean && options.OSL_OSEM
                             im_vectors.Weighted_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.weighted_mean && options.BSREM
-                            med = Weighted_mean(im_vectors.OSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.Weighted_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_weighted_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Weighted_BSREM(:,iter+1);
                         elseif options.weighted_mean && options.ROSEM_MAP
-                            med = Weighted_mean(im_vectors.OSEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.Weighted_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_weighted_rosem, ...
                                 med, epps);
@@ -4149,12 +4154,12 @@ else
                         elseif options.APLS && options.OSL_OSEM
                             im_vectors.APLS_OSL(:, iter + 1) = im_vectors.OSEM_apu;
                         elseif options.APLS && options.BSREM
-                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.APLS_BSREM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_APLS_bsrem, ...
                                 grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_BSREM(:,iter+1);
                         elseif options.APLS && options.ROSEM_MAP
-                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.APLS_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_APLS_rosem, grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_ROSEM(:,iter+1);
@@ -4198,7 +4203,7 @@ else
                             im_vectors.NLM_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
                         end
                         if options.use_psf && options.deblurring
-                            im_vectors = computeDeblur(im_vectors, options, iter, subsets, gaussK, Nx, Ny, Nz);
+                            im_vectors = computeDeblur(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                         end
                         if verbose
                             tElapsed = toc(tStart_iter);
@@ -4293,7 +4298,7 @@ else
                                 disp(['OSEM-OSL MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.quad && options.OSL_MLEM
-                            med = Quadratic_prior(im_vectors.MLEM_apu, options.tr_offsets, options.weights, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.MLEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_quad_osem, med, epps, rhs);
                             im_vectors.Quad_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
@@ -4301,7 +4306,7 @@ else
                                 disp(['OSEM-OSL Quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.Huber && options.OSL_MLEM
-                            med = Huber_prior(im_vectors.MLEM_apu, options.tr_offsets, options.weights, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
+                            med = Huber_prior(im_vectors.MLEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_huber_osem, med, epps, rhs);
                             im_vectors.Huber_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
@@ -4317,7 +4322,7 @@ else
                                 disp(['OSEM-OSL L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.FMH && options.OSL_MLEM
-                            med = FMH(im_vectors.MLEM_apu, options.tr_offsets, options.fmh_weights, options.weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
+                            med = FMH(im_vectors.MLEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
                             im_vectors.FMH_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
@@ -4326,8 +4331,8 @@ else
                                 disp(['OSEM-OSL FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.weighted_mean && options.OSL_MLEM
-                            med = Weighted_mean(im_vectors.MLEM_apu, options.tr_offsets, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.w_sum, options.med_no_norm);
+                            med = Weighted_mean(im_vectors.MLEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
+                                options.mean_type, epps, options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_weighted_osem, med, rhs);
                             im_vectors.Weighted_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
@@ -4356,7 +4361,7 @@ else
                                 disp(['OSEM-OSL AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.APLS && options.OSL_MLEM
-                            grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, 4);
+                            grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_APLS_osem, grad, rhs);
                             im_vectors.APLS_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
                             if verbose
@@ -4382,7 +4387,7 @@ else
                             end
                         end
                         if options.use_psf && options.deblurring
-                            im_vectors = computeDeblurMLEM(im_vectors, options, iter, subsets, gaussK, Nx, Ny, Nz);
+                            im_vectors = computeDeblurMLEM(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                         end
                         no_norm = true;
                     end
