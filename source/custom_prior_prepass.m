@@ -31,6 +31,11 @@ if ~isfield(options,'use_Inveon')
     options.use_Inveon = 0;
 end
 
+
+if ~isfield(options,'SinM')
+    options.SinM = [];
+end
+
 if options.precompute_lor == false && options.implementation == 3
     error('precompute_lor must be set to true if using method 3')
 end
@@ -449,7 +454,15 @@ if options.precompute_lor && options.subsets > 1 || options.implementation == 2 
     indeksi = options.index;
 elseif options.implementation == 1
     options.pituus = [0;cumsum(options.pituus)];
-    indeksi = cell2mat(options.index);
+    if iscell(options.index)
+        options.index = cell2mat(options.index);
+    end
+    indeksi = options.index;
+else
+    if iscell(options.index)
+        options.index = cell2mat(options.index);
+    end
+    indeksi = options.index;
 end
 
 if options.use_raw_data
