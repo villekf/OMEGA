@@ -99,20 +99,24 @@ if llo == 1
 end
 if strcmp('fillmissing',options.gap_filling_method)
     Sin = single(Sin);
-    for kk = 1 : size(Sin,3)
-        apu = Sin(:,:,kk);
-        apu(gaps) = NaN;
-        jelppi1 = fillmissing(apu, options.interpolation_method_fillmissing);
-        jelppi2 = fillmissing(apu', options.interpolation_method_fillmissing)';
-        Sin(:,:,kk) = (jelppi1 + jelppi2) / 2;
+    for uu = 1 : size(Sin,4)
+        for kk = 1 : size(Sin,3)
+            apu = Sin(:,:,kk,uu);
+            apu(gaps) = NaN;
+            jelppi1 = fillmissing(apu, options.interpolation_method_fillmissing);
+            jelppi2 = fillmissing(apu', options.interpolation_method_fillmissing)';
+            Sin(:,:,kk,uu) = (jelppi1 + jelppi2) / 2;
+        end
     end
     Sin(Sin < 0) = 0;
 elseif strcmp('inpaint_nans',options.gap_filling_method)
     Sin = single(Sin);
-    for kk = 1 : size(Sin,3)
-        apu = Sin(:,:,kk);
-        apu(gaps) = NaN;
-        Sin(:,:,kk) = single(inpaint_nans(double(apu), options.interpolation_method_inpaint));
+    for uu = 1 : size(Sin,4)
+        for kk = 1 : size(Sin,3)
+            apu = Sin(:,:,kk,uu);
+            apu(gaps) = NaN;
+            Sin(:,:,kk,uu) = single(inpaint_nans(double(apu), options.interpolation_method_inpaint));
+        end
     end
     Sin(Sin < 0) = 0;
 else
