@@ -64,9 +64,9 @@ folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 % lor_a = 0;
 if options.use_raw_data
-    pituus = options.detectors ^2/2 + options.detectors/2;
+    pituus = uint32(options.detectors^2/2 + options.detectors/2);
 else
-    pituus = Ndist * Nang * NSinos;
+    pituus = uint32(Ndist * Nang * NSinos);
 end
 index = 0;
 % Sinogram data
@@ -409,4 +409,7 @@ elseif subsets > 1
             end
         end
     end
+end
+if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
+    index = uint32(1 : pituus)';
 end
