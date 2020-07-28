@@ -65,12 +65,15 @@ folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
 if nargout > 7
-    if nargin > 9
+    if nargin > 9 && ~isempty(varargin{1})
         varargout{1} = varargin{1};
     end
 end
 if nargout > 8
     varargout{2} = [];
+end
+if nargout > 9
+    varargout{3} = false;
 end
 if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
     options.Ndist = options.Ndist * options.sampling;
@@ -220,7 +223,7 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = varargin{1}{ff};
@@ -246,6 +249,9 @@ if options.use_raw_data == false && options.precompute_lor
         end
         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
             discard = discard(1:options.NSinos*options.Ndist*options.Nang);
+        end
+        if nargout > 9
+            varargout{3} = discard;
         end
         lor_a = (lor(discard));
         if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
@@ -300,7 +306,7 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = varargin{1}{ff};
@@ -474,6 +480,9 @@ elseif options.use_raw_data && options.precompute_lor
         lor = testi3(tril(true(size(testi3)), 0));
     end
     discard = lor > 0;
+    if nargout > 9
+        varargout{3} = discard;
+    end
     if subsets > 1 || fpbp
         if ~exist('LL','var')
             LL = form_detector_pairs_raw(rings, options.det_per_ring);
@@ -528,7 +537,7 @@ elseif options.use_raw_data && options.precompute_lor
         end
         LL = LL(index,:);
         lor_a = (lor(index));
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = single(full(varargin{1}{ff}));
@@ -571,22 +580,24 @@ elseif options.use_raw_data && options.precompute_lor
             LL = form_detector_pairs_raw(rings, options.det_per_ring);
             LL = LL(discard,:);
         end
-        if options.partitions > 1
-            for ff = 1 : options.partitions
-                temp = single(full(varargin{1}{ff}));
-                temp = temp(discard);
-                varargout{1}{ff} = temp;
-            end
-            clear temp
-        else
-            if iscell(varargin{1})
-                apu = single(full(varargin{1}{1}));
-                varargout{1}{1} = (apu(discard));
-                clear apu
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+            if options.partitions > 1
+                for ff = 1 : options.partitions
+                    temp = single(full(varargin{1}{ff}));
+                    temp = temp(discard);
+                    varargout{1}{ff} = temp;
+                end
+                clear temp
             else
-                apu = single(full(varargin{1}));
-                varargout{1} = (apu(discard));
-                clear apu
+                if iscell(varargin{1})
+                    apu = single(full(varargin{1}{1}));
+                    varargout{1}{1} = (apu(discard));
+                    clear apu
+                else
+                    apu = single(full(varargin{1}));
+                    varargout{1} = (apu(discard));
+                    clear apu
+                end
             end
         end
         lor_a = lor(discard);
@@ -748,7 +759,7 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = varargin{1}{ff};
@@ -770,7 +781,6 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        clear lor
     else
         if options.normalization_correction && options.corrections_during_reconstruction
             if options.NSinos ~= options.TotSinos
@@ -830,7 +840,7 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = varargin{1}{ff};
@@ -943,7 +953,7 @@ elseif options.use_raw_data && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8
+        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
             if options.partitions > 1
                 for ff = 1 : options.partitions
                     temp = single(full(varargin{1}{ff}));
