@@ -1,12 +1,10 @@
-function grad = Huber_prior(im, tr_offsets, weights, weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, delta)
+function grad = Huber_prior(im, weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, delta)
 %HUBER_PRIOR Huber Prior (HP)
 %
 % Example:
-%   grad = Huber_prior(im, tr_offsets, weights, weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz)
+%   grad = Huber_prior(im, weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, delta)
 % INPUTS:
 %   im = The current estimate
-%   tr_offsets = Offset values, based on Ndx, Ndy and Ndz
-%   weights = Distance-based weights (used only for indexing purposes)
 %   weights_huber = Weights for huber prior
 %   Nx = Image (estimate) size in X-direction
 %   Ny = Image (estimate) size in Y-direction
@@ -14,6 +12,7 @@ function grad = Huber_prior(im, tr_offsets, weights, weights_huber, Nx, Ny, Nz, 
 %   Ndx = How many pixels included in X-direction to weighting
 %   Ndy = How many pixels included in Y-direction to weighting
 %   Ndz = How many pixels included in Z-direction to weighting
+%   delta = The Huber function delta parameter (constraint)
 %
 % OUTPUTS:
 % grad = The Huber prior
