@@ -108,7 +108,7 @@ if options.quad && options.BSREM
     if verbose
         tStart = tic;
     end
-    med = Quadratic_prior(options.im_vectors.Quad_BSREM_apu, options.tr_offsets, options.weights, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
+    med = Quadratic_prior(options.im_vectors.Quad_BSREM_apu, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
     options.im_vectors.Quad_BSREM(:,iter+1) = BSREM_iter(options.im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
@@ -125,7 +125,7 @@ if options.quad && options.ROSEM_MAP
     if verbose
         tStart = tic;
     end
-    med = Quadratic_prior(options.im_vectors.Quad_ROSEM_apu, options.tr_offsets, options.weights, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
+    med = Quadratic_prior(options.im_vectors.Quad_ROSEM_apu, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
     options.im_vectors.Quad_ROSEM(:,iter+1) = BSREM_iter(options.im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
@@ -160,7 +160,7 @@ if options.Huber && options.BSREM
     if verbose
         tStart = tic;
     end
-    med = Huber_prior(options.im_vectors.Huber_BSREM_apu, options.tr_offsets, options.weights, options.weights_Huber, options.Nx, options.Ny, options.Nz, ...
+    med = Huber_prior(options.im_vectors.Huber_BSREM_apu, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
         options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
     options.im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(options.im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, options.epps);
     if verbose
@@ -178,7 +178,7 @@ if options.Huber && options.ROSEM_MAP
     if verbose
         tStart = tic;
     end
-    med = Huber_prior(options.im_vectors.Huber_ROSEM_apu, options.tr_offsets, options.weights, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
+    med = Huber_prior(options.im_vectors.Huber_ROSEM_apu, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
         options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
     options.im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(options.im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, options.epps);
     if verbose
@@ -266,7 +266,7 @@ if options.FMH && options.BSREM
     if verbose
         tStart = tic;
     end
-    med = FMH(options.im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
+    med = FMH(options.im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_BSREM(:,iter+1) = BSREM_iter(options.im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
@@ -283,7 +283,7 @@ if options.FMH && options.ROSEM_MAP
     if verbose
         tStart = tic;
     end
-    med = FMH(options.im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
+    med = FMH(options.im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_ROSEM(:,iter+1) = BSREM_iter(options.im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
@@ -318,7 +318,7 @@ if options.weighted_mean && options.BSREM
     if verbose
         tStart = tic;
     end
-    med = Weighted_mean(options.im_vectors.Weighted_BSREM_apu, options.tr_offsets, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.w_sum, options.med_no_norm);
+    med = Weighted_mean(options.im_vectors.Weighted_BSREM_apu, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.med_no_norm);
     options.im_vectors.Weighted_BSREM(:,iter+1) = BSREM_iter(options.im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
@@ -335,7 +335,7 @@ if options.weighted_mean && options.ROSEM_MAP
     if verbose
         tStart = tic;
     end
-    med = Weighted_mean(options.im_vectors.Weighted_ROSEM_apu, options.tr_offsets, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.w_sum, options.med_no_norm);
+    med = Weighted_mean(options.im_vectors.Weighted_ROSEM_apu, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.med_no_norm);
     options.im_vectors.Weighted_ROSEM(:,iter+1) = BSREM_iter(options.im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, med, options.epps);
     if verbose
         tElapsed = toc(tStart);
