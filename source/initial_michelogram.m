@@ -1,4 +1,4 @@
-function coincidences = initial_michelogram(options, coincidences, type, varargin)
+function output = initial_michelogram(options, coincidences, type, varargin)
 %% Form initial raw Michelograms
 % Forms the initial raw Michelograms from the raw list-mode data. I.e. a
 % Michelogram without any spanning yet applied. Used by form_sinograms in
@@ -12,7 +12,7 @@ function coincidences = initial_michelogram(options, coincidences, type, varargi
 %   the lower triangular part of a options.detectors x  options.detectors
 %   matrix, with the diagonal included.
 %   type = The type of input data (trues, randoms, scatter, delayes or
-%   prompts)
+%   coincidencess)
 %
 % OUTPUT:
 %   coincidences = A cell matrix containing the raw Michelogram for each
@@ -20,7 +20,7 @@ function coincidences = initial_michelogram(options, coincidences, type, varargi
 %   element contains the the coincidences between the ring in x-direction
 %   and ring in y-direction. E.g. coincidences{2,4} contains coincidences
 %   between rings 2 and 4. Each cell element contains a vector that is the
-%   lower triangular part of options.det_per_ring x options.det_per_ring
+%   lower triangular part of det_per_ring x det_per_ring
 %   sized matrix.
 %
 % See also form_sinograms, load_data, sinogram_coordinates_2D
@@ -51,6 +51,9 @@ else
     skip = false;
 end
 
+Ndist = options.Ndist;
+Nang = options.Nang;
+det_per_ring = options.det_per_ring;
 temp = pseudot;
 pseudo_d = [];
 rings = options.rings;
@@ -60,35 +63,37 @@ if ~isempty(temp) && sum(temp) > 0
         pseudot(kk) = (options.cryst_per_block + 1) * kk;
     end
 end
-if options.det_w_pseudo > options.det_per_ring
+if options.det_w_pseudo > det_per_ring
     pseudo_d = (options.cryst_per_block+1:options.cryst_per_block+1:options.det_w_pseudo)';
 end
 
 % Forms a raw Michelogram that is still in the detector space
 [~, ~, xp, yp] = detector_coordinates(options);
-[~, ~, ~, ~, ~, swap] = sinogram_coordinates_2D(options, xp, yp);
+[~, ~, i, j, accepted_lors, swap] = sinogram_coordinates_2D(options, xp, yp);
 if ~skip
-    koko = options.det_per_ring*rings;
+    koko = det_per_ring*rings;
     if ispc
         [~,sys] = memory;
         mem = sys.PhysicalMemory.Total / 1024;
-    else
+    elseif isunix
         [~,w] = unix('free | grep Mem');
         stats = str2double(regexp(w, '[0-9]*', 'match'));
         mem = stats(1);
+    else
+        mem = 0;
     end
     if koko*koko*2 <= (mem - mem * .3) * 1024
         L = uint32(find(tril(true(koko,koko), 0)));
     end
 end
-for llo=1:options.partitions
+% for llo=1:options.partitions
     if ~skip
         if koko*koko*2 > (mem - mem * .3) * 1024
             kk = 1;
-            I = zeros(nnz(coincidences{llo}),1);
-            J = zeros(nnz(coincidences{llo}),1);
-            V = nonzeros(coincidences{llo});
-            K = find(coincidences{llo});
+            I = zeros(nnz(coincidences),1);
+            J = zeros(nnz(coincidences),1);
+            V = nonzeros(coincidences);
+            K = find(coincidences);
             temp = 0;
             for i = 1:koko
                 for j = i:koko
@@ -97,43 +102,46 @@ for llo=1:options.partitions
                         J(kk) = i;
                         I(kk) = j;
                         kk = kk + 1;
-                        if kk > nnz(coincidences{llo})
+                        if kk > nnz(coincidences)
                             break;
                         end
                     end
                 end
-                if kk > nnz(coincidences{llo})
+                if kk > nnz(coincidences)
                     break;
                 end
             end
         else
-            V = nonzeros(coincidences{llo});
-            K = find(coincidences{llo});
+            V = nonzeros(coincidences);
+            K = find(coincidences);
             
             [I,J] = ind2sub([koko koko], L(K));
-            if llo == options.partitions
+%             if llo == options.partitions
                 clear L
-            end
+%             end
         end
-        prompt = sparse(I,J,V,koko,koko);
+        coincidences = sparse(I,J,V,koko,koko);
         clear I J V
     else
-        if iscell(coincidences)
-            prompt = coincidences{llo};
-        else
-            prompt = coincidences;
-        end
+%         if iscell(coincidences)
+%             coincidences = coincidences;
+%         else
+%             coincidences = coincidences;
+%         end
     end
     
     eka=1;
     ll = 1;
+    temppiP11 = zeros(det_per_ring, det_per_ring,'double');
+    temppiP12 = zeros(det_per_ring, det_per_ring,'double');
+    temppiP13 = zeros(det_per_ring, det_per_ring,'double');
+    temppiP14 = zeros(det_per_ring, det_per_ring,'double');
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    P1 = cell(rings + length(pseudot),(rings + length(pseudot) - eka + 1));
+    output = cell(rings + length(pseudot),(rings + length(pseudot) - eka + 1));
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     for ring = eka:options.rings % Ring at a time
-                
         for luuppi = 1:(rings-eka+1)-(ring-1) % All the LORs with other options.rings as well
             if luuppi == 1 % Both of the detectors are on the same ring
                 % If pseudo ring then place the measurements to the next
@@ -144,8 +152,8 @@ for llo=1:options.partitions
                 lk = ll + 1;
                 % Observations equaling the ones detected on the current
                 % ring
-                temppiP = full(prompt((1+options.det_per_ring*(ring-1)):(options.det_per_ring+options.det_per_ring*(ring-1)),1+options.det_per_ring*(ring-1):...
-                    (options.det_per_ring+options.det_per_ring*(ring-1))));
+                temppiP = full(coincidences((1+det_per_ring*(ring-1)):(det_per_ring+det_per_ring*(ring-1)),1+det_per_ring*(ring-1):...
+                    (det_per_ring+det_per_ring*(ring-1))));
                 if sum(pseudo_d) > 0
                     for jj = 1 : numel(pseudo_d)
                         temppiP = [temppiP(1 : pseudo_d(jj) - 1, :); zeros(1,size(temppiP,2)); temppiP(pseudo_d(jj) : end, :)];
@@ -154,21 +162,24 @@ for llo=1:options.partitions
                 end
                 % combine same LORs, but with different detector order
                 % (i.e. combine values at [325 25100] and [25100 325])
-                temppiP = full(temppiP(tril(logical(true(options.det_w_pseudo)),0))); % Finally take only the other side
+                temppiP = full(temppiP(tril(logical(true(det_per_ring)),0))); % Finally take only the other side
                 
-                if options.partitions > 1
-                    P1{ll,ll} = sparse(double(temppiP(:)));
-                else
-                    P1{ll,ll} = uint16(temppiP(:));
-                end
+                temppiP = temppiP(accepted_lors);
+                
+%                 if options.partitions > 1
+%                     output{ll,ll} = accumarray([i j],temppiP,[Ndist Nang], [], [], true);
+%                 else
+                    output{ll,ll} = uint16(accumarray([i j],temppiP,[Ndist Nang]));
+%                 end
+%                 apu{luuppi} = uint16(accumarray([i j],temppiP,[Ndist Nang]));
                 
             else % Detectors on different rings
                 if ismember(lk,pseudot)
                     lk = lk + 1;
                 end
-                temppiP2 = (prompt(1+options.det_per_ring*(ring-1)+options.det_per_ring*(luuppi-1):...
-                    (options.det_per_ring+options.det_per_ring*(ring-1)+options.det_per_ring*(luuppi-1)),(1+options.det_per_ring*(ring-1)):...
-                    (options.det_per_ring+options.det_per_ring*(ring-1))));
+                temppiP2 = (coincidences(1+det_per_ring*(ring-1)+det_per_ring*(luuppi-1):...
+                    (det_per_ring+det_per_ring*(ring-1)+det_per_ring*(luuppi-1)),(1+det_per_ring*(ring-1)):...
+                    (det_per_ring+det_per_ring*(ring-1))));
                 
                 if sum(pseudo_d) > 0
                     for jj = 1 : numel(pseudo_d)
@@ -183,59 +194,57 @@ for llo=1:options.partitions
                 temppiP3 = temppiP;
                 
                 % Swap corners
-                temppiP4 = zeros(size(temppiP2),'double');
-                temppiP4(swap(:,:,3)) = temppiP2(swap(:,:,3));
+%                 temppiP11 = zeros(size(temppiP2),'double');
+                temppiP11(swap(:,:,3)) = temppiP2(swap(:,:,3));
                 temppiP(swap(:,:,1)) = 0;
-                temppiP = temppiP + temppiP4';
-                temppiP4 = zeros(size(temppiP2),'double');
-                temppiP4(swap(:,:,4)) = temppiP2(swap(:,:,4));
+                temppiP = temppiP + temppiP11';
+%                 temppiP12 = zeros(size(temppiP2),'double');
+                temppiP12(swap(:,:,4)) = temppiP2(swap(:,:,4));
                 temppiP(swap(:,:,2)) = 0;
-                temppiP = temppiP + temppiP4';
+                temppiP = temppiP + temppiP12';
                 temppiP = temppiP';
                 
-                temppiP4 = zeros(size(temppiP3),'double');
-                temppiP4(swap(:,:,1)) = temppiP3(swap(:,:,1));
+%                 temppiP13 = zeros(size(temppiP3),'double');
+                temppiP13(swap(:,:,1)) = temppiP3(swap(:,:,1));
                 temppiP2(swap(:,:,3)) = 0;
-                temppiP2 = temppiP2 + temppiP4';
-                temppiP4 = zeros(size(temppiP3),'double');
-                temppiP4(swap(:,:,2)) = temppiP3(swap(:,:,2));
+                temppiP2 = temppiP2 + temppiP13';
+%                 temppiP14 = zeros(size(temppiP3),'double');
+                temppiP14(swap(:,:,2)) = temppiP3(swap(:,:,2));
                 temppiP2(swap(:,:,4)) = 0;
-                temppiP2 = temppiP2 + temppiP4';
+                temppiP2 = temppiP2 + temppiP14';
                 
                 % Take only the other side
-                temppiP2 = temppiP2(tril(true(options.det_w_pseudo),0));
-                temppiP = temppiP(tril(true(options.det_w_pseudo),0));
+                temppiP2 = temppiP2(tril(true(det_per_ring),0));
+                temppiP = temppiP(tril(true(det_per_ring),0));
                 
-                if options.partitions > 1
-                    P1{ll,lk} = sparse(temppiP(:));
-                    P1{lk,ll} = sparse(temppiP2(:));
-                else
-                    P1{ll,lk} = uint16(temppiP(:));
-                    P1{lk,ll} = uint16(temppiP2(:));
-                end
+                temppiP = temppiP(accepted_lors);
+                temppiP2 = temppiP2(accepted_lors);
+%                 if options.partitions > 1
+%                     output{ll,lk} = accumarray([i j],temppiP,[Ndist Nang], [], [], true);
+%                     output{lk,ll} = accumarray([i j],temppiP2,[Ndist Nang], [], [], true);
+% %                     output{ll,lk} = sparse(temppiP(:));
+% %                     output{lk,ll} = sparse(temppiP2(:));
+%                 else
+                    output{ll,lk} = uint16(accumarray([i j],temppiP,[Ndist Nang]));
+                    output{lk,ll} = uint16(accumarray([i j],temppiP2,[Ndist Nang]));
+%                     output{ll,lk} = uint16(temppiP(:));
+%                     output{lk,ll} = uint16(temppiP2(:));
+%                 end
                 lk = lk + 1;
             end
         end
         ll = ll + 1;
     end
-    clear prompt
-    if options.partitions > 1
-        P1(cellfun(@isempty,P1)) = {sparse(size(temppiP))};
-    else
-        P1(cellfun(@isempty,P1)) = {zeros(size(temppiP),'uint16')};
-    end
-    if ~skip
-        coincidences{llo} = P1;
-    else
-        if iscell(coincidences)
-            coincidences{llo} = P1;
-        else
-            coincidences = P1;
-        end
-    end
+    clear coincidences
+%     if options.partitions > 1
+%         output(cellfun(@isempty,output)) = {sparse(size(output{1,1}))};
+%     else
+        output(cellfun(@isempty,output)) = {zeros(size(output{1,1}),'uint16')};
+%     end
+%     output = output;
     
     if options.verbose
-        disp(['Initial Michelogram for timestep ' num2str(llo) ' formed ' '(' type ')'])
+        disp(['Initial Michelogram formed ' '(' type ')'])
     end
     
-end
+% end
