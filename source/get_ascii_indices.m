@@ -1,8 +1,12 @@
-function ascii_ind = get_ascii_indices(coincidence_mask)
+function [ascii_ind, varargout] = get_ascii_indices(coincidence_mask, varargin)
 %GET_ASCII_INDICES Get the necessary column indices for the ASCII files
 %   Converts the GATE ASCII coincidence mask (setCoincidenceMask) to
 %   correspond to the column indices of the data.
 
+ECAT = false;
+if nargin >= 2 && ~isempty(varargin{1})
+    ECAT = varargin{1};
+end
 if (length(coincidence_mask) < 36 || length(coincidence_mask) > 36) && ~isempty(coincidence_mask)
     error('Length of the coincidence mask is too little or too much. Needs to be exactly 36 or an empty array')
 end
@@ -74,18 +78,27 @@ for kk = 1 : pituus
        ascii_ind.world_index1 = 1 + summa;
        summa = summa + 3;
    elseif kk == 12 && coincidence_mask(kk) == 1
-       ascii_ind.base_ind1 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.rsector_ind1 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.module_ind1 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.submodule_ind1 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.crs_ind1 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.layer_ind1 = 1 + summa;
-       summa = summa + 1;
+       if ECAT
+           ascii_ind.base_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.rsector_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.crs_ind1 = 1 + summa;
+           summa = summa + 1;
+       else
+           ascii_ind.base_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.rsector_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.module_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.submodule_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.crs_ind1 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.layer_ind1 = 1 + summa;
+           summa = summa + 1;
+       end
    elseif kk == 13 && coincidence_mask(kk) == 1
        ascii_ind.scatter_index_cp1 = 1 + summa;
        summa = summa + 1;
@@ -130,18 +143,27 @@ for kk = 1 : pituus
        ascii_ind.world_index2 = 1 + summa;
        summa = summa + 3;
    elseif kk == 30 && coincidence_mask(kk) == 1
-       ascii_ind.base_ind2 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.rsector_ind2 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.module_ind2 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.submodule_ind2 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.crs_ind2 = 1 + summa;
-       summa = summa + 1;
-       ascii_ind.layer_ind2 = 1 + summa;
-       summa = summa + 1;
+       if ECAT
+           ascii_ind.base_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.rsector_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.crs_ind2 = 1 + summa;
+           summa = summa + 1;
+       else
+           ascii_ind.base_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.rsector_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.module_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.submodule_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.crs_ind2 = 1 + summa;
+           summa = summa + 1;
+           ascii_ind.layer_ind2 = 1 + summa;
+           summa = summa + 1;
+       end
    elseif kk == 31 && coincidence_mask(kk) == 1
        ascii_ind.scatter_index_cp2 = 1 + summa;
        summa = summa + 1;
@@ -161,6 +183,9 @@ for kk = 1 : pituus
        ascii_ind.scanner_angular_index2 = 1 + summa;
        summa = summa + 1;
    end
+end
+if nargout >= 2
+    varargout{1} = summa;
 end
 end
 
