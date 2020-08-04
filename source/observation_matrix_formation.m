@@ -91,14 +91,18 @@ if options.precompute_lor == false
             options.index = {uint32(1 : options.Nang * options.Ndist * options.NSinos)'};
         end
     end
+    if iscell(options.index)
+        options.index = cell2mat(options.index);
+    end
     if options.use_raw_data == false
         if options.projector_type == 1 || options.projector_type == 0
             if exist('projector_mex','file') == 3
                 [ lor, indices, alkiot] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, ...
                     options.x, options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, ...
-                    options.normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, norm_input, options.randoms_correction, ...
+                    options.normalization, SinD, options.pituus(osa_iter + 1) - options.pituus(osa_iter), options.attenuation_correction, norm_input, options.randoms_correction, ...
                     options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, options.verbose, ...
-                    options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
+                    options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index(options.pituus(osa_iter) + 1 : options.pituus(osa_iter +1)), ...
+                    uint32(options.projector_type), iij, jji, kkj);
             else
                 % The below lines allow for pure MATLAB
                 % implemention, i.e. no MEX-files will be
@@ -109,8 +113,8 @@ if options.precompute_lor == false
                 % recommended since it is much slower
                 % method.
                 [ lor, indices, alkiot, discard] = improved_siddon_atten( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, ...
-                    options.z_det, options.x, options.y, options.yy, options.xx, options.NSinos, options.NSlices, options.vaimennus, options.index{osa_iter}, ...
-                    options.pituus(osa_iter), options.attenuation_correction);
+                    options.z_det, options.x, options.y, options.yy, options.xx, options.NSinos, options.NSlices, options.vaimennus, options.index(options.pituus(osa_iter) + 1 : options.pituus(osa_iter +1)), ...
+                    options.pituus(osa_iter + 1) - options.pituus(osa_iter), options.attenuation_correction);
                 alkiot = cell2mat(alkiot);
                 indices = indices(discard);
                 indices = cell2mat(indices) - 1;
@@ -180,7 +184,7 @@ else
     elseif (options.projector_type == 2 || options.projector_type == 3) && options.subsets == 1
         lor2 = [0; uint64(options.lor_orth)];
     elseif options.projector_type == 1 && options.subsets == 1
-        lor2 = [0; uint64(options.lor_a)];
+        lor2 = [0; cumsum(uint64(options.lor_a))];
     else
         lor2 = [0; cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
     end
