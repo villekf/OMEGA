@@ -36,7 +36,7 @@ function [varargout] = form_sinograms(options, varargin)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -55,15 +55,50 @@ function [varargout] = form_sinograms(options, varargin)
 if nargout > 5
     error('Too many output arguments')
 end
+if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
+    options.TOF_bins = 1;
+end
+NSlices = options.TotSinos;
+if options.span == 1
+    NSlices = options.rings^2;
+end
 if nargin > 1
     corrections = varargin{1};
 else
     corrections = false;
 end
-if nargin >= 3
+if nargin >= 3 || (nargin >= 2 && ~isempty(varargin{2}) && numel(varargin{2}) == options.detectors^2)
     data_load = true;
 else
     data_load = false;
+end
+if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins) || ...
+        (iscell(varargin{2}) && numel(varargin{2}{1}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins)))
+    sinoLoaded = true;
+    Sino = varargin{2};
+    variableList = {'SinM'};
+    if length(varargin) >= 3 && ~isempty(varargin{3})
+        SinTrues = varargin{3};
+        variableList = [variableList, {'SinTrues'}];
+    end
+    if length(varargin) >= 4 && ~isempty(varargin{4})
+        SinScatter = varargin{4};
+        variableList = [variableList, {'SinScatter'}];
+    end
+    if length(varargin) >= 5 && ~isempty(varargin{5})
+        SinRandoms = varargin{5};
+        variableList = [variableList, {'SinRandoms'}];
+    end
+    if length(varargin) >= 6 && ~isempty(varargin{6})
+        SinDelayed = varargin{6};
+        variableList = [variableList, {'SinDelayed'}];
+    end
+    variableList = [variableList, {'raw_SinDelayed'},{'SinSC'},{'ScatterProp'},{'RandProp'},{'appliedCorrections'}];
+    if options.partitions > 1
+        raw_SinM = cell(options.partitions,1);
+    end
+else
+    sinoLoaded = false;
 end
 
 folder = fileparts(which('form_sinograms.m'));
@@ -89,7 +124,6 @@ if options.use_machine ~= 2
     pseudot = options.pseudot;
     segment_table = options.segment_table;
     span = options.span;
-    NSlices = options.TotSinos;
     Nz = options.Nz;
     ring_difference = options.ring_difference;
     partitions = options.partitions;
@@ -115,7 +149,7 @@ if options.use_machine ~= 2
     end
     
     % Sinograms are reformed
-    if ~corrections && ~data_load
+    if ~corrections && ~data_load && ~sinoLoaded
         variableList = {'SinM','SinTrues','SinScatter','SinRandoms','SinDelayed','raw_SinDelayed','SinSC','ScatterProp','RandProp','appliedCorrections'};
         
         [GATE_vars, I] = sort([options.use_ASCII, options.use_root, options.use_LMF],'descend');
@@ -235,14 +269,13 @@ if options.use_machine ~= 2
                 delayed_coincidences = initial_michelogram(options, delayed_coincidences, 'delays');
             end
         end
-        options.coincidences = initial_michelogram(options, options.coincidences, 'prompts');
         
         if options.verbose
             disp('Initial Michelogram formed')
             toc
             tic
         end
-    elseif ~data_load
+    elseif ~data_load && ~sinoLoaded
         % Corrections are applied
         if options.partitions == 1
             if options.use_machine == 0
@@ -302,6 +335,7 @@ if options.use_machine ~= 2
                         SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
                     catch
                         options = loadDelayedData(options);
+                        SinDelayed = options.SinDelayed;
                     end
                 else
                     SinDelayed = loadStructFromFile(sinoFile, 'SinDelayed');
@@ -322,33 +356,10 @@ if options.use_machine ~= 2
         % Sinograms are formed when loading raw data
         variableList = {'SinM','SinTrues','SinScatter','SinRandoms','SinDelayed','raw_SinDelayed','SinSC','ScatterProp','RandProp','appliedCorrections'};
         
-        if options.verbose
-            disp('Forming initial Michelogram')
-            tic
-        end
-        options.coincidences = initial_michelogram(options, varargin{2}, 'prompts', true);
-        if options.obtain_trues && options.use_machine == 0 && ~isempty(varargin{4})
-            true_coincidences = initial_michelogram(options, varargin{4}, 'trues', true);
-        end
-        if options.store_scatter && options.use_machine == 0 && ~isempty(varargin{5})
-            scattered_coincidences = initial_michelogram(options, varargin{5}, 'scatter', true);
-        end
-        if options.store_randoms && options.use_machine == 0 && ~isempty(varargin{6})
-            random_coincidences = initial_michelogram(options, varargin{6}, 'randoms', true);
-        end
-        if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root || options.use_machine == 1) && ~isempty(varargin{3})
-            delayed_coincidences = initial_michelogram(options, varargin{3}, 'delays', true);
-        end
-        if options.verbose
-            disp('Initial Michelogram formed')
-            toc
-            tic
-        end
     end
     
     [~, ~, xp, yp] = detector_coordinates(options);
-    if ~corrections
-        [~, ~, i, j, accepted_lors] = sinogram_coordinates_2D(options, xp, yp);
+    if ~corrections && ~sinoLoaded
         
         
         if partitions > 1
@@ -381,111 +392,29 @@ if options.use_machine ~= 2
             if options.verbose
                 disp(['Sinogram formation at timestep ' num2str(llo) ' began'])
             end
-            
-            if partitions > 1 || ~data_load
-                P1 = options.coincidences{llo};
-            else
-                P1 = options.coincidences;
+            if options.verbose
+                disp('Forming Michelogram')
+                tic
             end
             
-            Sinog = cell(ringsp,ringsp);
-            
-            ix=cellfun('isempty',Sinog);
-            Sinog(ix)={zeros(Ndist,Nang,'uint16')};
-            
-            if options.obtain_trues && options.use_machine == 0
-                if partitions > 1 || ~data_load
-                    T1 = true_coincidences{llo};
-                else
-                    T1 = true_coincidences;
-                end
-                SinogT = cell(ringsp,ringsp);
-                SinogT(ix)={zeros(Ndist,Nang,'uint16')};
+            Sinog = initial_michelogram(options, varargin{2}, 'prompts', true);
+            if options.obtain_trues && options.use_machine == 0 && ~isempty(varargin{4})
+                SinogT = initial_michelogram(options, varargin{4}, 'trues', true);
             end
-            if options.store_scatter && options.use_machine == 0
-                if partitions > 1 || ~data_load
-                    S1 = scattered_coincidences{llo};
-                else
-                    S1 = scattered_coincidences;
-                end
-                SinogS = cell(ringsp,ringsp);
-                SinogS(ix)={zeros(Ndist,Nang,'uint16')};
+            if options.store_scatter && options.use_machine == 0 && ~isempty(varargin{5})
+                SinogS = initial_michelogram(options, varargin{5}, 'scatter', true);
             end
-            if options.store_randoms && options.use_machine == 0
-                if partitions > 1 || ~data_load
-                    R1 = random_coincidences{llo};
-                else
-                    R1 = random_coincidences;
-                end
-                SinogR = cell(ringsp,ringsp);
-                SinogR(ix)={zeros(Ndist,Nang,'uint16')};
+            if options.store_randoms && options.use_machine == 0 && ~isempty(varargin{6})
+                SinogR = initial_michelogram(options, varargin{6}, 'randoms', true);
             end
-            if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root || options.use_machine == 1)
-                if partitions > 1 || ~data_load
-                    D1 = delayed_coincidences{llo};
-                else
-                    D1 = delayed_coincidences;
-                end
-                SinogD = cell(ringsp,ringsp);
-                SinogD(ix)={zeros(Ndist,Nang,'uint16')};
+            if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root || options.use_machine == 1) && ~isempty(varargin{3})
+                SinogD = initial_michelogram(options, varargin{3}, 'delays', true);
             end
-            
-            % Create the Michelograms
-            tic
-            for ii=1:ringsp
-                if any(ii == pseudot)
-                    continue
-                end
-                for jj=1:ringsp
-                    if any(jj == pseudot)
-                        continue
-                    end
-                    if issparse(P1{ii,jj})
-                        CC = uint16(full(P1{ii,jj}));
-                    else
-                        CC = P1{ii,jj};
-                    end
-                    CC = CC(accepted_lors);
-                    Sinog{ii,jj} = uint16(accumarray([i j],CC,[Ndist Nang]));
-                    if options.obtain_trues && options.use_machine == 0
-                        if issparse(T1{ii,jj})
-                            CC = uint16(full(T1{ii,jj}));
-                        else
-                            CC = T1{ii,jj};
-                        end
-                        CC = CC(accepted_lors);
-                        SinogT{ii,jj} = uint16(accumarray([i j],CC,[Ndist Nang]));
-                    end
-                    if options.store_scatter && options.use_machine == 0
-                        if issparse(S1{ii,jj})
-                            CC = uint16(full(S1{ii,jj}));
-                        else
-                            CC = S1{ii,jj};
-                        end
-                        CC = CC(accepted_lors);
-                        SinogS{ii,jj} = uint16(accumarray([i j],CC,[Ndist Nang]));
-                    end
-                    if options.store_randoms && options.use_machine == 0
-                        if issparse(R1{ii,jj})
-                            CC = uint16(full(R1{ii,jj}));
-                        else
-                            CC = R1{ii,jj};
-                        end
-                        CC = CC(accepted_lors);
-                        SinogR{ii,jj} = uint16(accumarray([i j],CC,[Ndist Nang]));
-                    end
-                    if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root || options.use_machine == 1)
-                        if issparse(D1{ii,jj})
-                            CC = uint16(full(D1{ii,jj}));
-                        else
-                            CC = D1{ii,jj};
-                        end
-                        CC = CC(accepted_lors);
-                        SinogD{ii,jj} = uint16(accumarray([i j],CC,[Ndist Nang]));
-                    end
-                end
+            if options.verbose
+                disp('Michelogram formed')
+                toc
+                tic
             end
-            %     toc
             
             %%
             Sinog = cat(3,Sinog{:});
@@ -532,26 +461,37 @@ if options.use_machine ~= 2
             else
                 Sin = Sino;
             end
+            if sinoLoaded
+                if partitions > 1
+                    raw_SinM{llo} = Sin;
+                else
+                    raw_SinM = Sin;
+                end
+            end
         end
         % Apply randoms correction
         if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root || options.use_machine == 1) ...
                 && (exist('SinDelayed','var') || exist('SinogD','var'))
             if ~corrections
                 SinogD = cat(3,SinogD{:});
-                SinD = zeros(Ndist,Nang,NSlices,'uint16');
-                SinD(:,:,1:2:Nz) = SinogD(:,:,1:ringsp+1:ringsp^2);
-                for jh=1:floor(span/2)
-                    apu = SinogD(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-                    apu2 = SinogD(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-                    SinD(:,:,jh+1:2:offset2(1)-jh) = SinD(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-                end
-                for ih=1:floor(length(segment_table)/2)
-                    for jh=1:span
-                        apu = SinogD(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                        SinD(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = SinD(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                        apu2 = SinogD(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                        SinD(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = SinD(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                if span > 1
+                    SinD = zeros(Ndist,Nang,NSlices,'uint16');
+                    SinD(:,:,1:2:Nz) = SinogD(:,:,1:ringsp+1:ringsp^2);
+                    for jh=1:floor(span/2)
+                        apu = SinogD(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
+                        apu2 = SinogD(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
+                        SinD(:,:,jh+1:2:offset2(1)-jh) = SinD(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
                     end
+                    for ih=1:floor(length(segment_table)/2)
+                        for jh=1:span
+                            apu = SinogD(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
+                            SinD(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = SinD(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
+                            apu2 = SinogD(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
+                            SinD(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = SinD(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                        end
+                    end
+                else
+                    SinD = SinogD;
                 end
                 if partitions > 1
                     if options.variance_reduction || options.randoms_smoothing
@@ -588,7 +528,7 @@ if options.use_machine ~= 2
                     end
                 end
                 if ~options.corrections_during_reconstruction
-                    Sin = single(Sin) - single(SinD);
+                    Sin = bsxfun(@minus, single(Sin), single(SinD));
                 end
                 if ~corrections
                     if partitions > 1
@@ -598,7 +538,7 @@ if options.use_machine ~= 2
                     end
                 end
             elseif ~options.corrections_during_reconstruction
-                Sin = single(Sin) - single(SinD);
+                Sin = bsxfun(@minus, single(Sin), single(SinD));
             end
             if ~corrections
                 varargout{3} = SinD;
@@ -626,7 +566,7 @@ if options.use_machine ~= 2
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
                 end
-                Sin = Sin - single(options.SinDelayed{llo});
+                Sin = bsxfun(@minus, Sin, single(options.SinDelayed{llo}));
             else
                 if size(options.SinDelayed,2) ~= Nang && size(options.SinDelayed,1) ~= Ndist
                     options.SinDelayed = reshape(options.SinDelayed, Ndist,Nang,NSlices);
@@ -647,7 +587,7 @@ if options.use_machine ~= 2
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
                 end
-                Sin = Sin - single(options.SinDelayed);
+                Sin = bsxfun(@minus, single(Sin), single(options.SinD));
             end
             if options.verbose
                 disp('Randoms correction applied to sinogram')
@@ -685,9 +625,9 @@ if options.use_machine ~= 2
                     end
                 end
                 if options.subtract_scatter
-                    Sin = Sin - single(options.ScatterC{llo});
+                    Sin = bsxfun(@minus, single(Sin), single(options.ScatterC{llo}));
                 else
-                    Sin = Sin .* single(options.ScatterC{llo});
+                    Sin = bsxfun(@times, single(Sin), single(options.ScatterC{llo}));
                 end
             else
                 if size(options.ScatterC,2) ~= Nang && size(options.ScatterC,1) ~= Ndist && numel(options.ScatterC) == numel(Sin)
@@ -714,9 +654,9 @@ if options.use_machine ~= 2
                     end
                 end
                 if options.subtract_scatter
-                    Sin = Sin - single(options.ScatterC);
+                    Sin = bsxfun(@minus, single(Sin), single(options.ScatterC));
                 else
-                    Sin = Sin .* single(options.ScatterC);
+                    Sin = bsxfun(@times, single(Sin), single(options.ScatterC));
                 end
             end
             if options.verbose
@@ -736,7 +676,7 @@ if options.use_machine ~= 2
                     fid = fopen(f_path);
                     normalization = fread(fid, inf, 'single=>single',0,'l');
                     fclose(fid);
-                    normalization = reshape(normalization, options.Ndist, options.Nang, options.TotSinos);
+                    normalization = reshape(normalization, Ndist, Nang, NSlices);
                 elseif any(strfind(n_file, '.n')) || any(strfind(n_file, '.ptd'))
                     normalization = loadNormalizationBiograph(f_path, options);
                 else
@@ -744,15 +684,15 @@ if options.use_machine ~= 2
                     variables = fields(data);
                     normalization = data.(variables{1});
                     clear data
-                    if numel(normalization) ~= options.Ndist*options.Nang*options.TotSinos
+                    if numel(normalization) ~= Ndist*Nang*NSlices
                         error('Size mismatch between the current data and the normalization data file')
                     end
-                    if size(normalization,3) < options.TotSinos
-                        normalization = reshape(normalization, options.Ndist, options.Nang, options.TotSinos);
+                    if size(normalization,3) < NSlices
+                        normalization = reshape(normalization, Ndist, Nang, NSlices);
                     end
                 end
             else
-                norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
+                norm_file = [folder options.machine_name '_normalization_' num2str(Ndist) 'x' num2str(Nang) '_span' num2str(span) '.mat'];
                 if exist(norm_file, 'file') == 2
                     normalization = loadStructFromFile(norm_file,'normalization');
                 else
@@ -767,7 +707,7 @@ if options.use_machine ~= 2
                 %                     options.normalization = single(1) ./ options.normalization;
                 %                 end
             end
-            Sin = Sin .* normalization;
+            Sin = bsxfun(@times, single(Sin), normalization);
             if options.verbose
                 disp('Normalization correction applied to sinogram')
             end
@@ -808,9 +748,9 @@ if options.use_machine ~= 2
                     end
                 end
                 if options.subtract_scatter
-                    Sin = Sin - single(options.ScatterC{llo});
+                    Sin = bsxfun(@minus, single(Sin), single(options.ScatterC{llo}));
                 else
-                    Sin = Sin .* single(options.ScatterC{llo});
+                    Sin = bsxfun(@times, single(Sin), single(options.ScatterC{llo}));
                 end
             else
                 if size(options.ScatterC,2) ~= Nang && size(options.ScatterC,1) ~= Ndist && numel(options.ScatterC) == numel(Sin)
@@ -841,9 +781,9 @@ if options.use_machine ~= 2
                     end
                 end
                 if options.subtract_scatter
-                    Sin = Sin - single(options.ScatterC);
+                    Sin = bsxfun(@minus, single(Sin), single(options.ScatterC));
                 else
-                    Sin = Sin .* single(options.ScatterC);
+                    Sin = bsxfun(@times, single(Sin), single(options.ScatterC));
                 end
             end
             if options.verbose
@@ -869,7 +809,7 @@ if options.use_machine ~= 2
             appliedCorrections.gapFilling = true;
         end
         if (options.randoms_correction || options.scatter_correction || options.normalization_correction) && ~options.corrections_during_reconstruction
-            Sin(Sin < 0) = 0;
+%             Sin(Sin < 0) = 0;
             if partitions > 1
                 SinM{llo} = Sin;
             else
@@ -881,20 +821,24 @@ if options.use_machine ~= 2
             % Form the sinogram of true coincidences
             if options.obtain_trues && options.use_machine == 0
                 SinogT = cat(3,SinogT{:});
-                Sin = zeros(Ndist,Nang,NSlices,'uint16');
-                Sin(:,:,1:2:Nz) = SinogT(:,:,1:ringsp+1:ringsp^2);
-                for jh=1:floor(span/2)
-                    apu = SinogT(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-                    apu2 = SinogT(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-                    Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-                end
-                for ih=1:floor(length(segment_table)/2)
-                    for jh=1:span
-                        apu = SinogT(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                        Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                        apu2 = SinogT(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                        Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                if span > 1
+                    Sin = zeros(Ndist,Nang,NSlices,'uint16');
+                    Sin(:,:,1:2:Nz) = SinogT(:,:,1:ringsp+1:ringsp^2);
+                    for jh=1:floor(span/2)
+                        apu = SinogT(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
+                        apu2 = SinogT(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
+                        Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
                     end
+                    for ih=1:floor(length(segment_table)/2)
+                        for jh=1:span
+                            apu = SinogT(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
+                            Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
+                            apu2 = SinogT(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
+                            Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                        end
+                    end
+                else
+                    Sin = SinogT;
                 end
                 if partitions > 1
                     SinTrues{llo} = Sin;
@@ -909,20 +853,24 @@ if options.use_machine ~= 2
             % Form the sinogram of scattered coincidences
             if options.store_scatter && options.use_machine == 0
                 SinogS = cat(3,SinogS{:});
-                Sin = zeros(Ndist,Nang,NSlices,'uint16');
-                Sin(:,:,1:2:Nz) = SinogS(:,:,1:ringsp+1:ringsp^2);
-                for jh=1:floor(span/2)
-                    apu = SinogS(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-                    apu2 = SinogS(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-                    Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-                end
-                for ih=1:floor(length(segment_table)/2)
-                    for jh=1:span
-                        apu = SinogS(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                        Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                        apu2 = SinogS(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                        Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                if span > 1
+                    Sin = zeros(Ndist,Nang,NSlices,'uint16');
+                    Sin(:,:,1:2:Nz) = SinogS(:,:,1:ringsp+1:ringsp^2);
+                    for jh=1:floor(span/2)
+                        apu = SinogS(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
+                        apu2 = SinogS(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
+                        Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
                     end
+                    for ih=1:floor(length(segment_table)/2)
+                        for jh=1:span
+                            apu = SinogS(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
+                            Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
+                            apu2 = SinogS(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
+                            Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                        end
+                    end
+                else
+                    Sin = SinogS;
                 end
                 if partitions > 1
                     SinScatter{llo} = Sin;
@@ -937,20 +885,24 @@ if options.use_machine ~= 2
             % Form the sinogram of true random coincidences
             if options.store_randoms && options.use_machine == 0
                 SinogR = cat(3,SinogR{:});
-                Sin = zeros(Ndist,Nang,NSlices,'uint16');
-                Sin(:,:,1:2:Nz) = SinogR(:,:,1:ringsp+1:ringsp^2);
-                for jh=1:floor(span/2)
-                    apu = SinogR(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
-                    apu2 = SinogR(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
-                    Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
-                end
-                for ih=1:floor(length(segment_table)/2)
-                    for jh=1:span
-                        apu = SinogR(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
-                        Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
-                        apu2 = SinogR(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
-                        Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                if span > 1
+                    Sin = zeros(Ndist,Nang,NSlices,'uint16');
+                    Sin(:,:,1:2:Nz) = SinogR(:,:,1:ringsp+1:ringsp^2);
+                    for jh=1:floor(span/2)
+                        apu = SinogR(:,:,jh*ringsp+1:ringsp+1:ringsp^2);
+                        apu2 = SinogR(:,:,jh+1:ringsp+1:(ringsp-jh)*ringsp);
+                        Sin(:,:,jh+1:2:offset2(1)-jh) = Sin(:,:,jh+1:2:offset2(1)-jh) + apu + apu2;
                     end
+                    for ih=1:floor(length(segment_table)/2)
+                        for jh=1:span
+                            apu = SinogR(:,:,(kkj(ih)+jh-1)*ringsp+1:ringsp+1:end);
+                            Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) = Sin(:,:,offset2(2*ih-1)+jh:2:offset2(2*ih)-jh+1) + (apu);
+                            apu2 = SinogR(:,:,kkj(ih)+jh:ringsp+1:(ringsp-kkj(ih)-jh+1)*ringsp);
+                            Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih+1)-jh+1) = Sin(:,:,offset2(2*ih)+jh:2:offset2(2*ih + 1)-jh+1) + (apu2);
+                        end
+                    end
+                else
+                    Sin = SinogR;
                 end
                 if partitions > 1
                     SinRandoms{llo} = Sin;
@@ -991,7 +943,7 @@ if options.use_machine ~= 2
     if options.verbose
         disp('Saving sinogram...')
     end
-    if ~corrections
+    if ~corrections || sinoLoaded
         if exist('OCTAVE_VERSION','builtin') == 0
             save(save_string,'raw_SinM','-v7.3')
             for variableIndex = 1:length(variableList)
@@ -1013,7 +965,9 @@ if options.use_machine ~= 2
         else
             varargout{1} = raw_SinM;
         end
-        options = rmfield(options,'coincidences');
+        if isfield(options,'coincidences')
+            options = rmfield(options,'coincidences');
+        end
     else
         if exist('OCTAVE_VERSION','builtin') == 0
             save(save_string,'SinM','-append')
