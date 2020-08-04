@@ -96,6 +96,11 @@ if nargout >= 6
     swap4 = tril(temppi2);
     varargout{6} = cat(3, swap1, swap2, swap3, swap4);
 end
+swap = (j * 2) < -i | i <= ((j - det_w_pseudo / 2) * 2);
+L3 = L(swap,1);
+L(swap,1) = L(swap,2);
+L(swap,2) = L3;
+clear L3
 
 % Determine the accepted LORs (distances that are within the predefined
 % value)
@@ -141,32 +146,10 @@ end
 
 % If mashing is present, combine the coordinates
 if mashing > 1
-    xx1 = reshape(x,options.Ndist,Nang);
-    xx2 = reshape(x2,options.Ndist,Nang);
-    yy1 = reshape(y,options.Ndist,Nang);
-    yy2 = reshape(y2,options.Ndist,Nang);
-    
-    % Make the coordinate space continuous
-    testi = abs(diff(xx1));
-    ind1 = find(testi(:,1) == max(testi(:,1)));
-    indices2 = false(options.Ndist, Nang);
-    for ll = 0 : options.Ndist/4 - 1
-        indices2(1:ind1 - ll*2,ll + 1) = true;
-    end
-    testi = abs(diff(fliplr(xx1)));
-    ind1 = find(testi(:,1) == max(testi(:,1)));
-    indices1 = false(options.Ndist, Nang);
-    for ll = 0 : options.Ndist/4 - 1
-        indices1(1:ind1 - ll*2,ll + 1) = true;
-    end
-    indices1 = fliplr(indices1);
-    indices1 = logical(indices1 + indices2);
-    temp = xx1(indices1);
-    x(indices1) = xx2(indices1);
-    x2(indices1) = temp;
-    temp = yy1(indices1);
-    y(indices1) = yy2(indices1);
-    y2(indices1) = temp;
+    x = reshape(x,options.Ndist,Nang);
+    x2 = reshape(x2,options.Ndist,Nang);
+    y = reshape(y,options.Ndist,Nang);
+    y2 = reshape(y2,options.Ndist,Nang);
     
     % Compute the mean coordinates
     x = cell2mat(arrayfun(@(i) mean(x(:,i:i+mashing-1),2),1:mashing:size(x,2)-mashing+1,'UniformOutput',false));
@@ -174,33 +157,7 @@ if mashing > 1
     y = cell2mat(arrayfun(@(i) mean(y(:,i:i+mashing-1),2),1:mashing:size(y,2)-mashing+1,'UniformOutput',false));
     y2 = cell2mat(arrayfun(@(i) mean(y2(:,i:i+mashing-1),2),1:mashing:size(y2,2)-mashing+1,'UniformOutput',false));
     
-    Nang = Nang / mashing;
-    
-    L = zeros(sum(1:det_w_pseudo),2,'int32');
-    jh = int32(1);
-    for kk = int32(1) : (det_w_pseudo)
-        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-            L(jh:(jh + (det_w_pseudo) - kk),:) = [repeat_elem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
-        elseif exist('OCTAVE_VERSION','builtin') == 5
-            L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1)), ((kk):det_w_pseudo)'];
-        else
-            L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1))', ((kk):det_w_pseudo)'];
-        end
-        jh = jh + (det_w_pseudo) -kk + 1;
-    end
-    L(L(:,1) == 0,:) = [];
-    
-    L = L - 1;
-    
-    xa = max(L,[],2);
-    ya = min(L,[],2);
-    
-    j = idivide(mod(xa+ya+det_w_pseudo/2+1,det_w_pseudo),2);
-    
-    j = idivide(j,det_w_pseudo/2/Nang);
-    
-    j = j(accepted_lors);
-    j = j + 1;
+    j = idivide(j,mashing);
 end
 
 x = [x(:) x2(:)];
