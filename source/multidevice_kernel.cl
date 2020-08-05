@@ -83,7 +83,7 @@
 * through a Pixel or Voxel Space. Journal of computing and information
 * technology, 6 (1), 89-94.
 *
-* Copyright (C) 2020  ViLe-Veikko Wettenhovi
+* Copyright (C) 2020 ViLe-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -360,7 +360,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			d_norm, idx, global_factor, d_scat);
 #ifdef MBSREM
 		if (d_alku == 0u && ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0 ||
-			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1 || MethodListOpenCL.RBI == 1))) && local_sino > 0.f) {
+			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1 || MethodListOpenCL.RBI == 1))) && local_sino != 0.f) {
 			local_ele = templ_ijk;
 			local_ind = z_loop;
 			for (uint ii = 0u; ii < Np; ii++) {
@@ -368,7 +368,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					axCOSEM += (local_ele * d_OSEM[local_ind]);
 				if (MBSREM_prepass == 1)
 #ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -394,13 +394,13 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			for (uint ii = 0u; ii < Np; ii++) {
 				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2))
 #ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_co[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
+					atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
 				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1))
 #ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_aco[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
+					atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -412,7 +412,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			local_ind = z_loop;
 			for (uint ii = 0u; ii < Np; ii++) {
 #ifdef ATOMIC // 64-bit atomics
-				atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -454,7 +454,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 		// Calculate the next index and store it as weL as the probability of emission
 		// If measurements are present, calculate the 
-		if (local_sino > 0.f) {
+		if (local_sino != 0.f) {
 			local_ele = templ_ijk;
 			local_ind = z_loop;
 #ifdef FP // Forward projection
@@ -489,14 +489,14 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_rhs_OSEM);
 #else
 #ifdef ATOMIC // 64-bit atomics
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * axOSEM * TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
 #endif
 				if (no_norm == 0u)
 #ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -508,7 +508,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			local_ind = z_loop;
 			for (uint ii = 0u; ii < d_N1; ii++) {
 #ifdef ATOMIC // 64-bit atomics
-				atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -597,7 +597,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #ifdef MBSREM
 		if (d_alku == 0 && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1
-			|| MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f) {
+			|| MethodListOpenCL.OSLCOSEM > 0) && local_sino != 0.f) {
 			nominator_cosem(&axCOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
 		}
 #ifdef CRYST // 2.5D orthogonal
@@ -613,7 +613,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 
 #else
-		if (local_sino > 0.f) {
+		if (local_sino != 0.f) {
 #ifdef FP // Forward projection
 
 #ifdef AF
@@ -944,7 +944,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			jelppi += (local_ele * -d_atten[local_ind]);
 #endif
 #ifdef FP
-			if (local_sino > 0.f) {
+			if (local_sino != 0.f) {
 
 #ifdef AF // Implementation 2
 
@@ -998,7 +998,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #endif
 #ifdef MBSREM
-		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f && d_alku == 0u) {
+		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino != 0.f && d_alku == 0u) {
 			axCOSEM *= temp;
 			if (axCOSEM == 0.f)
 				axCOSEM = d_epps;
@@ -1018,7 +1018,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		}
 #endif
 
-		if (local_sino > 0.f) {
+		if (local_sino != 0.f) {
 #ifdef FP
 #ifdef AF
 			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
@@ -1041,7 +1041,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_rhs_OSEM);
 #else
 #ifdef ATOMIC
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * axOSEM * TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
@@ -1049,7 +1049,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			}
 			if (no_norm == 0u)
 #ifdef ATOMIC
-				atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele* TH));
+				atom_add(&d_Summ[local_ind], convert_long(local_ele* TH));
 #else
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1174,7 +1174,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				if (d_alku == 0u) {
 					if (MBSREM_prepass == 1)
 #ifdef ATOMIC
-						atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else
 						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1183,15 +1183,15 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 							minimi = local_ele;
 						d_E[idx] += local_ele;
 					}
-					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino > 0.f)
+					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_co[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
+						atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
-					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino > 0.f)
+					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_aco[local_ind], convert_ulong_sat(axCOSEM * local_ele * TH));
+						atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -1201,7 +1201,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 				if (no_norm == 0u)
 #ifdef ATOMIC
-					atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele * TH));
+					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #else
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1211,7 +1211,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 
 #ifdef ATOMIC
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * axOSEM * TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
@@ -1245,7 +1245,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					local_ele = compute_element_2nd(&tx0, &tc, L, txu, iu, &tempi, temp);
 				}
 #ifdef ATOMIC
-				atom_add(&d_Summ[local_ind], convert_ulong_sat(local_ele* TH));
+				atom_add(&d_Summ[local_ind], convert_long(local_ele* TH));
 #else
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1352,7 +1352,7 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 		}
 	}
 #ifdef ATOMIC
-	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_ulong_sat(result * TH);
+	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_long(result * TH);
 #else
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = result;
 #endif
