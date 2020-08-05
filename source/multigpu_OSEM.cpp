@@ -559,11 +559,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	// Temporary vectors for multi-device case (output data are stored here, then transferred to the primary device)
 	std::vector<std::vector<float>> testi_summ;
 	std::vector<std::vector<float>> testi_rhs;
-	std::vector<std::vector<uint64_t>> testi_summ_u;
-	std::vector<std::vector<uint64_t>> testi_rhs_u;
+	std::vector<std::vector<int64_t>> testi_summ_u;
+	std::vector<std::vector<int64_t>> testi_rhs_u;
 	if (atomic_64bit) {
-		testi_summ_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
-		testi_rhs_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
+		testi_summ_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
+		testi_rhs_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
 	}
 	else {
 		testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));

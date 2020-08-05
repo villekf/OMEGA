@@ -297,7 +297,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	size_t pituus;
 	if (atomic_64bit) {
 		pituus = options.length();
-		options += " -DCAST=ulong";
+		options += " -DCAST=long";
 		options += " -DATOMIC";
 		options += (" -DTH=" + std::to_string(TH));
 	}
@@ -326,7 +326,8 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 				mexPrintf("Failed to build 64-bit atomics program.\n");
 			}
 			else {
-				mexPrintf("OpenCL program (64-bit atomics) built\n");
+				if (verbose)
+					mexPrintf("OpenCL program (64-bit atomics) built\n");
 			}
 		//}
 		//catch (cl::Error& e) {
@@ -357,7 +358,8 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		//try {
 			status = program.build(options.c_str());
 			if (status == CL_SUCCESS) {
-				mexPrintf("OpenCL program built\n");
+				if (verbose)
+					mexPrintf("OpenCL program built\n");
 			}
 			else {
 				getErrorString(status);

@@ -53,13 +53,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	mxArray* output_m, * normalizer_m;
 	float* output_f, * normalizer_f;
-	uint64_t* output_u, * normalizer_u;
+	int64_t* output_u, * normalizer_u;
 	if (atomic_64bit) {
 		// Output matrix
-		output_m = mxCreateNumericMatrix(size_output, 1, mxUINT64_CLASS, mxREAL);
-		output_u = (uint64_t*)mxGetData(output_m);
-		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxUINT64_CLASS, mxREAL);
-		normalizer_u = (uint64_t*)mxGetData(normalizer_m);
+		output_m = mxCreateNumericMatrix(size_output, 1, mxINT64_CLASS, mxREAL);
+		output_u = (int64_t*)mxGetData(output_m);
+		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxINT64_CLASS, mxREAL);
+		normalizer_u = (int64_t*)mxGetData(normalizer_m);
 	}
 	else {
 		output_m = mxCreateNumericMatrix(size_output, 1, mxSINGLE_CLASS, mxREAL);
@@ -456,12 +456,12 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	std::vector<std::vector<float>> testi_summ;
 	std::vector<std::vector<float>> testi_rhs;
-	std::vector<std::vector<uint64_t>> testi_summ_u;
-	std::vector<std::vector<uint64_t>> testi_rhs_u;
+	std::vector<std::vector<int64_t>> testi_summ_u;
+	std::vector<std::vector<int64_t>> testi_rhs_u;
 	if (num_devices_context > 1u) {
 		if (atomic_64bit) {
-			testi_summ_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
-			testi_rhs_u.resize(num_devices_context - 1u, std::vector<uint64_t>(im_dim));
+			testi_summ_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
+			testi_rhs_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
 		}
 		else {
 			testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));
@@ -657,22 +657,22 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	if (num_devices_context > 1u) {
 		for (cl_uint i = 1; i < num_devices_context; i++) {
 			if (atomic_64bit) {
-				status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1u].data(), &events[i]);
+				status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(int64_t) * im_dim, testi_summ_u[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueReadBuffer(d_output[i], CL_TRUE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1u].data(), &events[i]);
+				status = commandQueues[i].enqueueReadBuffer(d_output[i], CL_TRUE, 0, sizeof(int64_t) * size_output, testi_rhs_u[i - 1u].data(), &events[i]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(uint64_t) * im_dim, testi_summ_u[i - 1u].data());
+				status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(int64_t) * im_dim, testi_summ_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(uint64_t) * size_output, testi_rhs_u[i - 1u].data());
+				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(int64_t) * size_output, testi_rhs_u[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
