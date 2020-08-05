@@ -1,13 +1,19 @@
 function options = set_up_parameters_simple(options)
 %set_up_parameters_simple Set up missing parameters to simple
 %reconstruction
+if ~isfield(options, 'cryst_per_block_axial')
+    options.cryst_per_block_axial = options.cryst_per_block;
+end
+if ~isfield(options, 'transaxial_multip')
+    options.transaxial_multip = 1;
+end
 options.pseudot = [];
-options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
-options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
-options.rings = options.linear_multip * options.cryst_per_block;
+options.det_per_ring = options.blocks_per_ring*options.cryst_per_block * options.transaxial_multip;
+options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block) * options.transaxial_multip;
+options.rings = options.linear_multip * options.cryst_per_block_axial;
 options.detectors = options.det_per_ring*options.rings;
 options.sampling_raw = 1;
-options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
+options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -16,7 +22,7 @@ end
 options.TotSinos = sum(options.segment_table);
 options.time_index = 0;
 options.NSinos = options.TotSinos;
-options.ndist_side = 1;
+options.ndist_side = -1;
 options.sampling = 1;
 options.fill_sinogram_gaps = false;
 options.gap_filling_method = 'fillmissing';
