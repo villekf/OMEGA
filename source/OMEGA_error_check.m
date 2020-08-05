@@ -1,10 +1,11 @@
 function options = OMEGA_error_check(options)
 %% Error checking file
-% This function is used to check that all the input values are allowed
+% This function is used to check that all the input values are allowed. It
+% also prints several variables that were chosen to inform the user of the 
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -19,6 +20,9 @@ function options = OMEGA_error_check(options)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% First parts checks if certain elements are missing from the struct and
+% assigns default values to them
 if ~isfield(options, 'custom')
     options.custom = false;
 end
@@ -34,6 +38,24 @@ end
 if ~isfield(options, 'no_data_load')
     options.no_data_load = false;
 end
+if ~isfield(options, 'TOF_bins')
+    options.TOF_bins = 1;
+end
+if ~isfield(options, 'TOF_FWHM')
+    options.TOF_FWHM = 0;
+end
+if ~isfield(options, 'cryst_per_block_axial')
+    options.cryst_per_block_axial = options.cryst_per_block;
+end
+if ~isfield(options, 'transaxial_multip')
+    options.transaxial_multip = 1;
+end
+if ~isfield(options,'use_machine')
+    options.use_machine = 0;
+end
+
+% Determine whether various different reconstruction modes are used (e.g.
+% MAP reconstruction and any prior)
 MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 PRIOR = (options.MRP || options.quad || options.Huber || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS ...
@@ -52,10 +74,12 @@ OS_I4_summa = sum([options.osem, options.ramla, options.rosem, options.drama, op
     options.OSL_OSEM, options.BSREM, options.ROSEM_MAP, options.RBI_OSL, any(options.COSEM_OSL)]);
 N_PRIORS = (options.MRP + options.quad + options.Huber + options.L + options.FMH + options.weighted_mean + options.TV + options.AD + options.APLS ...
     + options.TGV + options.NLM + options.custom);
+
+% Check for various illegal values
 if options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter
     error(['Transaxial FOV is larger than the machine diameter (' num2str(options.diameter) ')'])
 end
-if (options.axial_fov) < (options.linear_multip * options.cryst_per_block * options.cr_pz - options.cr_pz)
+if (options.axial_fov) < (options.rings * options.cr_pz - options.cr_pz)
     error('Axial FOV is too small, crystal ring(s) on the boundary have no slices')
 end
 % if (options.axial_fov) > (options.linear_multip * options.cryst_per_block * options.cr_pz + options.axial_fov/options.Nz*2 + options.cr_pz*sum(options.pseudot))
@@ -105,7 +129,7 @@ if options.sampling > 1 && options.precompute_lor
     warning('Increased sampling rate is not supported for precomputed data')
 end
 if options.arc_correction && options.use_raw_data
-    warning('Arc correction is not supported for raw data yet')
+    warning('Arc correction is not supported for raw data')
 end
 if options.arc_correction && options.precompute_lor
     warning('Arc correction is not supported with precomputed data')
@@ -128,7 +152,7 @@ end
 %     warning('Number of subsets is less than two. Subset has to be at least 2 when using OS-methods. Using 2 subsets.')
 %     options.subsets = 2;
 % end
-if sum(options.pseudot) == 0 && options.fill_sinogram_gaps
+if options.det_per_ring == options.det_w_pseudo && options.fill_sinogram_gaps
     error('Gap filling is only supported with pseudo detectors!')
 end
 if size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz
@@ -205,9 +229,6 @@ if options.implementation == 3
         options.mlem = true;
     end
 end
-if ~isfield(options,'use_machine')
-    options.use_machine = 0;
-end
 if options.use_machine == 2 && options.use_raw_data
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
@@ -222,18 +243,19 @@ if options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;
 end
-% if options.precompute_lor == false && options.implementation > 1
-%     error('precompute_lor must be set to true if any other reconstruction method than 1 is used.')
-% end
 if options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor
-    error('MEX-file not found. Run install_mex first.')
+    error('MEX-file for implementation 1 not found. Run install_mex first.')
 end
 if options.implementation == 4 && exist('projector_mex','file') ~= 3
-    error('MEX-file not found. Run install_mex first.')
+    error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
-if options.use_root && exist('GATE_root_matlab','file') ~= 3 && options.use_machine == 0
+if options.use_root && (exist('GATE_root_matlab','file') ~= 3 || exist('GATE_root_matlab_C','file') ~= 3) && options.use_machine == 0 && exist('OCTAVE_VERSION','builtin') == 0
     warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
-    'simply loading a mat-file containing measurement data from ROOT files.'])
+        'simply loading a mat-file containing measurement data from ROOT files.'])
+end
+if options.use_root && exist('GATE_root_matlab_oct','file') ~= 3 && options.use_machine == 0 && exist('OCTAVE_VERSION','builtin') == 5
+    warning(['ROOT selected, but no OCT-file for ROOT data load found. Run install_mex to build ROOT OCT-file. Ignore this warning if you are ' ...
+        'simply loading a mat-file containing measurement data from ROOT files.'])
 end
 if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0
     error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
@@ -267,12 +289,13 @@ if options.implementation == 4 && (PRIOR_summa == 1 && ((options.mlem && options
     error(['Implementation ' num2str(options.implementation) ' supports only one OS and one MLEM algorithm at a time.'])
 end
 if options.implementation == 1 && ~options.precompute_lor
-    warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
-        'precompute_lor to true or use another implementation.'])
     if options.projector_type == 2 || options.projector_type == 3
         error('Orthogonal distance-based/volume-based projector is NOT supported when using implementation 1 without precomputation!')
     end
+    warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
+        'precompute_lor to true or use another implementation.'])
 end
+% Print various options that were selected if verbosity has been enabled
 if options.verbose
     if options.use_ASCII && options.use_machine == 0
         disp('Using ASCII data.')
@@ -287,7 +310,10 @@ if options.verbose
     elseif options.use_machine == 3
         disp('Using 32-bit list-mode data.')
     end
-    if ~options.compute_normalization
+    if options.only_sinos
+        disp('Loading only data.')
+    end
+    if ~(options.compute_normalization || options.only_sinos)
         dispaus = (['Using implementation ' num2str(options.implementation)]);
         if options.implementation == 1 || options.implementation == 4
             dispaus = [dispaus, '.'];
@@ -347,7 +373,7 @@ if options.verbose
                 if n_devices(options.use_device + 1) > 1
                     dispaus = [dispaus, ' with ', inffo(k1(options.use_device + 1):k4(options.use_device + 1) - 2)];
                     for hh = 1 : n_devices(options.use_device + 1)
-                        if loc(hh) == 0 
+                        if loc(hh) == 0
                             continue;
                         end
                         ll = kumulatiivinen(options.use_device + 1) - n_devices(options.use_device + 1) + hh;
@@ -368,7 +394,7 @@ if options.verbose
         reko = {};
         if options.mlem
             if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
-                warning('MLEM is not supported with implementation 5 or with implementation 1 without precomputed observation matrix.')
+                warning('MLEM is not supported with implementation 1 or with implementation 5 without precomputed observation matrix.')
                 options.mlem = false;
                 if ~OS && ~MAPOS
                     error('No other reconstruction algorithms selected. Select an ordered subsets algorithm.')
@@ -409,7 +435,7 @@ if options.verbose
         end
         if options.OSL_MLEM && PRIOR
             if options.implementation ~= 2
-                warning('MLEM-OSL is not supported with implementations 1, 3 or 4.')
+                warning('MLEM-OSL is not supported with implementations 1 and 3.')
                 options.OSL_MLEM = false;
             else
                 reko = [reko;{'MLEM-OSL'}];
@@ -604,11 +630,10 @@ if options.verbose
         if ~isempty(priori)
             disp(dispi2)
         end
-        if ~OS && ~MAP && ~options.mlem && ~options.only_sinos
+        if ~OS && ~MAP && ~options.mlem && ~(options.only_sinos || options.compute_normalization)
             error('No reconstruction algorithm selected.')
         end
         if options.precompute_lor
-            
             disp('Precomputed LOR voxel counts used.')
         else
             disp('No precomputed data will be used.')
@@ -679,7 +704,7 @@ if options.verbose
             disp('Sinogram gap filling ON.')
         end
     end
-    if options.normalization_correction && ~options.compute_normalization
+    if options.normalization_correction && ~(options.compute_normalization || options.only_sinos)
         disp('Normalization correction ON.')
     elseif options.normalization_correction && options.compute_normalization
         warning('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
@@ -690,68 +715,70 @@ if options.verbose
     if options.compute_normalization && sum(options.normalization_options) == 0
         error('Normalization computation selected, but no normalization components selected.')
     end
-    if options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
-        disp('Corrections applied during reconstruction (ordinary Poisson).')
-    elseif ~options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
-        disp('Corrections applied to the measurement data.')
-    end
-    if options.arc_correction && ~options.use_raw_data
-        disp('Arc correction ON.')
-    end
-    if options.use_raw_data
-        if options.partitions == 1
-            dispi = 'Using STATIC raw list-mode data';
-        else
-            dispi = 'Using DYNAMIC raw list-mode data';
+    if ~(options.compute_normalization || options.only_sinos)
+        if options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
+            disp('Corrections applied during reconstruction (ordinary Poisson).')
+        elseif ~options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
+            disp('Corrections applied to the measurement data.')
         end
-        if options.reconstruct_trues
-            dispi = strcat(dispi, ' (trues)');
-        elseif options.reconstruct_scatter
-            dispi = strcat(dispi, ' (scatter)');
-        else
-            dispi = strcat(dispi, ' (prompts)');
+        if options.arc_correction && ~options.use_raw_data
+            disp('Arc correction ON.')
         end
-        if options.sampling_raw > 1
-            dispi = strcat(dispi, [' with ' num2str(options.sampling_raw) 'x sampling']);
-        end
-        if options.partitions > 1
+        if options.use_raw_data
+            if options.partitions == 1
+                dispi = 'Using STATIC raw list-mode data';
+            else
+                dispi = 'Using DYNAMIC raw list-mode data';
+            end
+            if options.reconstruct_trues
+                dispi = strcat(dispi, ' (trues)');
+            elseif options.reconstruct_scatter
+                dispi = strcat(dispi, ' (scatter)');
+            else
+                dispi = strcat(dispi, ' (prompts)');
+            end
             if options.sampling_raw > 1
-                dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
-            else
-                dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+                dispi = strcat(dispi, [' with ' num2str(options.sampling_raw) 'x sampling']);
             end
-        end
-        dispi = strcat(dispi, '.');
-        disp(dispi)
-    else
-        if options.partitions == 1
-            dispi = 'Using STATIC sinogram data';
+            if options.partitions > 1
+                if options.sampling_raw > 1
+                    dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
+                else
+                    dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+                end
+            end
+            dispi = strcat(dispi, '.');
+            disp(dispi)
         else
-            dispi = 'Using DYNAMIC sinogram data';
-        end
-        if options.reconstruct_trues
-            dispi = strcat(dispi, ' (trues)');
-        elseif options.reconstruct_scatter
-            dispi = strcat(dispi, ' (scatter).');
-        else
-            dispi = strcat(dispi, ' (prompts)');
-        end
-        if options.sampling > 1
-            dispi = strcat(dispi, [' with ' num2str(options.sampling) 'x sampling']);
-        end
-        if options.partitions > 1
+            if options.partitions == 1
+                dispi = 'Using STATIC sinogram data';
+            else
+                dispi = 'Using DYNAMIC sinogram data';
+            end
+            if options.reconstruct_trues
+                dispi = strcat(dispi, ' (trues)');
+            elseif options.reconstruct_scatter
+                dispi = strcat(dispi, ' (scatter).');
+            else
+                dispi = strcat(dispi, ' (prompts)');
+            end
             if options.sampling > 1
-                dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
-            else
-                dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+                dispi = strcat(dispi, [' with ' num2str(options.sampling) 'x sampling']);
             end
+            if options.partitions > 1
+                if options.sampling > 1
+                    dispi = strcat(dispi, [' and ' num2str(options.partitions) ' time steps']);
+                else
+                    dispi = strcat(dispi, [' with ' num2str(options.partitions) ' time steps']);
+                end
+            end
+            dispi = strcat(dispi, '.');
+            disp(dispi)
         end
-        dispi = strcat(dispi, '.');
-        disp(dispi)
-    end
-    disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
-        ' iterations and ' num2str(options.subsets) ' subsets.'])
-    if options.use_CUDA && options.projector_type > 1
-        warning('CUDA is not recommended with orthogonal or volume-based projectors')
+        disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
+            ' iterations and ' num2str(options.subsets) ' subsets.'])
+        if options.use_CUDA && options.projector_type > 1
+            warning('CUDA is not recommended with orthogonal or volume-based projectors')
+        end
     end
 end
