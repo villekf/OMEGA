@@ -38,7 +38,7 @@
 typedef struct {
 	af::array s1, s2, s3, s4, s5, s6, s7, s8, s9, reference_image, APLSReference;
 	bool TV_use_anatomical;
-	float tau, TVsmoothing, T, C, eta, APLSsmoothing, TGVAlpha, TGVBeta;
+	float tau, TVsmoothing, T, C, eta, APLSsmoothing, TGVAlpha, TGVBeta, SATVPhi = 0.f;
 	uint32_t TVtype = 0;
 	uint32_t NiterTGV;
 } TVdata;
@@ -219,7 +219,7 @@ af::array L_filter(const af::array &im, const uint32_t Ndx, const uint32_t Ndy, 
 	const float epps, const af::array &offsets, const af::array &a_L, const bool med_no_norm, const uint32_t im_dim);
 
 af::array Weighted_mean(const af::array &im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, 
-	const uint32_t Nz, const float epps, const af::array &offsets, const af::array &weighted_weights, const bool med_no_norm, const uint32_t im_dim, 
+	const uint32_t Nz, const float epps, const af::array &weighted_weights, const bool med_no_norm, const uint32_t im_dim, 
 	const uint32_t mean_type, const float w_sum);
 
 af::array AD(const af::array &im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const float TimeStepAD, const float KAD, 
