@@ -24,15 +24,16 @@ function [ lor, indices, alkiot, discard] = improved_siddon_atten( Ny, Nx, Nz, d
 % BY the distance from the origin to the pixel space in y direction
 % BX same for x
 % BZ same for z
-% OSAJOUKOT the subset intervals used for OSEM reconstruction
-% TEST current subiteration (subset)
 % Z_DET detector ring locations in z dimension (axial)
 % X detector ring locations in x direction (radial)
 % Y same for y
-% IIJ pixel boundaries in x directon (iij=0:Nx)
-% JJI same for y
-% KKJ same for z
-% YY 
+% YY coordinates of the pixel boundaries in y-direction
+% XX same for x
+% NSINOS Number of sinograms included
+% NSLICES Number of image slices included
+% VAIMENNUS Attenuation images
+% INDEX LOR indices to be used
+% PITUUS Number of LORs
 bxb = bx + double(Nx) * d;
 byb = by + double(Ny) * d;
 bzb = bz + double(Nz) * dz;
@@ -280,7 +281,7 @@ parfor lo=int32(1:pituus)
         
         Np = (imax - imin + 1) + (jmax - jmin + 1);
         
-        % Otetaan vain ne t:n arvot, jotka ovat s�teen kulkureitill�
+        % Otetaan vain ne t:n arvot, jotka ovat s�teen kulkureitill� (ei käytössä enää)
         
 
         % Koko s�teen pituus
@@ -314,21 +315,21 @@ parfor lo=int32(1:pituus)
             
             if tx0 < ty0
                 apu = (tx0 - tc);
-                idx(ii) = (tempj)*Ny+tempi+tempk;
+                idx(ii) = (tempj)*Nx+tempi+tempk;
                 templ_ijk(ii) = apu * L;
                 tempi = tempi + iu;
                 tc = tx0;
                 tx0 = tx0 + txu;
             elseif ty0 <= tx0
                 apu = (ty0 - tc);
-                idx(ii) = (tempj)*Ny+tempi+tempk;
+                idx(ii) = (tempj)*Nx+tempi+tempk;
                 templ_ijk(ii) = apu * L;
                 tempj = tempj + ju;
                 tc = ty0;
                 ty0 = ty0 + tyu;
             end
             hpk = hpk + 1;
-            if tempj < 0 || tempi < 1
+            if tempj < 0 || tempi < 1 || tempj >= Ny || tempi > Nx
                 break
             end
             
@@ -492,7 +493,7 @@ parfor lo=int32(1:pituus)
                         tz0 = tz0 + tzu;
                     end
                     hpk = hpk + 1;
-                    if tempk < 0 || tempi < 1
+                    if tempk < 0 || tempi < 1 || tempk >= Nz || tempi > Nx
                         break
                     end
                 end
@@ -643,7 +644,7 @@ parfor lo=int32(1:pituus)
                         tz0 = tz0 + tzu;
                     end
                     hpk = hpk + 1;
-                    if tempi < 1 || tempj < 0 || tempk < 0
+                    if tempi < 1 || tempj < 0 || tempk < 0 || tempj >= Ny || tempi > Nx || tempz >= Nz
                         break
                     end
                 end
@@ -845,7 +846,7 @@ parfor lo=int32(1:pituus)
                 tx0 = tx0 + txu;
             end
             hpk = hpk + 1;
-            if tempi < 1 || tempj < 0 || tempk < 0
+            if tempi < 1 || tempj < 0 || tempk < 0 || tempj >= Ny || tempi > Nx || tempz >= Nz
                 break
             end
         end
