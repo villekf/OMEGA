@@ -28,7 +28,9 @@
 #include <cstdint>
 #include <thread>
 #include <chrono>
+#ifdef _OPENMP
 #include <omp.h>
+#endif
 
 // Normalized distances below this are discarded in orthogonal ray tracer
 #define THR 0.01
