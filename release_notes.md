@@ -58,9 +58,12 @@
   - 32-bit list-mode support for mCT as well
   - Closed source release ONLY, available for MATLAB R2015a and up on Windows and Linux
   
-- Sinograms are automatically created during raw data load if raw data has not been explicitly selected
-  - Raw data is still saved regardless of choices
-  - Slightly speeds up the sinogram creation and uses less memory
+- Sinograms are automatically created during data load if raw data has not been explicitly selected
+  - Raw data can be completely disabled by setting `options.store_raw_data = false`
+  - Significantly faster sinogram creation, especially with dynamic data
+  
+- Added initial support to create and save TOF sinograms
+  - No reconstruction available yet
   
 - Allowed sinogram corrections to be applied without re-creating the sinogram (as long as the uncorrected sinogram already exists)
 
@@ -88,6 +91,21 @@
 - Added functions to automatically create GATE compatible voxelized phantoms and/or sources
   - Supports either Interfile or MetaImage output
   - Input can be binary 32-bit floats, DICOM images or BMP/PNG/TIFF (grayscale) images
+  
+- Added MATLAB/Octave class to compute forward and backward projections
+  - Includes operator overloading, e.g. computing `y = A * x` and `x = A' * y` operations with the `A` system matrix class object
+  - Can compute the operations matrix-free with implementation 3 or with matrices with implementation 1
+  - Can be used to extract the system matrix (or a subset of it)
+  - See `forward_backward_projections_example.m` for examples
+  
+- Added support for different number of crystals in axial direction as well as transaxial multiplier
+  - Both values are optional
+  - Number of crystals in axial direction is required only if number of crystals in axial direction is different from the number of crystals in transaxial direction
+  - Transaxial multiplier is required if blocks/modules/submodules are repeated in transaxial direction
+  - Added an example that demonstrates the use of both parameters
+  
+- Added support for GATE submodules
+  - The repeated component that includes the crystals can be either RSector/Block, Module or Submodule, i.e. both modules and submodules can be omitted
 
 ### Bug fixes and enhancements
 
@@ -170,6 +188,8 @@
 - Gap filling can now be performed before the image reconstruction step without needing to separately redo the corrections
 
 - Normalization correction should work better with mashed data
+
+- Improved sinogram mashing
 
 - Compilation should work more reliably in Unix platforms with less warnings
 
