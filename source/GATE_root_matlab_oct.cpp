@@ -13,13 +13,16 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 	float* z1, float* z2, bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings, 
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const octave_uint32* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, octave_uint16* Sino, octave_uint16* SinoT, octave_uint16* SinoC, 
-	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize)
+	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
 	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 	Double_t time1 = alku, time2 = alku;
+
+	std::default_random_engine generator;
+	std::normal_distribution<double> distribution(0.0, FWHM);
 
 	int any = 0;
 	int next = 0;
@@ -305,7 +308,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 		uint64_t bins = 0;
 		if (TOFSize > sinoSize) {
-			double timeDif = (time2 - time1) / 2.;
+			double timeDif = (time2 - time1) / 2. + distribution(generator);
 			if (ring_pos2 > ring_pos1)
 				timeDif = -timeDif;
 			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
@@ -551,6 +554,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	const int32_t detWPseudo = prhs(35).int32_scalar_value();
 	const int32_t nPseudos = prhs(36).int32_scalar_value();
 	double binSize = prhs(37).scalar_value();
+	double FWHM = prhs(38).scalar_value();
 	size_t outsize2 = (loppu - alku) / vali;
 	const bool* scatter_components_p = scatter_components.fortran_vec();
 	const double* time_intervals_p = time_intervals.fortran_vec();
@@ -740,7 +744,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		Coincidences, Nentries, time_intervals_p, int_loc_p, obtain_trues, store_scatter, store_randoms, scatter_components_p, Ltrues_p, Lscatter_p,
 		Lrandoms_p, trues_loc_p, Ndelays, randoms_correction, delay, Ldelay1_p, Ldelay2_p, int_loc_delay_p, tpoints_delay_p, randoms_loc_p, scatter_loc_p, 
 		x1_p, x2_p, y1_p, y1_p, z1_p, z2_p, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, 
-		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize);
+		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM);
 
 
 	delete Coincidences;

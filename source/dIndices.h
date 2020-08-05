@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <cmath>
 #include <algorithm>
+#include <random>
 
 template<typename T>
 void detectorIndices(uint32_t& ring_number1, uint32_t& ring_number2, uint32_t& ring_pos1, uint32_t& ring_pos2, const uint32_t blocks_per_ring, const uint32_t linear_multip,

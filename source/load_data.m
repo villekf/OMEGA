@@ -240,10 +240,30 @@ elseif options.use_machine == 0
         tic
     end
     
+    if isunix
+        if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
+            options.fpath = [options.fpath '/'];
+        end
+    elseif ispc
+        if length(options.fpath) > 1 && ~strcmp('\',options.fpath(end)) && ~strcmp('/',options.fpath(end))
+            options.fpath = [options.fpath '\'];
+        end
+    else
+        if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
+            options.fpath = [options.fpath '/'];
+        end
+    end
+    
     if nargout == 8
         store_coordinates = true;
     else
         store_coordinates = false;
+    end
+    
+    if TOF
+        FWHM = (options.TOF_FWHM / (2 * sqrt(2 * log(2))))^2;
+    else
+        FWHM = 0;
     end
     
     fpath = options.fpath;
@@ -1102,7 +1122,7 @@ elseif options.use_machine == 0
                     scatter_components, options.randoms_correction, store_coordinates, uint32(cryst_per_block_z), uint32(transaxial_multip), uint32(options.rings), sinoSize, ...
                     uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
                     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
-                    SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width);
+                    SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM);
             elseif exist('OCTAVE_VERSION','builtin') == 5
                 [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, ...
                     x1, x2, y1, y2, z1, z2, raw_SinM, SinTrues, SinScatter, SinRandoms, SinD] = GATE_root_matlab_oct(nimi,vali,alku,loppu, uint32(detectors), blocks_per_ring, ...
@@ -1110,7 +1130,7 @@ elseif options.use_machine == 0
                     scatter_components, options.randoms_correction, store_coordinates, uint32(cryst_per_block_z), uint32(transaxial_multip), uint32(options.rings), sinoSize, ...
                     uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
                     uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), options.store_raw_data, raw_SinM, SinTrues, SinScatter, ...
-                    SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width);
+                    SinRandoms, SinD, int32(options.det_w_pseudo), int32(sum(options.pseudot)), options.TOF_width, FWHM);
             else
                 % If the machine is large (detectors x detectors matrix is
                 % over 2 GB), the data is loaded in a different way

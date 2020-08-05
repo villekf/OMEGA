@@ -32,13 +32,16 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings,
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint32_t* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC,
-	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize)
+	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
 	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 	Double_t time1 = alku, time2 = alku;
+
+	std::default_random_engine generator;
+	std::normal_distribution<double> distribution(0.0, FWHM);
 
 	int any = 0;
 	int next = 0;
@@ -331,7 +334,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 		uint64_t bins = 0;
 		if (TOFSize > sinoSize) {
-			double timeDif = (time2 - time1) / 2.;
+			double timeDif = (time2 - time1) / 2. + distribution(generator);
 			if (ring_pos2 > ring_pos1)
 				timeDif = -timeDif;
 			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
@@ -548,9 +551,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 38) {
+	if (nrhs != 39) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"38 input arguments required.");
+			"39 input arguments required.");
 	}
 	else if (nlhs > 26) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
@@ -591,6 +594,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	const int32_t detWPseudo = (int32_t)mxGetScalar(prhs[35]);
 	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[36]);
 	double binSize = (double)mxGetScalar(prhs[37]);
+	double FWHM = (double)mxGetScalar(prhs[38]);
 	size_t outsize2 = (loppu - alku) / vali;
 
 	// Count inputs and check for char type
@@ -778,7 +782,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		output, Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter, 
 		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, 
 		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference,
-		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize);
+		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM);
 
 
 	delete Coincidences;
