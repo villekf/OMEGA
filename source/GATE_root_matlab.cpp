@@ -19,11 +19,9 @@
 ***************************************************************************/
 #include "mex.hpp"
 #include "mexAdapter.hpp"
-#include <stdint.h>
-#include <cmath>
-#include <algorithm>
 #include <TROOT.h>
 #include "TChain.h"
+#include "saveSinogram.h"
 
 
 class MexFunction : public matlab::mex::Function {
@@ -51,11 +49,12 @@ public:
 		const matlab::data::TypedArray<bool> scatter_components = std::move(inputs[14]);
 		const bool randoms_correction = inputs[15][0];
 		const bool store_coordinates = inputs[16][0];
+		const uint32_t transaxial_multip = inputs[17][0];
+		const uint32_t cryst_per_block_z = inputs[18][0];
+		const uint32_t rings = inputs[19][0];
+		const bool large_case = inputs[20][0];
+		const bool TOF = inputs[21][0];
 		size_t outsize2 = (loppu - alku) / vali;
-		bool large_case = false;
-		if (static_cast<uint64_t>(detectors) * static_cast<uint64_t>(detectors) * 2ULL >= 1024ULL * 1024ULL * 1024ULL * 2ULL) {
-			large_case = true;
-		}
 
 		bool dynamic = false;
 
@@ -95,100 +94,53 @@ public:
 		matlab::data::TypedArray<float> z1 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> z2 = factory.createArray<float>({ 1, 1 });
 
-		if (outsize2 == 1ULL && !large_case) {
-			if (obtain_trues) {
-				Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
-				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
+			if (outsize2 == 1ULL && !large_case) {
+				if (obtain_trues) {
+					Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
+					std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
+				}
+				if (store_randoms) {
+					Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
+					std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
+				}
+				if (store_scatter) {
+					Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
+					std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
+				}
+				if (randoms_correction) {
+					Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
+					Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
+					std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+				}
+				LL1 = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
 			}
 			else {
-				//plhs[5] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-				//matlab::data::TypedArray<uint16_t> Ltrues = factory.createArray<uint16_t>({ 1, 1 });
-				//matlab::data::TypedArray<uint16_t> Ltrues = factory.createArrayFromBuffer<uint16_t>({ 1, 1 }, true_buf);
-			}
-			if (store_randoms) {
-				//plhs[6] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-				Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
-				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	Lrandoms = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			if (store_scatter) {
-				//plhs[7] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-				Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
-				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	Lscatter = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			if (randoms_correction) {
-				//plhs[9] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-				//plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-				Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
-				Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
-				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[9] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	//plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	Ldelay1 = factory.createArray<uint16_t>({ 1, 1 });
-			//	Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			LL1 = factory.createArray<uint16_t>({ detectors, detectors });
-			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
-		}
-		else {
-			//plhs[0] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-			//plhs[1] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-			LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
-			LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
-			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
-			std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
+				LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
+				LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+				std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
 
-			if (obtain_trues) {
-			//	//plhs[5] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-				Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
-				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
+				if (obtain_trues) {
+					Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
+					std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
+				}
+				if (store_randoms) {
+					Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
+					std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
+				}
+				if (store_scatter) {
+					Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
+					std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
+				}
+				if (randoms_correction) {
+					Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
+					Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
+					std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+					std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
+				}
+				dynamic = true;
 			}
-			//else {
-			//	matlab::data::TypedArray<uint16_t> Ltrues = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			if (store_randoms) {
-				//plhs[6] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-				Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
-				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	matlab::data::TypedArray<uint16_t> Lrandoms = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			if (store_scatter) {
-				//plhs[7] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-				Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
-				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	matlab::data::TypedArray<uint16_t> Lscatter = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			if (randoms_correction) {
-				//plhs[9] = mxCreateNumericMatrix(Ndelays, 1, mxUINT16_CLASS, mxREAL);
-				//plhs[10] = mxCreateNumericMatrix(Ndelays, 1, mxUINT16_CLASS, mxREAL);
-				Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
-				Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
-				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
-				std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
-			}
-			//else {
-			//	//plhs[9] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	//plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			//	matlab::data::TypedArray<uint16_t> Ldelay1 = factory.createArray<uint16_t>({ 1, 1 });
-			//	matlab::data::TypedArray<uint16_t> Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
-			//}
-			dynamic = true;
-		}
 		if (store_coordinates) {
 			x1 = factory.createArray<float>({ Nentries, 1 });
 			std::fill(x1.begin(), x1.end(), 0.f);
@@ -203,7 +155,6 @@ public:
 			z2 = factory.createArray<float>({ Nentries, 1 });
 			std::fill(z2.begin(), z2.end(), 0.f);
 		}
-		//plhs[2] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 		matlab::data::TypedArray<uint32_t> tpoints = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
 		std::fill(tpoints.begin(), tpoints.end(), 0U);
 		matlab::data::TypedArray<uint32_t> tpoints_delay = factory.createArray<uint32_t>({ 1, 1 }, { 0 });
@@ -212,73 +163,47 @@ public:
 		matlab::data::TypedArray<bool> randoms_loc = factory.createArray<bool>({ 1, 1 }, { false });
 		matlab::data::TypedArray<bool> scatter_loc = factory.createArray<bool>({ 1, 1 }, { false });
 		if (randoms_correction) {
-			//plhs[12] = mxCreateNumericMatrix(outsize2 + 2, 1, mxUINT32_CLASS, mxREAL);
 			tpoints_delay = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
 			std::fill(tpoints_delay.begin(), tpoints_delay.end(), 0U);
 		}
-		//else {
-		//	//plhs[12] = mxCreateNumericMatrix(1, 1, mxUINT32_CLASS, mxREAL);
-		//	matlab::data::TypedArray<uint32_t> tpoints_delay = factory.createArray<uint32_t>({ 1, 1 });
-		//}
 
 		if (source) {
-			//plhs[3] = mxCreateNumericMatrix(Nentries, 6, mxSINGLE_CLASS, mxREAL);
 			S = factory.createArray<float>({ Nentries, 6 });
 			std::fill(S.begin(), S.end(), 0.f);
 		}
-		//else {
-		//	//plhs[3] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//	matlab::data::TypedArray<float> S = factory.createArray<float>({ 1, 1 });
-		//}
-		//plhs[4] = mxCreateNumericMatrix(2, 1, mxINT32_CLASS, mxREAL);
 		matlab::data::TypedArray<int32_t> int_loc = factory.createArray<int32_t>({ 2, 1 }, { 0, 0 });
 
-		//plhs[11] = mxCreateNumericMatrix(2, 1, mxINT32_CLASS, mxREAL);
 		matlab::data::TypedArray<int32_t> int_loc_delay = factory.createArray<int32_t>({ 2, 1 }, { 0, 0 });
 
 		if (obtain_trues && source && outsize2 == 1ULL) {
-			//plhs[8] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
-			//trues_loc = (bool*)mxGetData(plhs[8]);
 			trues_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(trues_loc.begin(), trues_loc.end(), false);
 		}
-		//else {
-		//	//trues_loc = 0;
-		//	//plhs[8] = mxCreateNumericMatrix(1, 1, mxLOGICAL_CLASS, mxREAL);
-		//	matlab::data::TypedArray<bool> trues_loc = factory.createArray<bool>({ 1, 1 });
-		//}
 		if (store_randoms && source && outsize2 == 1ULL) {
-			//plhs[13] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
-			//randoms_loc = (bool*)mxGetData(plhs[13]);
 			randoms_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(randoms_loc.begin(), randoms_loc.end(), false);
 		}
-		//else {
-		//	//randoms_loc = 0;
-		//	//plhs[13] = mxCreateNumericMatrix(1, 1, mxLOGICAL_CLASS, mxREAL);
-		//	matlab::data::TypedArray<bool> randoms_loc = factory.createArray<bool>({ 1, 1 });
-		//}
 		if (store_scatter && source && outsize2 == 1) {
-			//plhs[14] = mxCreateNumericMatrix(Nentries, 1, mxLOGICAL_CLASS, mxREAL);
-			//scatter_loc = (bool*)mxGetData(plhs[14]);
 			scatter_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(scatter_loc.begin(), scatter_loc.end(), false);
 		}
-		//else {
-		//	//scatter_loc = 0;
-		//	//plhs[14] = mxCreateNumericMatrix(1, 1, mxLOGICAL_CLASS, mxREAL);
-		//	matlab::data::TypedArray<bool> scatter_loc = factory.createArray<bool>({ 1, 1 });
-		//}
+		matlab::data::TypedArray<double> TP = factory.createArray<double>({ 1, 1 });
+		if (dynamic && !TOF)
+			TP = factory.createArray<double>({ Nentries, 1 });
+		else if (!dynamic && TOF)
+			TP = factory.createArray<double>({ Nentries, 1 });
+		else if (dynamic && TOF)
+			TP = factory.createArray<double>({ Nentries, 2 });
+		std::fill(TP.begin(), TP.end(), 0.);
+		matlab::data::TypedArray<double> TPd = factory.createArray<double>({ 1, 1 });
+		if (dynamic && randoms_correction)
+			TPd = factory.createArray<double>({ Ndelays, 1 });
+		std::fill(TPd.begin(), TPd.end(), 0.);
 
 		histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S,
 			Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter,
-			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, x1, x2, 
-			y1, y2, z1, z2, store_coordinates, dynamic, large_case);
-
-
-		//std::ostringstream stream;
-		//stream << "Data loaded" << std::endl;
-		//displayOnMATLAB(stream);
+			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, x1, x2,
+			y1, y2, z1, z2, store_coordinates, dynamic, large_case, rings, cryst_per_block_z, transaxial_multip, TP, TPd, TOF);
 
 		delete Coincidences;
 		if (randoms_correction)
@@ -305,6 +230,8 @@ public:
 		outputs[18] = std::move(y2);
 		outputs[19] = std::move(z1);
 		outputs[20] = std::move(z2);
+		outputs[21] = std::move(TP);
+		outputs[22] = std::move(TPd);
 
 		//mexEvalString("pause(.001);");
 
@@ -316,11 +243,11 @@ public:
 	}
 
 	void checkArguments(matlab::mex::ArgumentList& outputs, matlab::mex::ArgumentList& inputs) {
-		if (inputs.size() != 17) {
-			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("17 inputs required") }));
+		if (inputs.size() != 22) {
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("22 inputs required") }));
 		}
 
-		if (outputs.size() > 21) {
+		if (outputs.size() > 23) {
 			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("Too many output arguments") }));
 		}
 
@@ -329,17 +256,19 @@ public:
 		}
 	}
 
-	void histogram(matlab::data::TypedArray<uint16_t>& LL1, matlab::data::TypedArray<uint16_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu, const size_t outsize2,
-		const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,
-		const uint32_t det_per_ring, matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
-		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, matlab::data::TypedArray<uint16_t>& Lscatter,
-		matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2,
-		matlab::data::TypedArray<int32_t>& int_loc_delay, matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc,
+	void histogram(matlab::data::TypedArray<uint16_t>& LL1, matlab::data::TypedArray<uint16_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu, 
+		const size_t outsize2, const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,	const uint32_t det_per_ring, 
+		matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
+		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, 
+		matlab::data::TypedArray<uint16_t>& Lscatter, matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, 
+		TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2, matlab::data::TypedArray<int32_t>& int_loc_delay, 
+		matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc,
 		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
-		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case)
+		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case, const uint32_t rings, 
+		const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, matlab::data::TypedArray<double>& TP, matlab::data::TypedArray<double>& TPd, const bool TOF)
 	{
 
-		Int_t crystalID1, crystalID2, moduleID1, moduleID2, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
+		Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
 		Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 		Double_t time1 = alku, time2 = alku;
@@ -355,17 +284,38 @@ public:
 			stream << "No crystal location information was found from file. Aborting." << std::endl;
 			return;
 		}
-		Coincidences->SetBranchAddress("crystalID2", &crystalID2);
-		Coincidences->SetBranchAddress("moduleID1", &moduleID1);
-		Coincidences->SetBranchAddress("moduleID2", &moduleID2);
+		if (Coincidences->GetBranchStatus("crystalID2"))
+			Coincidences->SetBranchAddress("crystalID2", &crystalID2);
+		else {
+			std::ostringstream stream;
+			stream << "No crystal location information was found from file. Aborting." << std::endl;
+			return;
+		}
+		if (Coincidences->GetBranchStatus("moduleID1"))
+			Coincidences->SetBranchAddress("moduleID1", &moduleID1);
+		if (Coincidences->GetBranchStatus("moduleID2"))
+			Coincidences->SetBranchAddress("moduleID2", &moduleID2);
+		if (Coincidences->GetBranchStatus("moduleID1"))
+			Coincidences->SetBranchAddress("submoduleID1", &submoduleID1);
+		if (Coincidences->GetBranchStatus("submoduleID2"))
+			Coincidences->SetBranchAddress("submoduleID2", &submoduleID2);
 		uint64_t summa = 0ULL;
+		uint64_t summaS = 0ULL;
 		for (uint64_t kk = 0ULL; kk < Nentries; kk++) {
 			Coincidences->GetEntry(kk);
-			summa += moduleID1;
+			if (summa == 0ULL)
+				summa += moduleID1;
+			if (summaS == 0ULL)
+				summaS += submoduleID1;
+			if (summa > 0 && summaS > 0)
+				break;
 		}
 		bool no_modules = false;
+		bool no_submodules = true;
 		if (summa == 0ULL)
 			no_modules = true;
+		if (summaS > 0ULL)
+			no_submodules = false;
 		Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 		Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
 		if (source) {
@@ -412,7 +362,8 @@ public:
 				source = false;
 			}
 		}
-		//Coincidences->SetBranchAddress("time1", &time1);
+		if (Coincidences->GetBranchStatus("time1"))
+			Coincidences->SetBranchAddress("time1", &time1);
 		if (Coincidences->GetBranchStatus("time2"))
 			Coincidences->SetBranchAddress("time2", &time2);
 		else {
@@ -580,67 +531,36 @@ public:
 		double aika = 0.;
 		int_loc[0] = 1;
 		tpoints[ll] = 0;
-		float ff = 0.01f;
-		uint64_t NN = Nentries * ff;
 
 		for (uint64_t kk = 0; kk < Nentries; kk++) {
 
 			jj++;
 			nbytes += Coincidences->GetEntry(kk);
 
-			//if (kk == NN) {
-			//	ff += 0.01f;
-			//	NN = Nentries * ff; 
-			//	std::ostringstream stream;
-			//	stream << static_cast<uint32_t>(ff * 100.f) << "%" << std::endl;
-			//	displayOnMATLAB(stream);
-			//}
-			//if (kk == 0) {
-			//	std::ostringstream stream;
-			//	stream << "ROOT file load started" << std::endl;
-			//	displayOnMATLAB(stream);
-			//}
-
 			if (time2 < alku)
 				continue;
 			else if (time2 > loppu) {
-				//int_loc[1] = pa;
-				//tpoints[ll] = static_cast<uint32_t>(jj);
-				//if (begin) {
-				//	int_loc[0] = -1;
-				//	int_loc[1] = -1;
-				//}
 				break;
 			}
-			uint32_t ring_number1, ring_number2;
+			if (dynamic && !TOF)
+				TP[kk] = time2;
+			else if (dynamic && TOF)
+				TP[kk][0] = time2;
+			uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+			detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1, 
+				submoduleID2, rsectorID1, rsectorID2,crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 
-			// Detector numbers axially
-			if (linear_multip == 1 && !no_modules) {
-				ring_number1 = moduleID1;
-				ring_number2 = moduleID2;
+			if (!dynamic && TOF) {
+				double aika = (time2 - time1) / 2.;
+				if (ring_pos2 > ring_pos2)
+					aika = -aika;
+				TP[kk] = aika;
 			}
-			else if (linear_multip == 1 && no_modules) {
-				ring_number1 = rsectorID1;
-				ring_number2 = rsectorID2;
-			}
-			else if (no_modules) {
-				ring_number1 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID1) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-				ring_number2 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID2) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-			}
-			else {
-				ring_number1 = (moduleID1 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-				ring_number2 = (moduleID2 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-			}
-			// Detector number transaxially
-			const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
-			const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
-			// Detector numbers
-			uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-			uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
-			if (L2 > L1) {
-				const uint32_t L3 = L1;
-				L1 = L2;
-				L2 = L3;
+			else if (dynamic && TOF) {
+				double aika = (time2 - time1) / 2.;
+				if (ring_pos2 > ring_pos2)
+					aika = -aika;
+				TP[kk][1] = aika;
 			}
 			if (begin) {
 				while (time2 >= time_intervals[pa])
@@ -650,57 +570,57 @@ public:
 				aika = time_intervals[pa];
 				int_loc[0] = pa;
 			}
+			bool event_true = true;
+			bool event_scattered = false;
 			if (obtain_trues || store_scatter || store_randoms) {
-				bool event_true = true;
-				bool event_scattered = false;
 				if (eventID1 != eventID2) {
 					event_true = false;
 				}
 				if (event_true && (obtain_trues || store_scatter)) {
-					//if (event_true && scatter_components[0]) {
 					if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 						event_true = false;
 						if (store_scatter && scatter_components[0])
 							event_scattered = true;
 					}
-					//}
-					//if (event_true && scatter_components[1]) {
 					else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
 						event_true = false;
 						if (store_scatter && scatter_components[1])
 							event_scattered = true;
 					}
-					//}
-					//if (event_true && scatter_components[2]) {
 					else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
 						event_true = false;
 						if (store_scatter && scatter_components[2])
 							event_scattered = true;
 					}
-					//}
-					//if (event_true && scatter_components[3]) {
 					else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
 						event_true = false;
 						if (store_scatter && scatter_components[3])
 							event_scattered = true;
 					}
-					//}
+				}
+			}
+			// Detector numbers
+			uint32_t L1 = static_cast<uint32_t>(ring_number1) * det_per_ring + static_cast<uint32_t>(ring_pos1);
+			uint32_t L2 = static_cast<uint32_t>(ring_number2) * det_per_ring + static_cast<uint32_t>(ring_pos2);
+			if (L2 > L1 && !large_case) {
+				const uint32_t L3 = L1;
+				L1 = L2;
+				L2 = L3;
+			}
+			if (obtain_trues || store_scatter || store_randoms) {
+				if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
 					if (outsize2 == 1ULL) {
 						if (event_true && obtain_trues) {
 							if (large_case)
 								Ltrues[kk] = 1u;
 							else
 								Ltrues[L1][L2]++;
-							if (source)
-								trues_loc[kk] = true;
 						}
 						else if (event_scattered && store_scatter) {
 							if (large_case)
 								Lscatter[kk] = 1u;
 							else
 								Lscatter[L1][L2]++;
-							if (source)
-								scatter_loc[kk] = true;
 						}
 					}
 					else {
@@ -716,18 +636,10 @@ public:
 							Lrandoms[kk] = 1u;
 						else
 							Lrandoms[L1][L2]++;
-						if (source)
-							randoms_loc[kk] = true;
 					}
 					else
 						Lrandoms[kk] = 1u;
 				}
-				//if (!event_true && obtain_trues && source && outsize2 == 1ULL)
-				//	trues_loc[kk] = 0u;
-				//if (!event_scattered && store_scatter && source && outsize2 == 1ULL)
-				//	scatter_loc[kk] = 0u;
-				//if (event_true && store_randoms && source && outsize2 == 1ULL)
-				//	randoms_loc[kk] = 0u;
 			}
 			if (outsize2 == 1) {
 				if (large_case) {
@@ -746,6 +658,12 @@ public:
 				aika = time_intervals[++pa];
 			}
 			if (source) {
+				if (outsize2 == 1ULL && !event_true && store_randoms)
+					randoms_loc[kk] = true;
+				if (outsize2 == 1ULL && event_scattered && store_scatter)
+					scatter_loc[kk] = true;
+				if (outsize2 == 1ULL && event_true && obtain_trues)
+					trues_loc[kk] = true;
 				S[kk][0] = sourcePosX1;
 				S[kk][1] = sourcePosY1;
 				S[kk][2] = sourcePosZ1;
@@ -782,6 +700,8 @@ public:
 			delay->SetBranchAddress("crystalID2", &crystalID2);
 			delay->SetBranchAddress("moduleID1", &moduleID1);
 			delay->SetBranchAddress("moduleID2", &moduleID2);
+			delay->SetBranchAddress("submoduleID1", &submoduleID1);
+			delay->SetBranchAddress("submoduleID2", &submoduleID2);
 			delay->SetBranchAddress("rsectorID1", &rsectorID1);
 			delay->SetBranchAddress("rsectorID2", &rsectorID2);
 			if (delay->GetBranchStatus("time2"))
@@ -813,32 +733,13 @@ public:
 					break;
 				}
 
-				uint32_t ring_number1, ring_number2;
-				if (linear_multip == 1 && !no_modules) {
-					ring_number1 = moduleID1;
-					ring_number2 = moduleID2;
-				}
-				else if (linear_multip == 1 && no_modules) {
-					ring_number1 = rsectorID1;
-					ring_number2 = rsectorID2;
-				}
-				else if (no_modules) {
-					ring_number1 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID1) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-					ring_number2 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID2) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-				}
-				else {
-					ring_number1 = (moduleID1 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-					ring_number2 = (moduleID2 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-				}
-				const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
-				const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
+				if (dynamic)
+					TPd[kk] = time2;
+				uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+				detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
+					submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 				uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
 				uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
-				if (L2 > L1) {
-					const uint32_t L3 = L1;
-					L1 = L2;
-					L2 = L3;
-				}
 				if (begin) {
 					while (time2 >= time_intervals[pa])
 						pa++;
@@ -853,8 +754,14 @@ public:
 						Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
 						Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
 					}
-					else
+					else {
+						if (L2 > L1) {
+							const uint32_t L3 = L1;
+							L1 = L2;
+							L2 = L3;
+						}
 						Ldelay1[L1][L2]++;
+					}
 				}
 				else {
 					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
@@ -880,7 +787,7 @@ public:
 
 	void displayOnMATLAB(std::ostringstream& stream) {
 		// Pass stream content to MATLAB fprintf function
-		matlabPtr->feval(u"fprintf", 0,	std::vector<matlab::data::Array>({ factory.createScalar(stream.str()) }));
+		matlabPtr->feval(u"fprintf", 0, std::vector<matlab::data::Array>({ factory.createScalar(stream.str()) }));
 		// Clear stream buffer
 		stream.str("");
 	}

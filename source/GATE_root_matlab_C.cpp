@@ -17,10 +17,10 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #include "mex.h"
-#include <stdint.h>
-#include <cmath>
 #include <TROOT.h>
 #include "TChain.h"
+#include "saveSinogram.h"
+extern mxArray* mxCreateSharedDataCopy(const mxArray* pr);
 
 
 void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, const double alku, const double loppu, const size_t outsize2, 
@@ -29,10 +29,13 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	bool obtain_trues, bool store_scatter, bool store_randoms, const bool* scatter_components, uint16_t* Ltrues, uint16_t* Lscatter, 
 	uint16_t* Lrandoms, bool* trues_loc, const int64_t Ndelays, bool randoms_correction, TTree *delay, uint16_t * Ldelay1, uint16_t * Ldelay2,
 	int* int_loc_delay, uint32_t * tpoints_delay, bool* randoms_loc, bool* scatter_loc, float* x1, float* x2, float* y1, float* y2, float* z1, float* z2, 
-	bool store_coordinates, const bool dynamic)
+	bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings,
+	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint32_t* seg,
+	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC,
+	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize)
 {
 
-	Int_t crystalID1, crystalID2, moduleID1, moduleID2, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
+	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
 	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 	Double_t time1 = alku, time2 = alku;
@@ -47,17 +50,37 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		mexPrintf("No crystal location information was found from file. Aborting.\n");
 		return;
 	}
-	Coincidences->SetBranchAddress("crystalID2", &crystalID2);
-	Coincidences->SetBranchAddress("moduleID1", &moduleID1);
-	Coincidences->SetBranchAddress("moduleID2", &moduleID2);
+	if (Coincidences->GetBranchStatus("crystalID2"))
+		Coincidences->SetBranchAddress("crystalID2", &crystalID2);
+	else {
+		mexPrintf("No crystal location information was found from file. Aborting.\n");
+		return;
+	}
+	if (Coincidences->GetBranchStatus("moduleID1"))
+		Coincidences->SetBranchAddress("moduleID1", &moduleID1);
+	if (Coincidences->GetBranchStatus("moduleID2"))
+		Coincidences->SetBranchAddress("moduleID2", &moduleID2);
+	if (Coincidences->GetBranchStatus("moduleID1"))
+		Coincidences->SetBranchAddress("submoduleID1", &submoduleID1);
+	if (Coincidences->GetBranchStatus("submoduleID2"))
+		Coincidences->SetBranchAddress("submoduleID2", &submoduleID2);
 	uint64_t summa = 0ULL;
+	uint64_t summaS = 0ULL;
 	for (uint64_t kk = 0ULL; kk < Nentries; kk++) {
 		Coincidences->GetEntry(kk);
-		summa += moduleID1;
+		if (summa == 0ULL)
+			summa += moduleID1;
+		if (summaS == 0ULL)
+			summaS += submoduleID1;
+		if (summa > 0 && summaS > 0)
+			break;
 	}
 	bool no_modules = false;
+	bool no_submodules = true;
 	if (summa == 0ULL)
 		no_modules = true;
+	if (summaS > 0ULL)
+		no_submodules = false;
 	Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 	Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
 	if (source) {
@@ -98,7 +121,8 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			source = false;
 		}
 	}
-	//Coincidences->SetBranchAddress("time1", &time1);
+	if (Coincidences->GetBranchStatus("time1"))
+		Coincidences->SetBranchAddress("time1", &time1);
 	if (Coincidences->GetBranchStatus("time2"))
 		Coincidences->SetBranchAddress("time2", &time2);
 	else {
@@ -165,7 +189,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		}
 	}
 	if (obtain_trues || store_scatter) {
-		//if (scatter_components[0]) {
 		if (Coincidences->GetBranchStatus("comptonPhantom1"))
 			Coincidences->SetBranchAddress("comptonPhantom1", &comptonPhantom1);
 		else
@@ -180,8 +203,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		}
 		if (any == 2)
 			next++;
-		//}
-		//if (scatter_components[1]) {
 		if (Coincidences->GetBranchStatus("comptonCrystal1"))
 			Coincidences->SetBranchAddress("comptonCrystal1", &comptonCrystal1);
 		else
@@ -197,8 +218,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 
 		if ((any == 4 && next == 1) || (any == 2 && next == 0))
 			next++;
-		//}
-		//if (scatter_components[2]) {
 		if (Coincidences->GetBranchStatus("RayleighPhantom1"))
 			Coincidences->SetBranchAddress("RayleighPhantom1", &RayleighPhantom1);
 		else
@@ -214,8 +233,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 
 		if ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1))
 			next++;
-		//}
-		//if (scatter_components[3]) {
 		if (Coincidences->GetBranchStatus("RayleighCrystal1"))
 			Coincidences->SetBranchAddress("RayleighCrystal1", &RayleighCrystal1);
 		else
@@ -224,7 +241,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			Coincidences->SetBranchAddress("RayleighCrystal2", &RayleighCrystal2);
 		else
 			any++;
-		//}
 
 		if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3] == 1) {
 			mexPrintf("Rayleigh crystal selected, but no scatter data was found from ROOT-file\n");
@@ -237,6 +253,13 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 
 	}
 
+	const bool pseudoD = detWPseudo > det_per_ring;
+	const bool pseudoR = nPseudos > 0;
+	int32_t gapSize = 0;
+	if (pseudoR) {
+		gapSize = rings / (nPseudos + 1);
+	}
+
 	Int_t nbytes = 0;
 	int ll = 0, jj = -1;
 	bool begin = false;
@@ -246,6 +269,8 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	double aika = 0.;
 	int_loc[0] = 1;
 	tpoints[ll] = 0;
+	uint32_t L1 = 0U;
+	uint32_t L2 = 0U;
 
 	for (uint64_t kk = 0; kk < Nentries; kk++) {
 
@@ -263,117 +288,133 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			//}
 			break;
 		}
-		uint32_t ring_number1, ring_number2;
-
-		if (linear_multip == 1 && !no_modules) {
-			ring_number1 = moduleID1;
-			ring_number2 = moduleID2;
-		}
-		else if (linear_multip == 1 && no_modules) {
-			ring_number1 = rsectorID1;
-			ring_number2 = rsectorID2;
-		}
-		else if (no_modules) {
-			ring_number1 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID1) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-			ring_number2 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID2) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-		}
-		else {
-			ring_number1 = (moduleID1 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-			ring_number2 = (moduleID2 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-		}
-		const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring) * cryst_per_block + (crystalID1 % cryst_per_block);
-		const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring) * cryst_per_block + (crystalID2 % cryst_per_block);
-		uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-		uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
-		if (L2 > L1) {
-			const uint32_t L3 = L1;
-			L1 = L2;
-			L2 = L3;
-		}
-		if (begin) {
-			while (time2 >= time_intervals[pa])
-				pa++;
-			begin = false;
-			tpoints[ll++] = 0u;
-			aika = time_intervals[pa];
-			int_loc[0] = pa;
-		}
+		bool event_true = true;
+		bool event_scattered = false;
 		if (obtain_trues || store_scatter || store_randoms) {
-			bool event_true = true;
-			bool event_scattered = false;
 			if (eventID1 != eventID2) {
 				event_true = false;
 			}
 			if (event_true && (obtain_trues || store_scatter)) {
-				//if (event_true && scatter_components[0]) {
 				if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 					event_true = false;
 					if (store_scatter && scatter_components[0])
 						event_scattered = true;
 				}
-				//}
-				//if (event_true && scatter_components[1]) {
 				else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
 					event_true = false;
 					if (store_scatter && scatter_components[1])
 						event_scattered = true;
 				}
-				//}
-				//if (event_true && scatter_components[2]) {
 				else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
 					event_true = false;
 					if (store_scatter && scatter_components[2])
 						event_scattered = true;
 				}
-				//}
-				//if (event_true && scatter_components[3]) {
 				else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
 					event_true = false;
 					if (store_scatter && scatter_components[3])
 						event_scattered = true;
 				}
-				//}
-				if (outsize2 == 1ULL) {
-					if (event_true && obtain_trues) {
-						Ltrues[L1 * detectors + L2] = Ltrues[L1 * detectors + L2] + static_cast<uint16_t>(1);
-						if (source)
-							trues_loc[kk] = true;
-					}
-					else if (event_scattered && store_scatter) {
-						Lscatter[L1 * detectors + L2] = Lscatter[L1 * detectors + L2] + static_cast<uint16_t>(1);
-						if (source)
-							scatter_loc[kk] = true;
-					}
-				}
-				else {
-					if (event_true && obtain_trues)
-						Ltrues[kk] = 1u;
-					else if (event_scattered && store_scatter)
-						Lscatter[kk] = 1u;
-				}
-			}
-			else if (!event_true && store_randoms) {
-				if (outsize2 == 1ULL) {
-					Lrandoms[L1 * detectors + L2] = Lrandoms[L1 * detectors + L2] + static_cast<uint16_t>(1);
-					if (source)
-						randoms_loc[kk] = true;
-				}
-				else
-					Lrandoms[kk] = 1u;
 			}
 		}
-		if (outsize2 == 1ULL) {
-			LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
+		if (begin) {
+			while (time2 >= time_intervals[pa])
+				pa++;
+			pa--;
+			begin = false;
+			aika = time_intervals[pa];
+			int_loc[0] = pa;
 		}
-		else {
-			LL1[kk] = static_cast<uint16_t>(L1 + 1);
-			LL2[kk] = static_cast<uint16_t>(L2 + 1);
+		const double time = time2;
+		uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+		detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
+			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
+		uint64_t bins = 0;
+		if (TOFSize > sinoSize) {
+			double timeDif = (time2 - time1) / 2.;
+			if (ring_pos2 > ring_pos1)
+				timeDif = -timeDif;
+			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+			if (timeDif < 0)
+				bins *= 2ULL;
+			else if (bins > 2)
+				bins = bins * 2ULL - 1ULL;
+		}
+		if (storeRawData) {
+			L1 = ring_number1 * det_per_ring + ring_pos1;
+			L2 = ring_number2 * det_per_ring + ring_pos2;
+			if (L2 > L1) {
+				const uint32_t L3 = L1;
+				L1 = L2;
+				L2 = L3;
+			}
+			if (obtain_trues || store_scatter || store_randoms) {
+				if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
+					if (outsize2 == 1ULL) {
+						if (event_true && obtain_trues) {
+							Ltrues[L1 * detectors + L2] = Ltrues[L1 * detectors + L2] + static_cast<uint16_t>(1);
+						}
+						else if (event_scattered && store_scatter) {
+							Lscatter[L1 * detectors + L2] = Lscatter[L1 * detectors + L2] + static_cast<uint16_t>(1);
+						}
+					}
+					else {
+						if (event_true && obtain_trues)
+							Ltrues[kk] = 1u;
+						else if (event_scattered && store_scatter)
+							Lscatter[kk] = 1u;
+					}
+				}
+				else if (!event_true && store_randoms) {
+					if (outsize2 == 1ULL) {
+						Lrandoms[L1 * detectors + L2] = Lrandoms[L1 * detectors + L2] + static_cast<uint16_t>(1);
+					}
+					else
+						Lrandoms[kk] = 1u;
+				}
+			}
+			if (outsize2 == 1ULL) {
+				LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
+			}
+			else {
+				LL1[kk] = static_cast<uint16_t>(L1 + 1);
+				LL2[kk] = static_cast<uint16_t>(L2 + 1);
+			}
+		}
+		if (pseudoD) {
+			ring_pos1 += ring_pos1 / cryst_per_block;
+			ring_pos2 += ring_pos2 / cryst_per_block;
+		}
+		if (pseudoR) {
+			ring_number1 += ring_number1 / gapSize;
+			ring_number2 += ring_number2 / gapSize;
+		}
+		const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, TOFSize,
+			vali, alku, detWPseudo, rings, bins, nDistSide);
+		if (sinoIndex >= 0) {
+			Sino[sinoIndex]++;
+			if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
+				if (event_true && obtain_trues)
+					SinoT[sinoIndex]++;
+				else if (event_scattered && store_scatter)
+					SinoC[sinoIndex]++;
+			}
+			else if (!event_true && store_randoms)
+				SinoR[sinoIndex]++;
 		}
 		if (outsize2 > 1ULL && time2 >= aika) {
 			tpoints[ll++] = jj;
 			aika = time_intervals[++pa];
 		}
 		if (source) {
+			if (outsize2 == 1ULL || !storeRawData) {
+				if (event_true && obtain_trues)
+					trues_loc[kk] = true;
+				else if (event_scattered && store_scatter)
+					scatter_loc[kk] = true;
+				else if (!event_true && !event_scattered && store_randoms)
+					randoms_loc[kk] = true;
+			}
 			S[kk] = sourcePosX1;
 			S[kk + Nentries] = sourcePosY1;
 			S[kk + Nentries * 2] = sourcePosZ1;
@@ -437,31 +478,39 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				break;
 			}
 
-			uint32_t ring_number1, ring_number2;
-			if (linear_multip == 1 && !no_modules) {
-				ring_number1 = moduleID1;
-				ring_number2 = moduleID2;
+			const double time = time2;
+			uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
+			uint64_t bins = 0;
+			detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
+				submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
+			if (storeRawData) {
+				L1 = ring_number1 * det_per_ring + ring_pos1;
+				L2 = ring_number2 * det_per_ring + ring_pos2;
+				if (L2 > L1) {
+					const uint32_t L3 = L1;
+					L1 = L2;
+					L2 = L3;
+				}
+				if (outsize2 == 1ULL) {
+					Ldelay1[L1 * detectors + L2] = Ldelay1[L1 * detectors + L2] + static_cast<uint16_t>(1);
+				}
+				else {
+					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
+					Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
+				}
 			}
-			else if (linear_multip == 1 && no_modules) {
-				ring_number1 = rsectorID1;
-				ring_number2 = rsectorID2;
+			if (pseudoD) {
+				ring_pos1 += ring_pos1 / cryst_per_block;
+				ring_pos2 += ring_pos2 / cryst_per_block;
 			}
-			else if (no_modules) {
-				ring_number1 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID1) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-				ring_number2 = static_cast<uint32_t>(std::floor(static_cast<double>(rsectorID2) / static_cast<double>(blocks_per_ring))) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
+			if (pseudoR) {
+				ring_number1 += ring_number1 / gapSize;
+				ring_number2 += ring_number2 / gapSize;
 			}
-			else {
-				ring_number1 = (moduleID1 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID1) / static_cast<double>(cryst_per_block)));
-				ring_number2 = (moduleID2 % linear_multip) * cryst_per_block + static_cast<uint32_t>(std::floor(static_cast<double>(crystalID2) / static_cast<double>(cryst_per_block)));
-			}
-			const uint32_t ring_pos1 = (rsectorID1 % blocks_per_ring)*cryst_per_block + (crystalID1 % cryst_per_block);
-			const uint32_t ring_pos2 = (rsectorID2 % blocks_per_ring)*cryst_per_block + (crystalID2 % cryst_per_block);
-			uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
-			uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
-			if (L2 > L1) {
-				const uint32_t L3 = L1;
-				L1 = L2;
-				L2 = L3;
+			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, sinoSize,
+				vali, alku, detWPseudo, rings, bins, nDistSide);
+			if (sinoIndex >= 0) {
+				SinoD[sinoIndex]++;
 			}
 			if (begin) {
 				while (time2 >= time_intervals[pa])
@@ -470,13 +519,6 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				tpoints_delay[ll++] = 0u;
 				aika = time_intervals[pa];
 				int_loc_delay[0] = pa;
-			}
-			if (outsize2 == 1ULL) {
-				Ldelay1[L1*detectors + L2] = Ldelay1[L1*detectors + L2] + static_cast<uint16_t>(1);
-			}
-			else {
-				Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
-				Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
 			}
 			if (time2 >= aika && outsize2 > 1ULL) {
 				tpoints_delay[ll++] = jj;
@@ -506,11 +548,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 17) {
+	if (nrhs != 38) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"17 input arguments required.");
+			"38 input arguments required.");
 	}
-	else if (nlhs > 21) {
+	else if (nlhs > 26) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
 			"Too many output arguments.");
 	}
@@ -533,6 +575,22 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	bool* scatter_components = (bool*)mxGetData(prhs[14]);
 	bool randoms_correction = (bool)mxGetScalar(prhs[15]);
 	bool store_coordinates = (bool)mxGetScalar(prhs[16]);
+	uint32_t cryst_per_block_z = (uint32_t)mxGetScalar(prhs[17]);
+	uint32_t transaxial_multip = (uint32_t)mxGetScalar(prhs[18]);
+	uint32_t rings = (uint32_t)mxGetScalar(prhs[19]);
+	uint64_t sinoSize = (uint64_t)mxGetScalar(prhs[20]);
+	uint32_t Ndist = (uint32_t)mxGetScalar(prhs[21]);
+	uint32_t Nang = (uint32_t)mxGetScalar(prhs[22]);
+	uint32_t ringDifference = (uint32_t)mxGetScalar(prhs[23]);
+	uint32_t span = (uint32_t)mxGetScalar(prhs[24]);
+	uint32_t* seg = (uint32_t*)mxGetData(prhs[25]);
+	uint64_t NT = (uint64_t)mxGetScalar(prhs[26]);
+	uint64_t TOFSize = (uint64_t)mxGetScalar(prhs[27]);
+	int32_t nDistSide = (int32_t)mxGetScalar(prhs[28]);
+	bool storeRawData = (bool)mxGetScalar(prhs[29]);
+	const int32_t detWPseudo = (int32_t)mxGetScalar(prhs[35]);
+	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[36]);
+	double binSize = (double)mxGetScalar(prhs[37]);
 	size_t outsize2 = (loppu - alku) / vali;
 
 	// Count inputs and check for char type
@@ -560,22 +618,28 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	int64_t Nentries = Coincidences->GetEntries();
 
 	if (outsize2 == 1) {
-		plhs[0] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-		plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (obtain_trues) {
+		if (storeRawData) {
+			plhs[0] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
+			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		}
+		else {
+			plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		}
+		if (obtain_trues && storeRawData) {
 			plhs[5] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 		}
 		else
 			plhs[5] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (store_randoms)
+		if (store_randoms && storeRawData)
 			plhs[6] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 		else
 			plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (store_scatter)
+		if (store_scatter && storeRawData)
 			plhs[7] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 		else
 			plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (randoms_correction) {
+		if (randoms_correction && storeRawData) {
 			plhs[9] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 			plhs[10] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		}
@@ -585,22 +649,28 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		}
 	}
 	else {
-		plhs[0] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
-		plhs[1] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
+		if (storeRawData) {
+			plhs[0] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
+			plhs[1] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
+		}
+		else {
+			plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		}
 
-		if (obtain_trues)
+		if (obtain_trues && storeRawData)
 			plhs[5] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 		else
 			plhs[5] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (store_randoms)
+		if (store_randoms && storeRawData)
 			plhs[6] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 		else
 			plhs[6] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (store_scatter)
+		if (store_scatter && storeRawData)
 			plhs[7] = mxCreateNumericMatrix(Nentries, 1, mxUINT16_CLASS, mxREAL);
 		else
 			plhs[7] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		if (randoms_correction) {
+		if (randoms_correction && storeRawData) {
 			plhs[9] = mxCreateNumericMatrix(Ndelays, 1, mxUINT16_CLASS, mxREAL);
 			plhs[10] = mxCreateNumericMatrix(Ndelays, 1, mxUINT16_CLASS, mxREAL);
 		}
@@ -693,11 +763,22 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	uint16_t * Ldelay2 = (uint16_t*)mxGetData(plhs[10]);
 	int *int_loc_delay = (int*)mxGetData(plhs[11]);
 	uint32_t * tpoints_delay = (uint32_t*)mxGetData(plhs[12]);
+	plhs[21] = mxCreateSharedDataCopy(prhs[30]);
+	plhs[22] = mxCreateSharedDataCopy(prhs[31]);
+	plhs[23] = mxCreateSharedDataCopy(prhs[32]);
+	plhs[24] = mxCreateSharedDataCopy(prhs[33]);
+	plhs[25] = mxCreateSharedDataCopy(prhs[34]);
+	uint16_t* Sino = (uint16_t*)mxGetData(plhs[21]);
+	uint16_t* SinoT = (uint16_t*)mxGetData(plhs[22]);
+	uint16_t* SinoC = (uint16_t*)mxGetData(plhs[23]);
+	uint16_t* SinoR = (uint16_t*)mxGetData(plhs[24]);
+	uint16_t* SinoD = (uint16_t*)mxGetData(plhs[25]);
 
 	histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S, 
 		output, Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter, 
 		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, 
-		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic);
+		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference,
+		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize);
 
 
 	delete Coincidences;
