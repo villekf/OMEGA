@@ -326,7 +326,11 @@ if ~isempty(prop) && isfield(prop, 'rings')
     fprintf(fid,['Default number of arc-corrected bins := ' num2str(prop.Nang) '\r\n']);
     fprintf(fid,['Number of blocks per bucket in transaxial direction := ' num2str(prop.blocks_per_ring) '\r\n']);
     fprintf(fid,['Number of blocks per bucket in axial direction := ' num2str(prop.linear_multip) '\r\n']);
-    fprintf(fid,['Number of crystals per block in axial direction := ' num2str(prop.cryst_per_block) '\r\n']);
+    if isfield(prop, 'cryst_per_block_axial')
+        fprintf(fid,['Number of crystals per block in axial direction := ' num2str(prop.cryst_per_block_axial) '\r\n']);
+    else
+        fprintf(fid,['Number of crystals per block in axial direction := ' num2str(prop.cryst_per_block) '\r\n']);
+    end
     fprintf(fid,['Number of crystals per block in transaxial direction := ' num2str(prop.cryst_per_block) '\r\n']);
     fprintf(fid,'Number of detector layers := 1\r\n');
     fprintf(fid,'end scanner parameters := \r\n');
