@@ -127,7 +127,7 @@ inline void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_
 		rhs(MethodList, local_ele, ax, local_ind, im_dim, d_rhs_OSEM);
 		if (no_norm == 0u)
 #ifdef ATOMIC
-			atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+			atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 			atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -135,14 +135,14 @@ inline void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_
 	else if (SUMMA) {
 		local_ele *= *temp;
 #ifdef ATOMIC
-		atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+		atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 		atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
 	}
 	else {
 		*temp += local_ele;
-		if (local_sino > 0.f) {
+		if (local_sino != 0.f) {
 			denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 		}
 	}
@@ -159,21 +159,21 @@ inline void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* tem
 			d_E[idx] += local_ele;
 		}
 		if (d_alku == 0) {
-			if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino > 0.f)
+			if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
-				atom_add(&d_co[local_ind], convert_ulong_sat(*axCOSEM * local_ele * TH));
+				atom_add(&d_co[local_ind], convert_long(*axCOSEM * local_ele * TH));
 #else
 				atomicAdd_g_f(&d_co[local_ind], (*axCOSEM * local_ele));
 #endif
-			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino > 0.f)
+			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
-				atom_add(&d_aco[local_ind], convert_ulong_sat(*axCOSEM * TH * * local_ele)));
+				atom_add(&d_aco[local_ind], convert_long(*axCOSEM * TH * * local_ele)));
 #else
 				atomicAdd_g_f(&d_aco[local_ind], *axCOSEM * (local_ele));
 #endif
 			if (MBSREM_prepass == 1)
 #ifdef ATOMIC
-				atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 				atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -183,7 +183,7 @@ inline void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* tem
 	}
 	else {
 		*temp += local_ele;
-		if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
+		if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 			*axCOSEM += (local_ele * d_COSEM[local_ind]);
 		}
 	}
@@ -196,13 +196,13 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 	if (RHS) {
 		local_ele *= *temp;
 #ifdef ATOMIC
-		atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * *ax * TH));
+		atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * *ax * TH));
 #else
 		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * *ax));
 #endif
 		if (no_norm == 0u)
 #ifdef ATOMIC
-			atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+			atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 			atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -210,7 +210,7 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 	else if (SUMMA) {
 		local_ele *= *temp;
 #ifdef ATOMIC
-		atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+		atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 		atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -219,7 +219,7 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 #endif
 		*temp += local_ele;
 #ifdef FP
-		if (local_sino > 0.f) {
+		if (local_sino != 0.f) {
 			denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
 		}
 #endif

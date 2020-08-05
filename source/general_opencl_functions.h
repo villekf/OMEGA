@@ -168,14 +168,14 @@ inline void rhs(__constant uchar* MethodList, const float local_ele, const float
 	const uint d_N, __global CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
 #ifdef ATOMIC
-	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
+	atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * ax[0] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 #endif
 #elif defined(NREKOS2)
 #ifdef ATOMIC
-	atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * ax[0] * TH));
-	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_ulong_sat(local_ele * ax[1] * TH));
+	atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * ax[0] * TH));
+	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_long(local_ele * ax[1] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
@@ -185,7 +185,7 @@ inline void rhs(__constant uchar* MethodList, const float local_ele, const float
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
 #ifdef ATOMIC
-		atom_add(&d_rhs_OSEM[yy], convert_ulong_sat(local_ele * ax[kk] * TH));
+		atom_add(&d_rhs_OSEM[yy], convert_long(local_ele * ax[kk] * TH));
 #else
 		atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
 #endif
@@ -205,8 +205,10 @@ inline void denominator_multi(const float local_ele, float* axOSEM, const __glob
 inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
 	const uint idx) {
 	*axOSEM *= temp;
+#ifdef BP
 	if (*axOSEM == 0.f)
 		* axOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 		* axOSEM += d_sc_ra[idx];
 #endif
