@@ -230,6 +230,16 @@ root_path = strrep(root_path, '\','/');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MATLAB %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if exist('OCTAVE_VERSION','builtin') == 0
     cc = mex.getCompilerConfigurations('C++','Selected');
+    if ispc
+        OMPPath = [matlabroot '/bin/win64'];
+        OMPLib = '-liomp5md';
+    elseif isunix
+        OMPPath = [matlabroot '/sys/os/glnxa64'];
+        OMPLib = '-liomp5';
+    elseif ismac
+        OMPPath = [matlabroot '/sys/os/maci64'];
+        OMPLib = '-liomp5';
+    end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if strcmp(cc.Manufacturer, 'Microsoft')
@@ -241,14 +251,14 @@ if exist('OCTAVE_VERSION','builtin') == 0
         else
             compflags = 'COMPFLAGS="$COMPFLAGS -qopenmp"';
         end
-            cxxflags = 'CXXFLAGS="$CXXFLAGS"';
+        cxxflags = 'CXXFLAGS="$CXXFLAGS"';
     else
         compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
         cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], compflags, cxxflags, ...
-            'LDFLAGS="$LDFLAGS -fopenmp"', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
+        mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], compflags, cxxflags, OMPLib, ...
+            'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
             [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
             [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
             [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
@@ -272,13 +282,27 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, 'LDFLAGS="$LDFLAGS -fopenmp"', [folder '/NLM_func.cpp'])
+        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, OMPLib, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], [folder '/NLM_func.cpp'])
     catch ME
         if verbose
             warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
             disp(ME.message);
         else
             warning('NLM support for implementations 1 and 4 not enabled. Use install_mex(1) to see compiler error.')
+        end
+    end
+    try
+        if verLessThan('matlab','9.4')
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, OMPLib, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], ['-I ' folder], [folder '/createSinogramASCII.cpp'])
+        else
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, OMPLib, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], ['-I ' folder], [folder '/createSinogramASCIICPP.cpp'])
+        end
+    catch ME
+        if verbose
+            warning('ASCII sinogram creation not enabled. Compiler error: ')
+            disp(ME.message);
+        else
+            warning('ASCII sinogram creation not enabled. Use install_mex(1) to see compiler error.')
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -296,7 +320,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
                 mex('-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' root_path '/lib"'],...
                     ['-I"' root_path '/include"'], [folder '/GATE_root_matlab_C.cpp'])
             else
-                mex('-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' root_path '/lib"'],...
+                mex('-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR -fopenmp"', '-lCore', '-lTree', ['-L"' root_path '/lib"'],...
                     ['-I"' root_path '/include"'], [folder '/GATE_root_matlab.cpp'])
             end
             disp('ROOT support enabled')
@@ -317,7 +341,8 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     [folder '/GATE_root_matlab_C.cpp'])
                 warning('Importing ROOT files will cause MATLAB to crash if you are not using R2019a or newer. Use MATLAB with `matlab -nojvm` to circumvent this.')
             else
-                mex('-largeArrayDims', '-outdir', folder, 'CXXFLAGS="$CXXFLAGS $(root-config --cflags)"', '-lCore', '-lTree', '-ldl', 'LDFLAGS="$LDFLAGS $(root-config --libs)"', ...
+                mex('-largeArrayDims', '-outdir', folder, 'CXXFLAGS="$CXXFLAGS $(root-config --cflags) -fopenmp"', '-lCore', '-lTree', '-ldl', '-liomp5', '-lpthread', ...
+                    'LDFLAGS="$LDFLAGS $(root-config --libs)"', ['-L' matlabroot '/sys/os/glnxa64'], ...
                     [folder '/GATE_root_matlab.cpp'])
             end
             disp('ROOT support enabled')
@@ -342,19 +367,19 @@ if exist('OCTAVE_VERSION','builtin') == 0
     if (ispc)
         %%% Windows %%%
         if isempty(opencl_include_path)
-            warning('No OpenCL SDK found. Implementations 2 and 3 will not be built. Use install_mex(1, ''C:/PATH/TO/OPENCL/'') to set OpenCL SDK path.')
+            warning('No OpenCL SDK found. Implementations 2 and 3 will not be built. Use install_mex(1, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'') to set OpenCL include and library paths.')
         else
             if isempty(af_path)
-                warning('ArrayFire not found on path. Implementation 2 will not be built. Use install_mex(1, [],''C:/PATH/TO/ARRAYFIRE/'') to set ArrayFire path.')
+                warning('ArrayFire not found on path. Implementation 2 will not be built. Use install_mex(1, [], [], ''C:/PATH/TO/ARRAYFIRE/'') to set ArrayFire path.')
             else
                 if use_CUDA
                     try
                         disp('Attemping to build CUDA code.')
                         mex('-largeArrayDims','-outdir', folder, ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                             '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/CUDA_matrixfree.cpp'],...
-                        [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
-                        [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
-                    
+                            [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
+                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
+                        
                         disp('CUDA support enabled')
                     catch
                         if strcmp(cc.Manufacturer, 'GNU')
@@ -401,7 +426,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     if verbose
                         warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
                             'If OpenCL SDK and\or ArrayFire has been installed in a non-standard path, they can be added manually '...
-                            'by using install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64'', ''C:\PATH\TO\ARRAYFIRE\V3''). Compiler error:']);
+                            'by using install_mex(0, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'', ''C:/PATH/TO/ARRAYFIRE/V3''). Compiler error:']);
                         disp(ME.message)
                     else
                         if strcmp(cc.Manufacturer, 'GNU')
@@ -409,7 +434,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
                         else
                             warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
                                 'Compiler error is shown with install_mex(1). If OpenCL SDK and\or ArrayFire has been installed in a non-standard path, they can be added manually '...
-                                'by using install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64'', ''C:\PATH\TO\ARRAYFIRE\V3'')']);
+                                'by using install_mex(0, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'', ''/PATH/TO/ARRAYFIRE/V3'')']);
                         end
                     end
                 end
@@ -506,7 +531,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
             mex('-largeArrayDims', '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
                 [folder '/functions_multigpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                    [folder '/multigpu_OSEM.cpp'])
+                [folder '/multigpu_OSEM.cpp'])
             disp('Implementation 3 built')
         catch ME
             if verbose
@@ -522,18 +547,25 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OCTAVE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OCTAVE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 else
+    joku = getenv('CXXFLAGS');
+    cxxflags = '-std=c++11 -fopenmp -fPIC';
+    if any(strfind(joku,'-fopenmp')) == 0
+        cxxflags = [cxxflags ' ', joku];
+        setenv('CXXFLAGS',cxxflags);
+    end
+    setenv('LDFLAGS','-fopenmp');
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    try
-        mkoctfile('--mex', ['-I ' folder], '"--std=c++11"', '"-Wl,-fopenmp"', ...
-            [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], ...
-            [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
-            [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
-            [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
+    [~, sys] = mkoctfile('--mex', ['-I ' folder], '-lgomp', ...
+        [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], ...
+        [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
+        [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
+        [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp']);
+    if sys == 0
         movefile('projector_mex.mex', [folder '/projector_mex.mex'],'f');
         disp('Implementations 1 & 4 built with OpenMP (parallel) support')
-    catch ME
+    else
         if verbose
             mkoctfile('--mex', ['-I ' folder], '"--std=c++11"', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
                 [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
@@ -541,8 +573,7 @@ else
                 [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
                 [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
             movefile('projector_mex.mex', [folder '/projector_mex.mex'],'f');
-            warning('Implementations 1 & 4 built without OpenMP (parallel) support. Compiler error: ')
-            disp(ME.message);
+            warning('Implementations 1 & 4 built without OpenMP (parallel) support.')
         else
             mkoctfile('--mex', ['-I ' folder], '"--std=c++11"', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
                 [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
@@ -553,15 +584,24 @@ else
             warning('Implementations 1 & 4 built without OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
-    try
-        mkoctfile('--mex', ['-I ' folder], '"--std=c++11"', '"-Wl,-fopenmp"', [folder '/NLM_func.cpp'])
+    [~, sys] = mkoctfile('--mex', ['-I ' folder], '-lgomp', [folder '/NLM_func.cpp']);
+    if sys == 0
         movefile('NLM_func.mex', [folder '/NLM_func.mex'],'f');
-    catch ME
+    else
         if verbose
             warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
-            disp(ME.message);
         else
             warning('NLM support for implementations 1 and 4 not enabled. Use install_mex(1) to see compiler error.')
+        end
+    end
+    [~, sys] = mkoctfile(['-I' folder], '-lgomp', [folder '/createSinogramASCIIOct.cpp']);
+    if sys == 0
+        movefile('createSinogramASCIIOct.oct', [folder '/createSinogramASCIIOct.oct'],'f');
+    else
+        if verbose
+            warning('ASCII sinogram creation not enabled. Compiler error: ')
+        else
+            warning('ASCII sinogram creation not enabled. Use install_mex(1) to see compiler error.')
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -577,7 +617,7 @@ else
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ROOT support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if ispc
         try
-            mkoctfile('--mex', '-v', '-MD -EHsc -GR"', '"-Wl,-lCore -lTree"', ['-L ' root_path '/lib'],...
+            mkoctfile('--mex', '-v', '-MD -EHsc -GR', '-lCore', '-lTree', ['-L ' root_path '/lib'],...
                 ['-I ' root_path '/include'], [folder '/GATE_root_matlab_oct.cpp'])
             movefile('GATE_root_matlab_oct.mex', [folder '/GATE_root_matlab_oct.mex'],'f');
             disp('ROOT support enabled')
@@ -619,146 +659,116 @@ else
         %%% Windows %%%
         warning('ArrayFire needs to be built with MinGW in order for implementation 2 to work. You cannot use the prebuilt binaries.')
         if isempty(opencl_include_path)
-            warning('No OpenCL SDK found. Implementations 2 and 3 will not be built. Use install_mex(1, ''C:/PATH/TO/OPENCL/'') to set OpenCL SDK path.')
+            warning(['No OpenCL SDK found. Implementations 2 and 3 will not be built. Use install_mex(0, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'') '...
+            'to set OpenCL include and library paths.'])
         else
             warning('Implemention 2 is ONLY supported with Octave on Windows when ArrayFire has been built from source with MinGW-w64.')
             if isempty(af_path)
-                warning('ArrayFire not found on path. Implementation 2 will not be built. Use install_mex(1, [],''C:/PATH/TO/ARRAYFIRE/'') to set ArrayFire path.')
+                warning('ArrayFire not found on path. Implementation 2 will not be built. Use install_mex(1, [], [], ''C:/PATH/TO/ARRAYFIRE/'') to set ArrayFire path.')
             else
                 if use_CUDA
-                    try
-                        disp('Attemping to build CUDA code.')
-                        mkoctfile('--mex', ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
-                            '-lnvrtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
+                    disp('Attemping to build CUDA code.')
+                    [~, sys] = mkoctfile('--mex', '-w', ['-I"' folder '"'], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                        '-lnvrtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path_include '"'], [folder '/CUDA_matrixfree.cpp'],...
                         [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
-                        [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
-                    
+                        [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp']);
+                    syst = 0;
+                    if sys ~= 0
+                        charArray = mkoctfile('--mex', '-v', '-w', ['-I' folder], ['-I' cuda_path '/include'], '-lafcuda', '-lcuda', ...
+                            '-lnvrtc', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib/x64'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
+                            [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
+                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp']);
+                        sys = makeOCT(charArray);
+                    end
+                    syst = syst + sys;
+                    if syst == 0
                         disp('CUDA support enabled')
-                    catch
+                    else
                         warning('CUDA support not enabled')
                     end
                 end
-%                 compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-                cxxflags = 'CXXFLAGS="$CXXFLAGS -DOPENCL -Wno-ignored-attributes"';
-                try
-                    %%%%%%%%%%%%%%%%%%%%%% Implementations 2 & 5 %%%%%%%%%%%%%%%%%%%%%%
-                    if isempty(getenv('CUDA_PATH')) && ~isempty(getenv('INTELOCLSDKROOT'))
-                        %%%%%%%%%%%%%%%%%%%%%% Implementation 5 %%%%%%%%%%%%%%%%%%%%%%%
-                        try
-                            mkoctfile('--mex', cxxflags, ['-I' af_path_include], ['-I' opencl_path '/include/'], ['-L' af_path '/lib64/'], ...
-                                ['-L' af_path '\lib'], ['-L' opencl_path 'lib/x64/'], '-lafopencl', '-lOpenCL', ...
-                                [folder '/improved_Siddon_openCL.cpp'])
-                            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                        end
-                        
-                        %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
-                        mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib\x64'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'],...
-                            [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp'])
-                        
-                        mkoctfile('--mex', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib/x64'], ...
-                            ['-I ' folder], ['-I"' opencl_path '\include"'], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp'])
-                    elseif ~isempty(getenv('CUDA_PATH'))
-                        try
-                            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib\x64'], ...
-                                ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/improved_Siddon_openCL.cpp'])
-                            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                        end
-                        
-                        mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib\x64'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'], ...
-                            [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp'])
-                        
-                        mkoctfile('--mex', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib\x64'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp'])
-                    elseif ~isempty(getenv('AMDAPPSDKROOT'))
-                        try
-                            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                                ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/improved_Siddon_openCL.cpp'])
-                            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                        end
-                        
-                        mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'],...
-                            [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp'])
-                        
-                        mkoctfile('--mex', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp'])
-                    elseif ~isempty(getenv('OCL_ROOT'))
-                        try
-                            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                                ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/improved_Siddon_openCL.cpp'])
-                            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                        end
-                        
-                        mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'],...
-                            [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp'])
-                        
-                        mkoctfile('--mex', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_path '\lib'], ...
-                            ['-I ' folder], ['-I' opencl_path '\include'], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp'])
-                    else
-                        try
-                            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-I ' folder], ['-I' af_path_include], ...
-                                [folder '/improved_Siddon_openCL.cpp'])
-                            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                        end
-                        
-                        mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-I ' folder], ['-I' af_path_include], ...
-                            [folder '/OpenCL_matrixfree.cpp'],[folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], ...
-                            [folder '/precomp.cpp'], [folder '/find_lors.cpp'])
-                        
-                        mkoctfile('--mex', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-I ' folder], ['-I' af_path_include], ...
-                            [folder '/ArrayFire_OpenCL_device_info.cpp'])
-                    end
+                %%%%%%%%%%%%%%%%%%%%%% Implementations 2 & 5 %%%%%%%%%%%%%%%%%%%%%%
+                %%%%%%%%%%%%%%%%%%%%%% Implementation 5 %%%%%%%%%%%%%%%%%%%%%%%
+                % try
+                %     mkoctfile('--mex', '-DOPENCL -Wno-ignored-attributes', ['-I"' af_path_include '"'], ['-I"' opencl_path '/include/"'], ['-L"' af_path '/lib64/"'], ...
+                %         ['-L"' af_path '\lib"'], ['-L"' opencl_path 'lib/x64/"'], '-lafopencl', '-lOpenCL', ...
+                %         [folder '/improved_Siddon_openCL.cpp'])
+                %     movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
+                % end
+                
+                %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
+                [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', ['-I"' folder '"'], ['-I"' opencl_include_path '"'], ['-I"' af_path_include '"'], ...
+                    '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L"' af_path '\lib64"'], ['-L"' af_path '\lib"'],['-L"' opencl_lib_path '"'], ...
+                    [folder '/OpenCL_matrixfree.cpp'],[folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp']);
+                syst = 0;
+                if sys ~= 0
+                    charArray = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
+                        ['-I' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'],...
+                        [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp']);
+                    sys = makeOCT(charArray);
+                end
+                syst = syst + sys;
+                
+                [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
+                    ['-I ' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp']);
+                if sys ~= 0
+                    charArray = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
+                        ['-I ' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/ArrayFire_OpenCL_device_info.cpp']);
+                    sys = makeOCT(charArray);
+                end
+                syst = syst + sys;
+                if syst == 0
                     movefile('ArrayFire_OpenCL_device_info.mex', [folder '/ArrayFire_OpenCL_device_info.mex'],'f');
                     movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree.mex'],'f');
                     disp('Implementation 2 built')
-                catch ME
-                    if verbose
-                        warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
-                            'Compiler error:']);
-                        disp(ME.message)
-                    else
-                        warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
-                            'Compiler error is shown with install_mex(1)']);
-                    end
+                else
+                    warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
+                        'If OpenCL SDK and/or ArrayFire has been installed in a non-standard path, they can be added manually '...
+                        'by using install_mex(0, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'', ''C:/PATH/TO/ARRAYFIRE'')']);
                 end
             end
-            try
-                %%%%%%%%%%%%%%%%%%%%%%%%% Implementation 3 %%%%%%%%%%%%%%%%%%%%%%%%
-                mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I ' folder], ...
-                    ['-I"' opencl_include_path '"'], [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
-                
-                mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I ' folder], ...
-                    ['-I"' opencl_include_path '"'], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
+            %%%%%%%%%%%%%%%%%%%%%%%%% Implementation 3 %%%%%%%%%%%%%%%%%%%%%%%%
+            [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I' folder], ...
+                ['-I' opencl_include_path], [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp']);
+            syst = 0;
+            if sys ~= 0
+                [charArray, ~] = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L' opencl_lib_path], ['-I' folder], ...
+                    ['-I' opencl_include_path], [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp']);
+                sys = makeOCT(charArray);
+            end
+            syst = syst + sys;
+            
+            [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I' folder], ...
+                ['-I' opencl_include_path], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
+                [folder '/functions_multigpu.cpp'],[folder '/opencl_error.cpp'],[folder '/precomp.cpp'],[folder '/forward_backward_projections.cpp'], ...
+                [folder '/multigpu_OSEM.cpp']);
+            if sys ~= 0
+                [charArray, ~] = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L' opencl_lib_path], ['-I' folder], ...
+                    ['-I' opencl_include_path], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
                     [folder '/functions_multigpu.cpp'],[folder '/opencl_error.cpp'],[folder '/precomp.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                    [folder '/multigpu_OSEM.cpp'])
-                
+                    [folder '/multigpu_OSEM.cpp']);
+                sys = makeOCT(charArray);
+            end
+            syst = syst + sys;
+            
+            if syst == 0
                 movefile('OpenCL_device_info.mex', [folder '/OpenCL_device_info.mex'],'f');
                 movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/OpenCL_matrixfree_multi_gpu.mex'],'f');
                 disp('Implementation 3 built')
-            catch ME
-                if verbose
-                    warning(['Unable to build OpenCL files for implementation 3! If you do not need implementation 3 (matrix free OpenCL) ignore this warning. '...
-                        'If OpenCL SDK has been installed in a non-standard path, it can be added manually by using '...
-                        'install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64''). Compiler error:']);
-                    disp(ME.message)
-                else
-                    warning(['Unable to build OpenCL files for implementation 3! If you do not need implementation 3 (matrix free OpenCL) ignore this warning. '...
-                        'Compiler error is shown with install_mex(1). If OpenCL SDK has been installed in a non-standard path, it can be added manually by using '...
-                        'install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64'')']);
-                end
+            else
+                warning(['Unable to build OpenCL files for implementation 3! If you do not need implementation 3 (matrix free OpenCL) ignore this warning. ' ...
+                    'If OpenCL SDK has been installed in a non-standard path, it can be added manually by using '...
+                    'install_mex(0, ''C:/PATH/TO/OPENCL/INCLUDE'', ''C:/PATH/TO/OPENCL/LIB/X64'').)']);
             end
         end
     else
-        cxxflags = 'CXXFLAGS="$CXXFLAGS -DOPENCL -Wno-ignored-attributes"';
-        %%% Linux/MAC %%%        
+        cxxflags = '-DOPENCL -Wno-ignored-attributes';
+        %%% Linux/MAC %%%
         if use_CUDA
             try
                 disp('Attempting to build CUDA code.')
-                mkoctfile('--mex', '-lafcuda', '-lcuda', '-lnvrtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'],...
-                    ['-L"' cuda_path '/lib64"'], ['-I ' folder], ['-I"' cuda_path '/include"'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
+                mkoctfile('--mex', '-lafcuda', '-lcuda', '-lnvrtc', ['-L' af_path '/lib64'], ['-L' af_path '/lib'],...
+                    ['-L' cuda_path '/lib64'], ['-I ' folder], ['-I' cuda_path '/include'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
                     [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
                     [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], ...
                     [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
@@ -768,24 +778,22 @@ else
                 warning('CUDA support not enabled')
             end
         end
-
-%         compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-%         cxxflags = 'CXXFLAGS="$CXXFLAGS -DOPENCL"';
+        
+        %         try
+        %             mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], ...
+        %                 '-L/opt/AMDAPPSDK-3.0/lib/x86_64' , '-L/opt/amdgpu-pro/lib64',['-I ' folder], ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], ...
+        %                 '-I/opt/AMDAPPSDK-3.0/include', '"-DOPENCL"', [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'],...
+        %                 [folder '/AF_opencl_functions.cpp'])
+        %             movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
+        %         end
         try
-            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], ...
-                '-L/opt/AMDAPPSDK-3.0/lib/x86_64' , '-L/opt/amdgpu-pro/lib64',['-I ' folder], ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], ...
-                '-I/opt/AMDAPPSDK-3.0/include', '"-DOPENCL"', [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'],...
-                [folder '/AF_opencl_functions.cpp'])
-            movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-        end
-        try
-            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L' cuda_path '/lib64'], ['-L"' opencl_lib_path '"'], ...
-                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], ...
+            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
                 '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
             
-            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], ...
-                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], ...
-                '-I/opt/AMDAPPSDK-3.0/include', '"-DOPENCL"', [folder '/OpenCL_matrixfree.cpp'], [folder '/functions.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'], ...
+            mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
+                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp'], [folder '/functions.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'], ...
                 [folder '/find_lors.cpp'], [folder '/AF_opencl_functions.cpp'], [folder '/compute_ML_estimates.cpp'], ...
                 [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter.cpp'])
             
@@ -799,17 +807,18 @@ else
                 disp(ME.message)
             else
                 warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
-                    'Compiler error is shown with install_mex(1)']);
+                    'Compiler error is shown with install_mex(1). If OpenCL SDK and/or ArrayFire has been installed in a non-standard path, they can be added manually '...
+                    'by using install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIB/X64'', ''/PATH/TO/ARRAYFIRE'')']);
             end
         end
         try
-            mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
+            mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
+                ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
             
-            mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
+            mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
+                ['-I' cuda_path '/include'], ['-I' opencl_include_path], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
                 [folder '/functions_multigpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                    [folder '/multigpu_OSEM.cpp'])
+                [folder '/multigpu_OSEM.cpp'])
             movefile('OpenCL_device_info.mex', [folder '/OpenCL_device_info.mex'],'f');
             movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/OpenCL_matrixfree_multi_gpu.mex'],'f');
             disp('Implementation 3 built')
