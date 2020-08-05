@@ -337,11 +337,11 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 					jelppi += (d_d1 * -d_atten[local_ind]);
 #endif
 #ifdef MBSREM
-				if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
+				if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 					*axCOSEM += (local_ele * d_OSEM[local_ind]);
 				}
 #elif defined(FP)
-				if (local_sino > 0.f) {
+				if (local_sino != 0.f) {
 #ifdef AF
 					denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 #else
@@ -363,21 +363,21 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			}
 			for (uint kk = 0u; kk < d_N2; kk++) {
 				if (d_alku == 0) {
-					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino > 0.f)
+					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_co[local_ind], convert_ulong_sat(*axCOSEM * local_ele * TH));
+						atom_add(&d_co[local_ind], convert_long(*axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_co[local_ind], *axCOSEM * local_ele);
 #endif
-					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino > 0.f)
+					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_aco[local_ind], convert_ulong_sat(*axCOSEM * local_ele * TH));
+						atom_add(&d_aco[local_ind], convert_long(*axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_aco[local_ind], *axCOSEM * local_ele);
 #endif
 					if (MBSREM_prepass == 1)
 #ifdef ATOMIC
-						atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+						atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 						atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -390,7 +390,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			for (uint kk = 0u; kk < d_N2; kk++) {
 				if (no_norm == 0u)
 #ifdef ATOMIC
-					atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+					atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 					atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -398,7 +398,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 				rhs(MethodList, local_ele, ax, local_ind, im_dim, d_rhs_OSEM);
 #else
 #ifdef ATOMIC
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * *ax * TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * *ax * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * *ax));
 #endif
@@ -411,7 +411,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			local_ele *= *temp;
 			for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
-				atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 				atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -427,12 +427,12 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 		if (FP_bool) {
 			*temp += (local_ele * d_N2);
 #ifdef MBSREM
-			if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
+			if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 				*axCOSEM += (local_ele * d_OSEM[local_ind]);
 			}
 #elif defined(FP)
 			for (uint kk = 0u; kk < d_N2; kk++) {
-				if (local_sino > 0.f) {
+				if (local_sino != 0.f) {
 #ifdef AF
 					denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 #else
@@ -453,21 +453,21 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			}
 			for (uint kk = 0u; kk < d_N2; kk++) {
 				if (d_alku == 0) {
-					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino > 0.f)
+					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_co[local_ind], convert_ulong_sat(*axCOSEM * local_ele * TH));
+						atom_add(&d_co[local_ind], convert_long(*axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_co[local_ind], *axCOSEM * local_ele);
 #endif
-					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino > 0.f)
+					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
-						atom_add(&d_aco[local_ind], convert_ulong_sat(*axCOSEM * local_ele * TH));
+						atom_add(&d_aco[local_ind], convert_long(*axCOSEM * local_ele * TH));
 #else
 						atomicAdd_g_f(&d_aco[local_ind], *axCOSEM * local_ele);
 #endif
 					if (MBSREM_prepass == 1)
 #ifdef ATOMIC
-						atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+						atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 						atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -480,7 +480,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			for (uint kk = 0u; kk < d_N2; kk++) {
 				if (no_norm == 0u)
 #ifdef ATOMIC
-					atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+					atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 					atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -488,7 +488,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 				rhs(MethodList, local_ele, ax, local_ind, im_dim, d_rhs_OSEM);
 #else
 #ifdef ATOMIC
-				atom_add(&d_rhs_OSEM[local_ind], convert_ulong_sat(local_ele * *ax * TH));
+				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * *ax * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * *ax));
 #endif
@@ -501,7 +501,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			local_ele *= *temp;
 			for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
-				atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
+				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
 #else
 				atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
