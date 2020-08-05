@@ -381,8 +381,8 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	// Weighted Mean prior
 	if (MethodList.WeightedMean) {
 		if (MethodList.OSLOSEM) {
-			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.weighted_weights, w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
+			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm, 
+				im_dim, w_vec.mean_type, w_vec.w_sum);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta.Weighted_OSEM, epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)));
 			yy += im_dim;
 		}
@@ -392,8 +392,8 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
-			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.weighted_weights, w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
+			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm, 
+				im_dim, w_vec.mean_type, w_vec.w_sum);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = MBSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)), w_vec.U,
 				pj3, w_vec.lambda_MBSREM, iter, im_dim, beta.Weighted_MBSREM, dU, *testi, epps);
 			yy += im_dim;
@@ -404,15 +404,15 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			yy += im_dim;
 		}
 		if (MethodList.RBIOSL) {
-			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.weighted_weights, w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
+			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm, 
+				im_dim, w_vec.mean_type, w_vec.w_sum);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = RBI(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
 				w_vec.D, beta.Weighted_RBI, dU);
 			yy += im_dim;
 		}
 		if (MethodList.OSLCOSEM > 0u) {
-			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.weighted_weights, w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
+			array dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm, 
+				im_dim, w_vec.mean_type, w_vec.w_sum);
 			if (MethodList.OSLCOSEM == 1u)
 				vec.C_osl(span, osa_iter) = vec.rhs_os(seq(yy, yy + im_dim - 1u)) * pow(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.h_ACOSEM_2);
 			else

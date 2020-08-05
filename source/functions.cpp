@@ -601,7 +601,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		// "Smoothing" parameter, prevents zero values in the square root
 		data.TVsmoothing = (float)mxGetScalar(mxGetField(options, 0, "TVsmoothing"));
 		// The type of TV prior used
-		data.TVtype = (int32_t)mxGetScalar(mxGetField(options, 0, "TVtype"));
+		data.TVtype = (uint32_t)mxGetScalar(mxGetField(options, 0, "TVtype"));
 		// If anatomical prior is used, load the necessary coefficients
 		if (data.TV_use_anatomical) {
 			mxArray* TVdata_init = mxGetField(options, 0, "TVdata");
@@ -632,6 +632,8 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		}
 		if (data.TVtype == 3)
 			data.C = (float)mxGetScalar(mxGetField(options, 0, "C"));
+		if (data.TVtype == 4)
+			data.SATVPhi = (float)mxGetScalar(mxGetField(options, 0, "SATVPhi"));
 	}
 	// General variables for neighborhood-based methods
 	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
@@ -696,16 +698,16 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		// Number of AD iterations
 		w_vec.NiterAD = (uint32_t)mxGetScalar(mxGetField(options, 0, "NiterAD"));
 		// Flux type
-		int Flux = (int)mxGetScalar(mxGetField(options, 0, "FluxType"));
+		uint32_t Flux = (uint32_t)mxGetScalar(mxGetField(options, 0, "FluxType"));
 		// Diffusion type
-		int Diffusion = (int)mxGetScalar(mxGetField(options, 0, "DiffusionType"));
-		if (Flux == 1)
+		uint32_t Diffusion = (uint32_t)mxGetScalar(mxGetField(options, 0, "DiffusionType"));
+		if (Flux == 1U)
 			w_vec.FluxType = AF_FLUX_EXPONENTIAL;
-		else if (Flux == 2)
+		else if (Flux == 2U)
 			w_vec.FluxType = AF_FLUX_QUADRATIC;
-		if (Diffusion == 1)
+		if (Diffusion == 1U)
 			w_vec.DiffusionType = AF_DIFFUSION_GRAD;
-		else if (Diffusion == 2)
+		else if (Diffusion == 2U)
 			w_vec.DiffusionType = AF_DIFFUSION_MCDE;
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
 			w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
@@ -736,7 +738,8 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		data.APLSsmoothing = (float)mxGetScalar(mxGetField(options, 0, "APLSsmoothing"));
 		// Anatomical reference image
 		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
-		//data.APLSReference = af::moddims(data.APLSReference, Nx, Ny, Nz);
+
+		data.TVtype = 5U;
 	}
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
@@ -753,7 +756,6 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	}
 	if (MethodList.NLM && MethodList.MAP) {
 		w_vec.NLM_anatomical = (bool)mxGetScalar(mxGetField(options, 0, "NLM_use_anatomical"));
-		//w_vec.NLM_gauss = (float)mxGetScalar(mxGetField(options, 0, "NLM_gauss"));
 		w_vec.NLTV = (bool)mxGetScalar(mxGetField(options, 0, "NLTV"));
 		w_vec.NLM_MRP = (bool)mxGetScalar(mxGetField(options, 0, "NLM_MRP"));
 		if (w_vec.NLM_anatomical)
@@ -2075,168 +2077,24 @@ af::array padding(const af::array& im, const uint32_t Nx, const uint32_t Ny, con
 		af::array out = af::join(0, af::flip(padd(af::seq(static_cast<double>(Ndx)), af::span, af::span), 0), padd, af::flip(padd(af::seq(static_cast<double>(padd.dims(0) - Ndx), static_cast<double>(padd.dims(0) - 1)), af::span, af::span), 0));
 		out = af::join(1, af::flip(out(af::span, af::seq(static_cast<double>(Ndy)), af::span), 1), out, af::flip(out(af::span, af::seq(static_cast<double>(out.dims(1) - Ndy), static_cast<double>(out.dims(1) - 1)), af::span), 1));
 		if (Nz == 1 || Ndz == 0) {
-			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy);
-			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1)))) = padd;
-			//out(af::seq(static_cast<double>(Ndx - 1))
-			//padd = out;
 		}
 		else {
 			out = af::join(2, af::flip(out(af::span, af::span, af::seq(static_cast<double>(Ndz))), 2), out, af::flip(out(af::span, af::span, af::seq(static_cast<double>(out.dims(2) - Ndz), static_cast<double>(out.dims(2) - 1))), 2));
-			//padd = moddims(im, Nx, Ny, Nz);
-			//af::array out = af::constant(0.f, padd.dims(0) + 2 * Ndx, padd.dims(1) + 2 * Ndy, padd.dims(2) + 2 * Ndz);
-			//out(static_cast<double>(Ndx) + af::seq(static_cast<double>(padd.dims(0))), static_cast<double>(Ndy) + af::seq(static_cast<double>(padd.dims(1))),
-			//	static_cast<double>(Ndz) + af::seq(static_cast<double>(padd.dims(2)))) = padd;
 		}
 		padd = out;
 	}
 	return padd;
 }
 
-// Compute the (isotropic) TV prior
-af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const TVdata &S, const af::array& ima, const float epps, const uint32_t TVtype, 
-	const Weighting & w_vec, const af::array& offsets) {
-	af::array gradi;
-
-	if (TVtype != 3) {
-		af::array im = af::moddims(ima, Nx, Ny, Nz);
-		// 1st order differentials
-		af::array g = af::constant(0.f, Nx, Ny, Nz);
-		af::array f = af::constant(0.f, Nx, Ny, Nz);
-		af::array h = af::constant(0.f, Nx, Ny, Nz);
-		f(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(im);
-		f(Nx - 1u, af::span, af::span) = im(im.dims(0) - 1ULL, af::span, af::span) - im(0, af::span, af::span);
-		g(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(im, 1);
-		g(af::span, Ny - 1u, af::span) = im(af::span, im.dims(1) - 1ULL, af::span) - im(af::span, 0, af::span);
-		h(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(im, 2);
-		h(af::span, af::span, Nz - 1u) = im(af::span, af::span, im.dims(2) - 1ULL) - im(af::span, af::span, 0);
-
-		af::array pval, apu1, apu2, apu3, apu4;
-		g = af::flat(g);
-		f = af::flat(f);
-		h = af::flat(h);
-
-		// If anatomical prior is used
-		if (S.TV_use_anatomical) {
-			if (TVtype == 1) {
-				pval = af::sqrt(S.s1*af::pow(f, 2.) + S.s5*af::pow(g, 2.) + S.s9*af::pow(h, 2.) + S.s4*f*g + S.s7*f*h + S.s2*f*g + S.s8*h*g + S.s3*f*h + S.s6*h*g + S.TVsmoothing);
-				apu1 = 0.5f * (2.f * S.s1*f + S.s4*g + S.s7*h + S.s2*g + S.s3*h) / pval;
-				apu2 = 0.5f * (2.f * S.s5*g + S.s4*f + S.s2*f + S.s8*h + S.s6*h) / pval;
-				apu3 = 0.5f * (2.f * S.s9*h + S.s8*g + S.s6*g + S.s7*f + S.s3*f) / pval;
-				apu4 = 0.5f * (2.f * S.s1*f + 2.f * S.s5*g + 2.f * S.s9*h + S.s4*f + S.s2*f + S.s8*h + S.s6*h + S.s4*g + S.s7*h + S.s2*g + S.s3*h
-					+ S.s8*g + S.s6*g + S.s7*f + S.s3*f) / pval;
-			}
-			else if (TVtype == 2) {
-				af::array gp = af::constant(0.f, Nx, Ny, Nz);
-				af::array fp = af::constant(0.f, Nx, Ny, Nz);
-				af::array hp = af::constant(0.f, Nx, Ny, Nz);
-				fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.reference_image);
-				fp(Nx - 1u, af::span, af::span) = S.reference_image(im.dims(0) - 1ULL, af::span, af::span) - S.reference_image(0, af::span, af::span);
-				gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.reference_image, 1);
-				gp(af::span, Ny - 1u, af::span) = S.reference_image(af::span, im.dims(1) - 1ULL, af::span) - S.reference_image(af::span, 0, af::span);
-				hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.reference_image, 2);
-				hp(af::span, af::span, Nz - 1u) = S.reference_image(af::span, af::span, im.dims(2) - 1ULL) - S.reference_image(af::span, af::span, 0);
-
-				pval = af::sqrt(af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) + S.T * (af::pow(fp, 2.) + af::pow(gp, 2.) + af::pow(hp, 2.)) + S.TVsmoothing);
-				apu1 = f / pval;
-				apu2 = g / pval;
-				apu3 = h / pval;
-				apu4 = (f + g + h) / pval;
-			}
-			// For APLS
-			else if (TVtype == 4) {
-				af::array gp = af::constant(0.f, Nx, Ny, Nz);
-				af::array fp = af::constant(0.f, Nx, Ny, Nz);
-				af::array hp = af::constant(0.f, Nx, Ny, Nz);
-				fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.APLSReference);
-				fp(Nx - 1u, af::span, af::span) = S.APLSReference(im.dims(0) - 1ULL, af::span, af::span) - S.APLSReference(0, af::span, af::span);
-				gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.APLSReference, 1);
-				gp(af::span, Ny - 1u, af::span) = S.APLSReference(af::span, im.dims(1) - 1ULL, af::span) - S.APLSReference(af::span, 0, af::span);
-				hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.APLSReference, 2);
-				hp(af::span, af::span, Nz - 1u) = S.APLSReference(af::span, af::span, im.dims(2) - 1ULL) - S.APLSReference(af::span, af::span, 0);
-
-				fp = af::flat(fp);
-				gp = af::flat(gp);
-				hp = af::flat(hp);
-
-				af::array epsilon = af::join(1, fp, gp, hp) / af::join(1, fp / af::sqrt(af::pow(fp, 2.) + S.eta * S.eta) + epps,
-					gp / af::sqrt(af::pow(gp, 2.) + S.eta * S.eta) + epps, hp / af::sqrt(af::pow(hp, 2.) + S.eta * S.eta) + epps);
-				af::array apu = sum(af::join(1, f, g, h) * epsilon, 1);
-
-				pval = (af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) - af::pow(apu, 2.) + S.APLSsmoothing);
-				pval(pval < 0) = 1.f;
-				pval = af::sqrt(pval);
-				apu1 = (f - (apu * epsilon(af::span, 0))) / pval;
-				apu2 = (g - (apu * epsilon(af::span, 1))) / pval;
-				apu3 = (h - (apu * epsilon(af::span, 2))) / pval;
-				apu4 = (f - (apu * epsilon(af::span, 0)) + g - (apu * epsilon(af::span, 1)) + h - (apu * epsilon(af::span, 2))) / pval;
-			}
-		}
-		// If anatomical prior is not used
-		else {
-			pval = af::sqrt(af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) + S.TVsmoothing);
-			apu1 = f / pval;
-			apu2 = g / pval;
-			apu3 = h / pval;
-			apu4 = (f + g + h) / pval;
-		}
-		apu1 = af::moddims(apu1, Nx, Ny, Nz);
-		apu2 = af::moddims(apu2, Nx, Ny, Nz);
-		apu3 = af::moddims(apu3, Nx, Ny, Nz);
-		apu4 = af::moddims(apu4, Nx, Ny, Nz);
-		// Derivatives
-		apu1 = af::shift(apu1, 1);
-		apu2 = af::shift(apu2, 0, 1);
-		apu3 = af::shift(apu3, 0, 0, 1);
-		gradi = apu4 - apu1 - apu2 - apu3;
-		gradi = af::flat(gradi);
-		//im = af::flat(im);
-		gradi = batchFunc(gradi, 2.f*S.tau*((af::min))(ima), batchPlus);
-	}
-	else {
-		if (S.TV_use_anatomical) {
-			af::array padd = af::flat(padding(ima, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
-			padd = padd(af::join(1, offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1)), offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL))));
-			padd = af::moddims(padd, ima.dims(0), padd.dims(0) / ima.dims(0));
-			af::array padd2 = af::flat(padding(S.reference_image, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
-			padd2 = padd2(af::join(1, offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1)), offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL))));
-			padd2 = af::moddims(padd2, ima.dims(0), padd2.dims(0) / ima.dims(0));
-			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.) 
-				+ af::pow(af::batchFunc(S.reference_image, padd2, batchMinus) / S.T, 2.))), w_vec.weights_TV.T(), batchMul), 1);
-		}
-		else {
-			af::array padd = af::flat(padding(ima, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
-			padd = padd(af::join(1, af::flat(offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1))), af::flat(offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL)))));
-			padd = af::moddims(padd, ima.dims(0), padd.dims(0) / ima.dims(0));
-			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.))), 
-				w_vec.weights_TV.T(), batchMul), 1);
-		}
-	}
-
-	return gradi;
-}
-
-//af::array MLEM(const af::array &im, const af::array &Summ, const af::array &rhs)
-//{
-//	//im = im / Summ * rhs;
-//	return (im / Summ * rhs);
-//}
-
-//af::array OSL_MLEM(const af::array &im, const af::array &Summ, const af::array &rhs, const af::array &dU, const float beta)
-//{
-//	//im = im / (Summ + beta * dU) * rhs;
-//	return (im / (Summ + beta * dU) * rhs);
-//}
-
 af::array EM(const af::array &im, const af::array &Summ, const af::array &rhs)
 {
-	//im = im / Summ * rhs;
 	return (im / Summ * rhs);
 }
 
 af::array OSL(const af::array &Summ, const af::array &dU, const float beta, const float epps)
 {
-	af::array output = (Summ + beta * dU);
-	output(output < epps) = epps;
+	af::array output = (Summ + beta * dU + epps);
+	//output(output < epps) = epps;
 	return output;
 }
 
@@ -2252,10 +2110,6 @@ af::array MBSREM(const af::array & im, const af::array & rhs, const float U, con
 		output = im + lam[iter] * UU * rhs;
 	else
 		output = im + lam[iter] * UU * (rhs - beta * dU);
-	//if (beta == 0.f)
-	//	output = im + lam[iter] * UU*(rhs - Summ);
-	//else
-	//	output = im + lam[iter] * UU*(rhs - Summ - beta * dU);
 	output(output < epps) = epps;
 	output(output >= U) = U - epps;
 	return output;
@@ -2263,8 +2117,6 @@ af::array MBSREM(const af::array & im, const af::array & rhs, const float U, con
 
 af::array BSREM(const af::array & im, const af::array & rhs, const float * lam, const uint32_t iter)
 {
-	//im += lam[iter] * im * rhs;
-	//im = (1.f - lam[iter]) * im + lam[iter] * im * rhs;
 	return ((1.f - lam[iter]) * im + lam[iter] * im * rhs);
 }
 
@@ -2286,9 +2138,6 @@ af::array ECOSEM(const af::array & im, const af::array & D, const af::array & OS
 
 af::array ROSEM(const af::array & im, const af::array & Summ, const af::array & rhs, const float * lam, const uint32_t iter)
 {
-	//im = im + lam[iter] * im / Summ * rhs;
-	//im = (1.f - lam[iter]) * im + lam[iter] * im / Summ * rhs;
-	//return ((1.f - lam[iter]) * im + lam[iter] * im / Summ * rhs);
 	return (im + lam[iter] * im / Summ * (rhs - Summ));
 }
 
@@ -2297,8 +2146,6 @@ af::array RBI(const af::array & im, const af::array & Summ, const af::array & rh
 	af::array output = im;
 	if (beta == 0.f) {
 		const float Summa = 1.f / af::max<float>(Summ / D);
-		//output += Summa * (rhs - Summa * Summ);
-		//output += (im / Summa) * (rhs - Summ);
 		output += Summa * (im / D) * (rhs - Summ);
 	}
 	else {
@@ -2324,16 +2171,10 @@ af::array COSEM(const af::array & im, const af::array & C_co, const af::array & 
 {
 	af::array output;
 	if (COSEM_TYPE == 1) {
-		//if (beta == 0.f)
-			output = af::pow(af::sum(C_co, 1) / D, h);
-		//else
-			//output = af::pow(af::sum(C_co, 1) / (D + beta * dU), h);
+		output = af::pow(af::sum(C_co, 1) / D, h);
 	}
 	else {
-		//if (beta == 0.f)
-			output = (af::sum(C_co, 1) / D);
-		//else
-			//output = (af::sum(C_co, 1) / (D + beta * dU));
+		output = (af::sum(C_co, 1) / D);
 	}
 	return output;
 }
@@ -2342,12 +2183,6 @@ af::array MRP(const af::array & im, const uint32_t medx, const uint32_t medy, co
 	const af::array& offsets, const bool med_no_norm, const uint32_t im_dim)
 {
 	af::array padd = af::flat(padding(im, Nx, Ny, Nz, medx, medy, medz));
-	//af::array grad = af::constant(0.f, im_dim, 1);
-	//gfor(af::seq i, im_dim) {
-	//	af::array apu = offsets(i, af::span);
-	//	af::array testi = padd(apu);
-	//	grad(i) = af::median(testi);
-	//}
 	af::array grad = af::median(af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1)), 1);
 	if (med_no_norm)
 		grad = im - grad;
@@ -2359,13 +2194,10 @@ af::array MRP(const af::array & im, const uint32_t medx, const uint32_t medy, co
 af::array Quadratic_prior(const af::array & im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t inffi,
 	const af::array &offsets, const af::array &weights_quad, const uint32_t im_dim)
 {
-	//const af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
-	//af::array indeksi1 = offsets.col(inffi);
-	//const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
-	//af::array grad = af::sum(af::batchFunc(af::batchFunc(apu_pad(indeksi1 + 0), af::moddims(apu_pad(indeksi2), im_dim, weights_quad.dims(0)), batchMinus), af::transpose(weights_quad), batchMul), 1);
-	//int pituus = (Ndx * 2 + 1) * (Ndy * 2 + 1) * (Ndz * 2 + 1);
 	const af::array apu_pad = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
 	af::array grad;
+	af::array weights = -weights_quad;
+	weights(af::ceil(weights.elements() / 2)) = -1.f * weights(af::ceil(weights.elements() / 2));
 	if (Ndz == 0 || Nz == 1) {
 		grad = af::convolve2(apu_pad, weights_quad);
 		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
@@ -2381,10 +2213,6 @@ af::array Quadratic_prior(const af::array & im, const uint32_t Ndx, const uint32
 af::array Huber_prior(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t inffi,
 	const af::array& offsets, const af::array& weights_huber, const uint32_t im_dim, const float delta)
 {
-	//const af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
-	//af::array indeksi1 = offsets.col(inffi);
-	//const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
-	//af::array grad = af::sum(af::batchFunc(af::batchFunc(apu_pad(indeksi1 + 0), af::moddims(apu_pad(indeksi2), im_dim, weights_huber.dims(0)), batchMinus), af::transpose(weights_huber), batchMul), 1);
 	af::array grad = Quadratic_prior(im, Ndx, Ndy, Ndz, Nx, Ny, Nz, inffi, offsets, weights_huber, im_dim);
 	if (af::sum<dim_t>(delta >= af::abs(af::flat(grad))) == grad.elements() && af::sum<int>(af::flat(grad)) != 0)
 		mexPrintf("Delta value of Huber prior larger than all the pixel difference values\n");
@@ -2430,7 +2258,6 @@ af::array L_filter(const af::array & im, const uint32_t Ndx, const uint32_t Ndy,
 	af::array apu_pad = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
 	apu_pad = apu_pad(af::flat(offsets));
 	apu_pad = af::sort(af::moddims(apu_pad, im_dim, a_L.dims(0)), 1);
-	//grad = af::matmul(apu_pad, a_L);
 	grad = af::sum(af::batchFunc(apu_pad, af::transpose(a_L), batchMul), 1);
 	if (med_no_norm)
 		grad = im - grad;
@@ -2439,49 +2266,132 @@ af::array L_filter(const af::array & im, const uint32_t Ndx, const uint32_t Ndy,
 	return grad;
 }
 
-af::array Weighted_mean(const af::array & im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const af::array& offsets,
+af::array Weighted_mean(const af::array & im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, 
 	const af::array& weighted_weights, const bool med_no_norm, const uint32_t im_dim, const uint32_t mean_type, const float w_sum)
 {
 	af::array grad;
-	//af::array padd = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
-	//padd = af::moddims(padd(offsets), im_dim, offsets.dims(1));
-	af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+	const float wsum = af::sum<float>(af::flat(weighted_weights));
 	if (mean_type == 1U) {
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
 		if (Ndz == 0 || Nz == 1)
-			grad = af::convolve2(padd, weighted_weights / w_sum);
+			grad = af::convolve2(padd, weighted_weights / wsum);
 		else
-			grad = af::convolve3(padd, weighted_weights / w_sum);
-		//grad = af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1) / w_sum;
+			grad = af::convolve3(padd, weighted_weights / wsum);
 	}
 	else if (mean_type == 2U) {
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
 		if (Ndz == 0 || Nz == 1)
-			grad = af::convolve2(1.f / padd, w_sum / weighted_weights);
+			grad = 1.f / af::convolve2(1.f / padd, weighted_weights / wsum);
 		else
-			grad = af::convolve3(1.f / padd, w_sum / weighted_weights);
-		//grad = w_sum / af::sum(af::batchFunc(padd, af::transpose(weighted_weights), batchMul), 1);
+			grad = 1.f / af::convolve3(1.f / padd, weighted_weights / wsum);
 	}
 	else if (mean_type == 3U) {
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
 		if (Ndz == 0 || Nz == 1)
-			grad = af::exp(af::convolve2(af::log(padd), weighted_weights / w_sum));
+			grad = af::exp(af::convolve2(af::log(padd), weighted_weights / wsum));
 		else
-			grad = af::exp(af::convolve3(af::log(padd), weighted_weights / w_sum));
-		//grad = af::exp(af::sum(af::batchFunc(af::log(padd), af::transpose(weighted_weights), batchMul), 1) / w_sum);
+			grad = af::exp(af::convolve3(af::log(padd), weighted_weights / wsum));
+	}
+	else if (mean_type == 4U) {
+		grad = af::constant(0.f, im.dims(0));
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx * 2, Ndy * 2, Ndz * 2);
+		af::array m = af::convolve3(padd, weighted_weights / wsum);
+		//mexPrintf("Nx + Ndx * 4 - 1 = %u\n", Nx + Ndx * 4 - 1);
+		if (Ndz == 0 || Nz == 1) {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::span);
+		}
+		else {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::seq(Ndz, Nz + Ndz * 3 - 1));
+		}
+		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements());
+		int jj = 0;
+		for (int ll = 0; ll < weighted_weights.dims(2); ll++) {
+			for (int kk = 0; kk < weighted_weights.dims(1); kk++) {
+				for (int hh = 0; hh < weighted_weights.dims(0); hh++) {
+					af::array apu = m(af::seq(hh, hh + Nx - 1), af::seq(kk, kk + Ny - 1), af::seq(ll, ll + Nz - 1));
+					mm(af::span, jj) = af::flat(apu);
+					jj++;
+				}
+			}
+		}
+		grad = batchFunc(im, mm, batchDiv);
+		grad(grad < 1e-3f) = 1e-3f;
+		grad = batchFunc(af::log(grad), af::transpose(af::flat(weighted_weights)), batchMul);
+		grad = af::sum(grad, 1);
+		grad = af::flat(grad);
+	}
+	else if (mean_type == 5U) {
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx * 2, Ndy * 2, Ndz * 2);
+		af::array m = 1.f / af::convolve3(1.f / padd, weighted_weights / wsum);
+		if (Ndz == 0 || Nz == 1) {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::span);
+		}
+		else {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::seq(Ndz, Nz + Ndz * 3 - 1));
+		}
+		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements());
+		int jj = 0;
+		for (int ll = 0; ll < weighted_weights.dims(2); ll++) {
+			for (int kk = 0; kk < weighted_weights.dims(1); kk++) {
+				for (int hh = 0; hh < weighted_weights.dims(0); hh++) {
+					af::array apu = m(af::seq(hh, hh + Nx - 1), af::seq(kk, kk + Ny - 1), af::seq(ll, ll + Nz - 1));
+					mm(af::span, jj) = af::flat(apu);
+					jj++;
+				}
+			}
+		}
+		af::array im_t = im;
+		im_t(im_t < 1e-1f) = 1e-1f;
+		grad = batchFunc(batchFunc(im_t, mm, batchMinus), im_t, batchDiv);
+		grad = grad - af::pow(batchFunc((batchFunc(im_t, mm, batchMinus)), std::sqrt(2.f) * (im_t), batchDiv), 2.);
+		grad = batchFunc(grad, af::transpose(af::flat(weighted_weights)), batchMul);
+		grad = af::sum(grad, 1);
+		grad = af::flat(grad);
+	}
+	else if (mean_type == 6U) {
+		af::array padd = padding(im, Nx, Ny, Nz, Ndx * 2, Ndy * 2, Ndz * 2);
+		af::array m = af::exp(af::convolve3(af::log(padd), weighted_weights / wsum));
+		if (Ndz == 0 || Nz == 1) {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::span);
+		}
+		else {
+			m = m(af::seq(Ndx, Nx + Ndx * 3 - 1), af::seq(Ndy, Ny + Ndy * 3 - 1), af::seq(Ndz, Nz + Ndz * 3 - 1));
+		}
+		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements());
+		int jj = 0;
+		for (int ll = 0; ll < weighted_weights.dims(2); ll++) {
+			for (int kk = 0; kk < weighted_weights.dims(1); kk++) {
+				for (int hh = 0; hh < weighted_weights.dims(0); hh++) {
+					af::array apu = m(af::seq(hh, hh + Nx - 1), af::seq(kk, kk + Ny - 1), af::seq(ll, ll + Nz - 1));
+					mm(af::span, jj) = af::flat(apu);
+					jj++;
+				}
+			}
+		}
+		af::array im_t = im;
+		im_t(im_t < 1e-1f) = 1e-1f;
+		grad = 1.f - batchFunc(mm, im_t, batchDiv);
+		grad = batchFunc(grad, af::transpose(af::flat(weighted_weights)), batchMul);
+		grad = af::sum(grad, 1);
+		grad = af::flat(grad);
 	}
 	else {
 		mexWarnMsgTxt("Unsupported mean type");
 		grad = af::constant(0.f, Nx + Ndx * 2U, Ny + Ndy * 2U, Nz + Ndz * 2U);
 	}
-	if (Ndz == 0 || Nz == 1) {
-		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
+	if (mean_type <= 3U) {
+		if (Ndz == 0 || Nz == 1) {
+			grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
+		}
+		else {
+			grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::seq(Ndz, Nz + Ndz - 1));
+		}
+		grad = af::flat(grad);
+		if (med_no_norm)
+			grad = im - grad;
+		else
+			grad = (im - grad) / (grad + epps);
 	}
-	else {
-		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::seq(Ndz, Nz + Ndz - 1));
-	}
-	grad = af::flat(grad);
-	if (med_no_norm)
-		grad = im - grad;
-	else
-		grad = (im - grad) / (grad + epps);
 	return grad;
 }
 
@@ -2496,6 +2406,152 @@ af::array AD(const af::array & im, const uint32_t Nx, const uint32_t Ny, const u
 	else
 		grad = (im - grad) / (grad + epps);
 	return grad;
+}
+
+
+// Compute the TV prior
+af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const TVdata& S, const af::array& ima, const float epps, const uint32_t TVtype,
+	const Weighting& w_vec, const af::array& offsets) {
+	af::array gradi;
+
+	if (TVtype != 3) {
+		af::array im = af::moddims(ima, Nx, Ny, Nz);
+		// 1st order differentials
+		af::array g = af::constant(0.f, Nx, Ny, Nz);
+		af::array f = af::constant(0.f, Nx, Ny, Nz);
+		af::array h = af::constant(0.f, Nx, Ny, Nz);
+		f(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(im);
+		f(Nx - 1u, af::span, af::span) = im(im.dims(0) - 1ULL, af::span, af::span) - im(0, af::span, af::span);
+		g(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(im, 1);
+		g(af::span, Ny - 1u, af::span) = im(af::span, im.dims(1) - 1ULL, af::span) - im(af::span, 0, af::span);
+		h(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(im, 2);
+		h(af::span, af::span, Nz - 1u) = im(af::span, af::span, im.dims(2) - 1ULL) - im(af::span, af::span, 0);
+
+		af::array pval, apu1, apu2, apu3, apu4;
+		g = af::flat(g);
+		f = af::flat(f);
+		h = af::flat(h);
+
+			// If anatomical prior is used
+			if (S.TV_use_anatomical) {
+				if (TVtype == 1) {
+					pval = af::sqrt(S.s1 * af::pow(f, 2.) + S.s5 * af::pow(g, 2.) + S.s9 * af::pow(h, 2.) + S.s4 * f * g + S.s7 * f * h + S.s2 * f * g + S.s8 * h * g + S.s3 * f * h + S.s6 * h * g + S.TVsmoothing);
+					apu1 = 0.5f * (2.f * S.s1 * f + S.s4 * g + S.s7 * h + S.s2 * g + S.s3 * h) / pval;
+					apu2 = 0.5f * (2.f * S.s5 * g + S.s4 * f + S.s2 * f + S.s8 * h + S.s6 * h) / pval;
+					apu3 = 0.5f * (2.f * S.s9 * h + S.s8 * g + S.s6 * g + S.s7 * f + S.s3 * f) / pval;
+					apu4 = 0.5f * (2.f * S.s1 * f + 2.f * S.s5 * g + 2.f * S.s9 * h + S.s4 * f + S.s2 * f + S.s8 * h + S.s6 * h + S.s4 * g + S.s7 * h + S.s2 * g + S.s3 * h
+						+ S.s8 * g + S.s6 * g + S.s7 * f + S.s3 * f) / pval;
+				}
+				else if (TVtype == 2) {
+					af::array gp = af::constant(0.f, Nx, Ny, Nz);
+					af::array fp = af::constant(0.f, Nx, Ny, Nz);
+					af::array hp = af::constant(0.f, Nx, Ny, Nz);
+					fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.reference_image);
+					fp(Nx - 1u, af::span, af::span) = S.reference_image(im.dims(0) - 1ULL, af::span, af::span) - S.reference_image(0, af::span, af::span);
+					gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.reference_image, 1);
+					gp(af::span, Ny - 1u, af::span) = S.reference_image(af::span, im.dims(1) - 1ULL, af::span) - S.reference_image(af::span, 0, af::span);
+					hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.reference_image, 2);
+					hp(af::span, af::span, Nz - 1u) = S.reference_image(af::span, af::span, im.dims(2) - 1ULL) - S.reference_image(af::span, af::span, 0);
+
+					pval = af::sqrt(af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) + S.T * (af::pow(fp, 2.) + af::pow(gp, 2.) + af::pow(hp, 2.)) + S.TVsmoothing);
+					apu1 = f / pval;
+					apu2 = g / pval;
+					apu3 = h / pval;
+					apu4 = (f + g + h) / pval;
+				}
+				// For APLS
+				else if (TVtype == 5) {
+					af::array gp = af::constant(0.f, Nx, Ny, Nz);
+					af::array fp = af::constant(0.f, Nx, Ny, Nz);
+					af::array hp = af::constant(0.f, Nx, Ny, Nz);
+					fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.APLSReference);
+					fp(Nx - 1u, af::span, af::span) = S.APLSReference(im.dims(0) - 1ULL, af::span, af::span) - S.APLSReference(0, af::span, af::span);
+					gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.APLSReference, 1);
+					gp(af::span, Ny - 1u, af::span) = S.APLSReference(af::span, im.dims(1) - 1ULL, af::span) - S.APLSReference(af::span, 0, af::span);
+					hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.APLSReference, 2);
+					hp(af::span, af::span, Nz - 1u) = S.APLSReference(af::span, af::span, im.dims(2) - 1ULL) - S.APLSReference(af::span, af::span, 0);
+
+					fp = af::flat(fp);
+					gp = af::flat(gp);
+					hp = af::flat(hp);
+
+					af::array epsilon = af::join(1, fp, gp, hp) / af::join(1, fp / af::sqrt(af::pow(fp, 2.) + S.eta * S.eta) + epps,
+						gp / af::sqrt(af::pow(gp, 2.) + S.eta * S.eta) + epps, hp / af::sqrt(af::pow(hp, 2.) + S.eta * S.eta) + epps);
+					af::array apu = sum(af::join(1, f, g, h) * epsilon, 1);
+
+					pval = (af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) - af::pow(apu, 2.) + S.APLSsmoothing);
+					pval(pval < 0) = 1.f;
+					pval = af::sqrt(pval);
+					apu1 = (f - (apu * epsilon(af::span, 0))) / pval;
+					apu2 = (g - (apu * epsilon(af::span, 1))) / pval;
+					apu3 = (h - (apu * epsilon(af::span, 2))) / pval;
+					apu4 = (f - (apu * epsilon(af::span, 0)) + g - (apu * epsilon(af::span, 1)) + h - (apu * epsilon(af::span, 2))) / pval;
+				}
+			}
+			// If anatomical prior is not used
+			else {
+				if (TVtype == 4) {
+					af::array ff = af::constant(0.f, f.dims(0), f32);
+					ff(f > 0) = 1.f;
+					ff(f < 0) = -1.f;
+					af::array gg = af::constant(0.f, g.dims(0), f32);
+					gg(g > 0) = 1.f;
+					gg(g < 0) = -1.f;
+					af::array hh = af::constant(0.f, h.dims(0), f32);
+					hh(h > 0) = 1.f;
+					hh(h < 0) = -1.f;
+					if (S.SATVPhi == 0.f) {
+						apu1 = ff;
+						apu2 = gg;
+						apu3 = hh;
+					}
+					else {
+						apu1 = ff - ff / (af::abs(f) / S.SATVPhi + 1);
+						apu2 = gg - gg / (af::abs(g) / S.SATVPhi + 1);
+						apu3 = hh - hh / (af::abs(h) / S.SATVPhi + 1);
+					}
+				}
+				else {
+					pval = af::sqrt(af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) + S.TVsmoothing);
+					apu1 = f / pval;
+					apu2 = g / pval;
+					apu3 = h / pval;
+				}
+				apu4 = apu1 + apu2 + apu3;
+			}
+			apu1 = af::moddims(apu1, Nx, Ny, Nz);
+			apu2 = af::moddims(apu2, Nx, Ny, Nz);
+			apu3 = af::moddims(apu3, Nx, Ny, Nz);
+			apu4 = af::moddims(apu4, Nx, Ny, Nz);
+			// Derivatives
+			apu1 = af::shift(apu1, 1);
+			apu2 = af::shift(apu2, 0, 1);
+			apu3 = af::shift(apu3, 0, 0, 1);
+			gradi = apu4 - apu1 - apu2 - apu3;
+			gradi = af::flat(gradi);
+			gradi = gradi + 2.f * S.tau * af::min<float>(af::flat(ima));
+	}
+	else {
+		if (S.TV_use_anatomical) {
+			af::array padd = af::flat(padding(ima, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
+			padd = padd(af::join(1, offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1)), offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL))));
+			padd = af::moddims(padd, ima.dims(0), padd.dims(0) / ima.dims(0));
+			af::array padd2 = af::flat(padding(S.reference_image, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
+			padd2 = padd2(af::join(1, offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1)), offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL))));
+			padd2 = af::moddims(padd2, ima.dims(0), padd2.dims(0) / ima.dims(0));
+			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.)
+				+ af::pow(af::batchFunc(S.reference_image, padd2, batchMinus) / S.T, 2.))), w_vec.weights_TV.T(), batchMul), 1);
+		}
+		else {
+			af::array padd = af::flat(padding(ima, Nx, Ny, Nz, w_vec.Ndx, w_vec.Ndy, w_vec.Ndz));
+			padd = padd(af::join(1, af::flat(offsets(af::span, af::seq(0, (w_vec.dimmu - 1) / 2 - 1))), af::flat(offsets(af::span, af::seq((w_vec.dimmu - 1) / 2 + 1, offsets.dims(1) - 1ULL)))));
+			padd = af::moddims(padd, ima.dims(0), padd.dims(0) / ima.dims(0));
+			gradi = af::sum(af::batchFunc(af::batchFunc(ima, padd, batchMinus) / std::pow(S.C, 2.f) * (1.f / af::sqrt(1.f + af::pow(af::batchFunc(ima, padd, batchMinus) / S.C, 2.))),
+				w_vec.weights_TV.T(), batchMul), 1);
+		}
+	}
+
+	return gradi;
 }
 
 af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t maxits, const float alpha, const float beta)
@@ -2595,45 +2651,11 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 	return -grad;
 }
 
-//af::array im2col_3D(const af::array& A, const uint32_t blocksize1, const uint32_t blocksize2, const uint32_t blocksize3) {
-//	const uint32_t Nx = A.dims(0);
-//	const uint32_t Ny = A.dims(1);
-//	const uint32_t Nz = A.dims(2);
-//	af::array start_ind = af::flat(af::batchFunc(af::range(af::dim4(Nx - blocksize1 + 1), 0, u32) + 1, af::range(af::dim4(1, Ny - blocksize2 + 1), 1, u32) * Nx, batchPlus));
-//	start_ind = af::reorder(af::transpose(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize1), 1, u32), batchPlus)), 0, 2, 1);
-//	start_ind = af::moddims(af::batchFunc(start_ind, af::range(af::dim4(1, blocksize2), 1, u32) * Nx, batchPlus), blocksize1 * blocksize2, start_ind.dims(2));
-//	start_ind = af::batchFunc(start_ind, Nx * Ny * af::reorder(af::range(af::dim4(1, Nz - blocksize3 + 1), 1, u32), 0, 2, 1), batchPlus);
-//	start_ind = af::tile(start_ind, blocksize3, 1, 1);
-//	af::array apu = af::transpose(af::range(af::dim4(blocksize3), 0, u32) * Nx * Ny);
-//	apu = af::flat(af::tile(apu, blocksize1 * blocksize2, 1));
-//	start_ind = af::batchFunc(start_ind, apu, batchPlus);
-//	return A(start_ind - 1);
-//}
-//
-//af::array sparseSum(const af::array& W, const uint32_t s) {
-//	af::array summa = af::constant(0.f, s, 1, f32);
-//	af::array temp_row = af::sparseGetRowIdx(W);
-//	af::array temp_val = af::sparseGetValues(W);
-//	for (int kk = 0; kk < s; kk++) {
-//		const int32_t* ind1 = temp_row(kk).host<int32_t>();
-//		const int32_t* ind2 = temp_row(kk + 1).host<int32_t>();
-//		if (*ind1 == *ind2)
-//			continue;
-//		summa(kk) = af::sum(temp_val(af::seq(static_cast<double>(*ind1), static_cast<double>(*ind2 - 1))));
-//	}
-//	return summa;
-//}
-
 af::array computeConvolution(const af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, 
 	const uint32_t n_rekos) {
 	af::array apu = af::moddims(vec, Nx, Ny, Nz, n_rekos);
-	//af::dim4 pad_dim1 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
-	//af::dim4 pad_dim2 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
-	//array apu = vec.im_os;
 	for (int ff = 0; ff < n_rekos; ff++) {
 		af::array apu2 = padding(apu(af::span, af::span, af::span, ff), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
-		//af::array apu2 = apu(af::span, af::span, af::span, ff);
-		//apu2 = af::pad(apu2, pad_dim1, pad_dim2, AF_PAD_SYM);
 		apu2 = af::convolve3(apu2, g);
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
 		apu(af::span, af::span, af::span, ff) = apu2;
@@ -2643,14 +2665,8 @@ af::array computeConvolution(const af::array& vec, const af::array& g, const uin
 
 void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, 
 	const uint32_t subsets, const float epps) {
-	//af::dim4 pad_dim1 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
-	//af::dim4 pad_dim2 = { w_vec.g_dim_x , w_vec.g_dim_y, w_vec.g_dim_z, 0 };
 	af::array jelppi = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	af::array apu = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
-	//af::array jelppi = af::moddims(vec(af::span, iter + 1u), Nx, Ny, Nz);
-	//af::array apu = af::moddims(vec(af::span, iter + 1u), Nx, Ny, Nz);
-	//jelppi = af::pad(jelppi, pad_dim1, pad_dim2, AF_PAD_SYM);
-	//apu = af::pad(apu, pad_dim1, pad_dim2, AF_PAD_SYM);
 	for (int kk = 0; kk < subsets; kk++) {
 		af::array apu2 = convolve3(jelppi, g) + epps;
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));

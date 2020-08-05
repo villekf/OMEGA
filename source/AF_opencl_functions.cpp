@@ -63,7 +63,7 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 		else
 			vec_opencl.d_im_mlem = cl::Buffer(*vec.im_mlem.device<cl_mem>(), true);
 		if (atomic_64bit)
-			vec.rhs_mlem = af::constant(0ULL, static_cast<size_t>(im_dim) * n_rekos_mlem, 1, u64);
+			vec.rhs_mlem = af::constant(0LL, static_cast<size_t>(im_dim) * n_rekos_mlem, 1, s64);
 		else
 			vec.rhs_mlem = af::constant(0.f, static_cast<size_t>(im_dim) * n_rekos_mlem, 1);
 		vec_opencl.d_rhs_mlem = cl::Buffer(*vec.rhs_mlem.device<cl_mem>(), true);
@@ -74,7 +74,7 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 		else
 			vec_opencl.d_im_os = cl::Buffer(*vec.im_os.device<cl_mem>(), true);
 		if (atomic_64bit)
-			vec.rhs_os = af::constant(0ULL, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1, u64);
+			vec.rhs_os = af::constant(0LL, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1, s64);
 		else
 			vec.rhs_os = af::constant(0.f, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1);
 		vec_opencl.d_rhs_os = cl::Buffer(*vec.rhs_os.device<cl_mem>(), true);
@@ -424,10 +424,10 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		mexPrintf("Buffer creation failed\n");
 		return status;
 	}
-	else {
-		mexPrintf("Buffer creation succeeded\n");
-		mexEvalString("pause(.0001);");
-	}
+	//else {
+	//	mexPrintf("Buffer creation succeeded\n");
+	//	mexEvalString("pause(.0001);");
+	//}
 
 
 	// assign values to the buffers
@@ -721,7 +721,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 			if (w_vec.MBSREM_prepass && alku == 0u) {
 				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, im_dim, 1, u64);
+					apu_summa = af::constant(0LL, im_dim, 1, s64);
 				}
 				else {
 					apu_summa = af::constant(0.f, im_dim, 1);
@@ -729,7 +729,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 			}
 			else {
 				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, 1, 1, u64);
+					apu_summa = af::constant(0LL, 1, 1, s64);
 				}
 				else {
 					apu_summa = af::constant(0.f, 1, 1);
@@ -738,26 +738,26 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
 				if (atomic_64bit)
-					apu_co = af::constant(0ULL, im_dim, 1, u64);
+					apu_co = af::constant(0ULL, im_dim, 1, s64);
 				else
 					apu_co = af::constant(0.f, im_dim, 1);
 			}
 			else {
 				if (atomic_64bit)
-					apu_co = af::constant(0ULL, 1, 1, u64);
+					apu_co = af::constant(0LL, 1, 1, s64);
 				else
 					apu_co = af::constant(0.f, 1, 1);
 			}
 
 			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0u) {
 				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, im_dim, 1, u64);
+					apu_aco = af::constant(0LL, im_dim, 1, s64);
 				else
 					apu_aco = af::constant(0.f, im_dim, 1);
 			}
 			else {
 				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
+					apu_aco = af::constant(0LL, 1, 1, s64);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
 			}
@@ -766,7 +766,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 			if (w_vec.MBSREM_prepass && alku == 0u) {
 				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, im_dim, 1, u64);
+					apu_summa = af::constant(0LL, im_dim, 1, s64);
 				}
 				else {
 					apu_summa = Summ[0];
@@ -774,7 +774,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 			}
 			else {
 				if (atomic_64bit) {
-					apu_summa = af::constant(0ULL, 1, 1, u64);
+					apu_summa = af::constant(0LL, 1, 1, s64);
 				}
 				else {
 					apu_summa = af::constant(0.f, 1, 1);
@@ -784,26 +784,26 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
 				if (atomic_64bit)
-					apu_co = (C_co * TH).as(u64);
+					apu_co = (C_co * TH).as(s64);
 				else
 					apu_co = C_co;
 			}
 			else {
 				if (atomic_64bit)
-					apu_co = af::constant(0ULL, 1, 1, u64);
+					apu_co = af::constant(0LL, 1, 1, s64);
 				else
 					apu_co = af::constant(0.f, 1, 1);
 			}
 
 			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0) {
 				if (atomic_64bit)
-					apu_aco = (C_aco * TH).as(u64);
+					apu_aco = (C_aco * TH).as(s64);
 				else
 					apu_aco = C_aco;
 			}
 			else {
 				if (atomic_64bit)
-					apu_aco = af::constant(0ULL, 1, 1, u64);
+					apu_aco = af::constant(0LL, 1, 1, s64);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
 			}
@@ -1197,7 +1197,7 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 	size_t pituus;
 	if (atomic_64bit) {
 		pituus = options.length();
-		options += " -DCAST=ulong";
+		options += " -DCAST=long";
 		options += " -DATOMIC";
 		options += (" -DTH=" + std::to_string(TH));
 	}
@@ -1251,7 +1251,7 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 		program = cl::Program(af_context, source);
 		//try {
 		status = program.build(options.c_str());
-		if (status != CL_SUCCESS) {
+		if (status == CL_SUCCESS) {
 			mexPrintf("OpenCL program built\n");
 		}
 		//}

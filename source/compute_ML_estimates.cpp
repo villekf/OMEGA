@@ -49,8 +49,8 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	}
 	// OSL-MLEM with Weighted Mean prior
 	if (MethodList.OSLMLEM && MethodList.WeightedMean) {
-		array dU = Weighted_mean(vec.im_mlem(seq(ee, ee + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-			w_vec.weighted_weights, w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
+		array dU = Weighted_mean(vec.im_mlem(seq(ee, ee + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, 
+			w_vec.med_no_norm, im_dim, w_vec.mean_type, w_vec.w_sum);
 		vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.Weighted_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
 		ee += im_dim;
 	}

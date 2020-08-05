@@ -222,13 +222,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// 64-bit atomic operations require unsigned 64-bit integers
 	if (compute_norm_matrix == 0u) {
 		if (atomic_64bit && !w_vec.MBSREM_prepass)
-			Summ.assign(subsets, constant(0ULL, im_dim, 1, u64));
+			Summ.assign(subsets, constant(0LL, im_dim, 1, s64));
 		else
 			Summ.assign(subsets, constant(0.f, im_dim, 1));
 	}
 	else {
 		if (atomic_64bit)
-			Summ.assign(1ULL, constant(0ULL, im_dim, 1, u64));
+			Summ.assign(1ULL, constant(0LL, im_dim, 1, s64));
 		else
 			Summ.assign(1ULL, constant(0.f, im_dim, 1));
 	}
@@ -242,10 +242,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		mexPrintf("Failed to create kernels\n");
 		return;
 	}
-	else if (verbose) {
-		mexPrintf("OpenCL kernels successfully created\n");
-		mexEvalString("pause(.0001);");
-	}
+	//else if (verbose) {
+	//	mexPrintf("OpenCL kernels successfully created\n");
+	//	mexEvalString("pause(.0001);");
+	//}
 
 	// Create and write buffers
 	cl::Buffer d_x, d_y, d_z, d_pseudos, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_reko_type, d_reko_type_mlem, d_V, d_scat_mlem;
@@ -272,9 +272,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		mexPrintf("Buffer creation failed\n");
 		return;
 	}
-	else {
-		mexPrintf("Buffer creation succeeded\n");
-	}
+	//else {
+	//	mexPrintf("Buffer creation succeeded\n");
+	//}
 
 	array g(size_gauss, gaussian, afHost);
 	if (use_psf) {
@@ -374,7 +374,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	if (mlem_bool) {
 		if (atomic_64bit)
-			Summ_mlem = constant(0ULL, im_dim, 1, u64);
+			Summ_mlem = constant(0LL, im_dim, 1, s64);
 		else
 			Summ_mlem = constant(0.f, im_dim, 1);
 	}
@@ -590,11 +590,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			mexEvalString("pause(.0001);");
 			return;
 		}
-		else if (status == CL_SUCCESS) {
-			//getErrorString(status);
-			mexPrintf("Queue finish succeeded\n");
-			mexEvalString("pause(.0001);");
-		}
+		//else if (status == CL_SUCCESS) {
+		//	//getErrorString(status);
+		//	mexPrintf("Queue finish succeeded\n");
+		//	mexEvalString("pause(.0001);");
+		//}
 
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < Niter; iter++) {
@@ -610,7 +610,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					if (compute_norm_matrix == 1u) {
 						if (atomic_64bit) {
-							Summ[0] = constant(0ULL, im_dim, 1, u64);
+							Summ[0] = constant(0LL, im_dim, 1, s64);
 						}
 						else
 							Summ[0] = constant(0.f, im_dim, 1);
@@ -620,7 +620,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					else {
 						if (no_norm == 0u && tt > 0u) {
 							if (atomic_64bit)
-								Summ[osa_iter] = constant(0ULL, im_dim, 1, u64);
+								Summ[osa_iter] = constant(0LL, im_dim, 1, s64);
 							else
 								Summ[osa_iter] = constant(0.f, im_dim, 1);
 							//d_Summ->operator=(*Summ[osa_iter].device<cl_mem>());
@@ -628,7 +628,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						}
 						else if (no_norm == 1u) {
 							if (atomic_64bit)
-								apu_sum = constant(0ULL, 1, 1, u64);
+								apu_sum = constant(0LL, 1, 1, s64);
 							else
 								apu_sum = constant(0.f, 1, 1, f32);
 							//d_Summ->operator=(*apu_sum.device<cl_mem>());
@@ -686,10 +686,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						mexEvalString("pause(.0001);");
 						break;
 					}
-					else if (verbose) {
-						mexPrintf("OS kernel launched successfully\n");
-						mexEvalString("pause(.0001);");
-					}
+					//else if (verbose) {
+					//	mexPrintf("OS kernel launched successfully\n");
+					//	mexEvalString("pause(.0001);");
+					//}
 					status = af_queue.finish();
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -788,7 +788,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					}
 					if (no_norm_mlem == 1u) {
 						if (atomic_64bit)
-							apu_sum_mlem = constant(0ULL, 1, 1, u64);
+							apu_sum_mlem = constant(0LL, 1, 1, s64);
 						else
 							apu_sum_mlem = constant(0.f, 1, 1, f32);
 						d_Summ_mlem = cl::Buffer(*apu_sum_mlem.device<cl_mem>(), true);
@@ -799,7 +799,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				else {
 					if (no_norm_mlem == 1u) {
 						if (atomic_64bit)
-							apu_sum_mlem = constant(0ULL, 1, 1, u64);
+							apu_sum_mlem = constant(0LL, 1, 1, s64);
 						else
 							apu_sum_mlem = constant(0.f, 1, 1, f32);
 						d_Summ_mlem = cl::Buffer(*apu_sum_mlem.device<cl_mem>(), true);
