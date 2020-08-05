@@ -53,7 +53,6 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 	const uint32_t Nyx = Ny * Nx;
 
-	size_t threads = omp_get_max_threads();
 	std::vector<double> store_elements;
 	std::vector<uint32_t> store_indices;
 

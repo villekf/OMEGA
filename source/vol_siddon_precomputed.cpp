@@ -52,8 +52,12 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 	// Precompute
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 	const uint32_t Nyx = Ny * Nx;
-
+	
+#ifdef _OPENMP
 	size_t threads = omp_get_max_threads();
+#else
+	size_t threads = 1ULL;
+#endif
 	std::vector<double> store_elements;
 	std::vector<uint32_t> store_indices;
 

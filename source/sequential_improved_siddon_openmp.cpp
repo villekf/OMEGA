@@ -918,7 +918,11 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	vector<double> elements;
 	vector<uint32_t> v_indices;
 
+#ifdef _OPENMP
 	size_t threads = omp_get_max_threads();
+#else
+	size_t threads = 1ULL;
+#endif
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
@@ -929,8 +933,11 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 		const double local_sino = Sino[lo];
 		if (no_norm && local_sino == 0.)
 			continue;
-
+#ifdef _OPENMP
 		const uint32_t tid = omp_get_thread_num() * dec_v;
+#else
+		const uint32_t tid = 0U;
+#endif
 		Det detectors;
 		double kerroin, length_;
 
@@ -1485,7 +1492,11 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	vector<double> elements;
 	vector<uint32_t> v_indices;
 
+#ifdef _OPENMP
 	size_t threads = omp_get_max_threads();
+#else
+	size_t threads = 1ULL;
+#endif
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
@@ -1497,7 +1508,11 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 		if (no_norm && local_sino == 0.)
 			continue;
 
+#ifdef _OPENMP
 		const uint32_t tid = omp_get_thread_num() * dec_v;
+#else
+		const uint32_t tid = 0U;
+#endif
 		Det detectors;
 		double kerroin, length_;
 
