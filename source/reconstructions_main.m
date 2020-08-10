@@ -881,14 +881,8 @@ end
 
 %%
 
-if isfield(options, 'DOI')
-    DOI = options.DOI;
-else
-    DOI = 0;
-end
-
 % Diameter of the PET-device (bore) (mm)
-R = double(diameter + DOI * 2);
+R = double(diameter);
 % Transaxial FOV (x-direction, horizontal) (mm)
 FOVax = double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)

@@ -19,14 +19,9 @@ function [gaussK, options] = PSFKernel(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if options.use_psf
-    etaisyys_x = (options.diameter - options.FOVa_x)/2;
-    etaisyys_y = (options.diameter - options.FOVa_y)/2;
-    zz = linspace(double(0), double(options.axial_fov), options.Nz + 1);
-    xx = double(linspace(etaisyys_x, options.diameter - etaisyys_x, options.Nx + 1));
-    yy = double(linspace(etaisyys_y, options.diameter - etaisyys_y, options.Ny + 1));
-    dx = diff(xx(1:2));
-    dy = diff(yy(1:2));
-    dz = diff(zz(1:2));
+    dx = options.FOVa_x / options.Nx;
+    dy = options.FOVa_y / options.Ny;
+    dz = options.axial_fov / options.Nz;
     
     g_pituus_x = ceil(2*(options.FWHM(1) / (2 * sqrt(2 * log(2)))) / dx);
     g_pituus_y = ceil(2*(options.FWHM(2) / (2 * sqrt(2 * log(2)))) / dy);

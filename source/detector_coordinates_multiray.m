@@ -27,6 +27,14 @@ diameter = options.diameter;
 cryst_per_block = options.cryst_per_block;
 blocks_per_ring = options.blocks_per_ring;
 
+if isfield(options, 'DOI')
+    DOI = options.DOI;
+else
+    DOI = 0;
+end
+
+diameter = diameter + DOI * 2;
+
 %% Non-pseudo detectors
 
 % All angles, starting from 90 degrees
