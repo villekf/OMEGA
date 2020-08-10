@@ -881,8 +881,14 @@ end
 
 %%
 
+if isfield(options, 'DOI')
+    DOI = options.DOI;
+else
+    DOI = 0;
+end
+
 % Diameter of the PET-device (bore) (mm)
-R = double(diameter);
+R = double(diameter + DOI * 2);
 % Transaxial FOV (x-direction, horizontal) (mm)
 FOVax = double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)
@@ -1312,11 +1318,10 @@ else
                                         % NOTE: The below method is not
                                         % recommended since it is much slower
                                         % method.
-                                        [ lor, indices, alkiot, discard] = improved_siddon_atten( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
+                                        [ lor, indices, alkiot, ~] = improved_siddon_atten( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
                                             NSinos, NSlices, options.vaimennus, index(pituus(osa_iter)+1:pituus(osa_iter + 1)), pituus(osa_iter + 1) - pituus(osa_iter), ...
                                             attenuation_correction);
                                         alkiot = cell2mat(alkiot);
-                                        indices = indices(discard);
                                         indices = cell2mat(indices) - 1;
                                     end
                                     % Orthogonal distance based
