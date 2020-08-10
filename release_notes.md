@@ -193,6 +193,8 @@
 
 - Compilation should work more reliably in Unix platforms with less warnings
 
+- Scatter data should now be obtained correctly
+
 ## 1.0
 
 ### New features
