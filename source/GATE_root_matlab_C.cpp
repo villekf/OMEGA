@@ -20,7 +20,7 @@
 #include <TROOT.h>
 #include "TChain.h"
 #include "saveSinogram.h"
-extern mxArray* mxCreateSharedDataCopy(const mxArray* pr);
+extern "C" mxArray * mxCreateSharedDataCopy(const mxArray * pr);
 
 
 void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, const double alku, const double loppu, const size_t outsize2, 
@@ -46,6 +46,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	int any = 0;
 	int next = 0;
 	bool no_time = false;
+	const uint32_t nBins = TOFSize / sinoSize;
 
 	if (Coincidences->GetBranchStatus("crystalID1"))
 		Coincidences->SetBranchAddress("crystalID1", &crystalID1);
@@ -335,12 +336,14 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		uint64_t bins = 0;
 		if (TOFSize > sinoSize) {
 			double timeDif = (time2 - time1) / 2. + distribution(generator);
+			if (std::abs(timeDif) > ((binSize / 2.) * nBins))
+				continue;
 			if (ring_pos2 > ring_pos1)
 				timeDif = -timeDif;
-			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize) / binSize));
 			if (timeDif < 0)
 				bins *= 2ULL;
-			else if (bins > 2)
+			else if (bins > 1)
 				bins = bins * 2ULL - 1ULL;
 		}
 		if (storeRawData) {
@@ -355,10 +358,10 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
 					if (outsize2 == 1ULL) {
 						if (event_true && obtain_trues) {
-							Ltrues[L1 * detectors + L2] = Ltrues[L1 * detectors + L2] + static_cast<uint16_t>(1);
+							Ltrues[L2 * detectors + L1] = Ltrues[L2 * detectors + L1] + static_cast<uint16_t>(1);
 						}
 						else if (event_scattered && store_scatter) {
-							Lscatter[L1 * detectors + L2] = Lscatter[L1 * detectors + L2] + static_cast<uint16_t>(1);
+							Lscatter[L2 * detectors + L1] = Lscatter[L2 * detectors + L1] + static_cast<uint16_t>(1);
 						}
 					}
 					else {
@@ -370,14 +373,14 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				}
 				else if (!event_true && store_randoms) {
 					if (outsize2 == 1ULL) {
-						Lrandoms[L1 * detectors + L2] = Lrandoms[L1 * detectors + L2] + static_cast<uint16_t>(1);
+						Lrandoms[L2 * detectors + L1] = Lrandoms[L2 * detectors + L1] + static_cast<uint16_t>(1);
 					}
 					else
 						Lrandoms[kk] = 1u;
 				}
 			}
 			if (outsize2 == 1ULL) {
-				LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
+				LL1[L2 * detectors + L1] = LL1[L2 * detectors + L1] + static_cast<uint16_t>(1);
 			}
 			else {
 				LL1[kk] = static_cast<uint16_t>(L1 + 1);
@@ -495,7 +498,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 					L2 = L3;
 				}
 				if (outsize2 == 1ULL) {
-					Ldelay1[L1 * detectors + L2] = Ldelay1[L1 * detectors + L2] + static_cast<uint16_t>(1);
+					Ldelay1[L2 * detectors + L1] = Ldelay1[L2 * detectors + L1] + static_cast<uint16_t>(1);
 				}
 				else {
 					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);

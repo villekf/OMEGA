@@ -24,7 +24,7 @@
 #include <omp.h>
 #endif
 #include <thread>
-extern mxArray* mxCreateSharedDataCopy(const mxArray* pr);
+extern "C" mxArray * mxCreateSharedDataCopy(const mxArray * pr);
 
 
 void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16_t* ringNumber1, const uint16_t* ringNumber2,
@@ -32,7 +32,7 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 	const uint32_t Nang, const uint32_t ring_difference, const uint32_t span, const uint32_t* seg, const double* time, const uint64_t NT, 
 	const uint64_t TOFSize, const double vali, const double alku, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC, uint16_t* SinoR, 
 	const bool store_trues, const bool store_scatter, const bool store_randoms, const int32_t det_per_ring, const int32_t rings, 
-	const int64_t koko, const uint64_t* bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos, 
+	const int64_t koko, const uint16_t* bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos, 
 	const int32_t cryst_per_block) {
 
 #ifdef _OPENMP
@@ -55,7 +55,7 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 			aika = time[kk];
 		uint64_t binN = 0ULL;
 		if (TOFSize > sinoSize)
-			binN = bins[kk];
+			binN = static_cast<uint64_t>(bins[kk]);
 		int32_t ring_pos1 = static_cast<int32_t>(ringPos1[kk]);
 		int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 		int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
@@ -127,7 +127,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	const double alku = (double)mxGetScalar(prhs[17]);
 	const int32_t detPerRing = (int32_t)mxGetScalar(prhs[18]);
 	const int32_t rings = (int32_t)mxGetScalar(prhs[19]);
-	const uint64_t* bins = (uint64_t*)mxGetData(prhs[20]);
+	const uint16_t* bins = (uint16_t*)mxGetData(prhs[20]);
 	const int32_t nDistSide = (int32_t)mxGetScalar(prhs[25]);
 	const int32_t detWPseudo = (int32_t)mxGetScalar(prhs[26]);
 	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[27]);

@@ -309,12 +309,14 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		uint64_t bins = 0;
 		if (TOFSize > sinoSize) {
 			double timeDif = (time2 - time1) / 2. + distribution(generator);
+			if (std::abs(timeDif) > ((binSize / 2.) * nBins))
+				continue;
 			if (ring_pos2 > ring_pos1)
 				timeDif = -timeDif;
-			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize) / binSize));
 			if (timeDif < 0)
 				bins *= 2ULL;
-			else if (bins > 2)
+			else if (bins > 1)
 				bins = bins * 2ULL - 1ULL;
 		}
 		if (storeRawData) {
@@ -329,10 +331,10 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 				if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
 					if (outsize2 == 1ULL) {
 						if (event_true && obtain_trues) {
-							Ltrues[L1 * detectors + L2] = Ltrues[L1 * detectors + L2] + static_cast<octave_uint16>(1);
+							Ltrues[L2 * detectors + L1] = Ltrues[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 						}
 						else if (event_scattered && store_scatter) {
-							Lscatter[L1 * detectors + L2] = Lscatter[L1 * detectors + L2] + static_cast<octave_uint16>(1);
+							Lscatter[L2 * detectors + L1] = Lscatter[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 						}
 					}
 					else {
@@ -344,14 +346,14 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 				}
 				else if (!event_true && store_randoms) {
 					if (outsize2 == 1ULL) {
-						Lrandoms[L1 * detectors + L2] = Lrandoms[L1 * detectors + L2] + static_cast<octave_uint16>(1);
+						Lrandoms[L2 * detectors + L1] = Lrandoms[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 					}
 					else
 						Lrandoms[kk] = 1u;
 				}
 			}
 			if (outsize2 == 1ULL) {
-				LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<octave_uint16>(1);
+				LL1[L2 * detectors + L1] = LL1[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 			}
 			else {
 				LL1[kk] = static_cast<octave_uint16>(L1 + 1);
@@ -478,7 +480,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 					L2 = L3;
 				}
 				if (outsize2 == 1ULL) {
-					Ldelay1[L1 * detectors + L2] = Ldelay1[L1 * detectors + L2] + static_cast<octave_uint16>(1);
+					Ldelay1[L2 * detectors + L1] = Ldelay1[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 				}
 				else {
 					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
