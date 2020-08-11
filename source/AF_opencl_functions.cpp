@@ -1218,7 +1218,7 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 		program = cl::Program(af_context, source);
 		//try {
 			status = program.build(options.c_str());
-			if (status != CL_SUCCESS) {
+			if (status == CL_SUCCESS) {
 				mexPrintf("OpenCL program (64-bit atomics) built\n");
 			}
 		//}
