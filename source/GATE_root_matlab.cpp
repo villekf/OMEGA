@@ -46,7 +46,7 @@ public:
 		const bool obtain_trues = inputs[11][0];
 		const bool store_scatter = inputs[12][0];
 		const bool store_randoms = inputs[13][0];
-		const matlab::data::TypedArray<bool> scatter_components = std::move(inputs[14]);
+		const matlab::data::TypedArray<uint8_t> scatter_components = std::move(inputs[14]);
 		const bool randoms_correction = inputs[15][0];
 		const bool store_coordinates = inputs[16][0];
 		const uint32_t transaxial_multip = inputs[17][0];
@@ -56,7 +56,7 @@ public:
 		const bool TOF = inputs[21][0];
 		size_t outsize2 = (loppu - alku) / vali;
 
-		bool dynamic = false;
+		bool dynamic = outsize2 > 1 ? true : false;
 
 
 		matlab::data::CharArray newName(inputs[0]);
@@ -94,53 +94,52 @@ public:
 		matlab::data::TypedArray<float> z1 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> z2 = factory.createArray<float>({ 1, 1 });
 
-			if (outsize2 == 1ULL && !large_case) {
-				if (obtain_trues) {
-					Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
-					std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
-				}
-				if (store_randoms) {
-					Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
-					std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
-				}
-				if (store_scatter) {
-					Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
-					std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
-				}
-				if (randoms_correction) {
-					Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
-					Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
-					std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
-				}
-				LL1 = factory.createArray<uint16_t>({ detectors, detectors });
-				std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+		if (outsize2 == 1ULL && !large_case) {
+			if (obtain_trues) {
+				Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
-			else {
-				LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
-				LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
-				std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
-				std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
+			if (store_randoms) {
+				Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
+			}
+			if (store_scatter) {
+				Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
+				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
+			}
+			if (randoms_correction) {
+				Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
+				Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
+				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+			}
+			LL1 = factory.createArray<uint16_t>({ detectors, detectors });
+			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+		}
+		else {
+			LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
+			LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
+			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+			std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
 
-				if (obtain_trues) {
-					Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
-					std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
-				}
-				if (store_randoms) {
-					Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
-					std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
-				}
-				if (store_scatter) {
-					Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
-					std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
-				}
-				if (randoms_correction) {
-					Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
-					Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
-					std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
-					std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
-				}
-				dynamic = true;
+			if (obtain_trues) {
+				Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
+			if (store_randoms) {
+				Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
+			}
+			if (store_scatter) {
+				Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
+			}
+			if (randoms_correction) {
+				Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
+				Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
+				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+				std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
+			}
+		}
 		if (store_coordinates) {
 			x1 = factory.createArray<float>({ Nentries, 1 });
 			std::fill(x1.begin(), x1.end(), 0.f);
@@ -188,9 +187,7 @@ public:
 			std::fill(scatter_loc.begin(), scatter_loc.end(), false);
 		}
 		matlab::data::TypedArray<double> TP = factory.createArray<double>({ 1, 1 });
-		if (dynamic && !TOF)
-			TP = factory.createArray<double>({ Nentries, 1 });
-		else if (!dynamic && TOF)
+		if ((dynamic && !TOF) || (!dynamic && TOF))
 			TP = factory.createArray<double>({ Nentries, 1 });
 		else if (dynamic && TOF)
 			TP = factory.createArray<double>({ Nentries, 2 });
@@ -259,7 +256,7 @@ public:
 	void histogram(matlab::data::TypedArray<uint16_t>& LL1, matlab::data::TypedArray<uint16_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu, 
 		const size_t outsize2, const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,	const uint32_t det_per_ring, 
 		matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
-		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<bool> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, 
+		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<uint8_t> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, 
 		matlab::data::TypedArray<uint16_t>& Lscatter, matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, 
 		TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2, matlab::data::TypedArray<int32_t>& int_loc_delay, 
 		matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc,
@@ -364,12 +361,19 @@ public:
 		}
 		if (Coincidences->GetBranchStatus("time1"))
 			Coincidences->SetBranchAddress("time1", &time1);
+		else {
+			if (TOF) {
+				std::ostringstream stream;
+				stream << "TOF examination selected, but no time information was found from file. Aborting." << std::endl;
+				return;
+			}
+		}
 		if (Coincidences->GetBranchStatus("time2"))
 			Coincidences->SetBranchAddress("time2", &time2);
 		else {
-			if (dynamic) {
+			if (dynamic || TOF) {
 				std::ostringstream stream;
-				stream << "Dynamic examination selected, but no time information was found from file. Aborting." << std::endl;
+				stream << "Dynamic or TOF examination selected, but no time information was found from file. Aborting." << std::endl;
 				return;
 			}
 			no_time = true;
@@ -449,7 +453,7 @@ public:
 			else
 				any++;
 
-			if (store_scatter && any == 2 && scatter_components[0]) {
+			if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 				std::ostringstream stream;
 				stream << "Compton phantom selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
@@ -467,7 +471,7 @@ public:
 			else
 				any++;
 
-			if (store_scatter && ((any == 4 && next == 1) || (any == 2 && next == 0)) && scatter_components[1]) {
+			if (store_scatter && ((any == 4 && next == 1) || (any == 2 && next == 0)) && scatter_components[1] >= 1) {
 				std::ostringstream stream;
 				stream << "Compton crystal selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
@@ -486,7 +490,7 @@ public:
 			else
 				any++;
 
-			if (store_scatter && ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1)) && scatter_components[2]) {
+			if (store_scatter && ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1)) && scatter_components[2] >= 1) {
 				std::ostringstream stream;
 				stream << "Rayleigh phantom selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
@@ -506,7 +510,7 @@ public:
 				any++;
 			//}
 
-			if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3]) {
+			if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3] >= 1) {
 				std::ostringstream stream;
 				stream << "Rayleigh crystal selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
@@ -552,13 +556,13 @@ public:
 
 			if (!dynamic && TOF) {
 				double aika = (time2 - time1) / 2.;
-				if (ring_pos2 > ring_pos2)
+				if (ring_pos2 > ring_pos1)
 					aika = -aika;
 				TP[kk] = aika;
 			}
 			else if (dynamic && TOF) {
 				double aika = (time2 - time1) / 2.;
-				if (ring_pos2 > ring_pos2)
+				if (ring_pos2 > ring_pos1)
 					aika = -aika;
 				TP[kk][1] = aika;
 			}
@@ -579,22 +583,22 @@ public:
 				if (event_true && (obtain_trues || store_scatter)) {
 					if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 						event_true = false;
-						if (store_scatter && scatter_components[0])
+						if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
 							event_scattered = true;
 					}
 					else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
 						event_true = false;
-						if (store_scatter && scatter_components[1])
+						if (store_scatter && scatter_components[1] > 0 && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
 							event_scattered = true;
 					}
 					else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
 						event_true = false;
-						if (store_scatter && scatter_components[2])
+						if (store_scatter && scatter_components[2] > 0 && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
 							event_scattered = true;
 					}
 					else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
 						event_true = false;
-						if (store_scatter && scatter_components[3])
+						if (store_scatter && scatter_components[3] > 0 && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
 							event_scattered = true;
 					}
 				}

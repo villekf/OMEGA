@@ -678,20 +678,24 @@ elseif options.use_machine == 0
             end
             if options.store_scatter
                 scatter_index = false(size(M,1),1);
-                if options.scatter_components(1)
-                    ind = (M(:,ascii_ind.scatter_index_cp1) > 0 | M(:,ascii_ind.scatter_index_cp2) > 0) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
+                if options.scatter_components(1) > 0
+                    ind = (M(:,ascii_ind.scatter_index_cp1) >= options.scatter_components(1) | ...
+                        M(:,ascii_ind.scatter_index_cp2) >= options.scatter_components(1)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(2)
-                    ind = (M(:,ascii_ind.scatter_index_cd1) > 0 | M(:,ascii_ind.scatter_index_cd2) > 0) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
+                if options.scatter_components(2) > 0
+                    ind = (M(:,ascii_ind.scatter_index_cd1) >= options.scatter_components(2) | ...
+                        M(:,ascii_ind.scatter_index_cd2) >= options.scatter_components(2)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(3)
-                    ind = (M(:,ascii_ind.scatter_index_rp1) > 0 | M(:,ascii_ind.scatter_index_rp2) > 0) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
+                if options.scatter_components(3) > 0
+                    ind = (M(:,ascii_ind.scatter_index_rp1) >= options.scatter_components(3) | ...
+                        M(:,ascii_ind.scatter_index_rp2) >= options.scatter_components(3)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(4)
-                    ind = (M(:,ascii_ind.scatter_index_rd1) > 0 | M(:,ascii_ind.scatter_index_rd2) > 0) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
+                if options.scatter_components(4) > 0
+                    ind = (M(:,ascii_ind.scatter_index_rd1) >= options.scatter_components(4) | ...
+                        M(:,ascii_ind.scatter_index_rd2) >= options.scatter_components(4)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
             end
@@ -773,15 +777,27 @@ elseif options.use_machine == 0
                     ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
                 end
             
-                if options.TOF_bins > 1
+                if TOF
                     TOF_data = (M(:,ascii_ind.time_index2) - M(:,ascii_ind.time_index)) / 2;
                     TOF_data(ring_pos2 > ring_pos1) = -TOF_data(ring_pos2 > ring_pos1);
-                    var_t = (options.TOF_FWHM/(2*sqrt(2*log(2))))^2;%options.TOF_FWHM is the wanted time accuracy
-                    TOF_data = TOF_data + sqrt(var_t)*randn(size(TOF_data)); %TOF_data with added error
-                    edges = linspace(-options.TOF_width * (options.TOF_bins / 2), options.TOF_width * (options.TOF_bins / 2), options.TOF_bins + 1);
-                    [~,~,bins] = histcounts(TOF_data,edges);
+                    [bins, discard] = FormTOFBins(options, TOF_data);
+                    ring_number1(discard) = [];
+                    ring_number2(discard) = [];
+                    ring_pos1(discard) = [];
+                    ring_pos2(discard) = [];
+                    timeI(discard) = [];
+                    if options.obtain_trues
+                        trues_index(discard) = [];
+                    end
+                    if options.store_scatter
+                        scatter_index(discard) = [];
+                    end
+                    if options.store_randoms
+                        randoms_index(discard) = [];
+                    end
+                    clear discard
                 else
-                    bins = [];
+                    bins = 0;
                 end
                 
                 if ~options.use_raw_data
@@ -789,19 +805,19 @@ elseif options.use_machine == 0
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCII(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint64(bins - 1), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                     elseif exist('OCTAVE_VERSION','builtin') == 5
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint64(bins - 1), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                     else
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint64(bins - 1), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                     end
                 end
@@ -1067,7 +1083,7 @@ elseif options.use_machine == 0
         blocks_per_ring = uint32(blocks_per_ring);
         cryst_per_block = uint32(cryst_per_block);
         det_per_ring = uint32(det_per_ring);
-        scatter_components = logical(options.scatter_components);
+        scatter_components = uint8(options.scatter_components);
         lisays = uint16(1);
         large_case = false;
         
@@ -1177,19 +1193,30 @@ elseif options.use_machine == 0
                     ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
                     ringPos1 = mod(L1 - 1, uint16(det_per_ring));
                     ringPos2 = mod(L2 - 1, uint16(det_per_ring));
-                    time = alku;
                     if TOF
-                        var_t = (options.TOF_FWHM/(2*sqrt(2*log(2))))^2;%options.TOF_FWHM is the wanted time accuracy
-                        TOF_data = time(~ind,1) + sqrt(var_t)*randn(size(TOF_data)); %TOF_data with added error
-                        edges = linspace(-options.TOF_width * (options.TOF_bins / 2), options.TOF_width * (options.TOF_bins / 2), options.TOF_bins + 1);
-                        [~,~,bins] = histcounts(TOF_data,edges);
+                        [bins, discard] = FormTOFBins(options, time(~ind,1));
+                        ringNumber1(discard) = [];
+                        ringNumber2(discard) = [];
+                        ringPos1(discard) = [];
+                        ringPos2(discard) = [];
+                        if options.obtain_trues
+                            trues_index(discard) = [];
+                        end
+                        if options.store_scatter
+                            scatter_index(discard) = [];
+                        end
+                        if options.store_randoms
+                            randoms_index(discard) = [];
+                        end
+                        clear discard
                     else
-                        bins = 1;
+                        bins = 0;
+                        time = alku;
                     end
                     [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, trues_index, scatter_index, ...
                         randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                         uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), time, uint64(options.partitions), ...
-                        alku, int32(options.det_per_ring), int32(options.rings), uint64(bins - 1), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
+                        alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
                         int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                     if options.randoms_correction
                         Ldelay1(Ldelay1 == 0) = [];
@@ -1202,7 +1229,7 @@ elseif options.use_machine == 0
                         [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, logical([]), logical([]), ...
                             logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize, time, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint64(bins - 1), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                     end
                 end
@@ -1288,19 +1315,31 @@ elseif options.use_machine == 0
                         ringNumber2(ind) = [];
                         ringPos1(ind) = [];
                         ringPos2(ind) = [];
-                        time(ind,1) = [];
+                        time(ind,:) = [];
                         if TOF
-                            var_t = (options.TOF_FWHM/(2*sqrt(2*log(2))))^2;%options.TOF_FWHM is the wanted time accuracy
-                            TOF_data = time(~ind,2) + sqrt(var_t)*randn(size(TOF_data)); %TOF_data with added error
-                            edges = linspace(-options.TOF_width * (options.TOF_bins / 2), options.TOF_width * (options.TOF_bins / 2), options.TOF_bins + 1);
-                            [~,~,bins] = histcounts(TOF_data,edges);
+                            [bins, discard] = FormTOFBins(options, time);
+                            ringNumber1(discard) = [];
+                            ringNumber2(discard) = [];
+                            ringPos1(discard) = [];
+                            ringPos2(discard) = [];
+                            time(discard,:) = [];
+                            if options.obtain_trues
+                                trues_index(discard) = [];
+                            end
+                            if options.store_scatter
+                                scatter_index(discard) = [];
+                            end
+                            if options.store_randoms
+                                randoms_index(discard) = [];
+                            end
+                            clear discard
                         else
-                            bins = 1;
+                            bins = 0;
                         end
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), time(:,1), uint64(options.partitions), ...
-                            alku, int32(options.det_w_pseudo), int32(options.rings), uint64(bins - 1), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
+                            alku, int32(options.det_w_pseudo), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                         if options.randoms_correction
                             ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
@@ -1316,7 +1355,7 @@ elseif options.use_machine == 0
                             [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, logical([]), logical([]), ...
                                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize, timeD, uint64(options.partitions), ...
-                                alku, int32(options.det_w_pseudo), int32(options.rings), uint64(bins - 1), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
+                                alku, int32(options.det_w_pseudo), int32(options.rings), uint16(bins), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
                                 int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                         end
                     end

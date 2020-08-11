@@ -26,7 +26,7 @@ extern "C" mxArray * mxCreateSharedDataCopy(const mxArray * pr);
 void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, const double alku, const double loppu, const size_t outsize2, 
 	const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring, 
 	const uint32_t det_per_ring, float* S, float* output, TTree *Coincidences, const int64_t Nentries, const double* time_intervals, int* int_loc, 
-	bool obtain_trues, bool store_scatter, bool store_randoms, const bool* scatter_components, uint16_t* Ltrues, uint16_t* Lscatter, 
+	bool obtain_trues, bool store_scatter, bool store_randoms, const uint8_t* scatter_components, uint16_t* Ltrues, uint16_t* Lscatter,
 	uint16_t* Lrandoms, bool* trues_loc, const int64_t Ndelays, bool randoms_correction, TTree *delay, uint16_t * Ldelay1, uint16_t * Ldelay2,
 	int* int_loc_delay, uint32_t * tpoints_delay, bool* randoms_loc, bool* scatter_loc, float* x1, float* x2, float* y1, float* y2, float* z1, float* z2, 
 	bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings,
@@ -202,7 +202,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		else
 			any++;
 
-		if (store_scatter && any == 2 && scatter_components[0] == 1) {
+		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			mexPrintf("Compton phantom selected, but no scatter data was found from ROOT-file\n");
 		}
 		if (any == 2)
@@ -216,7 +216,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		else
 			any++;
 
-		if (store_scatter && ((any == 4 && next == 1) || (any == 2 && next == 0)) && scatter_components[1] == 1) {
+		if (store_scatter && ((any == 4 && next == 1) || (any == 2 && next == 0)) && scatter_components[1] >= 1) {
 			mexPrintf("Compton crystal selected, but no scatter data was found from ROOT-file\n");
 		}
 
@@ -231,7 +231,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		else
 			any++;
 
-		if (store_scatter && ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1)) && scatter_components[2] == 1) {
+		if (store_scatter && ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1)) && scatter_components[2] >= 1) {
 			mexPrintf("Rayleigh phantom selected, but no scatter data was found from ROOT-file\n");
 		}
 
@@ -246,7 +246,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		else
 			any++;
 
-		if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3] == 1) {
+		if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3] >= 1) {
 			mexPrintf("Rayleigh crystal selected, but no scatter data was found from ROOT-file\n");
 		}
 
@@ -301,22 +301,22 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			if (event_true && (obtain_trues || store_scatter)) {
 				if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[0])
+					if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[1])
+					if (store_scatter && scatter_components[1] > 0 && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[2])
+					if (store_scatter && scatter_components[2] > 0 && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[3])
+					if (store_scatter && scatter_components[3] > 0 && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
 						event_scattered = true;
 				}
 			}
@@ -578,7 +578,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	bool obtain_trues = (bool)mxGetScalar(prhs[11]);
 	bool store_scatter = (bool)mxGetScalar(prhs[12]);
 	bool store_randoms = (bool)mxGetScalar(prhs[13]);
-	bool* scatter_components = (bool*)mxGetData(prhs[14]);
+	uint8_t* scatter_components = (uint8_t*)mxGetData(prhs[14]);
 	bool randoms_correction = (bool)mxGetScalar(prhs[15]);
 	bool store_coordinates = (bool)mxGetScalar(prhs[16]);
 	uint32_t cryst_per_block_z = (uint32_t)mxGetScalar(prhs[17]);

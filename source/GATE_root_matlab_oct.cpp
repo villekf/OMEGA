@@ -7,7 +7,7 @@
 void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, double vali, const double alku, const double loppu, const size_t outsize2,
 	const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,
 	const uint32_t det_per_ring, float* S, TTree* Coincidences, const int64_t Nentries, const double* time_intervals, octave_int32* int_loc,
-	bool obtain_trues, bool store_scatter, bool store_randoms, const bool* scatter_components, octave_uint16* Ltrues, octave_uint16* Lscatter,
+	bool obtain_trues, bool store_scatter, bool store_randoms, const uint8_t* scatter_components, octave_uint16* Ltrues, octave_uint16* Lscatter,
 	octave_uint16* Lrandoms, bool* trues_loc, const int64_t Ndelays, bool randoms_correction, TTree* delay, octave_uint16* Ldelay1, octave_uint16* Ldelay2,
 	octave_int32* int_loc_delay, octave_uint32* tpoints_delay, bool* randoms_loc, bool* scatter_loc, float* x1, float* x2, float* y1, float* y2, 
 	float* z1, float* z2, bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings, 
@@ -182,7 +182,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		else
 			any++;
 
-		if (store_scatter && any == 2 && scatter_components[0]) {
+		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton phantom selected, but no scatter data was found from ROOT-file\n";
 		}
 		if (Coincidences->GetBranchStatus("comptonCrystal1"))
@@ -194,7 +194,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		else
 			any++;
 
-		if (store_scatter && any == 2 && scatter_components[0]) {
+		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton crystal selected, but no scatter data was found from ROOT-file\n";
 		}
 		if (Coincidences->GetBranchStatus("RayleighPhantom1"))
@@ -206,7 +206,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		else
 			any++;
 
-		if (store_scatter && any == 2 && scatter_components[0]) {
+		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh phantom selected, but no scatter data was found from ROOT-file\n";
 		}
 		if (Coincidences->GetBranchStatus("RayleighCrystal1"))
@@ -218,7 +218,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		else
 			any++;
 
-		if (store_scatter && any == 2 && scatter_components[0]) {
+		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh crystal selected, but no scatter data was found from ROOT-file\n";
 		}
 
@@ -274,22 +274,22 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			if (event_true && (obtain_trues || store_scatter)) {
 				if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[0])
+					if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[1])
+					if (store_scatter && scatter_components[1] > 0 && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[2])
+					if (store_scatter && scatter_components[2] > 0 && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
 						event_scattered = true;
 				}
 				else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[3])
+					if (store_scatter && scatter_components[3] > 0 && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
 						event_scattered = true;
 				}
 			}
@@ -532,7 +532,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	bool obtain_trues = prhs(11).bool_value();
 	bool store_scatter = prhs(12).bool_value();
 	bool store_randoms = prhs(13).bool_value();
-	boolNDArray scatter_components = prhs(14).bool_array_value();
+	uint8NDArray scatter_components = prhs(14).uint8_array_value();
 	bool randoms_correction = prhs(15).bool_value();
 	bool store_coordinates = prhs(16).bool_value();
 	uint32_t cryst_per_block_z = prhs(17).uint32_scalar_value();
@@ -558,7 +558,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	double binSize = prhs(37).scalar_value();
 	double FWHM = prhs(38).scalar_value();
 	size_t outsize2 = (loppu - alku) / vali;
-	const bool* scatter_components_p = scatter_components.fortran_vec();
+	const uint8_t* scatter_components_p = reinterpret_cast<uint8_t*>(scatter_components.fortran_vec());
 	const double* time_intervals_p = time_intervals.fortran_vec();
 	const octave_uint32* seg_p = seg.fortran_vec();
 
