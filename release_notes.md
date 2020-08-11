@@ -106,6 +106,9 @@
   
 - Added support for GATE submodules
   - The repeated component that includes the crystals can be either RSector/Block, Module or Submodule, i.e. both modules and submodules can be omitted
+  
+- It is now possible to save only scattered coincidences that have undergone N scatter events in the same medium and with the same type (e.g. Compton in phantom)
+  - For example, by setting `options.scatter_components = [2 0 0 0];`, only scattered events that have undergone at least two Compton scatter events in the phantom will be stored in the scatter data
 
 ### Bug fixes and enhancements
 
