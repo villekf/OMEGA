@@ -112,12 +112,13 @@ if options.implementation == 1
                     % NOTE: The below method is not
                     % recommended since it is much slower
                     % method.
-                    [ lor, indices, alkiot, discard] = improved_siddon_atten( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, ...
+                    [ lor, indices, alkiot, discard] = improved_siddon_atten( int32(options.Ny), int32(options.Nx), int32(options.Nz), options.dx, options.dz, options.by, options.bx, options.bz, ...
                         options.z_det, options.x, options.y, options.yy, options.xx, options.NSinos, options.NSlices, options.vaimennus, options.index{osa_iter}, ...
                         options.pituus(osa_iter), options.attenuation_correction);
                     alkiot = cell2mat(alkiot);
                     indices = indices(discard);
                     indices = cell2mat(indices) - 1;
+                    lor = lor(:,2);
                 end
             else
                 error('Unsupported projector type')

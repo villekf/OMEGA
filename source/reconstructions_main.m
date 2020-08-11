@@ -1312,11 +1312,12 @@ else
                                         % NOTE: The below method is not
                                         % recommended since it is much slower
                                         % method.
-                                        [ lor, indices, alkiot, ~] = improved_siddon_atten( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
+                                        [ lor, indices, alkiot, ~] = improved_siddon_atten( int32(Ny), int32(Nx), int32(Nz), dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
                                             NSinos, NSlices, options.vaimennus, index(pituus(osa_iter)+1:pituus(osa_iter + 1)), pituus(osa_iter + 1) - pituus(osa_iter), ...
                                             attenuation_correction);
                                         alkiot = cell2mat(alkiot);
                                         indices = cell2mat(indices) - 1;
+                                        lor = lor(:,2);
                                     end
                                     % Orthogonal distance based
                                 elseif options.projector_type == 2
