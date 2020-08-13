@@ -20,7 +20,7 @@ function [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram)
 % with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-mashing = options.det_w_pseudo / options.Nang / 2;
+% mashing = options.det_w_pseudo / options.Nang / 2;
 orig_xp = xp;
 orig_yp = yp;
 [x_o, y_o] = sinogram_coordinates_2D(options, orig_xp, orig_yp);
@@ -113,54 +113,6 @@ xx1 = reshape(x(:,1),options.Ndist,options.Nang);
 xx2 = reshape(x(:,2),options.Ndist,options.Nang);
 yy1 = reshape(y(:,1),options.Ndist,options.Nang);
 yy2 = reshape(y(:,2),options.Ndist,options.Nang);
-
-% Exchange coordinates
-testi = abs(diff(xx1));
-[I,J] = find(testi > options.cr_p*2);
-testi2 = abs(diff(J));
-ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-if xx1(1,J(ind1)) <= xx1(1,J(ind1) + 1)
-    indices2 = J(ind1) + 1 : - 1 : 1;
-    indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-elseif xx1(1,J(ind1)) <= xx1(2,J(ind1))
-    indices2 = J(ind1) : - 1 : 1;
-    indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing * 2)'];
-else
-    indices2 = J(ind1) : - 1 : 1;
-    indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-end
-indices1 = false(size(xx1));
-for kk = 1 : I(1)
-    indices1(kk,1:indices2(kk)) = true(indices2(kk),1);
-end
-testi = abs(diff(fliplr(xx1)));
-[I,J] = find(testi > options.cr_p*2);
-testi2 = abs(diff(J));
-ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-if xx1(1,options.Nang - J(ind1) + 1) >= xx1(2,options.Nang - J(ind1) + 1)
-    indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-    indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing * 2)'];
-elseif xx1(1,options.Nang - J(ind1) + 1) >= xx1(1,options.Nang - J(ind1))
-    indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-    indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-else
-    indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-    indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-end
-for kk = 1 : I(1)
-    indices1(kk,indices2(kk):end) = true(length(indices1(kk,indices2(kk):end)),1);
-end
-temp = xx1(indices1);
-xx1(indices1) = xx2(indices1);
-xx2(indices1) = temp;
-temp = yy1(indices1);
-yy1(indices1) = yy2(indices1);
-yy2(indices1) = temp;
-
-x(:,1) = xx1(:);
-x(:,2) = xx2(:);
-y(:,1) = yy1(:);
-y(:,2) = yy2(:);
 
 % y_orig = y;
 % x_orig = x;

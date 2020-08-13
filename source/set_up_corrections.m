@@ -97,6 +97,11 @@ if (options.normalization_correction && options.corrections_during_reconstructio
     if ~options.use_raw_data && options.NSinos ~= options.TotSinos
         options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
     end
+    if options.sampling > 1
+        options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+        options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.normalization = options.normalization(:);
+    end
 elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
     normalization_correction = true;
     if ~isfield(options,'normalization')
@@ -136,6 +141,11 @@ elseif options.normalization_correction && options.use_user_normalization && opt
     if ~options.use_raw_data && options.NSinos ~= options.TotSinos
         options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
     end
+    if options.sampling > 1
+        options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+        options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.normalization = options.normalization(:);
+    end
 elseif options.normalization_correction && options.use_raw_data && ~options.corrections_during_reconstruction
     normalization_correction = false;
     if options.use_user_normalization
@@ -169,6 +179,11 @@ elseif options.normalization_correction && options.use_raw_data && ~options.corr
             normalization = loadStructFromFile(norm_file,'normalization');
         end
         normalization = normalization(:);
+    end
+    if options.sampling > 1
+        options.normalization = reshape(options.normalization, options.Ndist, options.Nang, options.NSinos);
+        options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.normalization = options.normalization(:);
     end
     for kk = 1 : options.partitions
         options.SinM{kk} = options.SinM{kk} .* double(normalization);
@@ -540,6 +555,16 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                 end
             end
         end
+    end
+    if options.sampling > 1
+        options.SinDelayed = reshape(options.SinDelayed, options.Ndist, options.Nang, options.NSinos);
+        options.SinDelayed = interpolateSinog(options.SinDelayed, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.SinDelayed = options.SinDelayed(:);
+    end
+    if ~options.subtract_scatter && options.scatter_correction && options.sampling > 1
+        options.ScatterC = reshape(options.ScatterC, options.Ndist, options.Nang, options.NSinos);
+        options.ScatterC = interpolateSinog(options.ScatterC, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.ScatterC = options.ScatterC(:);
     end
 else
     randoms_correction = false;

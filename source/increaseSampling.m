@@ -55,53 +55,9 @@ else
     xx2 = reshape(x(:,2),options.Ndist,options.Nang);
     yy1 = reshape(y(:,1),options.Ndist,options.Nang);
     yy2 = reshape(y(:,2),options.Ndist,options.Nang);
-    mashing = options.det_w_pseudo / options.Nang / 2;
     
     % If no arc correction is present
-    if ~options.arc_correction
-        % Swap corners, make the data continuous
-        testi = abs(diff(xx1));
-        [I,J] = find(testi > options.cr_p*2);
-        testi2 = abs(diff(J));
-        ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-        if xx1(1,J(ind1)) <= xx1(1,J(ind1) + 1)
-            indices2 = J(ind1) + 1 : - 1 : 1;
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        elseif xx1(1,J(ind1)) <= xx1(2,J(ind1))
-            indices2 = J(ind1) : - 1 : 1;
-            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        else
-            indices2 = J(ind1) : - 1 : 1;
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        end
-        indices1 = false(size(xx1));
-        for kk = 1 : I(1)
-            indices1(kk,1:indices2(kk)) = true(indices2(kk),1);
-        end
-        testi = abs(diff(fliplr(xx1)));
-        [I,J] = find(testi > options.cr_p*2);
-        testi2 = abs(diff(J));
-        ind1 = find(testi2 > mean(testi2)*2, 1, 'first');
-        if xx1(1,options.Nang - J(ind1) + 1) >= xx1(2,options.Nang - J(ind1) + 1)
-            indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-            indices2 = [indices2(1);indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        elseif xx1(1,options.Nang - J(ind1) + 1) >= xx1(1,options.Nang - J(ind1))
-            indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        else
-            indices2 = options.Nang - J(ind1) + 1 : options.Nang;
-            indices2 = [indices2(1);repelem(indices2(2:end),mashing * 2)'];
-        end
-        for kk = 1 : I(1)
-            indices1(kk,indices2(kk):end) = true(length(indices1(kk,indices2(kk):end)),1);
-        end
-        temp = xx1(indices1);
-        xx1(indices1) = xx2(indices1);
-        xx2(indices1) = temp;
-        temp = yy1(indices1);
-        yy1(indices1) = yy2(indices1);
-        yy2(indices1) = temp;
-        
+    if ~options.arc_correction        
         
         minimix = min(x(:));
         minimiy = min(y(:));
@@ -201,31 +157,10 @@ else
     x = xx;
     y = yy;
     
-    % Interpolat the sinogram
+    % Interpolate the sinogram
     if interpolateSinogram
         
-        if iscell(options.SinM)
-            SinM_uus = cell(size(options.SinM));
-            for hh = 1 : options.partitions
-                SinM_uus{hh} = zeros(size(options.SinM{hh},1)*options.sampling, size(options.SinM{hh},2),size(options.SinM{hh},3),'single');
-                for kk = 1 : size(options.SinM{hh},3)
-                    for ll = 1 : size(options.SinM{hh},2)
-                        SinM_uus{hh}(:,ll,kk) = single(interp1(1:options.sampling:options.Ndist*options.sampling+1, double([options.SinM{hh}(:,ll,kk);options.SinM{hh}(end - 1,ll,kk)]), ...
-                            1:options.Ndist*options.sampling, options.sampling_interpolation_method));
-                    end
-                end
-            end
-            options.SinM = SinM_uus;
-        else
-            SinM_uus = zeros(size(options.SinM,1)*options.sampling, size(options.SinM,2),size(options.SinM,3));
-            for kk = 1 : size(options.SinM,3)
-                for ll = 1 : size(options.SinM,2)
-                    SinM_uus(:,ll,kk) = interp1(1:options.sampling:options.Ndist*options.sampling+1, double([options.SinM(:,ll,kk);options.SinM(end - 1,ll,kk)]), ...
-                        1:options.Ndist*options.sampling, options.sampling_interpolation_method);
-                end
-            end
-            options.SinM = single(SinM_uus);
-        end
+        options.SinM = interpolateSinog(options.SinM, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
         if options.verbose
             disp(['Sinogram sampling increased by ' num2str(options.sampling) 'x'])
         end
