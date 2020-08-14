@@ -349,13 +349,13 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			const bool use_psf = (bool)mxGetScalar(prhs[ind]);
 			ind++;
 
+			const size_t outSize3 = static_cast<size_t>(Nx) * static_cast<size_t>(Ny) * static_cast<size_t>(Nz);
 			size_t outSize;
-			if (size_rhs == Nx * Ny * Nz)
+			if (size_rhs == outSize3)
 				outSize = pituus[0];
 			else
-				outSize = Nx * Ny * Nz;
+				outSize = outSize3;
 			const size_t outSize2 = 1;
-			const size_t outSize3 = Nx * Ny * Nz;
 
 			const uint16_t TotSinos = size_z / 2ULL;
 
@@ -434,7 +434,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			ind++;
 
 			const size_t outSize = Nx * Ny * Nz;
-			const size_t outSize2 = Niter + 1u;
+			size_t Ni = 0U;
+			const bool saveIter = (bool)mxGetScalar(mxGetField(prhs[ind], 0, "save_iter"));
+			if (saveIter)
+				Ni = static_cast<size_t>(Niter);
+			const size_t outSize2 = Ni + 1ULL;
 
 			// Create the output cell array
 			mxArray *cell_array_ptr;

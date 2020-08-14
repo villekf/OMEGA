@@ -44,8 +44,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	// Number of voxels in a single image
 	const uint32_t Nxy = Nx * Ny;
 	const bool deblur = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
+	const bool saveIter = (bool)mxGetScalar(mxGetField(options, 0, "save_iter"));
 
-	const mwSize dimmi[2] = { static_cast<mwSize>(Nx * Ny * Nz), static_cast<mwSize>(Niter + 1) };
+	size_t Ni = 0ULL;
+	if (saveIter)
+		Ni = static_cast<size_t>(Niter);
+	const mwSize dimmi[2] = { static_cast<mwSize>(Nx) * static_cast<mwSize>(Ny) * static_cast<mwSize>(Nz), static_cast<mwSize>(Ni + 1ULL) };
 
 	// Output matrix
 	mxArray* mlem = mxCreateNumericArray(2, dimmi, mxSINGLE_CLASS, mxREAL);
@@ -732,9 +736,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		for (cl_uint i = 0u; i < num_devices_context; i++) {
 			status = commandQueues[i].finish();
 		}
+		uint32_t it = 0U;
 
 		// Iterations
 		for (uint32_t iter = 0u; iter < Niter; iter++) {
+			if (saveIter)
+				it = iter + 1U;
 
 			// Do not recompute the normalization constant after the first iteration
 			if (iter >= 1u && compute_norm_matrix == 0u)
@@ -1111,7 +1118,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				// Transfer estimate data back to host
 				//status = clEnqueueReadBuffer(commandQueues[0], d_mlem[0], CL_TRUE, 0, sizeof(float) * im_dim, &ele_ml[im_dim * (iter + 1u)], 1, &events[0][1], 
 				//	&events[0][2]);
-				status = commandQueues[0].enqueueReadBuffer(d_mlem[0], CL_FALSE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * (iter + 1u)], &events2, &events3[0]);
+				status = commandQueues[0].enqueueReadBuffer(d_mlem[0], CL_FALSE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * it], &events2, &events3[0]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -1119,7 +1126,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 
 				// Transfer estimate data to secondary devices
 				for (cl_uint i = 1u; i < num_devices_context; i++) {
-					status = commandQueues[0].enqueueWriteBuffer(d_mlem[0], CL_FALSE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * (iter + 1u)], &events3);
+					status = commandQueues[0].enqueueWriteBuffer(d_mlem[0], CL_FALSE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * it], &events3);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
@@ -1209,7 +1216,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					//status = clEnqueueCopyBuffer(commandQueues[0], d_mlem_apu_toka, d_mlem_blurred[0], 0, 0, im_dim * sizeof(float), NULL, NULL, NULL);
 				}
 				status = commandQueues[0].finish();
-				status = commandQueues[0].enqueueReadBuffer(d_mlem_apu_neljas, CL_TRUE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * (iter + 1u)]);
+				status = commandQueues[0].enqueueReadBuffer(d_mlem_apu_neljas, CL_TRUE, 0, sizeof(cl_float) * im_dim, &ele_ml[im_dim * it]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;

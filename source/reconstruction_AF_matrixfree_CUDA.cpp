@@ -51,7 +51,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	const size_t size_of_x, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute,
 	const uint32_t device, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const bool use_64bit_atomics, uint32_t n_rekos,
 	const uint32_t n_rekos_mlem, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const float global_factor, const float bmin, const float bmax,
-	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss) {
+	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss, const bool saveIter) {
 
 	// Number of voxels
 	const uint32_t Nxy = Nx * Ny;
@@ -150,7 +150,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	CUDA_im_vectors vec_cuda;
 
 	// Load the necessary data from the MATLAB input and form the necessary variables
-	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf);
+	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter);
 
 	// Power factor for ACOSEM
 	w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
@@ -682,10 +682,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 				}
 
-				computeOSEstimatesIter(vec, w_vec, MethodList, im_dim, epps, iter, osa_iter0, subsets, beta, Nx, Ny, Nz, data, n_rekos2, CUDAStruct);
+				computeOSEstimatesIter(vec, w_vec, MethodList, im_dim, epps, iter, osa_iter0, subsets, beta, Nx, Ny, Nz, data, n_rekos2, CUDAStruct, saveIter);
 
-				if (use_psf && w_vec.deconvolution && osem_bool) {
-					computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps);
+				if (use_psf && w_vec.deconvolution && osem_bool && (saveIter || (!saveIter && iter == Niter - 1))) {
+					computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
 				}
 
 				if (osem_bool && compute_norm_matrix == 0u)
@@ -823,13 +823,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					af::sync();
 				}
 
-				computeMLEstimates(vec, w_vec, MethodList, im_dim, epps, iter, subsets, beta, Nx, Ny, Nz, data, Summ_mlem, break_iter, CUDAStruct);
+				computeMLEstimates(vec, w_vec, MethodList, im_dim, epps, iter, subsets, beta, Nx, Ny, Nz, data, Summ_mlem, break_iter, CUDAStruct, saveIter);
 
 				if (no_norm_mlem == 0u)
 					no_norm_mlem = 1u;
 
-				if (use_psf && w_vec.deconvolution) {
-					computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps);
+				if (use_psf && w_vec.deconvolution && (saveIter || (!saveIter && iter == Niter - 1))) {
+					computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
 				}
 				if (verbose) {
 					mexPrintf("MLEM iteration %d complete\n", iter + 1u);

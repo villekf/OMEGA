@@ -3,9 +3,13 @@
 using namespace af;
 
 void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, const float epps, const uint32_t iter, const uint32_t subsets, 
-	const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const TVdata& data, const af::array& Summ_mlem, bool& break_iter, const kernelStruct& OpenCLStruct)
+	const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const TVdata& data, const af::array& Summ_mlem, bool& break_iter, const kernelStruct& OpenCLStruct, 
+	const bool saveIter)
 {
 	uint32_t ee = 0u;
+	uint32_t it = 0U;
+	if (saveIter)
+		it = iter + 1U;
 	// Compute the new estimates
 	// MLEM
 	if (MethodList.MLEM) {
@@ -93,52 +97,52 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	ee = 0u;
 	//Save the current iteration
 	if (MethodList.MLEM) {
-		vec.MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+		vec.MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 		ee += im_dim;
 	}
 	if (MethodList.OSLMLEM) {
 		if (MethodList.MRP) {
-			vec.MRP_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.MRP_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.Quad) {
-			vec.Quad_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.Quad_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.Huber) {
-			vec.Huber_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.Huber_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.L) {
-			vec.L_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.L_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.FMH) {
-			vec.FMH_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.FMH_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.WeightedMean) {
-			vec.Weighted_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.Weighted_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.TV) {
-			vec.TV_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.TV_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.AD) {
-			vec.AD_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.AD_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.APLS) {
-			vec.APLS_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.APLS_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.TGV) {
-			vec.TGV_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.TGV_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 		if (MethodList.NLM) {
-			vec.NLM_MLEM(span, iter + 1u) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
+			vec.NLM_MLEM(span, it) = vec.im_mlem(seq(ee, ee + im_dim - 1u));
 			ee += im_dim;
 		}
 	}

@@ -21,47 +21,50 @@
 // Loads the input data and forms device data variables
 void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf)
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter)
 {
+	uint32_t Ni = 1U;
+	if (saveIter)
+		Ni = Niter + 1U;
 	// Load the necessary variables if the corresponding reconstruction method is used and set the initial value
 	if (MethodList.MLEM) {
-		vec.MLEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.MLEM = af::constant(0.f, im_dim, Ni);
 		vec.MLEM(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.OSEM) {
-		vec.OSEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.OSEM = af::constant(0.f, im_dim, Ni);
 		vec.OSEM(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.MRAMLA) {
-		vec.MRAMLA = af::constant(0.f, im_dim, Niter + 1);
+		vec.MRAMLA = af::constant(0.f, im_dim, Ni);
 		vec.MRAMLA(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.RAMLA) {
-		vec.RAMLA = af::constant(0.f, im_dim, Niter + 1);
+		vec.RAMLA = af::constant(0.f, im_dim, Ni);
 		vec.RAMLA(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.ROSEM) {
-		vec.ROSEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.ROSEM = af::constant(0.f, im_dim, Ni);
 		vec.ROSEM(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.RBI) {
-		vec.RBI = af::constant(0.f, im_dim, Niter + 1);
+		vec.RBI = af::constant(0.f, im_dim, Ni);
 		vec.RBI(af::span, 0) = x0;
 		
 	}
 	
 	if (MethodList.DRAMA) {
-		vec.DRAMA = af::constant(0.f, im_dim, Niter + 1);
+		vec.DRAMA = af::constant(0.f, im_dim, Ni);
 		vec.DRAMA(af::span, 0) = x0;
 		
 		// Relaxation parameter
@@ -69,14 +72,14 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	}
 	
 	if (MethodList.COSEM) {
-		vec.COSEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.COSEM = af::constant(0.f, im_dim, Ni);
 		vec.COSEM(af::span, 0) = x0;
 		
 		// Complete data
 		vec.C_co = af::constant(0.f, im_dim, subsets);
 	}
 	if (MethodList.ECOSEM) {
-		vec.ECOSEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.ECOSEM = af::constant(0.f, im_dim, Ni);
 		vec.ECOSEM(af::span, 0) = x0;
 		
 		if (!MethodList.COSEM) {
@@ -86,7 +89,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		}
 	}
 	if (MethodList.ACOSEM) {
-		vec.ACOSEM = af::constant(0.f, im_dim, Niter + 1);
+		vec.ACOSEM = af::constant(0.f, im_dim, Ni);
 		vec.ACOSEM(af::span, 0) = x0;
 		
 		// Complete data
@@ -99,43 +102,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	// Load the regularization parameter as well if the prior is used
 	if (MethodList.MRP) {
 		if (MethodList.OSLOSEM) {
-			vec.MRP_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_OSEM(af::span, 0) = x0;
 			
 			beta.MRP_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.MRP_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_MLEM(af::span, 0) = x0;
 			
 			beta.MRP_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.MRP_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_MBSREM(af::span, 0) = x0;
 			
 			beta.MRP_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.MRP_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_BSREM(af::span, 0) = x0;
 			
 			beta.MRP_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.MRP_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_ROSEM(af::span, 0) = x0;
 			
 			beta.MRP_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.MRP_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_RBI = af::constant(0.f, im_dim, Ni);
 			vec.MRP_RBI(af::span, 0) = x0;
 			
 			beta.MRP_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.MRP_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.MRP_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.MRP_COSEM(af::span, 0) = x0;
 			
 			beta.MRP_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_cosem"));
@@ -144,43 +147,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.Quad) {
 		if (MethodList.OSLOSEM) {
-			vec.Quad_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_OSEM(af::span, 0) = x0;
 			
 			beta.Quad_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.Quad_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_MLEM(af::span, 0) = x0;
 			
 			beta.Quad_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.Quad_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_MBSREM(af::span, 0) = x0;
 			
 			beta.Quad_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.Quad_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_BSREM(af::span, 0) = x0;
 			
 			beta.Quad_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.Quad_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_ROSEM(af::span, 0) = x0;
 			
 			beta.Quad_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.Quad_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_RBI = af::constant(0.f, im_dim, Ni);
 			vec.Quad_RBI(af::span, 0) = x0;
 			
 			beta.Quad_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.Quad_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Quad_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.Quad_COSEM(af::span, 0) = x0;
 			
 			beta.Quad_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_cosem"));
@@ -189,43 +192,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 	if (MethodList.Huber) {
 		if (MethodList.OSLOSEM) {
-			vec.Huber_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_OSEM(af::span, 0) = x0;
 
 			beta.Huber_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.Huber_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_MLEM(af::span, 0) = x0;
 
 			beta.Huber_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.Huber_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_MBSREM(af::span, 0) = x0;
 
 			beta.Huber_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.Huber_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_BSREM(af::span, 0) = x0;
 
 			beta.Huber_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.Huber_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_ROSEM(af::span, 0) = x0;
 
 			beta.Huber_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.Huber_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_RBI = af::constant(0.f, im_dim, Ni);
 			vec.Huber_RBI(af::span, 0) = x0;
 
 			beta.Huber_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.Huber_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Huber_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.Huber_COSEM(af::span, 0) = x0;
 
 			beta.Huber_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_cosem"));
@@ -234,43 +237,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.L) {
 		if (MethodList.OSLOSEM) {
-			vec.L_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.L_OSEM(af::span, 0) = x0;
 			
 			beta.L_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.L_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.L_MLEM(af::span, 0) = x0;
 			
 			beta.L_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.L_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.L_MBSREM(af::span, 0) = x0;
 			
 			beta.L_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.L_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.L_BSREM(af::span, 0) = x0;
 			
 			beta.L_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.L_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.L_ROSEM(af::span, 0) = x0;
 			
 			beta.L_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.L_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_RBI = af::constant(0.f, im_dim, Ni);
 			vec.L_RBI(af::span, 0) = x0;
 			
 			beta.L_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_L_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.L_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.L_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.L_COSEM(af::span, 0) = x0;
 			
 			beta.L_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_cosem"));
@@ -279,43 +282,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.FMH) {
 		if (MethodList.OSLOSEM) {
-			vec.FMH_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_OSEM(af::span, 0) = x0;
 			
 			beta.FMH_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.FMH_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_MLEM(af::span, 0) = x0;
 			
 			beta.FMH_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.FMH_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_MBSREM(af::span, 0) = x0;
 			
 			beta.FMH_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.FMH_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_BSREM(af::span, 0) = x0;
 			
 			beta.FMH_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.FMH_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_ROSEM(af::span, 0) = x0;
 			
 			beta.FMH_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.FMH_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_RBI = af::constant(0.f, im_dim, Ni);
 			vec.FMH_RBI(af::span, 0) = x0;
 			
 			beta.FMH_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.FMH_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.FMH_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.FMH_COSEM(af::span, 0) = x0;
 			
 			beta.FMH_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_cosem"));
@@ -324,43 +327,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.WeightedMean) {
 		if (MethodList.OSLOSEM) {
-			vec.Weighted_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_OSEM(af::span, 0) = x0;
 			
 			beta.Weighted_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.Weighted_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_MLEM(af::span, 0) = x0;
 			
 			beta.Weighted_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.Weighted_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_MBSREM(af::span, 0) = x0;
 			
 			beta.Weighted_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.Weighted_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_BSREM(af::span, 0) = x0;
 			
 			beta.Weighted_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.Weighted_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_ROSEM(af::span, 0) = x0;
 			
 			beta.Weighted_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.Weighted_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_RBI = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_RBI(af::span, 0) = x0;
 			
 			beta.Weighted_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.Weighted_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.Weighted_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.Weighted_COSEM(af::span, 0) = x0;
 			
 			beta.Weighted_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_cosem"));
@@ -369,43 +372,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.TV) {
 		if (MethodList.OSLOSEM) {
-			vec.TV_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.TV_OSEM(af::span, 0) = x0;
 			
 			beta.TV_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.TV_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.TV_MLEM(af::span, 0) = x0;
 			
 			beta.TV_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.TV_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.TV_MBSREM(af::span, 0) = x0;
 			
 			beta.TV_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.TV_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.TV_BSREM(af::span, 0) = x0;
 			
 			beta.TV_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.TV_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.TV_ROSEM(af::span, 0) = x0;
 			
 			beta.TV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.TV_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_RBI = af::constant(0.f, im_dim, Ni);
 			vec.TV_RBI(af::span, 0) = x0;
 			
 			beta.TV_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.TV_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TV_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.TV_COSEM(af::span, 0) = x0;
 			
 			beta.TV_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_cosem"));
@@ -414,43 +417,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.AD) {
 		if (MethodList.OSLOSEM) {
-			vec.AD_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.AD_OSEM(af::span, 0) = x0;
 			
 			beta.AD_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.AD_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.AD_MLEM(af::span, 0) = x0;
 			
 			beta.AD_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.AD_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.AD_MBSREM(af::span, 0) = x0;
 			
 			beta.AD_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_bsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.AD_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.AD_BSREM(af::span, 0) = x0;
 			
 			beta.AD_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mbsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.AD_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.AD_ROSEM(af::span, 0) = x0;
 			
 			beta.AD_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.AD_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_RBI = af::constant(0.f, im_dim, Ni);
 			vec.AD_RBI(af::span, 0) = x0;
 			
 			beta.AD_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.AD_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.AD_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.AD_COSEM(af::span, 0) = x0;
 			
 			beta.AD_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_cosem"));
@@ -459,43 +462,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	
 	if (MethodList.APLS) {
 		if (MethodList.OSLOSEM) {
-			vec.APLS_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_OSEM(af::span, 0) = x0;
 			
 			beta.APLS_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.APLS_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_MLEM(af::span, 0) = x0;
 			
 			beta.APLS_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.APLS_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_MBSREM(af::span, 0) = x0;
 			
 			beta.APLS_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_bsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.APLS_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_BSREM(af::span, 0) = x0;
 			
 			beta.APLS_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mbsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.APLS_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_ROSEM(af::span, 0) = x0;
 			
 			beta.APLS_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.APLS_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_RBI = af::constant(0.f, im_dim, Ni);
 			vec.APLS_RBI(af::span, 0) = x0;
 			
 			beta.APLS_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.APLS_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.APLS_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_COSEM(af::span, 0) = x0;
 			
 			beta.APLS_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_cosem"));
@@ -504,43 +507,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 	if (MethodList.TGV) {
 		if (MethodList.OSLOSEM) {
-			vec.TGV_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_OSEM(af::span, 0) = x0;
 			
 			beta.TGV_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.TGV_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_MLEM(af::span, 0) = x0;
 			
 			beta.TGV_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.TGV_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_MBSREM(af::span, 0) = x0;
 			
 			beta.TGV_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.TGV_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_BSREM(af::span, 0) = x0;
 			
 			beta.TGV_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.TGV_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_ROSEM(af::span, 0) = x0;
 			
 			beta.TGV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.TGV_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_RBI = af::constant(0.f, im_dim, Ni);
 			vec.TGV_RBI(af::span, 0) = x0;
 			
 			beta.TGV_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.TGV_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.TGV_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.TGV_COSEM(af::span, 0) = x0;
 			
 			beta.TGV_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_cosem"));
@@ -549,43 +552,43 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 	if (MethodList.NLM) {
 		if (MethodList.OSLOSEM) {
-			vec.NLM_OSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_OSEM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_OSEM(af::span, 0) = x0;
 
 			beta.NLM_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_osem"));
 		}
 		if (MethodList.OSLMLEM) {
-			vec.NLM_MLEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_MLEM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_MLEM(af::span, 0) = x0;
 
 			beta.NLM_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_mlem"));
 		}
 		if (MethodList.MBSREM) {
-			vec.NLM_MBSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_MBSREM(af::span, 0) = x0;
 
 			beta.NLM_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_mbsrem"));
 		}
 		if (MethodList.BSREM) {
-			vec.NLM_BSREM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_BSREM(af::span, 0) = x0;
 
 			beta.NLM_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
-			vec.NLM_ROSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_ROSEM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_ROSEM(af::span, 0) = x0;
 
 			beta.NLM_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_rosem"));
 		}
 		if (MethodList.RBIOSL) {
-			vec.NLM_RBI = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_RBI = af::constant(0.f, im_dim, Ni);
 			vec.NLM_RBI(af::span, 0) = x0;
 
 			beta.NLM_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_rbi"));
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.NLM_COSEM = af::constant(0.f, im_dim, Niter + 1);
+			vec.NLM_COSEM = af::constant(0.f, im_dim, Ni);
 			vec.NLM_COSEM(af::span, 0) = x0;
 
 			beta.NLM_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_cosem"));
@@ -2664,9 +2667,12 @@ af::array computeConvolution(const af::array& vec, const af::array& g, const uin
 }
 
 void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, 
-	const uint32_t subsets, const float epps) {
-	af::array jelppi = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
-	af::array apu = padding(vec(af::span, iter + 1u), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+	const uint32_t subsets, const float epps, const bool saveIter) {
+	uint32_t it = 0U;
+	if (saveIter)
+		it = iter + 1U;
+	af::array jelppi = padding(vec(af::span, it), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
+	af::array apu = padding(vec(af::span, it), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	for (int kk = 0; kk < subsets; kk++) {
 		af::array apu2 = convolve3(jelppi, g) + epps;
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
@@ -2677,336 +2683,336 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 			jelppi = padding(jelppi, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	}
 	jelppi = af::flat(jelppi);
-	vec(af::span, iter + 1u) = jelppi;
+	vec(af::span, it) = jelppi;
 }
 
 void computeDeblur(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps) {
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter) {
 	if (MethodList.OSEM) {
-		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.MRAMLA) {
-		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.RAMLA) {
-		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.ROSEM) {
-		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.RBI) {
-		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.DRAMA) {
-		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.COSEM) {
-		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.ECOSEM) {
-		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.ACOSEM) {
-		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 
 	if (MethodList.MRP) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 
 	if (MethodList.Quad) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 
 	if (MethodList.Huber) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 
 	if (MethodList.L) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.FMH) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.WeightedMean) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.TV) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.AD) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.APLS) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.TGV) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.NLM) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.CUSTOM) {
 		if (MethodList.OSLOSEM) {
-			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.BSREM) {
-			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.MBSREM) {
-			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.ROSEMMAP) {
-			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.RBIOSL) {
-			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 }
 
 
 void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps) {
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter) {
 	if (MethodList.MLEM) {
-		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 	}
 	if (MethodList.OSLMLEM) {
 		if (MethodList.MRP) {
-			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.Quad) {
-			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.Huber) {
-			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.L) {
-			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.FMH) {
-			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.WeightedMean) {
-			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.TV) {
-			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.AD) {
-			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.APLS) {
-			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.TGV) {
-			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 		if (MethodList.NLM) {
-			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 	if (MethodList.CUSTOM) {
 		if (MethodList.OSLMLEM) {
-			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps);
+			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 		}
 	}
 }

@@ -35,7 +35,7 @@
 #pragma pack(1)
 
 // Struct for the TV-prior
-typedef struct {
+typedef struct TVdata_ {
 	af::array s1, s2, s3, s4, s5, s6, s7, s8, s9, reference_image, APLSReference;
 	bool TV_use_anatomical;
 	float tau, TVsmoothing, T, C, eta, APLSsmoothing, TGVAlpha, TGVBeta, SATVPhi = 0.f;
@@ -45,7 +45,7 @@ typedef struct {
 
 // Struct for the various estimates
 // Default values are scalars (needed for OpenCL kernel)
-typedef struct {
+typedef struct AF_im_vectors_ {
 	af::array OSEM, MLEM, RAMLA, MRAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM, 
 		MRP_OSEM, MRP_MLEM, MRP_MBSREM, MRP_BSREM, MRP_ROSEM, MRP_RBI, MRP_COSEM,
 		Quad_OSEM, Quad_MLEM, Quad_MBSREM, Quad_BSREM, Quad_ROSEM, Quad_RBI, Quad_COSEM,
@@ -64,7 +64,7 @@ typedef struct {
 } AF_im_vectors;
 
 // Struct for the regularization parameters
-typedef struct {
+typedef struct Beta_ {
 	float MRP_OSEM, MRP_OSEMMAP, MRP_MLEM, MRP_MLEMMAP, MRP_MBSREM, MRP_BSREM, MRP_ROSEM, MRP_ROSEMOSL, MRP_RBI, MRP_RBIMAP, MRP_COSEM, MRP_COSEMMAP,
 		Quad_OSEM, Quad_OSEMMAP, Quad_MLEM, Quad_MLEMMAP, Quad_MBSREM, Quad_BSREM, Quad_ROSEM, Quad_ROSEMOSL, Quad_RBI, Quad_RBIMAP, Quad_COSEM, Quad_COSEMMAP,
 		Huber_OSEM, Huber_OSEMMAP, Huber_MLEM, Huber_MLEMMAP, Huber_MBSREM, Huber_BSREM, Huber_ROSEM, Huber_ROSEMOSL, Huber_RBI, Huber_RBIMAP, Huber_COSEM, Huber_COSEMMAP,
@@ -80,7 +80,7 @@ typedef struct {
 } Beta;
 
 // Struct for various parameters, mainly various weights and coefficients
-typedef struct {
+typedef struct Weighting_ {
 	af::array tr_offsets, weights_quad, weights_TV, weights_huber, fmh_weights, a_L, weighted_weights, UU, Amin, D;
 	af::array dU_OSEM, dU_MLEM, dU_BSREM, dU_MBSREM, dU_ROSEM, dU_RBI, dU_COSEM;
 	af::array NLM_ref, gaussianNLM;
@@ -95,7 +95,7 @@ typedef struct {
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected
-typedef struct {
+typedef struct RecMethods_ {
 	bool MLEM = false, OSEM = false, MRAMLA = false, RAMLA = false, ROSEM = false, RBI = false, DRAMA = false, COSEM = false, ECOSEM = false, ACOSEM = false;
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false;
 	bool OSLMLEM = false, MAPMLEM = false, OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false;
@@ -105,7 +105,7 @@ typedef struct {
 } RecMethods;
 
 // MATLAB output arrays
-typedef struct {
+typedef struct matlabArrays_ {
 	mxArray* mlem, * osem, * ramla, * ramlaM, * rosem, * rbi, * drama, * cosem, * ecosem, * acosem,
 		* mrp_mlem, * quad_mlem, * Huber_mlem, * L_mlem, * fmh_mlem, * weighted_mlem, * TV_mlem, * AD_mlem, * APLS_mlem, * TGV_mlem, * NLM_mlem,
 		* mrp_osem, * quad_osem, * Huber_osem, * L_osem, * fmh_osem, * weighted_osem, * TV_osem, * AD_osem, * APLS_osem, * TGV_osem, * NLM_osem,
@@ -141,7 +141,7 @@ typedef struct _kernelStruct {
 // Function for loading the data and forming the initial data variables (initial image estimates, etc.)
 void form_data_variables(AF_im_vectors &vec, Beta &beta, Weighting &w_vec, const mxArray* options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf);
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter);
 
 // Get the reconstruction methods used
 void get_rec_methods(const mxArray *options, RecMethods &MethodList);
@@ -246,7 +246,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	const size_t size_of_x, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute,
 	const uint32_t device, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const bool use_64bit_atomics, uint32_t n_rekos,
 	const uint32_t n_rekos_mlem, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const float global_factor, const float bmin, const float bmax,
-	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss);
+	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss, const bool saveIter);
 
 //void reconstruction_AF_matrixfree_CUDA(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin,
 //	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx,
@@ -270,20 +270,20 @@ af::array computeConvolution(const af::array& vec, const af::array& g, const uin
 	const uint32_t n_rekos);
 
 void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, const uint32_t iter, 
-	const uint32_t subsets, const float epps);
+	const uint32_t subsets, const float epps, const bool saveIter);
 
 void computeDeblur(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps);
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter);
 
 void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps);
+	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter);
 
 void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, const float epps,
 	const uint32_t iter, const uint32_t osa_iter0, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz,
-	const TVdata& data, const uint32_t n_rekos2, const kernelStruct& OpenCLStruct);
+	const TVdata& data, const uint32_t n_rekos2, const kernelStruct& OpenCLStruct, const bool saveIter);
 
 void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, const float epps,
 	const uint32_t iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz,
-	const TVdata& data, const af::array& Summ_mlem, bool& break_iter, const kernelStruct& OpenCLStruct);
+	const TVdata& data, const af::array& Summ_mlem, bool& break_iter, const kernelStruct& OpenCLStruct, const bool saveIter);
 
 af::array NLM(const af::array& im, Weighting& w_vec, const float epps, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const kernelStruct& OpenCLStruct);

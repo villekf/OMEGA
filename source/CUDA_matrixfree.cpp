@@ -235,15 +235,21 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			// Create the output cell array
 			cell_array_ptr = mxCreateCellMatrix(size_reko + 1ULL, Nt);
 
+			const bool saveIter = (bool)mxGetScalar(mxGetField(prhs[56], 0, "save_iter"));
+			size_t Ni = 0ULL;
+			if (saveIter)
+				Ni = static_cast<size_t>(Niter);
+			const size_t outSize2 = Ni + 1ULL;
+
 			// Output dimensions
-			const mwSize dim[4] = { static_cast<mwSize>(Nx), static_cast<mwSize>(Ny), static_cast<mwSize>(Nz), static_cast<mwSize>(Niter + 1u) };
+			const mwSize dim[4] = { static_cast<mwSize>(Nx), static_cast<mwSize>(Ny), static_cast<mwSize>(Nz), static_cast<mwSize>(outSize2) };
 
 			reconstruction_AF_matrixfree(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, prhs[56], dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, 
 				NSlices, pituus, xy_index, z_index, size_x, TotSinos, cell_array_ptr, dim, verbose, randoms_correction, attenuation_correction, 
 				normalization, atten, size_atten, norm, size_norm, subsets, epps, k_path, Nt, pseudos, det_per_ring, pRows, L, raw, size_z, osem_bool, 
 				fileName, force_build, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_of_x, size_center_z, 
 				projector_type, header_directory, precompute_var, device, dec, n_rays, n_rays3D, cr_pz, use_64bit_atomics, n_rekos, n_rekos_mlem, reko_type, reko_type_mlem, 
-				global_factor, bmin, bmax, Vmax, V, size_V, gaussian, size_gauss);
+				global_factor, bmin, bmax, Vmax, V, size_V, gaussian, size_gauss, saveIter);
 		}
 
 
