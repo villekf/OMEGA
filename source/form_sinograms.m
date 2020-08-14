@@ -161,54 +161,66 @@ if options.use_machine ~= 2
             disp('Forming initial Michelogram')
             tic
         end
+        if options.partitions == 1
+            load_string = [machine_name '_measurements_' name '_static_raw'];
+        else
+            load_string = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_raw'];
+            load_string2 = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw'];
+        end
         if options.use_machine == 1
+            load_string = [load_string '_listmode.mat'];
+            load_string2 = [load_string2 '_listmode.mat'];
             if exist( 'options.coincidences' , 'var') == 0
-                if options.partitions == 1
-                    options.coincidences = loadStructFromFile([machine_name '_measurements_' name '_static_raw_listmode.mat'], 'coincidences');
-                else
-                    options.coincidences = loadStructFromFile([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_listmode.mat'], 'coincidences');
+                if exist(load_string, 'file') == 0
+                    load_string = load_string2;
                 end
+                options.coincidences = loadStructFromFile(load_string, 'coincidences');
             end
             if options.randoms_correction
-                if options.partitions == 1
-                    load([machine_name '_measurements_' name '_static_raw_listmode.mat'], 'delayed_coincidences')
-                else
-                    load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_listmode.mat'], 'delayed_coincidences')
+                if exist(load_string, 'file') == 0
+                    load_string = load_string2;
                 end
+                delayed_coincidences = loadStructFromFile(load_string, 'delayed_coincidences');
                 delayed_coincidences = initial_michelogram(options, delayed_coincidences, 'delays');
             end
         else
             if exist( 'options.coincidences' , 'var') == 0
                 if options.partitions == 1
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_static_raw_'];
-                        options.coincidences = loadGATEData(filename,'coincidences', GATE_char);
+                        options.coincidences = loadGATEData(load_string,'coincidences', GATE_char);
                     else
-                        options.coincidences = loadStructFromFile([machine_name '_measurements_' name '_static_raw_real.mat'], 'coincidences');
+                        options.coincidences = loadStructFromFile([load_string '_real.mat'], 'coincidences');
                     end
                 else
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_'];
-                        options.coincidences = loadGATEData(filename,'coincidences', GATE_char);
+                        options.coincidences = loadGATEData({load_string;load_string2},'coincidences', GATE_char);
                     else
-                        options.coincidences = loadStructFromFile([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'coincidences');
+                        load_string = [load_string '_real.mat'];
+                        load_string2 = [load_string2 '_real.mat'];
+                        if exist(load_string, 'file') == 0
+                            load_string = load_string2;
+                        end
+                        options.coincidences = loadStructFromFile(load_string, 'coincidences');
                     end
                 end
             end
             if options.obtain_trues
                 if options.partitions == 1
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_static_raw_'];
-                        true_coincidences = loadGATEData(filename,'true_coincidences', GATE_char);
+                        true_coincidences = loadGATEData(load_string,'true_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_static_raw_real.mat'], 'true_coincidences')
+                        load([load_string '_real.mat'], 'true_coincidences')
                     end
                 else
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_'];
-                        true_coincidences = loadGATEData(filename,'true_coincidences', GATE_char);
+                        true_coincidences = loadGATEData({load_string;load_string2},'true_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'true_coincidences')
+                        load_string = [load_string '_real.mat'];
+                        load_string2 = [load_string2 '_real.mat'];
+                        if exist(load_string, 'file') == 0
+                            load_string = load_string2;
+                        end
+                        load(load_string, 'true_coincidences')
                     end
                 end
                 true_coincidences = initial_michelogram(options, true_coincidences, 'trues');
@@ -216,17 +228,20 @@ if options.use_machine ~= 2
             if options.store_scatter
                 if options.partitions == 1
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_static_raw_'];
-                        scattered_coincidences = loadGATEData(filename,'scattered_coincidences', GATE_char);
+                        scattered_coincidences = loadGATEData(load_string,'scattered_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_static_raw_real.mat'], 'scattered_coincidences')
+                        load([load_string '_real.mat'], 'scattered_coincidences')
                     end
                 else
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_'];
-                        scattered_coincidences = loadGATEData(filename,'scattered_coincidences', GATE_char);
+                        scattered_coincidences = loadGATEData({load_string;load_string2},'scattered_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'scattered_coincidences')
+                        load_string = [load_string '_real.mat'];
+                        load_string2 = [load_string2 '_real.mat'];
+                        if exist(load_string, 'file') == 0
+                            load_string = load_string2;
+                        end
+                        load(load_string, 'scattered_coincidences')
                     end
                 end
                 scattered_coincidences = initial_michelogram(options, scattered_coincidences, 'scatter');
@@ -234,17 +249,20 @@ if options.use_machine ~= 2
             if options.store_randoms
                 if options.partitions == 1
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_static_raw_'];
-                        random_coincidences = loadGATEData(filename,'random_coincidences', GATE_char);
+                        random_coincidences = loadGATEData(load_string,'random_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_static_raw_real.mat'], 'random_coincidences')
+                        load([load_string '_real.mat'], 'random_coincidences')
                     end
                 else
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_'];
-                        random_coincidences = loadGATEData(filename,'random_coincidences', GATE_char);
+                        random_coincidences = loadGATEData({load_string;load_string2},'random_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'random_coincidences')
+                        load_string = [load_string '_real.mat'];
+                        load_string2 = [load_string2 '_real.mat'];
+                        if exist(load_string, 'file') == 0
+                            load_string = load_string2;
+                        end
+                        load(load_string, 'random_coincidences')
                     end
                 end
                 random_coincidences = initial_michelogram(options, random_coincidences, 'randoms');
@@ -253,17 +271,20 @@ if options.use_machine ~= 2
             if options.randoms_correction && (options.use_ASCII || options.use_LMF || options.use_root)
                 if options.partitions == 1
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_static_raw_'];
-                        delayed_coincidences = loadGATEData(filename,'delayed_coincidences', GATE_char);
+                        delayed_coincidences = loadGATEData(load_string,'delayed_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_static_raw_real.mat'], 'delayed_coincidences')
+                        load([load_string '_real.mat'], 'delayed_coincidences')
                     end
                 else
                     if any(GATE_vars)
-                        filename = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_'];
-                        delayed_coincidences = loadGATEData(filename,'delayed_coincidences', GATE_char);
+                        delayed_coincidences = loadGATEData({load_string;load_string2},'delayed_coincidences', GATE_char);
                     else
-                        load([machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_raw_real.mat'], 'delayed_coincidences')
+                        load_string = [load_string '_real.mat'];
+                        load_string2 = [load_string2 '_real.mat'];
+                        if exist(load_string, 'file') == 0
+                            load_string = load_string2;
+                        end
+                        load(load_string, 'delayed_coincidences')
                     end
                 end
                 delayed_coincidences = initial_michelogram(options, delayed_coincidences, 'delays');
@@ -278,36 +299,44 @@ if options.use_machine ~= 2
     elseif ~data_load && ~sinoLoaded
         % Corrections are applied
         if options.partitions == 1
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+                    num2str(options.TotSinos) '_span' num2str(options.span)];
             if options.use_machine == 0
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '.mat'];
+                sinoFile = [load_string '.mat'];
             elseif options.use_machine == 1
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'];
+                sinoFile = [load_string '_listmode.mat'];
             elseif options.use_machine == 2
-                sinoFile = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'];
+                sinoFile = [load_string '_machine_sinogram.mat'];
             elseif options.use_machine == 3
-                sinoFile = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
+                sinoFile = [load_string '_listmode_sinogram.mat'];
             end
         else
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                    num2str(options.span)];
+            load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                    num2str(options.span)];
             if options.use_machine == 0
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '.mat'];
+                sinoFile = [load_string '.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '.mat'];
+                end
             elseif options.use_machine == 1
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_listmode.mat'];
+                sinoFile = [load_string '_listmode.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode.mat'];
+                end
             elseif options.use_machine == 2
-                sinoFile = [options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_machine_sinogram.mat'];
+                sinoFile = [load_string '_machine_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_machine_sinogram.mat'];
+                end
             elseif options.use_machine == 3
-                sinoFile = [options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_listmode_sinogram.mat'];
+                sinoFile = [load_string '_listmode_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode_sinogram.mat'];
+                end
             end
         end
         Sino = loadStructFromFile(sinoFile, 'raw_SinM');
@@ -921,23 +950,58 @@ if options.use_machine ~= 2
     end
     %%
     if partitions == 1
-        if options.use_machine == 0
-            save_string = [machine_name '_' name '_sinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '.mat'];
-        elseif options.use_machine == 3
-            save_string = [machine_name '_' name '_sinogram_original_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode_sinogram.mat'];
+        if options.TOF_bins > 1
+            save_string = [machine_name '_' name '_TOFsinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_FWHM*1e12) 'psFWHM'];
         else
-            save_string = [machine_name '_' name '_sinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode.mat'];
+            save_string = [machine_name '_' name '_sinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
+        end
+        if options.use_machine == 0
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '.mat'];
+            else
+                save_string = [save_string '.mat'];
+            end
+        elseif options.use_machine == 3
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '_listmode_sinogram.mat'];
+            else
+                save_string = [save_string '_listmode_sinogram.mat'];
+            end
+        else
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '_listmode.mat'];
+            else
+                save_string = [save_string '_listmode.mat'];
+            end
         end
     else
-        if options.use_machine == 0
-            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_' ...
-                num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '.mat'];
-        elseif options.use_machine == 3
-            save_string = [machine_name '_' name '_sinogram_original_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_' ...
-                num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode_sinogram.mat'];
+        if options.TOF_bins > 1
+            save_string = [machine_name '_' name '_TOFsinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
+                    num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_FWHM*1e12) 'psFWHM'];
         else
-            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_' ...
-                num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode.mat'];
+            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
+                    num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
+        end
+        if options.use_machine == 0
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '.mat'];
+            else
+                save_string = [save_string '.mat'];
+            end
+        elseif options.use_machine == 3
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '_listmode_sinogram.mat'];
+            else
+                save_string = [save_string '_listmode_sinogram.mat'];
+            end
+        else
+            if options.TOF_bins > 1
+                save_string = [save_string save_string_TOF '_listmode.mat'];
+            else
+                save_string = [save_string '_listmode.mat'];
+            end
         end
     end
     if options.verbose

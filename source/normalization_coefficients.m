@@ -85,8 +85,8 @@ if ~options.use_raw_data
     mashing = 1;
     if options.det_w_pseudo / options.Nang > 2
         mashing = (options.det_w_pseudo / options.Nang / 2);
-%         Nang = options.Nang * mashing;
-%         options.Nang = Nang;
+        %         Nang = options.Nang * mashing;
+        %         options.Nang = Nang;
     end
     
     z = sinogram_coordinates_3D(options);
@@ -108,9 +108,9 @@ if ~options.use_raw_data
     if options.det_w_pseudo > options.det_per_ring
         cryst_per_block = cryst_per_block + 1;
     end
-%     if mashing > 1
-%         options.Nang = options.Nang / mashing;
-%     end
+    %     if mashing > 1
+    %         options.Nang = options.Nang / mashing;
+    %     end
     
     rings = options.rings;
 else
@@ -186,24 +186,61 @@ GATE_char = {'ASCII';'root';'LMF'};
 GATE_char = GATE_char(I);
 
 if options.use_raw_data
+    if options.partitions == 1
+        load_string = [options.machine_name '_measurements_' options.name '_static_raw'];
+        if options.use_ASCII && options.use_machine == 0
+            load_string =  [load_string '_ASCII.mat'];
+        elseif options.use_LMF && options.use_machine == 0
+            load_string =  [load_string '_LMF.mat'];
+        elseif options.use_root && options.use_machine == 0
+            load_string =  [load_string '_root.mat'];
+        else
+            load_string =  [load_string '_listmode.mat'];
+        end
+    else
+        load_string = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+            num2str(options.tot_time) 's_raw'];
+        load_string2 = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+            num2str(options.tot_time) 's_raw'];
+        if options.use_ASCII && options.use_machine == 0
+            if exist([load_string '_ASCII.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_ASCII.mat'];
+        elseif options.use_LMF && options.use_machine == 0
+            if exist([load_string '_LMF.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_LMF.mat'];
+        elseif options.use_root && options.use_machine == 0
+            if exist([load_string '_root.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_root.mat'];
+        else
+            if exist([load_string '_listmode.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_listmode.mat'];
+        end
+    end
     if (isfield(options, 'coincidences') == 0 && ~exist('coincidences','var')) && options.use_machine < 2
         if options.partitions == 1
             if any(GATE_vars) && options.use_machine == 0
-                filename = [options.machine_name '_measurements_' options.name '_static_raw_'];
-                options.coincidences = loadGATEData(filename,'coincidences', GATE_char);
+                options.coincidences = loadGATEData(load_string,'coincidences', GATE_char);
             else
-                load([options.machine_name '_measurements_' options.name '_static_raw_listmode.mat'], 'coincidences')
+                load(load_string, 'coincidences')
                 options.coincidences = coincidences;
                 clear coincidences
             end
         else
             if any(GATE_vars) && options.use_machine == 0
-                filename = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_'];
-                options.coincidences = loadGATEData(filename,'coincidences', GATE_char);
+                options.coincidences = loadGATEData({load_string;load_string2},'coincidences', GATE_char);
             else
-                load([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_listmode.mat'], 'coincidences')
+                if exist(load_string, 'file') == 0
+                    load_string = load_string2;
+                end
+                load(load_string, 'coincidences')
                 options.coincidences = coincidences;
                 clear coincidences
             end
@@ -212,12 +249,52 @@ if options.use_raw_data
     % Sinogram data
 else
     if (~options.reconstruct_trues && ~options.reconstruct_scatter) || options.use_machine > 0
+        if options.partitions == 1
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+                num2str(options.TotSinos) '_span' num2str(options.span)];
+            if options.use_machine == 0
+                sinoFile = [load_string '.mat'];
+            elseif options.use_machine == 1
+                sinoFile = [load_string '_listmode.mat'];
+            elseif options.use_machine == 2
+                sinoFile = [load_string '_machine_sinogram.mat'];
+            elseif options.use_machine == 3
+                sinoFile = [load_string '_listmode_sinogram.mat'];
+            end
+        else
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                num2str(options.span)];
+            load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                num2str(options.span)];
+            if options.use_machine == 0
+                sinoFile = [load_string '.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '.mat'];
+                end
+            elseif options.use_machine == 1
+                sinoFile = [load_string '_listmode.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode.mat'];
+                end
+            elseif options.use_machine == 2
+                sinoFile = [load_string '_machine_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_machine_sinogram.mat'];
+                end
+            elseif options.use_machine == 3
+                sinoFile = [load_string '_listmode_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode_sinogram.mat'];
+                end
+            end
+        end
         if options.partitions == 1 && isfield(options, 'SinM') == 0
             if options.use_machine < 2
                 if options.use_machine == 0
                     try
-                        load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                            num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'raw_SinM')
+                        load(sinoFile,'raw_SinM')
                     catch ME
                         if mashing > 1
                             error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -227,8 +304,7 @@ else
                     end
                 elseif  options.use_machine == 1
                     try
-                        load([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                            num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'raw_SinM')
+                        load(sinoFile,'raw_SinM')
                     catch ME
                         if mashing > 1
                             error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -241,8 +317,7 @@ else
                 clear raw_SinM
             else
                 try
-                    load([options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(Nang) 'x' ...
-                        num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'],'SinM')
+                    load(sinoFile,'SinM')
                 catch ME
                     if mashing > 1
                         error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -257,9 +332,7 @@ else
             if options.use_machine < 2
                 if options.use_machine == 0
                     try
-                        load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ '
-                            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                            num2str(options.span) '.mat'], 'raw_SinM')
+                        load(sinoFile, 'raw_SinM')
                     catch ME
                         if mashing > 1
                             error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -269,9 +342,7 @@ else
                     end
                 elseif  options.use_machine == 1
                     try
-                        load([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                            num2str(options.span) '_listmode.mat'], 'raw_SinM')
+                        load(sinoFile, 'raw_SinM')
                     catch ME
                         if mashing > 1
                             error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -284,9 +355,7 @@ else
                 clear raw_SinM
             else
                 try
-                    load([options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(Nang) 'x' num2str(options.TotSinos) '_span' ...
-                        num2str(options.span) '_machine_sinogram.mat'], 'SinM')
+                    load(sinoFile, 'SinM')
                 catch ME
                     if mashing > 1
                         error('When computing normalization coefficients for mashed data, the input sinogram has to be formed with mashing of 1!')
@@ -318,88 +387,88 @@ if ~options.use_raw_data
     normalization = ones(size(options.SinM), 'single');
     
     if mashing > 1
-%         SinDouble(SinDouble == 0) = NaN;
-%         apu = cell2mat(arrayfun(@(i) mean(SinDouble(:,i:i+mashing-1,:),2),1:mashing:size(SinDouble,2)-mashing+1,'UniformOutput',false));
-%         gaps = apu == 0;
+        %         SinDouble(SinDouble == 0) = NaN;
+        %         apu = cell2mat(arrayfun(@(i) mean(SinDouble(:,i:i+mashing-1,:),2),1:mashing:size(SinDouble,2)-mashing+1,'UniformOutput',false));
+        %         gaps = apu == 0;
     end
     
     %Amount of stacked planes in even and odd numbered plane sinograms
     
-%     if rem(floor(options.span/2),2)==0
-%         
-%         odds=ceil(options.span/2);
-%         evens=floor(options.span/2);
-%         
-%     else
-%         
-%         odds=floor(options.span/2);
-%         evens=ceil(options.span/2);
-%         
-%     end
-%     last_index=0;
+    %     if rem(floor(options.span/2),2)==0
+    %
+    %         odds=ceil(options.span/2);
+    %         evens=floor(options.span/2);
+    %
+    %     else
+    %
+    %         odds=floor(options.span/2);
+    %         evens=ceil(options.span/2);
+    %
+    %     end
+    %     last_index=0;
     
-%     for t=1:segment_amount
-%         
-%         if t==1
-%             for i=2:options.segment_table(1)-1
-%                 
-%                 %Michelogram corners
-%                 
-%                 if i<ceil(options.span/2) || options.segment_table(1)-i<ceil(options.span/2)
-%                     
-%                     SinDouble(:,:,i)=SinDouble(:,:,i)/min(i,options.segment_table(1)-i+1);
-%                     normalization(:,:,i)=normalization(:,:,i)/min(i,options.segment_table(1)-i+1);
-%                     
-%                     %Michelogram mid-section
-%                 else
-%                     
-%                     if rem(i,2)==0
-%                         SinDouble(:,:,i)=SinDouble(:,:,i)/evens;
-%                         normalization(:,:,i)=normalization(:,:,i)/evens;
-%                     else
-%                         SinDouble(:,:,i)=SinDouble(:,:,i)/odds;
-%                         normalization(:,:,i)=normalization(:,:,i)/odds;
-%                     end
-%                 end
-%             end
-%             
-%             last_index=options.segment_table(1);
-%             
-%         else
-%             
-%             for i=last_index+3:last_index+options.segment_table(t)-2
-%                 
-%                 %Michelogram corners
-%                 if i-last_index>min(evens,odds)*2 && (last_index+options.segment_table(t))-i+1>min(evens,odds)*2
-%                     
-%                     
-%                     if rem(i-last_index,2)==0
-%                         SinDouble(:,:,i)=SinDouble(:,:,i)/min(odds,evens);
-%                         normalization(:,:,i)=normalization(:,:,i)/min(odds,evens);
-%                         
-%                     else
-%                         SinDouble(:,:,i)=SinDouble(:,:,i)/max(odds,evens);
-%                         normalization(:,:,i)=normalization(:,:,i)/max(odds,evens);
-%                     end
-%                     
-%                 else
-%                     %Michelogram mid-section
-%                     
-%                     SinDouble(:,:,i)=SinDouble(:,:,i)/min(ceil((i-last_index)/2),(ceil((last_index+options.segment_table(t)-i+1)/2)));
-%                     normalization(:,:,i)=normalization(:,:,i)/min(ceil(i/2),(ceil(last_index+options.segment_table(t)-i+1/2)));
-%                 end
-%                 
-%             end
-%             
-%             last_index=last_index+options.segment_table(t);
-%             
-%         end
-%     end
+    %     for t=1:segment_amount
+    %
+    %         if t==1
+    %             for i=2:options.segment_table(1)-1
+    %
+    %                 %Michelogram corners
+    %
+    %                 if i<ceil(options.span/2) || options.segment_table(1)-i<ceil(options.span/2)
+    %
+    %                     SinDouble(:,:,i)=SinDouble(:,:,i)/min(i,options.segment_table(1)-i+1);
+    %                     normalization(:,:,i)=normalization(:,:,i)/min(i,options.segment_table(1)-i+1);
+    %
+    %                     %Michelogram mid-section
+    %                 else
+    %
+    %                     if rem(i,2)==0
+    %                         SinDouble(:,:,i)=SinDouble(:,:,i)/evens;
+    %                         normalization(:,:,i)=normalization(:,:,i)/evens;
+    %                     else
+    %                         SinDouble(:,:,i)=SinDouble(:,:,i)/odds;
+    %                         normalization(:,:,i)=normalization(:,:,i)/odds;
+    %                     end
+    %                 end
+    %             end
+    %
+    %             last_index=options.segment_table(1);
+    %
+    %         else
+    %
+    %             for i=last_index+3:last_index+options.segment_table(t)-2
+    %
+    %                 %Michelogram corners
+    %                 if i-last_index>min(evens,odds)*2 && (last_index+options.segment_table(t))-i+1>min(evens,odds)*2
+    %
+    %
+    %                     if rem(i-last_index,2)==0
+    %                         SinDouble(:,:,i)=SinDouble(:,:,i)/min(odds,evens);
+    %                         normalization(:,:,i)=normalization(:,:,i)/min(odds,evens);
+    %
+    %                     else
+    %                         SinDouble(:,:,i)=SinDouble(:,:,i)/max(odds,evens);
+    %                         normalization(:,:,i)=normalization(:,:,i)/max(odds,evens);
+    %                     end
+    %
+    %                 else
+    %                     %Michelogram mid-section
+    %
+    %                     SinDouble(:,:,i)=SinDouble(:,:,i)/min(ceil((i-last_index)/2),(ceil((last_index+options.segment_table(t)-i+1)/2)));
+    %                     normalization(:,:,i)=normalization(:,:,i)/min(ceil(i/2),(ceil(last_index+options.segment_table(t)-i+1/2)));
+    %                 end
+    %
+    %             end
+    %
+    %             last_index=last_index+options.segment_table(t);
+    %
+    %         end
+    %     end
     
-%     time=toc;
-%     if options.verbose
-%         disp(['Spanned data scaled (', num2str(time),'s)'])
-%     end
+    %     time=toc;
+    %     if options.verbose
+    %         disp(['Spanned data scaled (', num2str(time),'s)'])
+    %     end
     
 end
 
@@ -1610,7 +1679,7 @@ if options.normalization_options(4)==1 || options.normalization_options(2)==1 ||
         
         %         avg_profile=zeros(cryst_per_block/2,cryst_per_block/2,options.Ndist);
         avg_profile_LOR_amount = zeros(ceil(cryst_per_block/2),ceil(cryst_per_block/2),options.Ndist, 'single');
-%         not_found=0;
+        %         not_found=0;
         detector_index_start=zeros(1,Nang*options.Ndist, 'single');
         detector_index_end=detector_index_start;
         index=zeros(options.Ndist*Nang,2, 'single');
@@ -2021,7 +2090,7 @@ if options.normalization_options(2)~=0
         z_rings=z(1:options.segment_table(1),1);
         det_num=zeros(options.Ndist,Nang,2,'single');
         counts_det=zeros(detectors_ring,options.segment_table(1),'single');
-%         coeff_matrix=zeros(size(SinDouble));
+        %         coeff_matrix=zeros(size(SinDouble));
         ring = round((z - z(1,1)) ./ (z(2,1) - z(1,1))) + 1;
         
         %Determine each LORS detector numbers
@@ -2084,7 +2153,7 @@ if options.normalization_options(2)~=0
             
         end
         
-        hits_det=zeros(detectors_ring,options.segment_table(1),'single');    
+        hits_det=zeros(detectors_ring,options.segment_table(1),'single');
         testi1 = det_num(:,:,1);
         testi2 = det_num(:,:,2);
         testi1 = testi1(:);
@@ -3559,11 +3628,11 @@ end
 
 if ~options.use_raw_data
     if mashing > 1
-%         normalization = cell2mat(arrayfun(@(i) mean(normalization(:,i:i+mashing-1,:),2),1:mashing:size(normalization,2)-mashing+1,'UniformOutput',false));
-%         if detectors_ring > options.det_per_ring
-%             normalization(gaps) = 0;
-%         end
-%         Nang = Nang / mashing;
+        %         normalization = cell2mat(arrayfun(@(i) mean(normalization(:,i:i+mashing-1,:),2),1:mashing:size(normalization,2)-mashing+1,'UniformOutput',false));
+        %         if detectors_ring > options.det_per_ring
+        %             normalization(gaps) = 0;
+        %         end
+        %         Nang = Nang / mashing;
     end
 end
 

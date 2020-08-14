@@ -103,7 +103,7 @@ if options.use_machine == 1 || options.use_machine == 3
             variableList = {'SinM'};
         end
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_listmode.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_listmode.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_listmode.mat'];
         end
@@ -295,7 +295,7 @@ if options.use_machine == 1 || options.use_machine == 3
             save_string = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang)...
                 'x' num2str(options.TotSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
         else
-            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_' ...
+            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
                 num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode_sinogram.mat'];
         end
         
@@ -445,7 +445,7 @@ else
         save_string = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang)...
             'x' num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'];
     else
-        save_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' num2str(tot_time) 's_' ...
+        save_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
             num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_machine_sinogram.mat'];
     end
     [file, fpath] = uigetfile({'*.ptd;*.s'},'Select mCT sinogram datafile');

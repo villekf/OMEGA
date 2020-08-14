@@ -8,7 +8,14 @@ output = [];
 for gg = 1 : 3
     if gg == 1
         try
-            output = loadStructFromFile([filename, char(GATE_char{gg}) '.mat'], variableName);
+            if iscell(filename) && length(filename) > 1 && exist(filename{1}, 'file') == 0
+                file = filename{2};
+            elseif iscell(filename) && length(filename) > 1
+                file = filename{1};
+            else
+                file = filename;
+            end
+            output = loadStructFromFile([file, char(GATE_char{gg}) '.mat'], variableName);
             status = true;
         catch
             warning(['Specified file format (' char(GATE_char{gg}) ') could not be found, trying other file formats']);
@@ -16,7 +23,14 @@ for gg = 1 : 3
         end
     else
         try
-            output = loadStructFromFile([filename, char(GATE_char{gg}) '.mat'], variableName);
+            if iscell(filename) && length(filename) > 1 && exist(filename{1}, 'file') == 0
+                file = filename{2};
+            elseif iscell(filename) && length(filename) > 1
+                file = filename{1};
+            else
+                file = filename;
+            end
+            output = loadStructFromFile([file, char(GATE_char{gg}) '.mat'], variableName);
             status = true;
         catch
             status = false;

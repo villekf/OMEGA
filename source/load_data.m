@@ -151,7 +151,7 @@ if options.use_machine == 1
     end
     
     if partitions > 1
-        save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_listmode.mat'];
+        save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_listmode.mat'];
     else
         save_string_raw = [machine_name '_measurements_' name '_static_raw_listmode.mat'];
     end
@@ -354,7 +354,7 @@ elseif options.use_machine == 0
         coincidence_window = coincidence_window / options.clock_time_step;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_LMF.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_LMF.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_LMF.mat'];
         end
@@ -530,7 +530,7 @@ elseif options.use_machine == 0
         no_submodules = true;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_ASCII.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_ASCII.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_ASCII.mat'];
         end
@@ -1088,7 +1088,7 @@ elseif options.use_machine == 0
         large_case = false;
         
         if partitions > 1
-            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_ ' num2str(loppu - alku) 's_raw_root.mat'];
+            save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_root.mat'];
         else
             save_string_raw = [machine_name '_measurements_' name '_static_raw_root.mat'];
         end
