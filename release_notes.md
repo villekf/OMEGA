@@ -21,7 +21,7 @@
 - Added experimental arc correction for sinogram data only
   - Only for non-precomputed data
 
-- Added ability to increase the sampling rate of sinogram and raw list-mode data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
+- Added ability to increase the sampling rate of sinogram and raw data (i.e. interpolate additional rows to the sinograms) to prevent aliasing artifacts
 
 - Added HTLM documentation
 
@@ -197,6 +197,9 @@
 - Compilation should work more reliably in Unix platforms with less warnings
 
 - Scatter data should now be obtained correctly
+
+- You can now save only the very last iteration or all iterations
+  - Previously all iterations were always saved
 
 ## 1.0
 
