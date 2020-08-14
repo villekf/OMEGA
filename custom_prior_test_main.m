@@ -20,10 +20,19 @@ options.blocks_per_ring = (42);
 % number of crystal rings. 
 options.linear_multip = (4);
 
+%%% R-sectors/modules/blocks/buckets in transaxial direction
+% Required only if larger than 1
+options.transaxial_multip = 1;
+
 %%% Number of detectors on the side of R-sector/block/module (transaxial
 %%% direction)
 % (e.g. 13 if 13x13, 20 if 20x10)
 options.cryst_per_block = (8);
+
+%%% Number of detectors on the side of R-sector/block/module (axial
+%%% direction)
+% (e.g. 13 if 13x13, 10 if 20x10)
+options.cryst_per_block_axial = 8;
 
 %%% Crystal pitch/size in x- and y-directions (transaxial) (mm)
 options.cr_p = 2.4;
@@ -49,16 +58,16 @@ options.axial_fov = floor(76.8 - options.cr_pz/10);
 options.pseudot = [];
 
 %%% Number of detectors per crystal ring (without pseudo detectors)
-options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
+options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
 
 %%% Number of detectors per crystal ring (with pseudo detectors)
 % If your scanner has a single pseudo detector on each (transaxial) side of
 % the crystal block then simply add +1 inside the parenthesis (or uncomment
 % the one below).
-options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
+options.det_w_pseudo = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
 
 %%% Number of crystal rings
-options.rings = options.linear_multip * options.cryst_per_block;
+options.rings = options.linear_multip * options.cryst_per_block_axial;
 
 %%% Total number of detectors
 options.detectors = options.det_per_ring*options.rings;
@@ -298,7 +307,7 @@ options.Nang = options.det_per_ring/2;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
+options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -361,6 +370,18 @@ options.interpolation_method_inpaint = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Use raw data
+% This means that the data is used as is without any sinogramming and thus
+% without any "compression". Measurement data is stored as diagonal matrix
+% containing the counts on every LOR available. Raw data can be visualized
+% with visualizeRawData function.
+options.use_raw_data = false;
+
+%%% Store raw data
+% If the above use_raw_data is set to false, you can still save the raw
+% data during data load by setting this to true.
+options.store_raw_data = false;
  
 %%% Maximum ring difference in raw data
 options.ring_difference_raw = options.rings;
@@ -649,15 +670,6 @@ options.precompute_obs_matrix = false;
 % (below). Normalization coefficients are not computed even if selected.
 options.only_reconstructions = false;
 
-%%% Use raw list mode data
-% This means that the data is used as is without any sinogramming and thus
-% without any "compression". Measurement data need to be stored as a vector
-% containing the lower diagonal (inc. the diagonal) part of a matrix
-% containing the counts of each LOR, WITHOUT duplicates (e.g. LORs
-% with counts from detectors 1 and 3 and 3 and 1 are combined). Raw data
-% can be visualized with visualizeRawData function.
-options.use_raw_data = false;
-
 %%% Use precomputed geometrical matrix information
 % During the precompute-phase the number of voxels each LOR traverse is
 % counted (this phase requires the above precompute-option to true). These
@@ -806,6 +818,10 @@ options.apply_acceleration = true;
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 4;
+% Save ALL iterations
+% Set this to false if you do not want to save all the intermediate
+% iterations, but only the very last one.
+options.save_iter = true;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 6)
 options.subsets = 8;
@@ -1576,7 +1592,7 @@ for t = 1 : options.partitions
         options = init_next_iter(options, iter, options.im_vectors);
         % PSF deblurring
         if options.use_psf && options.deblurring
-            options.im_vectors = computeDeblur(options.im_vectors, options, iter, subsets, gaussK, Nx, Ny, Nz);
+            options.im_vectors = computeDeblur(options.im_vectors, options, iter, gaussK, Nx, Ny, Nz);
         end
     end
     % Output is contained in pz, just like in gate_main.m

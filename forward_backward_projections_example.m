@@ -19,10 +19,19 @@ options.blocks_per_ring = (42);
 % number of crystal rings. 
 options.linear_multip = (4);
 
+%%% R-sectors/modules/blocks/buckets in transaxial direction
+% Required only if larger than 1
+options.transaxial_multip = 1;
+
 %%% Number of detectors on the side of R-sector/block/module (transaxial
 %%% direction)
 % (e.g. 13 if 13x13, 20 if 20x10)
 options.cryst_per_block = (8);
+
+%%% Number of detectors on the side of R-sector/block/module (axial
+%%% direction)
+% (e.g. 13 if 13x13, 10 if 20x10)
+options.cryst_per_block_axial = 8;
 
 %%% Crystal pitch/size in x- and y-directions (transaxial) (mm)
 options.cr_p = 2.4;
@@ -48,16 +57,16 @@ options.axial_fov = floor(76.8 - options.cr_pz/10);
 options.pseudot = [];
 
 %%% Number of detectors per crystal ring (without pseudo detectors)
-options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
+options.det_per_ring = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
 
 %%% Number of detectors per crystal ring (with pseudo detectors)
 % If your scanner has a single pseudo detector on each (transaxial) side of
 % the crystal block then simply add +1 inside the parenthesis (or uncomment
 % the one below).
-options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
+options.det_w_pseudo = options.blocks_per_ring * options.cryst_per_block * options.transaxial_multip;
 
 %%% Number of crystal rings
-options.rings = options.linear_multip * options.cryst_per_block;
+options.rings = options.linear_multip * options.cryst_per_block_axial;
 
 %%% Total number of detectors
 options.detectors = options.det_per_ring*options.rings;
@@ -139,7 +148,7 @@ options.Nang = options.det_per_ring/2;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
+options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -202,6 +211,18 @@ options.interpolation_method_inpaint = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Use raw data
+% This means that the data is used as is without any sinogramming and thus
+% without any "compression". Measurement data is stored as diagonal matrix
+% containing the counts on every LOR available. Raw data can be visualized
+% with visualizeRawData function.
+options.use_raw_data = false;
+
+%%% Store raw data
+% If the above use_raw_data is set to false, you can still save the raw
+% data during data load by setting this to true.
+options.store_raw_data = false;
  
 %%% Maximum ring difference in raw data
 options.ring_difference_raw = options.rings;
@@ -453,13 +474,6 @@ options.name = 'cylpet_example';
 % 1, this is HIGHLY recommended. 
 options.precompute = false;
 
-%%% Use raw list mode data
-% This means that the data is used as is without any sinogramming and thus
-% without any "compression". Measurement data is stored as diagonal matrix
-% containing the counts on every LOR available. Raw data can be visualized
-% with visualizeRawData function.
-options.use_raw_data = false;
-
 %%% Use precomputed geometrical matrix information
 % During the precompute-phase the number of voxels each LOR traverse is
 % counted (this phase requires the above precompute-option to true). These
@@ -615,7 +629,7 @@ options.n_rays_axial = 1;
 options.apply_acceleration = true;
  
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
-%%% Number of iterations (all reconstruction methods)
+%%% Number of iterations
 options.Niter = 4;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 6)
@@ -742,7 +756,320 @@ if options.precompute
     precompute_data(options);
 end
 
+%% Class example (OSEM/MLEM)
+
+% Here is an example of how to obtain the same results as above by using a
+% specific MATLAB class. This is a bit more simplified from above and also
+% allows more easily to use other properties files (such as
+% Inveon_PET_main.m). PSF blurring will be performed automatically if it
+% has been selected.
+
+% Construct the forward and backward projections object (you need to rerun
+% this if you make any changes to the system): 
+A = forwardBackwardProject(options);
+% Load the measurement data
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+
+% Compute the OSEM-estimate for the specified number of iterations and
+% subsets (use 1 subset if you want to use a method that doesn't use
+% subsets):
+f = options.x0(:);
+for iter = 1 : options.Niter
+    for osa_iter = 1 : options.subsets
+        % The result is stored in y
+        y = forwardProject(A, f, osa_iter);
+        % The result is stored in x
+        if iter == 1
+            % Sensitivity image can be computed during the first iteration
+            % Computed ONLY if the second output is present
+            [x, A] = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (y + options.epps), osa_iter);
+        else
+            x = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (y + options.epps), osa_iter);
+        end
+        f = (f ./ (A.sens(:,osa_iter) + options.epps)) .* (x + options.epps);
+    end
+end
+% PSF deblurring phase
+if options.use_psf && options.deblurring
+    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+end
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+f_osem = ff;
+
+
+%% Conjugate-gradient Least-squares (CGLS) example
+
+% This example demonstrates the "operator overloading" available in the
+% forwardBackwardProject class. This means that both the forwardProject and
+% backwardProject can be replaced with simple multiplication *. The
+% dimension of the input vector determines whether forward or backward
+% projection is used.
+
+% Subsets should be set to 1 if no subsets are used
+options.subsets = 1;
+
+% Create the class object
+A = forwardBackwardProject(options);
+% Load measurement data
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+f = options.x0(:);
+r = raw_SinM;
+s = A * raw_SinM;
+p = s;
+gamma = norm(s)^2;
+for iter = 1 : options.Niter
+    q = A * p;
+    alpha = gamma / norm(q)^2;
+    f = f + alpha * p;
+    r = r - alpha * q;
+    s = A * r; % This is equivalent to A' * r
+    gamma_ = norm(s)^2;
+    beta = gamma_ / gamma;
+    p = s + beta * p;
+    gamma = gamma_;
+end
+% PSF deblurring phase
+if options.use_psf && options.deblurring
+    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+end
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% LSQR example
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+f = zeros(options.Nx*options.Ny*options.Nz,1);
+u = raw_SinM;
+beta = 1 / norm(u);
+u = u * beta;
+vh = backwardProject(A, u);
+alpha = 1 / norm(vh);
+vh = vh * alpha;
+w = vh;
+phi = beta;
+rho = alpha;
+for iter = 1 : options.Niter
+    u = forwardProject(A, vh) - alpha * u;
+    beta = 1 / norm(u);
+    u = u * beta;
+    vh = backwardProject(A, u) - beta * vh;
+    alpha = 1 / norm(vh);
+    vh = vh * alpha;
+    rho_ = sqrt(rho^2 + beta^2);
+    c = rho / rho_;
+    s = beta / rho_;
+    theta = s * alpha;
+    rho = -c * alpha;
+    phi_ = c * phi;
+    phi = s* phi;
+    f = f + (phi_ / rho_)*w;
+    w = vh + (theta/rho_)*w;
+end
+% PSF deblurring phase
+if options.use_psf && options.deblurring
+    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+end
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% SA-WLS example
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+% Sensitivity image
+[f, A] = backwardProject(A, raw_SinM);
+y = A * f;
+for iter = 1 : options.Niter
+    % Brackets are needed here
+    % It is not necessary to transpose the matrix when doing backprojection
+    f_ = f .* sqrt((1./A.sens) .* (A * (raw_SinM.^2 ./ y.^2)));
+    y = y + (A * (f_ - f));
+    f = f_;
+end
+
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% System matrix (OSEM) example
+
+% This example demonstrates the use of the forwardBackwardProject class to
+% obtain the system matrix itself (either the full matrix or a subset). If
+% you are using precomputed data (i.e. options.precompute_lor = true), then
+% the system matrix will be the TRANSPOSE of the system matrix. This
+% example assumes that options.precompute_lor = true, which is the
+% recommended method for system matrix creation.
+% NOTE: Unlike with the forward and backward projections, the PSF blurring
+% has to be performed manually here.
+options.subsets = 16;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+f = options.x0(:);
+% Form the full system matrix with this:
+% sysMat = formMatrix(A);
+for iter = 1 : options.Niter
+    for osa_iter = 1 : options.subsets
+        % Form a subset of the system matrix with this:
+        sysMat = formMatrix(A, osa_iter);
+        
+        if options.use_psf
+            f = computeConvolution(f, options, options.Nx, options.Ny, options.Nz, gaussK);
+        end
+        
+        y = sysMat' * f;
+        Summ = full(sum(sysMat,2));
+        if options.use_psf
+            Summ = computeConvolution(Summ, options, options.Nx, options.Ny, options.Nz, gaussK);
+        end
+        x = sysMat * (raw_SinM ./ y);
+        if options.use_psf
+            x = computeConvolution(x, options, options.Nx, options.Ny, options.Nz, gaussK);
+        end
+        f = (f ./ (Summ + options.epps)) .* (x + options.epps);
+    end
+end
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% ATP-WLS example, using * to compute forward projection and '* backward projection
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+f = options.x0(:);
+NN = sum(raw_SinM(:));
+tau = 0.1 / NN;
+for iter = 1 : options.Niter
+    % The backprojection can be alternatively computed with A' * f
+    f = f .* ((A' * (raw_SinM.^2 ./ (A * f).^2) + 2 * tau * NN) ./ (1 + 2 * tau * sum(f)));
+end
+
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+
+%% EM-PKMA with TV regularization
+% This example demonstrates the use of included priors, in this case the TV
+% prior
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+[f, A] = backwardProject(A, raw_SinM);
+A.sens(A.sens == 0) = 1;
+beta = 0.5;
+lambda = 0.2;
+N = options.Nx*options.Ny*options.Nz;
+delta = 0.1;
+rho = 0.5;
+% Such prepass functions exist for all the priors that need one, see the
+% GitHub wiki or the included documentation for more information (Computing
+% the forward and or backward projections)
+options = TVPrepass(options);
+
+
+for iter = 1 : options.Niter
+    S = (f + options.epps) ./ A.sens;
+    f_ = f;
+    % Compute the gradient of the prior
+    grad = TVpriorFinal(f,options.TVdata,options.Nx, options.Ny, options.Nz, false, options, 1);
+    ff = A' * (ones(length(raw_SinM),1,'single') - raw_SinM ./ (A * f));
+    f = f - beta .* S .* (ff + lambda * grad);
+    f(f < 0) = 0;
+    alpha = 1 + (rho * iter) / (iter + delta);
+    f = (1 - alpha) .* f_ + alpha .* f;
+end
+
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% ADMM
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+% Compute the sensitivity image A.sens
+[f, A] = backwardProject(A, raw_SinM);
+options = TVPrepass(options);
+beta = 4;
+mu = 0.001;
+d = f;
+u = f;
+
+for iter = 1 : 20
+    grad = TVpriorFinal(u,options.TVdata,options.Nx, options.Ny, options.Nz, false, options, 1);
+    gradPhi = mu .* (u - f + d) + beta * grad;
+    grad2 = TVpriorFinal(gradPhi,options.TVdata,options.Nx, options.Ny, options.Nz, false, options, 1);
+    gradPhi2 = mu * gradPhi + grad2;
+    alpha = norm(gradPhi)^2 / (gradPhi' * gradPhi2);
+    u = u - alpha * gradPhi;
+    w = A.sens - mu * (u - d);
+    v = f .* (A * (raw_SinM ./ (A * f)));
+    f = (-w + sqrt(w.^2 + 4*mu * v))/ (2*mu);
+    d = d + f - u;
+end
+
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
 %% Forward and backward projections (and sensitivity image)
+% This example uses the older, function-based, way of computing the forward
+% and backward projections
 
 % Get the subset indices for the current subset type
 % Index contains the subset indices (which measurements belong to each
@@ -783,32 +1110,32 @@ for iter = 1 : options.Niter
         % Only those indices that have non-zero measurements (counts) are
         % included, i.e. the "matrix-vector multiplication" A*f is
         % performed ONLY for the indices where raw_SinM is non-zero.
-        % To include ALL indices replace raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) 
+        % To include ALL indices replace raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1))
         % with a vector of ones, e.g. as in the commented function call
         % below. The measurements themselves are not used in the
         % computation of forward projection.
         [y, options] = forward_project(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), f, [nn(osa_iter) + 1 , nn(osa_iter+1)], ...
-            iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
-%         [y, options] = forward_project(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), f, [nn(osa_iter) + 1 , nn(osa_iter+1)], ...
-%             iter + osa_iter - 1, ones(length(nn(osa_iter) + 1:nn(osa_iter+1)),1,'single'));
-
+            iter + osa_iter - 1);
+        %         [y, options] = forward_project(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), f, [nn(osa_iter) + 1 , nn(osa_iter+1)], ...
+        %             iter + osa_iter - 1, ones(length(nn(osa_iter) + 1:nn(osa_iter+1)),1,'single'));
+        
         % Compute the backprojection (x = A'*b, where in this case b =
         % raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps))
         if iter == 1
             % Compute the sensitivity image on the first iteration.
             [x, norm] = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps), ...
-                nn(osa_iter) + 1:nn(osa_iter+1), iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
+                [nn(osa_iter) + 1,nn(osa_iter+1)], iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
             sens(:,osa_iter) = norm;
             if options.use_psf
                 sens(:,osa_iter) = computeConvolution(sens(:,osa_iter), options, options.Nx, options.Ny, options.Nz, gaussK);
             end
             % Compute only x. E.g. x = backproject(...) to compute only the
             % backprojection without the sensitivity image.
-%             x = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps), ...
-%                 nn(osa_iter) + 1:nn(osa_iter+1), iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
+            %             x = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps), ...
+            %                 nn(osa_iter) + 1:nn(osa_iter+1), iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
         else
             [x] = backproject(options, index(nn(osa_iter) + 1:nn(osa_iter+1)), n_meas(osa_iter), raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)) ./ (y + options.epps), ...
-                nn(osa_iter) + 1:nn(osa_iter+1), iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
+                [nn(osa_iter) + 1,nn(osa_iter+1)], iter + osa_iter - 1, raw_SinM(nn(osa_iter) + 1:nn(osa_iter+1)));
         end
         % Compute PSF blurring
         if options.use_psf
@@ -819,6 +1146,8 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, options, options.Niter, options.subsets, gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;

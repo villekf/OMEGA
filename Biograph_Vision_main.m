@@ -26,6 +26,11 @@ options.linear_multip = (4);
 % (e.g. 13 if 13x13, 20 if 20x10)
 options.cryst_per_block = (20);
 
+%%% Number of detectors on the side of R-sector/block/module (axial
+%%% direction)
+% (e.g. 13 if 13x13, 10 if 20x10)
+options.cryst_per_block_axial = 10;
+
 %%% Crystal pitch/size in x- and y-directions (transaxial) (mm)
 options.cr_p = 3.2;
 
@@ -56,10 +61,10 @@ options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
 %%% Number of detectors per ring (with pseudo detectors)
 % NOTE: Vision normally has one pseudo detector per block, but it is
 % omitted here by default
-options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block + 1);
+options.det_w_pseudo = options.blocks_per_ring*(options.cryst_per_block);
 
 %%% Number of crystal rings
-options.rings = options.linear_multip * options.cryst_per_block;
+options.rings = options.linear_multip * options.cryst_per_block_axial;
 
 %%% Number of detectors
 options.detectors = options.det_per_ring*options.rings;
@@ -317,7 +322,7 @@ options.Nang = options.det_w_pseudo/2;
 % (this should total the total number of sinograms).
 % Currently this is computed automatically, but you can also manually
 % specify the segment sizes.
-options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.span)];
+options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
     options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
 else
@@ -382,6 +387,18 @@ options.interpolation_method_inpaint = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Use raw data
+% This means that the data is used as is without any sinogramming and thus
+% without any "compression". Measurement data is stored as diagonal matrix
+% containing the counts on every LOR available. Raw data can be visualized
+% with visualizeRawData function.
+options.use_raw_data = false;
+
+%%% Store raw data
+% If the above use_raw_data is set to false, you can still save the raw
+% data during data load by setting this to true.
+options.store_raw_data = false;
  
 %%% Maximum ring difference
 options.ring_difference_raw = options.rings;
@@ -675,13 +692,6 @@ options.precompute_obs_matrix = false;
 % (below). Normalization coefficients are not computed even if selected.
 options.only_reconstructions = false;
 
-%%% Use raw list mode data
-% This means that the data is used as is without any sinogramming and thus
-% without any "compression". Measurement data is stored as diagonal matrix
-% containing the counts on every LOR available. Raw data can be visualized
-% with visualizeRawData function.
-options.use_raw_data = true;
-
 %%% Use precomputed geometrical matrix information
 % During the precompute-phase the number of voxels each LOR traverse is
 % counted (this phase requires the above precompute-option to true). These
@@ -852,6 +862,10 @@ options.apply_acceleration = true;
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 4;
+% Save ALL iterations
+% Set this to false if you do not want to save all the intermediate
+% iterations, but only the very last one.
+options.save_iter = true;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 6)
 options.subsets = 8;
@@ -1602,12 +1616,12 @@ end
 
 %% Form the sinograms and perform corrections if selected
 
-%%% Forms the sinogram from the raw list-mode data.
+%%% Forms the sinogram from the raw data.
 %%% Should be used only to create sinograms of different size as
 %%% previously, for corrections use the below version.
-if options.only_reconstructions == false && options.use_raw_data == false && options.use_machine < 2  && ~isfield(options,'coincidences') && ~options.no_data_load
-    options.SinM = form_sinograms(options);
-end
+% if options.only_reconstructions == false && options.use_raw_data == false && options.use_machine < 2  && ~isfield(options,'coincidences') && ~options.no_data_load
+%     options.SinM = form_sinograms(options);
+% end
 
 %%% Use this function (uncommented) to perform only selected corrections to
 %%% the raw uncorrected sinogram. This overwrites any previous corrections

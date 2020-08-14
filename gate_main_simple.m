@@ -20,10 +20,19 @@ options.blocks_per_ring = (42);
 % number of crystal rings. 
 options.linear_multip = (4);
 
+%%% R-sectors/modules/blocks/buckets in transaxial direction
+% Required only if larger than 1
+options.transaxial_multip = 1;
+
 %%% Number of detectors on the side of R-sector/block/module (transaxial
 %%% direction)
 % (e.g. 13 if 13x13, 20 if 20x10)
 options.cryst_per_block = (8);
+
+%%% Number of detectors on the side of R-sector/block/module (axial
+%%% direction)
+% (e.g. 13 if 13x13, 10 if 20x10)
+options.cryst_per_block_axial = 8;
 
 %%% Crystal pitch/size in x- and y-directions (transaxial) (mm)
 options.cr_p = 2.4;
@@ -274,24 +283,6 @@ options.Ndist = 200;
 options.Nang = 168;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% RAW DATA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
-%%% Maximum ring difference in raw data
-options.ring_difference_raw = 32;
- 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
 
@@ -330,13 +321,6 @@ options.only_sinos = false;
 % only performed if precompute_lor = true and precompute_all = true
 % (below). Normalization coefficients are not computed even if selected.
 options.only_reconstructions = true;
-
-%%% Use raw list mode data
-% This means that the data is used as is without any sinogramming and thus
-% without any "compression". Measurement data is stored as diagonal matrix
-% containing the counts on every LOR available. Raw data can be visualized
-% with visualizeRawData function.
-options.use_raw_data = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
@@ -439,12 +423,6 @@ if options.only_reconstructions == false
     % [options.coincidences, delayed_coincidences, true_coincidences, scattered_coincidences, random_coincidences] = load_data(options);
     % Save the coordinates of the detected coincidences to work space:
     % [options.coincidences, ~, ~, ~, ~, x, y, z] = load_data(options);
-end
-
-%% Form the sinograms
-
-if options.only_reconstructions == false && options.use_raw_data == false && ~isfield(options,'coincidences')
-    options.SinM = form_sinograms(options);
 end
 
 %% Reconstructions
