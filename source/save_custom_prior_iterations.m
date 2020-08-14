@@ -4,35 +4,40 @@ function [options, pz] = save_custom_prior_iterations(options, llo, pz)
 options.im_vectors = reshape_vectors(options.im_vectors, options);
 
 pz = images_to_cell(options.im_vectors, llo, pz, options);
+if options.save_iter
+    Niter = options.Niter + 1;
+else
+    Niter = 1;
+end
 gg = length(pz) - 7;
 if options.OSL_OSEM && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_OSL,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_OSL,options.Nx,options.Ny,options.Nz,Niter);
 end
 gg = gg + 1;
 if options.implementation == 2
     if options.OSL_MLEM && options.custom
-        pz{gg, llo} = reshape(options.im_vectors.custom_MLEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
+        pz{gg, llo} = reshape(options.im_vectors.custom_MLEM,options.Nx,options.Ny,options.Nz,Niter);
     end
 end
 gg = gg + 1;
 if options.MBSREM && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_MBSREM,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_MBSREM,options.Nx,options.Ny,options.Nz,Niter);
 end
 gg = gg + 1;
 if options.BSREM && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_BSREM,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_BSREM,options.Nx,options.Ny,options.Nz,Niter);
 end
 gg = gg + 1;
 if options.ROSEM_MAP && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_ROSEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_ROSEM,options.Nx,options.Ny,options.Nz,Niter);
 end
 gg = gg + 1;
 if options.RBI_OSL && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_RBI,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_RBI,options.Nx,options.Ny,options.Nz,Niter);
 end
 gg = gg + 1;
 if any(options.COSEM_OSL) && options.custom
-    pz{gg, llo} = reshape(options.im_vectors.custom_COSEM,options.Nx,options.Ny,options.Nz,options.Niter+1);
+    pz{gg, llo} = reshape(options.im_vectors.custom_COSEM,options.Nx,options.Ny,options.Nz,Niter);
 end
 pz{end,1} = 0;
 
