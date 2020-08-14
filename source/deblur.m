@@ -3,7 +3,7 @@ function vec = deblur(vec, options, gaussK, Nx, Ny, Nz)
 %image/vector. Performs symmetric padding.
 %
 % Example:
-%   vec = deblur(vec, options, iter, subsets, gaussK, Nx, Ny, Nz);
+%   vec = deblur(vec, options, gaussK, Nx, Ny, Nz);
 %
 % INPUTS:
 %   vec = The image estimes

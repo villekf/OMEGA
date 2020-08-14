@@ -37,6 +37,10 @@ if ~isfield(options,'attenuation_phase')
     options.attenuation_phase = false;
 end
 
+if ~isfield(options,'save_iter')
+    options.save_iter = true;
+end
+
 if ~options.use_raw_data && isfield(options,'coincidences')
     options = rmfield(options, 'coincidences');
 end
@@ -58,117 +62,59 @@ if options.use_raw_data
     RandProp.smoothing = false;
     RandProp.variance_reduction = false;
     ScatterProp.smoothing = false;
-    if options.reconstruct_trues == false && ~options.reconstruct_scatter && (isfield(options, 'coincidences') == 0 || options.precompute_all) && options.use_machine < 2
-        if options.partitions == 1
-            if options.use_ASCII && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_ASCII.mat'], 'coincidences');
-            elseif options.use_LMF && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_LMF.mat'], 'coincidences');
-            elseif options.use_root && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_root.mat'], 'coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_listmode.mat'], 'coincidences');
-            end
+    if options.partitions == 1
+        load_string = [options.machine_name '_measurements_' options.name '_static_raw'];
+        if options.use_ASCII && options.use_machine == 0
+            load_string =  [load_string '_ASCII.mat'];
+        elseif options.use_LMF && options.use_machine == 0
+            load_string =  [load_string '_LMF.mat'];
+        elseif options.use_root && options.use_machine == 0
+            load_string =  [load_string '_root.mat'];
         else
-            if options.use_ASCII && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_ASCII.mat'], 'coincidences');
-            elseif options.use_LMF && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_LMF.mat'], 'coincidences');
-            elseif options.use_root && options.use_machine == 0
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_root.mat'], 'coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_listmode.mat'], 'coincidences');
-            end
+            load_string =  [load_string '_listmode.mat'];
         end
+    else
+        load_string = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+            num2str(options.tot_time) 's_raw'];
+        load_string2 = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+            num2str(options.tot_time) 's_raw'];
+        if options.use_ASCII && options.use_machine == 0
+            if exist([load_string '_ASCII.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_ASCII.mat'];
+        elseif options.use_LMF && options.use_machine == 0
+            if exist([load_string '_LMF.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_LMF.mat'];
+        elseif options.use_root && options.use_machine == 0
+            if exist([load_string '_root.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_root.mat'];
+        else
+            if exist([load_string '_listmode.mat'], 'file') == 0
+                load_string = load_string2;
+            end
+            load_string =  [load_string '_listmode.mat'];
+        end
+    end
+    if options.reconstruct_trues == false && ~options.reconstruct_scatter && (isfield(options, 'coincidences') == 0 || options.precompute_all) && options.use_machine < 2
+        options.SinM = loadStructFromFile(load_string, 'coincidences');
     elseif ~options.reconstruct_trues && ~options.reconstruct_scatter && isfield(options, 'coincidences')
         options.SinM = options.coincidences;
     elseif options.reconstruct_trues
         % Load Trues
-        if options.partitions == 1
-            if options.use_ASCII
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_ASCII.mat'], 'true_coincidences');
-            elseif options.use_LMF
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_LMF.mat'], 'true_coincidences');
-            elseif options.use_root
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_root.mat'], 'true_coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_real.mat'], 'true_coincidences');
-            end
-        else
-            if options.use_ASCII
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_ASCII.mat'], 'true_coincidences');
-            elseif options.use_LMF
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_LMF.mat'], 'true_coincidences');
-            elseif options.use_root
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_root.mat'], 'true_coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_real.mat'], 'true_coincidences');
-            end
-        end
+        options.SinM = loadStructFromFile(load_string, 'true_coincidences');
     elseif options.reconstruct_scatter
         % Load scattered coincidences
-        if options.partitions == 1
-            if options.use_ASCII
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_ASCII.mat'], 'scattered_coincidences');
-            elseif options.use_LMF
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_LMF.mat'], 'scattered_coincidences');
-            elseif options.use_root
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_root.mat'], 'scattered_coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_real.mat'], 'scattered_coincidences');
-            end
-        else
-            if options.use_ASCII
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_ASCII.mat'], 'scattered_coincidences');
-            elseif options.use_LMF
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_LMF.mat'], 'scattered_coincidences');
-            elseif options.use_root
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_root.mat'], 'scattered_coincidences');
-            else
-                options.SinM = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_raw_real.mat'], 'scattered_coincidences');
-            end
-        end
+        options.SinM = loadStructFromFile(load_string, 'scattered_coincidences');
     end
     % Perform corrections if needed
     if options.randoms_correction && ~options.reconstruct_trues && ~options.reconstruct_scatter
         if ((options.use_ASCII || options.use_LMF || options.use_root) && options.use_machine == 0) || options.use_machine == 1
-            if options.partitions == 1
-                if options.use_ASCII && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_ASCII.mat'], 'delayed_coincidences');
-                elseif options.use_LMF && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_LMF.mat'], 'delayed_coincidences');
-                elseif options.use_root && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_root.mat'], 'delayed_coincidences');
-                else
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_static_raw_listmode.mat'], 'delayed_coincidences');
-                end
-            else
-                if options.use_ASCII && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_raw_ASCII.mat'], 'delayed_coincidences');
-                elseif options.use_LMF && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_raw_LMF.mat'], 'delayed_coincidences');
-                elseif options.use_root && options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_raw_root.mat'], 'delayed_coincidences');
-                else
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_raw_listmode.mat'], 'delayed_coincidences');
-                end
-            end
+            options.SinDelayed = loadStructFromFile(load_string, 'delayed_coincidences');
             if isfield(options,'SinDelayed')
                 if iscell(options.SinM) && iscell(options.SinDelayed)
                     for kk = 1 : length(options.SinM)
@@ -444,40 +390,48 @@ else
     ScatterProp.smoothing = false;
     ScatterProp.variance_reduction = false;
     ScatterProp.normalization = false;
-    if ~options.reconstruct_trues && ~options.reconstruct_scatter
-        if options.partitions == 1
-            if options.use_machine == 0
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '.mat'];
-            elseif options.use_machine == 1
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'];
-            elseif options.use_machine == 2
-                sinoFile = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_machine_sinogram.mat'];
-            elseif options.use_machine == 3
-                sinoFile = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
+    if options.partitions == 1
+        load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+            num2str(options.TotSinos) '_span' num2str(options.span)];
+        if options.use_machine == 0
+            sinoFile = [load_string '.mat'];
+        elseif options.use_machine == 1
+            sinoFile = [load_string '_listmode.mat'];
+        elseif options.use_machine == 2
+            sinoFile = [load_string '_machine_sinogram.mat'];
+        elseif options.use_machine == 3
+            sinoFile = [load_string '_listmode_sinogram.mat'];
+        end
+    else
+        load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+            num2str(options.span)];
+        load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+            num2str(options.span)];
+        if options.use_machine == 0
+            sinoFile = [load_string '.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '.mat'];
             end
-        else
-            if options.use_machine == 0
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '.mat'];
-            elseif options.use_machine == 1
-                sinoFile = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_listmode.mat'];
-            elseif options.use_machine == 2
-                sinoFile = [options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_machine_sinogram.mat'];
-            elseif options.use_machine == 3
-                sinoFile = [options.machine_name '_' options.name '_sinograms_original_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_listmode_sinogram.mat'];
+        elseif options.use_machine == 1
+            sinoFile = [load_string '_listmode.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_listmode.mat'];
+            end
+        elseif options.use_machine == 2
+            sinoFile = [load_string '_machine_sinogram.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_machine_sinogram.mat'];
+            end
+        elseif options.use_machine == 3
+            sinoFile = [load_string '_listmode_sinogram.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_listmode_sinogram.mat'];
             end
         end
+    end
+    if ~options.reconstruct_trues && ~options.reconstruct_scatter
         if isfield(options,'SinM') == 0
             if ((options.randoms_correction || options.scatter_correction || options.normalization_correction) && ~options.corrections_during_reconstruction) ...
                     || options.fill_sinogram_gaps
@@ -573,12 +527,9 @@ else
         end
     elseif options.reconstruct_trues && options.use_machine == 0
         if options.partitions == 1 && isfield(options, 'SinTrues') == 0
-            options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'SinTrues');
+            options.SinM = loadStructFromFile(sinoFile,'SinTrues');
         elseif isfield(options, 'SinTrues') == 0
-            options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                num2str(options.span) '.mat'], 'SinTrues');
+            options.SinM = loadStructFromFile(sinoFile, 'SinTrues');
         end
         if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
             if options.verbose
@@ -605,12 +556,9 @@ else
         end
     elseif options.reconstruct_scatter && options.use_machine == 0
         if options.partitions == 1 && isfield(options, 'SinScatter') == 0
-            options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'SinScatter');
+            options.SinM = loadStructFromFile(sinoFile,'SinScatter');
         elseif isfield(options, 'SinScatter') == 0
-            options.SinM = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                num2str(options.span) '.mat'], 'SinScatter');
+            options.SinM = loadStructFromFile(sinoFile, 'SinScatter');
         end
         if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
             if options.verbose
@@ -638,23 +586,17 @@ else
     end
     if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
         if options.use_machine == 0
-            [options.SinDelayed,RandProp] = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'SinDelayed','RandProp');
+            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
         elseif  options.use_machine == 1
-            [options.SinDelayed,RandProp] = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'SinDelayed','RandProp');
+            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
         else
             options = loadDelayedData(options);
         end
     elseif options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
         if options.use_machine == 0
-            [options.SinDelayed,RandProp] = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                num2str(options.span) '.mat'], 'SinDelayed','RandProp');
+            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
         elseif  options.use_machine == 1
-            [options.SinDelayed,RandProp] = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                num2str(options.span) '_listmode.mat'], 'SinDelayed','RandProp');
+            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
         else
             options = loadDelayedData(options);
             if length(options.SinDelayed) < options.partitions && iscell(options.SinDelayed)
@@ -1135,8 +1077,13 @@ if precompute_obs_matrix && options.implementation == 1
             Sino = double(Sino);
             
             for iter=1:Niter
+                if options.save_iter
+                    iter_n = iter + 1;
+                else
+                    iter_n = 1;
+                end
                 if options.mlem
-                    MLEM(:,iter+1) = MLEM_im(MLEM(:,iter), D, epps, A, Sino, false);
+                    MLEM(:, iter_n) = MLEM_im(MLEM(:,iter), D, epps, A, Sino, false);
                     disp(['MLEM iteration ' num2str(iter) ' finished'])
                 end
                 if ~any(rekot(cellfun('isempty',strfind(algorithms_char(),'MLEM'))))
@@ -2534,47 +2481,52 @@ else
                             im_vectors.(fn{kk})(im_vectors.(fn{kk}) < 0) = epps;
                         end
                     end
+                    if options.save_iter
+                        iter_n = iter + 1;
+                    else
+                        iter_n = 1;
+                    end
                     if options.osem
-                        im_vectors.OSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                        im_vectors.OSEM(:, iter_n) = im_vectors.OSEM_apu;
                     end
                     
                     if options.mramla
-                        im_vectors.MRAMLA(:, iter + 1) = im_vectors.MRAMLA_apu;
+                        im_vectors.MRAMLA(:, iter_n) = im_vectors.MRAMLA_apu;
                     end
                     
                     if options.ramla
-                        im_vectors.RAMLA(:, iter + 1) = im_vectors.RAMLA_apu;
+                        im_vectors.RAMLA(:, iter_n) = im_vectors.RAMLA_apu;
                     end
                     
                     if options.rosem
-                        im_vectors.ROSEM(:, iter + 1) = im_vectors.ROSEM_apu;
+                        im_vectors.ROSEM(:, iter_n) = im_vectors.ROSEM_apu;
                     end
                     
                     if options.rbi
-                        im_vectors.RBI(:, iter + 1) = im_vectors.RBI_apu;
+                        im_vectors.RBI(:, iter_n) = im_vectors.RBI_apu;
                     end
                     
                     if options.drama
-                        im_vectors.DRAMA(:, iter + 1) = im_vectors.DRAMA_apu;
+                        im_vectors.DRAMA(:, iter_n) = im_vectors.DRAMA_apu;
                     end
                     
                     if options.cosem
-                        im_vectors.COSEM(:, iter + 1) = im_vectors.COSEM_apu;
+                        im_vectors.COSEM(:, iter_n) = im_vectors.COSEM_apu;
                     end
                     
                     if options.ecosem
-                        im_vectors.ECOSEM(:, iter + 1) = im_vectors.ECOSEM_apu;
+                        im_vectors.ECOSEM(:, iter_n) = im_vectors.ECOSEM_apu;
                     end
                     
                     if options.acosem
-                        im_vectors.ACOSEM(:, iter + 1) = im_vectors.ACOSEM_apu;
+                        im_vectors.ACOSEM(:, iter_n) = im_vectors.ACOSEM_apu;
                     end
                     
                     if options.MRP && options.OSL_OSEM
-                        im_vectors.MRP_OSL(:, iter + 1) = im_vectors.MRP_OSL_apu;
+                        im_vectors.MRP_OSL(:, iter_n) = im_vectors.MRP_OSL_apu;
                     end
                     if options.MRP && options.MBSREM
-                        im_vectors.MRP_MBSREM(:, iter + 1) = im_vectors.MRP_MBSREM_apu;
+                        im_vectors.MRP_MBSREM(:, iter_n) = im_vectors.MRP_MBSREM_apu;
                     end
                     
                     if options.MRP && options.BSREM
@@ -2582,7 +2534,7 @@ else
                             tStart = tic;
                         end
                         med = MRP(im_vectors.MRP_BSREM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                        im_vectors.MRP_BSREM(:,iter+1) = BSREM_iter(im_vectors.MRP_BSREM_apu, options.lam, iter, options.beta_mrp_bsrem, med, epps);
+                        im_vectors.MRP_BSREM(:, iter_n) = BSREM_iter(im_vectors.MRP_BSREM_apu, options.lam, iter, options.beta_mrp_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2596,7 +2548,7 @@ else
                             tStart = tic;
                         end
                         med = MRP(im_vectors.MRP_ROSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                        im_vectors.MRP_ROSEM(:,iter+1) = BSREM_iter(im_vectors.MRP_ROSEM_apu, options.lam_rosem, iter, options.beta_mrp_rosem, med, epps);
+                        im_vectors.MRP_ROSEM(:, iter_n) = BSREM_iter(im_vectors.MRP_ROSEM_apu, options.lam_rosem, iter, options.beta_mrp_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2606,18 +2558,18 @@ else
                     end
                     
                     if options.MRP && options.RBI_OSL
-                        im_vectors.MRP_RBI(:, iter + 1) = im_vectors.MRP_RBI_apu;
+                        im_vectors.MRP_RBI(:, iter_n) = im_vectors.MRP_RBI_apu;
                     end
                     
                     if options.MRP && any(options.COSEM_OSL)
-                        im_vectors.MRP_COSEM(:, iter + 1) = im_vectors.MRP_COSEM_apu;
+                        im_vectors.MRP_COSEM(:, iter_n) = im_vectors.MRP_COSEM_apu;
                     end
                     
                     if options.quad && options.OSL_OSEM
-                        im_vectors.Quad_OSL(:, iter + 1) = im_vectors.Quad_OSL_apu;
+                        im_vectors.Quad_OSL(:, iter_n) = im_vectors.Quad_OSL_apu;
                     end
                     if options.quad && options.MBSREM
-                        im_vectors.Quad_MBSREM(:, iter + 1) = im_vectors.Quad_MBSREM_apu;
+                        im_vectors.Quad_MBSREM(:, iter_n) = im_vectors.Quad_MBSREM_apu;
                     end
                     
                     if options.quad && options.BSREM
@@ -2625,7 +2577,7 @@ else
                             tStart = tic;
                         end
                         med = Quadratic_prior(im_vectors.Quad_BSREM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                        im_vectors.Quad_BSREM(:,iter+1) = BSREM_iter(im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, epps);
+                        im_vectors.Quad_BSREM(:, iter_n) = BSREM_iter(im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2639,7 +2591,7 @@ else
                             tStart = tic;
                         end
                         med = Quadratic_prior(im_vectors.Quad_ROSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                        im_vectors.Quad_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, epps);
+                        im_vectors.Quad_ROSEM(:, iter_n) = BSREM_iter(im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2649,18 +2601,18 @@ else
                     end
                     
                     if options.quad && options.RBI_OSL
-                        im_vectors.Quad_RBI(:, iter + 1) = im_vectors.Quad_RBI_apu;
+                        im_vectors.Quad_RBI(:, iter_n) = im_vectors.Quad_RBI_apu;
                     end
                     
                     if options.quad && any(options.COSEM_OSL)
-                        im_vectors.Quad_COSEM(:, iter + 1) = im_vectors.Quad_COSEM_apu;
+                        im_vectors.Quad_COSEM(:, iter_n) = im_vectors.Quad_COSEM_apu;
                     end
                     
                     if options.Huber && options.OSL_OSEM
-                        im_vectors.Huber_OSL(:, iter + 1) = im_vectors.Huber_OSL_apu;
+                        im_vectors.Huber_OSL(:, iter_n) = im_vectors.Huber_OSL_apu;
                     end
                     if options.Huber && options.MBSREM
-                        im_vectors.Huber_MBSREM(:, iter + 1) = im_vectors.Huber_MBSREM_apu;
+                        im_vectors.Huber_MBSREM(:, iter_n) = im_vectors.Huber_MBSREM_apu;
                     end
                     
                     if options.Huber && options.BSREM
@@ -2668,7 +2620,7 @@ else
                             tStart = tic;
                         end
                         med = Huber_prior(im_vectors.Huber_BSREM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                        im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, epps);
+                        im_vectors.Huber_BSREM(:, iter_n) = BSREM_iter(im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2682,7 +2634,7 @@ else
                             tStart = tic;
                         end
                         med = Huber_prior(im_vectors.Huber_ROSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                        im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, epps);
+                        im_vectors.Huber_ROSEM(:, iter_n) = BSREM_iter(im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2692,18 +2644,18 @@ else
                     end
                     
                     if options.Huber && options.RBI_OSL
-                        im_vectors.Huber_RBI(:, iter + 1) = im_vectors.Huber_RBI_apu;
+                        im_vectors.Huber_RBI(:, iter_n) = im_vectors.Huber_RBI_apu;
                     end
                     
                     if options.Huber && any(options.COSEM_OSL)
-                        im_vectors.Huber_COSEM(:, iter + 1) = im_vectors.Huber_COSEM_apu;
+                        im_vectors.Huber_COSEM(:, iter_n) = im_vectors.Huber_COSEM_apu;
                     end
                     
                     if options.L && options.OSL_OSEM
-                        im_vectors.L_OSL(:, iter + 1) = im_vectors.L_OSL_apu;
+                        im_vectors.L_OSL(:, iter_n) = im_vectors.L_OSL_apu;
                     end
                     if options.L && options.MBSREM
-                        im_vectors.L_MBSREM(:, iter + 1) = im_vectors.L_MBSREM_apu;
+                        im_vectors.L_MBSREM(:, iter_n) = im_vectors.L_MBSREM_apu;
                     end
                     
                     if options.L && options.BSREM
@@ -2711,7 +2663,7 @@ else
                             tStart = tic;
                         end
                         med = L_filter(im_vectors.L_BSREM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                        im_vectors.L_BSREM(:,iter+1) = BSREM_iter(im_vectors.L_BSREM_apu, options.lam, iter, options.beta_L_bsrem, med, epps);
+                        im_vectors.L_BSREM(:, iter_n) = BSREM_iter(im_vectors.L_BSREM_apu, options.lam, iter, options.beta_L_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2725,7 +2677,7 @@ else
                             tStart = tic;
                         end
                         med = L_filter(im_vectors.L_ROSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                        im_vectors.L_ROSEM(:,iter+1) = BSREM_iter(im_vectors.L_ROSEM_apu, options.lam_rosem, iter, options.beta_L_rosem, med, epps);
+                        im_vectors.L_ROSEM(:, iter_n) = BSREM_iter(im_vectors.L_ROSEM_apu, options.lam_rosem, iter, options.beta_L_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2735,18 +2687,18 @@ else
                     end
                     
                     if options.L && options.RBI_OSL
-                        im_vectors.L_RBI(:, iter + 1) = im_vectors.L_RBI_apu;
+                        im_vectors.L_RBI(:, iter_n) = im_vectors.L_RBI_apu;
                     end
                     
                     if options.L && any(options.COSEM_OSL)
-                        im_vectors.L_COSEM(:, iter + 1) = im_vectors.L_COSEM_apu;
+                        im_vectors.L_COSEM(:, iter_n) = im_vectors.L_COSEM_apu;
                     end
                     
                     if options.FMH && options.OSL_OSEM
-                        im_vectors.FMH_OSL(:, iter + 1) = im_vectors.FMH_OSL_apu;
+                        im_vectors.FMH_OSL(:, iter_n) = im_vectors.FMH_OSL_apu;
                     end
                     if options.FMH && options.MBSREM
-                        im_vectors.FMH_MBSREM(:, iter + 1) = im_vectors.FMH_MBSREM_apu;
+                        im_vectors.FMH_MBSREM(:, iter_n) = im_vectors.FMH_MBSREM_apu;
                     end
                     
                     if options.FMH && options.BSREM
@@ -2755,7 +2707,7 @@ else
                         end
                         med = FMH(im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                             options.med_no_norm);
-                        im_vectors.FMH_BSREM(:,iter+1) = BSREM_iter(im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, epps);
+                        im_vectors.FMH_BSREM(:, iter_n) = BSREM_iter(im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2770,7 +2722,7 @@ else
                         end
                         med = FMH(im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                             options.med_no_norm);
-                        im_vectors.FMH_ROSEM(:,iter+1) = BSREM_iter(im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, epps);
+                        im_vectors.FMH_ROSEM(:, iter_n) = BSREM_iter(im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2780,18 +2732,18 @@ else
                     end
                     
                     if options.FMH && options.RBI_OSL
-                        im_vectors.FMH_RBI(:, iter + 1) = im_vectors.FMH_RBI_apu;
+                        im_vectors.FMH_RBI(:, iter_n) = im_vectors.FMH_RBI_apu;
                     end
                     
                     if options.FMH && any(options.COSEM_OSL)
-                        im_vectors.FMH_COSEM(:, iter + 1) = im_vectors.FMH_COSEM_apu;
+                        im_vectors.FMH_COSEM(:, iter_n) = im_vectors.FMH_COSEM_apu;
                     end
                     
                     if options.weighted_mean && options.OSL_OSEM
-                        im_vectors.Weighted_OSL(:, iter + 1) = im_vectors.Weighted_OSL_apu;
+                        im_vectors.Weighted_OSL(:, iter_n) = im_vectors.Weighted_OSL_apu;
                     end
                     if options.weighted_mean && options.MBSREM
-                        im_vectors.Weighted_MBSREM(:, iter + 1) = im_vectors.Weighted_MBSREM_apu;
+                        im_vectors.Weighted_MBSREM(:, iter_n) = im_vectors.Weighted_MBSREM_apu;
                     end
                     
                     if options.weighted_mean && options.BSREM
@@ -2800,7 +2752,7 @@ else
                         end
                         med = Weighted_mean(im_vectors.Weighted_BSREM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                             options.mean_type, epps, options.med_no_norm);
-                        im_vectors.Weighted_BSREM(:,iter+1) = BSREM_iter(im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, ...
+                        im_vectors.Weighted_BSREM(:, iter_n) = BSREM_iter(im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, ...
                             med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2816,7 +2768,7 @@ else
                         end
                         med = Weighted_mean(im_vectors.Weighted_ROSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                             options.mean_type, epps, options.med_no_norm);
-                        im_vectors.Weighted_ROSEM(:,iter+1) = BSREM_iter(im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, ...
+                        im_vectors.Weighted_ROSEM(:, iter_n) = BSREM_iter(im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, ...
                             med, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2827,18 +2779,18 @@ else
                     end
                     
                     if options.weighted_mean && options.RBI_OSL
-                        im_vectors.Weighted_RBI(:, iter + 1) = im_vectors.Weighted_RBI_apu;
+                        im_vectors.Weighted_RBI(:, iter_n) = im_vectors.Weighted_RBI_apu;
                     end
                     
                     if options.weighted_mean && any(options.COSEM_OSL)
-                        im_vectors.Weighted_COSEM(:, iter + 1) = im_vectors.Weighted_COSEM_apu;
+                        im_vectors.Weighted_COSEM(:, iter_n) = im_vectors.Weighted_COSEM_apu;
                     end
                     
                     if options.TV && options.OSL_OSEM
-                        im_vectors.TV_OSL(:, iter + 1) = im_vectors.TV_OSL_apu;
+                        im_vectors.TV_OSL(:, iter_n) = im_vectors.TV_OSL_apu;
                     end
                     if options.TV && options.MBSREM
-                        im_vectors.TV_MBSREM(:, iter + 1) = im_vectors.TV_MBSREM_apu;
+                        im_vectors.TV_MBSREM(:, iter_n) = im_vectors.TV_MBSREM_apu;
                     end
                     
                     if options.TV && options.BSREM
@@ -2846,7 +2798,7 @@ else
                             tStart = tic;
                         end
                         grad = TVpriorFinal(im_vectors.TV_BSREM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                        im_vectors.TV_BSREM(:, iter + 1) = BSREM_iter(im_vectors.TV_BSREM_apu, options.lam, iter, options.beta_TV_bsrem, grad, epps);
+                        im_vectors.TV_BSREM(:, iter_n) = BSREM_iter(im_vectors.TV_BSREM_apu, options.lam, iter, options.beta_TV_bsrem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2860,7 +2812,7 @@ else
                             tStart = tic;
                         end
                         grad = TVpriorFinal(im_vectors.TV_ROSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                        im_vectors.TV_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.TV_ROSEM_apu, options.lam_rosem, iter, options.beta_TV_rosem, grad, epps);
+                        im_vectors.TV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.TV_ROSEM_apu, options.lam_rosem, iter, options.beta_TV_rosem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2870,18 +2822,18 @@ else
                     end
                     
                     if options.TV && options.RBI_OSL
-                        im_vectors.TV_RBI(:, iter + 1) = im_vectors.TV_RBI_apu;
+                        im_vectors.TV_RBI(:, iter_n) = im_vectors.TV_RBI_apu;
                     end
                     
                     if options.TV && any(options.COSEM_OSL)
-                        im_vectors.TV_COSEM(:, iter + 1) = im_vectors.TV_COSEM_apu;
+                        im_vectors.TV_COSEM(:, iter_n) = im_vectors.TV_COSEM_apu;
                     end
                     
                     if options.AD && options.OSL_OSEM
-                        im_vectors.AD_OSL(:, iter + 1) = im_vectors.AD_OSL_apu;
+                        im_vectors.AD_OSL(:, iter_n) = im_vectors.AD_OSL_apu;
                     end
                     if options.AD && options.MBSREM
-                        im_vectors.AD_MBSREM(:, iter + 1) = im_vectors.AD_MBSREM_apu;
+                        im_vectors.AD_MBSREM(:, iter_n) = im_vectors.AD_MBSREM_apu;
                     end
                     
                     if options.AD && options.BSREM
@@ -2889,7 +2841,7 @@ else
                             tStart = tic;
                         end
                         med = AD(im_vectors.AD_BSREM_apu, options.FluxType, Nx, Ny, Nz, options);
-                        im_vectors.AD_BSREM(:,iter+1) = BSREM_iter(im_vectors.AD_BSREM_apu, options.lam, iter, options.beta_ad_bsrem, med, epps);
+                        im_vectors.AD_BSREM(:, iter_n) = BSREM_iter(im_vectors.AD_BSREM_apu, options.lam, iter, options.beta_ad_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2902,7 +2854,7 @@ else
                             tStart = tic;
                         end
                         med = AD(im_vectors.AD_ROSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                        im_vectors.AD_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.AD_ROSEM_apu, options.lam_rosem, iter, options.beta_ad_rosem, med, epps);
+                        im_vectors.AD_ROSEM(:, iter_n) = BSREM_iter(im_vectors.AD_ROSEM_apu, options.lam_rosem, iter, options.beta_ad_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2911,23 +2863,23 @@ else
                         end
                     end
                     if options.AD && options.RBI_OSL
-                        im_vectors.AD_RBI(:, iter + 1) = im_vectors.AD_RBI_apu;
+                        im_vectors.AD_RBI(:, iter_n) = im_vectors.AD_RBI_apu;
                     end
                     if options.AD && any(options.COSEM_OSL)
-                        im_vectors.AD_COSEM(:, iter + 1) = im_vectors.AD_COSEM_apu;
+                        im_vectors.AD_COSEM(:, iter_n) = im_vectors.AD_COSEM_apu;
                     end
                     if options.APLS && options.OSL_OSEM
-                        im_vectors.APLS_OSL(:, iter + 1) = im_vectors.APLS_OSL_apu;
+                        im_vectors.APLS_OSL(:, iter_n) = im_vectors.APLS_OSL_apu;
                     end
                     if options.APLS && options.MBSREM
-                        im_vectors.APLS_MBSREM(:, iter + 1) = im_vectors.APLS_MBSREM_apu;
+                        im_vectors.APLS_MBSREM(:, iter_n) = im_vectors.APLS_MBSREM_apu;
                     end
                     if options.APLS && options.BSREM
                         if verbose
                             tStart = tic;
                         end
                         grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
-                        im_vectors.APLS_BSREM(:, iter + 1) = BSREM_iter(im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, epps);
+                        im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2940,7 +2892,7 @@ else
                             tStart = tic;
                         end
                         grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
-                        im_vectors.APLS_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, ...
+                        im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, ...
                             epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -2950,23 +2902,23 @@ else
                         end
                     end
                     if options.APLS && options.RBI_OSL
-                        im_vectors.APLS_RBI(:, iter + 1) = im_vectors.APLS_RBI_apu;
+                        im_vectors.APLS_RBI(:, iter_n) = im_vectors.APLS_RBI_apu;
                     end
                     if options.APLS && any(options.COSEM_OSL)
-                        im_vectors.APLS_COSEM(:, iter + 1) = im_vectors.APLS_COSEM_apu;
+                        im_vectors.APLS_COSEM(:, iter_n) = im_vectors.APLS_COSEM_apu;
                     end
                     if options.TGV && options.OSL_OSEM
-                        im_vectors.TGV_OSL(:, iter + 1) = im_vectors.TGV_OSL_apu;
+                        im_vectors.TGV_OSL(:, iter_n) = im_vectors.TGV_OSL_apu;
                     end
                     if options.TGV && options.MBSREM
-                        im_vectors.TGV_MBSREM(:, iter + 1) = im_vectors.TGV_MBSREM_apu;
+                        im_vectors.TGV_MBSREM(:, iter_n) = im_vectors.TGV_MBSREM_apu;
                     end
                     if options.TGV && options.BSREM
                         if verbose
                             tStart = tic;
                         end
                         grad = TGV(im_vectors.TGV_BSREM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                        im_vectors.TGV_BSREM(:, iter + 1) = BSREM_iter(im_vectors.TGV_BSREM_apu, options.lam, iter, options.beta_TGV_bsrem, grad, epps);
+                        im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(im_vectors.TGV_BSREM_apu, options.lam, iter, options.beta_TGV_bsrem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2979,7 +2931,7 @@ else
                             tStart = tic;
                         end
                         grad = TGV(im_vectors.TGV_ROSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                        im_vectors.TGV_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, options.beta_TGV_rosem, grad, epps);
+                        im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, options.beta_TGV_rosem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -2988,16 +2940,16 @@ else
                         end
                     end
                     if options.TGV && options.RBI_OSL
-                        im_vectors.TGV_RBI(:, iter + 1) = im_vectors.TGV_RBI_apu;
+                        im_vectors.TGV_RBI(:, iter_n) = im_vectors.TGV_RBI_apu;
                     end
                     if options.TGV && any(options.COSEM_OSL)
-                        im_vectors.TGV_COSEM(:, iter + 1) = im_vectors.TGV_COSEM_apu;
+                        im_vectors.TGV_COSEM(:, iter_n) = im_vectors.TGV_COSEM_apu;
                     end
                     if options.NLM && options.OSL_OSEM
-                        im_vectors.NLM_OSL(:, iter + 1) = im_vectors.NLM_OSL_apu;
+                        im_vectors.NLM_OSL(:, iter_n) = im_vectors.NLM_OSL_apu;
                     end
                     if options.NLM && options.MBSREM
-                        im_vectors.NLM_MBSREM(:, iter + 1) = im_vectors.NLM_MBSREM_apu;
+                        im_vectors.NLM_MBSREM(:, iter_n) = im_vectors.NLM_MBSREM_apu;
                     end
                     if options.NLM && options.BSREM
                         if verbose
@@ -3005,7 +2957,7 @@ else
                         end
                         med = NLM(im_vectors.NLM_BSREM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                             options.sigma, epps, Nx, Ny, Nz, options);
-                        im_vectors.NLM_BSREM(:, iter + 1) = BSREM_iter(im_vectors.NLM_BSREM_apu, options.lam_rosem, iter, options.beta_NLM_bsrem, med, epps);
+                        im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(im_vectors.NLM_BSREM_apu, options.lam_rosem, iter, options.beta_NLM_bsrem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['BSREM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3019,7 +2971,7 @@ else
                         end
                         med = NLM(im_vectors.NLM_ROSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                             options.sigma, epps, Nx, Ny, Nz, options);
-                        im_vectors.NLM_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, options.beta_NLM_rosem, med, epps);
+                        im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, options.beta_NLM_rosem, med, epps);
                         if verbose
                             tElapsed = toc(tStart);
                             disp(['ROSEM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -3028,10 +2980,10 @@ else
                         end
                     end
                     if options.NLM && options.RBI_OSL
-                        im_vectors.NLM_RBI(:, iter + 1) = im_vectors.NLM_RBI_apu;
+                        im_vectors.NLM_RBI(:, iter_n) = im_vectors.NLM_RBI_apu;
                     end
                     if options.NLM && any(options.COSEM_OSL)
-                        im_vectors.NLM_COSEM(:, iter + 1) = im_vectors.NLM_COSEM_apu;
+                        im_vectors.NLM_COSEM(:, iter_n) = im_vectors.NLM_COSEM_apu;
                     end
                     if options.use_psf && options.deblurring
                         im_vectors = computeDeblur(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
@@ -4003,206 +3955,211 @@ else
                             clear Summ rhs
                             im_vectors.OSEM_apu(im_vectors.OSEM_apu < epps) = epps;
                         end
+                        if options.save_iter
+                            iter_n = iter + 1;
+                        else
+                            iter_n = 1;
+                        end
                         if options.osem
-                            im_vectors.OSEM(:,iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.OSEM(:,iter_n) = im_vectors.OSEM_apu;
                         elseif options.ramla
-                            im_vectors.RAMLA(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.RAMLA(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.rosem
-                            im_vectors.ROSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.ROSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.drama
-                            im_vectors.DRAMA(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.DRAMA(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.rbi
-                            im_vectors.RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.cosem
-                            im_vectors.COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.ecosem
-                            im_vectors.ECOSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.ECOSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.acosem
-                            im_vectors.ACOSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.ACOSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.MRP && options.OSL_OSEM
-                            im_vectors.MRP_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.MRP_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.MRP && options.BSREM
                             med = MRP(im_vectors.OSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.MRP_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_mrp_bsrem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.MRP_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.MRP_BSREM(:, iter_n);
                         elseif options.MRP && options.ROSEM_MAP
                             med = MRP(im_vectors.OSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.MRP_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_mrp_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.MRP_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.MRP_ROSEM(:, iter_n);
                         elseif options.MRP && options.RBI_OSL
-                            im_vectors.MRP_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.MRP_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.MRP && any(options.COSEM_OSL)
-                            im_vectors.MRP_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.MRP_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.quad && options.OSL_OSEM
-                            im_vectors.Quad_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Quad_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.quad && options.BSREM
                             med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_quad_bsrem, ...
+                            im_vectors.Quad_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_quad_bsrem, ...
                                 med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Quad_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Quad_BSREM(:, iter_n);
                         elseif options.quad && options.ROSEM_MAP
                             med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Quad_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_quad_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Quad_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Quad_ROSEM(:, iter_n);
                         elseif options.quad && options.RBI_OSL
-                            im_vectors.Quad_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Quad_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.quad && any(options.COSEM_OSL)
-                            im_vectors.Quad_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Quad_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.Huber && options.OSL_OSEM
-                            im_vectors.Huber_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Huber_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.Huber && options.BSREM
                             med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Huber_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_huber_bsrem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Huber_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Huber_BSREM(:, iter_n);
                         elseif options.Huber && options.ROSEM_MAP
                             med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Huber_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_huber_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Huber_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Huber_ROSEM(:, iter_n);
                         elseif options.Huber && options.RBI_OSL
-                            im_vectors.Huber_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Huber_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.Huber && any(options.COSEM_OSL)
-                            im_vectors.Huber_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Huber_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.L && options.OSL_OSEM
-                            im_vectors.L_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.L_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.L && options.BSREM
                             med = L_filter(im_vectors.OSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_L_bsrem, ...
+                            im_vectors.L_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_L_bsrem, ...
                                 med, epps);
-                            im_vectors.OSEM_apu = im_vectors.L_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.L_BSREM(:, iter_n);
                         elseif options.L && options.ROSEM_MAP
                             med = L_filter(im_vectors.OSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.L_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_L_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.L_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.L_ROSEM(:, iter_n);
                         elseif options.L && options.RBI_OSL
-                            im_vectors.L_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.L_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.L && any(options.COSEM_OSL)
-                            im_vectors.L_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.L_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.FMH && options.OSL_OSEM
-                            im_vectors.FMH_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.FMH_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.FMH && options.BSREM
                             med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_fmh_bsrem, ...
+                            im_vectors.FMH_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_fmh_bsrem, ...
                                 med, epps);
-                            im_vectors.OSEM_apu = im_vectors.FMH_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.FMH_BSREM(:, iter_n);
                         elseif options.FMH && options.ROSEM_MAP
                             med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.FMH_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_fmh_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.FMH_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.FMH_ROSEM(:, iter_n);
                         elseif options.FMH && options.RBI_OSL
-                            im_vectors.FMH_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.FMH_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.FMH && any(options.COSEM_OSL)
-                            im_vectors.FMH_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.FMH_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.weighted_mean && options.OSL_OSEM
-                            im_vectors.Weighted_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Weighted_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.weighted_mean && options.BSREM
                             med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Weighted_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_weighted_bsrem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Weighted_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Weighted_BSREM(:, iter_n);
                         elseif options.weighted_mean && options.ROSEM_MAP
                             med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_ROSEM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Weighted_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_weighted_rosem, ...
                                 med, epps);
-                            im_vectors.OSEM_apu = im_vectors.Weighted_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.Weighted_ROSEM(:, iter_n);
                         elseif options.weighted_mean && options.RBI_OSL
-                            im_vectors.Weighted_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Weighted_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.weighted_mean && any(options.COSEM_OSL)
-                            im_vectors.Weighted_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.Weighted_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TV && options.OSL_OSEM
-                            im_vectors.TV_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TV_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TV && options.BSREM
                             grad = TVpriorFinal(im_vectors.OSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                            im_vectors.TV_BSREM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TV_bsrem, ...
+                            im_vectors.TV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TV_bsrem, ...
                                 grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.TV_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.TV_BSREM(:, iter_n);
                         elseif options.TV && options.ROSEM_MAP
                             grad = TVpriorFinal(im_vectors.OSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                            im_vectors.TV_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.TV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_TV_rosem, grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.TV_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.TV_ROSEM(:, iter_n);
                         elseif options.TV && options.RBI_OSL
-                            im_vectors.TV_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TV_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TV && any(options.COSEM_OSL)
-                            im_vectors.TV_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TV_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.AD && options.OSL_OSEM
-                            im_vectors.AD_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.AD_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.AD && options.BSREM
                             med = AD(im_vectors.OSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_BSREM(:,iter+1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_ad_bsrem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.AD_BSREM(:,iter+1);
+                            im_vectors.AD_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_ad_bsrem, med, epps);
+                            im_vectors.OSEM_apu = im_vectors.AD_BSREM(:, iter_n);
                         elseif options.AD && options.ROSEM_MAP
                             med = AD(im_vectors.OSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.AD_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_ad_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.AD_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.AD_ROSEM(:, iter_n);
                         elseif options.AD && options.RBI_OSL
-                            im_vectors.AD_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.AD_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.AD && any(options.COSEM_OSL)
-                            im_vectors.AD_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.AD_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.APLS && options.OSL_OSEM
-                            im_vectors.APLS_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.APLS_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.APLS && options.BSREM
                             grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
-                            im_vectors.APLS_BSREM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_APLS_bsrem, ...
+                            im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_APLS_bsrem, ...
                                 grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.APLS_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.APLS_BSREM(:, iter_n);
                         elseif options.APLS && options.ROSEM_MAP
                             grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
-                            im_vectors.APLS_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_APLS_rosem, grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.APLS_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.APLS_ROSEM(:, iter_n);
                         elseif options.APLS && options.RBI_OSL
-                            im_vectors.APLS_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.APLS_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.APLS && any(options.COSEM_OSL)
-                            im_vectors.APLS_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.APLS_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TGV && options.OSL_OSEM
-                            im_vectors.TGV_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TGV_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TGV && options.BSREM
                             grad = TGV(im_vectors.OSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_BSREM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TGV_bsrem, ...
+                            im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TGV_bsrem, ...
                                 grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.TGV_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.TGV_BSREM(:, iter_n);
                         elseif options.TGV && options.ROSEM_MAP
                             grad = TGV(im_vectors.OSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_TGV_rosem, grad, epps);
-                            im_vectors.OSEM_apu = im_vectors.TGV_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.TGV_ROSEM(:, iter_n);
                         elseif options.TGV && options.RBI_OSL
-                            im_vectors.TGV_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TGV_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TGV && any(options.COSEM_OSL)
-                            im_vectors.TGV_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.TGV_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.NLM && options.OSL_OSEM
-                            im_vectors.NLM_OSL(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.NLM_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.NLM && options.BSREM
                             med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_BSREM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_NLM_bsrem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.NLM_BSREM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.NLM_BSREM(:, iter_n);
                         elseif options.NLM && options.ROSEM_MAP
                             med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_ROSEM(:, iter + 1) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_NLM_rosem, med, epps);
-                            im_vectors.OSEM_apu = im_vectors.NLM_ROSEM(:,iter+1);
+                            im_vectors.OSEM_apu = im_vectors.NLM_ROSEM(:, iter_n);
                         elseif options.NLM && options.RBI_OSL
-                            im_vectors.NLM_RBI(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.NLM_RBI(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.NLM && any(options.COSEM_OSL)
-                            im_vectors.NLM_COSEM(:, iter + 1) = im_vectors.OSEM_apu;
+                            im_vectors.NLM_COSEM(:, iter_n) = im_vectors.OSEM_apu;
                         end
-                        if options.use_psf && options.deblurring
+                        if options.use_psf && options.deblurring && (options.save_iter || (~options.save_iter && iter == options.Niter))
                             im_vectors = computeDeblur(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                         end
                         if verbose
@@ -4282,9 +4239,14 @@ else
                         if options.use_psf
                             rhs = computeConvolution(rhs, options, Nx, Ny, Nz, gaussK);
                         end
+                        if options.save_iter
+                            iter_n = iter + 1;
+                        else
+                            iter_n = 1;
+                        end
                         if options.mlem
                             im_vectors.MLEM_apu = MLEM_im(im_vectors.MLEM_apu, f_Summ_ml, epps, rhs);
-                            im_vectors.MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['MLEM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4292,7 +4254,7 @@ else
                         elseif options.MRP && options.OSL_MLEM
                             med = MRP(im_vectors.MLEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_mrp_osem, med, epps, rhs);
-                            im_vectors.MRP_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.MRP_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4300,7 +4262,7 @@ else
                         elseif options.quad && options.OSL_MLEM
                             med = Quadratic_prior(im_vectors.MLEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_quad_osem, med, epps, rhs);
-                            im_vectors.Quad_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.Quad_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL Quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4308,7 +4270,7 @@ else
                         elseif options.Huber && options.OSL_MLEM
                             med = Huber_prior(im_vectors.MLEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_huber_osem, med, epps, rhs);
-                            im_vectors.Huber_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.Huber_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4316,7 +4278,7 @@ else
                         elseif options.L && options.OSL_MLEM
                             med = L_filter(im_vectors.MLEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_L_osem, med, epps, rhs);
-                            im_vectors.L_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.L_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4325,7 +4287,7 @@ else
                             med = FMH(im_vectors.MLEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_fmh_osem, med, epps, rhs);
-                            im_vectors.FMH_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.FMH_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4334,7 +4296,7 @@ else
                             med = Weighted_mean(im_vectors.MLEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.med_no_norm);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_weighted_osem, med, rhs);
-                            im_vectors.Weighted_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.Weighted_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4343,7 +4305,7 @@ else
                             grad = TVpriorFinal(im_vectors.MLEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
                                 options.tr_offsets);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TV_osem, grad, rhs);
-                            im_vectors.TV_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.TV_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL TV sub-iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4355,7 +4317,7 @@ else
                             else
                                 im_vectors.MLEM_apu = OSEM_im(im_vectors.MLEM_apu, rhs, f_Summ_ml(:,osa_iter), epps);
                             end
-                            im_vectors.AD_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.AD_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4363,7 +4325,7 @@ else
                         elseif options.APLS && options.OSL_MLEM
                             grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_APLS_osem, grad, rhs);
-                            im_vectors.APLS_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.APLS_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4371,7 +4333,7 @@ else
                         elseif options.TGV && options.OSL_MLEM
                             grad = TGV(im_vectors.MLEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_TGV_osem, grad, rhs);
-                            im_vectors.TGV_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.TGV_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -4380,13 +4342,13 @@ else
                             med = NLM(im_vectors.MLEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_NLM_osem, med, epps, rhs);
-                            im_vectors.NLM_MLEM(:,iter + 1) = im_vectors.MLEM_apu;
+                            im_vectors.NLM_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose
                                 tElapsed = toc(tStart);
                                 disp(['OSEM-OSL NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         end
-                        if options.use_psf && options.deblurring
+                        if options.use_psf && options.deblurring && (options.save_iter || (~options.save_iter && iter == options.Niter))
                             im_vectors = computeDeblurMLEM(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                         end
                         no_norm = true;
@@ -4652,11 +4614,19 @@ else
         
         for ll = 1 : options.partitions
             apu = tz{1,ll};
-            apu(:,1) = options.x0;
-            if options.mlem
-                pz{1,ll} = reshape(apu, Nx, Ny, Nz, Niter + 1);
-            elseif options.osem
-                pz{2,ll} = reshape(apu, Nx, Ny, Nz, Niter + 1);
+            if options.save_iter
+                apu(:,1) = options.x0;
+                if options.mlem
+                    pz{1,ll} = reshape(apu, Nx, Ny, Nz, Niter + 1);
+                elseif options.osem
+                    pz{2,ll} = reshape(apu, Nx, Ny, Nz, Niter + 1);
+                end
+            else
+                if options.mlem
+                    pz{1,ll} = reshape(apu, Nx, Ny, Nz);
+                elseif options.osem
+                    pz{2,ll} = reshape(apu, Nx, Ny, Nz);
+                end
             end
         end
         clear tz

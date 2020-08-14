@@ -35,6 +35,50 @@ if ~isfield(options,'reconstruct_scatter')
     options.reconstruct_scatter = false;
 end
 
+if ~options.use_raw_data
+    if options.partitions == 1
+        load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+            num2str(options.TotSinos) '_span' num2str(options.span)];
+        if options.use_machine == 0
+            sinoFile = [load_string '.mat'];
+        elseif options.use_machine == 1
+            sinoFile = [load_string '_listmode.mat'];
+        elseif options.use_machine == 2
+            sinoFile = [load_string '_machine_sinogram.mat'];
+        elseif options.use_machine == 3
+            sinoFile = [load_string '_listmode_sinogram.mat'];
+        end
+    else
+        load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+            num2str(options.span)];
+        load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+            num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+            num2str(options.span)];
+        if options.use_machine == 0
+            sinoFile = [load_string '.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '.mat'];
+            end
+        elseif options.use_machine == 1
+            sinoFile = [load_string '_listmode.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_listmode.mat'];
+            end
+        elseif options.use_machine == 2
+            sinoFile = [load_string '_machine_sinogram.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_machine_sinogram.mat'];
+            end
+        elseif options.use_machine == 3
+            sinoFile = [load_string '_listmode_sinogram.mat'];
+            if exist(sinoFile, 'file') == 0
+                sinoFile = [load_string2 '_listmode_sinogram.mat'];
+            end
+        end
+    end
+end
+
 
 % options.use_psf = false;
 block1 = 0;
@@ -119,7 +163,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
                 error('Size mismatch between the current data and the normalization data file')
             end
-%             options.normalization = 1 ./ options.normalization;
+            %             options.normalization = 1 ./ options.normalization;
         else
             data = load(file);
             variables = fields(data);
@@ -236,23 +280,9 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
     if r_exist && randoms_correction
         if (~options.variance_reduction && RandProp.variance_reduction) || (~options.randoms_smoothing && RandProp.smoothing)
             if options.partitions == 1
-                if options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                        num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'raw_SinDelayed');
-                elseif  options.use_machine == 1
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                        num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'raw_SinDelayed');
-                end
+                options.SinDelayed = loadStructFromFile(sinoFile,'raw_SinDelayed');
             else
-                if options.use_machine == 0
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                        num2str(options.span) '.mat'], 'raw_SinDelayed');
-                elseif  options.use_machine == 1
-                    options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                        num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                        num2str(options.span) '_listmode.mat'], 'raw_SinDelayed');
-                end
+                options.SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
             end
             RandProp.variance_reduction = false;
             RandProp.smoothing = false;
@@ -328,7 +358,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
             if options.scatter_correction && isfield(options,'ScatterC')
                 if isempty(ScatterProp)
                     ScatterProp.smoothing = false;
-                    ScatterProp.variance_reduction = false;                
+                    ScatterProp.variance_reduction = false;
                     ScatterProp.normalization = false;
                 end
                 if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)

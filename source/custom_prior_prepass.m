@@ -31,6 +31,10 @@ if ~isfield(options,'use_Inveon')
     options.use_Inveon = 0;
 end
 
+if ~isfield(options,'save_iter')
+    options.save_iter = true;
+end
+
 
 if ~isfield(options,'SinM')
     options.SinM = [];
@@ -74,10 +78,10 @@ options.N = Nx * Ny * Nz;
 options.MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 options.empty_weight = false;
 options.MBSREM_prepass = true;
-    
+
 % if custom
-    options.rekot = reko_maker(options);
-    pz = cell(length(options.rekot),options.partitions);
+options.rekot = reko_maker(options);
+pz = cell(length(options.rekot),options.partitions);
 % end
 
 temp = pseudot;
@@ -89,7 +93,7 @@ elseif temp == 0
     pseudot = [];
 end
 options.pseudot = pseudot;
-    
+
 if options.precompute_lor
     options.is_transposed = true;
 else
@@ -177,34 +181,48 @@ if custom
     
     if options.use_raw_data
         options.SinM = options.coincidences;
+        if options.partitions == 1
+            load_string = [options.machine_name '_measurements_' options.name '_static_raw'];
+            if options.use_ASCII && options.use_machine == 0
+                load_string =  [load_string '_ASCII.mat'];
+            elseif options.use_LMF && options.use_machine == 0
+                load_string =  [load_string '_LMF.mat'];
+            elseif options.use_root && options.use_machine == 0
+                load_string =  [load_string '_root.mat'];
+            else
+                load_string =  [load_string '_listmode.mat'];
+            end
+        else
+            load_string = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+                num2str(options.tot_time) 's_raw'];
+            load_string2 = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                num2str(options.tot_time) 's_raw'];
+            if options.use_ASCII && options.use_machine == 0
+                if exist([load_string '_ASCII.mat'], 'file') == 0
+                    load_string = load_string2;
+                end
+                load_string =  [load_string '_ASCII.mat'];
+            elseif options.use_LMF && options.use_machine == 0
+                if exist([load_string '_LMF.mat'], 'file') == 0
+                    load_string = load_string2;
+                end
+                load_string =  [load_string '_LMF.mat'];
+            elseif options.use_root && options.use_machine == 0
+                if exist([load_string '_root.mat'], 'file') == 0
+                    load_string = load_string2;
+                end
+                load_string =  [load_string '_root.mat'];
+            else
+                if exist([load_string '_listmode.mat'], 'file') == 0
+                    load_string = load_string2;
+                end
+                load_string =  [load_string '_listmode.mat'];
+            end
+        end
         % Perform corrections if needed
         if options.randoms_correction && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if (options.use_ASCII || options.use_LMF || options.use_root) && options.use_machine == 0
-                if options.partitions == 1
-                    if options.use_ASCII && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_static_raw_ASCII.mat'], 'delayed_coincidences')
-                    elseif options.use_LMF && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_static_raw_LMF.mat'], 'delayed_coincidences')
-                    elseif options.use_root && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_static_raw_root.mat'], 'delayed_coincidences')
-                    else
-                        load([options.machine_name '_measurements_' options.name '_static_raw_listmode.mat'], 'delayed_coincidences')
-                    end
-                else
-                    if options.use_ASCII && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                            num2str(options.tot_time) 's_raw_ASCII.mat'], 'delayed_coincidences')
-                    elseif options.use_LMF && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                            num2str(options.tot_time) 's_raw_LMF.mat'], 'delayed_coincidences')
-                    elseif options.use_root && options.use_machine == 0
-                        load([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                            num2str(options.tot_time) 's_raw_root.mat'], 'delayed_coincidences')
-                    else
-                        load([options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                            num2str(options.tot_time) 's_raw_listmode.mat'], 'delayed_coincidences')
-                    end
-                end
+                load(load_string, 'delayed_coincidences')
                 if exist('delayed_coincidences','var')
                     if ~options.corrections_during_reconstruction
                         if iscell(options.SinM) && iscell(delayed_coincidences)
@@ -295,13 +313,52 @@ if custom
         clear coincidences options.coincidences true_coincidences delayed_coincidences
         % Sinogram data
     else
+        if options.partitions == 1
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
+                num2str(options.TotSinos) '_span' num2str(options.span)];
+            if options.use_machine == 0
+                sinoFile = [load_string '.mat'];
+            elseif options.use_machine == 1
+                sinoFile = [load_string '_listmode.mat'];
+            elseif options.use_machine == 2
+                sinoFile = [load_string '_machine_sinogram.mat'];
+            elseif options.use_machine == 3
+                sinoFile = [load_string '_listmode_sinogram.mat'];
+            end
+        else
+            load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
+                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                num2str(options.span)];
+            load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
+                num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
+                num2str(options.span)];
+            if options.use_machine == 0
+                sinoFile = [load_string '.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '.mat'];
+                end
+            elseif options.use_machine == 1
+                sinoFile = [load_string '_listmode.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode.mat'];
+                end
+            elseif options.use_machine == 2
+                sinoFile = [load_string '_machine_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_machine_sinogram.mat'];
+                end
+            elseif options.use_machine == 3
+                sinoFile = [load_string '_listmode_sinogram.mat'];
+                if exist(sinoFile, 'file') == 0
+                    sinoFile = [load_string2 '_listmode_sinogram.mat'];
+                end
+            end
+        end
         if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction
             if options.use_machine == 0
-                options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '.mat'],'SinDelayed');
+                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
             elseif  options.use_machine == 1
-                options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span) '_listmode.mat'],'SinDelayed');
+                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
             else
                 [dfile, dfpath] = uigetfile('*.mat','Select delayed coincidence datafile');
                 if isequal(dfile, 0)
@@ -322,13 +379,9 @@ if custom
             end
         elseif options.randoms_correction && options.corrections_during_reconstruction
             if options.use_machine == 0
-                options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '.mat'], 'SinDelayed');
+                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
             elseif  options.use_machine == 1
-                options.SinDelayed = loadStructFromFile([options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span) '_listmode.mat'], 'SinDelayed');
+                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
             else
                 [options.file, options.fpath] = uigetfile('*.mat','Select delayed coincidence datafile');
                 if isequal(options.file, 0)
@@ -614,6 +667,6 @@ if options.MBSREM || options.mramla
     end
 end
 % if custom
-    varargout{1} = pz;
+varargout{1} = pz;
 % end
 end
