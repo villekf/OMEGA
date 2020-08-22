@@ -56,103 +56,42 @@ else
     yy1 = reshape(y(:,1),options.Ndist,options.Nang);
     yy2 = reshape(y(:,2),options.Ndist,options.Nang);
     
-    % If no arc correction is present
-    if ~options.arc_correction        
-        
-        minimix = min(x(:));
-        minimiy = min(y(:));
-        maksimiy = max(y(:));
-        maksimix = max(x(:));
-        
-        % Mark the new coordinates as NaN and interpolate them
-        testi = [diff(xx1);ones(1, options.Nang)];
-        xx1(testi == 0 & xx1 > minimix & xx1 < maksimix) = NaN;
-        xx1 = fillmissing(xx1,'linear');
-        xx1(1,:) = circshift(xx1(2,:),1);
-        xx1(1,1) = max(xx1(:)) - xx1(1,1);
-        xx1(1,:) = (xx1(1,:) + xx1(2,:)) / 2;
-        testi = [zeros(1, options.Nang) ; diff(xx2)];
-        xx2(testi == 0 & xx2 > minimix & xx2 < maksimix) = NaN;
-        xx2 = fillmissing(xx2,'linear');
-        testi = [diff(yy1); ones(1, options.Nang)];
-        yy1(testi == 0 & yy1 > minimiy & yy1 < maksimiy) = NaN;
-        yy1 = fillmissing(yy1,'linear');
-        yy1(1,:) = circshift(yy1(2,:),1);
-        yy1(1,1) = maksimiy - yy1(1,1);
-        yy1(1,:) = (yy1(1,:) + yy1(2,:)) / 2;
-        testi = [zeros(1, options.Nang) ; diff(yy2)];
-        yy2(testi == 0 & yy2 > minimiy & yy2 < maksimiy) = NaN;
-        yy2 = fillmissing(yy2,'linear');
-        
-        x(:,1) = xx1(:);
-        x(:,2) = xx2(:);
-        y(:,1) = yy1(:);
-        y(:,2) = yy2(:);
-    end
     
     % Form the new detector coordinates
-    xx1 = reshape(x(:,1),options.Ndist,options.Nang);
     if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
         joku = repeat_elem(xx1,options.sampling);
     else
         joku = repelem(xx1,options.sampling,1);
     end
-    % Gaps between detectors
-    vali = (xx1(1:2:end,:) - xx1(2:2:end,:));
-    for kk = 1 : options.sampling - 1
-        joku(kk + 1:options.sampling *2:end,:) = xx1(1:2:end,:) - (vali / options.sampling) * kk;
-    end
-    vali = (xx1(2:2:end,:) - [xx1(3:2:end,:);xx1(end,:) + abs(xx1(end-1,:) - xx1(end,:))]);
-    for kk = 1 : options.sampling - 1
-        joku(options.sampling + 2 + (kk - 1):options.sampling *2:end,:) = xx1(2:2:end,:) - (vali / options.sampling) * kk;
-    end
+%     % Gaps between detectors
+    vali = [zeros(1, options.Nang);diff(xx1)];
+    joku(1:options.sampling:end,:) = xx1 - (vali / options.sampling);
     xx = zeros(length(joku(:)), 2);
     xx(:,1) = joku(:);
-    xx1 = reshape(x(:,2),options.Ndist,options.Nang);
     if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(xx1,options.sampling);
+        joku = repeat_elem(xx2,options.sampling);
     else
-        joku = repelem(xx1,options.sampling,1);
+        joku = repelem(xx2,options.sampling,1);
     end
-    vali = (xx1(1:2:end,:) - xx1(2:2:end,:));
-    for kk = 1 : options.sampling - 1
-        joku(kk + 1:options.sampling *2:end,:) = xx1(1:2:end,:) - (vali / options.sampling) * kk;
-    end
-    vali = (xx1(2:2:end,:) - [xx1(3:2:end,:);xx1(end,:) + abs(xx1(end-1,:) - xx1(end,:))]);
-    for kk = 1 : options.sampling - 1
-        joku(options.sampling + 2 + (kk - 1):options.sampling *2:end,:) = xx1(2:2:end,:) - (vali / options.sampling) * kk;
-    end
+    vali = [zeros(1, options.Nang);diff(xx2)];
+    joku(1:options.sampling:end,:) = xx2 - (vali / options.sampling);
     xx(:,2) = joku(:);
-    xx1 = reshape(y(:,1),options.Ndist,options.Nang);
     if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(xx1,options.sampling);
+        joku = repeat_elem(yy1,options.sampling);
     else
-        joku = repelem(xx1,options.sampling,1);
+        joku = repelem(yy1,options.sampling,1);
     end
-    vali = (xx1(1:2:end,:) - xx1(2:2:end,:));
-    for kk = 1 : options.sampling - 1
-        joku(kk + 1:options.sampling *2:end,:) = xx1(1:2:end,:) - (vali / options.sampling) * kk;
-    end
-    vali = (xx1(2:2:end,:) - [xx1(3:2:end,:);xx1(end,:) + abs(xx1(end-1,:) - xx1(end,:))]);
-    for kk = 1 : options.sampling - 1
-        joku(options.sampling + 2 + (kk - 1):options.sampling *2:end,:) = xx1(2:2:end,:) - (vali / options.sampling) * kk;
-    end
+    vali = [zeros(1, options.Nang);diff(yy1)];
+    joku(1:options.sampling:end,:) = yy1 - (vali / options.sampling);
     yy = zeros(length(joku(:)), 2);
     yy(:,1) = joku(:);
-    xx1 = reshape(y(:,2),options.Ndist,options.Nang);
     if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(xx1,options.sampling);
+        joku = repeat_elem(yy2,options.sampling);
     else
-        joku = repelem(xx1,options.sampling,1);
+        joku = repelem(yy2,options.sampling,1);
     end
-    vali = (xx1(1:2:end,:) - xx1(2:2:end,:));
-    for kk = 1 : options.sampling - 1
-        joku(kk + 1:options.sampling *2:end,:) = xx1(1:2:end,:) - (vali / options.sampling) * kk;
-    end
-    vali = (xx1(2:2:end,:) - [xx1(3:2:end,:);xx1(end,:) + abs(xx1(end-1,:) - xx1(end,:))]);
-    for kk = 1 : options.sampling - 1
-        joku(options.sampling + 2 + (kk - 1):options.sampling *2:end,:) = xx1(2:2:end,:) - (vali / options.sampling) * kk;
-    end
+    vali = [zeros(1, options.Nang);diff(yy2)];
+    joku(1:options.sampling:end,:) = yy2 - (vali / options.sampling);
     yy(:,2) = joku(:);
     x = xx;
     y = yy;
