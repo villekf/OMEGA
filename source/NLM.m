@@ -65,9 +65,15 @@ elseif options.NLM_MRP
 else
     type = int32(0);
 end
+if exist('OCTAVE_VERSION','builtin') == 0
 %%% MEX
-output = NLM_func(padInput, input, options.gaussianNLM, int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
-    N, M, K, h2*h2, type, epps);
+    output = NLM_func(padInput, input, options.gaussianNLM, int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
+        N, M, K, h2*h2, type, epps);
+elseif exist('OCTAVE_VERSION','builtin') == 5
+%%% OCT
+    output = NLM_oct(padInput, input, options.gaussianNLM, int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
+        N, M, K, h2*h2, type, epps);
+end
 output = reshape(output, N, M, K);
 % Convert back to original image size
 output = output(padx + 1 : end - padx,pady + 1 : end - padx,padz + 1 : end - padz);
