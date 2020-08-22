@@ -30,7 +30,8 @@ const static int TYPE = 1;
 
 using namespace std;
 
-void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, mwIndex* indices, double* elements, const double maxyy,
+
+void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* elements, const double maxyy,
 	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef, 
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
@@ -88,7 +89,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 
 					// Calculate the next index and store it as well as the probability of emission
 					for (uint64_t ii = 0ULL; ii < static_cast<uint64_t>(Nx); ii++) {
-						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii;
+						indices[N2 + ii] = static_cast<size_t>(temp_ijk) + static_cast<size_t>(ii);
 						elements[N2 + ii] = fabs(element);
 					}
 				}
@@ -103,7 +104,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
-						indices[N2 + ii] = static_cast<uint64_t>(temp_ijk) + ii * static_cast<uint64_t>(Nx);
+						indices[N2 + ii] = static_cast<size_t>(temp_ijk) + static_cast<size_t>(ii) * static_cast<size_t>(Nx);
 						elements[N2 + ii] = fabs(element);
 					}
 				}
@@ -126,7 +127,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 				// Compute the indices and matrix elements
 				for (uint32_t ii = 0u; ii < Np; ii++) {
 
-					indices[N2 + ii] = tempijk;
+					indices[N2 + ii] = static_cast<size_t>(tempijk);
 					if (tx0 < ty0) {
 						apu = pixel_value(tx0, tc, LL);
 						tempi += iu;
@@ -208,7 +209,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
 
-						indices[N2 + ii] = tempijk;
+						indices[N2 + ii] = static_cast<size_t>(tempijk);
 						if (tx0 < tz0) {
 							apu = pixel_value(tx0, tc, LL);
 							tempi += iu;
@@ -282,7 +283,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 
 					for (uint32_t ii = 0u; ii < Np; ii++) {
 
-						indices[N2 + ii] = tempijk;
+						indices[N2 + ii] = static_cast<size_t>(tempijk);
 						if (tz0 < ty0) {
 
 							apu = pixel_value(tz0, tc, LL);
@@ -344,7 +345,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 
 				for (uint32_t ii = 0u; ii < Np; ii++) {
 
-					indices[N2 + ii] = tempijk;
+					indices[N2 + ii] = static_cast<size_t>(tempijk);
 					if (tz0 < ty0 && tz0 < tx0) {
 
 						apu = pixel_value(tz0, tc, LL);

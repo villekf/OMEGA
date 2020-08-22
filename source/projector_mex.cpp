@@ -260,10 +260,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		double* elements = (double*)mxGetData(plhs[0]);
 
 		// Row indices
-		mwIndex* indices = mxGetIr(plhs[0]);
+		size_t* indices = reinterpret_cast<size_t*>(mxGetIr(plhs[0]));
 
 		// Column indices
-		mwIndex* lor = mxGetJc(plhs[0]);
+		size_t* lor = reinterpret_cast<size_t*>(mxGetJc(plhs[0]));
 
 		for (size_t kk = 0; kk <= loop_var_par; kk++)
 			lor[kk] = lor2[kk];
@@ -687,24 +687,19 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 			// Voxel numbers in x-direction
 			const double* iij = (double*)mxGetData(prhs[ind]);
+			const vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[ind]));
 			ind++;
 
 			// Voxel numbers in y-direction
 			const double* jji = (double*)mxGetData(prhs[ind]);
+			const vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[ind]));
 			ind++;
 
 			// Voxel numbers in z-direction
 			const double* kkj = (double*)mxGetData(prhs[ind]);
-			ind++;
-
-			const vector<double> iij_vec(iij, iij + mxGetNumberOfElements(prhs[ind]));
-			ind++;
-
-			const vector<double> jjk_vec(jji, jji + mxGetNumberOfElements(prhs[ind]));
-			ind++;
-
 			const vector<double> kkj_vec(kkj, kkj + mxGetNumberOfElements(prhs[ind]));
 			ind++;
+
 
 			// run the original Siddon's algorithm
 			lj = original_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,

@@ -38,7 +38,7 @@ const static bool DISCARD = false;
 
 using namespace std;
 
-void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, mwIndex* indices, double* rhs, const double maxyy,
+void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* rhs, const double maxyy,
 	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef, 
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 

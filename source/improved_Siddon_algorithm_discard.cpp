@@ -62,6 +62,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	std::vector<uint32_t> store_indices;
 	const bool RHS = false, SUMMA = false;
 	const uint32_t tid = 0U;
+	size_t* indi = 0;
 
 #pragma omp parallel for schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
@@ -211,7 +212,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							loppu = tempk;
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 						}
 						if (type > 1u) {
 							alku = Nz;
@@ -219,12 +220,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							if (type == 2u) {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 							}
 							if (type == 3u) {
 								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 							}
 						}
 					}
@@ -286,7 +287,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								loppu = tempk;
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
 							}
 							if (type > 1u) {
 								alku = Nz;
@@ -300,12 +301,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								if (type == 2u) {
 									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
 								}
 								if (type == 3u) {
 									volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 								}
 							}
 						}
@@ -329,7 +330,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 										loppu = tempk;
 										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
 									}
 								}
 								if (type > 1u) {
@@ -339,12 +340,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 										if (type == 2u) {
 											orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 												tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
+												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
 										}
 										if (type == 3u) {
 											volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 												tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 										}
 									}
 								}
@@ -367,12 +368,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 									if (type == 2u) {
 										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
 									}
 									if (type == 3u) {
 										volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 									}
 								}
 								break;
@@ -418,7 +419,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								loppu = tempk;
 								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 									tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
 							}
 							if (type > 1u) {
 								alku = Nz;
@@ -432,12 +433,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								if (type == 2u) {
 									orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 										tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
 								}
 								if (type == 3u) {
 									volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 										tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 								}
 							}
 						}
@@ -460,7 +461,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 										loppu = tempk;
 										orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
 									}
 								}
 								if (type > 1u) {
@@ -470,12 +471,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 										if (type == 2u) {
 											orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 												tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
+												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
 										}
 										if (type == 3u) {
 											volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 												tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 										}
 									}
 								}
@@ -498,12 +499,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 									if (type == 2u) {
 										orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
 									}
 									if (type == 3u) {
 										volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
 											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 									}
 								}
 								break;
@@ -537,7 +538,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							loppu = tempk;
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 						}
 						if (type > 1u) {
 							alku = Nz;
@@ -551,12 +552,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							if (type == 2u) {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 							}
 							if (type == 3u) {
 								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 							}
 						}
 					}
@@ -574,7 +575,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 									loppu = tempk;
 									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 								}
 							}
 							if (type > 1u) {
@@ -584,12 +585,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 									if (type == 2u) {
 										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 									}
 									if (type == 3u) {
 										volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 									}
 								}
 							}
@@ -625,12 +626,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								if (type == 2u) {
 									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 								}
 								if (type == 3u) {
 									volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, 0, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 								}
 							}
 							break;

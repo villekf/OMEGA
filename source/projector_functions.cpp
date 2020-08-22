@@ -106,7 +106,7 @@ uint32_t compute_ind_orth_mfree_3D(const uint32_t tempi, const uint32_t tempijk,
 }
 
 void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, const bool DISCARD, double local_ele, double& temp, double& ax, 
-	const bool no_norm, double* Summ, double* rhs, const double local_sino, const double* osem_apu, const uint64_t N2, mwIndex* indices, 
+	const bool no_norm, double* Summ, double* rhs, const double local_sino, const double* osem_apu, const uint64_t N2, size_t* indices, 
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, const uint32_t local_ind, const uint64_t N22) {
 	// Compute the total probability for both backprojection and sensitivity image
 	if (RHS) {
@@ -495,7 +495,7 @@ void att_corr_vec(const std::vector<double> templ_ijk, const std::vector<uint32_
 }
 
 // Correct for attenuation, vector data, precomputed
-void att_corr_vec_precomp(const double* elements, const double* atten, const mwIndex* indices, const size_t Np, const uint64_t N2, double& temp) {
+void att_corr_vec_precomp(const double* elements, const double* atten, const size_t* indices, const size_t Np, const uint64_t N2, double& temp) {
 
 	double jelppi = 0.;
 
@@ -504,6 +504,7 @@ void att_corr_vec_precomp(const double* elements, const double* atten, const mwI
 	}
 	temp = exp(jelppi) * temp;
 }
+
 
 // Correct for attenuation, scalar data
 double att_corr_scalar(double templ_ijk, uint32_t tempk, const double* atten, double& temp, const uint32_t N1, const uint32_t N) {
@@ -658,7 +659,7 @@ void orth_perpendicular(const uint32_t N, const double dd, const std::vector<dou
 void orth_perpendicular_np_3D(const double dd, const std::vector<double> vec, const uint32_t z_ring, const uint32_t N1, const uint32_t N2, 
 	const uint32_t Nz, const uint32_t Nyx, const uint32_t d_N, const uint32_t d_NN, const Det detectors, const double xl, const double yl, 
 	const double zl, const double* center1, const double center2, const double* z_center, const double crystal_size_z, int& hpk, double& temp, 
-	uint32_t& tempk, std::vector<uint32_T>& indices, std::vector<double>& elements) {
+	uint32_t& tempk, std::vector<uint32_t>& indices, std::vector<double>& elements) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
 	for (size_t ii = 0ULL; ii < static_cast<size_t>(N2); ii++) {
@@ -734,7 +735,7 @@ void orth_perpendicular_np_3D(const double dd, const std::vector<double> vec, co
 void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const uint32_t z_ring, const uint32_t N1, const uint32_t N2, 
 	const uint32_t Nz, const uint32_t Nyx, const uint32_t d_N, const uint32_t d_NN, const Det detectors, const double xl, const double yl, 
 	const double zl, const double* center1, const double center2, const double* z_center, const double crystal_size_z, int& hpk, double& temp, 
-	uint32_t& tempk, mwIndex* indices, double* elements, const uint64_t Np) {
+	uint32_t& tempk, size_t* indices, double* elements, const uint64_t Np) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
 	for (size_t ii = 0ULL; ii < static_cast<size_t>(N2); ii++) {
@@ -753,7 +754,7 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -766,7 +767,7 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -781,7 +782,7 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -794,7 +795,7 @@ void orth_perpendicular_3D(const double dd, const std::vector<double> vec, const
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -1226,7 +1227,7 @@ bool siddon_pre_loop_3D(const double bx, const double by, const double bz, const
 void orth_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz, const double y_diff, const double x_diff, const double z_diff,
 	const double* y_center, const double* x_center, const double* z_center, double& temp, const uint32_t NN, int32_t tempj, int32_t tempk, 
 	const double local_sino, double& ax, const double* osem_apu, const Det detectors, const uint32_t Nyx, const double kerroin, 
-	const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, const bool DISCARD, double* rhs, double* Summ, mwIndex* indices,
+	const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, const bool DISCARD, double* rhs, double* Summ, size_t* indices,
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, const uint32_t Ny, const uint32_t N1, const int start,
 	const int32_t iu, const int32_t ju, const int loppu, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices,
 	const uint32_t tid, uint32_t& ind, uint64_t N2, uint64_t N22) {
@@ -1684,7 +1685,7 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 	double& temp, const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1,
 	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, const Det detectors, const double xl, const double yl, const double zl, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, 
-	const uint32_t tid, uint32_t& ind, double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, 
+	const uint32_t tid, uint32_t& ind, double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, 
 	const double* scatter_coef, const uint64_t N2) {
 
 	const uint32_t zz = z_loop * d_N2 * d_N1;
@@ -1745,7 +1746,7 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 			local_ele *= temp;
 			uint32_t local_ind = uu * d_N + zz;
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
-				indices[hpk] = local_ind;
+				indices[hpk] = static_cast<size_t>(local_ind);
 				elements[hpk] = local_ele;
 				local_ind += d_NN;
 				hpk++;
@@ -1758,7 +1759,7 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 			local_ele *= temp;
 			uint32_t local_ind = uu * d_N + zz;
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
-				indices[hpk] = local_ind;
+				indices[hpk] = static_cast<size_t>(local_ind);
 				elements[hpk] = local_ele;
 				local_ind += d_NN;
 				hpk++;
@@ -1772,7 +1773,7 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 	const double temp, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1, const uint32_t d_N2,
 	const uint32_t z_loop, const uint32_t d_N, const uint32_t d_NN, const bool no_norm, double* rhs, double* Summ, const bool RHS, const bool SUMMA, 
 	const Det detectors, const double xl, const double yl, const double zl, const std::vector<double> store_elements, const std::vector<uint32_t> store_indices,
-	const uint32_t tid, uint32_t ind, double* elements, mwIndex* indices, uint64_t N2) {
+	const uint32_t tid, uint32_t ind, double* elements, size_t* indices, uint64_t N2) {
 
 	const uint32_t zz = z_loop * d_N2 * d_N1;
 	const uint32_t apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -1802,7 +1803,7 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 		}
 		else {
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
-				indices[hpk] = local_ind;
+				indices[hpk] = static_cast<size_t>(local_ind);
 				elements[hpk] = local_ele;
 				local_ind += d_NN;
 				hpk++;
@@ -1811,13 +1812,14 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 	}
 }
 
+
 // Calculate the denominator (forward projection) in the perpendicular case in orthogonal ray tracer (3D case)
 void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, double& temp, 
 	const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1,
 	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
-	double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
+	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
 	uint64_t N2) {
 
 	//const uint32_t zz = z_loop * d_N2 * d_N1;

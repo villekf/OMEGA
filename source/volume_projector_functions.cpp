@@ -57,7 +57,7 @@ double compute_element_volume_3D(Det detectors, const double xl, const double yl
 void volume_perpendicular_3D(const double dd, const std::vector<double> vec, const uint32_t z_ring, const uint32_t N1, const uint32_t N2, 
 	const uint32_t Nz, const uint32_t Nyx, const uint32_t d_N, const uint32_t d_NN, const Det detectors, const double xl, const double yl, 
 	const double zl, const double* center1, const double center2, const double* z_center, const double crystal_size_z, int& hpk, double& temp, 
-	uint32_t& tempk, mwIndex* indices, double* elements, const uint64_t Np) {
+	uint32_t& tempk, size_t* indices, double* elements, const uint64_t Np) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
 	for (size_t ii = 0ULL; ii < static_cast<size_t>(N2); ii++) {
@@ -76,7 +76,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -89,7 +89,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -104,7 +104,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -117,7 +117,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			temp += d_ort;
 			for (uint32_t kk = 0u; kk < N1; kk++) {
-				indices[Np + hpk] = static_cast<mwIndex>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
+				indices[Np + hpk] = static_cast<size_t>(static_cast<int64_t>(local_ind) + static_cast<int64_t>(kk) * static_cast<int64_t>(d_NN));
 				elements[Np + hpk] = d_ort;
 				hpk++;
 			}
@@ -133,7 +133,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz, const double y_diff, const double x_diff, const double z_diff,
 	const double* y_center, const double* x_center, const double* z_center, double& temp, const uint32_t NN, int32_t tempj, int32_t tempk, 
 	const double local_sino, double& ax, const double* osem_apu, const Det detectors, const uint32_t Nyx, const double kerroin, 
-	const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, const bool DISCARD, double* rhs, double* Summ, mwIndex* indices,
+	const bool no_norm, const bool RHS, const bool SUMMA, const bool OMP, const bool PRECOMP, const bool DISCARD, double* rhs, double* Summ, size_t* indices,
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, const uint32_t Ny, const uint32_t N1, const int start,
 	const int32_t iu, const int32_t ju, const int loppu, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices,
 	const uint32_t tid, uint32_t& ind, const double bmax, const double bmin, const double Vmax, const double* V, uint64_t N2, uint64_t N22) {
@@ -576,7 +576,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
-	double* elements, mwIndex* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const double bmax, const double bmin, const double Vmax, 
+	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const double bmax, const double bmin, const double Vmax, 
 	const double* V, const bool scatter, const double* scatter_coef, uint64_t N2) {
 
 	//const uint32_t zz = z_loop * d_N2 * d_N1;
