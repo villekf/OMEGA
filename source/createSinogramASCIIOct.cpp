@@ -33,7 +33,7 @@ void openMPSino(const octave_uint16* ringPos1, const octave_uint16* ringPos2, co
 	const uint32_t Nang, const uint32_t ring_difference, const uint32_t span, const octave_uint32* seg, const double* time, const uint64_t NT,
 	const uint64_t TOFSize, const double vali, const double alku, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC, uint16_t* SinoR,
 	const bool store_trues, const bool store_scatter, const bool store_randoms, const int32_t det_per_ring, const int32_t rings, 
-	const int64_t koko, const octave_uint64* bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
+	const int64_t koko, const octave_uint16* bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
 	const int32_t cryst_per_block) {
 
 #ifdef _OPENMP
@@ -56,7 +56,7 @@ void openMPSino(const octave_uint16* ringPos1, const octave_uint16* ringPos2, co
 			aika = time[kk];
 		uint64_t binN = 0ULL;
 		if (TOFSize > sinoSize)
-			binN = bins[kk];
+			binN = static_cast<uint64_t>(bins[kk]);
 		int32_t ring_pos1 = static_cast<int32_t>(ringPos1[kk]);
 		int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 		int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
@@ -116,7 +116,7 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	const double alku = prhs(17).scalar_value();
 	const int32_t detPerRing = prhs(18).int32_scalar_value();
 	const int32_t rings = prhs(19).int32_scalar_value();
-	const uint64NDArray bins = prhs(20).uint64_array_value();
+	const uint16NDArray bins = prhs(20).uint16_array_value();
 	const int32_t nDistSide = prhs(25).int32_scalar_value();
 	const int32_t detWPseudo = prhs(26).int32_scalar_value();
 	const int32_t nPseudos = prhs(27).int32_scalar_value();
@@ -142,7 +142,7 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	const octave_uint16* ring_number2 = ringNumber2.fortran_vec();
 
 	const octave_uint32* seg_p = seg.fortran_vec();
-	const octave_uint64* bins_p = bins.fortran_vec();
+	const octave_uint16* bins_p = bins.fortran_vec();
 	const double* time_p = time.fortran_vec();
 	const bool* tIndex = truesIndex.fortran_vec();
 	const bool* cIndex = scatterIndex.fortran_vec();
