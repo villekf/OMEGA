@@ -1670,3 +1670,13 @@ end
 
 % save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
+
+%% Scale the images
+
+% Use this function to scale the reconstructed images to Bq/mL (default
+% values are number of counts / voxel). Finite total time is required.
+% pz = scaleImages(pz);
+
+% If infinite time was used, input the total time of the examination as the
+% second input
+% pz = scaleImages(pz, total_time);

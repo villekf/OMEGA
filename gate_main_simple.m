@@ -433,3 +433,9 @@ if ~options.only_sinos
     tElapsed = toc(tStart);
     disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 end
+
+%% Scale the images
+
+% Use this function to scale the reconstructed images to Bq/mL (default
+% values are number of counts / voxel). Finite total time is required.
+% f_osem = scaleImages(f_osem, total_time, options.dx, options.dy, options.dz);
