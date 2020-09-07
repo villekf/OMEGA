@@ -185,6 +185,9 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton phantom selected, but no scatter data was found from ROOT-file\n";
 		}
+		else if (store_scatter && scatter_components[0] >= 1)
+			octave_stdout << "Compton scatter in the phantom will be stored\n";
+
 		if (Coincidences->GetBranchStatus("comptonCrystal1"))
 			Coincidences->SetBranchAddress("comptonCrystal1", &comptonCrystal1);
 		else
@@ -197,6 +200,9 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton crystal selected, but no scatter data was found from ROOT-file\n";
 		}
+		else if (store_scatter && scatter_components[1] >= 1)
+			octave_stdout << "Compton scatter in the detector will be stored\n";
+
 		if (Coincidences->GetBranchStatus("RayleighPhantom1"))
 			Coincidences->SetBranchAddress("RayleighPhantom1", &RayleighPhantom1);
 		else
@@ -209,6 +215,9 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh phantom selected, but no scatter data was found from ROOT-file\n";
 		}
+		else if (store_scatter && scatter_components[2] >= 1)
+			octave_stdout << "Rayleigh scatter in the phantom will be stored\n";
+
 		if (Coincidences->GetBranchStatus("RayleighCrystal1"))
 			Coincidences->SetBranchAddress("RayleighCrystal1", &RayleighCrystal1);
 		else
@@ -221,10 +230,29 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh crystal selected, but no scatter data was found from ROOT-file\n";
 		}
+		else if (store_scatter && scatter_components[3] >= 1)
+			octave_stdout << "Rayleigh scatter in the detector will be stored\n";
 
 		if (store_scatter && any == 8) {
 			octave_stdout << "Store scatter selected, but no scatter data was found from ROOT-file\n";
 		}
+
+		if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the detector are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the detector are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom are NOT included in trues\n";
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0)
+			octave_stdout << "Randoms and Compton scattered coincidences in the phantom are NOT included in trues\n";
 	}
 	const bool pseudoD = detWPseudo > det_per_ring;
 	const bool pseudoR = nPseudos > 0;
@@ -277,19 +305,19 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 					if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
 						event_scattered = true;
 				}
-				else if (comptonCrystal1 > 0 || comptonCrystal2 > 0) {
+				else if ((comptonCrystal1 > 0 || comptonCrystal2 > 0) && scatter_components[1] > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[1] > 0 && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
+					if (store_scatter && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
 						event_scattered = true;
 				}
-				else if (RayleighPhantom1 > 0 || RayleighPhantom2 > 0) {
+				else if ((RayleighPhantom1 > 0 || RayleighPhantom2 > 0) && scatter_components[2] > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[2] > 0 && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
+					if (store_scatter && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
 						event_scattered = true;
 				}
-				else if (RayleighCrystal1 > 0 || RayleighCrystal2 > 0) {
+				else if ((RayleighCrystal1 > 0 || RayleighCrystal2 > 0) && scatter_components[3] > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[3] > 0 && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
+					if (store_scatter && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
 						event_scattered = true;
 				}
 			}
