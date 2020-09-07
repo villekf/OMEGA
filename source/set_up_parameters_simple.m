@@ -37,6 +37,7 @@ options.scatter_correction = false;
 options.normalize_scatter = false;
 options.scatter_smoothing = false;
 options.subtract_scatter = true;
+options.global_correction_factor = 1;
 options.attenuation_correction = false;
 options.attenuation_datafile = '';
 options.compute_normalization = false;
