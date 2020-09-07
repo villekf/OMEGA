@@ -69,12 +69,12 @@ if ~isfield(options,'TOF_width') || options.TOF_bins == 0
     options.TOF_width = 0;
 end
 
-alku = options.start;
+alku = double(options.start);
 loppu = options.end;
 if isinf(loppu)
     loppu = 1e9;
 end
-vali = (loppu - alku)/options.partitions;
+vali = double((loppu - alku)/options.partitions);
 % tot_time = options.tot_time;
 
 machine_name = options.machine_name;
@@ -528,6 +528,31 @@ elseif options.use_machine == 0
         source_index2 = ascii_ind.source_index2;
         det_per_ring = options.det_per_ring;
         no_submodules = true;
+        if options.store_scatter && ascii_ind.scatter_index_cp1 == 0 && ascii_ind.scatter_index_cp2 == 0 ...
+                && ascii_ind.scatter_index_cd1 == 0 && ascii_ind.scatter_index_cd2 == 0 ...
+                && ascii_ind.scatter_index_rp1 == 0 && ascii_ind.scatter_index_rp2 == 0 ...
+                && ascii_ind.scatter_index_rd1 == 0 && ascii_ind.scatter_index_rd2 == 0
+            error('Store scatter selected, but no scatter data saved in coincidence mask')
+        end
+        if options.scatter_components(1) == 1 && (ascii_ind.scatter_index_cp1 == 0 || ascii_ind.scatter_index_cp2 == 0)
+            warning('Compton scattering in the phantom selected, but no Compton scattering in the phantom selected in coincidence mask')
+        end
+        if options.scatter_components(2) == 1 && (ascii_ind.scatter_index_cd1 == 0 || ascii_ind.scatter_index_cd2 == 0)
+            warning('Compton scattering in the detector selected, but no Compton scattering in the detector selected in coincidence mask')
+        end
+        if options.scatter_components(3) == 1 && (ascii_ind.scatter_index_rp1 == 0 || ascii_ind.scatter_index_rp2 == 0)
+            warning('Rayleigh scattering in the phantom selected, but no Rayleigh scattering in the phantom selected in coincidence mask')
+        end
+        if options.scatter_components(4) == 1 && (ascii_ind.scatter_index_rd1 == 0 || ascii_ind.scatter_index_rd2 == 0)
+            warning('Rayleigh scattering in the detector selected, but no Rayleigh scattering in the detector selected in coincidence mask')
+        end
+        if options.store_randoms && (ascii_ind.event_index1 == 0 || ascii_ind.event_index2 == 0)
+            error('Store randoms selected, but event IDs not selected in coincidence mask')
+        end
+        if options.obtain_trues && ((ascii_ind.event_index1 == 0 || ascii_ind.event_index2 == 0) || (ascii_ind.scatter_index_cp1 == 0 || ascii_ind.scatter_index_cp2 == 0))
+            error('Obtain trues selected, but event IDs and/or Compton scatter data in phantom not selected in coincidence mask')
+        end
+            
         
         if partitions > 1
             save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_ASCII.mat'];
@@ -646,7 +671,7 @@ elseif options.use_machine == 0
                     int_loc(2) = find(M(end,time_index) < time_intervals,1,'first') - 1;
                 end
                 max_time = max(M(:,time_index));
-                timeI = M(:,time_index);
+                timeI = double(M(:,time_index));
             else
                 tIndex = [];
                 if alku > 0
@@ -671,29 +696,66 @@ elseif options.use_machine == 0
             
             if options.obtain_trues
                 trues_index = false(size(M,1),1);
-                ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
-                    (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
-                    & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                if options.scatter_components(1) > 0 && options.scatter_components(2) > 0 && options.scatter_components(3) > 0 && options.scatter_components(4) > 0 ...
+                        && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0 ...
+                        && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0 ...
+                        && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
+                        & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 && options.scatter_components(3) > 0 ...
+                        && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0 ...
+                        && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
+                        & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 ...
+                        && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0);
+                elseif options.scatter_components(1) > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 && options.scatter_components(4) > 0 ...
+                        && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0 ...
+                        && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) ...
+                        & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(3) > 0 && options.scatter_components(4) > 0 ...
+                        && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0 ...
+                        && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
+                        & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(3) > 0 ...
+                        && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0);
+                elseif options.scatter_components(1) > 0 && options.scatter_components(4) > 0 ...
+                        && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
+                    ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
+                        (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                end
                 trues_index(ind) = true;
             end
             if options.store_scatter
                 scatter_index = false(size(M,1),1);
-                if options.scatter_components(1) > 0
+                if options.scatter_components(1) > 0 && ascii_ind.scatter_index_cp1 > 0 && ascii_ind.scatter_index_cp2
                     ind = (M(:,ascii_ind.scatter_index_cp1) >= options.scatter_components(1) | ...
                         M(:,ascii_ind.scatter_index_cp2) >= options.scatter_components(1)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(2) > 0
+                if options.scatter_components(2) > 0 && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2
                     ind = (M(:,ascii_ind.scatter_index_cd1) >= options.scatter_components(2) | ...
                         M(:,ascii_ind.scatter_index_cd2) >= options.scatter_components(2)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(3) > 0
+                if options.scatter_components(3) > 0 && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2
                     ind = (M(:,ascii_ind.scatter_index_rp1) >= options.scatter_components(3) | ...
                         M(:,ascii_ind.scatter_index_rp2) >= options.scatter_components(3)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
                 end
-                if options.scatter_components(4) > 0
+                if options.scatter_components(4) > 0 && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2
                     ind = (M(:,ascii_ind.scatter_index_rd1) >= options.scatter_components(4) | ...
                         M(:,ascii_ind.scatter_index_rd2) >= options.scatter_components(4)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
@@ -728,8 +790,8 @@ elseif options.use_machine == 0
                     ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind2)/cryst_per_block));
                     % Only a single ring
                 elseif options.rings == 1
-                    ring_number1 = 0;
-                    ring_number2 = 0;
+                    ring_number1 = uint16(0);
+                    ring_number2 = uint16(0);
                     % No modules and no repeated axial rings
                 elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && no_submodules
                     ring_number1 = uint16(M(:,rsector_ind1));
