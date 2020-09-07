@@ -56,7 +56,7 @@ public:
 		const double alku = inputs[17][0];
 		const int32_t detPerRing = inputs[18][0];
 		const int32_t rings = inputs[19][0];
-		const matlab::data::TypedArray<uint64_t> bins = std::move(inputs[20]);
+		const matlab::data::TypedArray<uint16_t> bins = std::move(inputs[20]);
 		const int32_t nDistSide = inputs[25][0];
 		const int32_t detWPseudo = inputs[26][0];
 		const int32_t nPseudos = inputs[27][0];
@@ -111,7 +111,7 @@ public:
 		const matlab::data::TypedArray<uint32_t>& seg, const matlab::data::TypedArray<double>& time, const uint64_t NT, const uint64_t TOFSize, const double vali, const double alku,
 		matlab::data::TypedArray<uint16_t>& Sino, matlab::data::TypedArray<uint16_t>& SinoT, matlab::data::TypedArray<uint16_t>& SinoC, matlab::data::TypedArray<uint16_t>& SinoR,
 		const bool store_trues, const bool store_scatter, const bool store_randoms, const int32_t det_per_ring, const int32_t rings,
-		const int64_t koko, const matlab::data::TypedArray<uint64_t>& bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
+		const int64_t koko, const matlab::data::TypedArray<uint16_t>& bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
 		const int32_t cryst_per_block) {
 
 #ifdef _OPENMP
@@ -137,7 +137,7 @@ public:
 				double aika = time[kk];
 			uint64_t binN = 0ULL;
 			if (TOFSize > sinoSize)
-				binN = bins[kk];
+				binN = static_cast<uint64_t>(bins[kk]);
 			int32_t ring_pos1 = static_cast<int32_t>(ringPos1[kk]);
 			int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 			int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
