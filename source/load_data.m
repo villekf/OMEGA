@@ -605,7 +605,7 @@ elseif options.use_machine == 0
         end
         
         % Go through all the files
-        for lk=1:length(fnames)
+        for lk = 1:length(fnames)
             
             % Use readmatrix if newer MATLAB is used, otherwise importdata
             if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6') || exist('OCTAVE_VERSION','builtin') == 5
@@ -703,38 +703,61 @@ elseif options.use_machine == 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
                         & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 && options.scatter_components(3) > 0 ...
                         && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0 ...
                         && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
-                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
-                        & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                        (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) & (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 ...
                         && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and detector are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms and Compton scattered coincidences in the phantom are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(2) > 0 && options.scatter_components(4) > 0 ...
                         && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2 > 0 ...
                         && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_cd1) == 0 & M(:,ascii_ind.scatter_index_cd2) == 0) ...
                         & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the detector are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(3) > 0 && options.scatter_components(4) > 0 ...
                         && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0 ...
                         && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0) ...
                         & (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(3) > 0 ...
                         && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_rp1) == 0 & M(:,ascii_ind.scatter_index_rp2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom are NOT included in trues')
+                    end
                 elseif options.scatter_components(1) > 0 && options.scatter_components(4) > 0 ...
                         && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2 > 0
                     ind = (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2)) & (M(:,ascii_ind.scatter_index_cp1) == 0 & M(:,ascii_ind.scatter_index_cp2) == 0) & ...
                         (M(:,ascii_ind.scatter_index_rd1) == 0 & M(:,ascii_ind.scatter_index_rd2) == 0);
+                    if options.verbose && lk == 1
+                        disp('Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the detector are NOT included in trues')
+                    end
                 end
                 trues_index(ind) = true;
             end
@@ -744,21 +767,33 @@ elseif options.use_machine == 0
                     ind = (M(:,ascii_ind.scatter_index_cp1) >= options.scatter_components(1) | ...
                         M(:,ascii_ind.scatter_index_cp2) >= options.scatter_components(1)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
+                    if options.verbose && lk == 1
+                        disp('Compton scatter in the phantom will be stored')
+                    end
                 end
                 if options.scatter_components(2) > 0 && ascii_ind.scatter_index_cd1 > 0 && ascii_ind.scatter_index_cd2
                     ind = (M(:,ascii_ind.scatter_index_cd1) >= options.scatter_components(2) | ...
                         M(:,ascii_ind.scatter_index_cd2) >= options.scatter_components(2)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
+                    if options.verbose && lk == 1
+                        disp('Compton scatter in the detector will be stored')
+                    end
                 end
                 if options.scatter_components(3) > 0 && ascii_ind.scatter_index_rp1 > 0 && ascii_ind.scatter_index_rp2
                     ind = (M(:,ascii_ind.scatter_index_rp1) >= options.scatter_components(3) | ...
                         M(:,ascii_ind.scatter_index_rp2) >= options.scatter_components(3)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
+                    if options.verbose && lk == 1
+                        disp('Rayleigh scatter in the phantom will be stored')
+                    end
                 end
                 if options.scatter_components(4) > 0 && ascii_ind.scatter_index_rd1 > 0 && ascii_ind.scatter_index_rd2
                     ind = (M(:,ascii_ind.scatter_index_rd1) >= options.scatter_components(4) | ...
                         M(:,ascii_ind.scatter_index_rd2) >= options.scatter_components(4)) & (M(:,ascii_ind.event_index1) == M(:,ascii_ind.event_index2));
                     scatter_index(ind) = true;
+                    if options.verbose && lk == 1
+                        disp('Rayleigh scatter in the detector will be stored')
+                    end
                 end
             end
             if options.store_randoms
