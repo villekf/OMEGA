@@ -54,6 +54,7 @@ public:
 		const uint32_t rings = inputs[19][0];
 		const bool large_case = inputs[20][0];
 		const bool TOF = inputs[21][0];
+		const bool verbose = inputs[22][0];
 		size_t outsize2 = (loppu - alku) / vali;
 
 		bool dynamic = outsize2 > 1 ? true : false;
@@ -200,7 +201,7 @@ public:
 		histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S,
 			Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter,
 			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, x1, x2,
-			y1, y2, z1, z2, store_coordinates, dynamic, large_case, rings, cryst_per_block_z, transaxial_multip, TP, TPd, TOF);
+			y1, y2, z1, z2, store_coordinates, dynamic, large_case, rings, cryst_per_block_z, transaxial_multip, TP, TPd, TOF, verbose);
 
 		delete Coincidences;
 		if (randoms_correction)
@@ -240,8 +241,8 @@ public:
 	}
 
 	void checkArguments(matlab::mex::ArgumentList& outputs, matlab::mex::ArgumentList& inputs) {
-		if (inputs.size() != 22) {
-			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("22 inputs required") }));
+		if (inputs.size() != 23) {
+			matlabPtr->feval(u"error", 0, std::vector<matlab::data::Array>({ factory.createScalar("23 inputs required") }));
 		}
 
 		if (outputs.size() > 23) {
@@ -262,7 +263,8 @@ public:
 		matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc,
 		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
 		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case, const uint32_t rings, 
-		const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, matlab::data::TypedArray<double>& TP, matlab::data::TypedArray<double>& TPd, const bool TOF)
+		const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, matlab::data::TypedArray<double>& TP, matlab::data::TypedArray<double>& TPd, const bool TOF, 
+		const bool verbose)
 	{
 
 		Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
@@ -458,7 +460,7 @@ public:
 				stream << "Compton phantom selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (store_scatter && scatter_components[0] >= 1) {
+			else if (store_scatter && scatter_components[0] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Compton scatter in the phantom will be stored" << std::endl;
 				displayOnMATLAB(stream);
@@ -482,7 +484,7 @@ public:
 				stream << "Compton crystal selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (store_scatter && scatter_components[1] >= 1) {
+			else if (store_scatter && scatter_components[1] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Compton scatter in the detector will be stored" << std::endl;
 				displayOnMATLAB(stream);
@@ -506,7 +508,7 @@ public:
 				stream << "Rayleigh phantom selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (store_scatter && scatter_components[2] >= 1) {
+			else if (store_scatter && scatter_components[2] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Rayleigh scatter in the phantom will be stored" << std::endl;
 				displayOnMATLAB(stream);
@@ -531,7 +533,7 @@ public:
 				stream << "Rayleigh crystal selected, but no scatter data was found from ROOT-file" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (store_scatter && scatter_components[3] >= 1) {
+			else if (store_scatter && scatter_components[3] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Rayleigh scatter in the detector will be stored" << std::endl;
 				displayOnMATLAB(stream);
@@ -546,42 +548,42 @@ public:
 			}
 
 
-			if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1) {
+			if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and detector are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the detector are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the detector are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);
 			}
-			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0) {
+			else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose) {
 				std::ostringstream stream;
 				stream << "Randoms and Compton scattered coincidences in the phantom are NOT included in trues" << std::endl;
 				displayOnMATLAB(stream);

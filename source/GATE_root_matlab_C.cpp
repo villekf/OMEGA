@@ -32,7 +32,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings,
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint32_t* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC,
-	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM)
+	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
@@ -205,7 +205,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			mexPrintf("Compton phantom selected, but no scatter data was found from ROOT-file\n");
 		}
-		else if (store_scatter && scatter_components[0] >= 1)
+		else if (store_scatter && scatter_components[0] >= 1 && verbose)
 			mexPrintf("Compton scatter in the phantom will be stored\n");
 
 		if (any == 2)
@@ -222,7 +222,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		if (store_scatter && ((any == 4 && next == 1) || (any == 2 && next == 0)) && scatter_components[1] >= 1) {
 			mexPrintf("Compton crystal selected, but no scatter data was found from ROOT-file\n");
 		}
-		else if (store_scatter && scatter_components[1] >= 1)
+		else if (store_scatter && scatter_components[1] >= 1 && verbose)
 			mexPrintf("Compton scatter in the detector will be stored\n");
 
 		if ((any == 4 && next == 1) || (any == 2 && next == 0))
@@ -239,7 +239,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		if (store_scatter && ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1)) && scatter_components[2] >= 1) {
 			mexPrintf("Rayleigh phantom selected, but no scatter data was found from ROOT-file\n");
 		}
-		else if (store_scatter && scatter_components[2] >= 1)
+		else if (store_scatter && scatter_components[2] >= 1 && verbose)
 			mexPrintf("Rayleigh scatter in the phantom will be stored\n");
 
 		if ((any == 6 && next == 2) || (any == 2 && next == 0) || (any == 4 && next == 1))
@@ -256,7 +256,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		if (store_scatter && ((any == 8 && next == 3) || (any == 2 && next == 0) || (any == 4 && next == 1) || (any == 6 && next == 2)) && scatter_components[3] >= 1) {
 			mexPrintf("Rayleigh crystal selected, but no scatter data was found from ROOT-file\n");
 		}
-		else if (store_scatter && scatter_components[3] >= 1)
+		else if (store_scatter && scatter_components[3] >= 1 && verbose)
 			mexPrintf("Rayleigh scatter in the detector will be stored\n");
 
 
@@ -264,21 +264,21 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			mexPrintf("Store scatter selected, but no scatter data was found from ROOT-file\n");
 		}
 
-		if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+		if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and detector are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the detector are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the detector are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose)
 			mexPrintf("Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom are NOT included in trues\n");
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose)
 			mexPrintf("Randoms and Compton scattered coincidences in the phantom are NOT included in trues\n");
 
 	}
@@ -580,9 +580,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 39) {
+	if (nrhs != 40) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"39 input arguments required.");
+			"40 input arguments required.");
 	}
 	else if (nlhs > 26) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
@@ -624,6 +624,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[36]);
 	double binSize = (double)mxGetScalar(prhs[37]);
 	double FWHM = (double)mxGetScalar(prhs[38]);
+	const bool verbose = (bool)mxGetScalar(prhs[39]);
 	size_t outsize2 = (loppu - alku) / vali;
 
 	// Count inputs and check for char type
@@ -811,7 +812,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		output, Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter, 
 		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, 
 		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference,
-		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM);
+		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose);
 
 
 	delete Coincidences;

@@ -13,7 +13,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 	float* z1, float* z2, bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings, 
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const octave_uint32* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, octave_uint16* Sino, octave_uint16* SinoT, octave_uint16* SinoC, 
-	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM)
+	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
@@ -185,7 +185,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton phantom selected, but no scatter data was found from ROOT-file\n";
 		}
-		else if (store_scatter && scatter_components[0] >= 1)
+		else if (store_scatter && scatter_components[0] >= 1 && verbose)
 			octave_stdout << "Compton scatter in the phantom will be stored\n";
 
 		if (Coincidences->GetBranchStatus("comptonCrystal1"))
@@ -200,7 +200,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Compton crystal selected, but no scatter data was found from ROOT-file\n";
 		}
-		else if (store_scatter && scatter_components[1] >= 1)
+		else if (store_scatter && scatter_components[1] >= 1 && verbose)
 			octave_stdout << "Compton scatter in the detector will be stored\n";
 
 		if (Coincidences->GetBranchStatus("RayleighPhantom1"))
@@ -215,7 +215,7 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh phantom selected, but no scatter data was found from ROOT-file\n";
 		}
-		else if (store_scatter && scatter_components[2] >= 1)
+		else if (store_scatter && scatter_components[2] >= 1 && verbose)
 			octave_stdout << "Rayleigh scatter in the phantom will be stored\n";
 
 		if (Coincidences->GetBranchStatus("RayleighCrystal1"))
@@ -230,28 +230,28 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		if (store_scatter && any == 2 && scatter_components[0] >= 1) {
 			octave_stdout << "Rayleigh crystal selected, but no scatter data was found from ROOT-file\n";
 		}
-		else if (store_scatter && scatter_components[3] >= 1)
+		else if (store_scatter && scatter_components[3] >= 1 && verbose)
 			octave_stdout << "Rayleigh scatter in the detector will be stored\n";
 
 		if (store_scatter && any == 8) {
 			octave_stdout << "Store scatter selected, but no scatter data was found from ROOT-file\n";
 		}
 
-		if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+		if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the phantom are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] >= 1 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and detector and Rayleigh scattered coincidences in the detector are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] >= 1 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom and detector are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] >= 1 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the detector are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] >= 1 && scatter_components[3] == 0 && verbose)
 			octave_stdout << "Randoms, Compton scattered coincidences in the phantom and Rayleigh scattered coincidences in the phantom are NOT included in trues\n";
-		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0)
+		else if (obtain_trues && scatter_components[0] >= 1 && scatter_components[1] == 0 && scatter_components[2] == 0 && scatter_components[3] == 0 && verbose)
 			octave_stdout << "Randoms and Compton scattered coincidences in the phantom are NOT included in trues\n";
 	}
 	const bool pseudoD = detWPseudo > det_per_ring;
@@ -585,6 +585,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	const int32_t nPseudos = prhs(36).int32_scalar_value();
 	double binSize = prhs(37).scalar_value();
 	double FWHM = prhs(38).scalar_value();
+	const bool verbose = prhs(39).scalar_value();
 	size_t outsize2 = (loppu - alku) / vali;
 	const uint8_t* scatter_components_p = reinterpret_cast<uint8_t*>(scatter_components.fortran_vec());
 	const double* time_intervals_p = time_intervals.fortran_vec();
@@ -774,7 +775,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		Coincidences, Nentries, time_intervals_p, int_loc_p, obtain_trues, store_scatter, store_randoms, scatter_components_p, Ltrues_p, Lscatter_p,
 		Lrandoms_p, trues_loc_p, Ndelays, randoms_correction, delay, Ldelay1_p, Ldelay2_p, int_loc_delay_p, tpoints_delay_p, randoms_loc_p, scatter_loc_p, 
 		x1_p, x2_p, y1_p, y1_p, z1_p, z2_p, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, 
-		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM);
+		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose);
 
 
 	delete Coincidences;
