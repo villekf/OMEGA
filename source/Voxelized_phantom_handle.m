@@ -256,7 +256,7 @@ if min(A(:)) < 0
     A = A + abs(min(A(:)));
 end
 kerroin = 1000 / max(A(:));
-if nargin >= 5 && ~isempty(first_slice) && ~isempty(end_slice)
+if nargin >= 6 && ~isempty(first_slice) && ~isempty(end_slice)
     slices = end_slice - first_slice + 1;
     A = uint16(kerroin*A(:,:,first_slice:end_slice));
 else
@@ -270,7 +270,7 @@ row1 = find(any(rows,2),1,'first');
 row2 = find(any(rows,2),1,'last');
 col1 = find(any(cols,2),1,'first');
 col2 = find(any(cols,2),1,'last');
-if nargin < 5 || (nargin >= 5 && isempty(first_slice) && isempty(end_slice))
+if nargin < 6 || (nargin >= 6 && isempty(first_slice) && isempty(end_slice))
     slice = squeeze(any(A));
     slice1 = find(any(slice,1),1,'first');
     slice2 = find(any(slice,1),1,'last');
