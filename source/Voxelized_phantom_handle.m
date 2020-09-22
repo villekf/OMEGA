@@ -35,18 +35,19 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   first_slice, end_slice, time_frames, lesion_input_file, output_type,
 %   windows_format)
 %   Voxelized_phantom_handle('phantom_1.bin', 'phantom', [256 256], [0.01
-%   0.01 0.01], 150, 450, 5, 'phantom_lesion_1.bin')
+%   0.01 0.01], 'single', 150, 450, 5, 'phantom_lesion_1.bin')
 %   Voxelized_phantom_handle('phantom_1.bin', 'phantom', [256 256], [0.01
-%   0.01 0.01], [], [], [], 'phantom_lesion_1.bin')
+%   0.01 0.01], [], [], [], [], 'phantom_lesion_1.bin')
 %   Voxelized_phantom_handle('image_1.bmp', 'phantom_bmp', [], [0.01
-%   0.01 0.01], [], [], [], [], 'metaimage')
+%   0.01 0.01], [], [], [], [], [], 'metaimage')
 %   Voxelized_phantom_handle('image_001.dcm', 'phantom_dicom')
 %
 % Inputs:
 %   input_name = Full name of the input data file, e.g. 'phantom_1.bin'.
 %   Include full path if the file is not in MATLAB/Octave path. Input file
-%   is always assumed to be in 32-bit float format (images can be in any
-%   format supported by the image format itself).
+%   is by default assumed to be in 32-bit float format (images can be in
+%   any format supported by the image format itself), but non-float binary
+%   data can be used if data_type variable is set accordingly.
 %
 %   output_name = Name of the output file. The image and header will have
 %   the same name, but different file ending (.i33 for image and .h33 for
@@ -59,6 +60,11 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   All input images need to be of the same size.
 %
 %   pixsize = The size (in cm) of each voxel in each ([x y z]) dimension.
+%
+%   data_type = (optional) The data type of the input data. Default is
+%   assumed to 32-bit float. For signed integers use 'int8', 'int16', etc.
+%   and for unsigned use 'uint8', 'uint16', etc. For doubles use 'float64'
+%   or 'double'.
 %
 %   first_slice = (optional) Crop the phantom starting from this slice. No
 %   further cropping will be performed, even if the specified slice is
@@ -108,22 +114,24 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargin >= 5
-    first_slice = varargin{1};
-    end_slice = varargin{2};
+if nargin >= 5 && ~isempty(varargin) && ~isempty(varargin{1})
+    data_type = varargin{1};
+else
+    data_type = 'single';
 end
-if nargin >= 7
-    tt = varargin{3};
-    if isempty(tt)
-        tt = 1;
-    end
+if nargin >= 6
+    first_slice = varargin{2};
+    end_slice = varargin{3};
+end
+if nargin >= 8 && ~isempty(varargin{4})
+    tt = varargin{4};
 else
     tt = 1;
 end
 ind = strfind(input_name,'.');
 f_type = input_name(ind(end) + 1:end);
-if nargin >= 8 && ~isempty(varargin{4})
-    lesion_input_file = varargin{4};
+if nargin >= 9 && ~isempty(varargin{5})
+    lesion_input_file = varargin{5};
     if strcmpi(f_type, 'dcm') || strcmpi(f_type, 'ima')
         f_path = fileparts(which(lesion_input_file));
         if isempty(f_path)
@@ -170,13 +178,13 @@ if nargin >= 8 && ~isempty(varargin{4})
         fclose(fid);
     end
 end
-if nargin >= 9 && ~isempty(varargin{5})
-    output_type = varargin{5};
+if nargin >= 10 && ~isempty(varargin{6})
+    output_type = varargin{6};
 else
     output_type = 'interfile';
 end
-if nargin >= 10 && ~isempty(varargin{6})
-    windows_format = varargin{6};
+if nargin >= 11 && ~isempty(varargin{7})
+    windows_format = varargin{7};
 else
     windows_format = false;
 end
@@ -233,11 +241,11 @@ elseif strcmpi(f_type, 'bmp') || strcmp(f_type, 'png') || strcmp(f_type, 'tiff')
     tt = 1;
 else
     fid = fopen(input_name);
-    A = fread(fid,inf,'single=>single',0,'l');
+    A = fread(fid,inf,[data_type '=>single'],0,'l');
     fclose(fid);
 end
 % Add the lesion values to the original values
-if nargin >= 8 && ~isempty(varargin{4})
+if nargin >= 9 && ~isempty(varargin{5})
     A = A + B;
 end
 if strcmpi(f_type, 'dcm') || strcmpi(f_type, 'ima') || strcmpi(f_type, 'bmp') || strcmp(f_type, 'png') || strcmp(f_type, 'tiff') || strcmp(f_type, 'tif')
