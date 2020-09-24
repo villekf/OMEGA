@@ -1,18 +1,17 @@
 function options = loadMeasurementData(options, varargin)
 %LOADMEASUREMENTDATA Loads the measurement data
 %   Loads the measurement data for non-GATE situations from either a
-%   mat-file, a NIfTI file, Analyze 7.5 file, DICOM file, Interfile or raw
-%   data file 
-%   in the specified bit-format. For the last case the default is 32-bit
-%   integer (int32). A different bit format for the raw data file can be
-%   input as an optional parameter. The measurement data will be saved in
-%   structure as SinM for sinogram data or coincidences for raw list-mode
-%   data. Raw list-mode data supports only mat-files.
+%   mat-file, a NIfTI file, Analyze 7.5 file, DICOM file, Interfile,
+%   MetaImage file or raw data file in the specified bit-format. For the
+%   last case the default is 32-bit integer (int32). A different bit format
+%   for the raw data file can be input as an optional parameter. The
+%   measurement data will be saved in structure as SinM for sinogram data
+%   or coincidences for raw data. Raw data supports only mat-files. 
 %
-%   Loading DICOM files requires image processing toolbox on MATLAB or the
-%   dicom-package on Octave (untested). For NIfTI and Analyze format the
-%   "Tools for NIfTI and ANALYZE image" toolbox from MathWorks file
-%   exchange is needed
+%   Loading DICOM or NIfTI files requires image processing toolbox on
+%   MATLAB or for DICOM the dicom-package on Octave (untested). For Analyze
+%   format (and alternatively for NIfTI) the "Tools for NIfTI and ANALYZE
+%   image" toolbox from MathWorks file exchange is needed
 %   (https://se.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image)
 %
 %   Measurement data previously loaded (i.e. either SinM or coincidences
@@ -57,6 +56,9 @@ function options = loadMeasurementData(options, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 [file, fpath] = uigetfile('*.*','Select PET Sinogram or list-mode data');
 
+if ~isfield(options,'TOF_bins')
+    options.TOF_bins = 1;
+end
 if isequal(file, 0)
     if isfield(options,'SinM') || isfield(options,'coincidences')
         warning('Previously loaded measurement data found. Using the data already stored in struct.')
@@ -118,22 +120,40 @@ elseif strcmp(FileName(end-2:end),'img') || strcmp(FileName(end-2:end),'nii') ||
         if size(img,2) ~= options.Nang
             error('Size mismatch between input file and sinogram dimensions')
         else
-            img = flipud(permute(img, [2 1 3 4]));
+            img = flipud(permute(img, [2 1 3 4 5]));
         end
     end
     if options.partions > 1
-        if size(img,4) > 1
-            options.SinM = cell(options.partitions,1);
-            for kk = 1 : options.partitions
-                options.SinM{kk} = img(:,:,:,kk);
+        if options.TOF_bins > 1
+            if size(img,5) > 1
+                options.SinM = cell(options.partitions,1);
+                for kk = 1 : options.partitions
+                    options.SinM{kk} = img(:,:,:,:,kk);
+                end
+            else
+                error('No 5D data found')
             end
         else
-            error('No 4D data found')
+            if size(img,4) > 1
+                options.SinM = cell(options.partitions,1);
+                for kk = 1 : options.partitions
+                    options.SinM{kk} = img(:,:,:,kk);
+                end
+            else
+                error('No 4D data found')
+            end
         end
     else
-        options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, 'single');
-        for kk = 1 : size(img,4)
-            options.SinM = options.SinM + img(:,:,:,kk);
+        if options.TOF_bins > 1
+            options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, options.TOF_bins, 'single');
+            for kk = 1 : size(img,5)
+                options.SinM = options.SinM + img(:,:,:,:,kk);
+            end
+        else
+            options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, 'single');
+            for kk = 1 : size(img,4)
+                options.SinM = options.SinM + img(:,:,:,kk);
+            end
         end
     end
 elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
@@ -143,7 +163,7 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
             if size(img,2) ~= options.Nang
                 error('Size mismatch between input file and sinogram dimensions')
             else
-                img = permute(img, [2 1 3 4]);
+                img = permute(img, [2 1 3 4 5]);
             end
         end
         if options.partions > 1
@@ -155,11 +175,43 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
     end
 elseif strcmp(FileName(end-2:end),'i33') || strcmp(FileName(end-2:end),'h33')
     options.SinM = loadInterfile(FileName);
+    if options.partions > 1
+        apu = options.SinM;
+        options.SinM = cell(options.partitions, 1);
+        for kk = 1 : options.partitions
+            if size(apu, 5) > 1
+                if options.TOF_bins > 1
+                    options.SinM{kk} = apu(:,:,:,:, kk);
+                else
+                    apu_1 = apu(:,:,:,:, kk);
+                    options.SinM{kk} = sum(apu_1, 4, 'native');
+                end
+            else
+                options.SinM{kk} = apu(:,:,:,kk);
+            end
+        end
+    end
 elseif strcmp(FileName(end-2:end),'mhd') || strcmp(FileName(end-2:end),'mha')
     options.SinM = loadMetaImage(FileName);
+    if options.partions > 1
+        apu = options.SinM;
+        options.SinM = cell(options.partitions, 1);
+        for kk = 1 : options.partitions
+            if size(apu, 5) > 1
+                if options.TOF_bins > 1
+                    options.SinM{kk} = apu(:,:,:,:, kk);
+                else
+                    apu_1 = apu(:,:,:,:, kk);
+                    options.SinM{kk} = sum(apu_1, 4, 'native');
+                end
+            else
+                options.SinM{kk} = apu(:,:,:,kk);
+            end
+        end
+    end
 else
-    fid = fopen(nimi);
-    f_size = dir(nimi);
+    fid = fopen(FileName);
+    f_size = dir(FileName);
     f_size = f_size.bytes;
     if nargin >= 2 && skip > 0
         fread(fid,skip,'*uint8');
@@ -174,34 +226,70 @@ else
     elseif strcmp(type,'int64') || strcmp(type,'uint64') || strcmp(type,'double')
         f_size = f_size / 8;
     end
-    koko = options.Nang*options.Ndist*options.TotSinos;
+    koko = options.Nang*options.Ndist*options.TotSinos*options.TOF_bins;
     if (f_size > koko || f_size < koko) && options.partitions == 1
         if mod(f_size, koko) == 0 && f_size > koko
-            warning('4th dimension will be merged')
+            if options.TOF_bins > 1
+                warning('5th dimension will be merged')
+            else
+                warning('4th dimension will be merged')
+            end
         else
             fclose(fid);
-            error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
-                num2str(options.Nang) ' ' num2str(options.TotSinos) '].'])
+            if options.TOF_bins > 1
+                error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
+                    num2str(options.Nang) ' ' num2str(options.TotSinos) ' ' num2str(options.TOF_bins) '].'])
+            else
+                error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
+                    num2str(options.Nang) ' ' num2str(options.TotSinos) '].'])
+            end
         end
     elseif (f_size > koko * options.partitions || f_size < koko * options.partitions)
         fclose(fid);
-        error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
-            num2str(options.Nang) ' ' num2str(options.TotSinos) ' ' num2str(options.partitions) '].'])
+        if options.TOF_bins > 1
+            error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
+                num2str(options.Nang) ' ' num2str(options.TotSinos) ' ' num2str(options.TOF_bins) ' ' num2str(options.partitions) '].'])
+        else
+            error(['Size mismatch between input file and sinogram dimensions. Expected [' num2str(options.Ndist) ' ' ...
+                num2str(options.Nang) ' ' num2str(options.TotSinos) ' ' num2str(options.partitions) '].'])
+        end
     end
-    img = fread(fid, [options.Ndist, options.Nang, options.TotSinos, f_size/koko], [type '=>single'],0,'l');
+    if options.TOF_bins > 1
+        img = fread(fid, [options.Ndist, options.Nang, options.TotSinos, options.TOF_bins, f_size/koko], [type '=>single'],0,'l');
+    else
+        img = fread(fid, [options.Ndist, options.Nang, options.TotSinos, f_size/koko], [type '=>single'],0,'l');
+    end
     if options.partions > 1
-        if size(img,4) > 1
-            options.SinM = cell(options.partitions,1);
-            for kk = 1 : options.partitions
-                options.SinM{kk} = img(:,:,:,kk);
+        if options.TOF_bins > 1
+            if size(img,5) > 1
+                options.SinM = cell(options.partitions,1);
+                for kk = 1 : options.partitions
+                    options.SinM{kk} = img(:,:,:,:,kk);
+                end
+            else
+                error('No 5D data found')
             end
         else
-            error('No 4D data found')
+            if size(img,4) > 1
+                options.SinM = cell(options.partitions,1);
+                for kk = 1 : options.partitions
+                    options.SinM{kk} = img(:,:,:,kk);
+                end
+            else
+                error('No 4D data found')
+            end
         end
     else
-        options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, 'single');
-        for kk = 1 : size(img,4)
-            options.SinM = options.SinM + img(:,:,:,kk);
+        if options.TOF_bins > 1
+            options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, options.TOF_bins, 'single');
+            for kk = 1 : size(img,5)
+                options.SinM = options.SinM + img(:,:,:,:,kk);
+            end
+        else
+            options.SinM = zeros(options.Ndist, options.Nang, options.TotSinos, 'single');
+            for kk = 1 : size(img,4)
+                options.SinM = options.SinM + img(:,:,:,kk);
+            end
         end
     end
 end
