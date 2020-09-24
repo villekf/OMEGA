@@ -254,12 +254,13 @@ else
                 num2str(options.Nang) ' ' num2str(options.TotSinos) ' ' num2str(options.partitions) '].'])
         end
     end
+    img = fread(fid, inf, [type '=>single'],0,'l');
     if options.TOF_bins > 1
-        img = fread(fid, [options.Ndist, options.Nang, options.TotSinos, options.TOF_bins, f_size/koko], [type '=>single'],0,'l');
+        img = reshape(img, [options.Ndist, options.Nang, options.TotSinos, options.TOF_bins, f_size/koko]);
     else
-        img = fread(fid, [options.Ndist, options.Nang, options.TotSinos, f_size/koko], [type '=>single'],0,'l');
+        img = reshape(img, [options.Ndist, options.Nang, options.TotSinos, f_size/koko]);
     end
-    if options.partions > 1
+    if options.partitions > 1
         if options.TOF_bins > 1
             if size(img,5) > 1
                 options.SinM = cell(options.partitions,1);
