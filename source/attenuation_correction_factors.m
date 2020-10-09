@@ -50,8 +50,10 @@ else
     end
     nimi = [options.fpath options.file];
     fid = fopen(nimi);
-    attenuation_factors = fread(fid, options.Nang*options.Ndist*options.Nz, 'single',0,'l');
-    attenuation_factors = log(reshape(attenuation_factors, options.Ndist, options.Nang, options.Nz));
+    attenuation_factors = fread(fid, inf, 'single',0,'l');
+    aSize = numel(attenuation_factors) / (options.Ndist * options.Nang);
+    attenuation_factors = log(reshape(attenuation_factors, options.Ndist, options.Nang, aSize));
+    attenuation_factors = attenuation_factors(:,:,aSize - options.Nz + 1:end);
     fclose(fid);
     options.attenuation_phase = true;
     options.SinM = attenuation_factors;
