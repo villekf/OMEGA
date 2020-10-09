@@ -13,6 +13,7 @@ function [options, lor_a, xy_index, z_index, LL, summa, pituus, varargout] = for
 %   y = Detector coordinates in the y-axis.
 %   z_det = Same as above, but for z-axis.
 %   fbbp = Is the forward/backward projection code used.
+%   TOF = Is TOF data used.
 %   measurement_data = The measurement data (sinogram or raw list-mode
 %   data). This input is optional and is only used if the measurement data
 %   is also output.
@@ -64,9 +65,14 @@ folder = fileparts(which('form_subset_indices.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
+if ~isempty(varargin) && ~isempty(varargin{1})
+    TOF = varargin{1};
+else
+    TOF = false;
+end
 if nargout > 7
-    if nargin > 9 && ~isempty(varargin{1})
-        varargout{1} = varargin{1};
+    if nargin > 10 && ~isempty(varargin{2})
+        varargout{1} = varargin{2};
     end
 end
 if nargout > 8
@@ -175,7 +181,7 @@ if options.use_raw_data == false && options.precompute_lor
             clear lor_opencl
         end
     end
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         lor_a = (lor(index));
         if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(index));
@@ -223,22 +229,33 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = varargin{2}{ff};
                     if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos);
+                        temp = temp(:,:,1:options.NSinos,:);
                     end
-                    temp = temp(index);
-                    varargout{1}{ff} = temp;
+                    if TOF
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(index,:);
+                    else
+                        temp = temp(index);
+                    end
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
                 if options.NSinos ~= options.TotSinos
-                    varargin{1} = varargin{1}(:,:,1:options.NSinos);
+                    varargin{2} = varargin{2}(:,:,1:options.NSinos,:);
                 end
-                varargout{1} = varargin{1}(index);
+                if TOF
+                    varargout{1} = reshape(varargin{2}, numel(varargin{2}) / options.TOF_bins, options.TOF_bins);
+                    varargout{1} = varargout{1}(index,:);
+                else
+                    varargout{1} = varargin{2}(index);
+                end
+                varargout{1} = varargout{1}(:);
             end
         end
         clear lor
@@ -306,22 +323,33 @@ if options.use_raw_data == false && options.precompute_lor
                 end
             end
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = varargin{2}{ff};
                     if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos);
+                        temp = temp(:,:,1:options.NSinos,:);
                     end
-                    temp = temp(discard);
-                    varargout{1}{ff} = temp;
+                    if TOF
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(discard,:);
+                    else
+                        temp = temp(discard);
+                    end
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
                 if options.NSinos ~= options.TotSinos
-                    varargin{1} = varargin{1}(:,:,1:options.NSinos);
+                    varargin{2} = varargin{2}(:,:,1:options.NSinos,:);
                 end
-                varargout{1} = varargin{1}(discard);
+                if TOF
+                    varargin{2} = reshape(varargin{2}, numel(varargin{2}) / options.TOF_bins, options.TOF_bins);
+                    varargin{2} = varargin{2}(discard,:);
+                else
+                    varargin{2} = varargin{2}(discard);
+                end
+                varargout{1} = varargin{2}(:);
             end
         end
         clear lor
@@ -340,14 +368,14 @@ if options.use_raw_data == false && options.precompute_lor
     else
         z_index = repelem(z_index, size_x);
     end
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         z_index = z_index(index);
     else
         z_index = (z_index(discard));
     end
     z_index = z_index - 1;
     
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         xy_index = xy_index(index);
     else
         xy_index = (xy_index(discard));
@@ -356,7 +384,7 @@ if options.use_raw_data == false && options.precompute_lor
     
     summa = zeros(subsets, 1, 'uint64');
     
-    if subsets > 1 && length(pituus) > 1 || fpbp
+    if (subsets > 1 && length(pituus) > 1 || fpbp)
         for kk = 1 : subsets
             if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
                 summa(kk) = uint64(sum(uint64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
@@ -365,12 +393,39 @@ if options.use_raw_data == false && options.precompute_lor
             end
         end
     else
-        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-            summa = uint64(sum(int64(lor_orth)));
-        else
-            summa = uint64(sum(int64(lor_a)));
-        end
-        pituus = uint32([0;length(lor_a)]);
+%         if TOF
+%             pituus = int64([0;pituus]);
+%             koko = int64(size_x * options.NSinos);
+%             for kk = 1 : subsets
+%                 alku = pituus(kk) + 1;
+%                 loppu = pituus(kk + 1);
+%                 bin = floor(alku / koko);
+%                 if alku - loppu > koko || bin < floor(loppu / koko)
+%                     alku = alku - koko * bin;
+%                     loppu = loppu - koko * floor(loppu / koko);
+%                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+%                         summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
+%                     else
+%                         summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
+%                     end
+%                 else
+%                     alku = alku - koko * bin;
+%                     loppu = loppu - koko * floor(loppu / koko);
+%                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+%                         summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
+%                     else
+%                         summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
+%                     end
+%                 end
+%             end
+%         else
+            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+                summa = uint64(sum(int64(lor_orth)));
+            else
+                summa = uint64(sum(int64(lor_a)));
+            end
+            pituus = uint32([0;length(lor_a)]);
+%         end
     end
     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
         varargout{2} = lor_orth;
@@ -483,7 +538,7 @@ elseif options.use_raw_data && options.precompute_lor
     if nargout > 9
         varargout{3} = discard;
     end
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         if ~exist('LL','var')
             LL = form_detector_pairs_raw(rings, options.det_per_ring);
         end
@@ -537,33 +592,50 @@ elseif options.use_raw_data && options.precompute_lor
         end
         LL = LL(index,:);
         lor_a = (lor(index));
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = single(full(varargin{1}{ff}));
+                    temp = single(full(varargin{2}{ff}));
                     temp = temp(discard);
                     if subsets > 1 || fpbp
-                        temp = temp(index);
+                        if TOF
+                            temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                            temp = temp(index,:);
+                        else
+                            temp = temp(index);
+                        end
                     end
-                    varargout{1}{ff} = temp;
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
-                if iscell(varargin{1})
-                    temp = single(full(varargin{1}{1}));
-                    temp = temp(discard);
-                    temp = temp(index);
-                    varargout{1}{1} = temp;
+                if iscell(varargin{2})
+                    temp = single(full(varargin{2}{1}));
+                    if TOF
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(discard,:);
+                        temp = temp(index,:);
+                    else
+                        temp = temp(discard);
+                        temp = temp(index);
+                    end
+                    varargout{1}{1} = temp(:);
                     clear temp
-%                     varargout{1}{1} = varargin{1}{1}(discard);
+%                     varargout{1}{1} = varargin{2}{1}(discard);
 %                     varargout{1}{1} = varargout{1}{1}(index);
                 else
-                    temp = single(full(varargin{1}));
-                    temp = temp(discard);
-                    temp = temp(index);
-                    varargout{1} = temp;
+                    temp = single(full(varargin{2}));
+                    if TOF
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(discard,:);
+                        temp = temp(index,:);
+                    else
+                        temp = temp(discard);
+                        temp = temp(index);
+                    end
+                    varargout{1} = temp(:);
                     clear temp
-%                     varargout{1} = varargin{1}(discard);
+%                     varargout{1} = varargin{2}(discard);
 %                     varargout{1} = varargout{1}(index);
                 end
             end
@@ -580,22 +652,39 @@ elseif options.use_raw_data && options.precompute_lor
             LL = form_detector_pairs_raw(rings, options.det_per_ring);
             LL = LL(discard,:);
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = single(full(varargin{1}{ff}));
-                    temp = temp(discard);
-                    varargout{1}{ff} = temp;
+                    temp = single(full(varargin{2}{ff}));
+                    if TOF
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(discard, :);
+                    else
+                        temp = temp(discard);
+                    end
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
-                if iscell(varargin{1})
-                    apu = single(full(varargin{1}{1}));
-                    varargout{1}{1} = (apu(discard));
+                if iscell(varargin{2})
+                    apu = single(full(varargin{2}{1}));
+                    if TOF
+                        apu = reshape(apu, numel(apu) / options.TOF_bins, options.TOF_bins);
+                        apu = apu(discard, :);
+                        varargout{1}{1} = apu(:);
+                    else
+                        varargout{1}{1} = (apu(discard));
+                    end
                     clear apu
                 else
-                    apu = single(full(varargin{1}));
-                    varargout{1} = (apu(discard));
+                    apu = single(full(varargin{2}));
+                    if TOF
+                        apu = reshape(apu, numel(apu) / options.TOF_bins, options.TOF_bins);
+                        apu = apu(discard, :);
+                        varargout{1} = apu(:);
+                    else
+                        varargout{1} = (apu(discard));
+                    end
                     clear apu
                 end
             end
@@ -654,7 +743,7 @@ elseif options.use_raw_data && options.precompute_lor
                 end
             end
         end
-        pituus = uint32([0;length(lor_a)]);
+        pituus = int64([0;length(lor_a)]);
         if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             lor_orth = (lor_orth(discard));
         end
@@ -662,23 +751,60 @@ elseif options.use_raw_data && options.precompute_lor
     end
     summa = zeros(subsets, 1, 'uint64');
     
-    for kk = 1 : subsets
-        apu = LL(pituus(kk) + 1 : pituus(kk + 1),:) - 1;
-        apu2 = idivide(apu, uint16(options.det_per_ring));
-        idx = apu2(:,1) == apu2(:,2);
-        apu2 = apu(idx,:);
-        ind = mod(apu2, uint16(options.det_per_ring)) + 1;
-        yt = y(ind);
-        y_i = yt(:,1) > yt(:,2);
-        apu2(y_i,:) = fliplr(apu2(y_i,:));
-        apu(idx,:) = apu2;
-        LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
-        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-            summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
-        else
-            summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
+%     if ~TOF
+        for kk = 1 : subsets
+            apu = LL(pituus(kk) + 1 : pituus(kk + 1),:) - 1;
+            apu2 = idivide(apu, uint16(options.det_per_ring));
+            idx = apu2(:,1) == apu2(:,2);
+            apu2 = apu(idx,:);
+            ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+            yt = y(ind);
+            y_i = yt(:,1) > yt(:,2);
+            apu2(y_i,:) = fliplr(apu2(y_i,:));
+            apu(idx,:) = apu2;
+            LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
+            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+                summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
+            else
+                summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
+            end
         end
-    end
+%     else
+%         apu = LL - 1;
+%         apu2 = idivide(apu, uint16(options.det_per_ring));
+%         idx = apu2(:,1) == apu2(:,2);
+%         apu2 = apu(idx,:);
+%         ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+%         yt = y(ind);
+%         y_i = yt(:,1) > yt(:,2);
+%         apu2(y_i,:) = fliplr(apu2(y_i,:));
+%         apu(idx,:) = apu2;
+%         LL = apu + 1;
+%         
+%         koko = length(lor_a);
+%         for kk = 1 : subsets
+%             alku = pituus(kk) + 1;
+%             loppu = pituus(kk + 1);
+%             bin = floor(alku / koko);
+%             if alku - loppu > koko || bin < floor(loppu / koko)
+%                 alku = alku - koko * bin;
+%                 loppu = loppu - koko * floor(loppu / koko);
+%                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+%                     summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
+%                 else
+%                     summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
+%                 end
+%             else
+%                 alku = alku - koko * bin;
+%                 loppu = loppu - koko * floor(loppu / koko);
+%                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+%                     summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
+%                 else
+%                     summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
+%                 end
+%             end
+%         end
+%     end
     
     clear apu apu2 idx ind yt y_i index discard
     
@@ -691,7 +817,7 @@ elseif options.use_raw_data && options.precompute_lor
     end
 elseif options.use_raw_data == false && ~options.precompute_lor
     
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         if options.normalization_correction && options.corrections_during_reconstruction
             if options.NSinos ~= options.TotSinos
                 options.normalization = options.normalization(index(1:options.Ndist*options.Nang*options.NSinos));
@@ -759,26 +885,47 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = varargin{2}{ff};
                     if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos);
-                        temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
+                        temp = temp(:,:,1:options.NSinos,:);
+                        if TOF
+                            temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                            temp = temp(index(1:options.Ndist*options.Nang*options.NSinos),:);
+                        else
+                            temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
+                        end
                     else
-                        temp = temp(index);
+                        if TOF
+                            temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                            temp = temp(index,:);
+                        else
+                            temp = temp(index);
+                        end
                     end
-                    varargout{1}{ff} = temp;
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
                 if options.NSinos ~= options.TotSinos
-                    varargin{1} = varargin{1}(:,:,1:options.NSinos);
-                    varargout{1} = varargin{1}(index(1:options.Ndist*options.Nang*options.NSinos));
+                    varargin{2} = varargin{2}(:,:,1:options.NSinos,:);
+                    if TOF
+                        varargout{1} = reshape(varargin{2}, numel(varargin{2}) / options.TOF_bins, options.TOF_bins);
+                        varargout{1} = varargout{1}(index(1:options.Ndist*options.Nang*options.NSinos),:);
+                    else
+                        varargout{1} = varargin{2}(index(1:options.Ndist*options.Nang*options.NSinos));
+                    end
                 else
-                    varargout{1} = varargin{1}(index);
+                    if TOF
+                        varargout{1} = reshape(varargin{2}, numel(varargin{2}) / options.TOF_bins, options.TOF_bins);
+                        varargout{1} = varargout{1}(index,:);
+                    else
+                        varargout{1} = varargin{2}(index);
+                    end
                 end
+                varargout{1} = varargout{1}(:);
             end
         end
     else
@@ -840,20 +987,19 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = varargin{1}{ff};
+                    temp = varargin{2}{ff};
                     if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos);
+                        temp = temp(:,:,1:options.NSinos,:);
                     end
-                    temp = temp(:);
-                    varargout{1}{ff} = temp;
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
                 if options.NSinos ~= options.TotSinos
-                    varargout{1} = varargin{1}(:,:,1:options.NSinos);
+                    varargout{1} = varargin{2}(:,:,1:options.NSinos,:);
                 end
                 varargout{1} = varargout{1}(:);
             end
@@ -873,21 +1019,21 @@ elseif options.use_raw_data == false && ~options.precompute_lor
     else
         z_index = repelem(z_index, size_x);
     end
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         z_index = z_index(index);
     end
     z_index = z_index - 1;
     
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
         xy_index = xy_index(index);
     end
     xy_index = xy_index - 1;
     
     summa = zeros(subsets, 1, 'uint64');
     
-    if subsets > 1 || fpbp
+    if (subsets > 1 || fpbp)
     else
-        pituus = uint32([0;options.Nang*options.Ndist*options.NSinos]);
+        pituus = int64([0;options.Nang*options.Ndist*options.NSinos]);
     end
     
     lor_a = [];
@@ -953,25 +1099,42 @@ elseif options.use_raw_data && ~options.precompute_lor
                 end
             end
         end
-        if nargout >= 8 && ~isempty(varargin) && ~isempty(varargin{1})
+        if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
             if options.partitions > 1
                 for ff = 1 : options.partitions
-                    temp = single(full(varargin{1}{ff}));
+                    temp = single(full(varargin{2}{ff}));
                     if subsets > 1 || fpbp
-                        temp = temp(index);
+                        if TOF
+                            temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                            temp = temp(index,:);
+                        else
+                            temp = temp(index);
+                        end
                     end
-                    varargout{1}{ff} = temp;
+                    varargout{1}{ff} = temp(:);
                 end
                 clear temp
             else
-                if iscell(varargin{1})
-                    apu = single(full(varargin{1}{1}));
-                    varargout{1}{1} = (apu(index));
+                if iscell(varargin{2})
+                    apu = single(full(varargin{2}{1}));
+                    if TOF
+                        apu = reshape(apu, numel(apu) / options.TOF_bins, options.TOF_bins);
+                        varargout{1}{1} = (apu(index,:));
+                    else
+                        varargout{1}{1} = (apu(index));
+                    end
                     clear apu
+                    varargout{1}{1} = varargout{1}{1}(:);
                 else
-                    apu = single(full(varargin{1}));
-                    varargout{1} = (apu(index));
+                    apu = single(full(varargin{2}));
+                    if TOF
+                        apu = reshape(apu, numel(apu) / options.TOF_bins, options.TOF_bins);
+                        varargout{1} = (apu(index,:));
+                    else
+                        varargout{1} = (apu(index));
+                    end
                     clear apu
+                    varargout{1} = varargout{1}(:);
                 end
             end
         end
