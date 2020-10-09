@@ -62,8 +62,10 @@
   - Raw data can be completely disabled by setting `options.store_raw_data = false`
   - Significantly faster sinogram creation, especially with dynamic data
   
-- Added initial support to create and save TOF sinograms
-  - No reconstruction available yet
+- Added initial support for TOF data
+  - Sinogram data only
+  - Implementations 2, 3 and 4 only
+  - Supports GATE data as well (no need to add temporal blurring)
   
 - Allowed sinogram corrections to be applied without re-creating the sinogram (as long as the uncorrected sinogram already exists)
 
