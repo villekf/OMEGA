@@ -62,11 +62,15 @@ if nargout > 8
 end
 
 partitions = options.partitions;
-if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
+if ~isfield(options,'TOF_bins')
     options.TOF_bins = 1;
 end
 if ~isfield(options,'TOF_width') || options.TOF_bins == 0
     options.TOF_width = 0;
+end
+
+if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
+    error('Number of TOF bins has to be odd')
 end
 
 alku = double(options.start);
@@ -875,14 +879,16 @@ elseif options.use_machine == 0
                 end
             
                 if TOF
-                    TOF_data = (M(:,ascii_ind.time_index2) - M(:,ascii_ind.time_index)) / 2;
+                    TOF_data = (M(:,ascii_ind.time_index2) - M(:,ascii_ind.time_index));
                     TOF_data(ring_pos2 > ring_pos1) = -TOF_data(ring_pos2 > ring_pos1);
                     [bins, discard] = FormTOFBins(options, TOF_data);
                     ring_number1(discard) = [];
                     ring_number2(discard) = [];
                     ring_pos1(discard) = [];
                     ring_pos2(discard) = [];
-                    timeI(discard) = [];
+                    if partitions > 1
+                        timeI(discard) = [];
+                    end
                     if options.obtain_trues
                         trues_index(discard) = [];
                     end
@@ -898,25 +904,25 @@ elseif options.use_machine == 0
                 end
                 
                 if ~options.use_raw_data
-                    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
+%                     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCII(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    elseif exist('OCTAVE_VERSION','builtin') == 5
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
-                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    else
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
-                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    end
+%                     elseif exist('OCTAVE_VERSION','builtin') == 5
+%                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
+%                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+%                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
+%                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
+%                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+%                     else
+%                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
+%                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+%                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
+%                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
+%                             int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+%                     end
                 end
                 
                 if options.store_raw_data
@@ -1601,9 +1607,9 @@ end
             if options.store_randoms
                 SinRandoms = reshape(SinRandoms, options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions);
             end
-            if options.randoms_correction
-                SinD = reshape(SinD, options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions);
-            end
+        end
+        if options.randoms_correction && size(SinD,1) == numel(SinD)
+            SinD = reshape(SinD, options.Ndist, options.Nang, totSinos, options.partitions);
         end
         if options.partitions > 1
             raw_SinM = squeeze(num2cell(raw_SinM, (1 : ndims(raw_SinM) - 1)));
@@ -1619,6 +1625,18 @@ end
             if options.randoms_correction
                 SinD = squeeze(num2cell(SinD, [1 2 3]));
             end
+        end
+        if ~options.randoms_correction
+            SinD = [];
+        end
+        if ~options.obtain_trues
+            SinTrues = [];
+        end
+        if ~options.store_scatter
+            SinScatter = [];
+        end
+        if ~options.store_randoms
+            SinRandoms = [];
         end
         form_sinograms(options, true, raw_SinM, SinTrues, SinScatter, SinRandoms, SinD);
     end
