@@ -48,7 +48,7 @@ function [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_dat
 if nargin - 7 < 4 && ~use_raw_data
     error('Sinogram data selected, but not enough sinogram size information input')
 end
-if nargin - 7 == 4
+if nargin - 7 >= 4 && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2}) && ~isempty(varargin{3}) && ~isempty(varargin{4})
     Nang = varargin{1};
     Ndist = varargin{2};
     TotSinos = varargin{3};
@@ -64,9 +64,9 @@ folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 % lor_a = 0;
 if options.use_raw_data
-    pituus = uint32(options.detectors^2/2 + options.detectors/2);
+    pituus = int64(options.detectors^2/2 + options.detectors/2);
 else
-    pituus = uint32(Ndist * Nang * NSinos);
+    pituus = int64(Ndist * Nang * NSinos);
 end
 index = 0;
 % Sinogram data
@@ -116,7 +116,7 @@ if use_raw_data == false && subsets > 1
         clear lor
         ind_apu = uint32(find(discard));
         index = cell(subsets, 1);
-        pituus = zeros(subsets, 1, 'uint32');
+        pituus = zeros(subsets, 1, 'int64');
         % Take every nth column from the sinogram
         if options.subset_type == 4
             for i=1:subsets
@@ -129,7 +129,7 @@ if use_raw_data == false && subsets > 1
                         Ndist*osa));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Take every nth row from the sinogram
         elseif options.subset_type == 5
@@ -143,7 +143,7 @@ if use_raw_data == false && subsets > 1
                         repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Take every nth (column) measurement
         elseif options.subset_type == 1
@@ -152,14 +152,14 @@ if use_raw_data == false && subsets > 1
                 [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
                 index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Take every nth (row) measurement
         elseif options.subset_type == 2
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Pick the measurements randomly
         elseif options.subset_type == 3
@@ -177,7 +177,7 @@ if use_raw_data == false && subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Pick the subsets based on the angles of the LORs
         elseif options.subset_type == 6
@@ -204,7 +204,7 @@ if use_raw_data == false && subsets > 1
     else
         % Same as above, but for precompute_lor = false case
         index = cell(subsets,1);
-        pituus = zeros(subsets, 1, 'uint32');
+        pituus = zeros(subsets, 1, 'int64');
         if options.subset_type == 4
             for i=1:subsets
                 osa = length(i-1:subsets:Ndist);
@@ -216,7 +216,7 @@ if use_raw_data == false && subsets > 1
                         Ndist*osa));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 5
             for i=1:subsets
@@ -229,7 +229,7 @@ if use_raw_data == false && subsets > 1
                         repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 1
             for i=1:subsets
@@ -237,13 +237,13 @@ if use_raw_data == false && subsets > 1
                 [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
                 index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 2
             for i=1:subsets
                 index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 3
             indices = uint32(Ndist*Nang*NSinos);
@@ -260,7 +260,7 @@ if use_raw_data == false && subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Pick the subsets based on the angles of the LORs
         elseif options.subset_type == 6
@@ -322,7 +322,7 @@ elseif subsets > 1
 %         lor_a = lor(lor > 0);
         clear lor
         index = cell(subsets, 1);
-        pituus = zeros(subsets, 1, 'uint32');
+        pituus = zeros(subsets, 1, 'int64');
         % Pick the measurements randomly
         if options.subset_type == 3
             indices = uint32(length(LL));
@@ -339,7 +339,7 @@ elseif subsets > 1
                     index1 = uint32(apu(port*(i-1)+1:(port*(i))));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         % Based on the angles of the LORs
         elseif options.subset_type == 6
@@ -350,14 +350,14 @@ elseif subsets > 1
             for i=1:subsets
                 index1 = uint32(i:subsets:length(LL))';
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         end
     else
         % Same as above, but for precompute_lor = false case
         LL = form_detector_pairs_raw(options.rings, options.det_per_ring);
         index = cell(subsets, 1);
-        pituus = zeros(subsets, 1, 'uint32');
+        pituus = zeros(subsets, 1, 'int64');
         if options.ring_difference_raw < options.rings
             testi = zeros(options.detectors,options.detectors,'uint32');
             testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
@@ -390,7 +390,7 @@ elseif subsets > 1
                     index1 = index1(ismember(index1,ind));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options, LL);
@@ -405,7 +405,7 @@ elseif subsets > 1
                     index1 = index1(ismember(index1,ind));
                 end
                 index{i} = index1;
-                pituus(i) = uint32(length(index{i}));
+                pituus(i) = int64(length(index{i}));
             end
         end
     end
