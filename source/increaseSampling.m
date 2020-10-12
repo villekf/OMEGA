@@ -1,8 +1,8 @@
 function [x, y, options] = increaseSampling(options, x, y, interpolateSinogram)
 %INCREASESAMPLING Increase the sampling rate
 %   This function increases the sampling rate of the input detectors and
-%   sinogram. Works only for sinogram data. Can be used to prevent aliasing
-%   artifacts when using too high image resolution.
+%   sinogram/raw data vector. Can be used to prevent aliasing artifacts
+%   when using too high image resolution. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2020 Ville-Veikko Wettenhovi
