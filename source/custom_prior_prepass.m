@@ -40,6 +40,14 @@ if ~isfield(options,'SinM')
     options.SinM = [];
 end
 
+if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
+    options.TOF_bins = 1;
+end
+if ~isfield(options,'TOF_width') || options.TOF_bins == 0
+    options.TOF_width = 0;
+end
+TOF = options.TOF_bins > 1;
+
 if options.precompute_lor == false && options.implementation == 3
     error('precompute_lor must be set to true if using method 3')
 end
@@ -445,6 +453,39 @@ if custom
     end
 end
 
+if TOF
+    if options.TOF_bins_used ~= options.TOF_bins
+        if iscell(options.SinM)
+            for kk = 1 : options.partitions
+                options.SinM{kk} = sum(options.SinM{kk},4,'native');
+            end
+        else
+            options.SinM = sum(options.SinM,4,'native');
+        end
+        options.sigma_x = 0;
+        options.TOFCenter = 0;
+        TOF = false;
+        options.TOF_bins = 1;
+    else
+        c = 2.99792458e11;
+        options.sigma_x = (c*options.TOF_FWHM/2) / (2 * sqrt(2 * log(2)));
+        edges_user = linspace(-options.TOF_width * options.TOF_bins/2, options.TOF_width * options.TOF_bins / 2, options.TOF_bins + 1);
+        edges_user = edges_user(1:end-1) + options.TOF_width/2; % the most probable value where annihilation occured
+        TOFCenter = zeros(size(edges_user));
+        TOFCenter(1) = edges_user(ceil(length(edges_user)/2));
+        TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
+        TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
+        options.TOFCenter = TOFCenter * c / 2;
+    end
+else
+    options.sigma_x = 0;
+    options.TOFCenter = 0;
+end
+if options.implementation == 2 || options.implementation == 3
+    options.sigma_x = single(options.sigma_x);
+    options.TOFCenter = single(options.TOFCenter);
+end
+
 %% This part is used when the observation matrix is calculated on-the-fly
 % Compute the indices for the subsets used.
 % For Sinogram data, five different methods to select the subsets are
@@ -529,7 +570,7 @@ end
 % for the precomputed version, index vectors are needed
 
 [options, options.lor_a, options.xy_index, options.z_index, options.LL, options.summa, options.pituus, options.SinM, options.lor_orth] = ...
-    form_subset_indices(options, options.pituus, subsets, indeksi, options.size_x, options.y, options.z_det, rings, false, options.SinM);
+    form_subset_indices(options, options.pituus, subsets, indeksi, options.size_x, options.y, options.z_det, rings, false, TOF, options.SinM);
 if ~options.precompute_lor
     options.lor_a = uint16(0);
 end
