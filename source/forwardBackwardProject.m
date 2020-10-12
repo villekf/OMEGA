@@ -14,6 +14,7 @@ classdef forwardBackwardProject
         index
         sysmat
         trans
+        TOF
     end
     
     methods
@@ -40,6 +41,19 @@ classdef forwardBackwardProject
             if obj.OProperties.subsets == 1
                 obj.osa_iter = 1;
             end
+            
+            
+            if ~isfield(obj.OProperties,'use_machine')
+                obj.OProperties.use_machine = 0;
+            end
+            if ~isfield(obj.OProperties,'TOF_bins') || obj.OProperties.TOF_bins == 0
+                obj.OProperties.TOF_bins = 1;
+            end
+            if ~isfield(obj.OProperties,'TOF_width') || obj.OProperties.TOF_bins == 0
+                obj.OProperties.TOF_width = 0;
+            end
+            
+            obj.TOF = obj.OProperties.TOF_bins > 1;
             
             [obj.gaussK, obj.OProperties] = PSFKernel(obj.OProperties);
             if obj.OProperties.implementation == 1
@@ -83,7 +97,7 @@ classdef forwardBackwardProject
             end
             
             [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,~,discard] = ...
-                form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false);
+                form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF);
             if ~obj.OProperties.precompute_lor
                 obj.OProperties.lor_a = uint16(0);
             end
@@ -129,6 +143,16 @@ classdef forwardBackwardProject
                     else
                         dec = uint32(sqrt(obj.OProperties.Nx^2 + obj.OProperties.Ny^2 + obj.OProperties.Nz^2) * temppi);
                     end
+                else
+                    dec = uint32(0);
+                end
+                obj.OProperties.dec = dec;
+            elseif (options.projector_type == 1 && obj.TOF)
+                obj.OProperties.x_center = xx(1);
+                obj.OProperties.y_center = yy(1);
+                obj.OProperties.z_center = zz(1);
+                if obj.OProperties.apply_acceleration && obj.OProperties.n_rays_transaxial * obj.OProperties.n_rays_axial == 1
+                    dec = uint32(sqrt(obj.OProperties.Nx^2 + obj.OProperties.Ny^2 + obj.OProperties.Nz^2) * 2);
                 else
                     dec = uint32(0);
                 end
@@ -253,7 +277,7 @@ classdef forwardBackwardProject
             %MTIMES Automatically compute either the forward projection or
             %backprojection, based on the input vector length.
             %   Backprojection is selected if transpose operator is used.
-            if obj.trans == true || size(input,1) == obj.n_meas(end) || size(input,2) == obj.n_meas(end)
+            if obj.trans == true || size(input,1) == obj.n_meas(end) || size(input,2) == obj.n_meas(end) || size(input,1) == obj.n_meas(end) * obj.OProperties.TOF_bins || size(input,2) == obj.n_meas(end) * obj.OProperties.TOF_bins
                 if size(input,2) == obj.n_meas(end)
                     input = input';
                 end

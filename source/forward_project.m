@@ -64,16 +64,25 @@ end
 % folder = strrep(folder, 'source','mat-files/');
 % folder = strrep(folder, '\','/');
 
+if ~isfield(options,'TOF_bins')
+    options.TOF_bins = 1;
+end
+TOF = options.TOF_bins > 1 && options.projector_type == 1 && options.implementation > 1;
+
 f = f(:);
 
+rings = options.rings;
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
+if Nz > options.NSinos
+    Nz = options.NSinos;
+    rings = ceil(Nz / 2 + 0.25);
+end
 NSlices = uint32(Nz);
 attenuation_correction = options.attenuation_correction;
 FOVax = options.FOVa_x;
 FOVay = options.FOVa_y;
-rings = options.rings;
 if options.use_raw_data && isfield(options,'x')
     det_per_ring = numel(options.x);
 else
@@ -116,6 +125,41 @@ NSinos = uint32(options.NSinos);
 
 if numel(f) ~= Nx*Ny*Nz && ~isempty(f)
     error('Estimate has different amount of elements than the image size')
+end
+
+if TOF
+    if options.TOF_FWHM < 0
+        if iscell(options.SinM)
+            for kk = 1 : options.partitions
+                options.SinM{kk} = sum(options.SinM{kk},4,'native');
+            end
+        else
+            options.SinM = sum(options.SinM,4,'native');
+        end
+        sigma_x = 0;
+        TOFCenter = 0;
+        TOF = false;
+        options.TOF_bins = 1;
+        TOFSize = int64(0);
+    else
+        c = 2.99792458e11;
+        sigma_x = (c*options.TOF_FWHM/2) / (2 * sqrt(2 * log(2)));
+        edges_user = linspace(-options.TOF_width * options.TOF_bins/2, options.TOF_width * options.TOF_bins / 2, options.TOF_bins + 1);
+        edges_user = edges_user(1:end-1) + options.TOF_width/2; % the most probable value where annihilation occured
+        TOFCenter = zeros(size(edges_user));
+        TOFCenter(1) = edges_user(ceil(length(edges_user)/2));
+        TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
+        TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
+        TOFCenter = TOFCenter * c / 2;
+    end
+else
+    sigma_x = 0;
+    TOFCenter = 0;
+    TOFSize = int64(0);
+end
+if options.implementation == 3
+    sigma_x = single(sigma_x);
+    TOFCenter = single(TOFCenter);
 end
 
 if ~luokka
@@ -330,7 +374,7 @@ else
     xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
     yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
 end
-zz=zz(2*block1+1:2*blocks);
+% zz=zz(2*block1+1:2*blocks);
 
 % Distance of adjacent pixels
 dx=diff(xx(1:2));
@@ -448,17 +492,20 @@ if options.implementation == 1
         jji = double(0:Ny);
         kkj = double(0:Nz);
         if use_raw_data == false
+            TOFSize = int64(size_x * NSlices);
             if options.projector_type == 1 || options.projector_type == 0
                 if exist('OCTAVE_VERSION','builtin') == 0
                     [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                         zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, ...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
+                        TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
                         use_raw_data, uint32(2), ind_size, block1, blocks, index, ...
                         uint32(options.projector_type), iij, jji, kkj);
                 elseif exist('OCTAVE_VERSION','builtin') == 5
                     [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                         zmax, options.vaimennus, normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, ...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, options.verbose, ...
+                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
+                        TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
                         use_raw_data, uint32(2), ind_size, block1, blocks, index, ...
                         uint32(options.projector_type), iij, jji, kkj);
                 end
@@ -466,19 +513,21 @@ if options.implementation == 1
                 error('Unsupported projector type')
             end
         else
-            %             L = LL(index,:);
+            TOFSize = int64(size(LL,1));
             LL = LL';
             LL = LL(:);
             if options.projector_type == 1
                 if exist('OCTAVE_VERSION','builtin') == 0
                     [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                         zmax, options.vaimennus, normalization, SinDelayed, uint32(0), attenuation_correction, normalization_correction, ...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
+                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, ...
+                        TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
                         use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                 elseif exist('OCTAVE_VERSION','builtin') == 5
                     [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                         zmax, options.vaimennus, normalization, SinDelayed, uint32(0), attenuation_correction, normalization_correction, ...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, options.verbose, ...
+                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, LL, pseudot, det_per_ring, ...
+                        TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
                         use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                 end
             else
@@ -520,8 +569,10 @@ if options.implementation == 1
         if use_raw_data
             xy_index = uint32(0);
             z_index = uint16(0);
+            TOFSize = int64(size(LL,1));
         else
             LL = uint16(0);
+            TOFSize = int64(size(xy_index,1));
         end
         if options.projector_type == 2 || options.projector_type == 3
             lor2 = [0; cumsum(uint64(lor_orth(n_meas(1)+1:n_meas(2))))];
@@ -532,14 +583,16 @@ if options.implementation == 1
             [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
                 normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction,...
                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, ...
-                LL, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa, false, ...
-                uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
+                LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
+                use_raw_data, uint32(0), lor2, summa, false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
+                options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
         elseif exist('OCTAVE_VERSION','builtin') == 5
             [A, ~] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
                 normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction,...
                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, ...
-                LL, pseudot, det_per_ring, options.verbose, use_raw_data, uint32(0), lor2, summa, false, ...
-                uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
+                LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, ...
+                use_raw_data, uint32(0), lor2, summa, false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
+                options.tube_width_z, int32(0), bmin, bmax, Vmax, V);
         end
         clear lor2
     end
@@ -563,16 +616,18 @@ elseif options.implementation == 3
     if use_raw_data
         xy_index = uint32(0);
         z_index = uint32(0);
+        TOFSize = int64(size(LL,1));
     else
         if isempty(pseudot)
             pseudot = int32(100000);
         end
         LL = uint16(0);
+        TOFSize = int64(size(xy_index,1));
     end
     %     if ~iscell(SinM)
     %         SinM = {single(SinM)};
     %     end
-    SinM = {ones(n_meas(end),1,'single')};
+    SinM = {ones(n_meas(end) * options.TOF_bins,1,'single')};
     tube_width_xy = single(options.tube_width_xy);
     crystal_size_z = single(options.tube_width_z);
     n_rays = uint16(options.n_rays_transaxial);
@@ -609,16 +664,16 @@ elseif options.implementation == 3
         tStart = tic;
     end
     [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ... 15
-        single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, uint32(options.use_device), filename, uint8(use_raw_data), ...25
+        single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), int32(dec), uint32(options.use_device), filename, uint8(use_raw_data), ...25
         single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...32
         uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...43
-        uint32(options.projector_type), options.precompute_lor, int32(dec), n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, true, ...53
+        uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, uint8(true), ...53
         options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf, options);
     if options.verbose
         toc(tStart)
     end
     if isa(output{1},'int64')
-        varargout{1} = single(output{1}) / 100000000000;
+        varargout{1} = single(output{1}) / single(100000000000);
     else
         varargout{1} = output{1};
     end
