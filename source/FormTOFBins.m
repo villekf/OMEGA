@@ -1,4 +1,4 @@
-function [bins, discard] = FormTOFBins(options, timeDiff)
+function [bins, discard] = FormTOFBins(options, TOF_data)
 %FORMTOFBINS Forms the TOF bins from the input time differences
 %   Adds Gaussian noise with the specified FWHM.
 
@@ -19,11 +19,11 @@ function [bins, discard] = FormTOFBins(options, timeDiff)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-var_t = (options.TOF_FWHM / (2 * sqrt(2 * log(2))))^2;%options.TOF_FWHM is the wanted time accuracy
-TOF_data = timeDiff + sqrt(var_t) * randn(size(timeDiff)); %TOF_data with added error
+std_t = (options.TOF_noise_FWHM / (2 * sqrt(2 * log(2)))) * 0;%options.TOF_noise_FWHM is the wanted time accuracy
+TOF_data = TOF_data + std_t * randn(size(TOF_data)); %TOF_data with added error
 discard = abs(TOF_data) > (options.TOF_width / 2 * options.TOF_bins);
 TOF_data(discard) = [];
-bins = uint16(floor((abs(TOF_data) + options.TOF_width) / options.TOF_width));
+bins = uint16(floor((abs(TOF_data) + options.TOF_width / 2) / options.TOF_width));
 tInd = TOF_data < 0;
 bins(bins > 1 & ~tInd) = bins(bins > 1 & ~tInd) * 2 - 1;
 bins(tInd) = bins(tInd) * 2;
