@@ -91,6 +91,13 @@
 #define TH 100000000000.f
 #endif
 #define THR 0.01f
+#ifndef N_REKOS
+#define N_REKOS 1
+#endif
+#ifndef NBINS
+#define NBINS 1
+#endif
+#define NROLLS (N_REKOS * NBINS)
 #ifdef PRECOMPUTE
 #define TYPE 1
 #else
@@ -114,9 +121,9 @@ extern "C" __global__
 void kernel_multi(const float global_factor, const float d_epps, const unsigned int d_N, const unsigned int d_Nx, const unsigned int d_Ny, const unsigned int d_Nz,
 	const float d_dz, const float d_dx, const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx,
 	const float d_maxyy, const float d_zmax, const float d_NSlices, const unsigned int d_size_x, const unsigned short d_TotSinos, 
-	const unsigned int d_det_per_ring, const unsigned int d_pRows, const unsigned int d_Nxy, const unsigned char fp,
+	const unsigned int d_det_per_ring, const unsigned int d_pRows, const unsigned int d_Nxy, const unsigned char fp, const float sigma_x, 
 	const float tube_width_xy, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, const float d_epsilon_mramla,
-	const float* d_atten, const unsigned int * d_pseudos, const float* d_x, const float* d_y, const float* d_zdet,
+	const float* TOFCenter, const float* d_atten, const unsigned int * d_pseudos, const float* d_x, const float* d_y, const float* d_zdet,
 	const float* x_center, const float* y_center, const float* z_center, const float* V, const unsigned char * MethodList,
 	const float* d_norm, const float* d_scat, CAST * d_Summ, const unsigned short * d_lor, const unsigned int * d_xyindex, const unsigned short * d_zindex,
 	const unsigned short * d_L, const float* d_Sino, const float* d_sc_ra, const float* d_OSEM,
@@ -134,7 +141,14 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 	if (idx >= m_size)
 		return;
 
+#ifdef TOF
+	float local_sino = 0.f;
+#pragma unroll NBINS
+	for (long long int to = 0LL; to < NBINS; to++)
+		local_sino += d_Sino[idx + m_size * to];
+#else
 	const float local_sino = (d_Sino[idx]);
+#endif
 #ifndef MBSREM
 	if (no_norm == 1u && local_sino == 0.f)
 		return;
@@ -174,7 +188,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 		return;
 	unsigned int Np = 0u;
 
-#ifndef DEC // Intermediate results are not saved
+#if !defined(DEC) || defined(TOF) // Intermediate results are not saved
 
 	unsigned int Np_n = 0u;
 
@@ -209,30 +223,40 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 
 	int tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
 
-//#ifdef PSF_LIMIT
-//	float local_psf[PSF_LIMIT + 1];
-//	local_psf[0] = 1.f;
-//	for (unsigned int kk = 1; kk <= PSF_LIMIT; kk++)
-//		local_psf[kk] = expf(-.5f * powf(((float)(kk) * d_dx) / sigma, 2));
-//#endif
-
 #ifdef MBSREM
+#ifdef TOF
+	float axACOSEM[NBINS];
+	float ax[NBINS];
+#pragma unroll NBINS
+	for (unsigned long long int to = 0LL; to < NBINS; to++) {
+		axACOSEM[to] = 0.f;
+		ax[to] = 0.f;
+	}
+#else
 	float axACOSEM = 0.f;
 	float axCOSEM = 0.f;
-	float minimi = 1e8f;
+#endif
+#ifdef TOF
+	float minimi[NBINS];
+#pragma unroll NBINS
+	for (unsigned long long int to = 0LL; to < NBINS; to++)
+		minimi[to] = 1e8f;
 #else
-	float ax[N_REKOS];
-#pragma unroll N_REKOS
-	for (unsigned int kk = 0; kk < N_REKOS; kk++)
+	float minimi = 1e8f;
+#endif
+#else
+	float ax[NROLLS];
+#pragma unroll
+	for (unsigned int kk = 0; kk < NROLLS; kk++)
 		ax[kk] = 0.f;
 #endif
-	float kerroin = 0.f;
-	const float* xcenter = x_center;
-	const float* ycenter = y_center;
 
 #ifdef ORTH // Orthogonal or volume-based ray tracer
 
 	unsigned char xyz = 0u;
+	float kerroin = 0.f;
+	const float* xcenter = x_center;
+	const float* ycenter = y_center;
 
 #ifdef CRYST // 2.5D Orthogonal
 
@@ -252,6 +276,9 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 
 	unsigned int local_ind = 0u;
 	float local_ele = 0.f;
+#ifdef TOF
+	float D = 0.f, DD = 0.f;
+#endif
 
 #endif
 	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -291,6 +318,81 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 		unsigned int z_loop = 0u;
 		perpendicular_elements(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &templ_ijk, &z_loop, tempk, d_N2, d_N3,
 			d_norm, idx, global_factor);
+#ifdef TOF
+		float dI = (d_d2 * d_N1) / copysignf(-2.f, y_diff);
+		D = dI;
+		DD = D;
+		float temp = templ_ijk / d_d2;
+#ifdef DEC
+		float store_elements[DEC * NBINS];
+#else
+		float store_elements[1];
+#endif
+		local_ind = z_loop;
+		for (unsigned int ii = 0; ii < d_N1; ii++) {
+			const float TOFSum = TOFLoop(DD, d_d2, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+			denominatorTOF(ax, d_d2, d_OSEM, local_ind, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii * NBINS, d_epps, d_N);
+			local_ind += d_N3;
+		}
+#ifndef DEC
+		D = DD;
+#endif
+		if (local_sino != 0.f) {
+			local_ele = templ_ijk;
+			local_ind = z_loop;
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+			for (unsigned int ii = 0u; ii < d_N1; ii++) {
+#ifndef DEC
+				const float TOFSum = TOFLoop(DD, d_d2, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+#endif
+				backprojectTOF(local_ind, local_ele, ii * NBINS, store_elements, ax, d_Summ,
+#ifndef DEC
+					temp, sigma_x, &D, DD, TOFCenter, d_epps, TOFSum,
+#endif
+#ifdef MBSREM
+					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, d_co, d_aco, local_sino, idx, m_size);
+#else
+					d_rhs_OSEM, no_norm, d_N);
+#endif
+				local_ind += d_N3;
+			}
+		}
+		else {
+			local_ele = templ_ijk;
+			local_ind = z_loop;
+			for (unsigned int ii = 0u; ii < d_N1; ii++) {
+#ifndef DEC
+				const float TOFSum = TOFLoop(DD, d_d2, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+#endif
+				sensTOF(local_ind, local_ele, ii * NBINS, store_elements, d_Summ,
+#ifndef DEC
+					temp, sigma_x, &D, DD, TOFCenter, d_epps, TOFSum,
+#endif
+#ifdef MBSREM
+					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, idx, m_size,
+#endif
+					no_norm);
+				local_ind += d_N3;
+			}
+		}
+#ifdef MBSREM
+		if (d_alku == 0u && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
+#pragma unroll NBINS
+			for (long long int to = 0LL; to < NBINS; to++) {
+				d_Amin[idx + to * m_size] = minimi[to];
+			}
+		}
+		else if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
+#pragma unroll NBINS
+			for (long long int to = 0LL; to < NBINS; to++) {
+#ifdef RANDOMS
+				axACOSEM[to] += d_sc_ra[idx];
+#endif
+				d_ACOSEM_lhs[idx + to * m_size] = axACOSEM[to];
+			}
+		}
+#endif
+#else
 #ifdef MBSREM
 		if (d_alku == 0u && ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0 ||
 			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1))) && local_sino > 0.f) {
@@ -315,7 +417,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
 				d_Amin[idx] = minimi;
 			if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) {
-				if (axCOSEM == 0.f)
+				if (axCOSEM < d_epps)
 					axCOSEM = d_epps;
 #ifdef RANDOMS
 					axCOSEM += d_sc_ra[idx];
@@ -413,7 +515,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 			}
 		}
 #endif
-
+#endif
 #elif defined ORTH // Orthogonal or volume-based
 		float temp = 0.f;
 		float center2;
@@ -589,7 +691,6 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 			return;
 #endif
 		float temp = 0.f;
-		unsigned int ind = 0u;
 #if defined(SIDDON) || !defined(DEC) // Siddon or no save of intermediate results
 		const float tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		const int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
@@ -597,11 +698,20 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #if defined(SIDDON) || defined(PSF_LIMIT)// Siddon
 		L = sqrtf(x_diff * x_diff + z_diff * z_diff + y_diff * y_diff);
 		const float tc_a = tc;
+#ifdef TOF
+		TOFDis(x_diff, y_diff, z_diff, tc, L, &D, &DD);
+#endif
+#if defined(DEC) && defined(TOF) // Save intermediate TOF results
+		float store_elements[DEC * NBINS];
+#elif defined(TOF)
+		float store_elements[1];
+#endif
 #endif
 #if defined(ATN) && !defined(SIDDON) && !defined(PSF_LIMIT)
 		L = sqrtf(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 #endif
 #ifdef ORTH // Orthogonal or volume-based
+		unsigned int ind = 0u;
 		int tempi_b, tempj_b, tempk_b;
 #ifdef DEC // Save intermediate results
 		float store_elements[DEC];
@@ -750,12 +860,24 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #ifdef ATN
 			jelppi += (local_ele * -d_atten[local_ind]);
 #endif
+#ifdef TOF
+			const float TOFSum = TOFLoop(DD, local_ele, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+#endif
 			if (local_sino > 0.f) {
 #ifdef MBSREM
+#ifdef TOF
+				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0u)
+					denominatorTOF(ax, local_ele, d_OSEM, local_ind, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii * NBINS, d_epps, d_N);
+#else
 				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0u)
 					axCOSEM += (local_ele * d_OSEM[local_ind]);
+#endif
+#else
+#ifdef TOF
+				denominatorTOF(ax, local_ele, d_OSEM, local_ind, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii* NBINS, d_epps, d_N);
 #else
 				denominator(local_ele, ax, local_ind, d_N, d_OSEM);
+#endif
 #endif
 			}
 #ifndef PRECOMPUTE
@@ -780,6 +902,9 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #endif
 #if defined(SIDDON)
 		tc = tc_a;
+#ifdef TOF
+		D = DD;
+#endif
 #else
 #if !defined(DEC)
 		xyz = 0u;
@@ -790,19 +915,36 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #endif
 #ifdef MBSREM
 		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino > 0.f && d_alku == 0u) {
+#ifdef TOF
+#pragma unroll NBINS
+			for (long long int to = 0LL; to < NBINS; to++) {
+				ax[to] *= temp;
+				if (ax[to] < d_epps)
+					ax[to] = d_epps;
+#ifdef RANDOMS
+				ax[to] += d_sc_ra[idx];
+#endif
+				ax[to] = d_Sino[idx + to * m_size] / ax[to];
+			}
+#else
 			axCOSEM *= temp;
-			if (axCOSEM == 0.f)
+			if (axCOSEM < d_epps)
 				axCOSEM = d_epps;
 #ifdef RANDOMS
-				axCOSEM += d_sc_ra[idx];
+			axCOSEM += d_sc_ra[idx];
 #endif
 			axCOSEM = local_sino / axCOSEM;
+#endif
 		}
 		RHS = true;
 #else
 
 		if (local_sino > 0.f) {
+#ifdef TOF
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+#else
 			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
+#endif
 			RHS = true;
 		}
 		else
@@ -927,6 +1069,20 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 				else {
 					local_ele = compute_element_2nd(&tx0, &tc, L, txu, iu, &tempi, temp);
 				}
+#ifdef TOF
+#ifndef DEC
+				const float TOFSum = TOFLoop(DD, local_ele / temp, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+#endif
+				backprojectTOF(local_ind, local_ele, ii* NBINS, store_elements, ax, d_Summ,
+#ifndef DEC
+					temp, sigma_x, & D, DD, TOFCenter, d_epps, TOFSum,
+#endif
+#ifdef MBSREM
+					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, d_co, d_aco, local_sino, idx, m_size);
+#else
+					d_rhs_OSEM, no_norm, d_N);
+#endif
+#else
 #ifdef MBSREM
 				if (d_alku == 0u) {
 					if (MBSREM_prepass == 1)
@@ -966,18 +1122,8 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_rhs_OSEM);
 
 #endif
-
-			}
-#ifdef MBSREM
-			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
-				d_Amin[idx] = minimi;
-			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-#ifdef RANDOMS
-					axACOSEM += d_sc_ra[idx];
 #endif
-				d_ACOSEM_lhs[idx] = axACOSEM;
 			}
-#endif
 		}
 		else {
 			for (unsigned int ii = 0u; ii < Np_n; ii++) {
@@ -991,14 +1137,69 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 				else {
 					local_ele = compute_element_2nd(&tx0, &tc, L, txu, iu, &tempi, temp);
 				}
+#ifdef TOF
+#ifndef DEC
+				const float TOFSum = TOFLoop(DD, local_ele / temp, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
+#endif
+				sensTOF(local_ind, local_ele, ii* NBINS, store_elements, d_Summ,
+#ifndef DEC
+					temp, sigma_x, & D, DD, TOFCenter, d_epps, TOFSum,
+#endif
+#ifdef MBSREM
+					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, idx, m_size,
+#endif
+					no_norm);
+#else
+#ifdef MBSREM
+				if (d_alku == 0u) {
+					if (MBSREM_prepass == 1)
+#ifdef ATOMIC
+						atomicAdd(&d_Summ[local_ind], __float2ull_rn(local_ele * TH));
+#else
+						atomicAdd(&d_Summ[local_ind], local_ele);
+#endif
+					if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
+						if (local_ele < minimi && local_ele > 0.f)
+							minimi = local_ele;
+						d_E[idx] += local_ele;
+					}
+				}
+				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
+					axACOSEM += (local_ele * d_OSEM[local_ind]);
+#else
 #ifdef ATOMIC
 				atomicAdd(&d_Summ[local_ind], __float2ull_rn(local_ele * TH));
 #else
 				atomicAdd(&d_Summ[local_ind], local_ele);
 #endif
-
+#endif
+#endif
 			}
 		}
+#ifdef MBSREM
+#ifdef TOF
+#pragma unroll NBINS
+		for (long long int to = 0LL; to < NBINS; to++) {
+			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
+				d_Amin[idx + to * m_size] = minimi[to];
+			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
+#ifdef RANDOMS
+				axACOSEM[to] += d_sc_ra[idx];
+#endif
+				d_ACOSEM_lhs[idx + to * m_size] = axACOSEM[to];
+			}
+		}
+#else
+		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
+			d_Amin[idx] = minimi;
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
+#ifdef RANDOMS
+			axACOSEM += d_sc_ra[idx];
+#endif
+			d_ACOSEM_lhs[idx] = axACOSEM;
+		}
+#endif
+#endif
 #endif
 	}
 	//*/

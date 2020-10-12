@@ -33,10 +33,10 @@
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	// Check for the number of input and output arguments
-	if (nrhs < 32)
-		mexErrMsgTxt("Too few input arguments.  There must be at least 32.");
-	else if (nrhs > 67)
-		mexErrMsgTxt("Too many input arguments.  There can be at most 67.");
+	if (nrhs < 38)
+		mexErrMsgTxt("Too few input arguments.  There must be at least 38.");
+	else if (nrhs > 72)
+		mexErrMsgTxt("Too many input arguments.  There can be at most 72.");
 
 	if (nlhs < 1)
 		mexErrMsgTxt("Invalid number of output arguments.  There must be at least one.");
@@ -137,6 +137,30 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	const uint32_t det_per_ring = (uint32_t)mxGetScalar(prhs[ind]);
 	ind++;
 
+	// Is TOF data used?
+	const bool TOF = (bool)mxGetScalar(prhs[ind]);
+	ind++;
+
+	// Size of single TOF-subset
+	const int64_t TOFSize = (int64_t)mxGetScalar(prhs[ind]);
+	ind++;
+
+	// Variance of the Gaussian TOF
+	const float sigma_x = (float)mxGetScalar(prhs[ind]);
+	ind++;
+
+	// Centers of the TOF-bins
+	const float* TOFCenter = (float*)mxGetData(prhs[ind]);
+	ind++;
+
+	// Index offset for TOF subsets
+	const int64_t nBins = (int64_t)mxGetScalar(prhs[ind]);
+	ind++;
+
+
+	const uint32_t dec = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
+
 	// Platform used
 	const uint32_t device = (uint32_t)mxGetScalar(prhs[ind]);
 	ind++;
@@ -174,8 +198,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 	if (type == 2) {
 
-		if (nrhs != 32)
-			mexErrMsgTxt("Incorrect number of input arguments. There has to be 32.");
+		if (nrhs != 38)
+			mexErrMsgTxt("Incorrect number of input arguments. There has to be 38.");
 
 		// Starting ring
 		const uint32_t block1 = (uint32_t)mxGetScalar(prhs[ind]);
@@ -222,7 +246,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		ind++;
 
 		// Number of measurements/LORs
-		const uint32_t *pituus = (uint32_t*)mxGetData(prhs[ind]);
+		const int64_t *pituus = (int64_t*)mxGetData(prhs[ind]);
 		ind++;
 
 		// Is the attenuation correction included
@@ -235,11 +259,11 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 		// Number of voxels the current LOR/ray traverses
 		const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[ind]);
-		const size_t koko_l = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// XY-indices of the detector coordinates of each LOR
 		const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[ind]);
+		const size_t koko_l = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Z-indices of the detector coordinates of each LOR
@@ -285,10 +309,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		const bool precompute_var = (bool)mxGetScalar(prhs[ind]);
 		ind++;
 
-		// Accuracy factor in orthogonal distance
-		const int32_t dec = (int32_t)mxGetScalar(prhs[ind]);
-		ind++;
-
 		// Number of rays in Siddon (transaxial)
 		uint16_t n_rays = (uint16_t)mxGetScalar(prhs[ind]);
 		ind++;
@@ -317,8 +337,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 		if (type == 0) {
 
-			if (nrhs != 60)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 60.");
+			if (nrhs != 65)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 65.");
 
 			// Right hand side for forward or backprojections
 			const float* rhs = (float*)mxGetData(prhs[ind]);
@@ -326,7 +346,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			ind++;
 
 			// Is the normalization constant computed (sum(A))
-			const bool no_norm = (bool)mxGetScalar(prhs[ind]);
+			const cl_uchar no_norm = (cl_uchar)mxGetScalar(prhs[ind]);
 			ind++;
 
 			const float global_factor = (float)mxGetScalar(prhs[ind]);
@@ -367,14 +387,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 				koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm,
 				size_norm, k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, output, size_rhs, no_norm, numel_x,
 				tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, projector_type, header_directory,
-				precompute_var, dec, n_rays, n_rays3D, cr_pz, Sin, use_64bit_atomics, global_factor, bmin, bmax, Vmax, V, size_V, local_size, false, prhs[ind]);
+				precompute_var, dec, n_rays, n_rays3D, cr_pz, Sin, use_64bit_atomics, global_factor, bmin, bmax, Vmax, V, size_V, local_size, false, 
+				prhs[ind], TOF, TOFSize, sigma_x, TOFCenter, nBins);
 			plhs[0] = output;
 
 		}
 		else if (type == 1) {
 
-			if (nrhs != 67)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 67.");
+			if (nrhs != 72)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 72.");
 
 			// Number of sinograms used
 			const uint32_t NSinos = (uint32_t)mxGetScalar(prhs[ind]);
@@ -450,7 +471,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 				normalization, atten, size_atten, norm, size_norm, subsets, epps, rekot, k_path, size_reko, Nt, pseudos, det_per_ring, pRows, L, raw, 
 				size_z, osem_bool, fileName, use_psf, device, kerroin, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, 
 				size_center_y, size_center_z, projector_type, header_directory, precompute_var, dec, n_rays, n_rays3D, cr_pz, use_64bit_atomics, global_factor,
-				bmin, bmax, Vmax, V, size_V, local_size, gaussian, size_gauss);
+				bmin, bmax, Vmax, V, size_V, local_size, gaussian, size_gauss, TOF, TOFSize, sigma_x, TOFCenter, nBins);
 
 			plhs[0] = cell_array_ptr;
 		}

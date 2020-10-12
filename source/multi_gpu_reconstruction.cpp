@@ -24,17 +24,19 @@ using namespace std;
 
 // Main reconstruction function for implementation 3
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, 
-	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, const float dy, 
-	const float dz, const float bx, const float by, const float bz,	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, 
-	const uint32_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, 
-	mxArray* cell, const bool verbose, const uint32_t randoms_correction,  const uint32_t attenuation_correction, 
+	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, 
+	const float dy, const float dz, const float bx, const float by, const float bz,	const float bzb, const float maxxx, const float maxyy, const float zmax, 
+	const float NSlices, const int64_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, 
+	const uint32_t TotSinos, mxArray* cell, const bool verbose, const uint32_t randoms_correction,  const uint32_t attenuation_correction, 
 	const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm, const uint32_t subsets, 
 	const float epps, const uint8_t* rekot,	const char* k_path, const size_t size_rekot, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring, 
 	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const bool osem_bool, const char* fileName, const bool use_psf, 
 	const uint32_t device, float kerroin, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, 
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, 
-	const char* header_directory, const bool precompute, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const bool use_64bit_atomics, const float global_factor,
-	const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const float* gaussian, const size_t size_gauss) {
+	const char* header_directory, const bool precompute, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, 
+	const bool use_64bit_atomics, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, 
+	const size_t local_size, const float* gaussian, const size_t size_gauss, const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, 
+	const int64_t nBins) {
 
 	// Total number of voxels
 	const uint32_t im_dim = Nx * Ny * Nz;
@@ -79,11 +81,15 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	// Build the program and get the command queues
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 
 		projector_type, header_directory, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, 
-		false, cr_pz, dx, use_psf, scatter, randoms_correction);
+		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
 		return;
+	}
+	else if (DEBUG) {
+		mexPrintf("Program created\n");
+		mexEvalString("pause(.0001);");
 	}
 
 	// Create kernels
@@ -133,7 +139,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		mexPrintf("Failed to create OSEM/MLEM OpenCL kernel\n");
 		return;
 	}
-	if (verbose) {
+	if (DEBUG) {
 		mexPrintf("OpenCL kernels successfully built\n");
 		mexEvalString("pause(.0001);");
 	}
@@ -148,7 +154,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		normalization, atten, size_atten, norm, size_norm, subsets, epps, Nt, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel, kernel_sum, 
 		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, atomic_64bit,
 		compute_norm_matrix, precompute, dec, projector_type, n_rays, n_rays3D, cr_pz, cell, osem_bool, global_factor, bmin, bmax, Vmax, V, size_V, local_size, 
-		use_psf, gaussian, size_gauss, scatter);
+		use_psf, gaussian, size_gauss, scatter, TOF, TOFSize, sigma_x, TOFCenter, nBins, devices);
 
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
@@ -160,15 +166,16 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 // Main reconstruction function, forward/backward projection
 void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, 
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz,
-	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t* pituus, const size_t koko_l,
+	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const int64_t* pituus, const size_t koko_l,
 	const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose, const uint32_t randoms_correction,
 	const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
 	const char* k_path, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, 
-	const char* fileName, const uint32_t device, float kerroin, mxArray* output, const size_t size_rhs, const bool no_norm, const size_t numel_x, 
+	const char* fileName, const uint32_t device, float kerroin, mxArray* output, const size_t size_rhs, const cl_uchar no_norm, const size_t numel_x,
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute, 
-	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, const float bmin,
-	const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf, const mxArray* options) {
+	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, 
+	const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf, const mxArray* options, 
+	const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins) {
 	// This functions very similarly to the above function
 
 	const uint32_t im_dim = Nx * Ny * Nz;
@@ -207,10 +214,15 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	std::vector<cl::CommandQueue> commandQueues;
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, projector_type, header_directory, crystal_size_z, 
-		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction);
+		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
 
 	if (status != CL_SUCCESS) {
+		mexPrintf("Failed to build programs\n");
 		return;
+	}
+	else if (DEBUG) {
+		mexPrintf("Program created\n");
+		mexEvalString("pause(.0001);");
 	}
 
 	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1)))) {
@@ -245,7 +257,8 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
 		normalization, atten, size_atten, norm, size_norm, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel_sum, kernel, output,  
 		size_rhs, no_norm, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, precompute, dec, 
-		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter);
+		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter, TOF, 
+		TOFSize, sigma_x, TOFCenter, nBins);
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
@@ -288,7 +301,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	std::vector<cl::CommandQueue> commandQueues;
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 50u, header_directory, 0.f, false, raw, 
-		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0);
+		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0, false, 1LL);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Error while building or getting queues\n");

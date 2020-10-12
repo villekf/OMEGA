@@ -6,7 +6,7 @@
 * Uses OpenMP for parallelization. If OpenMP is not available, the code
 * is serial with no parallelization.
 *
-* Copyright (C) 2019 Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -24,15 +24,15 @@
 #include "projector_functions.h"
 
 // if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
-constexpr int TYPE = 1;
+const static int TYPE = 1;
 
 // Whether to use the OpenMP code or not
-constexpr bool OMP = true;
+const static bool OMP = true;
 
 // Using non-OpenMP with either precomputation or without
-constexpr bool PRECOMPUTE = false;
+const static bool PRECOMPUTE = false;
 
-constexpr bool DISCARD = false;
+const static bool DISCARD = false;
 
 using namespace std;
 
@@ -42,7 +42,8 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization,  const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, 
 	const double epps,  const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, 
-	const bool raw, const bool no_norm, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef) {
+	const bool raw, const bool no_norm, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef, const bool TOF, 
+	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v) {
 
 	setThreads();
 
@@ -50,10 +51,24 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 
+#ifdef _OPENMP
+	size_t threads = omp_get_max_threads();
+#else
+	size_t threads = 1ULL;
+#endif
+	vector<double> TOFVal(nBins * dec_v * threads, 0.);
+
 #pragma omp parallel for schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
-		const double local_sino = Sino[lo];
+		double local_sino = 0.;
+		if (TOF) {
+			for (int64_t to = 0LL; to < nBins; to++)
+				local_sino += Sino[lo + TOFSize * to];
+		}
+		else {
+			local_sino = Sino[lo];
+		}
 		if (no_norm && local_sino == 0.)
 			continue;
 		Det detectors;
@@ -74,9 +89,20 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 
 		// Load the number of voxels the LOR traverses (precomputed)
 		uint32_t Np = static_cast<uint32_t>(lor1[lo]);
-		double ax = 0., jelppi = 0.;
+		double jelppi = 0.;
+		double D = 0., DD = 0.;
+		double xI = 0., yI = 0., zI = 0.;
 
-		if (fabs(z_diff) < 1e-8) {
+		vector<double> ax(nBins, 0.);
+		vector<double> yax(nBins, 0.);
+
+#ifdef _OPENMP
+		const int64_t tid = omp_get_thread_num() * dec_v * nBins;
+#else
+		const int64_t tid = 1LL;
+#endif
+
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
 
@@ -85,43 +111,106 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
-					if (fp) {
+					if (TOF) {
+						xI = (dx * Nx) / 2.;
+						if (x_diff > 0.)
+							xI = -xI;
+						D = xI;
 						for (uint32_t k = 0; k < Np; k++) {
-							ax += (element * osem_apu[temp_ijk + k]);
+							TOFWeightsFP(D, nBins, dx, TOFVal, TOFCenter, sigma_x, xI, osem_apu, temp_ijk + k, ax, epps, tid + static_cast<int64_t>(k) * nBins);
 						}
-						if (ax == 0.)
-							ax = epps;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						for (uint32_t k = 0; k < Np; k++) {
-							ax += (element * osem_apu[temp_ijk + k]);
+						double temp = element / dx;
+						double val_rhs = 0.;
+						double val = 0.;
+						if (fp) {
+							double apu = 0.;
+							for (int64_t to = 0LL; to < nBins; to++) {
+								if (ax[to] < epps)
+									ax[to] = epps;
+								else
+									ax[to] *= temp;
+								if (randoms_correction)
+									ax[to] += randoms[lo];
+								apu += ax[to];
+							}
+							rhs[lo] = apu;
+							continue;
 						}
-						if (ax == 0.)
-							ax = epps;
-						if (randoms_correction)
-							ax += randoms[lo];
-						const double yax = local_sino / ax;
-						for (uint32_t k = 0; k < Np; k++) {
+						if (local_sino > 0.) {
+							for (int64_t to = 0LL; to < nBins; to++) {
+								if (ax[to] < epps)
+									ax[to] = epps;
+								else
+									ax[to] *= temp;
+								if (randoms_correction)
+									ax[to] += randoms[lo];
+								yax[to] = Sino[lo + to * TOFSize] / ax[to];
+							}
+							for (uint32_t k = 0; k < Np; k++) {
+								if (k == 0) {
+									xI = D;
+								}
+								val_rhs = TOFWeightsBP(D, nBins, dx, TOFVal, TOFCenter, sigma_x, xI, yax, epps, temp, val, rhs, tid + static_cast<int64_t>(k) * nBins);
 #pragma omp atomic
-							rhs[temp_ijk + k] += (element * yax);
-							if (no_norm == 0) {
+								rhs[temp_ijk + k] += (val_rhs);
+								if (no_norm == 0 && val > 0.) {
 #pragma omp atomic
-								Summ[temp_ijk + k] += element;
+									Summ[temp_ijk + k] += val;
+								}
+							}
+						}
+						else {
+							for (uint32_t k = 0; k < Np; k++) {
+								if (k == 0) {
+									xI = D;
+								}
+								TOFWeightsSumm(D, nBins, dx, TOFVal, TOFCenter, sigma_x, xI, epps, temp, val, tid + static_cast<int64_t>(k) * nBins);
+								if (no_norm == 0 && val > 0.) {
+#pragma omp atomic
+									Summ[temp_ijk + k] += val;
+								}
 							}
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < Np; k++) {
-							if (no_norm == 0) {
+						if (fp) {
+							for (uint32_t k = 0; k < Np; k++) {
+								ax[0] += (element * osem_apu[temp_ijk + k]);
+							}
+							if (ax[0] < epps)
+								ax[0] = epps;
+							if (randoms_correction)
+								ax[0] += randoms[lo];
+							rhs[lo] = ax[0];
+							continue;
+						}
+						if (local_sino > 0.) {
+							for (uint32_t k = 0; k < Np; k++) {
+								ax[0] += (element * osem_apu[temp_ijk + k]);
+							}
+							if (ax[0] < epps)
+								ax[0] = epps;
+							if (randoms_correction)
+								ax[0] += randoms[lo];
+							yax[0] = local_sino / ax[0];
+							for (uint32_t k = 0; k < Np; k++) {
 #pragma omp atomic
-								Summ[temp_ijk + k] += element;
+								rhs[temp_ijk + k] += (element * yax[0]);
+								if (no_norm == 0) {
+#pragma omp atomic
+									Summ[temp_ijk + k] += element;
+								}
+							}
+						}
+						else {
+							for (uint32_t k = 0; k < Np; k++) {
+								if (no_norm == 0) {
+#pragma omp atomic
+									Summ[temp_ijk + k] += element;
+								}
 							}
 						}
 					}
@@ -132,766 +221,250 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0;
 
-					const double element = perpendicular_elements(1, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(1, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
-					if (fp) {
+					if (TOF) {
+						yI = (dy * Ny) / 2.;
+						if (y_diff > 0.)
+							yI = -yI;
+						D = yI;
 						for (uint32_t k = 0; k < Np; k++) {
-							ax += (element * osem_apu[temp_ijk + k * Nx]);
+							TOFWeightsFP(D, nBins, dy, TOFVal, TOFCenter, sigma_x, yI, osem_apu, temp_ijk + k * Nx, ax, epps, tid + static_cast<int64_t>(k) * nBins);
 						}
-						if (ax == 0.)
-							ax = epps;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						for (uint32_t k = 0; k < Np; k++) {
-							ax += (element * osem_apu[temp_ijk + k * Nx]);
+						double temp = element / dy;
+						double val_rhs = 0.;
+						double val = 0.;
+						if (fp) {
+							double apu = 0.;
+							for (int64_t to = 0LL; to < nBins; to++) {
+								if (ax[to] < epps)
+									ax[to] = epps;
+								else
+									ax[to] *= temp;
+								if (randoms_correction)
+									ax[to] += randoms[lo];
+								apu += ax[to];
+							}
+							rhs[lo] = apu;
+							continue;
 						}
-						if (ax == 0.)
-							ax = epps;
-						if (randoms_correction)
-							ax += randoms[lo];
-						const double yax = local_sino / ax;
-						for (uint32_t k = 0; k < Np; k++) {
+						if (local_sino > 0.) {
+							for (int64_t to = 0LL; to < nBins; to++) {
+								if (ax[to] < epps)
+									ax[to] = epps;
+								else
+									ax[to] *= temp;
+								if (randoms_correction)
+									ax[to] += randoms[lo];
+								yax[to] = Sino[lo + to * TOFSize] / ax[to];
+							}
+							for (uint32_t k = 0; k < Np; k++) {
+								val_rhs = TOFWeightsBP(D, nBins, dy, TOFVal, TOFCenter, sigma_x, yI, yax, epps, temp, val, rhs, tid + k * nBins);
 #pragma omp atomic
-							rhs[temp_ijk + k * Nx] += (element * yax);
-							if (no_norm == 0) {
+								rhs[temp_ijk + k * Nx] += (val_rhs);
+								if (no_norm == 0 && val > 0.) {
 #pragma omp atomic
-								Summ[temp_ijk + k * Nx] += element;
+									Summ[temp_ijk + k * Nx] += val;
+								}
+							}
+						}
+						else {
+							for (uint32_t k = 0; k < Np; k++) {
+								TOFWeightsSumm(D, nBins, dy, TOFVal, TOFCenter, sigma_x, yI, epps, temp, val, tid + k * nBins);
+								if (no_norm == 0 && val > 0.) {
+#pragma omp atomic
+									Summ[temp_ijk + k * Nx] += val;
+								}
 							}
 						}
 					}
 					else {
-						for (uint32_t k = 0; k < Np; k++) {
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[temp_ijk + k * Nx] += element;
+						if (fp) {
+							for (uint32_t k = 0; k < Np; k++) {
+								ax[0] += (element * osem_apu[temp_ijk + k * Nx]);
 							}
+							if (ax[0] < epps)
+								ax[0] = epps;
+							if (randoms_correction)
+								ax[0] += randoms[lo];
+							rhs[lo] = ax[0];
+							continue;
 						}
-					}
-				}
-			}
-			else {
-				int32_t tempi = 0, tempj = 0, iu = 0, ju = 0;
-				double txu = 0., tyu = 0., tc = 0., tx0 = 0., ty0 = 0.;
-
-				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-
-				const double LL = sqrt(x_diff * x_diff + y_diff * y_diff);
-
-				double temp = 0.;
-				double tx0_a = tx0, ty0_a = ty0, tc_a = tc;
-				uint32_t tempijk = tempk * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-				for (uint32_t ii = 0; ii < Np; ii++) {
-
-					if (tx0 < ty0) {
-						const double element = (tx0 - tc) * LL;
-
-						temp += element;
-						ax += (element * osem_apu[tempijk]);
-						if (attenuation_correction)
-							jelppi += (element * -atten[tempijk]);
-
-						if (iu > 0)
-							tempijk++;
-						else
-							tempijk--;
-						tc = tx0;
-						tx0 += txu;
-
-
-					}
-					else {
-
-						const double element = (ty0 - tc) * LL;
-
-						temp += element;
-						ax += (element * osem_apu[tempijk]);
-						if (attenuation_correction)
-							jelppi += (element * -atten[tempijk]);
-
-						if (ju > 0)
-							tempijk += Nx;
-						else
-							tempijk -= Nx;
-						tc = ty0;
-						ty0 += tyu;
-					}
-				}
-
-				temp = 1. / temp;
-				tx0 = tx0_a;
-				ty0 = ty0_a;
-				tempijk = tempk * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-				tc = tc_a;
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-
-				if (local_sino > 0.) {
-					ax *= temp;
-					if (ax == 0.) {
-						ax = epps;
-					}
-					if (randoms_correction)
-						ax += randoms[lo];
-					const double yax = local_sino / ax;
-					for (uint32_t ii = 0; ii < Np; ii++) {
-
-						if (tx0 < ty0) {
-							const double element = (tx0 - tc) * LL * temp;
-
-
-#pragma omp atomic
-							rhs[tempijk] += (element * yax);
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
+						if (local_sino > 0.) {
+							for (uint32_t k = 0; k < Np; k++) {
+								ax[0] += (element * osem_apu[temp_ijk + k * Nx]);
 							}
-
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-
-
+							if (ax[0] < epps)
+								ax[0] = epps;
+							if (randoms_correction)
+								ax[0] += randoms[lo];
+							yax[0] = local_sino / ax[0];
+							for (uint32_t k = 0; k < Np; k++) {
+#pragma omp atomic
+								rhs[temp_ijk + k * Nx] += (element * yax[0]);
+								if (no_norm == 0) {
+#pragma omp atomic
+									Summ[temp_ijk + k * Nx] += element;
+								}
+							}
 						}
 						else {
-
-							const double element = (ty0 - tc) * LL * temp;
-
+							for (uint32_t k = 0; k < Np; k++) {
+								if (no_norm == 0) {
 #pragma omp atomic
-							rhs[tempijk] += (element * yax);
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
+									Summ[temp_ijk + k * Nx] += element;
+								}
 							}
-
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
-						}
-					}
-				}
-				else {
-					for (uint32_t ii = 0; ii < Np; ii++) {
-
-						if (tx0 < ty0) {
-							const double element = (tx0 - tc) * LL * temp;
-
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-
-
-						}
-						else {
-
-							const double element = (ty0 - tc) * LL * temp;
-
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
 						}
 					}
 				}
 			}
 		}
 		else {
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
 
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
+			}
+			//Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
+			}
+			else {
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			}
 
-					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 0;
-					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
+			const double LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+			double temp = 0.;
+			double tx0_a = tx0, ty0_a = ty0, tz0_a = tz0, tc_a = tc;
+			int32_t tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
+			uint32_t tempijk = static_cast<uint32_t>(tempk) * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
 
-					const double LL = sqrt((x_diff * x_diff + z_diff * z_diff));
-					double apu1;
+			if (TOF) {
+				TOFDis(x_diff, y_diff, z_diff, tc, LL, D, DD);
+			}
 
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-						apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-						if (apu1 > 0.) {
-							tempj = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-
-					double temp = 0.;
-					double tx0_a = tx0, tz0_a = tz0, tc_a = tc;
-					uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-					for (uint32_t ii = 0; ii < Np; ii++) {
-
-						if (tx0 < tz0) {
-
-							const double element = (tx0 - tc) * LL;
-
-							temp += element;
-							ax += (element * osem_apu[tempijk]);
-							if (attenuation_correction)
-								jelppi += (element * -atten[tempijk]);
-
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-						}
-						else {
-
-							const double element = (tz0 - tc) * LL;
-
-							temp += element;
-							ax += (element * osem_apu[tempijk]);
-							if (attenuation_correction)
-								jelppi += (element * -atten[tempijk]);
-
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-
-					}
-
-					temp = 1. / temp;
-					tx0 = tx0_a;
-					tz0 = tz0_a;
-					tc = tc_a;
-					tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						ax *= temp;
-						if (ax == 0.) {
-							ax = epps;
-						}
-						if (randoms_correction)
-							ax += randoms[lo];
-						const double yax = local_sino / ax;
-						for (uint32_t ii = 0; ii < Np; ii++) {
-
-							if (tx0 < tz0) {
-
-								const double element = (tx0 - tc) * LL * temp;
-
-#pragma omp atomic
-								rhs[tempijk] += (element * yax);
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (iu > 0)
-									tempijk++;
-								else
-									tempijk--;
-								tc = tx0;
-								tx0 += txu;
-
-							}
-							else {
-
-								const double element = (tz0 - tc) * LL * temp;
-
-#pragma omp atomic
-								rhs[tempijk] += (element * yax);
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ku > 0)
-									tempijk += Nyx;
-								else
-									tempijk -= Nyx;
-								tc = tz0;
-								tz0 += tzu;
-
-							}
-
-						}
-					}
-					else {
-						for (uint32_t ii = 0; ii < Np; ii++) {
-
-							if (tx0 < tz0) {
-
-								const double element = (tx0 - tc) * LL * temp;
-
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (iu > 0)
-									tempijk++;
-								else
-									tempijk--;
-								tc = tx0;
-								tx0 += txu;
-
-							}
-							else {
-
-								const double element = (tz0 - tc) * LL * temp;
-
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ku > 0)
-									tempijk += Nyx;
-								else
-									tempijk -= Nyx;
-								tc = tz0;
-								tz0 += tzu;
-
-							}
-
-						}
-
-					}
-
+			for (uint32_t ii = 0; ii < Np; ii++) {
+				if (tx0 < ty0 && tx0 < tz0) {
+					ForwardProject(tx0, tc, txu, LL, attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+						sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii);
+				}
+				else if (ty0 < tz0) {
+					ForwardProject(ty0, tc, tyu, LL, attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+						sigma_x, D, osem_apu, ax, epps, temp, tempj, ju, Nx, tid, ii);
+				}
+				else {
+					ForwardProject(tz0, tc, tzu, LL, attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+						sigma_x, D, osem_apu, ax, epps, temp, tempk, ku, Nyx, tid, ii);
 				}
 			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 
-					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 0;
-					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-
-					const double LL = sqrt((y_diff * y_diff + z_diff * z_diff));
-					double apu1;
-
-					double temp = 0.;
-
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-						apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-						if (apu1 > 0.) {
-							tempi = static_cast<int32_t>(ii);
-							break;
-						}
+			temp = 1. / temp;
+			tx0 = tx0_a;
+			ty0 = ty0_a;
+			tz0 = tz0_a;
+			tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
+			tempijk = static_cast<uint32_t>(tempk) * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
+			tc = tc_a;
+			if (attenuation_correction)
+				temp *= exp(jelppi);
+			if (normalization)
+				temp *= norm_coef[lo];
+			if (scatter)
+				temp *= scatter_coef[lo];
+			temp *= global_factor;
+			D = DD;
+			if (fp) {
+				if (TOF) {
+					for (int64_t to = 0LL; to < nBins; to++) {
+						if (ax[to] < epps)
+							ax[to] = epps;
+						else
+							ax[to] *= temp;
+						if (randoms_correction)
+							ax[to] += randoms[lo];
+						rhs[lo] = ax[to];
 					}
+				}
+				else {
+					if (ax[0] < epps)
+						ax[0] = epps;
+					else
+						ax[0] *= temp;
+					if (randoms_correction)
+						ax[0] += randoms[lo];
+					rhs[lo] = ax[0];
+				}
+				continue;
+			}
 
-					double ty0_a = ty0, tz0_a = tz0, tc_a = tc;
-					uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-					for (uint32_t ii = 0; ii < Np; ii++) {
-
-						if (ty0 < tz0) {
-
-							const double element = (ty0 - tc) * LL;
-
-							temp += element;
-							ax += (element * osem_apu[tempijk]);
-							if (attenuation_correction)
-								jelppi += (element * -atten[tempijk]);
-
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
+			if (local_sino != 0.) {
+				if (TOF) {
+					for (int64_t to = 0LL; to < nBins; to++) {
+						if (ax[to] < epps) {
+							ax[to] = epps;
 						}
 						else {
-
-							const double element = (tz0 - tc) * LL;
-
-							temp += element;
-							ax += (element * osem_apu[tempijk]);
-							if (attenuation_correction)
-								jelppi += (element * -atten[tempijk]);
-
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-					}
-
-					temp = 1. / temp;
-					ty0 = ty0_a;
-					tz0 = tz0_a;
-					tc = tc_a;
-					tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						ax *= temp;
-						if (ax == 0.) {
-							ax = epps;
+							ax[to] *= temp;
 						}
 						if (randoms_correction)
-							ax += randoms[lo];
-						const double yax = local_sino / ax;
-						for (uint32_t ii = 0; ii < Np; ii++) {
-
-							if (ty0 < tz0) {
-
-								const double element = (ty0 - tc) * LL * temp;
-
-#pragma omp atomic
-								rhs[tempijk] += (element * yax);
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ju > 0)
-									tempijk += Nx;
-								else
-									tempijk -= Nx;
-								tc = ty0;
-								ty0 += tyu;
-							}
-							else {
-
-								const double element = (tz0 - tc) * LL * temp;
-
-#pragma omp atomic
-								rhs[tempijk] += (element * yax);
-
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ku > 0)
-									tempijk += Nyx;
-								else
-									tempijk -= Nyx;
-								tc = tz0;
-								tz0 += tzu;
-							}
-						}
+							ax[to] += randoms[lo];
+						yax[to] = Sino[lo + to * TOFSize] / ax[to];
+					}
+				}
+				else {
+					if (ax[0] < epps) {
+						ax[0] = epps;
 					}
 					else {
-						for (uint32_t ii = 0; ii < Np; ii++) {
-
-							if (ty0 < tz0) {
-
-								const double element = (ty0 - tc) * LL * temp;
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ju > 0)
-									tempijk += Nx;
-								else
-									tempijk -= Nx;
-								tc = ty0;
-								ty0 += tyu;
-
-							}
-							else {
-
-								const double element = (tz0 - tc) * LL * temp;
-
-								if (no_norm == 0) {
-#pragma omp atomic
-									Summ[tempijk] += element;
-								}
-
-								if (ku > 0)
-									tempijk += Nyx;
-								else
-									tempijk -= Nyx;
-								tc = tz0;
-								tz0 += tzu;
-
-							}
-						}
+						ax[0] *= temp;
+					}
+					if (randoms_correction)
+						ax[0] += randoms[lo];
+					yax[0] = local_sino / ax[0];
+				}
+				for (uint32_t ii = 0; ii < Np; ii++) {
+					if (tx0 < ty0 && tx0 < tz0) {
+						backwardProjection(tx0, tc, txu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
+							iu, 1U, no_norm, rhs, Summ, tid, ii);
+					}
+					else if (ty0 < tz0) {
+						backwardProjection(ty0, tc, tyu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
+							ju, Nx, no_norm, rhs, Summ, tid, ii);
+					}
+					else {
+						backwardProjection(tz0, tc, tzu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
+							ku, Nyx, no_norm, rhs, Summ, tid, ii);
 					}
 				}
 			}
 			else {
-
-				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
-				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
-				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, 
-					txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
-
-				const double LL = sqrt(x_diff * x_diff + z_diff * z_diff + y_diff * y_diff);
-
-				double temp = 0.;
-
-				double ty0_a = ty0, tz0_a = tz0, tc_a = tc, tx0_a = tx0;
-				uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
 				for (uint32_t ii = 0; ii < Np; ii++) {
-					if (tz0 < ty0 && tz0 < tx0) {
-
-						const double element = (tz0 - tc) * LL;
-
-						temp += element;
-						ax += (element * osem_apu[tempijk]);
-						if (attenuation_correction)
-							jelppi += (element * -atten[tempijk]);
-
-						if (ku > 0)
-							tempijk += Nyx;
-						else
-							tempijk -= Nyx;
-						tc = tz0;
-						tz0 += tzu;
+					if (tx0 < ty0 && tx0 < tz0) {
+						sensImage(tx0, tc, txu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, epps, temp,
+							iu, 1U, no_norm, Summ, tid, ii);
 					}
-					else if (ty0 < tx0) {
-						const double element = (ty0 - tc) * LL;
-
-						temp += element;
-						ax += (element * osem_apu[tempijk]);
-						if (attenuation_correction)
-							jelppi += (element * -atten[tempijk]);
-
-						if (ju > 0)
-							tempijk += Nx;
-						else
-							tempijk -= Nx;
-						tc = ty0;
-						ty0 += tyu;
+					else if (ty0 < tz0) {
+						sensImage(ty0, tc, tyu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, epps, temp,
+							ju, Nx, no_norm, Summ, tid, ii);
 					}
 					else {
-						const double element = (tx0 - tc) * LL;
-
-						temp += element;
-						ax += (element * osem_apu[tempijk]);
-						if (attenuation_correction)
-							jelppi += (element * -atten[tempijk]);
-
-						if (iu > 0)
-							tempijk++;
-						else
-							tempijk--;
-						tc = tx0;
-						tx0 += txu;
-					}
-
-				}
-
-				temp = 1. / temp;
-				ty0 = ty0_a;
-				tx0 = tx0_a;
-				tz0 = tz0_a;
-				tc = tc_a;
-				tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-				if (local_sino > 0.) {
-					ax *= temp;
-					if (ax == 0.) {
-						ax = epps;
-					}
-					if (randoms_correction)
-						ax += randoms[lo];
-					const double yax = local_sino / ax;
-					for (uint32_t ii = 0; ii < Np; ii++) {
-						if (tz0 < ty0 && tz0 < tx0) {
-
-							const double element = (tz0 - tc) * LL * temp;
-
-#pragma omp atomic
-							rhs[tempijk] += (element * yax);
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-						else if (ty0 < tx0) {
-							const double element = (ty0 - tc) * LL * temp;
-
-#pragma omp atomic
-							rhs[tempijk] += (element * yax);
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
-						}
-						else {
-							const double element = (tx0 - tc) * LL * temp;
-
-#pragma omp atomic
-							rhs[tempijk] += (element * yax);
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-						}
-
-					}
-
-				}
-				else {
-					for (uint32_t ii = 0; ii < Np; ii++) {
-						if (tz0 < ty0 && tz0 < tx0) {
-
-							const double element = (tz0 - tc) * LL * temp;
-
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-						else if (ty0 < tx0) {
-							const double element = (ty0 - tc) * LL * temp;
-
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
-						}
-						else {
-							const double element = (tx0 - tc) * LL * temp;
-
-							if (no_norm == 0) {
-#pragma omp atomic
-								Summ[tempijk] += element;
-							}
-
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-						}
+						sensImage(tz0, tc, tzu, LL, tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, epps, temp,
+							ku, Nyx, no_norm, Summ, tid, ii);
 					}
 				}
 			}
@@ -905,7 +478,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
-	const bool raw, const double crystal_size_xy, const double* x_center, const double* y_center, const double* z_center, const double crystal_size_z,
+	const bool raw, const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z,
 	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
@@ -953,8 +526,8 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 		}
 
 		// Calculate the x, y and z distances of the detector pair
-		const double x_diff = (detectors.xd - detectors.xs);
-		const double y_diff = (detectors.yd - detectors.ys);
+		double x_diff = (detectors.xd - detectors.xs);
+		double y_diff = (detectors.yd - detectors.ys);
 		const double z_diff = (detectors.zd - detectors.zs);
 
 		// Load the number of voxels the LOR traverses (precomputed)
@@ -964,14 +537,23 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 		bool RHS = false, SUMMA = false;
 		uint32_t ind = 0u;
 
+		uint32_t N0 = Nx;
+		uint32_t N1 = Ny;
+		uint32_t N2 = 1u;
+		uint32_t N3 = Nx;
+		uint32_t N4 = Nz;
+
+		double* xcenter = x_center;
+		double* ycenter = y_center;
+
 		if (crystal_size_z == 0.) {
 			kerroin = norm(x_diff, y_diff, z_diff) * crystal_size_xy;
 		}
 		else {
 			kerroin = norm(x_diff, y_diff, z_diff) * crystal_size_z;
 		}
-
-		if (fabs(z_diff) < 1e-8) {
+		
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
 
@@ -1068,409 +650,160 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 					}
 				}
 			}
-			else {
-				int32_t tempi = 0, tempj = 0, iu = 0, ju = 0;
-				double txu = 0., tyu = 0., tc = 0., tx0 = 0., ty0 = 0.;
-				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-				if (attenuation_correction)
-					LL = sqrt(x_diff * x_diff + y_diff * y_diff);
-				double temp = 0.;
-				int alku, loppu;
-				if (crystal_size_z == 0.) {
-					alku = tempk + 1;
-					loppu = tempk;
-				}
-				else {
-					alku = Nz;
-					loppu = 0;
-				}
-				orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-
-				if (attenuation_correction) {
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (tx0 < ty0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-
-							tempi += iu;
-							tx0 += txu;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempj += ju;
-							ty0 += tyu;
-						}
-					}
-				}
-
-				temp = 1. / temp;
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-				if (local_sino > 0.) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-					RHS = true;
-				}
-				else
-					SUMMA = true;
-
-				orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-			}
 		}
 		else {
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
-					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 0;
-					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
-					double apu1;
-					if (attenuation_correction)
-						LL = sqrt(x_diff * x_diff + z_diff * z_diff);
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-						apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-						if (apu1 > 0.) {
-							tempj = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-					double temp = 0.;
-					int alku, loppu;
-					if (crystal_size_z == 0.) {
-						alku = tempk + 1;
-						loppu = tempk;
-					}
-					else {
-						alku = Nz;
-						loppu = 0;
-						if (ku > 0) {
-							alku = tempk + 1;
-						}
-						else if (ku < 0) {
-							loppu = tempk;
-						}
-					}
-					orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-						tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (tx0 < tz0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempi += iu;
-							tx0 += txu;
-							xyz = 1u;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempk += ku;
-							tz0 += tzu;
-							xyz = 3u;
-							if (tempk < Nz && tempk >= 0) {
-								alku = tempk + 1;
-								loppu = tempk;
-								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-							}
-						}
-					}
-					if (xyz < 3 && crystal_size_z > 0.) {
-						tempi -= iu;
-						if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-						else {
-							tempk += ku;
-							alku = Nz;
-							loppu = 0;
-							if (ku > 0) {
-								loppu = tempk;
-							}
-							else if (ku < 0) {
-								alku = tempk + 1;
-							}
-							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-						}
-					}
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
 
-					temp = 1. / temp;
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-						RHS = true;
-					}
-					else
-						SUMMA = true;
-					orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-						tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-				}
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
-					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 0;
-					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-					if (attenuation_correction)
-						LL = sqrt(z_diff * z_diff + y_diff * y_diff);
-					double apu1;
-					double temp = 0.;
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-						apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-						if (apu1 > 0.) {
-							tempi = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-					const double temp_x = detectors.xs;
-					detectors.xs = detectors.ys;
-					detectors.ys = temp_x;
-
-					int alku, loppu;
-					if (crystal_size_z == 0.) {
-						alku = tempk + 1;
-						loppu = tempk;
-					}
-					else {
-						alku = Nz;
-						loppu = 0;
-						if (ku > 0) {
-							alku = tempk + 1;
-						}
-						else if (ku < 0) {
-							loppu = tempk;
-						}
-					}
-					orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-						tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (ty0 < tz0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-
-							tempj += ju;
-							ty0 += tyu;
-							xyz = 2u;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempk += ku;
-							tz0 += tzu;
-							xyz = 3u;
-							if (tempk < Nz && tempk >= 0) {
-								alku = tempk + 1;
-								loppu = tempk;
-								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-									tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-							}
-						}
-					}
-					if (xyz < 3 && crystal_size_z > 0.) {
-						tempj -= ju;
-						if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-						else {
-							tempk += ku;
-							alku = Nz;
-							loppu = 0;
-							if (ku > 0) {
-								loppu = tempk;
-							}
-							else if (ku < 0) {
-								alku = tempk + 1;
-							}
-							orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-								tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-						}
-					}
-
-					temp = 1. / temp;
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-						RHS = true;
-					}
-					else
-						SUMMA = true;
-
-					orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-						tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-				}
+			//Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
+				int32_t apu_tempi = tempi;
+				double apu_txu = txu;
+				double apu_tx0 = tx0;
+				double apu_xdiff = x_diff;
+				int32_t apu_iu = iu;
+				const double temp_x = detectors.xs;
+				detectors.xs = detectors.ys;
+				detectors.ys = temp_x;
+				iu = ju;
+				ju = apu_iu;
+				tempi = tempj;
+				tempj = apu_tempi;
+				txu = tyu;
+				tyu = apu_txu;
+				tx0 = ty0;
+				ty0 = apu_tx0;
+				x_diff = y_diff;
+				y_diff = apu_xdiff;
+				N0 = Ny;
+				N1 = Nx;
+				N2 = Ny;
+				N3 = 1u;
+				ycenter = x_center;
+				xcenter = y_center;
 			}
 			else {
-				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 1;
-				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
-				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, 
-					tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
-
-				double temp = 0.;
-
-				if (attenuation_correction)
-					LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
-				int alku, loppu;
-				if (crystal_size_z == 0.) {
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			}
+			if (attenuation_correction)
+				LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
+			double temp = 0.;
+			int alku, loppu;
+			if (crystal_size_z == 0.) {
+				alku = tempk + 1;
+				loppu = tempk;
+			}
+			else {
+				alku = Nz;
+				loppu = 0;
+				if (ku > 0) {
 					alku = tempk + 1;
+				}
+				else if (ku < 0) {
 					loppu = tempk;
 				}
+			}
+			orth_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, ycenter, xcenter, z_center, temp, N2, tempj, tempk, local_sino, ax,
+				osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx,
+				N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+
+			for (uint32_t ii = 0u; ii < Np; ii++) {
+				if (tx0 < ty0 && tx0 < tz0) {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
+
+					tempi += iu;
+					tx0 += txu;
+					xyz = 1U;
+				}
+				else if (ty0 < tz0) {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+					tempj += ju;
+					ty0 += tyu;
+					xyz = 2U;
+				}
 				else {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+					tempk += ku;
+					tz0 += tzu;
+					xyz = 3U;
+					if (tempk < Nz && tempk >= 0) {
+						alku = tempk + 1;
+						loppu = tempk;
+						orth_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, ycenter, xcenter, z_center, temp, N2, tempj, tempk, local_sino, ax,
+							osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx,
+							N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+					}
+				}
+			}
+			if (xyz < 3 && crystal_size_z > 0. && std::fabs(z_diff) >= 1e-8) {
+				if (xyz == 1)
+					tempi -= iu;
+				else if (xyz == 2)
+					tempj -= ju;
+				if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
+				else {
+					tempk += ku;
 					alku = Nz;
 					loppu = 0;
 					if (ku > 0) {
-						alku = tempk + 1;
-					}
-					else if (ku < 0) {
 						loppu = tempk;
 					}
-				}
-				orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-					if (tz0 < ty0 && tz0 < tx0) {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempk += ku;
-						tz0 += tzu;
-						xyz = 3u;
-						if (tempk < Nz && tempk >= 0) {
-							alku = tempk + 1;
-							loppu = tempk;
-							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-						}
+					else if (ku < 0) {
+						alku = tempk + 1;
 					}
-					else if (ty0 < tx0) {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempj += ju;
-						ty0 += tyu;
-						xyz = 2u;
-					}
-					else {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempi += iu;
-						tx0 += txu;
-						xyz = 1u;
-					}
+					orth_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, ycenter, xcenter, z_center, temp, N2, tempj, tempk, local_sino, ax,
+						osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx,
+						N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 				}
-				if (xyz < 3 && crystal_size_z > 0.) {
-					if (xyz == 1)
-						tempi -= iu;
-					else if (xyz == 2)
-						tempj -= ju;
-					if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-					else {
-						tempk += ku;
-						alku = Nz;
-						loppu = 0;
-						if (ku > 0) {
-							loppu = tempk;
-						}
-						else if (ku < 0) {
-							alku = tempk + 1;
-						}
-						orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-							tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-							PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-					}
-				}
-
-				temp = 1. / temp;
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-				if (local_sino > 0.) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-					RHS = true;
-				}
-				else
-					SUMMA = true;
-				orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-
 			}
+
+			temp = 1. / temp;
+			if (attenuation_correction)
+				temp *= exp(jelppi);
+			if (normalization)
+				temp *= norm_coef[lo];
+			if (scatter)
+				temp *= scatter_coef[lo];
+			temp *= global_factor;
+
+			if (fp) {
+				if (ax == 0.)
+					ax = epps;
+				else
+					ax *= temp;
+				if (randoms_correction)
+					ax += randoms[lo];
+				rhs[lo] = ax;
+				continue;
+			}
+			if (local_sino > 0.) {
+				nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				RHS = true;
+			}
+			else
+				SUMMA = true;
+
+			orth_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, ycenter, xcenter, z_center, temp, N2, tempj, tempk, local_sino, ax,
+				osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx,
+				N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 		}
 	}
 }
@@ -1481,7 +814,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
-	const bool raw, const double Vmax, const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
+	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
 	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
@@ -1529,8 +862,8 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 		}
 
 		// Calculate the x, y and z distances of the detector pair
-		const double x_diff = (detectors.xd - detectors.xs);
-		const double y_diff = (detectors.yd - detectors.ys);
+		double x_diff = (detectors.xd - detectors.xs);
+		double y_diff = (detectors.yd - detectors.ys);
 		const double z_diff = (detectors.zd - detectors.zs);
 
 		// Load the number of voxels the LOR traverses (precomputed)
@@ -1542,9 +875,18 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 		bool RHS = false, SUMMA = false;
 		uint32_t ind = 0u;
 
+		uint32_t N0 = Nx;
+		uint32_t N1 = Ny;
+		uint32_t N2 = 1u;
+		uint32_t N3 = Nx;
+		uint32_t N4 = Nz;
+
+		double* xcenter = x_center;
+		double* ycenter = y_center;
+
 		kerroin = norm(x_diff, y_diff, z_diff);
 
-		if (fabs(z_diff) < 1e-8) {
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
 
@@ -1607,385 +949,153 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 					}
 				}
 			}
-			else {
-				int32_t tempi = 0, tempj = 0, iu = 0, ju = 0;
-				double txu = 0., tyu = 0., tc = 0., tx0 = 0., ty0 = 0.;
-				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-				if (attenuation_correction)
-					LL = sqrt(x_diff * x_diff + y_diff * y_diff);
-				double temp = 0.;
-				int alku, loppu;
-				alku = Nz;
-				loppu = 0;
-				volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-
-				if (attenuation_correction) {
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (tx0 < ty0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempi += iu;
-							tx0 += txu;
-							xyz = 1u;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempj += ju;
-							ty0 += tyu;
-							xyz = 2u;
-						}
-					}
-				}
-
-				temp = 1. / temp;
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-				if (local_sino > 0.) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-					RHS = true;
-				}
-				else
-					SUMMA = true;
-
-				volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-			}
 		}
 		else {
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
-					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 0;
-					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
-					double apu1;
-					if (attenuation_correction)
-						LL = sqrt(x_diff * x_diff + z_diff * z_diff);
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-						apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-						if (apu1 > 0.) {
-							tempj = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-					double temp = 0.;
-					int alku, loppu;
-					alku = Nz;
-					loppu = 0;
-					if (ku > 0) {
-						alku = tempk + 1;
-					}
-					else if (ku < 0) {
-						loppu = tempk;
-					}
-					volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-						tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
 
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (tx0 < tz0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempi += iu;
-							tx0 += txu;
-							xyz = 1u;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempk += ku;
-							tz0 += tzu;
-							xyz = 3u;
-							if (tempk < Nz && tempk >= 0) {
-								alku = tempk + 1;
-								loppu = tempk;
-								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-							}
-						}
-					}
-					if (xyz < 3) {
-						tempi -= iu;
-						if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-						else {
-							tempk += ku;
-							alku = Nz;
-							loppu = 0;
-							if (ku > 0) {
-								loppu = tempk;
-							}
-							else if (ku < 0) {
-								alku = tempk + 1;
-							}
-							volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-						}
-					}
-					temp = 1. / temp;
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-						RHS = true;
-					}
-					else
-						SUMMA = true;
-					volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-						tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-				}
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
-					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 0;
-					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-					if (attenuation_correction)
-						LL = sqrt(z_diff * z_diff + y_diff * y_diff);
-					double apu1;
-					double temp = 0.;
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-						apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-						if (apu1 > 0.) {
-							tempi = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-					const double temp_x = detectors.xs;
-					detectors.xs = detectors.ys;
-					detectors.ys = temp_x;
-					int alku, loppu;
-					alku = Nz;
-					loppu = 0;
-					if (ku > 0) {
-						alku = tempk + 1;
-					}
-					else if (ku < 0) {
-						loppu = tempk;
-					}
-					volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-						tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						if (ty0 < tz0) {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-
-							tempj += ju;
-							ty0 += tyu;
-							xyz = 2u;
-						}
-						else {
-							if (attenuation_correction)
-								compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-							tempk += ku;
-							tz0 += tzu;
-							xyz = 3u;
-
-							if (tempk < Nz && tempk >= 0) {
-								alku = tempk + 1;
-								loppu = tempk;
-								volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-									tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-							}
-						}
-					}
-					if (xyz < 3) {
-						tempj -= ju;
-						if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-						else {
-							tempk += ku;
-							alku = Nz;
-							loppu = 0;
-							if (ku > 0) {
-								loppu = tempk;
-							}
-							else if (ku < 0) {
-								alku = tempk + 1;
-							}
-							volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-								tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-						}
-					}
-
-					temp = 1. / temp;
-					if (attenuation_correction)
-						temp *= exp(jelppi);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-
-					if (fp) {
-						if (ax == 0.)
-							ax = epps;
-						else
-							ax *= temp;
-						if (randoms_correction)
-							ax += randoms[lo];
-						rhs[lo] = ax;
-						continue;
-					}
-					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-						RHS = true;
-					}
-					else
-						SUMMA = true;
-
-					volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-						tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-						PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-				}
+			//Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
+				int32_t apu_tempi = tempi;
+				double apu_txu = txu;
+				double apu_tx0 = tx0;
+				double apu_xdiff = x_diff;
+				int32_t apu_iu = iu;
+				const double temp_x = detectors.xs;
+				detectors.xs = detectors.ys;
+				detectors.ys = temp_x;
+				iu = ju;
+				ju = apu_iu;
+				tempi = tempj;
+				tempj = apu_tempi;
+				txu = tyu;
+				tyu = apu_txu;
+				tx0 = ty0;
+				ty0 = apu_tx0;
+				x_diff = y_diff;
+				y_diff = apu_xdiff;
+				N0 = Ny;
+				N1 = Nx;
+				N2 = Ny;
+				N3 = 1u;
+				ycenter = x_center;
+				xcenter = y_center;
 			}
 			else {
-				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
-				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
-				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk,
-					tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
-
-				double temp = 0.;
-
-				if (attenuation_correction)
-					LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
-				int alku, loppu;
-				alku = Nz;
-				loppu = 0;
-				if (ku > 0) {
-					alku = tempk + 1;
-				}
-				else if (ku < 0) {
-					loppu = tempk;
-				}
-				volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-					if (tz0 < ty0 && tz0 < tx0) {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, tz0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempk += ku;
-						tz0 += tzu;
-						xyz = 3u;
-						if (tempk < Nz && tempk >= 0) {
-							alku = tempk + 1;
-							loppu = tempk;
-							volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-						}
-					}
-					else if (ty0 < tx0) {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempj += ju;
-						ty0 += tyu;
-						xyz = 2u;
-					}
-					else {
-						if (attenuation_correction)
-							compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-						tempi += iu;
-						tx0 += txu;
-						xyz = 1u;
-					}
-				}
-				if (xyz < 3) {
-					if (xyz == 1)
-						tempi -= iu;
-					else if (xyz == 2)
-						tempj -= ju;
-					if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
-					else {
-						tempk += ku;
-						alku = Nz;
-						loppu = 0;
-						if (ku > 0) {
-							loppu = tempk;
-						}
-						else if (ku < 0) {
-							alku = tempk + 1;
-						}
-						volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-							tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-							PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-					}
-				}
-
-				temp = 1. / temp;
-				if (attenuation_correction)
-					temp *= exp(jelppi);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-				if (fp) {
-					if (ax == 0.)
-						ax = epps;
-					else
-						ax *= temp;
-					if (randoms_correction)
-						ax += randoms[lo];
-					rhs[lo] = ax;
-					continue;
-				}
-				if (local_sino > 0.) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
-					RHS = true;
-				}
-				else
-					SUMMA = true;
-				volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-					tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-					PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, idx, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 			}
+			if (attenuation_correction)
+				LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
+			double temp = 0.;
+			int alku, loppu;
+			alku = Nz;
+			loppu = 0;
+			if (ku > 0) {
+				alku = tempk + 1;
+			}
+			else if (ku < 0) {
+				loppu = tempk;
+			}
+			volume_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, N2, tempj, tempk, local_sino,
+				ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices,
+				idx, N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+
+			for (uint32_t ii = 0u; ii < Np; ii++) {
+				if (tx0 < ty0 && tx0 < tz0) {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
+					tempi += iu;
+					tx0 += txu;
+					xyz = 1U;
+				}
+				else if (ty0 < tz0) {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+					tempj += ju;
+					ty0 += tyu;
+					xyz = 2U;
+				}
+				else {
+					if (attenuation_correction)
+						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+					tempk += ku;
+					tz0 += tzu;
+					xyz = 3U;
+					if (tempk < Nz && tempk >= 0) {
+						alku = tempk + 1;
+						loppu = tempk;
+						volume_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, N2, tempj, tempk, local_sino,
+							ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices,
+							idx, N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+					}
+				}
+			}
+			if (xyz < 3 && std::fabs(z_diff) >= 1e-8) {
+				if (xyz == 1)
+					tempi -= iu;
+				else if (xyz == 2)
+					tempj -= ju;
+				if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0)) {}
+				else {
+					tempk += ku;
+					alku = Nz;
+					loppu = 0;
+					if (ku > 0) {
+						loppu = tempk;
+					}
+					else if (ku < 0) {
+						alku = tempk + 1;
+					}
+					volume_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, N2, tempj, tempk, local_sino,
+						ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices,
+						idx, N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+				}
+			}
+
+			temp = 1. / temp;
+			if (attenuation_correction)
+				temp *= exp(jelppi);
+			if (normalization)
+				temp *= norm_coef[lo];
+			if (scatter)
+				temp *= scatter_coef[lo];
+			temp *= global_factor;
+
+			if (fp) {
+				if (ax == 0.)
+					ax = epps;
+				else
+					ax *= temp;
+				if (randoms_correction)
+					ax += randoms[lo];
+				rhs[lo] = ax;
+				continue;
+			}
+			if (local_sino > 0.) {
+				nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				RHS = true;
+			}
+			else
+				SUMMA = true;
+
+			volume_distance_3D_full(tempi, N0, N4, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, N2, tempj, tempk, local_sino,
+				ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP, PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices,
+				idx, N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 		}
 	}
 }

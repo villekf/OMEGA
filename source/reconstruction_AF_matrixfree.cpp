@@ -31,7 +31,7 @@ using namespace af;
 void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin,
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx,
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax,
-	const float NSlices, const uint32_t* pituus, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, 
+	const float NSlices, const int64_t* pituus, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, 
 	mxArray* cell, const mwSize* dimmi, const bool verbose, const uint32_t randoms_correction, const uint32_t attenuation_correction,
 	const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm, const uint32_t subsets,
 	const float epps, const char* k_path, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, 
@@ -40,7 +40,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	const size_t size_of_x, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute, 
 	const uint32_t device, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const bool use_64bit_atomics, uint32_t n_rekos,
 	const uint32_t n_rekos_mlem, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const float global_factor, const float bmin, const float bmax, 
-	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss, const bool saveIter) {
+	const float Vmax, const float* V, const size_t size_V, const float* gaussian, const size_t size_gauss, const bool saveIter, const bool TOF, const int64_t TOFSize, 
+	const float sigma_x, const float* TOFCenter, const int64_t nBins) {
 
 	af::setDevice(device);
 
@@ -54,6 +55,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	const float dc_z = cr_pz / static_cast<float>(n_rays3D + 1);
 
 	bool break_iter = false;
+
+	bool loadTOF = true;
 
 	uint32_t t0 = 0u;
 	uint32_t iter0 = 0u;
@@ -139,8 +142,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	array pj3, apu_sum, E, apu_sum_mlem;
 
-	if (MethodList.MRAMLA || MethodList.MBSREM)
-		E = constant(1.f, koko, 1);
+	if ((MethodList.MRAMLA || MethodList.MBSREM) && Nt > 1U)
+		E = constant(1.f, koko * nBins, 1);
 	else
 		E = constant(0.f, 1, 1);
 
@@ -165,7 +168,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	OpenCL_im_vectors vec_opencl;
 
 	// Load the necessary data from the MATLAB input and form the necessary variables
-	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter);
+	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter, Nt);
 
 	// Power factor for ACOSEM
 	w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
@@ -208,7 +211,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	status = createProgram(verbose, k_path, af_context, af_device_id, fileName, program_os, program_ml, program_mbsrem, atomic_64bit, device, header_directory,
 		projector_type, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, local_size, n_rays, n_rays3D, false, MethodList, osem_bool, 
-		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction);
+		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
 	if (status != CL_SUCCESS) {
 		std::cerr << "Error while creating program" << std::endl;
 		return;
@@ -242,13 +245,20 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		mexPrintf("Failed to create kernels\n");
 		return;
 	}
-	//else if (verbose) {
-	//	mexPrintf("OpenCL kernels successfully created\n");
-	//	mexEvalString("pause(.0001);");
-	//}
+	else if (DEBUG) {
+		mexPrintf("OpenCL kernels successfully created\n");
+		mexEvalString("pause(.0001);");
+	}
+
+	if (static_cast<double>(mem) * 0.75 < static_cast<double>(koko * nBins * sizeof(float)) && TOF)
+		loadTOF = false;
+
+	uint32_t TOFsubsets = subsets;
+	if (!loadTOF)
+		TOFsubsets = 1U;
 
 	// Create and write buffers
-	cl::Buffer d_x, d_y, d_z, d_pseudos, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_reko_type, d_reko_type_mlem, d_V, d_scat_mlem;
+	cl::Buffer d_x, d_y, d_z, d_pseudos, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_reko_type, d_reko_type_mlem, d_V, d_scat_mlem, d_TOFCenter;
 	cl::Buffer d_Summ, d_Summ_mlem;
 	cl::Buffer d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem;
 
@@ -256,7 +266,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	std::vector<cl::Buffer> d_L(subsets);
 	std::vector<cl::Buffer> d_zindex(subsets);
 	std::vector<cl::Buffer> d_xyindex(subsets);
-	std::vector<cl::Buffer> d_Sino(subsets);
+	std::vector<cl::Buffer> d_Sino(TOFsubsets);
 	std::vector<cl::Buffer> d_sc_ra(subsets);
 	std::vector<cl::Buffer> d_norm(subsets);
 	std::vector<cl::Buffer> d_scat(subsets);
@@ -267,14 +277,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, af_context, subsets, pituus, atten, norm, scat, pseudos, V, af_queue, d_atten, d_norm, d_scat, d_pseudos, d_V, 
 		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, atomic_64bit, randoms_correction, 
 		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem, d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko,
-		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem);
+		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter);
 	if (status != CL_SUCCESS) {
 		mexPrintf("Buffer creation failed\n");
 		return;
 	}
-	//else {
-	//	mexPrintf("Buffer creation succeeded\n");
-	//}
+	else if (DEBUG) {
+		mexPrintf("Buffer creation succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	array g(size_gauss, gaussian, afHost);
 	if (use_psf) {
@@ -317,6 +328,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		kernel.setArg(kernelInd_OSEM++, prows);
 		kernel.setArg(kernelInd_OSEM++, Nxy);
 		kernel.setArg(kernelInd_OSEM++, fp);
+		kernel.setArg(kernelInd_OSEM++, sigma_x);
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 			kernel.setArg(kernelInd_OSEM++, tube_width);
 			kernel.setArg(kernelInd_OSEM++, crystal_size_z);
@@ -359,6 +371,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		kernel_ml.setArg(kernelInd_MLEM++, prows);
 		kernel_ml.setArg(kernelInd_MLEM++, Nxy);
 		kernel_ml.setArg(kernelInd_MLEM++, fp);
+		kernel_ml.setArg(kernelInd_MLEM++, sigma_x);
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 			kernel_ml.setArg(kernelInd_MLEM++, tube_width);
 			kernel_ml.setArg(kernelInd_MLEM++, crystal_size_z);
@@ -409,6 +422,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		kernel_mramla.setArg(kernelInd_MRAMLA++, prows);
 		kernel_mramla.setArg(kernelInd_MRAMLA++, Nxy);
 		kernel_mramla.setArg(kernelInd_MRAMLA++, fp);
+		kernel_mramla.setArg(kernelInd_MRAMLA++, sigma_x);
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 			kernel_mramla.setArg(kernelInd_MRAMLA++, tube_width);
 			kernel_mramla.setArg(kernelInd_MRAMLA++, crystal_size_z);
@@ -421,6 +435,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			kernel_mramla.setArg(kernelInd_MRAMLA++, n_rays);
 		}
 		kernel_mramla.setArg(kernelInd_MRAMLA++, w_vec.epsilon_mramla);
+		kernel_mramla.setArg(kernelInd_MRAMLA++, d_TOFCenter);
 		kernel_mramla.setArg(kernelInd_MRAMLA++, d_atten);
 		kernel_mramla.setArg(kernelInd_MRAMLA++, d_pseudos);
 		kernel_mramla.setArg(kernelInd_MRAMLA++, d_x);
@@ -436,13 +451,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		uint32_t alku = 0u;
 
-		if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass)
-			w_vec.Amin = constant(0.f, koko, 1);
+		if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U)
+			w_vec.Amin = constant(0.f, koko * nBins, 1);
 
 		// Run the prepass phase
 		MRAMLA_prepass(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino, koko, x00, vec.C_co,
 			vec.C_aco, vec.C_osl, alku, kernel_mramla, d_L, raw, MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, 
-			d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps);
+			d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps, TOF, loadTOF, Sin, nBins, koko, randoms_correction, Nt);
 
 
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && tt == 0) {
@@ -479,7 +494,19 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			float* apu = (float*)mxGetData(mxGetCell(Sin, tt));
 			if (osem_bool) {
 				for (uint32_t kk = 0u; kk < subsets; kk++) {
-					af_queue.enqueueWriteBuffer(d_Sino[kk], CL_TRUE, 0, sizeof(float) * length[kk], &apu[pituus[kk]]);
+					if (TOF) {
+						if (!loadTOF && kk == 0) {
+							d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * nBins, NULL, &status);
+							for (int64_t to = 0LL; to < nBins; to++)
+								status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &apu[pituus[kk] + koko * to]);
+						}
+						else if (loadTOF) {
+							for (int64_t to = 0LL; to < nBins; to++)
+								status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &apu[pituus[kk] + koko * to]);
+						}
+					}
+					else
+						af_queue.enqueueWriteBuffer(d_Sino[kk], CL_TRUE, 0, sizeof(float) * length[kk], &apu[pituus[kk]]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
@@ -510,7 +537,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				}
 			}
 			if (mlem_bool) {
-				af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_TRUE, 0, sizeof(float) * koko, apu);
+				af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_TRUE, 0, sizeof(float) * koko * nBins, apu);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -541,18 +568,20 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 
 		// Compute values needed for MBSREM and MRAMLA
-		if (MethodList.MBSREM || MethodList.MRAMLA) {
+		if ((MethodList.MBSREM || MethodList.MRAMLA) && Nt > 1U) {
 			array Sino = array(koko, (float*)mxGetData(mxGetCell(Sin, tt)), afHost);
 			array rand;
 			if (randoms_correction)
 				rand = array(koko, (float*)mxGetData(mxGetCell(sc_ra, tt)), afHost);
 			if (w_vec.U == 0.f) {
-				w_vec.U = max<float>(Sino / w_vec.Amin);
+				const array Aind = w_vec.Amin > 0.f;
+				w_vec.U = max<float>(Sino(Aind) / w_vec.Amin(Aind));
 			}
-			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, E);
+			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, E, TOF, nBins);
 		}
 		if (osem_bool) {
 			kernel.setArg(kernelInd_OSEMTIter++, w_vec.epsilon_mramla);
+			kernel.setArg(kernelInd_OSEMTIter++, d_TOFCenter);
 			kernel.setArg(kernelInd_OSEMTIter++, d_atten);
 			kernel.setArg(kernelInd_OSEMTIter++, d_pseudos);
 			kernel.setArg(kernelInd_OSEMTIter++, d_x);
@@ -568,6 +597,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 		if (mlem_bool) {
 			kernel_ml.setArg(kernelInd_MLEMT++, w_vec.epsilon_mramla);
+			kernel_ml.setArg(kernelInd_MLEMT++, d_TOFCenter);
 			kernel_ml.setArg(kernelInd_MLEMT++, d_atten);
 			kernel_ml.setArg(kernelInd_MLEMT++, d_pseudos);
 			kernel_ml.setArg(kernelInd_MLEMT++, d_x);
@@ -590,11 +620,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			mexEvalString("pause(.0001);");
 			return;
 		}
-		//else if (status == CL_SUCCESS) {
-		//	//getErrorString(status);
-		//	mexPrintf("Queue finish succeeded\n");
-		//	mexEvalString("pause(.0001);");
-		//}
+		else if (DEBUG) {
+			//getErrorString(status);
+			mexPrintf("Queue finish succeeded\n");
+			mexEvalString("pause(.0001);");
+		}
 
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < Niter; iter++) {
@@ -607,6 +637,16 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				// Loop through the subsets
 				for (uint32_t osa_iter = osa_iter0; osa_iter < subsets; osa_iter++) {
 
+					if (osa_iter > osa_iter0 && TOF && !loadTOF) {
+						d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * nBins, NULL, &status);
+						float* apu = (float*)mxGetData(mxGetCell(Sin, tt));
+						for (int64_t to = 0LL; to < nBins; to++)
+							status = af_queue.enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[osa_iter] * to, sizeof(float) * length[osa_iter], &apu[pituus[osa_iter] + koko * to]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
+					}
 
 					if (compute_norm_matrix == 1u) {
 						if (atomic_64bit) {
@@ -668,7 +708,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					kernel.setArg(kernelInd_OSEMSubIter++, d_xyindex[osa_iter]);
 					kernel.setArg(kernelInd_OSEMSubIter++, d_zindex[osa_iter]);
 					kernel.setArg(kernelInd_OSEMSubIter++, d_L[osa_iter]);
-					kernel.setArg(kernelInd_OSEMSubIter++, d_Sino[osa_iter]);
+					if (TOF && !loadTOF)
+						kernel.setArg(kernelInd_OSEMSubIter++, d_Sino[0]);
+					else
+						kernel.setArg(kernelInd_OSEMSubIter++, d_Sino[osa_iter]);
 					kernel.setArg(kernelInd_OSEMSubIter++, d_sc_ra[osa_iter]);
 					kernel.setArg(kernelInd_OSEMSubIter++, vec_opencl.d_im_os);
 					kernel.setArg(kernelInd_OSEMSubIter++, vec_opencl.d_rhs_os);
@@ -686,10 +729,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						mexEvalString("pause(.0001);");
 						break;
 					}
-					//else if (verbose) {
-					//	mexPrintf("OS kernel launched successfully\n");
-					//	mexEvalString("pause(.0001);");
-					//}
+					else if (DEBUG) {
+						mexPrintf("OS kernel launched successfully\n");
+						mexEvalString("pause(.0001);");
+					}
 					status = af_queue.finish();
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -744,9 +787,18 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						af::sync();
 					}
 
+					if (DEBUG) {
+						mexPrintf("Summ = %f\n", af::sum<float>(*testi));
+						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
+						mexEvalString("pause(.0001);");
+					//	vec.im_os = vec.rhs_os;
+					}
+
+
 					computeOSEstimates(vec, w_vec, MethodList, im_dim, testi, epps, iter, osa_iter, subsets, beta, Nx, Ny, Nz, data, length, d_Sino, break_iter, pj3,
 						n_rekos2, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, Summ, kernel_mramla, d_L, raw, MethodListOpenCL, koko, atomic_64bit,
-						compute_norm_matrix, OpenCLStruct.kernelNLM, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, OpenCLStruct);
+						compute_norm_matrix, OpenCLStruct.kernelNLM, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, OpenCLStruct, TOF, loadTOF, Sin, nBins, 
+						randoms_correction);
 
 					vec.im_os(vec.im_os < epps) = epps;
 
@@ -851,10 +903,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					mexEvalString("pause(.0001);");
 					break;
 				}
-				//else if (verbose) {
-				//	mexPrintf("OpenCL kernel executed successfully\n");
-				//	mexEvalString("pause(.0001);");
-				//}
+				else if (DEBUG) {
+					mexPrintf("OpenCL MLEM kernel executed successfully\n");
+					mexEvalString("pause(.0001);");
+				}
 				status = af_queue.finish();
 				if (status != CL_SUCCESS) {
 					getErrorString(status);

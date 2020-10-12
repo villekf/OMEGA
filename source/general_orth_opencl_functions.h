@@ -56,9 +56,9 @@ inline float compute_element_orth_3D_per(const float xs, const float ys, const f
 
 	//float x1, y1, z1, x0, y0, z0;
 
+	const float x0 = xp - xs;
 	const float y0 = yp - ys;
 	const float z0 = zp - zs;
-	const float x0 = xp - xs;
 
 	// Cross product
 	const float x1 = yl * z0 - zl * y0;

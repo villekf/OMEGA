@@ -768,3 +768,273 @@ __device__ bool siddon_pre_loop_3D(const float bx, const float by, const float b
 
 	return false;
 }
+
+#ifdef TOF
+#define _2PI 0.3989423f
+
+__device__ float normPDF(const float x, const float mu, const float sigma) {
+
+	const float a = (x - mu) / sigma;
+
+	return _2PI / sigma * expf(-0.5f * a * a);
+}
+
+__device__ void TOFDis(const float x_diff, const float y_diff, const float z_diff, const float tc, const float LL, float* D, float* DD) {
+	const float xI = x_diff * tc;
+	const float yI = y_diff * tc;
+	const float zI = z_diff * tc;
+	*D = sqrtf(xI * xI + yI * yI + zI * zI) - LL / 2.f;
+	*DD = *D;
+}
+
+__device__ float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
+	return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - copysignf(element, DD), TOFCenter, sigma_x)) / 2.f) + epps;
+}
+
+
+__device__ float TOFLoop(const float DD, const float element, float* TOFVal, const float* TOFCenter,
+	const float sigma_x, float* D, const unsigned int tid, const float epps) {
+	float TOFSum = 0.f;
+#ifdef DEC
+	float apu[NBINS];
+#endif
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++) {
+#ifdef DEC
+		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		TOFSum += apu[to];
+#else
+		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		TOFSum += apu;
+#endif
+	}
+#ifdef DEC
+	* D -= (copysignf(element, DD));
+#endif
+	if (TOFSum < epps)
+		TOFSum = epps;
+#ifdef DEC
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++)
+		TOFVal[to + tid] = apu[to] / TOFSum;
+#endif
+	return TOFSum;
+}
+
+
+__device__ void denominatorTOF(float* ax, const float element, const float* d_OSEM, unsigned int local_ind, const float TOFSum, float* TOFVal,
+	const float DD, const float* TOFCenter, const float sigma_x, float* D, const unsigned int tid, const float epps, const unsigned int d_N) {
+#if !defined(MBSREM)
+	unsigned int ll = NBINS;
+#pragma unroll N_REKOS
+	for (unsigned int kk = 0U; kk < N_REKOS; kk++) {
+		unsigned int ii = ll * kk;
+#else
+	const unsigned int ii = 0U;
+#endif
+	float apu = element * d_OSEM[local_ind];
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++) {
+#ifdef DEC
+		ax[to + ii] += (apu * TOFVal[to + tid]);
+#else
+		const float jelppi = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum;
+		ax[to + ii] += (apu * jelppi);
+#endif
+	}
+#if !defined(MBSREM)
+	local_ind += d_N;
+	}
+#endif
+#ifndef DEC
+* D -= (copysignf(element, DD));
+#endif
+}
+
+
+
+// Nominator (y for backprojection)
+__device__ void nominatorTOF(const unsigned char* MethodList, float* ax, const float* d_Sino, const float d_epsilon_mramla, const float d_epps,
+	const float temp, const float* d_sc_ra, const unsigned int idx, const long long int TOFSize, const float local_sino) {
+	float local_rand = 0.f;
+#ifdef RANDOMS
+	local_rand = d_sc_ra[idx];
+#endif
+#if !defined(MBSREM)
+	unsigned int ll = NBINS;
+#pragma unroll N_REKOS
+	for (unsigned int kk = 0; kk < N_REKOS; kk++) {
+		unsigned int ii = ll * kk;
+#else
+	const unsigned int ii = 0U;
+#endif
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++) {
+		ax[to + ii] *= temp;
+		if (ax[to + ii] < d_epps)
+			ax[to + ii] = d_epps;
+#ifdef RANDOMS
+		ax[to + ii] += local_rand;
+#endif
+#if defined(MRAMLA) && !defined(MBSREM)
+		if (MethodList[kk] != 1u)
+			ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
+			if (ax[to + ii] <= d_epsilon_mramla && local_rand == 0.f && local_sino > 0.f)
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / (d_epsilon_mramla * d_epsilon_mramla)) * (ax[to + ii] - d_epsilon_mramla);
+			else
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+		}
+#else
+		ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+#endif
+	}
+#if !defined(MBSREM)
+	}
+#endif
+}
+
+
+__device__ void backprojectTOF(const unsigned int local_ind, const float local_ele, const unsigned int tid, const float* TOFVal, const float* yax,
+	CAST* d_Summ
+#ifndef DEC
+	, const float temp, const float sigma_x, float* D, const float DD, const float* TOFCenter, const float epps, const float TOFSum
+#endif
+#ifdef MBSREM
+	, const RecMethodsOpenCL MethodListOpenCL, const unsigned int d_alku, const unsigned char MBSREM_prepass, float* minimi, float* axACOSEM, const float* d_OSEM,
+	float* d_E, CAST* d_co, CAST* d_aco, const float local_sino, const unsigned int idx, const long long int TOFSize
+#else
+	, CAST* d_rhs, const unsigned char no_norm, const unsigned int d_N
+#endif
+) {
+	unsigned int yy = local_ind;
+	float val = 0.f;
+#if !defined(MBSREM)
+	unsigned int ll = NBINS;
+#pragma unroll N_REKOS
+	for (unsigned int kk = 0; kk < N_REKOS; kk++) {
+		unsigned int ii = ll * kk;
+#else
+	const unsigned int ii = 0U;
+#endif
+
+	float yaxTOF = 0.f;
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++) {
+
+#ifdef DEC
+		const float apu = local_ele * TOFVal[to + tid];
+#else
+		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+#endif
+
+#ifdef MBSREM
+		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {
+			if (apu < minimi[to] && apu > 0.f)
+				minimi[to] = apu;
+			d_E[idx + to * TOFSize] += apu;
+		}
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
+			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+#endif
+
+		val += apu;
+		yaxTOF += apu * yax[to + ii];
+	}
+
+#ifdef MBSREM
+	if (d_alku == 0u) {
+		if (MBSREM_prepass == 1)
+#ifdef ATOMIC
+			atomicAdd(&d_Summ[local_ind], __float2ull_rn(val * TH));
+#else
+			atomicAdd(&d_Summ[local_ind], val);
+#endif
+		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
+#ifdef ATOMIC
+			atomicAdd(&d_co[local_ind], __float2ull_rn(yaxTOF * TH));
+#else
+			atomicAdd(&d_co[local_ind], yaxTOF);
+#endif
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
+#ifdef ATOMIC
+			atomicAdd(&d_aco[local_ind], __float2ull_rn(yaxTOF * TH));
+#else
+			atomicAdd(&d_aco[local_ind], yaxTOF);
+#endif
+	}
+#else
+	if (no_norm == 0u && ii == 0)
+#ifdef ATOMIC
+		atomicAdd(&d_Summ[local_ind], __float2ull_rn(val * TH));
+#else
+		atomicAdd(&d_Summ[local_ind], val);
+#endif
+#ifdef ATOMIC
+	atomicAdd(&d_rhs[yy], __float2ull_rn(yaxTOF * TH));
+#else
+	atomicAdd(&d_rhs[yy], (yaxTOF));
+#endif
+#endif
+
+#if !defined(MBSREM)
+	yy += d_N;
+	}
+#endif
+
+#ifndef DEC
+* D -= (copysignf(local_ele / temp, DD));
+#endif
+}
+
+
+__device__ void sensTOF(const unsigned int local_ind, const float local_ele, const unsigned int tid, const float* TOFVal, CAST* d_Summ,
+#ifndef DEC
+	const float temp, const float sigma_x, float* D, const float DD, const float* TOFCenter, const float epps, const float TOFSum,
+#endif
+#ifdef MBSREM
+	const RecMethodsOpenCL MethodListOpenCL, const unsigned int d_alku, const unsigned char MBSREM_prepass, float* minimi, float* axACOSEM, const float* d_OSEM,
+	float* d_E, const unsigned int idx, const long long int TOFSize,
+#endif
+	const unsigned char no_norm) {
+	float val = 0.f;
+#pragma unroll NBINS
+	for (long long int to = 0L; to < NBINS; to++) {
+
+#ifdef DEC
+		const float apu = local_ele * TOFVal[to + tid];
+#else
+		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+#endif
+#ifdef MBSREM
+		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {
+			if (apu < minimi[to] && apu > 0.f)
+				minimi[to] = apu;
+			d_E[idx + to * TOFSize] += apu;
+		}
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
+			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+#endif
+		val += apu;
+	}
+#ifdef MBSREM
+	if (no_norm == 0u && d_alku == 0u)
+#ifdef ATOMIC
+		atomicAdd(&d_Summ[local_ind], __float2ull_rn(val * TH));
+#else
+		atomicAdd(&d_Summ[local_ind], val);
+#endif
+#else
+	if (no_norm == 0u)
+#ifdef ATOMIC
+		atomicAdd(&d_Summ[local_ind], __float2ull_rn(val * TH));
+#else
+		atomicAdd(&d_Summ[local_ind], val);
+#endif
+#endif
+
+#ifndef DEC
+	* D -= (copysignf(local_ele / temp, DD));
+#endif
+}
+#endif

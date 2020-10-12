@@ -396,8 +396,9 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
 		}
+		bool swap = false;
 		const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, TOFSize, 
-			vali, alku, detWPseudo, rings, bins, nDistSide);
+			vali, alku, detWPseudo, rings, bins, nDistSide, swap);
 		if (sinoIndex >= 0) {
 			Sino[sinoIndex] = Sino[sinoIndex] + static_cast<octave_uint16>(1);
 			if (event_true && obtain_trues)
@@ -523,8 +524,9 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 				ring_number1 += ring_number1 / gapSize;
 				ring_number2 += ring_number2 / gapSize;
 			}
+			bool swap = false;
 			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, sinoSize,
-				vali, alku, detWPseudo, rings, bins, nDistSide);
+				vali, alku, detWPseudo, rings, bins, nDistSide, swap);
 			if (sinoIndex >= 0) {
 				SinoD[sinoIndex] = SinoD[sinoIndex] + static_cast<octave_uint16>(1);
 			}

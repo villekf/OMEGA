@@ -136,7 +136,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 		else if (type == 3u)
 			kerroin = norm(x_diff, y_diff, z_diff);
 
-		if (fabs(z_diff) < 1e-8) {
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
 			if (tempk >= Nz)
@@ -152,11 +152,11 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 						double temppi = detectors.xs;
 						detectors.xs = detectors.ys;
 						detectors.ys = temppi;
-						orth_perpendicular_precompute(Nx, Ny, detectors.yd, yy_vec, y_center, x_center[0], z_center, kerroin, temp_koko_orth, 
+						orth_perpendicular_precompute(Nx, Ny, detectors.yd, yy_vec, y_center, x_center[0], z_center, kerroin, temp_koko_orth,
 							detectors, y_diff, x_diff, z_diff, tempk);
 						lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
 						if (type == 2u) {
-							orth_perpendicular_precompute_3D(Nx, Ny, Nz, detectors.yd, yy_vec, y_center, x_center[0], z_center, kerroinz, temp_koko_orth_3D, 
+							orth_perpendicular_precompute_3D(Nx, Ny, Nz, detectors.yd, yy_vec, y_center, x_center[0], z_center, kerroinz, temp_koko_orth_3D,
 								detectors, y_diff, x_diff, z_diff, tempk);
 							lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
 						}
@@ -178,7 +178,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					// The number of voxels the LOR/ray traverses
 					if (type == 1u || type == 2u) {
-						orth_perpendicular_precompute(Ny, Nx, detectors.xd, xx_vec, x_center, y_center[0], z_center, kerroin, temp_koko_orth, detectors, 
+						orth_perpendicular_precompute(Ny, Nx, detectors.xd, xx_vec, x_center, y_center[0], z_center, kerroin, temp_koko_orth, detectors,
 							x_diff, y_diff, z_diff, tempk);
 						lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
 						if (type == 2u) {
@@ -196,433 +196,97 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				}
 				// LOR/ray doesn't traverse through the pixel space
 			}
-			else {
-				int32_t tempi = 0, tempj = 0, iu = 0, ju = 0;
-				double txu = 0., tyu = 0., tc = 0., tx0 = 0., ty0 = 0.;
-
-				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-
-				if (!skip) {
-
-					if (type > 0u) {
-						int alku, loppu;
-						if (type == 1u || type == 2u) {
-							alku = tempk + 1;
-							loppu = tempk;
-							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-						}
-						if (type > 1u) {
-							alku = Nz;
-							loppu = 0;
-							if (type == 2u) {
-								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-							}
-							if (type == 3u) {
-								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-							}
-						}
-					}
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-
-						temp_koko++;
-
-						if (tx0 < ty0) {
-							tempi += iu;
-							tx0 += txu;
-							xyz = 1u;
-						}
-						else {
-							tempj += ju;
-							ty0 += tyu;
-							xyz = 2u;
-						}
-						if (tempj < 0 || tempi < 0 || tempi >= Nx || tempj >= Ny) {
-							break;
-						}
-					}
-					// The number of voxels the LOR/ray traverses
-					if (type == 1u || type == 2u) {
-						lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
-						if (type == 2u)
-							lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
-					}
-					else if (type == 3u)
-						lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
-					lor[lo] = temp_koko;
-				}
-			}
 		}
 		else {
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
 
-					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 0;
-					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
-
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
-
-					if (!skip) {
-
-						double apu1;
-						for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-							apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-							if (apu1 > 0.) {
-								tempj = static_cast<int32_t>(ii);
-								break;
-							}
-						}
-						int alku, loppu;
-						if (type > 0u) {
-							if (type == 1u || type == 2u) {
-								alku = tempk + 1;
-								loppu = tempk;
-								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-							}
-							if (type > 1u) {
-								alku = Nz;
-								loppu = 0;
-								if (ku > 0) {
-									alku = tempk + 1;
-								}
-								else if (ku < 0) {
-									loppu = tempk;
-								}
-								if (type == 2u) {
-									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-								}
-								if (type == 3u) {
-									volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-								}
-							}
-						}
-
-						for (uint32_t ii = 0u; ii < Np; ii++) {
-
-							temp_koko++;
-
-							if (tx0 < tz0) {
-								tempi += iu;
-								tx0 += txu;
-								xyz = 1u;
-							}
-							else {
-								tempk += ku;
-								tz0 += tzu;
-								xyz = 3u;
-								if (type == 1u || type == 2u) {
-									if (tempk < Nz && tempk >= 0) {
-										alku = tempk + 1;
-										loppu = tempk;
-										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-									}
-								}
-								if (type > 1u) {
-									if (tempk < Nz && tempk >= 0) {
-										alku = tempk + 1;
-										loppu = tempk;
-										if (type == 2u) {
-											orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-												tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-										}
-										if (type == 3u) {
-											volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-												tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-										}
-									}
-								}
-							}
-							if (tempk < 0 || tempi < 0 || tempi >= Nx || tempk >= Nz) {
-								if (xyz < 3 && type > 1u) {
-									tempi -= iu;
-									if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0))
-										break;
-									else
-										tempk += ku;
-									alku = Nz;
-									loppu = 0;
-									if (ku > 0) {
-										loppu = tempk;
-									}
-									else if (ku < 0) {
-										alku = tempk + 1;
-									}
-									if (type == 2u) {
-										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind);
-									}
-									if (type == 3u) {
-										volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-									}
-								}
-								break;
-							}
-						}
-
-						// The number of voxels the LOR/ray traverses
-						if (type == 1u || type == 2u) {
-							lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
-							if (type == 2u)
-								lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
-						}
-						else if (type == 3u)
-							lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
-						lor[lo] = temp_koko;
-					}
-				}
-				// LOR/ray doesn't traverse through the pixel space
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
-
-					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 1;
-					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-					if (!skip) {
-						double apu1;
-						for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-							apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-							if (apu1 > 0.) {
-								tempi = static_cast<int32_t>(ii);
-								break;
-							}
-						}
-						const double temp_x = detectors.xs;
-						detectors.xs = detectors.ys;
-						detectors.ys = temp_x;
-						int alku, loppu;
-						if (type > 0u) {
-							if (type == 1u || type == 2u) {
-								alku = tempk + 1;
-								loppu = tempk;
-								orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-									tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-							}
-							if (type > 1u) {
-								alku = Nz;
-								loppu = 0;
-								if (ku > 0) {
-									alku = tempk + 1;
-								}
-								else if (ku < 0) {
-									loppu = tempk;
-								}
-								if (type == 2u) {
-									orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-										tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-								}
-								if (type == 3u) {
-									volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-										tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-								}
-							}
-						}
-
-						for (uint32_t ii = 0u; ii < Np; ii++) {
-							temp_koko++;
-
-							if (ty0 < tz0) {
-								tempj += ju;
-								ty0 += tyu;
-								xyz = 2u;
-							}
-							else {
-								tempk += ku;
-								tz0 += tzu;
-								xyz = 3u;
-								if (type == 1u || type == 2u) {
-									if (tempk < Nz && tempk >= 0) {
-										alku = tempk + 1;
-										loppu = tempk;
-										orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-									}
-								}
-								if (type > 1u) {
-									if (tempk < Nz && tempk >= 0) {
-										alku = tempk + 1;
-										loppu = tempk;
-										if (type == 2u) {
-											orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-												tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-										}
-										if (type == 3u) {
-											volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-												tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-												PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-										}
-									}
-								}
-							}
-							if (tempj < 0 || tempk < 0 || tempk >= Nz || tempj >= Ny) {
-								if (xyz < 3 && type > 1u) {
-									tempj -= ju;
-									if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0))
-										break;
-									else
-										tempk += ku;
-									alku = Nz;
-									loppu = 0;
-									if (ku > 0) {
-										loppu = tempk;
-									}
-									else if (ku < 0) {
-										alku = tempk + 1;
-									}
-									if (type == 2u) {
-										orth_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind);
-									}
-									if (type == 3u) {
-										volume_distance_3D_full(tempj, Ny, Nz, x_diff, y_diff, z_diff, x_center, y_center, z_center, temp, Nx,
-											tempi, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Nx, 1u, alku, ju, 0, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-									}
-								}
-								break;
-							}
-						}
-						// The number of voxels the LOR/ray traverses
-						if (type == 1u || type == 2u) {
-							lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
-							if (type == 2u)
-								lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
-						}
-						else if (type == 3u)
-							lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
-						lor[lo] = temp_koko;
-					}
-				}
-				// LOR/ray doesn't traverse through the pixel space
+			//Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
 			}
 			else {
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			}
 
-				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 1;
-				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
-				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, 
-					tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			if (!skip) {
 
-				if (!skip) {
-					int alku, loppu;
-					if (type > 0u) {
-						if (type == 1u || type == 2u) {
+				int alku, loppu;
+				if (type > 0u) {
+					if (type == 1u || type == 2u) {
+						alku = tempk + 1;
+						loppu = tempk;
+						orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+							tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
+							PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+					}
+					if (type > 1u) {
+						alku = Nz;
+						loppu = 0;
+						if (ku > 0) {
 							alku = tempk + 1;
-							loppu = tempk;
-							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 						}
-						if (type > 1u) {
-							alku = Nz;
-							loppu = 0;
-							if (ku > 0) {
-								alku = tempk + 1;
-							}
-							else if (ku < 0) {
-								loppu = tempk;
-							}
-							if (type == 2u) {
-								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-							}
-							if (type == 3u) {
-								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-							}
+						else if (ku < 0) {
+							loppu = tempk;
+						}
+						if (type == 2u) {
+							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
+								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+						}
+						if (type == 3u) {
+							volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
+								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 						}
 					}
+				}
 
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						temp_koko++;
+				for (uint32_t ii = 0u; ii < Np; ii++) {
 
-						if (tz0 < ty0 && tz0 < tx0) {
-							tempk += ku;
-							tz0 += tzu;
-							xyz = 3u;
-							if (type == 1u || type == 2u) {
-								if (tempk < Nz && tempk >= 0) {
-									alku = tempk + 1;
-									loppu = tempk;
-									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-								}
-							}
-							if (type > 1u) {
-								if (tempk < Nz && tempk >= 0) {
-									alku = tempk + 1;
-									loppu = tempk;
-									if (type == 2u) {
-										orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
-									}
-									if (type == 3u) {
-										volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
-											tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
-											PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
-									}
-								}
+					temp_koko++;
+
+					if (tx0 < ty0 && tx0 < tz0) {
+						tempi += iu;
+						tx0 += txu;
+						xyz = 1u;
+					}
+					else if (ty0 < tz0) {
+						tempj += ju;
+						ty0 += tyu;
+						xyz = 2u;
+					}
+					else {
+						tempk += ku;
+						tz0 += tzu;
+						xyz = 3u;
+						if (type == 1u || type == 2u) {
+							if (tempk < Nz && tempk >= 0) {
+								alku = tempk + 1;
+								loppu = tempk;
+								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 							}
 						}
-						else if (ty0 < tx0) {
-							tempj += ju;
-							ty0 += tyu;
-							xyz = 2u;
-						}
-						else {
-							tempi += iu;
-							tx0 += txu;
-							xyz = 1u;
-						}
-						if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz) {
-							if (xyz < 3 && type > 1u) {
-								if (xyz == 1)
-									tempi -= iu;
-								else if (xyz == 2)
-									tempj -= ju;
-								if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0))
-									break;
-								else
-									tempk += ku;
-								alku = Nz;
-								loppu = 0;
-								if (ku > 0) {
-									loppu = tempk;
-								}
-								else if (ku < 0) {
-									alku = tempk + 1;
-								}
+						if (type > 1u) {
+							if (tempk < Nz && tempk >= 0) {
+								alku = tempk + 1;
+								loppu = tempk;
 								if (type == 2u) {
 									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
@@ -634,22 +298,51 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
 								}
 							}
-							break;
 						}
 					}
-					// LOR/ray traverses through the pixel space
-					// The number of voxels the LOR/ray traverses
-					if (type == 1u || type == 2u) {
-						lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
-						if (type == 2u)
-							lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
+					if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz) {
+						if (xyz < 3 && type > 1u) {
+							if (xyz == 1)
+								tempi -= iu;
+							else if (xyz == 2)
+								tempj -= ju;
+							if ((tempk >= (Nz - 1) && ku > 0) || (tempk <= 0 && ku < 0))
+								break;
+							else
+								tempk += ku;
+							alku = Nz;
+							loppu = 0;
+							if (ku > 0) {
+								loppu = tempk;
+							}
+							else if (ku < 0) {
+								alku = tempk + 1;
+							}
+							if (type == 2u) {
+								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+							}
+							if (type == 3u) {
+								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
+									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
+									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_vol, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V);
+							}
+						}
+						break;
 					}
-					else if (type == 3u)
-						lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
-					lor[lo] = temp_koko;
 				}
-				// LOR/ray doesn't traverse through the pixel space
+				// The number of voxels the LOR/ray traverses
+				if (type == 1u || type == 2u) {
+					lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
+					if (type == 2u)
+						lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
+				}
+				else if (type == 3u)
+					lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
+				lor[lo] = temp_koko;
 			}
 		}
 	}
+	
 }

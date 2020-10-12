@@ -68,8 +68,9 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
 		}
+		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, aika, NT, TOFSize,
-			vali, alku, detWPseudo, rings, binN, nDistSide);
+			vali, alku, detWPseudo, rings, binN, nDistSide, swap);
 		if (indeksi >= 0) {
 			if (store_trues && trues_index[kk]) {
 #pragma omp atomic

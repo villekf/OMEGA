@@ -71,7 +71,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #endif
 #ifdef NREKOS1
 	ax[0] *= temp;
-	if (ax[0] <= 0.f)
+	if (ax[0] < d_epps)
 		ax[0] = d_epps;
 #ifdef RANDOMS
 		ax[0] += local_rand;
@@ -90,7 +90,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #endif
 #elif defined(NREKOS2)
 	ax[0] *= temp;
-	if (ax[0] <= 0.f)
+	if (ax[0] < d_epps)
 		ax[0] = d_epps;
 #ifdef RANDOMS
 		ax[0] += local_rand;
@@ -108,7 +108,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 	ax[0] = d_Sino / ax[0];
 #endif
 	ax[1] *= temp;
-	if (ax[1] <= 0.f)
+	if (ax[1] < d_epps)
 		ax[1] = d_epps;
 #ifdef RANDOMS
 		ax[1] += local_rand;
@@ -129,7 +129,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
 		ax[kk] *= temp;
-		if (ax[kk] <= 0.f)
+		if (ax[kk] < d_epps)
 			ax[kk] = d_epps;
 #ifdef RANDOMS
 			ax[kk] += local_rand;
@@ -155,7 +155,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 inline void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
 	const uint idx) {
 	*axCOSEM *= temp;
-	if (*axCOSEM <= 0.f)
+	if (*axCOSEM < d_epps)
 		* axCOSEM = d_epps;
 #ifdef RANDOMS
 	* axCOSEM += d_sc_ra[idx];
@@ -196,17 +196,13 @@ inline void rhs(__constant uchar* MethodList, const float local_ele, const float
 #endif
 
 #else
-// Denominator (forward projection), multi-GPU version
-inline void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
-	*axOSEM += (local_ele * *d_OSEM);
-}
 
 // Nominator (backprojection), multi-GPU version
 inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
 	const uint idx) {
 	*axOSEM *= temp;
 #ifdef BP
-	if (*axOSEM == 0.f)
+	if (*axOSEM < d_epps)
 		* axOSEM = d_epps;
 #endif
 #ifdef RANDOMS
@@ -215,6 +211,13 @@ inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epp
 #ifdef BP
 	*axOSEM = d_Sino / *axOSEM;
 #endif
+}
+#endif
+
+#if defined(MBSREM) || !defined(AF)
+// Denominator (forward projection), multi-GPU version
+inline void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
+	*axOSEM += (local_ele * *d_OSEM);
 }
 #endif
 
@@ -779,3 +782,275 @@ inline bool siddon_pre_loop_3D(const float bx, const float by, const float bz, c
 
 	return false;
 }
+
+#ifdef TOF
+#define _2PI 0.3989423f
+
+inline float normPDF(const float x, const float mu, const float sigma) {
+
+	const float a = (x - mu) / sigma;
+
+	return _2PI / sigma * native_exp(-0.5f * a * a);
+}
+
+inline void TOFDis(const float x_diff, const float y_diff, const float z_diff, const float tc, const float LL, float* D, float* DD) {
+	const float xI = x_diff * tc;
+	const float yI = y_diff * tc;
+	const float zI = z_diff * tc;
+	*D = native_sqrt(xI * xI + yI * yI + zI * zI) - LL / 2.f;
+	*DD = *D;
+}
+
+inline float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
+	return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - element * sign(DD), TOFCenter, sigma_x)) / 2.f) + epps;
+}
+
+
+inline float TOFLoop(const float DD, const float element, __private float* TOFVal, __constant float* TOFCenter,
+	const float sigma_x, float* D, const uint tid, const float epps) {
+	float TOFSum = 0.f;
+#ifdef DEC
+	__private float apu[NBINS];
+#endif
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++) {
+#ifdef DEC
+		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		TOFSum += apu[to];
+#else
+		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		TOFSum += apu;
+#endif
+	}
+#ifdef DEC
+	*D -= (element * sign(DD));
+#endif
+	if (TOFSum < epps)
+		TOFSum = epps;
+#ifdef DEC
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++)
+		TOFVal[to + tid] = apu[to] / TOFSum;
+#endif
+	return TOFSum;
+}
+
+
+inline void denominatorTOF(float* ax, const float element, const __global float* d_OSEM, uint local_ind, const float TOFSum, __private float* TOFVal,
+	const float DD, __constant float* TOFCenter, const float sigma_x, float* D, const uint tid, const float epps, const uint d_N) {
+#if defined(AF) && !defined(MBSREM)
+	uint ll = NBINS;
+#pragma unroll N_REKOS
+	for (uint kk = 0U; kk < N_REKOS; kk++) {
+		uint ii = ll * kk;
+#else
+	const uint ii = 0U;
+#endif
+	float apu = element * d_OSEM[local_ind];
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++) {
+#ifdef DEC
+		ax[to + ii] += (apu * TOFVal[to + tid]);
+#else
+		const float jelppi = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum;
+		ax[to + ii] += (apu * jelppi);
+#endif
+	}
+#if defined(AF) && !defined(MBSREM)
+		local_ind += d_N;
+	}
+#endif
+#ifndef DEC
+*D -= (element * sign(DD));
+#endif
+}
+
+
+
+// Nominator (y for backprojection)
+inline void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float* d_Sino, const float d_epsilon_mramla, const float d_epps,
+	const float temp, const __global float* d_sc_ra, const uint idx, const long TOFSize, const float local_sino) {
+	float local_rand = 0.f;
+#ifdef RANDOMS
+	local_rand = d_sc_ra[idx];
+#endif
+#if defined(AF) && !defined(MBSREM)
+	uint ll = NBINS;
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+		uint ii = ll * kk;
+#else
+	const uint ii = 0U;
+#endif
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++) {
+		ax[to + ii] *= temp;
+		if (ax[to + ii] < d_epps)
+			ax[to + ii] = d_epps;
+#ifdef RANDOMS
+		ax[to + ii] += local_rand;
+#endif
+#if defined(AF) && defined(MRAMLA) && !defined(MBSREM)
+		if (MethodList[kk] != 1u)
+			ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
+			if (ax[to + ii] <= d_epsilon_mramla && local_rand == 0.f && local_sino > 0.f)
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / native_powr(d_epsilon_mramla, 2)) * (ax[to + ii] - d_epsilon_mramla);
+			else
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+		}
+#else
+#if defined(AF) || defined(BP)
+		ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
+#endif
+#endif
+	}
+#if defined(AF) && !defined(MBSREM)
+	}
+#endif
+}
+
+
+inline void backprojectTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, const float* yax, 
+	__global CAST* d_Summ
+#ifndef DEC
+	, const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum
+#endif
+#ifdef MBSREM
+	, const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM, 
+	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, const float local_sino, const uint idx, const long TOFSize
+#else
+	, __global CAST* d_rhs, const uchar no_norm, const uint d_N
+#endif
+	) {
+	uint yy = local_ind;
+	float val = 0.f;
+#if defined(AF) && !defined(MBSREM)
+	uint ll = NBINS;
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+		uint ii = ll * kk;
+#else
+	const uint ii = 0U;
+#endif
+
+	float yaxTOF = 0.f;
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++) {
+
+#ifdef DEC
+		const float apu = local_ele * TOFVal[to + tid];
+#else
+		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+#endif
+
+#ifdef MBSREM
+		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {
+			if (apu < minimi[to] && apu > 0.f)
+				minimi[to] = apu;
+			d_E[idx + to * TOFSize] += apu;
+		}
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
+			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+#endif
+
+		val += apu;
+		yaxTOF += apu * yax[to + ii];
+	}
+
+#ifdef MBSREM
+	if (d_alku == 0u) {
+		if (MBSREM_prepass == 1)
+#ifdef ATOMIC
+			atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#else
+			atomicAdd_g_f(&d_Summ[local_ind], val);
+#endif
+		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
+#ifdef ATOMIC
+			atom_add(&d_co[local_ind], convert_long(yaxTOF * TH));
+#else
+			atomicAdd_g_f(&d_co[local_ind], yaxTOF);
+#endif
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
+#ifdef ATOMIC
+			atom_add(&d_aco[local_ind], convert_long(yaxTOF * TH));
+#else
+			atomicAdd_g_f(&d_aco[local_ind], yaxTOF);
+#endif
+	}
+#else
+	if (no_norm == 0u && ii == 0)
+#ifdef ATOMIC
+		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#else
+		atomicAdd_g_f(&d_Summ[local_ind], val);
+#endif
+#ifdef ATOMIC
+	atom_add(&d_rhs[yy], convert_long(yaxTOF * TH));
+#else
+	atomicAdd_g_f(&d_rhs[yy], (yaxTOF));
+#endif
+#endif
+
+#if defined(AF) && !defined(MBSREM)
+		yy += d_N;
+	}
+#endif
+
+#ifndef DEC
+*D -= (local_ele / temp * sign(DD));
+#endif
+}
+
+
+inline void sensTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, __global CAST * d_Summ, 
+#ifndef DEC
+	const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum, 
+#endif
+#ifdef MBSREM
+	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM,
+	__global float* d_E, const uint idx, const long TOFSize, 
+#endif
+	const uchar no_norm) {
+	float val = 0.f;
+#pragma unroll NBINS
+	for (long to = 0L; to < NBINS; to++) {
+
+#ifdef DEC
+		const float apu = local_ele * TOFVal[to + tid];
+#else
+		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+#endif
+#ifdef MBSREM
+		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {
+			if (apu < minimi[to] && apu > 0.f)
+				minimi[to] = apu;
+			d_E[idx + to * TOFSize] += apu;
+		}
+		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
+			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+#endif
+		val += apu;
+	}
+#ifdef MBSREM
+	if (no_norm == 0u && d_alku == 0u)
+#ifdef ATOMIC
+		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#else
+		atomicAdd_g_f(&d_Summ[local_ind], val);
+#endif
+#else
+	if (no_norm == 0u)
+#ifdef ATOMIC
+		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#else
+		atomicAdd_g_f(&d_Summ[local_ind], val);
+#endif
+#endif
+
+#ifndef DEC
+*D -= (local_ele / temp * sign(DD));
+#endif
+}
+#endif

@@ -22,15 +22,16 @@
 void f_b_project(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues,
 	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, const uint32_t Nx,
 	const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz, const float bzb,
-	const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t* pituus, const size_t koko_l, const uint32_t* xy_index,
+	const float maxxx, const float maxyy, const float zmax, const float NSlices, const int64_t* pituus, const size_t koko_l, const uint32_t* xy_index,
 	const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose, const uint32_t randoms_correction,
 	const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim,
-	const cl::Kernel& kernel_sum, const cl::Kernel& kernel, mxArray* output, const size_t size_rhs, const bool no_norm, const size_t numel_x,
+	const cl::Kernel& kernel_sum, const cl::Kernel& kernel, mxArray* output, const size_t size_rhs, const cl_uchar no_norm, const size_t numel_x,
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
 	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
-	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter) {
+	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter, const bool TOF,
+	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins) {
 
 	const uint32_t Nxy = Nx * Ny;
 	cl_int status = CL_SUCCESS;
@@ -45,7 +46,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	size_t size_output;
 
 	if (fp == 1)
-		size_output = pituus[0];
+		size_output = pituus[0] * nBins;
 	else
 		size_output = static_cast<size_t>(im_dim);
 
@@ -120,6 +121,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<cl::Buffer> d_zcenter(num_devices_context);
 	std::vector<cl::Buffer> d_V(num_devices_context);
 	std::vector<cl::Buffer> d_atten(num_devices_context);
+	std::vector<cl::Buffer> d_TOFCenter(num_devices_context);
 	std::vector<cl::Buffer> d_pseudos(num_devices_context);
 	std::vector<cl::Buffer> d_rhs(num_devices_context);
 	std::vector<cl::Buffer> d_output(num_devices_context);
@@ -140,7 +142,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	// Create the necessary buffers
 	for (cl_uint i = 0U; i < num_devices_context; i++) {
-		d_reko_type[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
+		d_reko_type[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_uchar), NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -176,6 +178,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			return;
 		}
 		d_V[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_V, NULL, &status);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
+		d_TOFCenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * nBins, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -285,7 +292,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i], NULL, &status);
+		d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i] * nBins, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -322,6 +329,17 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 	}
 
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		mexPrintf("Buffer creation failed\n");
+		mexEvalString("pause(.0001);");
+		return;
+	}
+	else if (DEBUG) {
+		mexPrintf("Buffer creation succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
+
 
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
@@ -333,7 +351,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	const float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(0)));
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
-		status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp);
+		status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(cl_uchar), &fp);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -373,6 +391,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			getErrorString(status);
 			return;
 		}
+		status = commandQueues[i].enqueueWriteBuffer(d_TOFCenter[i], CL_FALSE, 0, sizeof(float) * nBins, TOFCenter);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 		status = commandQueues[i].enqueueWriteBuffer(d_atten[i], CL_FALSE, 0, sizeof(float) * size_atten, atten);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
@@ -388,7 +411,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			getErrorString(status);
 			return;
 		}
-		status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]]);
+		if (TOF) {
+			for (int64_t to = 0LL; to < nBins; to++) {
+				status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, sizeof(float) * length[i] * to, sizeof(float) * length[i], &Sino[cumsum[i] + koko * to]);
+			}
+		}
+		else
+			status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]]);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -451,7 +480,15 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 	}
 
-	uint64_t size_rhs_i = static_cast<uint64_t>(size_rhs);
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		mexPrintf("Buffer write failed\n");
+		return;
+	}
+	else if (DEBUG) {
+		mexPrintf("Buffer write succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 
 
 	std::vector<std::vector<float>> testi_summ;
@@ -502,6 +539,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	kernel_.setArg(kernelInd++, prows);
 	kernel_.setArg(kernelInd++, Nxy);
 	kernel_.setArg(kernelInd++, fp);
+	kernel_.setArg(kernelInd++, sigma_x);
 	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 		kernel_.setArg(kernelInd++, tube_width);
 		kernel_.setArg(kernelInd++, crystal_size_z);
@@ -595,6 +633,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	std::vector<cl_ulong> globals(num_devices_context, 0ULL);
@@ -621,6 +663,18 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		cl::NDRange global(global_size);
 		cl::NDRange local(local_size);
 
+		if (DEBUG) {
+			mexPrintf("global_size = %u\n", global_size);
+			mexPrintf("m_size = %u\n", m_size);
+			mexPrintf("size_output = %u\n", size_output);
+			mexPrintf("size_rhs = %u\n", size_rhs);
+			mexPrintf("num_devices_context = %u\n", num_devices_context);
+			mexPrintf("st = %u\n", st);
+			mexPrintf("length[0] * nBins = %u\n", length[0] * nBins);
+			mexEvalString("pause(.0001);");
+		}
+
+		kernel_.setArg(kernelIndSubIter++, d_TOFCenter[i]);
 		kernel_.setArg(kernelIndSubIter++, d_atten[i]);
 		kernel_.setArg(kernelIndSubIter++, d_pseudos[i]);
 		kernel_.setArg(kernelIndSubIter++, d_x[i]);
@@ -651,6 +705,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
+		}
+		else if (DEBUG) {
+			mexPrintf("Kernel launched successfully\n");
+			mexEvalString("pause(.0001);");
 		}
 	}
 
@@ -702,6 +760,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 			for (cl_uint i = 0ULL; i < num_devices_context; i++) {
 				commandQueues[i].finish();
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
 			}
 		}
 	}
@@ -709,25 +771,29 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	events[0][0].waitForEvents(events[0]);
 
 	for (cl_uint i = 1; i < num_devices_context; i++) {
-		size_t summa_pituus;
-		if (fp == 1)
-			summa_pituus = length[i];
-		else
-			summa_pituus = size_rhs;
+		size_t summa_pituus = size_output;
+		//if (fp == 1)
+			//summa_pituus = size_output;
+		//else
+			//summa_pituus = im_dim;
 		cl::NDRange global(summa_pituus);
 		kernel_sum_.setArg(0, d0_Summ[i - 1]);
 		kernel_sum_.setArg(1, d_Summ[0]);
 		kernel_sum_.setArg(2, d0_output[i - 1]);
 		kernel_sum_.setArg(3, d_output[0]);
-		kernel_sum_.setArg(4, size_rhs_i);
-		kernel_sum_.setArg(5, im_dim);
-		kernel_sum_.setArg(6, no_norm);
-		kernel_sum_.setArg(7, globals[i - 1ULL]);
-		kernel_sum_.setArg(8, fp);
-		status = commandQueues[0].enqueueNDRangeKernel(kernel_, cl::NullRange, global);
+		kernel_sum_.setArg(4, summa_pituus);
+		kernel_sum_.setArg(5, no_norm);
+		//kernel_sum_.setArg(6, im_dim);
+		//kernel_sum_.setArg(7, globals[i - 1ULL]);
+		//kernel_sum_.setArg(8, fp);
+		status = commandQueues[0].enqueueNDRangeKernel(kernel_sum_, cl::NullRange, global);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
+		}
+		else if (DEBUG) {
+			mexPrintf("Merge kernel launched successfully\n");
+			mexEvalString("pause(.0001);");
 		}
 		commandQueues[i].finish();
 	}
@@ -759,6 +825,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	for (cl_uint i = 0u; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	mxSetCell(output, 0, output_m);

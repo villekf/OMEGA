@@ -126,14 +126,14 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 	std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, std::vector<CUdeviceptr>& d_Sino, std::vector<CUdeviceptr>& d_sc_ra,
 	const uint32_t size_x, const size_t size_z, const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows,
 	std::vector<size_t>& length, const float* x, const float* y, const float* z_det, const uint32_t* xy_index, const uint16_t* z_index,
-	const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const uint32_t* pituus, const float* atten,
+	const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const int64_t* pituus, const float* atten,
 	const float* norm, const float* scat, const uint32_t* pseudos, const float* V, CUdeviceptr& d_atten, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, CUdeviceptr& d_pseudos, CUdeviceptr& d_V,
 	CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, const float* x_center, const float* y_center, const float* z_center,
 	const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const size_t size_of_x, const size_t size_V,
 	const bool randoms_correction, const mxArray* sc_ra, const bool precompute, CUdeviceptr& d_lor_mlem, CUdeviceptr& d_L_mlem, CUdeviceptr& d_zindex_mlem,
 	CUdeviceptr& d_xyindex_mlem, CUdeviceptr& d_Sino_mlem, CUdeviceptr& d_sc_ra_mlem, CUdeviceptr& d_reko_type, CUdeviceptr& d_reko_type_mlem, const bool osem_bool,
 	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	CUdeviceptr& d_norm_mlem, CUdeviceptr& d_scat_mlem)
+	CUdeviceptr& d_norm_mlem, CUdeviceptr& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, CUdeviceptr& d_TOFCenter, const float* TOFCenter)
 {
 	// Create the necessary buffers
 	// Detector coordinates
@@ -179,6 +179,12 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 		std::cerr << getErrorString(status) << std::endl;
 		return status;
 	}
+	// TOF bin centers
+	status = cuMemAlloc(&d_TOFCenter, sizeof(float) * nBins);
+	if (status != CUDA_SUCCESS) {
+		std::cerr << getErrorString(status) << std::endl;
+		return status;
+	}
 	// Pseudo rings
 	status = cuMemAlloc(&d_pseudos, sizeof(uint32_t) * prows);
 	if (status != CUDA_SUCCESS) {
@@ -218,7 +224,17 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				return status;
 			}
 			// Measurement data
-			status = cuMemAlloc(&d_Sino[kk], sizeof(float) * length[kk]);
+			if (TOF) {
+				if (loadTOF) {
+					status = cuMemAlloc(&d_Sino[kk], sizeof(float) * length[kk] * nBins);
+				}
+				else {
+					if (kk == 0)
+						status = cuMemAlloc(&d_Sino[kk], sizeof(float) * length[kk] * nBins);
+				}
+			}
+			else
+				status = cuMemAlloc(&d_Sino[kk], sizeof(float) * length[kk]);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
@@ -283,7 +299,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			return status;
 		}
 		// Measurement data
-		status = cuMemAlloc(&d_Sino_mlem, sizeof(float) * koko);
+		status = cuMemAlloc(&d_Sino_mlem, sizeof(float) * koko * nBins);
 		if (status != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
@@ -340,10 +356,10 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 		mexPrintf("Buffer creation failed\n");
 		return status;
 	}
-	//else {
-	//	mexPrintf("Buffer creation succeeded\n");
-	//	mexEvalString("pause(.0001);");
-	//}
+	else if (DEBUG) {
+		mexPrintf("Buffer creation succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 
 
 	// assign values to the buffers
@@ -383,6 +399,11 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 		return status;
 	}
 	status = cuMemcpyHtoD(d_atten, atten, sizeof(float) * size_atten);
+	if (status != CUDA_SUCCESS) {
+		std::cerr << getErrorString(status) << std::endl;
+		return status;
+	}
+	status = cuMemcpyHtoD(d_TOFCenter, TOFCenter, sizeof(float) * nBins);
 	if (status != CUDA_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
 		return status;
@@ -458,7 +479,28 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				return status;
 			}
 
-			status = cuMemcpyHtoD(d_Sino[kk], &Sin[pituus[kk]], sizeof(float) * length[kk]);
+			if (TOF) {
+				if (loadTOF) {
+					for (int64_t to = 0LL; to < nBins; to++) {
+						CUdeviceptr dst = reinterpret_cast<CUdeviceptr> (reinterpret_cast<char*>(d_Sino[kk]) + sizeof(float) * length[kk] * to);
+						char* src = (char*)Sin + sizeof(float) * (pituus[kk] + koko * to);
+						size_t bytes = sizeof(float) * length[kk];
+						status = cuMemcpyHtoD(dst, src, bytes);
+					}
+				}
+				else {
+					if (kk == 0) {
+						for (int64_t to = 0LL; to < nBins; to++) {
+							CUdeviceptr dst = reinterpret_cast<CUdeviceptr> (reinterpret_cast<char*>(d_Sino[kk]) + sizeof(float) * length[kk] * to);
+							char* src = (char*)Sin + sizeof(float) * (pituus[kk] + koko * to);
+							size_t bytes = sizeof(float) * length[kk];
+							status = cuMemcpyHtoD(dst, src, bytes);
+						}
+					}
+				}
+			}
+			else
+				status = cuMemcpyHtoD(d_Sino[kk], &Sin[pituus[kk]], sizeof(float) * length[kk]);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
@@ -490,7 +532,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			return status;
 		}
 
-		status = cuMemcpyHtoD(d_Sino_mlem, Sin, sizeof(float) * koko);
+		status = cuMemcpyHtoD(d_Sino_mlem, Sin, sizeof(float) * koko * nBins);
 		if (status != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
@@ -555,15 +597,15 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 		mexPrintf("Buffer write failed\n");
 		return status;
 	}
-	//else {
-	//	mexPrintf("Buffer write succeeded\n");
-	//	mexEvalString("pause(.0001);");
-	//}
+	else if (DEBUG) {
+		mexPrintf("Buffer write succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 	return status;
 }
 
  //Prepass phase for MRAMLA, COSEM, ACOSEM, ECOSEM
-void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_zindex,
+void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const int64_t* pituus, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_zindex,
 	std::vector<CUdeviceptr>& d_xyindex, Weighting& w_vec, std::vector<af::array>& Summ, std::vector<CUdeviceptr>& d_Sino, size_t koko_l, af::array& cosem,
 	af::array& C_co, af::array& C_aco, af::array& C_osl, uint32_t alku, std::vector<CUdeviceptr>& d_L, uint8_t raw, RecMethodsOpenCL& MethodList,
 	std::vector<size_t> length, uint8_t compute_norm_matrix, std::vector<CUdeviceptr>& d_sc_ra, af::array& E, const uint32_t det_per_ring, CUdeviceptr& d_pseudos,
@@ -573,13 +615,16 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 	std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const float epps, const uint32_t Nxy, const float tube_width, const float crystal_size_z, const float bmin, const float bmax,
 	const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool precompute, const uint32_t projector_type, const CUstream& af_cuda_stream, const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, 
-	const bool atomic_64bit, const bool use_psf, const af::array& g) {
+	const bool atomic_64bit, const bool use_psf, const af::array& g, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins,
+	const bool randoms_correction, const float sigma_x, CUdeviceptr& d_TOFCenter, const uint32_t Nt) {
 
 	CUresult status = CUDA_SUCCESS;
 
 	unsigned char MBSREM_prepass = static_cast<unsigned char>(w_vec.MBSREM_prepass);
 
 	af::array apu_co, apu_aco, uu, sub_index_array, apu_summa, apu_Amin, apu_summa_m;
+
+	const bool U_skip = w_vec.U > 0.f ? false : true;
 
 	af::array cosem_psf;
 	if (use_psf) {
@@ -599,7 +644,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 
 	if (alku > 0u) {
 		eka = alku - 1u;
-		apu = af::constant(0.f, length[eka]);
+		apu = af::constant(0.f, length[eka] * nBins);
 	}
 	else {
 		apu = af::constant(0.f, 1);
@@ -625,8 +670,8 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 
 
 			if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && alku == 0u) {
-				apu_Amin = af::constant(0.f, length[osa_iter], 1);
-				apu_summa_m = af::constant(0.f, length[osa_iter], 1);
+				apu_Amin = af::constant(0.f, length[osa_iter] * nBins, 1);
+				apu_summa_m = af::constant(0.f, length[osa_iter] * nBins, 1);
 			}
 			else {
 				apu_Amin = af::constant(0.f, 1, 1);
@@ -674,6 +719,18 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 					apu_aco = af::constant(0ULL, 1, 1, u64);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
+			}
+			if (TOF && !loadTOF && osa_iter > 0) {
+				gpuErrchk(cuMemFree(d_Sino[0]));
+				float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
+				status = cuCtxSynchronize();
+				status = cuMemAlloc(&d_Sino[0], sizeof(float) * length[osa_iter] * nBins);
+				for (int64_t to = 0LL; to < nBins; to++) {
+					CUdeviceptr dst = reinterpret_cast<CUdeviceptr> (reinterpret_cast<char*>(d_Sino[0]) + sizeof(float) * length[osa_iter] * to);
+					char* src = (char*)Sin + sizeof(float) * (pituus[osa_iter] + koko_l * to);
+					size_t bytes = sizeof(float) * length[osa_iter];
+					status = cuMemcpyHtoD(dst, src, bytes);
+				}
 			}
 		}
 		else {
@@ -728,6 +785,10 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 				apu_Amin = af::constant(0.f, 1, 1);
 		}
 
+		uint32_t H = osa_iter;
+		if (TOF && !loadTOF)
+			H = 0U;
+
 		CUdeviceptr* d_apu_co = apu_co.device<CUdeviceptr>();
 		CUdeviceptr* d_apu_aco = apu_aco.device<CUdeviceptr>();
 		CUdeviceptr* d_E = apu_summa_m.device<CUdeviceptr>();
@@ -739,9 +800,9 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
 			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, 
 				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
-				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, 
-				(void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], 
-				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[osa_iter], &d_sc_ra[osa_iter], 
+				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax,
+				(void*)&Vmax, &w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
+				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], 
 				reinterpret_cast<void*>(&d_cosem), &alku, &MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co), 
 				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList};
 			status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
@@ -749,9 +810,9 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 		else {
 			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by,
 				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
-				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&dc_z, (void*)&n_rays,
-				&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
-				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter],& d_xyindex[osa_iter],& d_zindex[osa_iter],& d_L[osa_iter],& d_Sino[osa_iter],& d_sc_ra[osa_iter],
+				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&dc_z, (void*)&n_rays,
+				&w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
+				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter],& d_xyindex[osa_iter],& d_zindex[osa_iter],& d_L[osa_iter],& d_Sino[H],& d_sc_ra[osa_iter],
 				reinterpret_cast<void*>(&d_cosem),& alku,& MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co),
 				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList };
 			status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
@@ -760,6 +821,10 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 			std::cerr << getErrorString(status) << std::endl;
 			mexPrintf("Failed to launch the prepass kernel\n");
 			return;
+		}
+		else if (DEBUG) {
+			mexPrintf("Prepass kernel launched\n");
+			mexEvalString("pause(.0001);");
 		}
 		status = cuCtxSynchronize();
 		if ((status != CUDA_SUCCESS)) {
@@ -820,8 +885,8 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 			}
 
 
-			if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass) {
-				sub_index_array = af::range(af::dim4(length[osa_iter]), 0, u32) + pituus[osa_iter];
+			if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
+				sub_index_array = af::range(af::dim4(length[osa_iter] * nBins), 0, u32) + pituus[osa_iter] * nBins;
 				if (subsets > 1)
 					w_vec.Amin(sub_index_array) = apu_Amin;
 				else
@@ -844,13 +909,46 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const ui
 					w_vec.D += apu_summa.as(f32);
 				}
 
-				if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass) {
+				if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
 					if (subsets > 1)
 						E(sub_index_array) = apu_summa_m;
 					else
 						E = apu_summa_m;
 				}
 			}
+			if (alku == 0U && (MethodList.MBSREM || MethodList.MRAMLA) && w_vec.MBSREM_prepass && Nt == 1U) {
+				uint32_t H = osa_iter;
+				if (TOF && !loadTOF)
+					H = 0;
+				float* hOut = new float[length[osa_iter] * nBins];
+				cuMemcpyDtoH(hOut, d_Sino[H], length[osa_iter] * sizeof(float) * nBins);
+				cuCtxSynchronize();
+				af::array Sino(length[osa_iter] * nBins, hOut, afHost);
+				af::eval(Sino);
+				af::array rand;
+				if (randoms_correction) {
+					float* hOutR = new float[length[osa_iter]];
+					cuMemcpyDtoH(hOutR, d_sc_ra[osa_iter], length[osa_iter] * sizeof(float));
+					cuCtxSynchronize();
+					rand = af::array(length[osa_iter], hOutR, afHost);
+					af::eval(rand);
+					af::sync();
+					delete[] hOutR;
+				}
+				if (U_skip) {
+					float UU = w_vec.U;
+					const af::array Aind = apu_Amin > 0.f;
+					w_vec.U = af::max<float>(Sino(Aind) / apu_Amin(Aind));
+					if (UU > w_vec.U || std::isinf(w_vec.U))
+						w_vec.U = UU;
+				}
+				float eps_mramla = w_vec.epsilon_mramla;
+				w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins);
+				if (eps_mramla < w_vec.epsilon_mramla)
+					w_vec.epsilon_mramla = eps_mramla;
+				delete[] hOut;
+			}
+			af::deviceGC();
 		}
 		else {
 			w_vec.ACOSEM_rhs = af::sum<float>(apu);
@@ -867,7 +965,8 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction,
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
+	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, 
+	const uint32_t randoms_correction, const bool TOF, const int64_t nBins) {
 
 	nvrtcResult status = NVRTC_SUCCESS;
 
@@ -898,6 +997,11 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		options.emplace_back("-DNORM");
 	if (randoms_correction == 1u)
 		options.emplace_back("-DRANDOMS");
+	if (TOF && projector_type == 1u) {
+		options.emplace_back("-DTOF");
+	}
+	std::string apuB = ("-DNBINS=" + std::to_string(nBins));
+	options.emplace_back(apuB.c_str());
 	if (scatter == 1u)
 		options.emplace_back("-DSCATTER");
 	if (MethodList.NLM) {
@@ -982,6 +1086,11 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 	}
 	else
 		options.emplace_back("-DCAST=float");
+	if (DEBUG) {
+		for (int uu = 0; uu < options.size(); uu++)
+			mexPrintf("%s", options[uu]);
+		mexPrintf("\n");
+	}
 	if (atomic_64bit) {
 		std::string kernel_path_atom;
 
@@ -998,18 +1107,22 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 		// Build the program
 		status = nvrtcCompileProgram(program, options.size(), options.data());
 		if (status != NVRTC_SUCCESS) {
-			//std::cerr << nvrtcGetErrorString(status) << std::endl;
-			//mexPrintf("Failed to build OpenCL program. Build log: \n");
-			//size_t len;
-			//char* buffer;
-			//nvrtcGetProgramLogSize(program, &len);
-			//buffer = (char*)calloc(len, sizeof(size_t));
-			//nvrtcGetProgramLog(program, buffer);
-			//mexPrintf("%s\n", buffer);
-			//free(buffer);
+			mexPrintf("Failed to build 64-bit atomics program.\n");
+			if (DEBUG) {
+				std::cerr << nvrtcGetErrorString(status) << std::endl;
+				mexPrintf("Failed to build CUDA program. Build log: \n");
+				size_t len;
+				char* buffer;
+				nvrtcGetProgramLogSize(program, &len);
+				buffer = (char*)calloc(len, sizeof(size_t));
+				nvrtcGetProgramLog(program, buffer);
+				mexPrintf("%s\n", buffer);
+				free(buffer);
+				nvrtcDestroyProgram(&program);
+				return status;
+			}
 			options.erase(options.end() - 2, options.end());
 			options.emplace_back("-DCAST=float");
-			mexPrintf("Failed to build 64-bit atomics program.\n");
 		}
 		else if (verbose)
 			mexPrintf("CUDA program (64-bit atomics) built\n");

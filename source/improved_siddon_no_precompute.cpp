@@ -6,7 +6,7 @@
 * used to create a sparse matrix.
 * This is faster than original Siddon, but slower than precomputed versions.
 *
-* Copyright (C) 2019 Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -72,7 +72,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 		}
 
 		// If the measurement is on the same ring
-		if (fabs(z_diff) < 1e-8) {
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			// Z-coordinate
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
@@ -84,7 +84,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
@@ -105,7 +105,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint32_t ii = 0u; ii < Ny_max; ii += Ny) {
@@ -119,14 +119,39 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 				}
 				continue;
 			}
-			const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE, 
-				detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-			
+		}
+		else {
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
+
+			// Detectors on same ring
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
+			}
+			// Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
+			}
+			else {
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			}
+
 			if (skip)
 				continue;
 
 			// d_conv
-			const double LL = sqrt(x_diff*x_diff + y_diff * y_diff);
+			const double LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 
 			// \alpha_c
 
@@ -137,14 +162,14 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 			temp_koko.reserve(Np);
 			templ_ijk.reserve(Np);
 
-			uint32_t tempijk = tempk * Ny_max + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
+			uint32_t tempijk = static_cast<uint32_t>(tempk) * Ny_max + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
 
 			// Compute the indices and matrix elements
 			for (uint32_t ii = 0u; ii < Np; ii++) {
 
 				temp_koko.emplace_back(tempijk);
 
-				if (tx0 < ty0) {
+				if (tx0 < ty0 && tx0 < tz0) {
 
 					// (30)
 					templ_ijk.emplace_back(pixel_value(tx0, tc, LL));
@@ -163,7 +188,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					temp += templ_ijk[ii];
 
 				}
-				else {
+				else if (ty0 < tz0) {
 
 					// (35)
 					templ_ijk.emplace_back(pixel_value(ty0, tc, LL));
@@ -181,239 +206,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 					temp += templ_ijk[ii];
 				}
-				// If the ray/LOR has reached the end of the pixel space
-				if (tempj < 0 || tempi < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny))
-					break;
-
-
-			}
-
-			temp = 1. / temp;
-
-			if (attenuation_correction)
-				att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
-			if (normalization)
-				temp *= norm_coef[lo];
-			temp *= global_factor;
-
-			for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
-				elements.emplace_back((fabs(templ_ijk[ii]) * temp));
-				indices.emplace_back(temp_koko[ii]);
-			}
-
-			lor[lo] = static_cast<uint16_t>(templ_ijk.size());
-			lj++;
-			continue;
-		}
-		// If the z-detector coordinates are not on the same ring
-		// All computations follow the same logic as above
-		else {
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
-
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
-
-					if (skip)
-						continue;
-
-					double apu1;
-					const double LL = sqrt((x_diff*x_diff + z_diff * z_diff));
-
-					vector<double> templ_ijk;
-					vector<uint32_t> temp_koko;
-
-					temp_koko.reserve(Np);
-					templ_ijk.reserve(Np);
-
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-						apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-						if (apu1 > 0.) {
-							tempj = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-
-					double temp = 0.;
-
-					uint32_t tempijk = Ny_max * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-
-						temp_koko.emplace_back(tempijk);
-						if (tx0 < tz0) {
-
-							templ_ijk.emplace_back(pixel_value(tx0, tc, LL));
-
-
-							tempi += iu;
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-
-							temp += templ_ijk[ii];
-						}
-						else {
-
-							templ_ijk.emplace_back(pixel_value(tz0, tc, LL));
-
-							tempk += ku;
-							if (ku > 0)
-								tempijk += Ny_max;
-							else
-								tempijk -= Ny_max;
-							tc = tz0;
-							tz0 += tzu;
-
-							temp += templ_ijk[ii];
-						}
-
-						if (tempk < 0 || tempi < 0 || tempi >= static_cast<int32_t>(Nx) || tempk >= static_cast<int32_t>(Nz))
-							break;
-					}
-
-					temp = 1. / temp;
-
-					if (attenuation_correction)
-						att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
-						elements.emplace_back((fabs(templ_ijk[ii]) * temp));
-						indices.emplace_back(temp_koko[ii]);
-					}
-
-					lor[lo] = static_cast<uint16_t>(templ_ijk.size());
-					lj++;
-
-					continue;
-
-				}
-				continue;
-			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
-
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-
-					if (skip)
-						continue;
-
-					const double LL = sqrt((y_diff*y_diff + z_diff * z_diff));
-
-					double apu1;
-
-					double temp = 0.;
-
-					vector<double> templ_ijk;
-					vector<uint32_t> temp_koko;
-
-					temp_koko.reserve(Np);
-					templ_ijk.reserve(Np);
-
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-						apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-						if (apu1 > 0.) {
-							tempi = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-
-					uint32_t tempijk = Ny_max * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-
-
-						temp_koko.emplace_back(tempijk);
-						if (tz0 < ty0) {
-
-							templ_ijk.emplace_back(pixel_value(tz0, tc, LL));
-
-							tempk += ku;
-							if (ku > 0)
-								tempijk += Ny_max;
-							else
-								tempijk -= Ny_max;
-							tc = tz0;
-							tz0 += tzu;
-
-							temp = temp + templ_ijk[ii];
-
-						}
-						else {
-
-							templ_ijk.emplace_back(pixel_value(ty0, tc, LL));
-
-							tempj += ju;
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
-
-							temp += templ_ijk[ii];
-						}
-						if (tempj < 0 || tempk < 0 || tempk >= static_cast<int32_t>(Nz) || tempj >= static_cast<int32_t>(Ny))
-							break;
-
-					}
-
-					temp = 1. / temp;
-
-					if (attenuation_correction)
-						att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
-						elements.emplace_back((fabs(templ_ijk[ii]) * temp));
-						indices.emplace_back(temp_koko[ii]);
-					}
-
-					lor[lo] = static_cast<uint16_t>(templ_ijk.size());
-					lj++;
-
-					continue;
-
-				}
-				continue;
-			}
-			const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, 
-				tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
-
-			if (skip)
-				continue;
-
-			const double LL = sqrt(x_diff*x_diff + z_diff * z_diff + y_diff * y_diff);
-
-			double temp = 0.;
-
-			uint32_t tempijk = Ny_max * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-			vector<double> templ_ijk;
-			vector<uint32_t> temp_koko;
-
-			temp_koko.reserve(Np);
-			templ_ijk.reserve(Np);
-
-
-			for (uint32_t ii = 0u; ii < Np; ii++) {
-
-				temp_koko.emplace_back(tempijk);
-				if (tz0 < ty0 && tz0 < tx0) {
-
+				else {
 					templ_ijk.emplace_back(pixel_value(tz0, tc, LL));
 
 					tempk += ku;
@@ -426,41 +219,10 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 					temp += templ_ijk[ii];
 				}
-				else if (ty0 < tx0) {
-
-					templ_ijk.emplace_back(pixel_value(ty0, tc, LL));
-
-					tempj += ju;
-					if (ju > 0)
-						tempijk += Nx;
-					else
-						tempijk -= Nx;
-					tc = ty0;
-					ty0 += tyu;
-
-					temp += templ_ijk[ii];
-				}
-				else {
-
-					templ_ijk.emplace_back(pixel_value(tx0, tc, LL));
-
-					tempi += iu;
-					if (iu > 0)
-						tempijk++;
-					else
-						tempijk--;
-					tc = tx0;
-					tx0 += txu;
-
-					temp += templ_ijk[ii];
-				}
-				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) 
-					|| tempk >= static_cast<int32_t>(Nz))
+				// If the ray/LOR has reached the end of the pixel space
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
 					break;
-
 			}
-
-
 
 			temp = 1. / temp;
 
@@ -477,7 +239,6 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 			lor[lo] = static_cast<uint16_t>(templ_ijk.size());
 			lj++;
-
 			continue;
 		}
 	}

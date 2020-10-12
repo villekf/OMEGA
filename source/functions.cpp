@@ -21,7 +21,7 @@
 // Loads the input data and forms device data variables
 void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter)
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt)
 {
 	uint32_t Ni = 1U;
 	if (saveIter)
@@ -730,8 +730,10 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		//w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
 		w_vec.D = af::constant(0.f, im_dim, 1);
 		// For manual determination of the upper bound
-		if (MethodList.MRAMLA || MethodList.MBSREM)
+		if ((MethodList.MRAMLA || MethodList.MBSREM) && Nt > 1U)
 			w_vec.Amin = af::constant(0.f, koko_l, 1);
+		else
+			w_vec.Amin = af::constant(0.f, 1, 1);
 			//w_vec.Amin = af::array(koko_l, (float*)mxGetData(mxGetField(options, 0, "Amin")), afHost);
 	}
 	if (MethodList.APLS && MethodList.MAP) {
@@ -1998,24 +2000,34 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 }
 
 // Compute the epsilon value for MBSREM and MRAMLA
-float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t randoms_correction, const af::array& rand, const af::array& D)
+float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t randoms_correction, const af::array& rand, const af::array& D, 
+	const bool TOF, const int64_t nBins)
 {
-	af::array P_Sino, apu;
-	if (randoms_correction == 1u) {
-		P_Sino = Sino(Sino > 0.f & rand == 0.f);
-		apu = D + rand;
-		apu = sum(Sino * log(apu) - apu);
-	}
-	else {
-		P_Sino = Sino(Sino > 0.f);
-		apu = af::sum(D * log(D) - D);
-	}
 	af::array hk_summa = Sino * af::log(Sino) - Sino;
 	hk_summa(af::isNaN(hk_summa)) = 0.f;
-	if (randoms_correction == 1u)
-		hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & rand == 0.f), batchMinus);
-	else
-		hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f), batchMinus);
+	af::array P_Sino, apu;
+	if (TOF && randoms_correction) {
+		af::array rInd = rand == 0.f;
+		P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
+		apu = D + af::tile(rand, nBins);
+		apu = af::sum(Sino * af::log(apu) - apu);
+		hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & af::tile(rInd, nBins)), batchMinus);
+	}
+	else {
+		if (randoms_correction == 1u) {
+			P_Sino = Sino(Sino > 0.f & rand == 0.f);
+			apu = D + rand;
+			apu = af::sum(Sino * af::log(apu) - apu);
+		}
+		else {
+			P_Sino = Sino(Sino > 0.f);
+			apu = af::sum(Sino * af::log(D) - D);
+		}
+		if (randoms_correction == 1u)
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & rand == 0.f), batchMinus);
+		else
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f), batchMinus);
+	}
 	af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
 	float eps;
 	eps = af::min<float>(epsilon);

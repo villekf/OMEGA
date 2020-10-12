@@ -137,10 +137,10 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 			mexPrintf("Failed to create OS-methods kernel\n");
 			return status;
 		}
-		//else if (verbose) {
-			//mexPrintf("OpenCL kernel successfully created\n");
-			//mexEvalString("pause(.0001);");
-		//}
+		else if (DEBUG) {
+			mexPrintf("OpenCL kernel successfully created\n");
+			mexEvalString("pause(.0001);");
+		}
 	}
 
 	// Kernel for the ML-methods (MLEM, OSL-ML)
@@ -155,10 +155,10 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 			mexPrintf("Failed to create MLEM kernel\n");
 			return status;
 		}
-		//else if (verbose) {
-		//	mexPrintf("OpenCL kernel successfully created\n");
-		//	mexEvalString("pause(.0001);");
-		//}
+		else if (DEBUG) {
+			mexPrintf("OpenCL kernel successfully created\n");
+			mexEvalString("pause(.0001);");
+		}
 	}
 
 	// Kernel for the prepass phase needed for MRAMLA, MBSREM, RBI, COSEM, ACOSEM and ECOSEM
@@ -176,7 +176,7 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 			mexPrintf("Failed to create prepass kernel\n");
 			return status;
 		}
-		else {
+		else if (DEBUG) {
 			mexPrintf("Prepass kernel successfully created\n");
 			mexEvalString("pause(.0001);");
 		}
@@ -192,7 +192,7 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 			mexPrintf("Failed to create NLM kernel\n");
 			return status;
 		}
-		else {
+		else if (DEBUG) {
 			mexPrintf("NLM kernel successfully created\n");
 			mexEvalString("pause(.0001);");
 		}
@@ -204,12 +204,13 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	std::vector<cl::Buffer>& d_xyindex, std::vector<cl::Buffer>& d_Sino, std::vector<cl::Buffer>& d_sc_ra, const uint32_t size_x, const size_t size_z,
 	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows, std::vector<size_t>& length, const float* x, const float* y,
 	const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw,
-	cl::Context& af_context, const uint32_t subsets, const uint32_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
-	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, cl::Buffer& d_ycenter, cl::Buffer& d_zcenter,
-	const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z,
-	const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, cl::Buffer& d_lor_mlem,
-	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, cl::Buffer& d_reko_type_mlem, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem)
+	cl::Context& af_context, const uint32_t subsets, const int64_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
+	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, 
+	cl::Buffer& d_ycenter, cl::Buffer& d_zcenter, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, 
+	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
+	cl::Buffer& d_lor_mlem, cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
+	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
+	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, const float* TOFCenter)
 {
 	cl_int status = CL_SUCCESS;
 	// Create the necessary buffers
@@ -255,6 +256,12 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		getErrorString(status);
 		return status;
 	}
+	// TOF bin centers
+	d_TOFCenter = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * nBins, NULL, &status);
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		return status;
+	}
 	// Pseudo rings
 	d_pseudos = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
 	if (status != CL_SUCCESS) {
@@ -281,20 +288,34 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				d_norm[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
 			}
 			else {
-				d_norm[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_norm, NULL, &status);
+				d_norm[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
+			}
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
 			}
 			if (size_scat > 1) {
 				d_scat[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
 			}
 			else {
-				d_scat[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_scat, NULL, &status);
+				d_scat[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 			}
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
 			}
 			// Measurement data
-			d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
+			if (TOF) {
+				if (loadTOF) {
+					d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * nBins, NULL, &status);
+				}
+				else {
+					if (kk == 0)
+						d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * nBins, NULL, &status);
+				}
+			}
+			else
+				d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
@@ -359,7 +380,10 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			return status;
 		}
 		// Measurement data
-		d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
+		if (TOF)
+			d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko * nBins, NULL, &status);
+		else
+			d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return status;
@@ -422,12 +446,13 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Buffer creation failed\n");
+		mexEvalString("pause(.0001);");
 		return status;
 	}
-	//else {
-	//	mexPrintf("Buffer creation succeeded\n");
-	//	mexEvalString("pause(.0001);");
-	//}
+	else if (DEBUG) {
+		mexPrintf("Buffer creation succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 
 
 	// assign values to the buffers
@@ -467,6 +492,11 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		return status;
 	}
 	status = af_queue.enqueueWriteBuffer(d_atten, CL_FALSE, 0, sizeof(float) * size_atten, atten);
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		return status;
+	}
+	status = af_queue.enqueueWriteBuffer(d_TOFCenter, CL_FALSE, 0, sizeof(float) * nBins, TOFCenter);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
@@ -545,8 +575,20 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
-
-			status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, 0, sizeof(float) * length[kk], &Sin[pituus[kk]]);
+			if (TOF) {
+				if (loadTOF) {
+					for (int64_t to = 0LL; to < nBins; to++)
+						status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sin[pituus[kk] + koko * to]);
+				}
+				else {
+					if (kk == 0) {
+						for (int64_t to = 0LL; to < nBins; to++)
+							status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sin[pituus[kk] + koko * to]);
+					}
+				}
+			}
+			else
+				status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, 0, sizeof(float) * length[kk], &Sin[pituus[kk]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
@@ -581,8 +623,10 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
-
-		status = af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko, Sin);
+		if (TOF)
+			status = af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko * nBins, Sin);
+		else
+			status = af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko, Sin);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return status;
@@ -647,27 +691,30 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		mexPrintf("Buffer write failed\n");
 		return status;
 	}
-	//else {
-		//mexPrintf("Buffer write succeeded\n");
-		//mexEvalString("pause(.0001);");
-	//}
+	else if (DEBUG) {
+		mexPrintf("Buffer write succeeded\n");
+		mexEvalString("pause(.0001);");
+	}
 	return status;
 }
 
 // Prepass phase for MRAMLA, COSEM, ACOSEM, ECOSEM
-void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, const std::vector<cl::Buffer> &lor, const std::vector<cl::Buffer> &zindex,
+void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t* pituus, const std::vector<cl::Buffer> &lor, const std::vector<cl::Buffer> &zindex,
 	const std::vector<cl::Buffer> &xindex, cl::Program program, const cl::CommandQueue &af_queue, const cl::Context af_context, Weighting& w_vec,
-	std::vector<af::array>& Summ, const std::vector<cl::Buffer> &d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
+	std::vector<af::array>& Summ, std::vector<cl::Buffer> &d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
 	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl::Kernel &kernel_mramla, const std::vector<cl::Buffer> &L, const uint8_t raw,
 	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix, 
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
-	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps) {
+	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, 
+	const size_t koko, const bool randoms_correction, const uint32_t Nt) {
 
 	cl_int status = CL_SUCCESS;
 
 	cl_uchar MBSREM_prepass = static_cast<cl_uchar>(w_vec.MBSREM_prepass);
 
 	af::array apu_co, apu_aco, uu, sub_index_array, apu_summa, apu_Amin, apu_summa_m;
+
+	const bool U_skip = w_vec.U > 0.f ? false : true;
 
 	af::array cosem_psf;
 	if (use_psf) {
@@ -685,7 +732,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 	if (alku > 0u) {
 		eka = alku - 1u;
-		apu = af::constant(0.f, length[eka]);
+		apu = af::constant(0.f, length[eka] * nBins);
 	}
 	else {
 		apu = af::constant(0.f, 1);
@@ -711,8 +758,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 
 
 			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && alku == 0u) {
-				apu_Amin = af::constant(0.f, length[osa_iter], 1);
-				apu_summa_m = af::constant(0.f, length[osa_iter], 1);
+				apu_Amin = af::constant(0.f, length[osa_iter] * nBins, 1);
+				apu_summa_m = af::constant(0.f, length[osa_iter] * nBins, 1);
 			}
 			else {
 				apu_Amin = af::constant(0.f, 1, 1);
@@ -760,6 +807,12 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 					apu_aco = af::constant(0LL, 1, 1, s64);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
+			}
+			if (TOF && !loadTOF && osa_iter > 0) {
+				float* apuS = (float*)mxGetData(mxGetCell(Sin, 0));
+				d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * nBins, NULL, &status);
+				for (int64_t to = 0LL; to < nBins; to++)
+					status = af_queue.enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[osa_iter] * to, sizeof(float) * length[osa_iter], &apuS[pituus[osa_iter] + koko * to]);
 			}
 		}
 		else {
@@ -828,7 +881,10 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, xindex[osa_iter]);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, zindex[osa_iter]);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, L[osa_iter]);
-		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_Sino[osa_iter]);
+		if (TOF && !loadTOF)
+			kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_Sino[0]);
+		else
+			kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_Sino[osa_iter]);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_sc_ra[osa_iter]);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_cosem);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, alku);
@@ -849,6 +905,10 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 			mexPrintf("Failed to launch the prepass kernel\n");
 			return;
 		}
+		else if (DEBUG) {
+			mexPrintf("prepass kernel launched successfully\n");
+			mexEvalString("pause(.0001);");
+		}
 
 		status = af_queue.finish();
 		if (status != CL_SUCCESS) {
@@ -863,6 +923,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 		apu.unlock();
 		apu_Amin.unlock();
 		cosem_psf.unlock();
+		af::sync();
 
 		if (alku == 0u) {
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM)) {
@@ -909,16 +970,15 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 					C_osl(af::span, osa_iter) = C_osl(af::span, osa_iter) * af::pow(cosem, w_vec.h_ACOSEM_2);
 			}
 
-
-			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
-				sub_index_array = af::range(af::dim4(length[osa_iter]), 0, u32) + pituus[osa_iter];
+			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
+				sub_index_array = af::range(af::dim4(length[osa_iter] * nBins), 0, s64) + pituus[osa_iter] * nBins;
 				if (subsets > 1)
 					w_vec.Amin(sub_index_array) = apu_Amin;
 				else
 					w_vec.Amin = apu_Amin;
 			}
 
-			if (w_vec.MBSREM_prepass) {
+			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
 				if (compute_norm_matrix == 0u) {
 					if (atomic_64bit)
 						Summ[osa_iter] = (apu_summa).as(f32) / TH;
@@ -934,7 +994,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 					w_vec.D += apu_summa.as(f32);
 				}
 
-				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
+				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
 					if (subsets > 1)
 						E(sub_index_array) = apu_summa_m;
 					else
@@ -945,6 +1005,33 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_
 		else {
 			w_vec.ACOSEM_rhs = af::sum<float>(apu);
 		}
+		if (alku == 0u && (MethodListOpenCL.MBSREM || MethodListOpenCL.MRAMLA) && w_vec.MBSREM_prepass && Nt == 1U) {
+			uint32_t H = osa_iter;
+			if (TOF && !loadTOF)
+				H = 0;
+			const af::array Sino = afcl::array(length[osa_iter] * nBins, d_Sino[H](), f32, true);
+			af::array rand;
+			if (randoms_correction)
+				rand = afcl::array(length[osa_iter], d_sc_ra[osa_iter](), f32, true);
+			if (U_skip) {
+				float UU = w_vec.U;
+				const af::array Aind = apu_Amin > 0.f;
+				w_vec.U = af::max<float>(Sino(Aind) / apu_Amin(Aind));
+				if (UU > w_vec.U || std::isinf(w_vec.U))
+					w_vec.U = UU;
+			}
+			float eps_mramla = w_vec.epsilon_mramla;
+			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins);
+			if (eps_mramla < w_vec.epsilon_mramla)
+				w_vec.epsilon_mramla = eps_mramla;
+		}
+		af::deviceGC();
+	}
+	if (TOF && !loadTOF) {
+		float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
+		d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[0] * nBins, NULL, &status);
+		for (int64_t to = 0LL; to < nBins; to++)
+			status = af_queue.enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[0] * to, sizeof(float) * length[0], &apu[pituus[0] + koko * to]);
 	}
 	if (use_psf && alku == 0 && w_vec.MBSREM_prepass) {
 		w_vec.D = computeConvolution(w_vec.D, g, Nx, Ny, Nz, w_vec, 1u);
@@ -1097,7 +1184,8 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, 
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem, 
-	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
+	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, 
+	const bool TOF, const int64_t nBins) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -1126,6 +1214,10 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		options += " -DSCATTER";
 	if (randoms_correction == 1u)
 		options += " -DRANDOMS";
+	if (TOF && projector_type == 1u) {
+		options += " -DTOF";
+	}
+	options += (" -DNBINS=" + std::to_string(nBins));
 	options += " -DFP";
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
 		options += (" -DN_RAYS=" + std::to_string(n_rays * n_rays3D));
@@ -1148,7 +1240,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	}
 	if (osem_bool) {
 		std::string os_options = options;
-		if ((projector_type == 2 || projector_type == 3u) && dec > 0)
+		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0)
 			os_options += (" -DDEC=" + std::to_string(dec));
 		os_options += (" -DN_REKOS=" + std::to_string(n_rekos));
 		os_options += " -DAF";
@@ -1165,7 +1257,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	}
 	if (mlem_bool) {
 		std::string ml_options = options;
-		if ((projector_type == 2 || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) > 2))) && dec > 0)
+		if ((projector_type == 2 || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) > 2)) || TOF) && dec > 0)
 			ml_options += (" -DDEC=" + std::to_string(dec));
 		ml_options += (" -DN_REKOS=" + std::to_string(n_rekos_mlem));
 		ml_options += " -DAF";
@@ -1203,7 +1295,8 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 	}
 	else
 		options += " -DCAST=float";
-	//mexPrintf("%s\n", options.c_str());
+	if (DEBUG)
+		mexPrintf("%s\n", options.c_str());
 	if (atomic_64bit) {
 		std::string kernel_path_atom;
 
@@ -1225,9 +1318,22 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 		//catch (cl::Error& e) {
 			//mexPrintf("%s\n", e.what());
 			else {
+				mexPrintf("Failed to build 64-bit atomics program.\n");
+				if (DEBUG) {
+					std::vector<cl::Device> dev;
+					af_context.getInfo(CL_CONTEXT_DEVICES, &dev);
+					for (int ll = 0; ll < dev.size(); ll++) {
+						cl_build_status status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
+						if (status != CL_BUILD_ERROR)
+							continue;
+						std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
+						std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
+						mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
+					}
+					return status;
+				}
 				options.erase(pituus, options.size() + 1);
 				options += " -DCAST=float";
-				mexPrintf("Failed to build 64-bit atomics program.\n");
 				//status = -1;
 			}
 		//}

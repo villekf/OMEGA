@@ -219,6 +219,29 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	const uint32_t det_per_ring = prhs(ind).uint32_scalar_value();
 	ind++;
 
+	// Is TOF data used?
+	const bool TOF = prhs(ind).bool_scalar_value();
+	ind++;
+
+	// Size of single TOF-subset
+	const int64_t TOFSize = prhs(ind).int64_t_scalar_value();
+	ind++;
+
+	// Variance of the Gaussian TOF
+	const double sigma_x = prhs(ind).scalar_value();
+	ind++;
+
+	// Centers of the TOF-bins
+	const double* TOFCenter = prhs(ind).array_value();
+	ind++;
+
+	// Index offset for TOF subsets
+	const int64_t nBins = prhs(ind).int64_t_scalar_value();
+	ind++;
+
+	const uint32_t dec_v = prhs(ind).uint32_scalar_value();
+	ind++;
+
 	// Are status messages displayed
 	const bool verbose = prhs(ind).bool_value();
 	ind++;
@@ -324,9 +347,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double crystal_size_z = prhs(ind).scalar_value();
 			ind++;
 
-			const uint32_t dec_v = prhs(ind).uint32_scalar_value();
-			ind++;
-
 			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
@@ -387,9 +407,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double* z_center = z_center_.fortran_vec();
 
 			const double crystal_size_z = prhs(ind).scalar_value();
-			ind++;
-
-			const uint32_t dec_v = prhs(ind).uint32_scalar_value();
 			ind++;
 
 			const double bmin = prhs(ind).scalar_value();
@@ -526,10 +543,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double crystal_size_z = prhs(ind).scalar_value();
 			ind++;
 
-			// Accuracy factor
-			const uint32_t dec_v = prhs(ind).uint32_scalar_value();
-			ind++;
-
 			if (precompute) {
 				sequential_orth_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det, 
 					NSlices, Nx, Ny, Nz, d, dz,	bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
@@ -564,13 +577,14 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			if (precompute) {
 				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
-					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm, global_factor, fp, scatter, scatter_coef);
+					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm, global_factor, fp, scatter, scatter_coef, TOF, TOFSize,
+					sigma_x, TOFCenter, nBins, dec_v);
 			}
 			else {
 				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, TotSinos,
 					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays, n_rays3D, global_factor, fp, list_mode_format, 
-					scatter, scatter_coef);
+					scatter, scatter_coef, TOF, TOFSize, sigma_x, TOFCenter, nBins, dec_v);
 			}
 
 
@@ -596,10 +610,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			ind++;
 
 			const double* z_center = z_center_.fortran_vec();
-
-			// Accuracy factor
-			const uint32_t dec_v = prhs(ind).uint32_scalar_value();
-			ind++;
 
 			// Width of the TOR in 3D case
 			const double bmin = prhs(ind).scalar_value();
@@ -737,9 +747,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double* z_center = z_center_.fortran_vec();
 
 			const double crystal_size_z = prhs(ind).scalar_value();
-			ind++;
-
-			const int32_t dec_v = prhs(ind).int32_scalar_value();
 			ind++;
 
 			// run the Orthogonal Siddon algorithm

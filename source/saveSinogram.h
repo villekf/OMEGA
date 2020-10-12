@@ -5,7 +5,7 @@
 template<typename T>
 int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t ring_number1, int32_t ring_number2, const uint64_t sinoSize, const uint32_t Ndist, 
 	const uint32_t Nang, const uint32_t ring_difference, const uint32_t span, const T* seg, const double time, const uint64_t NT, const uint64_t TOFSize,
-	const double vali, const double alku, const int32_t det_per_ring, const int32_t rings, const uint64_t bins, const int32_t nDistSide) {
+	const double vali, const double alku, const int32_t det_per_ring, const int32_t rings, const uint64_t bins, const int32_t nDistSide, bool& swap) {
 	uint64_t tPoint = 0ULL;
 	uint64_t binN = 0ULL;
 	int64_t indeksi = -1;
@@ -20,7 +20,7 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 	const bool ind = ya < j || b < xa;
 	if (ind)
 		i = -i;
-	const bool swap = (j * 2) < -i || i <= ((j - det_per_ring / 2) * 2);
+	swap = (j * 2) < -i || i <= ((j - det_per_ring / 2) * 2);
 	bool accepted_lors;
 	if (Ndist % 2U == 0)
 		accepted_lors = (i <= (static_cast<int32_t>(Ndist) / 2 + std::min(0, nDistSide)) && i >= (-static_cast<int32_t>(Ndist) / 2 + std::max(0, nDistSide)));

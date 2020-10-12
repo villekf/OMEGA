@@ -1,7 +1,7 @@
 /**************************************************************************
 * Header for matrix-free OpenCL functions
 *
-* Copyright(C) 2019  Ville - Veikko Wettenhovi
+* Copyright(C) 2020 Ville - Veikko Wettenhovi
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -18,6 +18,7 @@
 ***************************************************************************/
 #pragma once
 #include "functions.hpp"
+#define DEBUG false
 
 #pragma pack(1)
 
@@ -60,21 +61,23 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	std::vector<cl::Buffer>& d_xyindex, std::vector<cl::Buffer>& d_Sino, std::vector<cl::Buffer>& d_sc_ra, const uint32_t size_x, const size_t size_z,
 	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows, std::vector<size_t>& length, const float* x, const float* y,
 	const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw,
-	cl::Context& af_context, const uint32_t subsets, const uint32_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
-	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, cl::Buffer& d_ycenter, cl::Buffer& d_zcenter,
-	const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z,
-	const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, cl::Buffer& d_lor_mlem,
-	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, cl::Buffer& d_reko_type_mlem, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem);
+	cl::Context& af_context, const uint32_t subsets, const int64_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
+	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, 
+	cl::Buffer& d_ycenter, cl::Buffer& d_zcenter, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, 
+	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
+	cl::Buffer& d_lor_mlem,	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
+	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
+	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, const float* TOFCenter);
 
 // Prepass phase for MRAMLA, MBSREM, COSEM, ACOSEM, ECOSEM, RBI
-void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const uint32_t* pituus, const std::vector<cl::Buffer>& lor, const std::vector<cl::Buffer>& zindex,
+void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t* pituus, const std::vector<cl::Buffer>& lor, const std::vector<cl::Buffer>& zindex,
 	const std::vector<cl::Buffer>& xindex, cl::Program program, const cl::CommandQueue& af_queue, const cl::Context af_context, Weighting& w_vec,
-	std::vector<af::array>& Summ, const std::vector<cl::Buffer>& d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
+	std::vector<af::array>& Summ, std::vector<cl::Buffer>& d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
 	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& L, const uint8_t raw,
 	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix,
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
-	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps);
+	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins,
+	const size_t koko, const bool randoms_correction, const uint32_t Nt = 1U);
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx,
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax,
@@ -87,16 +90,17 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction,
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction);
+	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction,
+	const bool TOF, const int64_t nBins);
 
 cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
 	bool& atomic_64bit, std::string options);
 
 void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, af::array* testi, const float epps,
 	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
-	const TVdata& data, std::vector<size_t>& length, std::vector<cl::Buffer>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const uint32_t* pituus,
+	const TVdata& data, std::vector<size_t>& length, std::vector<cl::Buffer>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const int64_t* pituus,
 	const std::vector<cl::Buffer>& d_lor, const std::vector<cl::Buffer>& d_zindex, const std::vector<cl::Buffer>& d_xyindex, cl::Program& program_mbsrem, const cl::CommandQueue& af_queue,
 	const cl::Context& af_context, std::vector<af::array>& Summ, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& d_L, const uint8_t raw,
 	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const cl_uchar compute_norm_matrix, cl::Kernel& kernelNLM,
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
-	const af::array& g, const kernelStruct& OpenCLStruct);
+	const af::array& g, const kernelStruct& OpenCLStruct, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, const bool randoms_correction);

@@ -8,7 +8,7 @@
 * CCough a Pixel or Voxel Space. Journal of computing and information 
 * technology, 6 (1), 89-94.
 *
-* Copyright (C) 2019 Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -29,7 +29,34 @@ const static auto CC = 1e3;
 
 
 // Compute the orthogonal distance between a point and a line (in 3D)
-double compute_element_volume_3D(Det detectors, const double xl, const double yl, const double zl, const double kerroin,
+double compute_element_volume_3D(const double xs, const double ys, const double zs, const double xl, const double yl, const double zl, const double kerroin,
+	const double xp, const double yp, const double zp) {
+
+	double x1, y1, z1, x0, y0, z0;
+
+	x0 = xp - xs;
+	//y0 = yp - detectors.ys;
+	//z0 = zp - detectors.zs;
+	//x1 = xp - detectors.xd;
+	//y1 = yp - detectors.yd;
+	//z1 = zp - detectors.zd;
+
+	// Cross product
+	//x1 = yl * z0 - zl * y0;
+	//y1 = zl * x0 - xl * z0;
+	//z1 = xl * y0 - yl * x0;
+	y1 = zl * x0 - xl;
+	z1 = ys - yl * x0;
+	//x1 = y1 * z0 - z1 * y0;
+	//y1 = z1 * x0 - x1 * z0;
+	//z1 = x1 * y0 - y1 * x0;
+
+	// Distance
+	return (norm(zs, y1, z1) / kerroin);
+}
+
+
+double compute_element_volume_3D_per(const Det detectors, const double xl, const double yl, const double zl, const double kerroin,
 	const double xp, const double yp, const double zp) {
 
 	double x1, y1, z1, x0, y0, z0;
@@ -45,6 +72,8 @@ double compute_element_volume_3D(Det detectors, const double xl, const double yl
 	x1 = yl * z0 - zl * y0;
 	y1 = zl * x0 - xl * z0;
 	z1 = xl * y0 - yl * x0;
+	//y1 = zl * x0 - xl;
+	//z1 = ys - yl * x0;
 	//x1 = y1 * z0 - z1 * y0;
 	//y1 = z1 * x0 - x1 * z0;
 	//z1 = x1 * y0 - y1 * x0;
@@ -71,7 +100,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 	double jelppi = 0.;
 	for (int32_t zz = static_cast<int32_t>(z_ring); zz >= 0; zz--) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double d_ort = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double d_ort = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (d_ort <= CC)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
@@ -83,7 +112,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 			temp += d_ort * static_cast<double>(N2);
 		}
 		for (uint32_t uu = apu + 1u; uu < N2; uu++) {
-			double d_ort = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double d_ort = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (d_ort <= CC)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
@@ -98,7 +127,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 	}
 	for (uint32_t zz = z_ring + 1u; zz < Nz; zz++) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double d_ort = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double d_ort = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (d_ort <= CC)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
@@ -111,7 +140,7 @@ void volume_perpendicular_3D(const double dd, const std::vector<double> vec, con
 			temp += d_ort * static_cast<double>(N2);
 		}
 		for (uint32_t uu = apu + 1; uu < N2; uu++) {
-			double d_ort = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double d_ort = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (d_ort <= CC)
 				break;
 			uint32_t local_ind = uu * d_N + zz * Nyx;
@@ -159,7 +188,13 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 		bool breikki2 = false;
 		bool breikki3 = false;
 		bool breikki4 = false;
+		double zs_apu = detectors.zs;
+		double x_diff_apu = x_diff;
+		double ys_apu = detectors.ys;
 		for (int zz = tempk; zz < start; zz++) {
+			zs_apu = (z_center[zz] - detectors.zs);
+			x_diff_apu = x_diff * zs_apu;
+			zs_apu *= y_diff;
 			yy1 = 0;
 			uu1 = 0;
 			yy2 = 0;
@@ -173,11 +208,14 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 			breikki3 = false;
 			breikki4 = false;
 			for (yy1 = alku_y1; yy1 < Ny; yy1++) {
+				ys_apu = y_center[yy1] - detectors.ys;
+				float zs_apu2 = zs_apu - z_diff * ys_apu;
+				ys_apu *= x_diff;
 				int xx = 0;
 				int incr = 0;
-				float prev_local = 1.f;
+				double prev_local = 1.;
 				for (xx = alku_x1; xx < Nx; xx++) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x1 + 1) {
 							breikki1 = true;
@@ -194,7 +232,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy1 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -207,9 +245,9 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 				uu1 = xx;
 				xx = 0;
 				incr = 0;
-				prev_local = 1.f;
+				prev_local = 1.;
 				for (xx = alku_x2; xx >= 0; xx--) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x2 - 1) {
 							breikki2 = true;
@@ -226,7 +264,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy1 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -268,11 +306,14 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 			alku_x1 = tempi;
 			alku_x2 = tempi - 1;
 			for (yy2 = alku_y2; yy2 >= 0; yy2--) {
+				ys_apu = y_center[yy2] - detectors.ys;
+				double zs_apu2 = zs_apu - z_diff * ys_apu;
+				ys_apu *= x_diff;
 				int xx = 0;
 				int incr = 0;
-				float prev_local = 1.f;
+				double prev_local = 1.;
 				for (xx = alku_x1; xx < Nx; xx++) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x1 + 1) {
 							breikki1 = true;
@@ -289,7 +330,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy2 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -302,9 +343,9 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 				uu1 = xx;
 				xx = 0;
 				incr = 0;
-				prev_local = 1.f;
+				prev_local = 1.;
 				for (xx = alku_x2; xx >= 0; xx--) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x2 - 1) {
 							breikki2 = true;
@@ -321,7 +362,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy2 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -363,6 +404,9 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 			}
 		}
 		for (int zz = tempk - 1; zz >= loppu; zz--) {
+			zs_apu = (z_center[zz] - detectors.zs);
+			x_diff_apu = x_diff * zs_apu;
+			zs_apu *= y_diff;
 			yy1 = 0;
 			uu1 = 0;
 			yy2 = 0;
@@ -378,9 +422,12 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 			for (yy1 = alku_y1; yy1 < Ny; yy1++) {
 				int xx = 0;
 				int incr = 0;
-				float prev_local = 1.f;
+				double prev_local = 1.;
+				ys_apu = y_center[yy1] - detectors.ys;
+				double zs_apu2 = zs_apu - z_diff * ys_apu;
+				ys_apu *= x_diff;
 				for (xx = alku_x1; xx < Nx; xx++) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x1 + 1) {
 							breikki1 = true;
@@ -397,7 +444,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy1 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -410,9 +457,9 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 				uu1 = xx;
 				xx = 0;
 				incr = 0;
-				prev_local = 1.f;
+				prev_local = 1.;
 				for (xx = alku_x2; xx >= 0; xx--) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy1], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x2 - 1) {
 							breikki2 = true;
@@ -429,7 +476,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy1 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -473,9 +520,12 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 			for (yy2 = alku_y2; yy2 >= 0; yy2--) {
 				int xx = 0;
 				int incr = 0;
-				float prev_local = 1.f;
+				double prev_local = 1.;
+				ys_apu = y_center[yy2] - detectors.ys;
+				double zs_apu2 = zs_apu - z_diff * ys_apu;
+				ys_apu *= x_diff;
 				for (xx = alku_x1; xx < Nx; xx++) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x1 + 1) {
 							breikki1 = true;
@@ -492,7 +542,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy2 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -505,9 +555,9 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 				uu1 = xx;
 				xx = 0;
 				incr = 0;
-				prev_local = 1.f;
+				prev_local = 1.;
 				for (xx = alku_x2; xx >= 0; xx--) {
-					double local_ele = compute_element_volume_3D(detectors, x_diff, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
+					double local_ele = compute_element_volume_3D(detectors.xs, ys_apu, zs_apu2, x_diff_apu, y_diff, z_diff, kerroin, x_center[xx], y_center[yy2], z_center[zz]);
 					if (local_ele >= bmax && incr > 0 && prev_local < local_ele) {
 						if (xx == alku_x2 - 1) {
 							breikki2 = true;
@@ -524,7 +574,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 					if (local_ele < bmin)
 						local_ele = Vmax;
 					else
-						local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+						local_ele = V[(std::llround((local_ele - bmin) * CC))];
 					const uint32_t local_ind = compute_ind_orth_mfree_3D(static_cast<uint32_t>(xx), yy2 * N1, static_cast<uint32_t>(zz), NN, Nyx);
 					computeIndices(RHS, SUMMA, OMP, PRECOMP, DISCARD, local_ele, temp, ax, no_norm, Summ, rhs,
 						local_sino, osem_apu, N2, indices, elements, v_indices, idx, local_ind, N22);
@@ -565,7 +615,6 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 				break;
 			}
 		}
-
 	}
 }
 
@@ -585,13 +634,13 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 	uint32_t hpk = N2;
 	for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			if (local_ele < bmin)
 				local_ele = Vmax;
 			else
-				local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+				local_ele = V[(std::llround((local_ele - bmin) * CC))];
 			temp += (local_ele * d_N2);
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
@@ -609,13 +658,13 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 			}
 		}
 		for (uint32_t uu = apu + 1; uu < d_N1; uu++) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			if (local_ele < bmin)
 				local_ele = Vmax;
 			else
-				local_ele = V[static_cast<size_t>(std::round((local_ele - bmin) * CC))];
+				local_ele = V[(std::llround((local_ele - bmin) * CC))];
 			temp += (local_ele * d_N2);
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
@@ -633,7 +682,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 	}
 	for (uint32_t zz = z_loop + 1u; zz < Nz; zz++) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			temp += (local_ele * d_N2);
@@ -651,7 +700,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 			}
 		}
 		for (uint32_t uu = apu + 1; uu < d_N1; uu++) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			temp += (local_ele * d_N2);
@@ -680,7 +729,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 	if (PRECOMPUTE) {
 		for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {
 			for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-				double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
 				local_ele *= temp;
@@ -693,7 +742,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				}
 			}
 			for (uint32_t uu = apu + 1; uu < d_N1; uu++) {
-				double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
 				local_ele *= temp;
@@ -708,7 +757,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 		}
 		for (uint32_t zz = z_loop + 1u; zz < Nz; zz++) {
 			for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-				double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
 				local_ele *= temp;
@@ -721,7 +770,7 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				}
 			}
 			for (uint32_t uu = apu + 1; uu < d_N1; uu++) {
-				double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
 				local_ele *= temp;
@@ -754,14 +803,14 @@ void volume_perpendicular_precompute(const uint32_t N1, const uint32_t N2, const
 	uint32_t koko2 = 0u;
 	for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			koko1++;
 		}
 		temp_koko += (koko1 * N2);
 		for (uint32_t uu = apu + 1u; uu < N1; uu++) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			koko2++;
@@ -772,14 +821,14 @@ void volume_perpendicular_precompute(const uint32_t N1, const uint32_t N2, const
 	}
 	for (uint32_t zz = z_loop + 1u; zz < Nz; zz++) {
 		for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			koko1++;
 		}
 		temp_koko += (koko1 * N2);
 		for (uint32_t uu = apu + 1u; uu < N1; uu++) {
-			double local_ele = compute_element_volume_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
+			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
 			koko2++;

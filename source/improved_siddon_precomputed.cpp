@@ -73,7 +73,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 		const uint64_t N22 = lor2[lo + 1];
 
 		// If the measurement is on a same ring
-		if (fabs(z_diff) < 1e-8) {
+		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			// Z-coordinate (ring number)
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
@@ -84,7 +84,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
@@ -100,7 +100,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction, 
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction,
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
@@ -109,294 +109,97 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					}
 				}
 			}
-			else {
-				// If neither x- nor y-directions are perpendicular
-				int32_t tempi = 0, tempj = 0, iu = 0, ju = 0;
-				double txu = 0., tyu = 0., tc = 0., tx0 = 0., ty0 = 0.;
-
-				const bool skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
-					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
-
-				// d_conv
-				const double LL = sqrt(x_diff * x_diff + y_diff * y_diff);
-
-				double temp = 0., apu = 0.;
-
-				uint32_t tempijk = tempk * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-				// Compute the indices and matrix elements
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-
-					indices[N2 + ii] = static_cast<size_t>(tempijk);
-					if (tx0 < ty0) {
-						apu = pixel_value(tx0, tc, LL);
-						tempi += iu;
-						if (iu > 0)
-							tempijk++;
-						else
-							tempijk--;
-						tc = tx0;
-						tx0 += txu;
-					}
-					else {
-
-						apu = pixel_value(ty0, tc, LL);
-						tempj += ju;
-						if (ju > 0)
-							tempijk += Nx;
-						else
-							tempijk -= Nx;
-						tc = ty0;
-						ty0 += tyu;
-					}
-
-					temp += apu;
-					elements[N2 + ii] = (apu);
-				}
-
-				// If computing the attenuation image (Inveon)
-				if (attenuation_phase)
-					length[lo] = temp;
-
-				temp = 1. / temp;
-
-				// Apply attenuation correction
-				if (attenuation_correction)
-					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
-
-
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-					elements[N2 + ii] = fabs(elements[N2 + ii]) * (temp);
-				}
-			}
 		}
-		 //If the z-detector coordinates are not on the same ring
-		 //All computations follow the same logic as above
 		else {
+			int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
+			double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 1e8, ty0 = 1e8, tz0 = 1e8;
+			bool skip = false;
 
-			if (fabs(y_diff) < 1e-8) {
-				if (detectors.yd <= maxyy && detectors.yd >= by) {
-
-					int32_t tempi = 0, tempk = 0, tempj = 0, iu = 0, ku = 0;
-					double txu = 0., tzu = 0., tc = 0., tx0 = 0., tz0 = 0.;
-
-					const bool skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
-						detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
-
-					const double LL = sqrt((x_diff * x_diff + z_diff * z_diff));
-
-					double apu1;
-
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Ny); ii++) {
-						apu1 = (yy_vec[ii + 1ULL] - detectors.yd);
-						if (apu1 > 0.) {
-							tempj = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-
-					double temp = 0.;
-
-					double apu = 0.;
-
-					uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-
-						indices[N2 + ii] = static_cast<size_t>(tempijk);
-						if (tx0 < tz0) {
-							apu = pixel_value(tx0, tc, LL);
-							tempi += iu;
-							if (iu > 0)
-								tempijk++;
-							else
-								tempijk--;
-							tc = tx0;
-							tx0 += txu;
-						}
-						else {
-
-							apu = pixel_value(tz0, tc, LL);
-							tempk += ku;
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-
-						temp += apu;
-						elements[N2 + ii] = (apu);
-					}
-
-					if (attenuation_phase)
-						length[lo] = temp;
-
-					temp = 1. / temp;
-
-					if (attenuation_correction)
-						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						elements[N2 + ii] *= temp;
-					}
-				}
+			if (std::fabs(z_diff) < 1e-8) {
+				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
+					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
-			else if (fabs(x_diff) < 1e-8) {
-				if (detectors.xd <= maxxx && detectors.xd >= bx) {
-
-					int32_t tempi = 0, tempk = 0, tempj = 0, ju = 0, ku = 0;
-					double tyu = 0., tzu = 0., tc = 0., ty0 = 0., tz0 = 0.;
-					const bool skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-						detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
-
-					const double LL = sqrt((y_diff * y_diff + z_diff * z_diff));
-
-					double apu1;
-
-					double temp = 0.;
-
-					double apu = 0.;
-
-					for (size_t ii = 0ULL; ii < static_cast<size_t>(Nx); ii++) {
-						apu1 = (xx_vec[ii + 1ULL] - detectors.xd);
-						if (apu1 > 0.) {
-							tempi = static_cast<int32_t>(ii);
-							break;
-						}
-					}
-
-					uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-
-						indices[N2 + ii] = static_cast<size_t>(tempijk);
-						if (tz0 < ty0) {
-
-							apu = pixel_value(tz0, tc, LL);
-							tempk += ku;
-							if (ku > 0)
-								tempijk += Nyx;
-							else
-								tempijk -= Nyx;
-							tc = tz0;
-							tz0 += tzu;
-						}
-						else {
-							apu = pixel_value(ty0, tc, LL);
-							tempj += ju;
-							if (ju > 0)
-								tempijk += Nx;
-							else
-								tempijk -= Nx;
-							tc = ty0;
-							ty0 += tyu;
-
-						}
-						temp += apu;
-						elements[N2 + ii] = (apu);
-					}
-
-					if (attenuation_phase)
-						length[lo] = temp;
-
-					temp = 1. / temp;
-
-					if (attenuation_correction)
-						att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
-					if (normalization)
-						temp *= norm_coef[lo];
-					if (scatter)
-						temp *= scatter_coef[lo];
-					temp *= global_factor;
-
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						elements[N2 + ii] *= temp;
-					}
-				}
+			//Detectors on different rings (e.g. oblique sinograms)
+			else if (std::fabs(y_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
+					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
+			}
+			else if (std::fabs(x_diff) < 1e-8) {
+				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
 			}
 			else {
+				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
+					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			}
 
-				int32_t tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
-				double txu = 0., tyu = 0., tzu = 0., tc = 0., tx0 = 0., ty0 = 0., tz0 = 0.;
-				const bool skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, 
-					tyu, txu, tzu, Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
+			// d_conv
+			const double LL = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
 
-				const double LL = sqrt(x_diff * x_diff + z_diff * z_diff + y_diff * y_diff);
+			double temp = 0., apu = 0.;
 
-				double temp = 0.;
+			uint32_t tempijk = static_cast<uint32_t>(tempk) * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
 
-				double apu = 0.;
+			// Compute the indices and matrix elements
+			for (uint32_t ii = 0u; ii < Np; ii++) {
 
-				uint32_t tempijk = Nyx * static_cast<uint32_t>(tempk) + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
-
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-
-					indices[N2 + ii] = static_cast<size_t>(tempijk);
-					if (tz0 < ty0 && tz0 < tx0) {
-
-						apu = pixel_value(tz0, tc, LL);
-						tempk += ku;
-						if (ku > 0)
-							tempijk += Nyx;
-						else
-							tempijk -= Nyx;
-						tc = tz0;
-						tz0 += tzu;
-					}
-					else if (ty0 < tx0) {
-						apu = pixel_value(ty0, tc, LL);
-						tempj += ju;
-						if (ju > 0)
-							tempijk += Nx;
-						else
-							tempijk -= Nx;
-						tc = ty0;
-						ty0 += tyu;
-					}
-					else {
-						apu = pixel_value(tx0, tc, LL);
-						tempi += iu;
-						if (iu > 0)
-							tempijk++;
-						else
-							tempijk--;
-						tc = tx0;
-						tx0 += txu;
-					}
-					temp += apu;
-					elements[N2 + ii] = (apu);
+				indices[N2 + ii] = static_cast<size_t>(tempijk);
+				if (tx0 < ty0 && tx0 < tz0) {
+					apu = pixel_value(tx0, tc, LL);
+					tempi += iu;
+					if (iu > 0)
+						tempijk++;
+					else
+						tempijk--;
+					tc = tx0;
+					tx0 += txu;
+				}
+				else if (ty0 < tz0) {
+					apu = pixel_value(ty0, tc, LL);
+					tempj += ju;
+					if (ju > 0)
+						tempijk += Nx;
+					else
+						tempijk -= Nx;
+					tc = ty0;
+					ty0 += tyu;
+				}
+				else {
+					apu = pixel_value(tz0, tc, LL);
+					tempk += ku;
+					if (ku > 0)
+						tempijk += Nyx;
+					else
+						tempijk -= Nyx;
+					tc = tz0;
+					tz0 += tzu;
 				}
 
-				if (attenuation_phase)
-					length[lo] = temp;
+				temp += apu;
+				elements[N2 + ii] = (apu);
+			}
 
-				temp = 1. / temp;
+			// If computing the attenuation image (Inveon)
+			if (attenuation_phase)
+				length[lo] = temp;
 
-				if (attenuation_correction)
-					att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
-				if (normalization)
-					temp *= norm_coef[lo];
-				if (scatter)
-					temp *= scatter_coef[lo];
-				temp *= global_factor;
+			temp = 1. / temp;
 
-				for (uint32_t ii = 0u; ii < Np; ii++) {
-					elements[N2 + ii] *= temp;
-				}
+			// Apply attenuation correction
+			if (attenuation_correction)
+				att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
+			if (normalization)
+				temp *= norm_coef[lo];
+			if (scatter)
+				temp *= scatter_coef[lo];
+			temp *= global_factor;
+
+
+			for (uint32_t ii = 0u; ii < Np; ii++) {
+				elements[N2 + ii] = fabs(elements[N2 + ii]) * (temp);
 			}
 		}
 	}

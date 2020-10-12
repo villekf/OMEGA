@@ -236,7 +236,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	const std::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
-	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction) {
+	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins) {
 	cl_int status = CL_SUCCESS;
 
 
@@ -285,6 +285,10 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		options += " -DSCATTER";
 	if (randoms_correction == 1u)
 		options += " -DRANDOMS";
+	if (TOF && projector_type == 1u) {
+		options += " -DTOF";
+	}
+	options += (" -DNBINS=" + std::to_string(nBins));
 	//if (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1)) {
 	//	options += " -DORTH";
 	//	options += " -DCRYSTZ";
@@ -324,6 +328,21 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 			status = program.build(options.c_str());
 			if (status != CL_SUCCESS) {
 				mexPrintf("Failed to build 64-bit atomics program.\n");
+				if (DEBUG) {
+					getErrorString(status);
+					mexPrintf("Failed to build OpenCL program.\n");
+					std::vector<cl::Device> dev;
+					context.getInfo(CL_CONTEXT_DEVICES, &dev);
+					for (int ll = 0; ll < dev.size(); ll++) {
+						cl_build_status b_status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
+						if (b_status != CL_BUILD_ERROR)
+							continue;
+						std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
+						std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
+						mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
+					}
+					return status;
+				}
 			}
 			else {
 				if (verbose)
