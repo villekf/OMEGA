@@ -44,6 +44,9 @@ end
 if ~isfield(options, 'TOF_FWHM')
     options.TOF_FWHM = 0;
 end
+if ~isfield(options,'TOF_width')
+    options.TOF_width = 0;
+end
 if ~isfield(options, 'cryst_per_block_axial')
     options.cryst_per_block_axial = options.cryst_per_block;
 end
@@ -52,6 +55,9 @@ if ~isfield(options, 'transaxial_multip')
 end
 if ~isfield(options,'use_machine')
     options.use_machine = 0;
+end
+if ~isfield(options, 'use_ASCII')
+    options = set_GATE_variables(options);
 end
 
 % Determine whether various different reconstruction modes are used (e.g.
@@ -301,21 +307,44 @@ if options.implementation == 1 && ~options.precompute_lor
     warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
         'precompute_lor to true or use another implementation.'])
 end
+if options.TOF_bins > 1 && options.implementation == 1
+    error('TOF is currently not supported with implementation 1!')
+end
+if options.TOF_bins > 1 && options.projector_type > 1
+    error('TOF is currently only supported with improved Siddon (projector_type = 1)')
+end
+if options.TOF_bins > 1 && options.TOF_width <= 0
+    error('TOF width must be greater than zero.')
+end
+if options.TOF_bins > 1 && options.TOF_bins_used == 1
+    disp('Summing TOF bins.')
+end
+if options.TOF_bins > 1 && options.TOF_FWHM == 0
+    error('TOF enabled, but the TOF FWHM is zero. FWHM must be nonzero.')
+end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose
     if options.use_ASCII && options.use_machine == 0
-        disp('Using ASCII data.')
+        dispi = 'Using ASCII data';
     elseif options.use_LMF && options.use_machine == 0
-        disp('Using LMF data.')
+        dispi = 'Using LMF data';
     elseif options.use_root && options.use_machine == 0
-        disp('Using ROOT data.')
+        dispi = 'Using ROOT data';
     elseif options.use_machine == 1
-        disp('Using data obtained from list-mode file.')
+        dispi = 'Using data obtained from list-mode file';
     elseif options.use_machine == 2
-        disp('Using machine created sinogram data.')
+        dispi = 'Using machine created sinogram data';
     elseif options.use_machine == 3
-        disp('Using 32-bit list-mode data.')
+        dispi = 'Using 32-bit list-mode data';
+    else
+        dispi = [];
     end
+    if options.TOF_bins > 1 && options.TOF_FWHM > 0
+        dispi = [dispi ' with TOF (' num2str(options.TOF_bins) ' bins).'];
+    else
+        dispi = [dispi '.'];
+    end
+    disp(dispi);
     if options.only_sinos
         disp('Loading only data.')
     end
