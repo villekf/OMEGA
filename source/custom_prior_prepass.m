@@ -476,6 +476,9 @@ if TOF
         TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
         TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
         options.TOFCenter = TOFCenter * c / 2;
+        if isfield(options, 'TOF_offset') && options.TOF_offset > 0
+            options.TOFCenter = options.TOFCenter + options.TOF_offset;
+        end
     end
 else
     options.sigma_x = 0;
