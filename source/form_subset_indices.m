@@ -818,6 +818,9 @@ elseif options.use_raw_data && options.precompute_lor
 elseif options.use_raw_data == false && ~options.precompute_lor
     
     if (subsets > 1 || fpbp)
+        if options.NSinos ~= options.TotSinos
+            index = index(1:options.Ndist*options.Nang*options.NSinos);
+        end
         if options.normalization_correction && options.corrections_during_reconstruction
             if options.NSinos ~= options.TotSinos
                 options.normalization = options.normalization(index(1:options.Ndist*options.Nang*options.NSinos));
@@ -832,26 +835,16 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                     temp = options.SinDelayed{ff};
                     if options.NSinos ~= options.TotSinos
                         temp = temp(:,:,1:options.NSinos);
-                        temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        temp = temp(index);
                     end
+                    temp = temp(index);
                     options.SinDelayed{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.SinDelayed)
-                    if options.NSinos ~= options.TotSinos
-                        options.SinDelayed{1} = options.SinDelayed{1}(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        options.SinDelayed{1} = options.SinDelayed{1}(index);
-                    end
+                    options.SinDelayed{1} = options.SinDelayed{1}(index);
                 else
-                    if options.NSinos ~= options.TotSinos
-                        options.SinDelayed = options.SinDelayed(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        options.SinDelayed = options.SinDelayed(index);
-                    end
+                    options.SinDelayed = options.SinDelayed(index);
                 end
             end
         end
@@ -862,26 +855,16 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                     temp = options.ScatterC{ff};
                     if options.NSinos ~= options.TotSinos
                         temp = temp(:,:,1:options.NSinos);
-                        temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
-                        temp = temp(index);
                     end
+                    temp = temp(index);
                     options.ScatterC{ff} = temp;
                 end
                 clear temp
             else
                 if iscell(options.ScatterC)
-                    if options.NSinos ~= options.TotSinos
-                        options.ScatterC = options.ScatterC{1}(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
                         options.ScatterC = options.ScatterC{1}(index);
-                    end
                 else
-                    if options.NSinos ~= options.TotSinos
-                        options.ScatterC = options.ScatterC(index(1:options.Ndist*options.Nang*options.NSinos));
-                    else
                         options.ScatterC = options.ScatterC(index);
-                    end
                 end
             end
         end
@@ -893,18 +876,13 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                         temp = temp(:,:,1:options.NSinos,:);
                         if TOF
                             temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
-                            temp = temp(index(1:options.Ndist*options.Nang*options.NSinos),:);
-                        else
-                            temp = temp(index(1:options.Ndist*options.Nang*options.NSinos));
                         end
                     else
                         if TOF
                             temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
-                            temp = temp(index,:);
-                        else
-                            temp = temp(index);
                         end
                     end
+                    temp = temp(index);
                     varargout{1}{ff} = temp(:);
                 end
                 clear temp
@@ -913,9 +891,9 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                     varargin{2} = varargin{2}(:,:,1:options.NSinos,:);
                     if TOF
                         varargout{1} = reshape(varargin{2}, numel(varargin{2}) / options.TOF_bins, options.TOF_bins);
-                        varargout{1} = varargout{1}(index(1:options.Ndist*options.Nang*options.NSinos),:);
+                        varargout{1} = varargout{1}(index,:);
                     else
-                        varargout{1} = varargin{2}(index(1:options.Ndist*options.Nang*options.NSinos));
+                        varargout{1} = varargin{2}(index);
                     end
                 else
                     if TOF

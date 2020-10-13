@@ -266,6 +266,13 @@ if use_raw_data == false && subsets > 1
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options);
             subsets = length(pituus);
+            if options.NSinos < options.TotSinos
+                if options.NSinos == options.Nz
+                    subsets = 180 / options.n_angles;
+                else
+                    error(['Number of sinograms with subset_type = 6 has to be either ' num2str(options.Nz) ' or ' num2str(options.TotSinos)]);
+                end
+            end
         % Use golden angle sampling
         elseif options.subset_type == 7
             [index, pituus] = goldenAngleSubsets(options);
