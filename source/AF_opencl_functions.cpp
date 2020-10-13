@@ -978,7 +978,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					w_vec.Amin = apu_Amin;
 			}
 
-			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass) {
+			if (w_vec.MBSREM_prepass) {
 				if (compute_norm_matrix == 0u) {
 					if (atomic_64bit)
 						Summ[osa_iter] = (apu_summa).as(f32) / TH;
@@ -994,7 +994,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					w_vec.D += apu_summa.as(f32);
 				}
 
-				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
+				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && Nt > 1U) {
 					if (subsets > 1)
 						E(sub_index_array) = apu_summa_m;
 					else

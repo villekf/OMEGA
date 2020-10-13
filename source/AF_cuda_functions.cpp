@@ -909,7 +909,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 					w_vec.D += apu_summa.as(f32);
 				}
 
-				if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
+				if ((MethodList.MRAMLA || MethodList.MBSREM) && Nt > 1U) {
 					if (subsets > 1)
 						E(sub_index_array) = apu_summa_m;
 					else
