@@ -2,18 +2,19 @@
 // Use ArrayFire namespace for convenience
 using namespace af;
 
-void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, RecMethodsOpenCL& MethodListOpenCL, const uint32_t im_dim, af::array* testi, const float epps,
-	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz,
-	const TVdata& data, std::vector<size_t>& length, std::vector<CUdeviceptr>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, const uint32_t* pituus,
-	std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, const CUstream& af_cuda_stream, std::vector<af::array>& Summ,
-	CUfunction& kernel_mramla, std::vector<CUdeviceptr>& d_L, const uint8_t raw, const size_t koko, const bool atomic_64bit, const uint8_t compute_norm_matrix,
-	std::vector<CUdeviceptr>& d_sc_ra, af::array& E, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const uint32_t det_per_ring, CUdeviceptr& d_pseudos, const uint32_t prows,
-	const float dz, const float dx, const float dy, const float bz, const float bx, const float by, const float bzb, const float maxxx, const float maxyy,
-	const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, const uint32_t size_x, const uint32_t TotSinos,
-	CUdeviceptr& d_atten, const uint32_t Nxy,
-	const float tube_width, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter,
-	CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, const bool precompute, const uint32_t projector_type,
-	const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, const bool use_psf, const af::array& g, const kernelStruct& CUDAStruct) {
+void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, RecMethodsOpenCL& MethodListOpenCL, const uint32_t im_dim, 
+	af::array* testi, const float epps,	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny, 
+	const uint32_t Nz,	const TVdata& data, std::vector<size_t>& length, std::vector<CUdeviceptr>& d_Sino, bool& break_iter, af::array& pj3, const uint32_t n_rekos2, 
+	const int64_t* pituus,	std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, const CUstream& af_cuda_stream,
+	std::vector<af::array>& Summ,	CUfunction& kernel_mramla, std::vector<CUdeviceptr>& d_L, const uint8_t raw, const size_t koko, const bool atomic_64bit, 
+	const uint8_t compute_norm_matrix,	std::vector<CUdeviceptr>& d_sc_ra, af::array& E, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, 
+	const uint32_t det_per_ring, CUdeviceptr& d_pseudos, const uint32_t prows,	const float dz, const float dx, const float dy, const float bz, const float bx, 
+	const float by, const float bzb, const float maxxx, const float maxyy,	const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, 
+	const uint32_t size_x, const uint32_t TotSinos,	CUdeviceptr& d_atten, const uint32_t Nxy, const float tube_width, const float crystal_size_z, const float bmin, 
+	const float bmax, const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter,	CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, 
+	const uint16_t n_rays3D, const bool precompute, const uint32_t projector_type, const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, 
+	const bool use_psf, const af::array& g, const kernelStruct& CUDAStruct, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins,
+	const bool randoms_correction, const float sigma_x, CUdeviceptr& d_TOFCenter) {
 
 	uint64_t yy = 0u;
 	float a_Summa = 1.f;
@@ -23,7 +24,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		cuCtxSynchronize();
 		//array uu(length[osa_iter], d_Sino[osa_iter], afDevice);
 		array uu(length[osa_iter], hOut, afHost);
-		af:eval(uu);
+		af::eval(uu);
 		a_Summa = af::sum<float>(uu);
 		delete[] hOut;
 	}
@@ -89,11 +90,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		vec.C_aco(span, osa_iter) = vec.rhs_os(seq(yy, yy + im_dim - 1u)) * pow(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.h_ACOSEM_2);
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = COSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.C_aco, w_vec.D, w_vec.h_ACOSEM, 1u);
 		array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-		MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+		MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 			vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 			prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 			d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-			d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+			d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+			kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 		w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
 		yy += im_dim;
@@ -142,11 +144,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), a_Summa / w_vec.ACOSEM_rhs, batchMul);
 			}
@@ -196,11 +199,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -251,11 +255,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -306,11 +311,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -361,11 +367,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -416,11 +423,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -467,11 +475,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -540,11 +549,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 					MethodList.OSLCOSEM);
 				if (MethodList.OSLCOSEM == 1u) {
 					array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-					MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+					MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 						vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 						prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 						d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+						kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -557,11 +567,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 					MethodList.OSLCOSEM);
 				if (MethodList.OSLCOSEM == 1u) {
 					array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-					MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+					MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 						vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 						prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 						d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+						d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+						kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -609,11 +620,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -660,11 +672,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -711,11 +724,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
@@ -758,11 +772,12 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 				MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
-				MRAMLA_prepass_CUDA(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
+				MRAMLA_prepass_CUDA(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, w_vec, Summ, d_Sino, koko, apu, vec.C_co,
 					vec.C_aco, vec.C_osl, osa_iter + 1u, d_L, raw, MethodListOpenCL, length, compute_norm_matrix, d_sc_ra, E, det_per_ring, d_pseudos,
 					prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 					d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
-					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem, atomic_64bit, use_psf, g);
+					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
+					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 				w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
