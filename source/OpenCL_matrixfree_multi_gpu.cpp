@@ -214,15 +214,15 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		ind++;
 
 		// The total number of sinograms
-		const uint32_t TotSinos = (uint32_t)mxGetScalar(prhs[ind]);
+		const uint16_t TotSinos = (uint32_t)mxGetScalar(prhs[ind]);
 		ind++;
-		
-		uint32_t loop_var_par = 1u;
+
+		size_t loop_var_par = 1ULL;
 
 		if (raw)
 			loop_var_par = numRows / 2ULL;
 		else
-			loop_var_par = NSinos * size_x;
+			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(size_x);
 
 		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
 

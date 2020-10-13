@@ -60,7 +60,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	// Maximum of 16 devices
 
-	std::vector<cl::Device> devices;
+	cl::vector<cl::Device> devices;
 
 	// Get the OpenCL context
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, subsets,
@@ -198,7 +198,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 
 	size_t size;
 
-	std::vector<cl::Device> devices;
+	cl::vector<cl::Device> devices;
 
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, 1u,
 		raw);
@@ -272,7 +272,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, 
 	const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz, 
 	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
-	const uint32_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path, const uint32_t* pseudos, 
+	const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, const char* k_path, const uint32_t* pseudos,
 	const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const char* fileName, 
 	const uint32_t device, const size_t numel_x, const char* header_directory, const size_t local_size) {
 
@@ -286,7 +286,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	cl_uint num_devices_context;
 	cl::Kernel kernel;
 
-	std::vector<cl::Device> devices;
+	cl::vector<cl::Device> devices;
 
 	// Get the context for a single device
 	status = clGetPlatformsContextSingle(device, context, num_devices_context, devices);
@@ -294,6 +294,10 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	if (status != CL_SUCCESS) {
 		mexPrintf("Error while getting platforms\n");
 		return;
+	}
+	else if (DEBUG) {
+		mexPrintf("Platforms obtained\n");
+		mexEvalString("pause(.0001);");
 	}
 
 	// Get queues
@@ -307,6 +311,10 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		mexPrintf("Error while building or getting queues\n");
 		return;
 	}
+	else if (DEBUG) {
+		mexPrintf("Queues obtained\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	kernel = cl::Kernel(program, "siddon_precomp", &status);
 	if (status != CL_SUCCESS) {
@@ -314,9 +322,17 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		mexPrintf("Failed to create OpenCL kernel\n");
 		return;
 	}
+	else if (DEBUG) {
+		mexPrintf("Kernel created\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	// Compute the voxel count
@@ -327,6 +343,10 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	return;

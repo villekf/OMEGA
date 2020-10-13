@@ -81,7 +81,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx,
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax,
-	const float NSlices, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path,
+	const float NSlices, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, const char* k_path,
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z,
 	const char* fileName, const uint32_t device, const size_t numel_x, const char* header_directory);
 

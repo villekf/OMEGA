@@ -342,6 +342,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 
 
 		plhs[0] = cell_array_ptr;
+
+		// Clear ArrayFire memory
+		af::deviceGC();
 	}
 	// Compute the number of voxels each LOR traverses (using AF device)
 	else if (type == 2) {
@@ -380,9 +383,6 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, size_of_x, header_directory);
 
 	}
-
-	// Clear ArrayFire memory
-	af::deviceGC();
 
 	return;
 }

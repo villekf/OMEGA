@@ -29,10 +29,16 @@ using namespace af;
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx,
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax,
-	const float NSlices, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const uint32_t loop_var_par, const char* k_path,
+	const float NSlices, const uint32_t size_x, const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, const char* k_path,
 	const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z,
 	const char* fileName, const uint32_t device, const size_t numel_x, const char* header_directory) {
 
+	af::setDevice(device);
+
+	if (DEBUG) {
+		mexPrintf("Started\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	const uint32_t im_dim = Nx * Ny * Nz;
 	bool atomic_64bit = false;
@@ -48,13 +54,23 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		getErrorString(status);
 		return;
 	}
+	else if (DEBUG) {
+		mexPrintf("Context created\n");
+		mexPrintf("devices.size() = %u\n", devices.size());
+		mexEvalString("pause(.0001);");
+	}
 	cl::Device af_device_id = devices[0];
 	cl::CommandQueue af_queue(afcl::getQueue(true));
+
+	if (DEBUG) {
+		mexPrintf("Queue created\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	cl::Program program;
 	std::vector<cl::CommandQueue> commandQueues;
 
-	commandQueues[0] = af_queue;
+	commandQueues.push_back(af_queue);
 
 	std::string kernel_path;
 
@@ -72,11 +88,16 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		options += " -DRAW";
 	options += " -DFIND_LORS";
 	options += (" -DLOCAL_SIZE=" + std::to_string(local_size));
-	options += " -DCAST=float";
+	options += " -DCAST=float"; 
+	if (DEBUG) {
+		mexPrintf("%s\n", options.c_str());
+		mexEvalString("pause(.0001);");
+	}
 	//try {
 		status = program.build(options.c_str());
-		if (status != CL_SUCCESS) {
+		if (status == CL_SUCCESS) {
 			mexPrintf("OpenCL program built\n");
+			mexEvalString("pause(.0001);");
 		}
 	//}
 	//catch (cl::Error& e) {
@@ -92,9 +113,9 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 				std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
 				mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
 			}
+			return;
 		}
 		//mexPrintf("%s\n", e.what());
-		return;
 	//}
 
 	kernel = cl::Kernel(program, "siddon_precomp", &status);
@@ -103,9 +124,17 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		mexPrintf("Failed to create OpenCL kernel\n");
 		return;
 	}
+	else if (DEBUG) {
+		mexPrintf("Kernel created\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	precomp_siddon(num_devices_context, context, commandQueues, lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, 
@@ -114,6 +143,10 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 	return;
 }

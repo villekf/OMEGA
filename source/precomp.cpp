@@ -1,7 +1,7 @@
 /**************************************************************************
 * This function computes the precomputation phase in OpenCL.
 *
-* Copyright(C) 2019  Ville - Veikko Wettenhovi
+* Copyright(C) 2020 Ville - Veikko Wettenhovi
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -21,7 +21,7 @@
 void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues, uint16_t* lor1, const float* z_det,
 	const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, 
 	const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
-	const uint32_t TotSinos, const bool verbose, const uint32_t loop_var_par, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, 
+	const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows,
 	const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl::Kernel& kernel, const size_t numel_x, const size_t local_size) {
 
 	cl_int status = CL_SUCCESS;
@@ -162,6 +162,10 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& conte
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	std::vector<cl::Event> event1(1);
@@ -177,23 +181,38 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& conte
 		cl::NDRange global(global_size);
 		cl::NDRange local(local_size);
 
+		if (DEBUG) {
+			mexPrintf("global_size = %u\n", global_size);
+			mexPrintf("local_size = %u\n", local_size);
+			mexPrintf("m_size = %u\n", m_size);
+			mexEvalString("pause(.0001);");
+		}
+
 		kernel_.setArg(21, d_pseudos[i]);
 		kernel_.setArg(22, d_x[i]);
 		kernel_.setArg(23, d_y[i]);
 		kernel_.setArg(24, d_z[i]);
 		kernel_.setArg(25, d_lor[i]);
 		kernel_.setArg(26, d_L[i]);
-		kernel_.setArg(27, sizeof(uint64_t), &m_size);
+		kernel_.setArg(27, m_size);
 		status = commandQueues[i].enqueueNDRangeKernel(kernel_, 0, global, local, NULL, &event1[0]);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
+		else if (DEBUG) {
+			mexPrintf("Kernel complete\n");
+			mexEvalString("pause(.0001);");
+		}
 	}
 
-	//for (cl_uint i = 0; i < num_devices_context; i++) {
-	//	clFinish(commandQueues[i]);
-	//}
+	for (cl_uint i = 0; i < num_devices_context; i++) {
+		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
+	}
 
 	status = commandQueues[0].enqueueReadBuffer(d_lor[0], CL_TRUE, 0, sizeof(uint16_t) * osa_length, lor1, &event1);
 	if (status != CL_SUCCESS) {
@@ -203,5 +222,9 @@ void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& conte
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 }

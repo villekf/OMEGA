@@ -24,7 +24,7 @@
 
 // Get the OpenCL context for the current platform
 cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Context& context, size_t& size, int& cpu_device, 
-	cl_uint& num_devices_context, std::vector<cl::Device> &devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz,
+	cl_uint& num_devices_context, cl::vector<cl::Device> &devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz,
 	const uint32_t subsets, const uint8_t raw) {
 	cl_int status = CL_SUCCESS;
 	cl_uint num_platforms;
@@ -162,17 +162,21 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Con
 }
 
 // Get context for a single device
-cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, cl_uint& num_devices_context, std::vector<cl::Device>& devices) {
+cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, cl_uint& num_devices_context, cl::vector<cl::Device>& devices) {
 	cl_int status = CL_SUCCESS;
 	cl_uint num_platforms = 0;
 
 	cl_uint num_devices = 0;
-	std::vector<cl::Platform> platforms;
+	cl::vector<cl::Platform> platforms;
 	status = cl::Platform::get(&platforms);
 
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
+	}
+	else if (DEBUG) {
+		mexPrintf("Platforms obtained\n");
+		mexEvalString("pause(.0001);");
 	}
 
 	if (device > platforms.size() - 1 || device < 0) {
@@ -180,10 +184,23 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 		return -1;
 	}
 
-	platforms[device].getInfo(CL_DEVICE_TYPE_ALL, &num_devices);
+	if (DEBUG) {
+		mexPrintf("platforms.size() = %u\n", platforms.size());
+		mexEvalString("pause(.0001);");
+	}
 
-	std::vector<cl::Device> devices2;
+	cl::vector<cl::Device> devices2;
 	status = platforms[device].getDevices(CL_DEVICE_TYPE_ALL, &devices2);
+	num_devices = devices2.size();
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		return status;
+	}
+	else if (DEBUG) {
+		mexPrintf("Devices obtained\n");
+		mexPrintf("num_devices = %u\n", num_devices);
+		mexEvalString("pause(.0001);");
+	}
 
 	// Choose the GPU with highest amount of memory
 	// If no GPU, use CPU
@@ -215,15 +232,29 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 		}
 	}
 	else
-		devices[0] = devices2[0];
+		devices.push_back(devices2[0]);
 
+
+	if (DEBUG) {
+		mexPrintf("device transfered\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	cl_context_properties properties[] = { CL_CONTEXT_PLATFORM, reinterpret_cast <cl_context_properties>(platforms[device]()), 0 };
+
+	if (DEBUG) {
+		mexPrintf("properties created\n");
+		mexEvalString("pause(.0001);");
+	}
 
 	context = cl::Context(devices, properties, NULL, NULL, &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
+	}
+	else if (DEBUG) {
+		mexPrintf("Context obtained\n");
+		mexEvalString("pause(.0001);");
 	}
 
 	num_devices_context = 1;
@@ -233,7 +264,7 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 
 // Build the programs and get the command queues
 cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
-	const std::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
+	const cl::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
 	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins) {
@@ -307,7 +338,10 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	}
 	else
 		options += " -DCAST=float";
-	//mexPrintf("%s\n", options.c_str());
+	if (DEBUG) {
+		mexPrintf("%s\n", options.c_str());
+		mexEvalString("pause(.0001);");
+	}
 	// If integer atomic 64-bit operations are enabled, check if they are supported by the device(s)
 	if (atomic_64bit) {
 		std::string kernel_path_atom;

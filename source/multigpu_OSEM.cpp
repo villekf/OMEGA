@@ -33,7 +33,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D,
 	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V,
 	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter, const bool TOF, 
-	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins, const std::vector<cl::Device> devices) {
+	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins, const cl::vector<cl::Device> devices) {
 
 	cl_int status = CL_SUCCESS;
 	cl_float zero = 0.f;
@@ -47,7 +47,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const bool deblur = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
 	const bool saveIter = (bool)mxGetScalar(mxGetField(options, 0, "save_iter"));
 
-	bool loadTOF = false;
+	bool loadTOF = true;
 
 	size_t Ni = 0ULL;
 	if (saveIter)
@@ -76,6 +76,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		else
 			meas_per_gpu[kk] = osa_length / static_cast<size_t>(num_devices_context);
 	}
+
 	std::vector<size_t> cumsum((num_devices_context + 1u) * subsets, 0);
 	std::vector<size_t> length(num_devices_context * subsets, 0);
 	// Number of measurements/LORs in the current subset in the current device
