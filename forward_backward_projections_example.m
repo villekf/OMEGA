@@ -452,6 +452,68 @@ options.end = options.tot_time;
  
  
  
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TOF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Total number of TOF bins
+options.TOF_bins = 1;
+
+%%% Length of each TOF bin (s)
+% The time length of each TOF bin in seconds
+% This multiplied with the number of bins total the entire time frame that
+% the TOF data contains. For example with 10 bins of size 400 ps all time
+% differences of at most 4 ns will be included in the TOF data. The
+% multiplied value should be, at most, the size of the coincidence window.
+options.TOF_width = 100e-12;
+
+%%% TOF offset (s)
+% If your TOF bins are not centered on zero (center of FOV) you can specify
+% the offset value here.
+options.TOF_offset = 0;
+
+%%% FWHM of the temporal noise/FWHM of the TOF data (s)
+% This parameter has two properties. The first one applies to any TOF data
+% that is saved by OMEGA (GATE, Inveon/Biograph list-mode), the second only
+% to GATE data.
+% Firstly this specifies the FWHM of TOF data used for file naming and
+% loading purposes. This value is included in the filename when data is
+% imported/saved and also used when that same data is later loaded. 
+% Secondly, this is the FWHM of the ADDED temporal noise to the time
+% differences. If you are using GATE data and have set a custom temporal
+% blurring in GATE then you should set to this zero if you wish to use the
+% same temporal resolution. If no custom temporal blurring was applied then
+% use this value to control the accuracy of the TOF data. For example if
+% you want to have TOF data with 500 ps FWHM then set this value to
+% 500e-12. 
+options.TOF_noise_FWHM = 200e-12;
+
+%%% FWHM of the TOF data (s)
+% Applies to ALL data.
+% This value specifies the TOF accuracy during the reconstruction process
+% and thus can be different from above. If you are using GATE data with
+% temporal blurring, you need to multiply that FWHM with sqrt(2) here.
+options.TOF_FWHM = 210e-12;
+
+%%% Number of TOF bins used in reconstruction
+% Number of TOF bins used during reconstruction phase.
+% NOTE: Currently supports only either all bins specified by
+% options.TOF_bins or 1 (or 0) which converts the TOF data into non-TOF
+% data during reconstruction phase.
+options.TOF_bins_used = options.TOF_bins;
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+ 
+ 
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -892,16 +954,21 @@ ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
 f_osem = ff;
 
-%% SA-WLS example
+%% SA-WLS example (includes TOF example)
 
 options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
-    raw_SinM = double(raw_SinM(A.index));
+if options.TOF_bins > 1
+    raw_SinM = reshape(raw_SinM, numel(raw_SinM) / options.TOF_bins, options.TOF_bins);
 else
-    raw_SinM = single(raw_SinM(A.index));
+    raw_SinM = raw_SinM(:);
+end
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index,:));
+else
+    raw_SinM = single(raw_SinM(A.index,:));
 end
 % Sensitivity image
 [f, A] = backwardProject(A, raw_SinM);
@@ -909,7 +976,7 @@ y = A * f;
 for iter = 1 : options.Niter
     % Brackets are needed here
     % It is not necessary to transpose the matrix when doing backprojection
-    f_ = f .* sqrt((1./A.sens) .* (A * (raw_SinM.^2 ./ y.^2)));
+    f_ = f .* sqrt((1./A.sens) .* (A * (raw_SinM.^2 ./ (y.^2 + 1e-4))));
     y = y + (A * (f_ - f));
     f = f_;
 end

@@ -619,6 +619,68 @@ options.end = options.tot_time;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TOF PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%% Total number of TOF bins
+options.TOF_bins = 55;
+
+%%% Length of each TOF bin (s)
+% The time length of each TOF bin in seconds
+% This multiplied with the number of bins total the entire time frame that
+% the TOF data contains. For example with 10 bins of size 400 ps all time
+% differences of at most 4 ns will be included in the TOF data. The
+% multiplied value should be, at most, the size of the coincidence window.
+options.TOF_width = 89
+
+%%% TOF offset (s)
+% If your TOF bins are not centered on zero (center of FOV) you can specify
+% the offset value here.
+options.TOF_offset = 0;
+
+%%% FWHM of the temporal noise/FWHM of the TOF data (s)
+% This parameter has two properties. The first one applies to any TOF data
+% that is saved by OMEGA (GATE, Inveon/Biograph list-mode), the second only
+% to GATE data.
+% Firstly this specifies the FWHM of TOF data used for file naming and
+% loading purposes. This value is included in the filename when data is
+% imported/saved and also used when that same data is later loaded. 
+% Secondly, this is the FWHM of the ADDED temporal noise to the time
+% differences. If you are using GATE data and have set a custom temporal
+% blurring in GATE then you should set to this zero if you wish to use the
+% same temporal resolution. If no custom temporal blurring was applied then
+% use this value to control the accuracy of the TOF data. For example if
+% you want to have TOF data with 500 ps FWHM then set this value to
+% 500e-12. 
+options.TOF_noise_FWHM = 550e-12;
+
+%%% FWHM of the TOF data (s)
+% Applies to ALL data.
+% This value specifies the TOF accuracy during the reconstruction process
+% and thus can be different from above. If you are using GATE data with
+% temporal blurring, you need to multiply that FWHM with sqrt(2) here.
+options.TOF_FWHM = 550e-12;
+
+%%% Number of TOF bins used in reconstruction
+% Number of TOF bins used during reconstruction phase.
+% NOTE: Currently supports only either all bins specified by
+% options.TOF_bins or 1 (or 0) which converts the TOF data into non-TOF
+% data during reconstruction phase.
+options.TOF_bins_used = options.TOF_bins;
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+ 
+ 
+ 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% MISC PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

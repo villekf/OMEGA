@@ -320,7 +320,7 @@ options.only_sinos = false;
 % sinogram formation steps are always skipped. Precomputation step is
 % only performed if precompute_lor = true and precompute_all = true
 % (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = true;
+options.only_reconstructions = false;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
