@@ -136,6 +136,7 @@ The following features are currently present:
 - Several different subset selection methods, including random sampling, golden angle sampling, every nth measurement, etc.
 - Support for Siemens Inveon PET list-mode, attenuation and scatter data
 - Support for Siemens Biograph mCT and Vision list-mode data
+- (Preliminary) Support for TOF data, both simulated and measured
 
 ### Additional features
 
@@ -147,12 +148,13 @@ These features can be used as independent functions without any input needed fro
 - Convert CT-attenuation coefficients into 511 keV attenuation coefficients ([attenuationCT_to_511.m](https://github.com/villekf/OMEGA/blob/master/source/attenuationCT_to_511.m))
 - (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/create_atten_matrix_CT.m))
 - Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/coo_to_csr.m))
+- Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_source_handle.m))
 
 
 
 ## System Requirements
 
-MATLAB R2009a or later is mandatory. Following versions are guaranteed to work: 2017a, 2017b, 2018b, 2019a and 2019b.
+MATLAB R2009a or later is mandatory. Following versions are guaranteed to work: 2017a, 2017b, 2018b, 2019a, 2019b and 2020a.
 
 For Octave, 5.1 and 5.2 works. 4.4 should also work but is untested.
 
@@ -175,15 +177,13 @@ https://github.com/stefanengblom/stenglib (FSPARSE, used when creating sparse ma
 
 ### MATLAB & Octave
 
-Submodules are not supported.
-
 Raw list-mode data with non-GATE data is still experimental (i.e. the data needs to be formatted in the same way as done in OMEGA).
 
 Multi-device/GPU reconstruction only supports OSEM and MLEM.
 
 Implementation 4 (OpenMP CPU) supports only one prior/algorithm at a time.
 
-LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected.
+LMF output currently has to contain the time stamp (cannot be removed in GATE) and detector indices. The source location needs to be included if it was selected in the main-file, same goes for the scatter data. If you have any other options selected in the LMF output in GATE, then you will not get any sensible detector data. Source locations and/or scatter data can be deselected. LMF data, with different format than in GATE, are not supported.
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
@@ -217,8 +217,6 @@ ROOT is not supported on Windows, though it should, theoretically, work if you u
 
 Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due to a compiler incompatability between MinGW and ArrayFire. As mentioned elsewhere, this can be fixed by building ArrayFire from source with MinGW.
 
-Status messages usually only appear after the function has finished.
-
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
@@ -230,7 +228,6 @@ MAT-files that are over 2 GB are not supported by Octave and such large data set
 Here is a list of features that should appear in future releases:
 
 - Support for SPECT data
-- TOF support
 - Fourier rebinning
 - New projectors
 
