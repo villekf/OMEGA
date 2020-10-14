@@ -2350,7 +2350,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_OSL_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.APLS_OSL_apu, [], Nx, Ny, Nz, true, options, 5);
                             im_vectors.APLS_OSL_apu = OSEM_im(im_vectors.APLS_OSL_apu, A, epps, uu, OSL(Summ, options.beta_APLS_osem, grad, epps), SinD, is_transposed, options, ...
                                 Nx, Ny, Nz, gaussK);
                             %                             im_vectors.APLS_OSL_apu = OSL_OSEM(im_vectors.APLS_OSL_apu, Summ, options.beta_APLS_osem, grad, epps, A, uu, SinD, is_transposed);
@@ -2363,7 +2363,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_MBSREM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.APLS_MBSREM_apu, [], Nx, Ny, Nz, true, options, 5);
                             im_vectors.APLS_MBSREM_apu = MBSREM(im_vectors.APLS_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
                                 iter, SinD, randoms_correction, is_transposed, options.beta_APLS_mbsrem, grad, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2408,7 +2408,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, 5);
                             im_vectors.APLS_RBI_apu = RBI_subiter(im_vectors.APLS_RBI_apu, A, uu, epps, Summ, SinD, D, ...
                                 is_transposed, options.beta_APLS_rbi, grad, options, Nx, Ny, Nz, gaussK);
                             if verbose
@@ -2420,7 +2420,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            grad = TVpriorFinal(im_vectors.APLS_COSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.APLS_COSEM_apu, [], Nx, Ny, Nz, true, options, 5);
                             if options.COSEM_OSL == 1
                                 [im_vectors.APLS_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.APLS_COSEM_apu, D, options.beta_APLS_cosem, grad, A, uu, ...
                                     epps, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
@@ -3015,7 +3015,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
+                        grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, 5);
                         im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, epps);
                         if verbose
                             tElapsed = toc(tStart);
@@ -3028,7 +3028,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
+                        grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
                         im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, ...
                             epps);
                         if verbose
@@ -4072,7 +4072,7 @@ else
                                     disp(['COSEM-OSL AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
                                 end
                             elseif options.APLS && options.OSL_OSEM
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 5);
                                 im_vectors.OSEM_apu = OSL_OSEM(im_vectors.OSEM_apu, f_Summ(:,osa_iter), options.beta_APLS_osem, grad, epps, rhs);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -4098,7 +4098,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 5);
                                 im_vectors.OSEM_apu = RBI_subiter(im_vectors.OSEM_apu, f_Summ(:,osa_iter), rhs, [], [], D, [], [], options.beta_APLS_rbi, grad);
                                 if verbose
                                     tElapsed = toc(tStart);
@@ -4109,7 +4109,7 @@ else
                                 if verbose
                                     tStart = tic;
                                 end
-                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                                grad = TVpriorFinal(im_vectors.OSEM_apu, [], Nx, Ny, Nz, true, options, 5);
                                 [im_vectors.OSEM_apu, C_osl] = COSEM_OSL(im_vectors.OSEM_apu, D, options.beta_APLS_cosem, grad, rhs, osa_iter, options.h, ...
                                     C_osl, options.COSEM_OSL, [], [], [], []);
                                 if options.COSEM_OSL == 1
@@ -4388,12 +4388,12 @@ else
                         elseif options.APLS && options.OSL_OSEM
                             im_vectors.APLS_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.APLS && options.BSREM
-                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
                             im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_APLS_bsrem, ...
                                 grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_BSREM(:, iter_n);
                         elseif options.APLS && options.ROSEM_MAP
-                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
                             im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
                                 options.beta_APLS_rosem, grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_ROSEM(:, iter_n);
@@ -4637,7 +4637,7 @@ else
                                 disp(['OSEM-OSL AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
                             end
                         elseif options.APLS && options.OSL_MLEM
-                            grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, options.TVtype);
+                            grad = TVpriorFinal(im_vectors.MLEM_apu, [], Nx, Ny, Nz, true, options, 5);
                             im_vectors.MLEM_apu = OSL_OSEM(im_vectors.MLEM_apu, f_Summ_ml(:,osa_iter), options.beta_APLS_osem, grad, rhs);
                             im_vectors.APLS_MLEM(:, iter_n) = im_vectors.MLEM_apu;
                             if verbose

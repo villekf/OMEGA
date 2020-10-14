@@ -1356,9 +1356,11 @@ options.TV_use_anatomical = true;
 options.TV_reference_image = 'reference_image.mat';
 
 %%% Three different TV methods are available.
-% Value can be 1, 2 or 3.
+% Value can be 1, 2, 3 or 4.
 % Types 1 and 2 are the same if anatomical prior is not included
 % Type 3 uses the same weights as quadratic prior
+% Type 4 is smoothed anisotropic TV, does not support anatomic weighting,
+% can also be used as a regular anisotropic TV
 % See the wiki for more information:
 % https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
 options.TVtype = 1;
@@ -1376,6 +1378,10 @@ options.C = 1;
 
 %%% Tuning parameter for TV and APLS
 options.tau = 1e-8;
+
+%%% Tuning parameter for Lange function in SATV
+% Setting this to 0 gives regular anisotropic TV
+options.SATVPhi = 0.2;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% ADMRP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%

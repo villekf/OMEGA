@@ -28,6 +28,5 @@ if options.implementation == 2
 else
     options.APLS_ref_image = double(alkuarvo);
 end
-options.TVtype = 4;
 end
 

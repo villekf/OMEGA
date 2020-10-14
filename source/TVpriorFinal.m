@@ -3,7 +3,8 @@ function [grad, varargout] = TVpriorFinal(im,aData,Nx, Ny ,Nz,anatomical, option
 %   Computes the gradient of the specified TV prior or APLS prior. The
 %   gradients are the same in TVtype = 1,2 and APLS if no anatomical prior
 %   is used. TVtype = 3 is not technically a TV prior, but is very similar
-%   and is such grouped in the same function. The MRF-function can be
+%   and is such grouped in the same function. APLS is enabled by setting
+%   TVtype = 5. SATV is obtained with TVtype = 4. The MRF-function can be
 %   obtained as the second output optionally (grad is the gradient of
 %   this).
 %
@@ -72,7 +73,7 @@ if TVtype ~= 3
 %         end
 %     else
         
-        if anatomical
+        if anatomical || TVtype == 5
             
             if TVtype == 1
                 s1 = aData.s1;

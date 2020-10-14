@@ -1355,7 +1355,7 @@ options.TV_reference_image = 'reference_image.mat';
 % can also be used as a regular anisotropic TV
 % See the wiki for more information:
 % https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
-options.TVtype = 4;
+options.TVtype = 1;
 
 %%% Weighting parameters for the TV prior. 
 % Applicable only if use_anatomical = true. T-value is specific to the used

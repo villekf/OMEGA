@@ -743,8 +743,6 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		data.APLSsmoothing = (float)mxGetScalar(mxGetField(options, 0, "APLSsmoothing"));
 		// Anatomical reference image
 		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
-
-		data.TVtype = 5U;
 	}
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
@@ -2429,7 +2427,7 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 	const Weighting& w_vec, const af::array& offsets) {
 	af::array gradi;
 
-	if (TVtype != 3) {
+	if (TVtype != 3U) {
 		af::array im = af::moddims(ima, Nx, Ny, Nz);
 		// 1st order differentials
 		af::array g = af::constant(0.f, Nx, Ny, Nz);
@@ -2448,8 +2446,8 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 		h = af::flat(h);
 
 			// If anatomical prior is used
-			if (S.TV_use_anatomical) {
-				if (TVtype == 1) {
+			if (S.TV_use_anatomical || TVtype == 5U) {
+				if (TVtype == 1U) {
 					pval = af::sqrt(S.s1 * af::pow(f, 2.) + S.s5 * af::pow(g, 2.) + S.s9 * af::pow(h, 2.) + S.s4 * f * g + S.s7 * f * h + S.s2 * f * g + S.s8 * h * g + S.s3 * f * h + S.s6 * h * g + S.TVsmoothing);
 					apu1 = 0.5f * (2.f * S.s1 * f + S.s4 * g + S.s7 * h + S.s2 * g + S.s3 * h) / pval;
 					apu2 = 0.5f * (2.f * S.s5 * g + S.s4 * f + S.s2 * f + S.s8 * h + S.s6 * h) / pval;
@@ -2457,7 +2455,7 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					apu4 = 0.5f * (2.f * S.s1 * f + 2.f * S.s5 * g + 2.f * S.s9 * h + S.s4 * f + S.s2 * f + S.s8 * h + S.s6 * h + S.s4 * g + S.s7 * h + S.s2 * g + S.s3 * h
 						+ S.s8 * g + S.s6 * g + S.s7 * f + S.s3 * f) / pval;
 				}
-				else if (TVtype == 2) {
+				else if (TVtype == 2U) {
 					af::array gp = af::constant(0.f, Nx, Ny, Nz);
 					af::array fp = af::constant(0.f, Nx, Ny, Nz);
 					af::array hp = af::constant(0.f, Nx, Ny, Nz);
@@ -2475,7 +2473,7 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					apu4 = (f + g + h) / pval;
 				}
 				// For APLS
-				else if (TVtype == 5) {
+				else if (TVtype == 5U) {
 					af::array gp = af::constant(0.f, Nx, Ny, Nz);
 					af::array fp = af::constant(0.f, Nx, Ny, Nz);
 					af::array hp = af::constant(0.f, Nx, Ny, Nz);
@@ -2505,7 +2503,7 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 			}
 			// If anatomical prior is not used
 			else {
-				if (TVtype == 4) {
+				if (TVtype == 4U) {
 					af::array ff = af::constant(0.f, f.dims(0), f32);
 					ff(f > 0) = 1.f;
 					ff(f < 0) = -1.f;

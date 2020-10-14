@@ -307,7 +307,7 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 			yy += im_dim;
 		}
 		if (MethodList.BSREM) {
-			array dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 4, w_vec, w_vec.tr_offsets);
+			array dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
 			vec.APLS_BSREM(span, it) = MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_BSREM[iter], beta.APLS_BSREM, dU, epps);
 			yy += im_dim;
 		}
@@ -316,7 +316,7 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 			yy += im_dim;
 		}
 		if (MethodList.ROSEMMAP) {
-			array dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 4, w_vec, w_vec.tr_offsets);
+			array dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
 			vec.APLS_ROSEM(span, it) = MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_ROSEM[iter], beta.APLS_ROSEM, dU, epps);
 			yy += im_dim;
 		}
