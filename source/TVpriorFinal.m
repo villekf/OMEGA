@@ -123,11 +123,12 @@ if TVtype ~= 3
                 hp(:,:,1:Nz-1) = -diff(options.APLS_ref_image,1,3);
                 hp(:,:,end) = options.APLS_ref_image(:,:,end) - options.APLS_ref_image(:,:,1);
                 
-                fp = fp(:);
-                gp = gp(:);
-                hp = hp(:);
+                fp = fp(:) + options.epps;
+                gp = gp(:) + options.epps;
+                hp = hp(:) + options.epps;
                 
-                epsilon = [fp,gp,hp]./[fp./sqrt(fp.^2 + options.eta^2) + options.epps, gp./sqrt(gp.^2 + options.eta^2) + options.epps, hp./sqrt(hp.^2 + options.eta^2) + options.epps];
+%                 epsilon = [fp,gp,hp]./[sqrt(fp.^2 + options.eta^2)+ sqrt(gp.^2 + options.eta^2)+ sqrt(hp.^2 + options.eta^2)];
+                epsilon = bsxfun(@rdivide,[fp,gp,hp], sqrt(fp.^2 + gp.^2 + hp.^2 + options.eta^2));
                 
                 pval = (f.^2 + g.^2 + h.^2 - (sum([f,g,h].*epsilon,2)).^2 + options.APLSsmoothing);
                 pval(pval < 0) = options.APLSsmoothing;

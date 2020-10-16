@@ -438,11 +438,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         % These values are needed in order to vectorize the calculation of
         % certain priors
         % Specifies the indices of the center pixel and its neighborhood
-        if (options.MRP && (options.implementation == 2 || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
+%         if (options.MRP && (options.implementation == 2 || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
             options = computeOffsets(options);
-        else
-            options.tr_offsets = uint32(0);
-        end
+%         else
+%             options.tr_offsets = uint32(0);
+%         end
         if options.quad || (options.TV && options.TVtype == 3)
             options = quadWeights(options, options.empty_weight);
         end
@@ -460,22 +460,9 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         if options.FMH
             options = fmhWeights(options);
         end
-        if options.implementation == 2
-            if options.MRP || options.L || options.FMH || (options.TV && options.TVtype == 3)
-                options.tr_offsets = options.tr_offsets - 1;
-            end
-            options.Ndx = uint32(options.Ndx);
-            options.Ndy = uint32(options.Ndy);
-            options.Ndz = uint32(options.Ndz);
-        end
         if (options.FMH || options.quad || options.Huber) && options.implementation == 2
             options.weights = single(options.weights);
             options.inffi = uint32(find(isinf(options.weights)) - 1);
-        end
-        if options.MRP
-            options.medx = options.Ndx*2 + 1;
-            options.medy = options.Ndy*2 + 1;
-            options.medz = options.Ndz*2 + 1;
         end
         if options.weighted_mean
             options = weightedWeights(options);

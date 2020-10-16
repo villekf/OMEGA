@@ -47,7 +47,6 @@ end
 weights_quad = -weights_quad;
 weights_quad(ceil(numel(weights_quad)/2)) = -weights_quad(ceil(numel(weights_quad)/2));
 grad = convn(im, weights_quad, 'valid');
-grad = grad(:);
 if nargout >= 2
     im = im(:);
     options = varargin{1};
@@ -56,4 +55,6 @@ if nargout >= 2
     mrf = 0.5 .* bsxfun(@minus,im(options.tr_offsets(:,ceil(size(options.tr_offsets,2)/2))),im(options.tr_offsets(:,[1:(ceil(size(options.tr_offsets,2)/2)-1) (ceil(size(options.tr_offsets,2)/2)+1):end]))).^2*weights_quad2;
     varargout{1} = mrf;
 end
-% grad1 = bsxfun(@minus,im(tr_offsets(:,isinf(weights))),im(tr_offsets(:,[1:(find(isinf(weights))-1) (find(isinf(weights))+1):end])))*weights_quad;
+% weights = [weights_quad(1:ceil(numel(weights_quad(:))/2) - 1),weights_quad(ceil(numel(weights_quad(:))/2) + 1 : end)]';
+% grad = bsxfun(@minus,im(varargin{1}.tr_offsets(:,ceil(numel(weights_quad(:))/2))),im(varargin{1}.tr_offsets(:,[1:(ceil(numel(weights_quad(:))/2)-1) (ceil(numel(weights_quad(:))/2)+1):end])))*weights;
+grad = grad(:);

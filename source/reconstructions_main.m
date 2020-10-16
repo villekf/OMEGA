@@ -1699,7 +1699,7 @@ else
                             if verbose
                                 tStart = tic;
                             end
-                            med = Quadratic_prior(im_vectors.Quad_OSL_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
+                            med = Quadratic_prior(im_vectors.Quad_OSL_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz, options);
                             im_vectors.Quad_OSL_apu = OSEM_im(im_vectors.Quad_OSL_apu, A, epps, uu, OSL(Summ, options.beta_quad_osem, med, epps), SinD, is_transposed, ...
                                 options, Nx, Ny, Nz, gaussK);
                             %                             im_vectors.Quad_OSL_apu = OSL_OSEM(im_vectors.Quad_OSL_apu, Summ, options.beta_quad_osem, med, epps, A, uu, SinD, is_transposed);
@@ -4450,7 +4450,7 @@ else
                         if verbose
                             tStart = tic;
                         end
-                        TOFOffset = int64(0);
+%                         TOFOffset = int64(0);
                         if iter == 1 && llo == 1
                             if no_norm && OS_bool
                                 f_Summ_ml = sum(f_Summ,2);

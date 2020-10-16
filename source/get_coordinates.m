@@ -42,6 +42,11 @@ if nargin >= 3
 else
     pseudot = [];
 end
+if nargin >= 4
+    interpolateSinogram = varargin{3};
+else
+    interpolateSinogram = true;
+end
 
 if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))
     x = options.x;
@@ -58,10 +63,10 @@ else
         
         if options.arc_correction && ~options.precompute_lor
             [~, ~, xp, yp] = detector_coordinates(options);
-            [x, y, options] = arcCorrection(options, xp, yp, true);
+            [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
         end
         if options.sampling > 1 && ~options.precompute_lor
-            [x, y, options] = increaseSampling(options, x, y, true);
+            [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
         end
         z = sinogram_coordinates_3D(options);
         if options.NSinos ~= options.TotSinos
@@ -74,7 +79,7 @@ else
         end
         [x, y] = detector_coordinates(options);
         if options.sampling_raw > 1 && ~options.precompute_lor
-            [x, y, options] = increaseSampling(options, x, y, true);
+            [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);
         end
         
         z_length = double(rings + 1 + sum(options.pseudot)) * options.cr_pz;

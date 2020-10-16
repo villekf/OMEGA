@@ -19,8 +19,8 @@ else
         alkuarvo = imresize(alkuarvo, options.Nx, options.Ny, options.Nz);
     end
 end
-alkuarvo = alkuarvo - min(min(min(alkuarvo)));
-alkuarvo = alkuarvo/max(max(max(alkuarvo)));
+% alkuarvo = alkuarvo - min(min(min(alkuarvo)));
+% alkuarvo = alkuarvo/max(max(max(alkuarvo)));
 if options.implementation == 2
     options.APLS_ref_image = single(alkuarvo);
     options.eta = single(options.eta);

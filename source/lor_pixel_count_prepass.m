@@ -93,7 +93,7 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
         pseudot = [];
     end
     % Detector coordinates
-    [x, y, z] = get_coordinates(options, blocks);
+    [x, y, z] = get_coordinates(options, blocks, pseudot, false);
     
 %     blocks = uint32(rings);
     
@@ -262,7 +262,7 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         if sum(pseudot) == 0
             pseudot = [];
         end
-        [x, y, z] = get_coordinates(options, blocks);
+        [x, y, z] = get_coordinates(options, blocks, pseudot, false);
         
 %         blocks = uint32(rings);
         
@@ -345,7 +345,7 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
 end
 %% Sinogram data, non-OpenCL
 if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
-    [x, y, z] = get_coordinates(options, options.rings - 1);
+    [x, y, z] = get_coordinates(options, options.rings - 1, [], false);
     
     x=double(x);
     y=double(y);
@@ -505,7 +505,7 @@ end
 if (~options.use_raw_data && (options.implementation == 2 || options.implementation == 3 || options.implementation == 5)) ...
         || options.precompute_all
     if exist('OpenCL_matrixfree_multi_gpu','file') == 3
-        [x, y, z] = get_coordinates(options, blocks);
+        [x, y, z] = get_coordinates(options, blocks, [], false);
         
         x = single(x);
         y = single(y);

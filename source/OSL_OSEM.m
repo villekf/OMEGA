@@ -42,12 +42,12 @@ function im = OSL_OSEM(im, Summ, beta, dU, epps, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if nargin == 9
     if varargin{4}
-        im = (im./(Summ + beta * dU)).*(varargin{1} * (varargin{2}./(varargin{1}'*im + epps + varargin{3})) + epps);
+        im = (im./(Summ + beta * dU + epps)).*(varargin{1} * (varargin{2}./(varargin{1}'*im + epps + varargin{3})) + epps);
     else
-        im = (im./(Summ + beta * dU)).*(varargin{1}' * (varargin{2}./(varargin{1}*im + epps + varargin{3})) + epps);
+        im = (im./(Summ + beta * dU + epps)).*(varargin{1}' * (varargin{2}./(varargin{1}*im + epps + varargin{3})) + epps);
     end
 elseif nargin == 6
-    im = (im./(Summ + beta * dU)).*(varargin{1} + epps);
+    im = (im./(Summ + beta * dU + epps)).*(varargin{1});
 else
     error('Invalid number of input arguments')
 end

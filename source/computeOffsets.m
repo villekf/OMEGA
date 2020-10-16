@@ -33,5 +33,18 @@ else
         floor(((1:double(N))' - 1)/double(options.Nx * options.Ny)) + (options.Ndz + 1));
 end
 options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
+if options.implementation == 2
+    if options.MRP || options.L || options.FMH || (options.TV && options.TVtype == 3)
+        options.tr_offsets = options.tr_offsets - 1;
+    end
+    options.Ndx = uint32(options.Ndx);
+    options.Ndy = uint32(options.Ndy);
+    options.Ndz = uint32(options.Ndz);
+end
+if options.MRP
+    options.medx = options.Ndx*2 + 1;
+    options.medy = options.Ndy*2 + 1;
+    options.medz = options.Ndz*2 + 1;
+end
 end
 

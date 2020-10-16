@@ -119,7 +119,7 @@ for iter = 1:maxits
     v3 = v3 - tau * zeta7;
     
     % update primal leading points
-    ub   = 2*grad - uold;
+    ub = 2*grad - uold;
     vb1 = 2*v1 - v1old;
     vb2 = 2*v2 - v2old;
     vb3 = 2*v3 - v3old;
