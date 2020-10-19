@@ -60,10 +60,12 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 		int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 		int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
 		int32_t ring_number2 = static_cast<int32_t>(ringNumber2[kk]);
+		// Pseudo detectors
 		if (pseudoD) {
 			ring_pos1 += ring_pos1 / cryst_per_block;
 			ring_pos2 += ring_pos2 / cryst_per_block;
 		}
+		// Pseudo rings
 		if (pseudoR) {
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
@@ -72,18 +74,22 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, aika, NT, TOFSize,
 			vali, alku, detWPseudo, rings, binN, nDistSide, swap);
 		if (indeksi >= 0) {
+			// Trues
 			if (store_trues && trues_index[kk]) {
 #pragma omp atomic
 				SinoT[indeksi]++;
 			}
+			// Scatter
 			else if (store_scatter && scatter_index[kk]) {
 #pragma omp atomic
 				SinoC[indeksi]++;
 			}
+			// Randoms
 			else if (store_randoms && randoms_index[kk]) {
 #pragma omp atomic
 				SinoR[indeksi]++;
 			}
+			// Prompts
 #pragma omp atomic
 			Sino[indeksi]++;
 		}
