@@ -34,6 +34,9 @@ end
 if ~isfield(options,'reconstruct_scatter')
     options.reconstruct_scatter = false;
 end
+if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
+    options.TOF_bins = 1;
+end
 
 if ~options.use_raw_data
     if options.partitions == 1
@@ -335,10 +338,16 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                     if options.subtract_scatter
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) + single(options.ScatterC{kk}(:));
+                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins + single(options.ScatterC{kk}(:));
                         else
-                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) + double(options.ScatterC{kk}(:));
+                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins + double(options.ScatterC{kk}(:));
                         end
+                    end
+                elseif ~options.scatter_correction && options.TOF_bins > 1
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins);
+                    else
+                        options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins);
                     end
                 end
             end
@@ -379,9 +388,9 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                     if options.subtract_scatter
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                            options.SinDelayed = single(options.SinDelayed) + single(options.ScatterC(:));
+                            options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
                         else
-                            options.SinDelayed = double(options.SinDelayed) + double(options.ScatterC(:));
+                            options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
                         end
                     end
                 elseif iscell(options.ScatterC)
@@ -405,12 +414,18 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                                options.SinDelayed = single(options.SinDelayed) + single(options.ScatterC{kk}(:));
+                                options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
                             else
-                                options.SinDelayed = double(options.SinDelayed) + double(options.ScatterC{kk}(:));
+                                options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
                             end
                         end
                     end
+                end
+            elseif ~options.scatter_correction && options.TOF_bins > 1
+                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                    options.SinDelayed = single(options.SinDelayed / options.TOF_bins);
+                else
+                    options.SinDelayed = double(options.SinDelayed / options.TOF_bins);
                 end
             end
         end
@@ -461,10 +476,16 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                     if options.subtract_scatter
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                            options.SinDelayed{kk} = single(options.SinDelayed{kk}) + single(options.ScatterC{kk}(:));
+                            options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins) + single(options.ScatterC{kk}(:));
                         else
-                            options.SinDelayed{kk} = double(options.SinDelayed{kk}) + double(options.ScatterC{kk}(:));
+                            options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins) + double(options.ScatterC{kk}(:));
                         end
+                    end
+                elseif ~options.scatter_correction && options.TOF_bins > 1
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        options.SinDelayed{kk} = single(options.SinDelayed{kk}) / single(options.TOF_bins);
+                    else
+                        options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins;
                     end
                 end
             end
@@ -503,9 +524,9 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                     if options.subtract_scatter
                         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                            options.SinDelayed = single(options.SinDelayed) + single(options.ScatterC(:));
+                            options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
                         else
-                            options.SinDelayed = double(options.SinDelayed) + double(options.ScatterC(:));
+                            options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
                         end
                     end
                 elseif iscell(options.ScatterC)
@@ -529,12 +550,18 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         end
                         if options.subtract_scatter
                             if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                                options.SinDelayed = single(options.SinDelayed) + single(options.ScatterC{kk}(:));
+                                options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
                             else
-                                options.SinDelayed = double(options.SinDelayed) + double(options.ScatterC{kk}(:));
+                                options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
                             end
                         end
                     end
+                end
+            elseif ~options.scatter_correction && options.TOF_bins > 1
+                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                    options.SinDelayed = single(options.SinDelayed) / single(options.TOF_bins);
+                else
+                    options.SinDelayed = double(options.SinDelayed) / options.TOF_bins;
                 end
             end
         elseif options.scatter_correction

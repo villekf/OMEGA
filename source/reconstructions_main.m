@@ -144,12 +144,10 @@ if options.use_raw_data
                         end
                         if options.randoms_smoothing
                             options.SinDelayed{kk} = randoms_smoothing(options.SinDelayed{kk}, options);
-                            if ~options.corrections_during_reconstruction
-                                options.SinM{kk} = full(options.SinM{kk}) - single(options.SinDelayed{kk});
-                            end
                             RandProp.smoothing = true;
-                        elseif ~options.corrections_during_reconstruction
-                            options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk});
+                        end
+                        if ~options.corrections_during_reconstruction
+                            options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk} / options.TOF_bins);
                         end
                         if ~options.corrections_during_reconstruction
                             options.SinM{kk}(options.SinM{kk} < 0) = 0;
@@ -162,12 +160,10 @@ if options.use_raw_data
                     end
                     if options.randoms_smoothing
                         options.SinDelayed = randoms_smoothing(options.SinDelayed, options);
-                        if ~options.corrections_during_reconstruction
-                            options.SinM = full(options.SinM) - single(options.SinDelayed);
-                        end
                         RandProp.smoothing = true;
-                    elseif ~options.corrections_during_reconstruction
-                        options.SinM = options.SinM - single(options.SinDelayed);
+                    end
+                    if ~options.corrections_during_reconstruction
+                        options.SinM = options.SinM - single(options.SinDelayed / options.TOF_bins);
                     end
                     if ~options.corrections_during_reconstruction
                         options.SinM(options.SinM < 0) = 0;
@@ -196,12 +192,10 @@ if options.use_raw_data
                             end
                             if options.randoms_smoothing
                                 options.SinDelayed{kk} = randoms_smoothing(double(options.SinDelayed{kk}), options);
-                                if ~options.corrections_during_reconstruction
-                                    options.SinM{kk} = full(options.SinM{kk}) - single( options.SinDelayed{kk});
-                                end
                                 RandProp.smoothing = true;
-                            elseif ~options.corrections_during_reconstruction
-                                options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk});
+                            end
+                            if ~options.corrections_during_reconstruction
+                                options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk} / options.TOF_bins);
                             end
                             if ~options.corrections_during_reconstruction
                                 options.SinM{kk}(options.SinM{kk} < 0) = 0;
@@ -211,7 +205,7 @@ if options.use_raw_data
                         if numel(options.SinDelayed{1}) ~= numel(options.SinM)
                             error('Size mismatch between randoms correction data and measurement data')
                         end
-                        options.SinM = options.SinM - single(options.SinDelayed{1}(:));
+                        options.SinM = options.SinM - single(options.SinDelayed{1}(:) / options.TOF_bins);
                         options.SinM(options.SinM < 0) = 0;
                     end
                 else
@@ -226,12 +220,10 @@ if options.use_raw_data
                             end
                             if options.randoms_smoothing
                                 options.SinDelayed = randoms_smoothing(single(options.SinDelayed), options);
-                                if ~options.corrections_during_reconstruction
-                                    options.SinM{kk} = single(full(options.SinM{kk})) - single(options.SinDelayed);
-                                end
                                 RandProp.smoothing = true;
-                            elseif ~options.corrections_during_reconstruction
-                                options.SinM{kk} = (options.SinM{kk}) - single(options.SinDelayed(:));
+                            end
+                            if ~options.corrections_during_reconstruction
+                                options.SinM{kk} = (options.SinM{kk}) - single(options.SinDelayed(:) / options.TOF_bins);
                             end
                             if ~options.corrections_during_reconstruction
                                 options.SinM{kk}(options.SinM{kk} < 0) = 0;
@@ -247,12 +239,10 @@ if options.use_raw_data
                         end
                         if options.randoms_smoothing
                             options.SinDelayed = randoms_smoothing(options.SinDelayed, options);
-                            if ~options.corrections_during_reconstruction
-                                options.SinM = full(options.SinM) - single(options.SinDelayed);
-                            end
                             RandProp.smoothing = true;
-                        elseif ~options.corrections_during_reconstruction
-                            options.SinM = options.SinM - single(options.SinDelayed(:));
+                        end
+                        if ~options.corrections_during_reconstruction
+                            options.SinM = options.SinM - single(options.SinDelayed(:) / options.TOF_bins);
                         end
                         if ~options.corrections_during_reconstruction
                             options.SinM(options.SinM < 0) = 0;
@@ -621,7 +611,7 @@ else
     if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
         if options.use_machine == 0
             [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
-        elseif  options.use_machine == 1
+        elseif options.use_machine == 1 || options.use_machine == 3
             [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
         else
             options = loadDelayedData(options);
@@ -640,7 +630,7 @@ else
     elseif options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
         if options.use_machine == 0
             [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
-        elseif  options.use_machine == 1
+        elseif options.use_machine == 1 || options.use_machine == 3
             [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
         else
             options = loadDelayedData(options);
@@ -879,10 +869,10 @@ if TOF
         TOFCenter(1) = edges_user(ceil(length(edges_user)/2));
         TOFCenter(2:2:end) = edges_user(ceil(length(edges_user)/2) + 1:end);
         TOFCenter(3:2:end) = edges_user(ceil(length(edges_user)/2) - 1: -1 : 1);
-        TOFCenter = TOFCenter * c / 2;
         if isfield(options, 'TOF_offset') && options.TOF_offset > 0
             TOFCenter = TOFCenter + options.TOF_offset;
         end
+        TOFCenter = -TOFCenter * c / 2;
     end
 else
     sigma_x = 0;
@@ -3333,9 +3323,6 @@ else
                                     SinD = (full(SinD));
                                 end
                                 SinD = SinD(:);
-                                if TOF
-                                    SinD = SinD / options.TOF_bins;
-                                end
                             else
                                 SinD = 0;
                             end

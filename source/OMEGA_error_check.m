@@ -38,7 +38,7 @@ end
 if ~isfield(options, 'no_data_load')
     options.no_data_load = false;
 end
-if ~isfield(options, 'TOF_bins')
+if ~isfield(options, 'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end
 if ~isfield(options, 'TOF_FWHM')
@@ -307,10 +307,10 @@ if options.implementation == 1 && ~options.precompute_lor
     warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
         'precompute_lor to true or use another implementation.'])
 end
-if options.TOF_bins > 1 && options.implementation == 1
+if options.TOF_bins_used > 1 && options.implementation == 1
     error('TOF is currently not supported with implementation 1!')
 end
-if options.TOF_bins > 1 && options.projector_type > 1
+if options.TOF_bins_used > 1 && options.projector_type > 1
     error('TOF is currently only supported with improved Siddon (projector_type = 1)')
 end
 if options.TOF_bins > 1 && options.TOF_width <= 0
@@ -319,7 +319,7 @@ end
 if options.TOF_bins > 1 && options.TOF_bins_used == 1
     disp('Summing TOF bins.')
 end
-if options.TOF_bins > 1 && options.TOF_FWHM == 0
+if options.TOF_bins_used > 1 && options.TOF_FWHM == 0
     error('TOF enabled, but the TOF FWHM is zero. FWHM must be nonzero.')
 end
 % Print various options that were selected if verbosity has been enabled
@@ -339,7 +339,7 @@ if options.verbose
     else
         dispi = [];
     end
-    if options.TOF_bins > 1 && options.TOF_FWHM > 0
+    if options.TOF_bins_used > 1 && options.TOF_FWHM > 0
         dispi = [dispi ' with TOF (' num2str(options.TOF_bins) ' bins).'];
     else
         dispi = [dispi '.'];

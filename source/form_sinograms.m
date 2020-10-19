@@ -595,7 +595,7 @@ if options.use_machine ~= 2
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
                 end
-                Sin = bsxfun(@minus, Sin, single(options.SinDelayed{llo}));
+                Sin = bsxfun(@minus, Sin, single(options.SinDelayed{llo}) / options.TOF_bins);
             else
                 if size(options.SinDelayed,2) ~= Nang && size(options.SinDelayed,1) ~= Ndist
                     options.SinDelayed = reshape(options.SinDelayed, Ndist,Nang,NSlices);
@@ -616,7 +616,7 @@ if options.use_machine ~= 2
                         appliedCorrections.randoms = 'randoms correction with smoothing';
                     end
                 end
-                Sin = bsxfun(@minus, single(Sin), single(options.SinD));
+                Sin = bsxfun(@minus, single(Sin), single(options.SinD) / options.TOF_bins);
             end
             if options.verbose
                 disp('Randoms correction applied to sinogram')
@@ -952,7 +952,7 @@ if options.use_machine ~= 2
     if partitions == 1
         if options.TOF_bins > 1
             save_string = [machine_name '_' name '_TOFsinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
-            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_FWHM*1e12) 'psFWHM'];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
         else
             save_string = [machine_name '_' name '_sinograms_combined_static_' num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
         end
@@ -979,7 +979,7 @@ if options.use_machine ~= 2
         if options.TOF_bins > 1
             save_string = [machine_name '_' name '_TOFsinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
                     num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];
-            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_FWHM*1e12) 'psFWHM'];
+            save_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
         else
             save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
                     num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span)];

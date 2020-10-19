@@ -24,7 +24,7 @@ TOF_data = TOF_data + std_t * randn(size(TOF_data)); %TOF_data with added error
 discard = abs(TOF_data) > (options.TOF_width / 2 * options.TOF_bins);
 TOF_data(discard) = [];
 bins = uint16(floor((abs(TOF_data) + options.TOF_width / 2) / options.TOF_width));
-tInd = TOF_data < 0;
+tInd = TOF_data > 0;
 bins(bins > 1 & ~tInd) = bins(bins > 1 & ~tInd) * 2 - 1;
 bins(tInd) = bins(tInd) * 2;
 end
