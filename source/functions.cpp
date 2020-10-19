@@ -684,7 +684,7 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
 		else
 			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
-		w_vec.alku_fmh = static_cast<int>((uint32_t)mxGetScalar(mxGetField(options, 0, "inffi")));
+		w_vec.alku_fmh = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
 	}
 	if (MethodList.WeightedMean && MethodList.MAP) {
 		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
@@ -2209,14 +2209,21 @@ af::array Quadratic_prior(const af::array & im, const uint32_t Ndx, const uint32
 {
 	const af::array apu_pad = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
 	af::array grad;
-	af::array weights = -weights_quad;
-	weights(af::ceil(weights.elements() / 2)) = -1.f * weights(af::ceil(weights.elements() / 2));
+	af::array weights = weights_quad;
+	//weights(weights.elements() / 2) *= -1.f;
+	//af::eval(weights);
+	//weights = af::moddims(weights, weights_quad.dims(0), weights_quad.dims(1), weights_quad.dims(2));
+	if (DEBUG) {
+		const char* R = af::toString("weights", weights);
+		mexPrintf("weights = %s\n", R);
+		mexPrintf("weights.elements() / 2 = %d\n", weights.elements() / 2);
+	}
 	if (Ndz == 0 || Nz == 1) {
-		grad = af::convolve2(apu_pad, weights_quad);
+		grad = af::convolve2(apu_pad, weights);
 		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);
 	}
 	else {
-		grad = af::convolve3(apu_pad, weights_quad);
+		grad = af::convolve3(apu_pad, weights);
 		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::seq(Ndz, Nz + Ndz - 1));
 	}
 	grad = af::flat(grad);
@@ -2252,10 +2259,11 @@ af::array FMH(const af::array &im, const uint32_t Ndx, const uint32_t Ndy, const
 	for (uint32_t ii = 0; ii < luup; ii++) {
 		indeksi1 = af::flat(offsets(af::span, af::seq(Ndx * ii, offsets.dims(1) - Ndx * (ii) - 1, alku_fmh / Ndx - ii)));
 		af::array apu_pad = af::moddims(padd(indeksi1 + 0), im_dim, fmh_weights.dims(0));
-		grad(af::span, ii) = af::sum(af::batchFunc(apu_pad, af::transpose(fmh_weights(af::span, ii)), batchMul), 1);
+		//grad(af::span, ii) = af::sum(af::batchFunc(apu_pad, af::transpose(fmh_weights(af::span, ii)), batchMul), 1);
+		grad(af::span, ii) = af::matmul(apu_pad, fmh_weights(af::span, ii));
 	}
-	indeksi1 = offsets.col(inffi);
-	grad(af::span, af::end) = padd(indeksi1 + 0);
+	indeksi1 = offsets.col(alku_fmh);
+	grad(af::span, af::end) = padd(indeksi1 + 0U);
 	grad = af::median(grad, 1);
 	if (med_no_norm)
 		grad = im - grad;
@@ -2282,7 +2290,7 @@ af::array L_filter(const af::array & im, const uint32_t Ndx, const uint32_t Ndy,
 af::array Weighted_mean(const af::array & im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, 
 	const af::array& weighted_weights, const bool med_no_norm, const uint32_t im_dim, const uint32_t mean_type, const float w_sum)
 {
-	af::array grad;
+	af::array grad = af::constant(0.f, Nx, Ny, Nz);
 	const float wsum = af::sum<float>(af::flat(weighted_weights));
 	if (mean_type == 1U) {
 		af::array padd = padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz);
@@ -2390,7 +2398,6 @@ af::array Weighted_mean(const af::array & im, const uint32_t Ndx, const uint32_t
 	}
 	else {
 		mexWarnMsgTxt("Unsupported mean type");
-		grad = af::constant(0.f, Nx + Ndx * 2U, Ny + Ndy * 2U, Nz + Ndz * 2U);
 	}
 	if (mean_type <= 3U) {
 		if (Ndz == 0 || Nz == 1) {
@@ -2484,16 +2491,17 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.APLSReference, 2);
 					hp(af::span, af::span, Nz - 1u) = S.APLSReference(af::span, af::span, im.dims(2) - 1ULL) - S.APLSReference(af::span, af::span, 0);
 
-					fp = af::flat(fp);
-					gp = af::flat(gp);
-					hp = af::flat(hp);
+					fp = af::flat(fp) + epps;
+					gp = af::flat(gp) + epps;
+					hp = af::flat(hp) + epps;
 
-					af::array epsilon = af::join(1, fp, gp, hp) / af::join(1, fp / af::sqrt(af::pow(fp, 2.) + S.eta * S.eta) + epps,
-						gp / af::sqrt(af::pow(gp, 2.) + S.eta * S.eta) + epps, hp / af::sqrt(af::pow(hp, 2.) + S.eta * S.eta) + epps);
-					af::array apu = sum(af::join(1, f, g, h) * epsilon, 1);
+					//af::array epsilon = af::join(1, fp, gp, hp) / af::join(1, fp / af::sqrt(af::pow(fp, 2.) + S.eta * S.eta) + epps,
+					//	gp / af::sqrt(af::pow(gp, 2.) + S.eta * S.eta) + epps, hp / af::sqrt(af::pow(hp, 2.) + S.eta * S.eta) + epps);
+					af::array epsilon = af::batchFunc(af::join(1, fp, gp, hp), af::sqrt(fp * fp + gp * gp + hp * hp + S.eta * S.eta), batchDiv);
+					af::array apu = af::sum(af::join(1, f, g, h) * epsilon, 1);
 
-					pval = (af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) - af::pow(apu, 2.) + S.APLSsmoothing);
-					pval(pval < 0) = 1.f;
+					pval = (f * f + g * g + h * h - apu * apu + S.APLSsmoothing);
+					pval(pval < 0) = S.APLSsmoothing;
 					pval = af::sqrt(pval);
 					apu1 = (f - (apu * epsilon(af::span, 0))) / pval;
 					apu2 = (g - (apu * epsilon(af::span, 1))) / pval;
@@ -2601,7 +2609,7 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 		eta1 = p1 + sigma * eta1;
 		eta2 = p2 + sigma * eta2;
 		eta3 = p3 + sigma * eta3;
-		af::array apu = (af::max)(1.f, af::sqrt(af::pow(eta1, 2.) + af::pow(eta2, 2.) + af::pow(eta3, 2.)) / beta);
+		af::array apu = (af::max)(1.f, af::sqrt(eta1 * eta1 + eta2 * eta2 + eta3 * eta3) / beta);
 		apu = af::flat(apu);
 		p1 = af::flat(eta1) / (apu);
 		p1 = af::moddims(p1, Nx, Ny, Nz);
@@ -2622,7 +2630,7 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 		eta2 = q2 + sigma * eta2;
 		eta3 = q3 + sigma * eta3;
 		eta4 = q4 + sigma * eta4;
-		apu = (af::max)(1.f, af::sqrt(af::pow(eta1, 2.) + af::pow(eta2, 2.) + af::pow(eta3, 2.) + af::pow(eta4, 2.)) / alpha);
+		apu = (af::max)(1.f, af::sqrt(eta1 * eta1 + eta2 * eta2 + eta3 * eta3 + eta4 * eta4) / alpha);
 		apu = af::flat(apu);
 		q1 = af::flat(eta1) / (apu);
 		q1 = af::moddims(q1, Nx, Ny, Nz);

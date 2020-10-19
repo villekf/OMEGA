@@ -18,7 +18,6 @@
 ***************************************************************************/
 #pragma once
 #include "functions.hpp"
-#define DEBUG false
 
 #pragma pack(1)
 

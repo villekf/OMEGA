@@ -211,11 +211,15 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 			else if (std::fabs(y_diff) < 1e-8) {
 				skip = siddon_pre_loop_2D(bx, bz, x_diff, z_diff, maxxx, bzb, dx, dz, Nx, Nz, tempi, tempk, txu, tzu, Np, TYPE,
 					detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, iu, ku, tx0, tz0);
+				if (detectors.yd > maxyy || detectors.yd < by)
+					skip = true;
 				tempj = perpendicular_start(by, detectors.yd, dy, Ny);
 			}
 			else if (std::fabs(x_diff) < 1e-8) {
 				skip = siddon_pre_loop_2D(by, bz, y_diff, z_diff, maxyy, bzb, dy, dz, Ny, Nz, tempj, tempk, tyu, tzu, Np, TYPE,
 					detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, ju, ku, ty0, tz0);
+				if (detectors.xd > maxxx || detectors.xd < bx)
+					skip = true;
 				tempi = perpendicular_start(bx, detectors.xd, dx, Nx);
 			}
 			else {
@@ -300,7 +304,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							}
 						}
 					}
-					if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= Nx || tempj >= Ny || tempk >= Nz) {
+					if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz)) {
 						if (xyz < 3 && type > 1u) {
 							if (xyz == 1)
 								tempi -= iu;

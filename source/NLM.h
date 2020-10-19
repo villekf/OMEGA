@@ -2,13 +2,25 @@
 #include <cstdint>
 #include <algorithm>
 #include <cmath>
+#include <thread>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 
+void setThreads() {
+#ifdef _OPENMP
+	if (omp_get_max_threads() == 1) {
+		int n_threads = std::thread::hardware_concurrency();
+		omp_set_num_threads(n_threads);
+	}
+#endif
+}
+
 void NLM(double* grad, const double* u_ref, const double* u, const double* gaussian, const int32_t search_window_x, const int32_t search_window_y, 
 	const int32_t search_window_z, const int32_t patch_window_x, const int32_t patch_window_y, const int32_t patch_window_z, const uint32_t Nx, 
 	const uint32_t Ny, const uint32_t Nz, const int32_t Nxy, const double h, const int32_t type, const double epps) {
+
+	setThreads();
 
 	const int window_x = search_window_x + patch_window_x;
 	const int window_y = search_window_y + patch_window_y;

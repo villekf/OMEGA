@@ -174,6 +174,9 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		if (MethodList.OSLOSEM) {
 			array dU = Quadratic_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.inffi,
 				w_vec.tr_offsets, w_vec.weights_quad, im_dim);
+			//if (osa_iter == 1)
+			//	vec.im_os(seq(yy, yy + im_dim - 1u)) = dU;
+			//else if (osa_iter == 0)
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta.Quad_OSEM, epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)));
 			yy += im_dim;
 		}
@@ -492,11 +495,12 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	// Anisotropic Diffusion smoothing prior
 	if (MethodList.AD) {
 		if (MethodList.OSLOSEM) {
-			if (osa_iter == 0u)
+			if (osa_iter == 0u) {
 				if (MethodList.OSEM)
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(0, im_dim - 1u));
 				else
 					vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)));
+			}
 			else {
 				array dU = AD(vec.im_os(seq(yy, yy + im_dim - 1u)), Nx, Ny, Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 					w_vec.DiffusionType, w_vec.med_no_norm);

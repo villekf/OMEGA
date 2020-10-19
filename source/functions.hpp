@@ -31,6 +31,7 @@
 #include <af/cuda.h>
 #include <mex.h>
 #endif
+#define DEBUG false
 
 #pragma pack(1)
 

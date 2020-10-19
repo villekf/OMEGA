@@ -787,8 +787,10 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			skip = siddon_pre_loop_2D(d_bx, d_bz, x_diff, z_diff, d_maxxx, d_bzb, d_dx, d_dz, d_Nx, d_Nz, &tempi, &tempk, &txu, &tzu, &Np, TYPE,
 				zs, xs, zd, xd, &tc, &iu, &ku, &tx0, &tz0);
 			tempj = perpendicular_start(d_by, yd, d_dy, d_Ny);
+#ifndef PRECOMPUTE
 			if (yd > d_maxyy || yd < d_by)
 				skip = true;
+#endif
 		}
 		else if (fabs(x_diff) < 1e-6f) {
 			tempi = perpendicular_start(d_bx, xd, d_dx, d_Nx);
@@ -822,8 +824,10 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			xcenter = y_center;
 #endif
 #endif
+#ifndef PRECOMPUTE
 			if (xd > d_maxxx || xd < d_bx)
 				skip = true;
+#endif
 		}
 		else {
 			skip = siddon_pre_loop_3D(d_bx, d_by, d_bz, x_diff, y_diff, z_diff, d_maxxx, d_maxyy, d_bzb, d_dx, d_dy, d_dz, d_Nx, d_Ny, d_Nz, &tempi, &tempj, &tempk, &tyu, &txu, &tzu,
