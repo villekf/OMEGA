@@ -421,7 +421,7 @@ T normPDF(const T x, const T mu, const T sigma) {
 
 	const T a = (x - mu) / sigma;
 
-	return _2PI / sigma * std::exp(-0.5 * a * a);
+	return (_2PI / sigma * std::exp(-0.5 * a * a));
 }
 
 template <typename T>
@@ -429,7 +429,7 @@ void TOFLoop(T& TOFSum, const T DD, const int64_t nBins, const T element, std::v
 	const T sigma_x, T& D, const int64_t tid, const T epps) {
 	if (DD > 0) {
 		for (int64_t to = 0LL; to < nBins; to++) {
-			TOFVal[to + tid] = (element * (normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.) + epps;
+			TOFVal[to + tid] = (element * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.));
 			TOFSum += TOFVal[to + tid];
 			//TOFVal[to + tid] = (element * (normPDF(D + element, TOFCenter[to], sigma_x) + normPDF(D, TOFCenter[to], sigma_x)) / 2.);
 			//TOFSum += TOFVal[to + tid];
@@ -440,7 +440,7 @@ void TOFLoop(T& TOFSum, const T DD, const int64_t nBins, const T element, std::v
 	}
 	else {
 		for (int64_t to = 0LL; to < nBins; to++) {
-			TOFVal[to + tid] = (element * (normPDF(D, TOFCenter[to], sigma_x) + normPDF(D + element, TOFCenter[to], sigma_x)) / 2.) + epps;
+			TOFVal[to + tid] = (element * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D + element, TOFCenter[to], sigma_x)) / 2.));
 			TOFSum += TOFVal[to + tid];
 			//TOFVal[to + tid] = (element * (normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.);
 			//TOFSum += TOFVal[to + tid];
