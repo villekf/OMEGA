@@ -220,11 +220,11 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	ind++;
 
 	// Is TOF data used?
-	const bool TOF = prhs(ind).bool_scalar_value();
+	const bool TOF = prhs(ind).bool_value();
 	ind++;
 
 	// Size of single TOF-subset
-	const int64_t TOFSize = prhs(ind).int64_t_scalar_value();
+	const int64_t TOFSize = prhs(ind).int64_scalar_value();
 	ind++;
 
 	// Variance of the Gaussian TOF
@@ -232,11 +232,12 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	ind++;
 
 	// Centers of the TOF-bins
-	const double* TOFCenter = prhs(ind).array_value();
+	const NDArray TOFCenter_ = prhs(ind).array_value();
+	const double* TOFCenter = TOFCenter_.fortran_vec();
 	ind++;
 
 	// Index offset for TOF subsets
-	const int64_t nBins = prhs(ind).int64_t_scalar_value();
+	const int64_t nBins = prhs(ind).int64_scalar_value();
 	ind++;
 
 	const uint32_t dec_v = prhs(ind).uint32_scalar_value();
@@ -327,16 +328,16 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-			const NDArray x_center_ = prhs(ind).array_value();
+			NDArray x_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* x_center = x_center_.fortran_vec();
+			double* x_center = x_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in x-direction
-			const NDArray y_center_ = prhs(ind).array_value();
+			NDArray y_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* y_center = y_center_.fortran_vec();
+			double* y_center = y_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in z-direction
 			const NDArray z_center_ = prhs(ind).array_value();
@@ -389,16 +390,16 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-			const NDArray x_center_ = prhs(ind).array_value();
+			NDArray x_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* x_center = x_center_.fortran_vec();
+			double* x_center = x_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in x-direction
-			const NDArray y_center_ = prhs(ind).array_value();
+			NDArray y_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* y_center = y_center_.fortran_vec();
+			double* y_center = y_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in z-direction
 			const NDArray z_center_ = prhs(ind).array_value();
@@ -522,16 +523,16 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-			const NDArray x_center_ = prhs(ind).array_value();
+			NDArray x_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* x_center = x_center_.fortran_vec();
+			double* x_center = x_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in x-direction
-			const NDArray y_center_ = prhs(ind).array_value();
+			NDArray y_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* y_center = y_center_.fortran_vec();
+			double* y_center = y_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in z-direction
 			const NDArray z_center_ = prhs(ind).array_value();
@@ -594,16 +595,16 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			//	mexErrMsgTxt("Incorrect number of input arguments. There has to be 54.");
 
 			// Coordinates of the pixel centers in y-direction
-			const NDArray x_center_ = prhs(ind).array_value();
+			NDArray x_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* x_center = x_center_.fortran_vec();
+			double* x_center = x_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in x-direction
-			const NDArray y_center_ = prhs(ind).array_value();
+			NDArray y_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* y_center = y_center_.fortran_vec();
+			double* y_center = y_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in z-direction
 			const NDArray z_center_ = prhs(ind).array_value();
@@ -730,15 +731,15 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double crystal_size = prhs(ind).scalar_value();
 			ind++;
 
-			const NDArray x_center_ = prhs(ind).array_value();
+			NDArray x_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* x_center = x_center_.fortran_vec();
+			double* x_center = x_center_.fortran_vec();
 
-			const NDArray y_center_ = prhs(ind).array_value();
+			NDArray y_center_ = prhs(ind).array_value();
 			ind++;
 
-			const double* y_center = y_center_.fortran_vec();
+			double* y_center = y_center_.fortran_vec();
 
 			// Coordinates of the pixel centers in z-direction
 			const NDArray z_center_ = prhs(ind).array_value();
@@ -851,15 +852,15 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		const double crystal_size = prhs(ind).scalar_value();
 		ind++;
 
-		const NDArray x_center_ = prhs(ind).array_value();
+		NDArray x_center_ = prhs(ind).array_value();
 		ind++;
 
-		const double* x_center = x_center_.fortran_vec();
+		double* x_center = x_center_.fortran_vec();
 
-		const NDArray y_center_ = prhs(ind).array_value();
+		NDArray y_center_ = prhs(ind).array_value();
 		ind++;
 
-		const double* y_center = y_center_.fortran_vec();
+		double* y_center = y_center_.fortran_vec();
 
 		// Coordinates of the pixel centers in z-direction
 		const NDArray z_center_ = prhs(ind).array_value();
