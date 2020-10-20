@@ -446,8 +446,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		retval(0) = octave_value(sm);
 		retval(1) = octave_value(Ll);
 
-		return retval;
-
 	}
 	// Implementation 4
 	else if (type == 1u) {
@@ -646,8 +644,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 
 		retval(0) = octave_value(Summ_);
 		retval(1) = octave_value(rhs_);
-
-		return retval;
 	}
 	// Implementation 1, precomputed_lor = false
 	else if (type == 2u) {
@@ -823,8 +819,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		retval(1) = octave_value(outputMatrix2);
 		retval(2) = octave_value(outputMatrix3);
 
-		return retval;
-
 	}
 	// Precomputation phase
 	else if (type == 3u) {
@@ -932,7 +926,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		retval(1) = octave_value(lor_orth_);
 		retval(2) = octave_value(lor_vol_);
 
-		return retval;
-
 	}
+
+	return retval;
 }
