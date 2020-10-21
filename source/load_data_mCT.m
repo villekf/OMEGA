@@ -45,10 +45,14 @@ end
 folder = fileparts(which('load_data_mCT.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
-% 
+%
 % Nx = uint32(options.Nx);
 % Ny = uint32(options.Ny);
 % Nz = uint32(options.Nz);
+
+if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
+    options.TOF_bins = 1;
+end
 
 disp('Beginning data load')
 
@@ -66,7 +70,14 @@ if options.use_machine == 1 || options.use_machine == 3
     machine_name = options.machine_name;
     name = options.name;
     tot_time = options.tot_time;
-%     detectors = options.detectors;
+    %     detectors = options.detectors;
+    totSinos = options.TotSinos;
+    if options.span == 1
+        totSinos = options.rings^2;
+    end
+    sinoSize = uint64(options.Ndist * options.Nang * totSinos);
+    pseudoD = options.det_per_ring < options.det_w_pseudo;
+    pseudoR = sum(options.pseudot) > 0;
     
     if isinf(tot_time)
         tot_time = 1e9;
@@ -113,61 +124,62 @@ if options.use_machine == 1 || options.use_machine == 3
         end
         
         % Load the data
-        [LL1, LL2, DD1, DD2, tpoints] = list2sinogram(nimi, uint64(vali), uint64(alku), uint64(loppu), logical(options.randoms_correction), type, v_size);
+        [LL1, LL2, DD1, DD2, tpoints, raw_SinM, SinD] = list2sinogram(nimi, uint64(vali), uint64(alku), uint64(loppu), logical(options.randoms_correction), v_size, options.store_raw_data, ...
+            uint32(options.det_w_pseudo), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(options.segment_table), ...
+            uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), pseudoD, pseudoR, type);
         clear mex
         
-        %     TOF(TOF == 0) = [];
-        %     TOF = TOF - 1;
         
-        
-        if partitions == 1
-            LL1(LL1 == 0) = [];
-            LL2(LL2 == 0) = [];
-            LL3 = LL2;
-            LL2(LL2 > LL1) = LL1(LL2 > LL1);
-            LL1(LL3 > LL1) = LL3(LL3 > LL1);
-            clear LL3
-            prompts = accumarray([LL1 LL2],1,[options.detectors options.detectors],[],[],true);
-            if options.randoms_correction
-                DD1(DD1 == 0) = [];
-                DD2(DD2 == 0) = [];
-                DD3 = DD2;
-                DD2(DD2 > DD1) = DD1(DD2 > DD1);
-                DD1(DD3 > DD1) = DD3(DD3 > DD1);
-                clear DD3
-                delays = accumarray([DD1 DD2],1,[options.detectors options.detectors],[],[],true);
-            end
-            clear LL1 LL2 DD1 DD2
-        else
-            prompts = cell(partitions,1);
-            if options.randoms_correction
-                delays = cell(partitions,1);
-            end
-            ll = 1;
-            for kk = 1 : partitions
-                apu1 = LL1(ll:tpoints(kk));
-                apu1(apu1 == 0) = [];
-                apu2 = LL2(ll:tpoints(kk));
-                apu2(apu2 == 0) = [];
-                apu3 = apu2;
-                apu2(apu2 > apu1) = apu1(apu2 > apu1);
-                apu1(apu3 > apu1) = apu3(apu3 > apu1);
-                clear apu3
-                prompts{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+        if options.store_raw_data
+            if partitions == 1
+                LL1(LL1 == 0) = [];
+                LL2(LL2 == 0) = [];
+                LL3 = LL2;
+                LL2(LL2 > LL1) = LL1(LL2 > LL1);
+                LL1(LL3 > LL1) = LL3(LL3 > LL1);
+                clear LL3
+                prompts = accumarray([LL1 LL2],1,[options.detectors options.detectors],[],[],true);
                 if options.randoms_correction
-                    apu1 = DD1(ll:tpoints(kk));
+                    DD1(DD1 == 0) = [];
+                    DD2(DD2 == 0) = [];
+                    DD3 = DD2;
+                    DD2(DD2 > DD1) = DD1(DD2 > DD1);
+                    DD1(DD3 > DD1) = DD3(DD3 > DD1);
+                    clear DD3
+                    delays = accumarray([DD1 DD2],1,[options.detectors options.detectors],[],[],true);
+                end
+                clear LL1 LL2 DD1 DD2
+            else
+                prompts = cell(partitions,1);
+                if options.randoms_correction
+                    delays = cell(partitions,1);
+                end
+                ll = 1;
+                for kk = 1 : partitions
+                    apu1 = LL1(ll:tpoints(kk));
                     apu1(apu1 == 0) = [];
-                    apu2 = DD2(ll:tpoints(kk));
+                    apu2 = LL2(ll:tpoints(kk));
                     apu2(apu2 == 0) = [];
                     apu3 = apu2;
                     apu2(apu2 > apu1) = apu1(apu2 > apu1);
                     apu1(apu3 > apu1) = apu3(apu3 > apu1);
                     clear apu3
-                    delays{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    prompts{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    if options.randoms_correction
+                        apu1 = DD1(ll:tpoints(kk));
+                        apu1(apu1 == 0) = [];
+                        apu2 = DD2(ll:tpoints(kk));
+                        apu2(apu2 == 0) = [];
+                        apu3 = apu2;
+                        apu2(apu2 > apu1) = apu1(apu2 > apu1);
+                        apu1(apu3 > apu1) = apu3(apu3 > apu1);
+                        clear apu3
+                        delays{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    end
+                    ll = 1 + tpoints(kk);
                 end
-                ll = 1 + tpoints(kk);
+                clear LL1 LL2 DD1 DD2 apu1 apu2
             end
-            clear LL1 LL2 DD1 DD2 apu1 apu2
         end
         %% Save the measurement data
         
@@ -180,97 +192,117 @@ if options.use_machine == 1 || options.use_machine == 3
         if options.randoms_correction
             tot_delayed = 0;
         end
-            
+        
         if ~options.use_raw_data
-            if options.randoms_correction
-                form_sinograms(options, false, prompts, delays);
-            else
-                form_sinograms(options, false, prompts);
+            if size(raw_SinM,1) == numel(raw_SinM)
+                raw_SinM = reshape(raw_SinM, options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions);
             end
+            if options.randoms_correction && size(SinD,1) == numel(SinD)
+                SinD = reshape(SinD, options.Ndist, options.Nang, totSinos, options.partitions);
+            end
+            if options.partitions > 1
+                raw_SinM = squeeze(num2cell(raw_SinM, (1 : ndims(raw_SinM) - 1)));
+                if options.randoms_correction
+                    SinD = squeeze(num2cell(SinD, [1 2 3]));
+                end
+            end
+            if ~options.randoms_correction
+                SinD = [];
+            end
+            form_sinograms(options, true, raw_SinM, [], [], [], SinD);
         end
-        for llo=1:partitions
-            
-            if iscell(prompts)
-                prompts{llo} = (prompts{llo}(tril(true(size(prompts{llo})), 0)));
-                if options.verbose
-                    counts = full(sum(sum(prompts{llo})));
-                end
-                coincidences{llo, 1} = prompts{llo};
-            else
-                prompts = (prompts(tril(true(size(prompts)), 0)));
-                if options.verbose
-                    counts = full(sum(sum(prompts)));
-                end
-                coincidences{llo, 1} = prompts;
-            end
-            
-            if options.verbose
-                disp(['Total number of prompts at time point ' num2str(llo) ' is ' num2str(counts) '.'])
-                tot_counts = tot_counts + counts;
-            end
-            
-            if options.randoms_correction
-                if ~iscell(prompts)
-                    delays = (delays(tril(true(size(delays)), 0)));
-                    delayed_coincidences{partitions, 1} = delays;
+        if options.store_raw_data
+            for llo=1:partitions
+                
+                if iscell(prompts)
+                    prompts{llo} = (prompts{llo}(tril(true(size(prompts{llo})), 0)));
                     if options.verbose
-                        disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(full(sum(sum(delays)))) '.'])
-                        tot_delayed = tot_delayed + full(sum(sum(delays)));
+                        counts = full(sum(sum(prompts{llo})));
                     end
+                    coincidences{llo, 1} = prompts{llo};
                 else
-                    delays{llo} = (delays{llo}(tril(true(size(delays{llo})), 0)));
-                    delayed_coincidences{partitions, 1} = delays{llo};
+                    prompts = (prompts(tril(true(size(prompts)), 0)));
                     if options.verbose
-                        disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(full(sum(sum(delays{llo})))) '.'])
-                        tot_delayed = tot_delayed + full(sum(sum(delays{llo})));
+                        counts = full(sum(sum(prompts)));
                     end
+                    coincidences{llo, 1} = prompts;
                 end
-            end
-        end
-        if partitions == 1
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(save_string_raw, 'coincidences', '-v7.3')
-            else
-                save(save_string_raw, 'coincidences', '-v7')
-            end
-            for variableIndex = 1:length(variableList)
-                if exist(variableList{variableIndex},'var')
-                    if exist('OCTAVE_VERSION', 'builtin') == 0
-                        save(save_string_raw,variableList{variableIndex},'-append')
+                
+                if options.verbose
+                    disp(['Total number of prompts at time point ' num2str(llo) ' is ' num2str(counts) '.'])
+                    tot_counts = tot_counts + counts;
+                end
+                
+                if options.randoms_correction
+                    if ~iscell(prompts)
+                        delays = (delays(tril(true(size(delays)), 0)));
+                        delayed_coincidences{partitions, 1} = delays;
+                        if options.verbose
+                            disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(full(sum(sum(delays)))) '.'])
+                            tot_delayed = tot_delayed + full(sum(sum(delays)));
+                        end
                     else
-                        save(save_string_raw,variableList{variableIndex},'-append', '-v7')
+                        delays{llo} = (delays{llo}(tril(true(size(delays{llo})), 0)));
+                        delayed_coincidences{partitions, 1} = delays{llo};
+                        if options.verbose
+                            disp(['Total number of delayed coincidences at time point ' num2str(llo) ' is ' num2str(full(sum(sum(delays{llo})))) '.'])
+                            tot_delayed = tot_delayed + full(sum(sum(delays{llo})));
+                        end
                     end
                 end
+            end
+            if partitions == 1
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(save_string_raw, 'coincidences', '-v7.3')
+                else
+                    save(save_string_raw, 'coincidences', '-v7')
+                end
+                for variableIndex = 1:length(variableList)
+                    if exist(variableList{variableIndex},'var')
+                        if exist('OCTAVE_VERSION', 'builtin') == 0
+                            save(save_string_raw,variableList{variableIndex},'-append')
+                        else
+                            save(save_string_raw,variableList{variableIndex},'-append', '-v7')
+                        end
+                    end
+                end
+            else
+                if options.verbose
+                    disp(['Total number of prompts at all time points is ' num2str(tot_counts) '.'])
+                    if options.randoms_correction
+                        disp(['Total number of delayed coincidences at all time points is ' num2str(tot_delayed) '.'])
+                    end
+                end
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(save_string_raw, 'coincidences', '-v7.3')
+                else
+                    save(save_string_raw, 'coincidences', '-v7')
+                end
+                for variableIndex = 1:length(variableList)
+                    if exist(variableList{variableIndex},'var')
+                        if exist('OCTAVE_VERSION', 'builtin') == 0
+                            save(save_string_raw,variableList{variableIndex},'-append')
+                        else
+                            save(save_string_raw,variableList{variableIndex},'-append', '-v7')
+                        end
+                    end
+                end
+            end
+            %     end
+            clear LL1 DD1
+            if nargout >= 1
+                varargout{1} = coincidences;
+            end
+            if nargout >= 2
+                varargout{2} = delayed_coincidences;
             end
         else
-            if options.verbose
-                disp(['Total number of prompts at all time points is ' num2str(tot_counts) '.'])
-                if options.randoms_correction
-                    disp(['Total number of delayed coincidences at all time points is ' num2str(tot_delayed) '.'])
-                end
+            if nargout >= 1
+                varargout{1} = raw_SinM;
             end
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(save_string_raw, 'coincidences', '-v7.3')
-            else
-                save(save_string_raw, 'coincidences', '-v7')
+            if nargout >= 2
+                varargout{2} = SinD;
             end
-            for variableIndex = 1:length(variableList)
-                if exist(variableList{variableIndex},'var')
-                    if exist('OCTAVE_VERSION', 'builtin') == 0
-                        save(save_string_raw,variableList{variableIndex},'-append')
-                    else
-                        save(save_string_raw,variableList{variableIndex},'-append', '-v7')
-                    end
-                end
-            end
-        end
-        %     end
-        clear LL1 DD1
-        if nargout >= 1
-            varargout{1} = coincidences;
-        end
-        if nargout >= 2
-            varargout{2} = delayed_coincidences;
         end
         if options.verbose
             disp('Measurements loaded and saved')
@@ -280,7 +312,7 @@ if options.use_machine == 1 || options.use_machine == 3
         % 32-bit list-mode data
         
         if options.randoms_correction
-            variableList = {'SinM','delayed_coincidences','appliedCorrections'};
+            variableList = {'SinM','SinDelayed','appliedCorrections'};
         else
             variableList = {'SinM','appliedCorrections'};
         end
@@ -292,26 +324,43 @@ if options.use_machine == 1 || options.use_machine == 3
         RandProp.variance_reduction = false;
         RandProp.smoothing = false;
         if partitions == 1
-            save_string = [options.machine_name '_' options.name '_sinogram_original_static_' num2str(options.Ndist) 'x' num2str(options.Nang)...
-                'x' num2str(options.TotSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
+            if options.TOF_bins > 1
+                save_string = [machine_name '_' name '_TOFsinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.NSinos) ...
+                    '_span' num2str(options.span) '_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) ...
+                    'psFWHM_listmode_sinogram.mat'];
+            else
+                save_string = [machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang)...
+                    'x' num2str(options.TotSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
+            end
         else
-            save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
-                num2str(Ndist) 'x' num2str(Nang) 'x' num2str(NSlices) '_span' num2str(span) '_listmode_sinogram.mat'];
+            if options.TOF_bins > 1
+                save_string = [machine_name '_' name '_TOFsinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
+                    num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.NSinos) '_span' num2str(options.span) '_' num2str(options.TOF_bins) 'bins_' ...
+                    num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM_listmode_sinogram.mat'];
+            else
+                save_string = [machine_name '_' name '_sinograms_combined_' num2str(partitions) 'timepoints_for_total_of_' num2str(tot_time) 's_' ...
+                    num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.NSinos) '_span' num2str(options.span) '_listmode_sinogram.mat'];
+            end
         end
         
-        [raw_SinM, delayed_coincidences] = list2sinogram(nimi, uint64(vali), uint64(alku), uint64(loppu), logical(options.randoms_correction), type);
+        [raw_SinM, SinDelayed] = list2sinogram(nimi, uint64(vali), uint64(alku), uint64(loppu), logical(options.randoms_correction), v_size, options.store_raw_data, ...
+            uint32(options.det_w_pseudo), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(options.segment_table), ...
+            uint64(options.partitions), sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), pseudoD, pseudoR, type);
         clear mex
         
         if partitions == 1
-            raw_SinM = permute(reshape(raw_SinM, options.Nang, options.Ndist, options.TotSinos), [2 1 3 4]);
+            raw_SinM = permute(reshape(raw_SinM, options.Nang, options.Ndist, options.TotSinos, options.TOF_bins), [2 1 3 4]);
+            if options.NSinos < options.TotSinos
+                raw_SinM = raw_SinM(:,:, 1: options.NSinos, :);
+            end
             if options.randoms_correction
-                delayed_coincidences = permute(reshape(delayed_coincidences, options.Nang, options.Ndist, options.TotSinos), [2 1 3 4]);
+                SinDelayed = permute(reshape(SinDelayed, options.Nang, options.Ndist, options.TotSinos), [2 1 3]);
             end
             SinM = single(raw_SinM);
             if (~options.corrections_during_reconstruction && (options.randoms_correction || options.normalization_correction)) || ...
                     options.fill_sinogram_gaps && (sum(options.pseudot) > 0 || options.det_per_ring < options.det_w_pseudo)
                 if ~options.corrections_during_reconstruction && options.randoms_correction
-                    SinM = SinM - single(delayed_coincidences);
+                    SinM = SinM - single(SinDelayed) / options.TOF_bins;
                     appliedCorrections.randoms = true;
                 end
                 if options.normalization_correction && ~options.corrections_during_reconstruction && options.use_user_normalization
@@ -321,8 +370,8 @@ if options.use_machine == 1 || options.use_machine == 3
                     end
                     f_path = [fpath n_file];
                     normalization = loadNormalizationBiograph(f_path, options);
-%                     normalization = circshift(normalization,1);
-                    SinM = single(SinM) .* normalization;
+                    %                     normalization = circshift(normalization,1);
+                    SinM = bsxfun(@times, single(SinM), normalization);
                     appliedCorrections.normalization = true;
                 elseif options.normalization_correction && ~options.corrections_during_reconstruction && ~options.use_user_normalization
                     norm_file = [folder options.machine_name '_normalization_' num2str(options.Ndist) 'x' num2str(options.Nang) '_span' num2str(options.span) '.mat'];
@@ -332,7 +381,7 @@ if options.use_machine == 1 || options.use_machine == 3
                         normalization = normalization_coefficients(options);
                     end
                     normalization = circshift(normalization,1);
-                    SinM = single(SinM) .* normalization;
+                    SinM = bsxfun(@times, single(SinM), normalization);
                     appliedCorrections.normalization = true;
                 end
                 if options.fill_sinogram_gaps && (sum(options.pseudot) > 0 || options.det_per_ring < options.det_w_pseudo)
@@ -344,26 +393,37 @@ if options.use_machine == 1 || options.use_machine == 3
                 end
             end
         else
-            apu = reshape(raw_SinM, options.Nang, options.Ndist, options.TotSinos, options.partitions);
+            if options.TOF_bins > 1
+                apu = reshape(raw_SinM, options.Nang, options.Ndist, options.TotSinos, options.TOF_bins, options.partitions);
+            else
+                apu = reshape(raw_SinM, options.Nang, options.Ndist, options.TotSinos, options.partitions);
+            end
+            if options.NSinos < options.TotSinos
+                apu = apu(:,:, 1: options.NSinos, :, :);
+            end
             raw_SinM = cell(options.partitions,1);
             if ~options.corrections_during_reconstruction && (options.randoms_correction || options.normalization_correction || ...
                     options.fill_sinogram_gaps && (sum(options.pseudot) > 0 || options.det_per_ring < options.det_w_pseudo))
                 SinM = cell(options.partitions,1);
             end
             if options.randoms_correction
-                apu_d = reshape(delayed_coincidences, options.Nang, options.Ndist, options.TotSinos, options.partitions);
-                delayed_coincidences = cell(options.partitions,1);
+                apu_d = reshape(SinDelayed, options.Nang, options.Ndist, options.TotSinos, options.partitions);
+                SinDelayed = cell(options.partitions,1);
             end
             for kk = 1 : options.partitions
-                raw_SinM{kk} = permute(apu(:,:,:,kk), [2 1 3 4]);
+                if options.TOF_bins > 1
+                    raw_SinM{kk} = permute(apu(:,:,:,:,kk), [2 1 3 4 5]);
+                else
+                    raw_SinM{kk} = permute(apu(:,:,:,kk), [2 1 3 4]);
+                end
                 if options.randoms_correction
-                    delayed_coincidences{kk} = permute(reshape(apu_d, options.Nang, options.Ndist, options.TotSinos), [2 1 3 4]);
+                    SinDelayed{kk} = permute(reshape(apu_d, options.Nang, options.Ndist, options.TotSinos), [2 1 3 4]);
                 end
                 if (~options.corrections_during_reconstruction && (options.randoms_correction || options.normalization_correction)) || ...
                         options.fill_sinogram_gaps && (sum(options.pseudot) > 0 || options.det_per_ring < options.det_w_pseudo)
                     Sino = single(raw_SinM);
                     if ~options.corrections_during_reconstruction && options.randoms_correction
-                        Sino = Sino - single(delayed_coincidences);
+                        Sino = Sino - single(SinDelayed) / options.TOF_bins;
                         appliedCorrections.randoms = true;
                     end
                     if options.normalization_correction && ~options.corrections_during_reconstruction
@@ -373,7 +433,7 @@ if options.use_machine == 1 || options.use_machine == 3
                         end
                         f_path = [fpath n_file];
                         normalization = loadNormalizationBiograph(f_path, options);
-                        Sino = single(Sino) .* normalization;
+                        Sino = bsxfun(@times, single(Sino), normalization);
                         appliedCorrections.normalization = true;
                     end
                     if options.fill_sinogram_gaps && (sum(options.pseudot) > 0 || options.det_per_ring < options.det_w_pseudo)
@@ -391,7 +451,7 @@ if options.use_machine == 1 || options.use_machine == 3
             if options.verbose
                 disp(['Total number of prompts is ' num2str(sum(SinM(:))) '.'])
                 if options.randoms_correction
-                    disp(['Total number of delayed coincidences is ' num2str(sum(delayed_coincidences(:))) '.'])
+                    disp(['Total number of delayed coincidences is ' num2str(sum(SinDelayed(:))) '.'])
                 end
             end
         else
@@ -421,7 +481,7 @@ if options.use_machine == 1 || options.use_machine == 3
             varargout{1} = SinM;
         end
         if nargout >= 2
-            varargout{2} = delayed_coincidences;
+            varargout{2} = SinDelayed;
         end
     end
 else
@@ -471,10 +531,14 @@ else
         Sino(end - offset_loppu + 1 : end) = [];
         Sino = reshape(Sino, options.Ndist, options.Nang, options.TotSinos, TOF_timebins, options.partitions);
         if TOF_timebins > 1
-            delayed_coincidences = squeeze(Sino(:,:,:,end,:));
+            SinDelayed = squeeze(Sino(:,:,:,end,:));
             Sino = Sino(:,:,:,1:end-1,:);
         end
-        Sino = squeeze(sum(Sino,4));
+        if options.TOF_bins > 1
+            Sino = squeeze(Sino);
+        else
+            Sino = squeeze(sum(Sino,4));
+        end
     else
         Sino = fread(fid, inf, 'int16=>int16');
         if any(Sino < 0)
@@ -484,17 +548,25 @@ else
         TOF_timebins = length(Sino) / (options.Ndist*options.Nang*options.TotSinos*options.partitions);
         Sino = reshape(Sino, options.Ndist, options.Nang, options.TotSinos, TOF_timebins, options.partitions);
         if TOF_timebins > 1
-            delayed_coincidences = squeeze(Sino(:,:,:,end,:));
+            SinDelayed = squeeze(Sino(:,:,:,end,:));
             Sino = Sino(:,:,:,1:end-1,:);
         end
-        Sino = squeeze(sum(Sino,4));
+        if options.TOF_bins > 1
+            Sino = squeeze(Sino);
+        else
+            Sino = squeeze(sum(Sino,4));
+        end
         Sino(Sino < 0) = 0;
     end
     fclose(fid);
     if options.partitions > 1
         raw_SinM = cell(options.partitions,1);
         for kk = 1 : options.partitions
-            raw_SinM{kk} = Sino(:,:,:,kk);
+            if options.TOF_bins > 1
+                raw_SinM{kk} = Sino(:,:,:,:,kk);
+            else
+                raw_SinM{kk} = Sino(:,:,:,kk);
+            end
         end
     else
         raw_SinM = Sino;
@@ -518,7 +590,7 @@ else
         varargout{1} = raw_SinM;
     end
     if nargout >= 2
-        varargout{2} = delayed_coincidences;
+        varargout{2} = SinDelayed;
     end
     
 end
