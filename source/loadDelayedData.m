@@ -31,7 +31,7 @@ end
 
 FileName = fullfile(d_fpath, d_file);
 storedStructure = load(FileName);
-variables = fields(storedStructure);
+variables = fieldnames(storedStructure);
 
 if isfield(storedStructure, 'SinDelayed') && ~options.use_raw_data
     options.SinDelayed = storedStructure.SinDelayed;

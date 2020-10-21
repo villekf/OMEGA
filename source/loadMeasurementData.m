@@ -84,7 +84,7 @@ end
 
 if strcmp(FileName(end-2:end),'mat')
     storedStructure = load(FileName);
-    variables = fields(storedStructure);
+    variables = fieldnames(storedStructure);
     
     if options.use_raw_data == false
         if isfield(storedStructure, 'SinM')

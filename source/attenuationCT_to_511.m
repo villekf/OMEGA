@@ -3,11 +3,12 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 %attenuation coefficients. Uses trilinear interpolation to scale the
 %HU-values to 511 keV attenuation coefficients. Supports any X-ray tube
 %potentials, but values outside of 80, 100, 120 and 140 kVp are
-%interpolated. The calculated attenuation coefficients are also saved on
+%interpolated. The calculated attenuation coefficients can also be saved on
 %disk.
 %
-% Example:
+% Examples:
 %   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP)
+%   attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, attenuation_data, name)
 % INPUTS:
 %   Nx = Image dimension in x-axis
 %   Ny = Image dimension in y-axis
@@ -27,7 +28,7 @@ function attenuation_factors = attenuationCT_to_511(Nx, Ny, Nz, KVP, varargin)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2020 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -90,7 +91,7 @@ if isempty(reresized)
         error('No file was selected')
     end
     data = load([fpath file]);
-    variables = fields(data);
+    variables = fieldnames(data);
     reresized = double(data.(variables{1}));
     clear data
 end
@@ -110,22 +111,8 @@ inter = interp1(x(:,1),x(:,2),-1000:tarkkuus:3000,'linear');
 vali = -1000:tarkkuus:3000;
 % plot(vali,inter)
 %asetetaan sopivasti
-attenuation_factors = zeros(size(reresized));
-for ii=1:Nz
-%     ii
-    temppi=reresized(:,:,ii);
-    temppi=temppi(:);
-    tic
-    for ll=1:Nx*Ny
-        apu=temppi(ll);
-        [~,idx]=min(abs(vali-apu));
-        apu=inter(idx);
-        temppi(ll)=apu;
-    end
-    toc
-    attenuation_factors(:,:,ii)=reshape(temppi,Nx,Ny);  
-end
-% imagesc(attenuation_factors(:,:,55))
+attenuation_factors = interp1(vali',inter',reresized(:),'linear','extrap');
+attenuation_factors = reshape(attenuation_factors,Nx,Ny,Nz);  
 if ~isempty(name)
-    save(['511keV_attenuation_coefficients_for_' name '.mat'], attenuation_factors)
+    save(['511keV_attenuation_coefficients_for_' name '.mat'], 'attenuation_factors')
 end

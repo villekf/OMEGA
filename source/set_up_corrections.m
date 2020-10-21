@@ -88,7 +88,7 @@ block1 = 0;
 if options.attenuation_correction
     if ~isfield(options,'vaimennus')
         data = load(options.attenuation_datafile);
-        variables = fields(data);
+        variables = fieldnames(data);
         options.vaimennus = double(data.(variables{1}));
         if size(options.vaimennus,1) ~= options.Nx || size(options.vaimennus,2) ~= options.Ny || size(options.vaimennus,3) ~= options.Nz
             if size(options.vaimennus,1) ~= options.Nx*options.Ny*options.Nz
@@ -169,7 +169,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             %             options.normalization = 1 ./ options.normalization;
         else
             data = load(file);
-            variables = fields(data);
+            variables = fieldnames(data);
             options.normalization = data.(variables{1});
             clear data
             if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
@@ -206,7 +206,7 @@ elseif options.normalization_correction && options.use_raw_data && ~options.corr
             fclose(fid);
         else
             data = load(file);
-            variables = fields(data);
+            variables = fieldnames(data);
             normalization = data.(variables{1});
             clear data
             if numel(normalization) ~= numel(options.SinM{1})

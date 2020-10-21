@@ -368,7 +368,7 @@ if options.use_raw_data
                 error('Inveon normalization data cannot be used with raw list-mode data')
             else
                 data = load([fpath file]);
-                variables = fields(data);
+                variables = fieldnames(data);
                 normalization = data.(variables{1});
                 clear data
                 if numel(normalization) ~= sum(1:options.detectors)

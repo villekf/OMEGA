@@ -1,7 +1,7 @@
 function options = set_GATE_variables(options)
 %set_GATE_variables Set the GATE variables for non-GATE data
-%   If some of the fields in the 'options' struct are missing, errors will
-%   be thrown. This function will fill those fields in order to prevent
+%   If some of the fieldnames in the 'options' struct are missing, errors will
+%   be thrown. This function will fill those fieldnames in order to prevent
 %   these errors.
 options.obtain_trues = false;
 options.reconstruct_trues = false;

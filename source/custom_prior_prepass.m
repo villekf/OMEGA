@@ -373,7 +373,7 @@ if custom
                     error('No file was selected')
                 end
                 data = load(fullfile(dfpath, dfile));
-                variables = fields(data);
+                variables = fieldnames(data);
                 if length(variables) > 1
                     if (any(strcmp('SinDelayed',variables)))
                         options.SinDelayed = double(data.(variables{strcmp('SinDelayed',variables)}));
@@ -396,7 +396,7 @@ if custom
                     error('No file was selected')
                 end
                 data = load(fullfile(options.fpath, options.file));
-                variables = fields(data);
+                variables = fieldnames(data);
                 if length(variables) > 1
                     if (any(strcmp('SinDelayed',variables)))
                         options.SinDelayed = single(data.(variables{strcmp('SinDelayed',variables)}));

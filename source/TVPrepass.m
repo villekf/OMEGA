@@ -5,7 +5,7 @@ function options = TVPrepass(options)
 TVdata = [];
 if options.TV_use_anatomical
     apu = load(options.TV_reference_image);
-    variables = fields(apu);
+    variables = fieldnames(apu);
     alkuarvo = double(apu.(variables{1}));
     if size(alkuarvo,2) == 1
         koko_apu = sqrt(length(alkuarvo)/double(options.Nz));

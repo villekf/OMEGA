@@ -10,7 +10,7 @@ gaussian = gaussianKernel(g_x, g_y, g_z, options.NLM_gauss, options.NLM_gauss, o
 options.gaussianNLM = gaussian(:);
 if options.NLM_use_anatomical
     apu = load(options.NLM_reference_image);
-    variables = fields(apu);
+    variables = fieldnames(apu);
     options.NLM_ref = double(apu.(variables{1}));
     options.NLM_ref = reshape(options.NLM_ref, options.Nx, options.Ny, options.Nz);
     if options.implementation == 2

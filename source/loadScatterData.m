@@ -55,7 +55,7 @@ else
     
     FileName = fullfile(s_fpath, scatter_file);
     storedStructure = load(FileName);
-    variables = fields(storedStructure);
+    variables = fieldnames(storedStructure);
     
     if isfield(storedStructure, 'SinScatter') && ~options.use_raw_data
         options.ScatterC = storedStructure.SinScatter;
