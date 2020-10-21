@@ -715,7 +715,7 @@ options.name = 'Vision_exam';
 % list-mode data. Not mandatory and the precomputed data is only used if 
 % the below precompute_lor is set to true. If using solely implementation 
 % 1, this is HIGHLY recommended. 
-options.precompute = true;
+options.precompute = false;
 
 %%% Folder for the data (.dat ASCII, .ccs LMF, .root ROOT) files
 % If no files are located in the path provided below, then the current

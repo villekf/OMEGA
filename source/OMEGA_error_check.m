@@ -322,6 +322,9 @@ end
 if options.TOF_bins_used > 1 && options.TOF_FWHM == 0
     error('TOF enabled, but the TOF FWHM is zero. FWHM must be nonzero.')
 end
+if options.TOF_bins > 1 && options.use_raw_data
+    error('TOF data is only available with sinogram data.')
+end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose
     if options.use_ASCII && options.use_machine == 0

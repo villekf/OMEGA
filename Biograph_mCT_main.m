@@ -123,7 +123,7 @@ options.store_scatter = false;
 % 0 1 0] will save Compton and Rayleigh scattering in the phantom. 
 % NOTE: LMF will always include only Compton scattering in the phantom,
 % regardless of the choice below (as long as scatter is selected).
-options.scatter_components = [0 0 1 1];
+options.scatter_components = [1 1 1 1];
 
 %%% Reconstruct the scattered coincidences
 % If this is set to true, then the scattered coincidences will be used for
@@ -271,7 +271,7 @@ options.flip_image = false;
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for machine list-mode data.
 % Positive values perform the rotation in clockwise direction
-options.offangle = options.det_w_pseudo * (2/4);
+options.offangle = options.det_w_pseudo * (0/4);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -706,7 +706,7 @@ options.name = 'mCT_examination';
 % list-mode data. Not mandatory and the precomputed data is only used if 
 % the below precompute_lor is set to true. If using solely implementation 
 % 1, this is HIGHLY recommended. 
-options.precompute = true;
+options.precompute = false;
 
 %%% Folder for the data (.dat ASCII, .ccs LMF, .root ROOT) files
 % If no files are located in the path provided below, then the current
