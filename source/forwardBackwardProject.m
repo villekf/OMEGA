@@ -31,12 +31,12 @@ classdef forwardBackwardProject
             [obj.index, obj.n_meas, obj.OProperties.subsets] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
                 obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos);
             
-            obj.nn = [0;cumsum(obj.n_meas)];
+            obj.nn = [int64(0);int64(cumsum(obj.n_meas))];
             if iscell(obj.index)
                 obj.index = cell2mat(obj.index);
             end
             if obj.OProperties.subsets > 1
-                obj.n_meas = [uint32(0);cumsum(obj.n_meas)];
+                obj.n_meas = [int64(0);int64(cumsum(obj.n_meas))];
             end
             if obj.OProperties.subsets == 1
                 obj.osa_iter = 1;
@@ -102,7 +102,7 @@ classdef forwardBackwardProject
                 obj.OProperties.lor_a = uint16(0);
             end
             if obj.OProperties.subsets == 1
-                obj.nn = obj.n_meas;
+                obj.nn = int64(obj.n_meas);
                 if obj.OProperties.precompute_lor
                     obj.index = find(discard);
                 end

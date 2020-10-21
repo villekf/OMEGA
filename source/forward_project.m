@@ -127,6 +127,10 @@ if numel(f) ~= Nx*Ny*Nz && ~isempty(f)
     error('Estimate has different amount of elements than the image size')
 end
 
+if ~isa(n_meas,'int64')
+    n_meas = int64(n_meas);
+end
+
 if TOF
     if options.TOF_FWHM < 0
         if iscell(options.SinM)
@@ -231,7 +235,7 @@ else
 end
 
 if (options.precompute_lor || options.implementation == 5 || options.implementation == 2 || options.implementation == 3)
-    n_meas = [0;cumsum(n_meas)];
+    n_meas = [int64(0);int64(cumsum(n_meas))];
     if iscell(index)
         index = cell2mat(index);
     end
