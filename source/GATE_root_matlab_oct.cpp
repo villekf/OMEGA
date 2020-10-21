@@ -294,32 +294,36 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			break;
 		}
 		bool event_true = true;
-		bool event_scattered = false;
+		bool event_scattered = true;
+		bool store_scatter_event = false;
 		if (obtain_trues || store_scatter || store_randoms) {
 			if (eventID1 != eventID2) {
 				event_true = false;
+				event_scattered = false;
 			}
-			if (event_true && (obtain_trues || store_scatter)) {
+			if (event_true) {
 				if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 					event_true = false;
-					if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
-						event_scattered = true;
+					if (scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
+						store_scatter_event = true;
 				}
 				else if ((comptonCrystal1 > 0 || comptonCrystal2 > 0) && scatter_components[1] > 0) {
 					event_true = false;
-					if (store_scatter && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
-						event_scattered = true;
+					if ((scatter_components[1] <= comptonCrystal1 || scatter_components[1] <= comptonCrystal2))
+						store_scatter_event = true;
 				}
 				else if ((RayleighPhantom1 > 0 || RayleighPhantom2 > 0) && scatter_components[2] > 0) {
 					event_true = false;
-					if (store_scatter && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
-						event_scattered = true;
+					if ((scatter_components[2] <= RayleighPhantom1 || scatter_components[2] <= RayleighPhantom2))
+						store_scatter_event = true;
 				}
 				else if ((RayleighCrystal1 > 0 || RayleighCrystal2 > 0) && scatter_components[3] > 0) {
 					event_true = false;
-					if (store_scatter && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
-						event_scattered = true;
+					if ((scatter_components[3] <= RayleighCrystal1 || scatter_components[3] <= RayleighCrystal2))
+						store_scatter_event = true;
 				}
+				else
+					event_scattered = false;
 			}
 		}
 		if (begin) {
@@ -335,18 +339,6 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
 			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 		uint64_t bins = 0;
-		if (TOFSize > sinoSize) {
-			double timeDif = (time2 - time1) / 2. + distribution(generator);
-			if (std::abs(timeDif) > ((binSize / 2.) * nBins))
-				continue;
-			if (ring_pos2 > ring_pos1)
-				timeDif = -timeDif;
-			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize) / binSize));
-			if (timeDif < 0)
-				bins *= 2ULL;
-			else if (bins > 1)
-				bins = bins * 2ULL - 1ULL;
-		}
 		if (storeRawData) {
 			L1 = ring_number1 * det_per_ring + ring_pos1;
 			L2 = ring_number2 * det_per_ring + ring_pos2;
@@ -361,18 +353,18 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 						if (event_true && obtain_trues) {
 							Ltrues[L2 * detectors + L1] = Ltrues[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 						}
-						else if (event_scattered && store_scatter) {
+						else if (store_scatter_event && store_scatter) {
 							Lscatter[L2 * detectors + L1] = Lscatter[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 						}
 					}
 					else {
 						if (event_true && obtain_trues)
 							Ltrues[kk] = 1u;
-						else if (event_scattered && store_scatter)
+						else if (store_scatter_event && store_scatter)
 							Lscatter[kk] = 1u;
 					}
 				}
-				else if (!event_true && store_randoms) {
+				else if (!event_true && store_randoms && !event_scattered) {
 					if (outsize2 == 1ULL) {
 						Lrandoms[L2 * detectors + L1] = Lrandoms[L2 * detectors + L1] + static_cast<octave_uint16>(1);
 					}
@@ -387,6 +379,25 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 				LL1[kk] = static_cast<octave_uint16>(L1 + 1);
 				LL2[kk] = static_cast<octave_uint16>(L2 + 1);
 			}
+		}
+		if (time2 >= aika && outsize2 > 1ULL) {
+			tpoints[ll++] = kk;
+			aika = time_intervals[++pa];
+			//vali += vali;
+		}
+		if (TOFSize > sinoSize) {
+			double timeDif = (time2 - time1);
+			if (ring_pos2 > ring_pos1)
+				timeDif = -timeDif;
+			timeDif += distribution(generator);
+			if (std::abs(timeDif) > ((binSize / 2.) * static_cast<double>(nBins)))
+				continue;
+			bins = static_cast<uint64_t>(std::floor((std::abs(timeDif) + binSize / 2.) / binSize));
+			const bool tInd = timeDif > 0;
+			if (tInd)
+				bins *= 2ULL;
+			else if (!tInd && bins > 0ULL)
+				bins = bins * 2ULL - 1ULL;
 		}
 		if (pseudoD) {
 			ring_pos1 += ring_pos1 / cryst_per_block;
@@ -403,21 +414,16 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			Sino[sinoIndex] = Sino[sinoIndex] + static_cast<octave_uint16>(1);
 			if (event_true && obtain_trues)
 				SinoT[sinoIndex] = SinoT[sinoIndex] + static_cast<octave_uint16>(1);
-			else if (event_scattered && store_scatter)
+			else if (store_scatter_event && store_scatter)
 				SinoC[sinoIndex] = SinoC[sinoIndex] + static_cast<octave_uint16>(1);
-			else if (!event_true && store_randoms)
+			else if (!event_true && store_randoms && !event_scattered)
 				SinoR[sinoIndex] = SinoR[sinoIndex] + static_cast<octave_uint16>(1);
-		}
-		if (time2 >= aika && outsize2 > 1ULL) {
-			tpoints[ll++] = kk;
-			aika = time_intervals[++pa];
-			//vali += vali;
 		}
 		if (source) {
 			if (outsize2 == 1ULL || !storeRawData) {
 				if (event_true && obtain_trues)
 					trues_loc[kk] = true;
-				else if (event_scattered && store_scatter)
+				else if (store_scatter_event && store_scatter)
 					scatter_loc[kk] = true;
 				else if (!event_true && !event_scattered && store_randoms)
 					randoms_loc[kk] = true;

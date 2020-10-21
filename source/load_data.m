@@ -265,7 +265,7 @@ elseif options.use_machine == 0
     end
     
     if TOF
-        FWHM = (options.TOF_FWHM / (2 * sqrt(2 * log(2))))^2;
+        FWHM = double(options.TOF_FWHM / (2 * sqrt(2 * log(2))));
     else
         FWHM = 0;
     end
@@ -877,53 +877,6 @@ elseif options.use_machine == 0
                     ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
                     ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
                 end
-            
-                if TOF
-                    TOF_data = (M(:,ascii_ind.time_index2) - M(:,ascii_ind.time_index));
-                    TOF_data(ring_pos2 > ring_pos1) = -TOF_data(ring_pos2 > ring_pos1);
-                    [bins, discard] = FormTOFBins(options, TOF_data);
-                    ring_number1(discard) = [];
-                    ring_number2(discard) = [];
-                    ring_pos1(discard) = [];
-                    ring_pos2(discard) = [];
-                    if partitions > 1
-                        timeI(discard) = [];
-                    end
-                    if options.obtain_trues
-                        trues_index(discard) = [];
-                    end
-                    if options.store_scatter
-                        scatter_index(discard) = [];
-                    end
-                    if options.store_randoms
-                        randoms_index(discard) = [];
-                    end
-                    clear discard
-                else
-                    bins = 0;
-                end
-                
-                if ~options.use_raw_data
-                    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCII(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
-                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    elseif exist('OCTAVE_VERSION','builtin') == 5
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
-                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    else
-                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
-                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
-                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
-                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
-                    end
-                end
                 
                 if options.store_raw_data
                     % detector number (MATLAB numbering) of each single
@@ -1015,6 +968,54 @@ elseif options.use_machine == 0
                         end
                     end
                 end
+            
+                if TOF
+                    TOF_data = (M(:,ascii_ind.time_index2) - M(:,ascii_ind.time_index));
+                    TOF_data(ring_pos2 > ring_pos1) = -TOF_data(ring_pos2 > ring_pos1);
+                    [bins, discard] = FormTOFBins(options, TOF_data);
+                    ring_number1(discard) = [];
+                    ring_number2(discard) = [];
+                    ring_pos1(discard) = [];
+                    ring_pos2(discard) = [];
+                    if partitions > 1
+                        timeI(discard) = [];
+                    end
+                    if options.obtain_trues
+                        trues_index(discard) = [];
+                    end
+                    if options.store_scatter
+                        scatter_index(discard) = [];
+                    end
+                    if options.store_randoms
+                        randoms_index(discard) = [];
+                    end
+                    clear discard
+                else
+                    bins = 0;
+                end
+                
+                if ~options.use_raw_data
+                    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
+                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCII(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
+                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                    elseif exist('OCTAVE_VERSION','builtin') == 5
+                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
+                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                    else
+                        [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
+                            randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
+                            uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
+                            alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                    end
+                end
+                
                 if store_coordinates && ascii_ind.world_index1 > 0 && ascii_ind.world_index2 > 0
                     if partitions == 1
                         temp = [M(:,ascii_ind.world_index1), M(:,ascii_ind.world_index2)];
@@ -1189,6 +1190,11 @@ elseif options.use_machine == 0
         scatter_components = uint8(options.scatter_components);
         lisays = uint16(1);
         large_case = false;
+        raw_SinM = raw_SinM(:);
+        SinTrues = SinTrues(:);
+        SinScatter = SinScatter(:);
+        SinRandoms = SinRandoms(:);
+        SinD = SinD(:);
         
         if partitions > 1
             save_string_raw = [machine_name '_measurements_' name '_' num2str(partitions) 'timepoints_for_total_of_' num2str(loppu - alku) 's_raw_root.mat'];

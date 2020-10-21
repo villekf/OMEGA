@@ -175,15 +175,15 @@ public:
 
 		matlab::data::TypedArray<int32_t> int_loc_delay = factory.createArray<int32_t>({ 2, 1 }, { 0, 0 });
 
-		if (obtain_trues && source && outsize2 == 1ULL) {
+		if (obtain_trues && outsize2 == 1ULL) {
 			trues_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(trues_loc.begin(), trues_loc.end(), false);
 		}
-		if (store_randoms && source && outsize2 == 1ULL) {
+		if (store_randoms && outsize2 == 1ULL) {
 			randoms_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(randoms_loc.begin(), randoms_loc.end(), false);
 		}
-		if (store_scatter && source && outsize2 == 1) {
+		if (store_scatter && outsize2 == 1ULL) {
 			scatter_loc = factory.createArray<bool>({ Nentries, 1 });
 			std::fill(scatter_loc.begin(), scatter_loc.end(), false);
 		}
@@ -444,7 +444,7 @@ public:
 				store_randoms = false;
 			}
 		}
-		if (obtain_trues || store_scatter) {
+		if (obtain_trues || store_scatter || store_randoms) {
 			//if (scatter_components[0]) {
 			if (Coincidences->GetBranchStatus("comptonPhantom1"))
 				Coincidences->SetBranchAddress("comptonPhantom1", &comptonPhantom1);
@@ -620,13 +620,13 @@ public:
 				submoduleID2, rsectorID1, rsectorID2,crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
 
 			if (!dynamic && TOF) {
-				double aika = (time2 - time1) / 2.;
+				double aika = (time2 - time1);
 				if (ring_pos2 > ring_pos1)
 					aika = -aika;
 				TP[kk] = aika;
 			}
 			else if (dynamic && TOF) {
-				double aika = (time2 - time1) / 2.;
+				double aika = (time2 - time1);
 				if (ring_pos2 > ring_pos1)
 					aika = -aika;
 				TP[kk][1] = aika;
@@ -640,32 +640,36 @@ public:
 				int_loc[0] = pa;
 			}
 			bool event_true = true;
-			bool event_scattered = false;
+			bool event_scattered = true;
+			bool store_scatter_event = false;
 			if (obtain_trues || store_scatter || store_randoms) {
 				if (eventID1 != eventID2) {
 					event_true = false;
+					event_scattered = false;
 				}
-				if (event_true && (obtain_trues || store_scatter)) {
+				if (event_true) {
 					if (comptonPhantom1 > 0 || comptonPhantom2 > 0) {
 						event_true = false;
-						if (store_scatter && scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
-							event_scattered = true;
+						if (scatter_components[0] > 0 && (scatter_components[0] <= comptonPhantom1 || scatter_components[0] <= comptonPhantom2))
+							store_scatter_event = true;
 					}
 					else if ((comptonCrystal1 > 0 || comptonCrystal2 > 0) && scatter_components[1] > 0) {
 						event_true = false;
-						if (store_scatter && (scatter_components[1] <= comptonPhantom1 || scatter_components[1] <= comptonPhantom2))
-							event_scattered = true;
+						if ((scatter_components[1] <= comptonCrystal1 || scatter_components[1] <= comptonCrystal2))
+							store_scatter_event = true;
 					}
 					else if ((RayleighPhantom1 > 0 || RayleighPhantom2 > 0) && scatter_components[2] > 0) {
 						event_true = false;
-						if (store_scatter && (scatter_components[2] <= comptonPhantom1 || scatter_components[2] <= comptonPhantom2))
-							event_scattered = true;
+						if ((scatter_components[2] <= RayleighPhantom1 || scatter_components[2] <= RayleighPhantom2))
+							store_scatter_event = true;
 					}
 					else if ((RayleighCrystal1 > 0 || RayleighCrystal2 > 0) && scatter_components[3] > 0) {
 						event_true = false;
-						if (store_scatter && (scatter_components[3] <= comptonPhantom1 || scatter_components[3] <= comptonPhantom2))
-							event_scattered = true;
+						if ((scatter_components[3] <= RayleighCrystal1 || scatter_components[3] <= RayleighCrystal2))
+							store_scatter_event = true;
 					}
+					else
+						event_scattered = false;
 				}
 			}
 			// Detector numbers
@@ -677,7 +681,7 @@ public:
 				L2 = L3;
 			}
 			if (obtain_trues || store_scatter || store_randoms) {
-				if ((event_true && obtain_trues) || (event_scattered && store_scatter)) {
+				if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
 					if (outsize2 == 1ULL) {
 						if (event_true && obtain_trues) {
 							if (large_case)
@@ -685,7 +689,7 @@ public:
 							else
 								Ltrues[L1][L2]++;
 						}
-						else if (event_scattered && store_scatter) {
+						else if (store_scatter_event && store_scatter) {
 							if (large_case)
 								Lscatter[kk] = 1u;
 							else
@@ -695,11 +699,11 @@ public:
 					else {
 						if (event_true && obtain_trues)
 							Ltrues[kk] = 1u;
-						else if (event_scattered && store_scatter)
+						else if (store_scatter_event && store_scatter)
 							Lscatter[kk] = 1u;
 					}
 				}
-				else if (!event_true && store_randoms) {
+				else if (!event_true && store_randoms && !event_scattered) {
 					if (outsize2 == 1ULL) {
 						if (large_case)
 							Lrandoms[kk] = 1u;
@@ -726,13 +730,15 @@ public:
 				tpoints[ll++] = static_cast<uint32_t>(jj);
 				aika = time_intervals[++pa];
 			}
-			if (source) {
-				if (outsize2 == 1ULL && !event_true && store_randoms)
-					randoms_loc[kk] = true;
-				if (outsize2 == 1ULL && event_scattered && store_scatter)
-					scatter_loc[kk] = true;
-				if (outsize2 == 1ULL && event_true && obtain_trues)
+			if (outsize2 == 1ULL) {
+				if (event_true && obtain_trues)
 					trues_loc[kk] = true;
+				else if (store_scatter_event && store_scatter)
+					scatter_loc[kk] = true;
+				else if (!event_true && store_randoms && !event_scattered)
+					randoms_loc[kk] = true;
+			}
+			if (source) {
 				S[kk][0] = sourcePosX1;
 				S[kk][1] = sourcePosY1;
 				S[kk][2] = sourcePosZ1;

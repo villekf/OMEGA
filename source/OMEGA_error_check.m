@@ -310,7 +310,7 @@ end
 if options.TOF_bins_used > 1 && options.implementation == 1
     error('TOF is currently not supported with implementation 1!')
 end
-if options.TOF_bins_used > 1 && options.projector_type > 1
+if options.TOF_bins_used > 1 && (options.projector_type > 1 || options.projector_type < 1)
     error('TOF is currently only supported with improved Siddon (projector_type = 1)')
 end
 if options.TOF_bins > 1 && options.TOF_width <= 0
