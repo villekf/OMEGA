@@ -49,7 +49,17 @@ To install the OMEGA software, either simply extract the package or obtain the s
 `git clone https://github.com/villekf/OMEGA`
 and then add the OMEGA folder and subfolders to MATLAB/Octave path. Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`.
 
-In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for others as well.
+Certain features on Octave (such as normalization calculation) require packages io and statistics. You can install them from the Octave user interface with the following commands (io has to be installed first):
+
+`pkg install -forge io`
+
+`pkg install -forge statistics`
+
+and then you need to load the statistics package:
+
+`pkg load statistics`
+
+In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
 
 Headers:
 `sudo apt-get install opencl-headers`
@@ -156,7 +166,7 @@ These features can be used as independent functions without any input needed fro
 
 MATLAB R2009a or later is mandatory. Following versions are guaranteed to work: 2017a, 2017b, 2018b, 2019a, 2019b and 2020a.
 
-For Octave, 5.1 and 5.2 works. 4.4 should also work but is untested.
+For Octave, 5.1 and 5.2 works. 4.4 should also work but is untested. io and statistics packages are required for some features.
 
 C++11 compiler is required.
 
