@@ -1493,7 +1493,18 @@ if options.normalization_options(1)==1
         if r ~= inf && length(normalization_attenuation_correction)==2
             Sincounts = sum(sum(SinDouble ./ rad_coeff_matrix,2),1);
         else
-            Sincounts = sum(sum(SinDouble,2,'omitnan'),1,'omitnan');
+            if exist('OCTAVE_VERSION','builtin') == 5
+                if any(isnan(SinDouble))
+                    temp = SinDouble;
+                    temp(isnan(temp)) = 0;
+                    Sincounts = sum(sum(temp,2),1);
+                    clear temp
+                else
+                    Sincounts = sum(sum(SinDouble,2),1);
+                end
+            else
+                Sincounts = sum(sum(SinDouble,2,'omitnan'),1,'omitnan');
+            end
         end
         axial_block_profile = sqrt(mean(Sincounts(1:options.segment_table(1)))./Sincounts(1:options.segment_table(1)));
         index1 = round((z(:,1) + (z(2,1) - z(1,1))) / (z(2,1) - z(1,1)));
@@ -1510,7 +1521,18 @@ if options.normalization_options(1)==1
         if r ~= inf && length(normalization_attenuation_correction)==2
             Sincounts = sum(sum(SinDouble ./ rad_coeff_matrix,2),1);
         else
-            Sincounts = sum(sum(SinDouble,2,'omitnan'),1,'omitnan');
+            if exist('OCTAVE_VERSION','builtin') == 5
+                if any(isnan(SinDouble))
+                    temp = SinDouble;
+                    temp(isnan(temp)) = 0;
+                    Sincounts = sum(sum(temp,2),1);
+                    clear temp
+                else
+                    Sincounts = sum(sum(SinDouble,2),1);
+                end
+            else
+                Sincounts = sum(sum(SinDouble,2,'omitnan'),1,'omitnan');
+            end
         end
         
         axial_geom_coeffs = mean(Sincounts)./Sincounts;
@@ -3652,7 +3674,7 @@ end
 if exist('OCTAVE_VERSION','builtin') == 0
     save(norm_file, 'normalization','norm_components','-v7.3')
 else
-    save(norm_file, 'normalization','norm_components')
+    save(norm_file, 'normalization','norm_components','-v7')
 end
 
 

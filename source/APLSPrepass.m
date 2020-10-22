@@ -2,7 +2,7 @@ function options = APLSPrepass(options)
 %APLSPREPASS Precomputation phase for APLS
 %   Precomputes necessary (anatomical prior) variables
 apu = load(options.APLS_reference_image);
-variables = fields(apu);
+variables = fieldnames(apu);
 alkuarvo = double(apu.(variables{1}));
 if size(alkuarvo,2) == 1
     koko_apu = sqrt(length(alkuarvo)/double(options.Nz));
