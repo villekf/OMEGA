@@ -1189,13 +1189,42 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 
 	cl_int status = CL_SUCCESS;
 
-	std::string options = header_directory;
-	options += " -cl-single-precision-constant";
+	//std::string options = header_directory;
+	//options += " -cl-single-precision-constant";
 
-	if (crystal_size_z == 0.f && projector_type == 2u)
+	std::string kernelFile = header_directory;
+	std::string kernel_path;
+
+	kernel_path = k_path;
+	kernel_path += ".cl";
+	// Load the source text file
+	std::ifstream sourceFile(kernel_path.c_str());
+	std::string contentF((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
+	// Load the header text file
+	std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
+	std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
+	std::string content;
+	//content = content + contentHeader;
+	//options += " -cl-single-precision-constant";
+	std::string options = "-cl-single-precision-constant";
+	if (crystal_size_z == 0.f && projector_type == 2u) {
 		options += " -DCRYST";
-	else if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u)
+		std::ifstream sourceHeader2(kernelFile + "opencl_functions_orth25D.h");
+		std::string contentHeader2((std::istreambuf_iterator<char>(sourceHeader2)), std::istreambuf_iterator<char>());
+		//content = content + contentHeader2;
+		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
+		std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
+		content = contentHeader + contentHeader2 + contentHeader3 + contentF;
+	}
+	else if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u) {
 		options += " -DCRYSTZ";
+		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
+		std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
+		//content = content + contentHeader3;
+		content = contentHeader + contentHeader3 + contentF;
+	}
+	else
+		content = contentHeader + contentF;
 	if (projector_type == 3u)
 		options += " -DVOL";
 	if (precompute)
@@ -1253,7 +1282,8 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0u || MethodList.ECOSEM)
 			os_options += " -DCOSEM";
 
-		status = buildProgram(verbose, k_path, af_context, af_device_id, program_os, atomic_64bit, os_options);
+		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_os, atomic_64bit, os_options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_os, atomic_64bit, os_options);
 	}
 	if (mlem_bool) {
 		std::string ml_options = options;
@@ -1266,7 +1296,8 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		else if (n_rekos_mlem == 2)
 			ml_options += " -DNREKOS2";
 
-		status = buildProgram(verbose, k_path, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
+		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
 	}
 	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
@@ -1278,12 +1309,13 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 			options += " -DNREKOS2";
 		if (MethodList.MRAMLA || MethodList.MBSREM)
 			options += " -DMRAMLA";
-		status = buildProgram(verbose, k_path, af_context, af_device_id, program_mbsrem, atomic_64bit, options);
+		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_mbsrem, atomic_64bit, options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_mbsrem, atomic_64bit, options);
 	}
 	return status;
 }
 
-cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
+cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
 	bool& atomic_64bit, std::string options) {
 	cl_int status = CL_SUCCESS;
 	size_t pituus;
@@ -1298,15 +1330,15 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 	if (DEBUG)
 		mexPrintf("%s\n", options.c_str());
 	if (atomic_64bit) {
-		std::string kernel_path_atom;
+		//std::string kernel_path_atom;
 
-		kernel_path_atom = k_path;
-		kernel_path_atom += ".cl";
-		// Load the source text file
-		std::ifstream sourceFile_atom(kernel_path_atom.c_str());
-		std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
+		//kernel_path_atom = k_path;
+		//kernel_path_atom += ".cl";
+		//// Load the source text file
+		//std::ifstream sourceFile_atom(kernel_path_atom.c_str());
+		//std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
 		std::vector<std::string> testi;
-		testi.push_back(content_atom);
+		testi.push_back(content);
 		cl::Program::Sources source(testi);
 		program = cl::Program(af_context, source);
 		//try {
@@ -1345,12 +1377,12 @@ cl_int buildProgram(const bool verbose, const char* k_path, cl::Context& af_cont
 		status = CL_SUCCESS;
 		atomic_64bit = false;
 
-		std::string kernel_path;
+		//std::string kernel_path;
 
-		kernel_path = k_path;
-		kernel_path += ".cl";
-		std::fstream sourceFile(kernel_path.c_str());
-		std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
+		//kernel_path = k_path;
+		//kernel_path += ".cl";
+		//std::fstream sourceFile(kernel_path.c_str());
+		//std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 		std::vector<std::string> testi;
 		testi.push_back(content);
 		cl::Program::Sources source(testi);

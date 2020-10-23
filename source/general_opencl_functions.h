@@ -18,6 +18,28 @@
 ***************************************************************************/
 #pragma once
 
+#ifdef ATOMIC
+#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
+//#define TH 100000000000.f
+#endif
+#define THR 0.01f
+#ifndef N_REKOS
+#define N_REKOS 1
+#endif
+#ifndef NBINS
+#define NBINS 1
+#endif
+#define NROLLS (N_REKOS * NBINS)
+#ifdef PRECOMPUTE
+#define TYPE 1
+#else
+#define TYPE 0
+#endif
+//#include "general_opencl_functions.h"
+#ifdef VOL
+#define CC 1e3f
+#endif
+
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
 #ifndef ATOMIC

@@ -80,19 +80,6 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#ifdef ATOMIC
-#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
-//#define TH 100000000000.f
-#endif
-#ifndef N_REKOS
-#define N_REKOS 1
-#endif
-#ifndef NBINS
-#define NBINS 1
-#endif
-#define NROLLS (N_REKOS * NBINS)
-#include "general_opencl_functions.h"
-#define TYPE 0
 
 // Matrix free Improved Siddon's algorithm
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))

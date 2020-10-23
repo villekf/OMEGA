@@ -4,7 +4,7 @@
 * rhs = A*(y./(A'*x)), where A is the system matrix, y the measurements
 * and x the estimate/image.
 *
-* Used by implementation 3.
+* Used by implementations 2 and 3.
 *
 * This file contains all the three different projectors (Siddon, 
 * orthogonal, volume-based). Preprocessor commands are used to separate
@@ -98,33 +98,6 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#ifdef ATOMIC
-#pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
-//#define TH 100000000000.f
-#endif
-#define THR 0.01f
-#ifndef N_REKOS
-#define N_REKOS 1
-#endif
-#ifndef NBINS
-#define NBINS 1
-#endif
-#define NROLLS (N_REKOS * NBINS)
-#ifdef PRECOMPUTE
-#define TYPE 1
-#else
-#define TYPE 0
-#endif
-#include "general_opencl_functions.h"
-#ifdef VOL
-#define CC 1e3f
-#endif
-#if defined CRYST
-#include "opencl_functions_orth25D.h"
-#include "opencl_functions_orth3D.h"
-#elif defined CRYSTZ
-#include "opencl_functions_orth3D.h"
-#endif
 
 // Matrix free orthogonal distance-based ray tracer, no precomputation step
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))

@@ -4762,8 +4762,8 @@ else
             error('Invalid projector for OpenCL')
         end
         filename = [header_directory, filename];
-        header_directory = strcat('-I "', header_directory);
-        header_directory = strcat(header_directory,'"');
+%         header_directory = strcat('"', header_directory);
+%         header_directory = strcat(header_directory,'"');
         joku = algorithms_char();
         % n_rekos = uint32(sum(rekot(~contains(joku,'MLEM'))));
         n_rekos = uint32(sum(rekot(cellfun('isempty',strfind(joku,'MLEM')))));
@@ -4905,8 +4905,8 @@ else
             error('Invalid projector for OpenCL')
         end
         filename = [header_directory, filename];
-        header_directory = strcat('-I "', header_directory);
-        header_directory = strcat(header_directory,'"');
+%         header_directory = strcat('-I "', header_directory);
+%         header_directory = strcat(header_directory,'"');
         tic
         [tz] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), single(NSlices), size_x, zmax, options.verbose, ...
             LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), int32(dec), uint32(options.use_device), filename, uint8(use_raw_data), single(options.cpu_to_gpu_factor), uint32(1), header_directory, ...
