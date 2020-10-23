@@ -1,6 +1,7 @@
 function grad = AD(im, FluxType, Nx, Ny, Nz, options)
-%AD Anisotropic Diffusion prior (AD)
-% Requires Image Processing Toolbox
+%AD Anisotropic Diffusion prior (AD) MRP
+% Requires Image Processing Toolbox. Computes the MRP prior, but replaces
+% the median filtered image with anisotropic diffusion smoothed image.
 %
 % Example:
 %   grad = AD(im, FluxType, Nx, Ny, Nz, options)
@@ -21,7 +22,7 @@ function grad = AD(im, FluxType, Nx, Ny, Nz, options)
 % Weighted_mean
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -45,5 +46,5 @@ if license('test', 'image_toolbox')
         grad = (im - grad) ./ grad;
     end
 else
-    error('Image Processing Toolbox not found! Anisotropic diffusion can only be computed with Image Processing Toolbox license with method 1.')
+    warning('Image Processing Toolbox not found! Anisotropic diffusion can only be computed with Image Processing Toolbox license with implementations 1 or 4.')
 end
