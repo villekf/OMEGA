@@ -261,7 +261,7 @@ end
 if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3
     error('OCT-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) || exist('GATE_root_matlab_C','file') ~= 3) && options.use_machine == 0
+if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) || (exist('GATE_root_matlab_C','file') ~= 3 && verLessThan('matlab', '9.6'))) && options.use_machine == 0
     warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
         'simply loading a mat-file containing measurement data from ROOT files.'])
 end
