@@ -47,4 +47,5 @@ if license('test', 'image_toolbox')
     end
 else
     warning('Image Processing Toolbox not found! Anisotropic diffusion can only be computed with Image Processing Toolbox license with implementations 1 or 4.')
+    grad = zeros(size(im));
 end
