@@ -301,8 +301,8 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         header_directory = strrep(kernel_path,'multidevice_kernel','');
         filename = 'OMEGA_precompute_OpenCL_binary_device';
         filename = [header_directory, filename];
-        header_directory = strcat('-I "', header_directory);
-        header_directory = strcat(header_directory,'"');
+%         header_directory = strcat('-I "', header_directory);
+%         header_directory = strcat(header_directory,'"');
         if isempty(pseudot)
             pseudot = uint32(100000);
         end
@@ -544,8 +544,8 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
         header_directory = strrep(kernel_path,'multidevice_kernel','');
         filename = 'OMEGA_precompute_OpenCL_binary_device';
         filename = [header_directory, filename];
-        header_directory = strcat('-I "', header_directory);
-        header_directory = strcat(header_directory,'"');
+%         header_directory = strcat('-I "', header_directory);
+%         header_directory = strcat(header_directory,'"');
         if isempty(pseudot)
             pseudot = uint32(100000);
         end
