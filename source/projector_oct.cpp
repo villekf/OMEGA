@@ -494,7 +494,14 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		const bool list_mode_format = prhs(ind).bool_value();
 		ind++;
 
-		NDArray Summ_(dim_vector(N, 1));
+		size_t imDim;
+
+		if (no_norm)
+			imDim = 1ULL;
+		else
+			imDim = N;
+
+		NDArray Summ_(dim_vector(imDim, 1));
 
 		// Normalization constants
 		double* Summ = Summ_.fortran_vec();

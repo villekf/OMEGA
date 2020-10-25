@@ -583,11 +583,12 @@ options.verbose = true;
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
-% 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
+% 3 = Multi-GPU/device matrix-free OpenCL.
+% 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++.
 % See the wiki for more information: 
 % https://github.com/villekf/OMEGA/wiki/Useful-information#selecting-the-correct-implementation
 % NOTE: Forward and/or backward projections are ONLY supported with
-% implementations 1 and 3.
+% implementations 1, 3 and 4.
 options.implementation = 3;
 
 % Applies to implementation 3 ONLY

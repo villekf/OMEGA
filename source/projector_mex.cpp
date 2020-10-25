@@ -457,7 +457,14 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const bool list_mode_format = (bool)mxGetScalar(prhs[ind]);
 		ind++;
 
-		plhs[0] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
+		size_t imDim;
+
+		if (no_norm)
+			imDim = 1ULL;
+		else
+			imDim = N;
+
+		plhs[0] = mxCreateNumericMatrix(imDim, 1, mxDOUBLE_CLASS, mxREAL);
 
 		// Normalization constants
 		double* Summ = (double*)mxGetData(plhs[0]);
