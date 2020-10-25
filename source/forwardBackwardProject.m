@@ -56,7 +56,7 @@ classdef forwardBackwardProject
             obj.TOF = obj.OProperties.TOF_bins > 1;
             
             [obj.gaussK, obj.OProperties] = PSFKernel(obj.OProperties);
-            if obj.OProperties.implementation == 1
+            if obj.OProperties.implementation == 1 || obj.OProperties.implementation == 4
                 obj.sens = zeros(obj.OProperties.Nx*obj.OProperties.Ny*obj.OProperties.Nz,obj.OProperties.subsets);
             else
                 obj.sens = zeros(obj.OProperties.Nx*obj.OProperties.Ny*obj.OProperties.Nz,obj.OProperties.subsets,'single');

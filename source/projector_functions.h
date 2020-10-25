@@ -273,7 +273,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz,	const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
-	const bool raw, const bool no_norm, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef, const bool TOF, 
+	const bool raw, const bool no_norm, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const bool TOF,
 	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v);
 
 void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
@@ -282,7 +282,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring, const bool raw, 
-	const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const bool fp, const bool list_mode_format, 
+	const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, const bool list_mode_format,
 	const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
 	const int64_t nBins, const uint32_t dec_v);
 
@@ -293,7 +293,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
-	const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef);
+	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef);
 
 void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
@@ -302,7 +302,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
-	const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
+	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
 
 
 // Source: http://www.alecjacobson.com/weblog/?p=4544 & https://ideone.com/Z7zldb
@@ -392,7 +392,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
 
 void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
@@ -401,7 +401,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef);
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef);
 
 //void orth_distance_rhs_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, const double temp, double& ax,
 //	const double d_b, const double d, const double d_d1, const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const uint32_t d_N,

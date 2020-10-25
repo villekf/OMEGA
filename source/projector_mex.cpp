@@ -451,7 +451,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const bool precompute = (bool)mxGetScalar(prhs[ind]);
 		ind++;
 
-		const bool fp = (bool)mxGetScalar(prhs[ind]);
+		const uint8_t fp = (uint8_t)mxGetScalar(prhs[ind]);
 		ind++;
 
 		const bool list_mode_format = (bool)mxGetScalar(prhs[ind]);
@@ -462,7 +462,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Normalization constants
 		double* Summ = (double*)mxGetData(plhs[0]);
 
-		if (fp)
+		if (fp == 1)
 			plhs[1] = mxCreateNumericMatrix(pituus, 1, mxDOUBLE_CLASS, mxREAL);
 		else
 			plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);

@@ -42,7 +42,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization,  const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, 
 	const double epps,  const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, 
-	const bool raw, const bool no_norm, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef, const bool TOF, 
+	const bool raw, const bool no_norm, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const bool TOF, 
 	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v) {
 
 	setThreads();
@@ -57,6 +57,8 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	size_t threads = 1ULL;
 #endif
 	vector<double> TOFVal(nBins * dec_v * threads, 0.);
+
+	//mexPrintf("fp = %u\n", fp);
 
 #pragma omp parallel for schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
@@ -96,6 +98,12 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 		vector<double> ax(nBins, 0.);
 		vector<double> yax(nBins, 0.);
 
+
+		if (fp == 2) {
+			for (int64_t to = 0LL; to < nBins; to++)
+				yax[to] = osem_apu[lo + to * loop_var_par];
+		}
+
 #ifdef _OPENMP
 		const int64_t tid = omp_get_thread_num() * dec_v * nBins;
 #else
@@ -125,8 +133,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 						double temp = element / dx;
 						double val_rhs = 0.;
 						double val = 0.;
-						if (fp) {
-							double apu = 0.;
+						if (fp == 1) {
 							for (int64_t to = 0LL; to < nBins; to++) {
 								if (ax[to] < epps)
 									ax[to] = epps;
@@ -134,20 +141,21 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 									ax[to] *= temp;
 								if (randoms_correction)
 									ax[to] += randoms[lo];
-								apu += ax[to];
+								rhs[lo + to * loop_var_par] = ax[to];
 							}
-							rhs[lo] = apu;
 							continue;
 						}
 						if (local_sino > 0.) {
-							for (int64_t to = 0LL; to < nBins; to++) {
-								if (ax[to] < epps)
-									ax[to] = epps;
-								else
-									ax[to] *= temp;
-								if (randoms_correction)
-									ax[to] += randoms[lo];
-								yax[to] = Sino[lo + to * TOFSize] / ax[to];
+							if (fp != 2) {
+								for (int64_t to = 0LL; to < nBins; to++) {
+									if (ax[to] < epps)
+										ax[to] = epps;
+									else
+										ax[to] *= temp;
+									if (randoms_correction)
+										ax[to] += randoms[lo];
+									yax[to] = Sino[lo + to * TOFSize] / ax[to];
+								}
 							}
 							for (uint32_t k = 0; k < Np; k++) {
 								if (k == 0) {
@@ -176,7 +184,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 						}
 					}
 					else {
-						if (fp) {
+						if (fp == 1) {
 							for (uint32_t k = 0; k < Np; k++) {
 								ax[0] += (element * osem_apu[temp_ijk + k]);
 							}
@@ -188,14 +196,16 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 							continue;
 						}
 						if (local_sino > 0.) {
-							for (uint32_t k = 0; k < Np; k++) {
-								ax[0] += (element * osem_apu[temp_ijk + k]);
+							if (fp != 2) {
+								for (uint32_t k = 0; k < Np; k++) {
+									ax[0] += (element * osem_apu[temp_ijk + k]);
+								}
+								if (ax[0] < epps)
+									ax[0] = epps;
+								if (randoms_correction)
+									ax[0] += randoms[lo];
+								yax[0] = local_sino / ax[0];
 							}
-							if (ax[0] < epps)
-								ax[0] = epps;
-							if (randoms_correction)
-								ax[0] += randoms[lo];
-							yax[0] = local_sino / ax[0];
 							for (uint32_t k = 0; k < Np; k++) {
 #pragma omp atomic
 								rhs[temp_ijk + k] += (element * yax[0]);
@@ -235,8 +245,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 						double temp = element / dy;
 						double val_rhs = 0.;
 						double val = 0.;
-						if (fp) {
-							double apu = 0.;
+						if (fp == 1) {
 							for (int64_t to = 0LL; to < nBins; to++) {
 								if (ax[to] < epps)
 									ax[to] = epps;
@@ -244,20 +253,21 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 									ax[to] *= temp;
 								if (randoms_correction)
 									ax[to] += randoms[lo];
-								apu += ax[to];
+								rhs[lo + to * loop_var_par] = ax[to];
 							}
-							rhs[lo] = apu;
 							continue;
 						}
 						if (local_sino > 0.) {
-							for (int64_t to = 0LL; to < nBins; to++) {
-								if (ax[to] < epps)
-									ax[to] = epps;
-								else
-									ax[to] *= temp;
-								if (randoms_correction)
-									ax[to] += randoms[lo];
-								yax[to] = Sino[lo + to * TOFSize] / ax[to];
+							if (fp != 2) {
+								for (int64_t to = 0LL; to < nBins; to++) {
+									if (ax[to] < epps)
+										ax[to] = epps;
+									else
+										ax[to] *= temp;
+									if (randoms_correction)
+										ax[to] += randoms[lo];
+									yax[to] = Sino[lo + to * TOFSize] / ax[to];
+								}
 							}
 							for (uint32_t k = 0; k < Np; k++) {
 								val_rhs = TOFWeightsBP(D, nBins, dy, TOFVal, TOFCenter, sigma_x, yI, yax, epps, temp, val, rhs, tid + k * nBins);
@@ -280,7 +290,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 						}
 					}
 					else {
-						if (fp) {
+						if (fp == 1) {
 							for (uint32_t k = 0; k < Np; k++) {
 								ax[0] += (element * osem_apu[temp_ijk + k * Nx]);
 							}
@@ -292,14 +302,16 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 							continue;
 						}
 						if (local_sino > 0.) {
-							for (uint32_t k = 0; k < Np; k++) {
-								ax[0] += (element * osem_apu[temp_ijk + k * Nx]);
+							if (fp != 2) {
+								for (uint32_t k = 0; k < Np; k++) {
+									ax[0] += (element * osem_apu[temp_ijk + k * Nx]);
+								}
+								if (ax[0] < epps)
+									ax[0] = epps;
+								if (randoms_correction)
+									ax[0] += randoms[lo];
+								yax[0] = local_sino / ax[0];
 							}
-							if (ax[0] < epps)
-								ax[0] = epps;
-							if (randoms_correction)
-								ax[0] += randoms[lo];
-							yax[0] = local_sino / ax[0];
 							for (uint32_t k = 0; k < Np; k++) {
 #pragma omp atomic
 								rhs[temp_ijk + k * Nx] += (element * yax[0]);
@@ -388,7 +400,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 			D = DD;
-			if (fp) {
+			if (fp == 1) {
 				if (TOF) {
 					for (int64_t to = 0LL; to < nBins; to++) {
 						if (ax[to] < epps)
@@ -397,7 +409,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 							ax[to] *= temp;
 						if (randoms_correction)
 							ax[to] += randoms[lo];
-						rhs[lo] = ax[to];
+						rhs[lo + to * loop_var_par] = ax[to];
 					}
 				}
 				else {
@@ -413,29 +425,31 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 			}
 
 			if (local_sino != 0.) {
-				if (TOF) {
-					for (int64_t to = 0LL; to < nBins; to++) {
-						if (ax[to] < epps) {
-							ax[to] = epps;
+				if (fp != 2) {
+					if (TOF) {
+						for (int64_t to = 0LL; to < nBins; to++) {
+							if (ax[to] < epps) {
+								ax[to] = epps;
+							}
+							else {
+								ax[to] *= temp;
+							}
+							if (randoms_correction)
+								ax[to] += randoms[lo];
+							yax[to] = Sino[lo + to * TOFSize] / ax[to];
 						}
-						else {
-							ax[to] *= temp;
-						}
-						if (randoms_correction)
-							ax[to] += randoms[lo];
-						yax[to] = Sino[lo + to * TOFSize] / ax[to];
-					}
-				}
-				else {
-					if (ax[0] < epps) {
-						ax[0] = epps;
 					}
 					else {
-						ax[0] *= temp;
+						if (ax[0] < epps) {
+							ax[0] = epps;
+						}
+						else {
+							ax[0] *= temp;
+						}
+						if (randoms_correction)
+							ax[0] += randoms[lo];
+						yax[0] = local_sino / ax[0];
 					}
-					if (randoms_correction)
-						ax[0] += randoms[lo];
-					yax[0] = local_sino / ax[0];
 				}
 				for (uint32_t ii = 0; ii < Np; ii++) {
 					if (tx0 < ty0 && tx0 < tz0) {
@@ -479,7 +493,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -546,6 +560,10 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 		double* xcenter = x_center;
 		double* ycenter = y_center;
 
+		if (fp == 2) {
+			ax = osem_apu[lo];
+		}
+
 		if (crystal_size_z == 0.) {
 			kerroin = norm(x_diff, y_diff, z_diff) * crystal_size_xy;
 		}
@@ -568,7 +586,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 						orth_distance_denominator_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp) {
+						if (fp == 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -579,7 +597,9 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 							continue;
 						}
 						if (local_sino > 0.) {
-							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							if (fp != 2) {
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							}
 							orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 								1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
 						}
@@ -594,7 +614,9 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (local_sino > 0.) {
-							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							if (fp != 2) {
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							}
 							orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 								1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
 						}
@@ -613,7 +635,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 						orth_distance_denominator_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp) {
+						if (fp == 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -624,7 +646,9 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 							continue;
 						}
 						if (local_sino > 0.) {
-							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							if (fp != 2) {
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							}
 							orth_distance_rhs_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, ax, bx, detectors.xd, dx, Nx, Ny, tempk,
 								1u, Nx, no_norm, rhs, Summ, true, false, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
 						}
@@ -784,7 +808,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 
-			if (fp) {
+			if (fp == 1) {
 				if (ax == 0.)
 					ax = epps;
 				else
@@ -795,7 +819,9 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 				continue;
 			}
 			if (local_sino > 0.) {
-				nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				if (fp != 2) {
+					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				}
 				RHS = true;
 			}
 			else
@@ -815,7 +841,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const bool fp, const bool scatter, const double* scatter_coef) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef) {
 
 	setThreads();
 
@@ -884,6 +910,10 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 		double* xcenter = x_center;
 		double* ycenter = y_center;
 
+		if (fp == 2) {
+			ax = osem_apu[lo];
+		}
+
 		kerroin = norm(x_diff, y_diff, z_diff);
 
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
@@ -900,7 +930,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
-					if (fp) {
+					if (fp == 1) {
 						if (ax == 0.)
 							ax = epps;
 						else
@@ -911,7 +941,9 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 						continue;
 					}
 					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+						if (fp != 2) {
+							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+						}
 						orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 							1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
 					}
@@ -928,7 +960,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
-					if (fp) {
+					if (fp == 1) {
 						if (ax == 0.)
 							ax = epps;
 						else
@@ -939,7 +971,9 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 						continue;
 					}
 					if (local_sino > 0.) {
-						nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+						if (fp != 2) {
+							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+						}
 						orth_distance_rhs_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, ax, bx, detectors.xd, dx, Nx, Ny, tempk,
 							1u, Nx, no_norm, rhs, Summ, true, false, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
 					}
@@ -1076,7 +1110,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 
-			if (fp) {
+			if (fp == 1) {
 				if (ax == 0.)
 					ax = epps;
 				else
@@ -1087,7 +1121,9 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 				continue;
 			}
 			if (local_sino > 0.) {
-				nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				if (fp != 2) {
+					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+				}
 				RHS = true;
 			}
 			else

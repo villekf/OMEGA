@@ -488,7 +488,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		const bool precompute = prhs(ind).bool_value();
 		ind++;
 
-		const bool fp = prhs(ind).bool_value();
+		const uint8_t fp = prhs(ind).uint8_scalar_value();
 		ind++;
 
 		const bool list_mode_format = prhs(ind).bool_value();
@@ -500,7 +500,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		double* Summ = Summ_.fortran_vec();
 
 		NDArray rhs_;
-		if (fp)
+		if (fp == 1)
 			rhs_.resize(dim_vector(pituus, 1));
 		else
 			rhs_.resize(dim_vector(N, 1));

@@ -1595,8 +1595,10 @@ else
         error('Invalid projector for OpenCL')
     end
     filename = [header_directory, filename];
-    header_directory = strcat('-I "', header_directory);
-    header_directory = strcat(header_directory,'"');
+    if options.use_CUDA
+        header_directory = strcat('-I "', header_directory);
+        header_directory = strcat(header_directory,'"');
+    end
     joku = algorithms_char();
     %         n_rekos = uint32(sum(rekot(~contains(joku,'MLEM'))));
     n_rekos = uint32(sum(rekot(cellfun('isempty',strfind(joku,'MLEM')))));
@@ -1638,6 +1640,7 @@ else
             n_rays, n_rays3D, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
             reko_type_mlem, options.global_correction_factor, options.bmin, options.bmax, options.Vmax, options.V, gaussK);
     else
+        header_directory = strrep(header_directory,'"','');
         [pz] = CUDA_matrixfree( kernel_path, options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx,options. bz, options.z_det, options.x, ...
             options.y, options.dy, options.yy(end), options.xx(end) , options.NSinos, single(options.NSlices), options.size_x, options.zmax, options.NSinos, ...
             options.verbose, options.LL, options.pseudot, options.det_per_ring, TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), int32(options.dec), uint32(options.use_device), uint8(options.use_raw_data), filename, uint32(0), options.use_psf, ...

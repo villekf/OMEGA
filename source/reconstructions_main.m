@@ -3152,7 +3152,7 @@ else
                 options.n_rays_transaxial = uint16(options.n_rays_transaxial);
                 options.n_rays_axial = uint16(options.n_rays_axial);
                 if options.rings > 1
-                    dc_z = z_det(1) - z_det(2);
+                    dc_z = z_det(2,1) - z_det(1,1);
                 else
                     dc_z = options.cr_pz;
                 end
@@ -4762,8 +4762,10 @@ else
             error('Invalid projector for OpenCL')
         end
         filename = [header_directory, filename];
-%         header_directory = strcat('"', header_directory);
-%         header_directory = strcat(header_directory,'"');
+        if options.use_CUDA
+            header_directory = strcat('"', header_directory);
+            header_directory = strcat(header_directory,'"');
+        end
         joku = algorithms_char();
         % n_rekos = uint32(sum(rekot(~contains(joku,'MLEM'))));
         n_rekos = uint32(sum(rekot(cellfun('isempty',strfind(joku,'MLEM')))));
