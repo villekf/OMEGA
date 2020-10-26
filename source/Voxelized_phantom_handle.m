@@ -51,7 +51,7 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %
 %   output_name = Name of the output file. The image and header will have
 %   the same name, but different file ending (.i33 for image and .h33 for
-%   header file when using Interfile and .mhd and .raw when using
+%   header file when using Interfile and .raw and .mhd when using
 %   MetaImage). Use the header file in GATE. 
 %
 %   pixdim = The image width and height (pixels), e.g. [256 256] if you
@@ -67,8 +67,8 @@ function A = Voxelized_phantom_handle(input_name, output_name, pixdim, pixsize, 
 %   or 'double'.
 %
 %   first_slice = (optional) Crop the phantom starting from this slice. No
-%   further cropping will be performed, even if the specified slice is
-%   empty. Can be omitted.
+%   further cropping will be performed (aside from below end_slice), even
+%   if the specified slice is empty. Can be omitted.
 %
 %   end_slice = (optional) Crop the phantom ending to this slice. No
 %   further cropping will be performed, even if the specified slice is
