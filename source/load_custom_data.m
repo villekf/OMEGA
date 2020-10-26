@@ -13,6 +13,9 @@ if options.use_raw_data
     if options.reconstruct_trues
         load(options.file,'true_coincidences')
         options.SinM = true_coincidences;
+    elseif options.reconstruct_scatter
+        load(options.file,'scattered_coincidences')
+        options.SinM = scattered_coincidences;
     else
         load(options.file,'coincidences')
         options.SinM = coincidences;
@@ -25,8 +28,16 @@ else
     if options.reconstruct_trues
         load(options.file,'SinTrues')
         options.SinM = SinTrues;
+    elseif options.reconstruct_scatter
+        load(options.file,'SinScatter')
+        options.SinM = SinScatter;
     else
-        load(options.file,'SinM')
-        options.SinM = SinM;
+        if options.corrections_during_reconstruction || (~options.normalization_correction && ~options.randoms_correction && ~options.scatter_correction)
+            load(options.file,'raw_SinM')
+            options.SinM = raw_SinM;
+        else
+            load(options.file,'SinM')
+            options.SinM = SinM;
+        end
     end
 end
