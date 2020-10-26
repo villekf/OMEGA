@@ -1,0 +1,83 @@
+## An example macro for mCT PET simulation using the XCAT phantom ##
+## Due to the use of XCAT phantom, this can be rather slow ##
+
+## Machine ##
+/control/execute                                macros/mCT_Geom_cylindricalPET.mac
+
+## Phantom  ##
+/control/execute                                 macros/mCT_xcat_static.mac
+## Do not use phantom when doing a normalization measurement ##
+
+## Simple visualization, disabled by default
+/vis/disable
+#/control/execute                                macros/vis.mac
+
+## Physics
+/gate/physics/addPhysicsList emstandard
+
+/gate/physics/addProcess PhotoElectric
+/gate/physics/processes/PhotoElectric/setModel StandardModel
+
+/gate/physics/addProcess Compton
+/gate/physics/processes/Compton/setModel StandardModel
+
+/gate/physics/addProcess RayleighScattering 
+/gate/physics/processes/RayleighScattering/setModel LivermoreModel
+
+/gate/physics/addProcess ElectronIonisation
+/gate/physics/processes/ElectronIonisation/setModel StandardModel e-
+/gate/physics/processes/ElectronIonisation/setModel StandardModel e+
+
+/gate/physics/addProcess Bremsstrahlung
+/gate/physics/processes/Bremsstrahlung/setModel StandardModel e-
+/gate/physics/processes/Bremsstrahlung/setModel StandardModel e+
+
+#/gate/physics/addProcess PositronAnnihilation e+
+
+/gate/physics/addProcess MultipleScattering e-
+/gate/physics/addProcess MultipleScattering e+
+#/gate/physics/addProcess RadioactiveDecay
+
+#/gate/physics/addAtomDeexcitation
+/gate/physics/Gamma/SetCutInRegion               crystal 1. cm
+/gate/physics/Electron/SetCutInRegion            crystal 1. cm
+/gate/physics/Positron/SetCutInRegion            crystal 1.0 cm
+
+#/gate/physics/Gamma/SetCutInRegion      Xcat 1. mm
+#/gate/physics/Electron/SetCutInRegion   Xcat 1. mm
+#/gate/physics/Positron/SetCutInRegion   Xcat 1. mm
+
+
+/gate/physics/processList Enabled
+/gate/physics/processList Initialized
+
+## Save simulation status
+/gate/actor/addActor                             SimulationStatisticActor stat
+/gate/actor/stat/saveEveryNSeconds               120
+/gate/actor/stat/save                            stat/mCT_xcat_10min.txt
+
+/gate/run/initialize
+
+## Source ##
+# XCAT-source
+/control/execute                                 macros/mCT_xcat_src_static.mac
+## Normalization source ##
+#/control/execute                                macros/mCT_cylindrical_source.mac
+
+/control/execute                                 macros/mCT_digitizer.mac
+/control/execute                                 macros/mCT_output.mac
+
+/gate/random/setEngineName                       MersenneTwister
+/gate/random/setEngineSeed                       auto
+
+#=====================================================
+#   A C Q U I S I T I O N   S E T T I N G S   
+#=====================================================
+
+/gate/application/setTimeSlice   600 s
+/gate/application/setTimeStart   0 s
+/gate/application/setTimeStop    600 s
+#/gate/output/allowNoOutput
+
+
+/gate/application/startDAQ

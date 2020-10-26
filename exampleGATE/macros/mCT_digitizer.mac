@@ -1,0 +1,24 @@
+/gate/digitizer/Singles/insert                        	adder
+/gate/digitizer/Singles/insert                        	readout
+/gate/digitizer/Singles/readout/setDepth              	1
+
+#energy blurring
+/gate/digitizer/Singles/insert                        	blurring
+/gate/digitizer/Singles/blurring/setEnergyOfReference 	511 keV
+/gate/digitizer/Singles/blurring/setResolution        	0.115
+
+#thresholds (energy window)
+/gate/digitizer/Singles/insert                        	thresholder
+/gate/digitizer/Singles/thresholder/setThreshold      	435 keV
+/gate/digitizer/Singles/insert                        	upholder
+/gate/digitizer/Singles/upholder/setUphold            	650 keV
+
+#coincidence timing window
+/gate/digitizer/Coincidences/setWindow                  4.1 ns
+
+#random coincidence estimation
+/gate/digitizer/name                            delay
+/gate/digitizer/insert                          coincidenceSorter
+/gate/digitizer/delay/setWindow                 4.1 ns
+#(previous must be same as coincidence window)
+/gate/digitizer/delay/setOffset                 500 ns

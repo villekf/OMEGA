@@ -1,0 +1,38 @@
+#################
+#               #
+#  S O U R C E  #
+#               #
+#################
+
+/gate/source/addSource twogamma
+/gate/source/twogamma/setActivity 1000000. becquerel
+/gate/source/twogamma/gps/particle gamma
+/gate/source/twogamma/setForcedUnstableFlag true
+/gate/source/twogamma/setForcedHalfLife 604800.14 s
+/gate/source/twogamma/setType backtoback
+/gate/source/twogamma/gps/energytype Mono
+/gate/source/twogamma/gps/monoenergy 511. keV
+/gate/source/twogamma/gps/type Volume
+/gate/source/twogamma/gps/shape Cylinder
+/gate/source/twogamma/gps/radius 106.8 mm
+/gate/source/twogamma/gps/halfz 45.0 mm
+/gate/source/twogamma/gps/centre 0.0 0.0 0.0 mm
+/gate/source/twogamma/gps/angtype iso
+
+#/gate/source/addSource twogamma2
+#/gate/source/twogamma2/setActivity 1500000. becquerel
+#/gate/source/twogamma2/gps/particle gamma
+#/gate/source/twogamma2/setForcedUnstableFlag true
+#/gate/source/twogamma2/setForcedHalfLife 6586.2 s
+#/gate/source/twogamma2/setType backtoback
+#/gate/source/twogamma2/gps/energytype Mono
+#/gate/source/twogamma2/gps/monoenergy 511. keV
+#/gate/source/twogamma2/gps/type Volume
+#/gate/source/twogamma2/gps/shape Cylinder
+#/gate/source/twogamma2/gps/radius 70 mm
+#/gate/source/twogamma2/gps/halfz 45.0 mm
+#/gate/source/twogamma2/gps/centre 0. 0.0 0. mm
+#/gate/source/twogamma2/gps/angtype iso
+
+/gate/source/list
+

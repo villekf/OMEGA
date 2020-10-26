@@ -1,0 +1,111 @@
+#geometry
+
+/gate/geometry/setMaterialDatabase              GateMaterials.db
+
+#	WORLD
+/gate/world/geometry/setXLength                         200. cm
+/gate/world/geometry/setYLength                         200. cm
+/gate/world/geometry/setZLength                         200. cm
+
+#------------------------------------------------------------------------
+#PET
+#------------------------------------------------------------------------
+
+#	CYLINDRICALPET
+/gate/world/daughters/name                              cylindricalPET
+/gate/world/daughters/insert                            cylinder
+/gate/cylindricalPET/placement/setTranslation           0.0 0.0 0.0 cm
+/gate/cylindricalPET/geometry/setRmax                   45.76 cm
+/gate/cylindricalPET/geometry/setRmin                   42.76 cm
+/gate/cylindricalPET/geometry/setHeight                 23. cm
+
+/gate/cylindricalPET/setMaterial                        Air
+/gate/cylindricalPET/vis/forceWireframe
+/gate/cylindricalPET/vis/setColor                       red
+
+#	RSECTOR
+/gate/cylindricalPET/daughters/name                     rsector
+/gate/cylindricalPET/daughters/insert                   box
+/gate/rsector/geometry/setXLength                       20. mm
+/gate/rsector/geometry/setYLength                       55.932 mm
+/gate/rsector/geometry/setZLength                       52.702 mm
+#jos ei repeat z-suunnassa niin 222.97 mm
+/gate/rsector/placement/setTranslation                  43.76 0. 0. cm
+
+/gate/rsector/setMaterial                               Air
+/gate/rsector/vis/setColor                              blue
+/gate/rsector/vis/forceWireframe
+
+#       CRYSTAL
+/gate/rsector/daughters/name                            crystal
+/gate/rsector/daughters/insert                          box
+/gate/crystal/geometry/setXLength                       20. mm
+/gate/crystal/geometry/setYLength                       4. mm
+/gate/crystal/geometry/setZLength                       4. mm
+
+/gate/crystal/setMaterial                               Air
+/gate/crystal/vis/setVisible                            0
+/gate/crystal/vis/forceSolid
+
+#       LAYER
+/gate/crystal/daughters/name                            layer
+/gate/crystal/daughters/insert                          box
+/gate/layer/geometry/setXLength                         20. mm
+/gate/layer/geometry/setYLength                         4. mm
+/gate/layer/geometry/setZLength                         4. mm
+                       
+/gate/layer/setMaterial                                 LSO
+/gate/layer/vis/setColor                                yellow
+/gate/layer/vis/forceSolid
+
+#       R E P E A T E R S
+/gate/crystal/repeaters/insert                          cubicArray
+/gate/crystal/cubicArray/setRepeatNumberX               1
+/gate/crystal/cubicArray/setRepeatNumberY               13
+/gate/crystal/cubicArray/setRepeatNumberZ               13
+/gate/crystal/cubicArray/setRepeatVector                0. 4.01 4.054 mm
+
+/gate/rsector/repeaters/insert                          linear
+/gate/rsector/linear/setRepeatNumber                    4
+/gate/rsector/linear/setRepeatVector                    0 0 56.756 mm
+#52.702mm + gap (joka väliin yksi detektorin paksuinen)
+
+/gate/rsector/repeaters/insert                          ring
+/gate/rsector/ring/setRepeatNumber                      48
+
+#attaching volumes to system tree
+/gate/systems/cylindricalPET/rsector/attach               rsector
+/gate/systems/cylindricalPET/crystal/attach               crystal
+/gate/systems/cylindricalPET/layer0/attach                layer
+
+#detector
+/gate/layer/attachCrystalSD
+
+#/gate/world/daughters/name              peti
+#/gate/world/daughters/insert            box
+#/gate/peti/geometry/setXLength          450. mm
+#/gate/peti/geometry/setYLength          50. mm
+#/gate/peti/geometry/setZLength          2000. mm
+#/gate/peti/setMaterial                  Air
+#/gate/peti/placement/setTranslation     0 -87 0 mm
+#/gate/peti/vis/setVisible               0
+
+#/gate/peti/daughters/name               alusta
+#/gate/peti/daughters/insert             box
+#/gate/alusta/geometry/setXLength          450. mm
+#/gate/alusta/geometry/setYLength          25. mm
+#/gate/alusta/geometry/setZLength          2000. mm
+#/gate/alusta/setMaterial                  Adipose
+#/gate/alusta/placement/setTranslation     0 12.5 0 mm
+#/gate/alusta/vis/setColor                     white
+#/gate/alusta/vis/forceSolid
+
+#/gate/peti/daughters/name               runko
+#/gate/peti/daughters/insert             box
+#/gate/runko/geometry/setXLength          450. mm
+#/gate/runko/geometry/setYLength          25. mm
+#/gate/runko/geometry/setZLength          2000. mm
+#/gate/runko/setMaterial                  Plastic
+#/gate/runko/placement/setTranslation     0 -12.5 0 mm
+#/gate/runko/vis/setColor                     gray
+#/gate/runko/vis/forceSolid

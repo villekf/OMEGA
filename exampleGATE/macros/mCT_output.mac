@@ -1,0 +1,22 @@
+
+#listmode (root) output
+/gate/output/root/enable
+/gate/output/root/setFileName                   output/mCT_xcat
+/gate/output/root/setRootSinglesFlag	        0
+/gate/output/root/setRootCoincidencesFlag       1
+/gate/output/root/setRootdelayFlag              1
+/gate/output/root/setRootNtupleFlag             0
+/gate/output/root/setRootHitFlag                0
+/gate/output/root/setCoincidenceMask 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 
+
+#ascii
+/gate/output/ascii/enable
+/gate/output/ascii/setFileName                 output/mCT_xcat
+/gate/output/ascii/setOutFileHitsFlag           0
+/gate/output/ascii/setOutFileSinglesFlag        0
+/gate/output/ascii/setOutFileCoincidencesFlag   1
+/gate/output/ascii/setOutFiledelayFlag          1
+/gate/output/ascii/setCoincidenceMask 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 0 1 0 1 1 1 1 0 0 0 0 1 1 1 1 1 0 0 
+
+
+
