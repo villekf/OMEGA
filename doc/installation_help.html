@@ -1,0 +1,258 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Installation help</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin-bottom: 20px; padding-bottom: 4px;  }
+.S2 { margin: 0px; padding: 10px 0px 10px 5px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: bold; text-align: start;  }
+.S3 { margin: -1px 0px 0px; padding: 10px 0px 10px 7px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: start;  }
+.S4 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: bold; text-align: left;  }
+.S5 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }
+.S6 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 18px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 17px; font-weight: bold; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0' id = 'T_B2729029' ><span>Installation help</span></h1><div  class = 'S1'><div  class = 'S2'><span style=' font-weight: bold;'>Table of Contents</span></div><div  class = 'S3'><a href = "#H_325FAD2D"><span>Windows
+</span></a><span>    </span><a href = "#H_DBAB111C"><span>MATLAB
+</span></a><span>    </span><a href = "#H_A83FEF6C"><span>Octave
+</span></a><span>    </span><a href = "#H_F28F8020"><span>C++ Compiler
+</span></a><span>    </span><a href = "#H_D46F3139"><span>OpenCL
+</span></a><span>    </span><a href = "#H_9B94ADA7"><span>ArrayFire
+</span></a><span>    </span><a href = "#H_301BE4AA"><span>OMEGA
+</span></a><a href = "#H_DC2735F7"><span>Linux
+</span></a><span>    </span><a href = "#H_8904F8B6"><span>MATLAB
+</span></a><span>    </span><a href = "#H_5863F23D"><span>Octave
+</span></a><span>    </span><a href = "#H_7B8EE135"><span>C++ Compiler
+</span></a><span>    </span><a href = "#H_78AFDF5C"><span>OpenCL
+</span></a><span>    </span><a href = "#H_2A169BAC"><span>ArrayFire
+</span></a><span>    </span><a href = "#H_4C84FF51"><span>OMEGA
+</span></a><a href = "#H_3FB53F91"><span>Mac
+</span></a><span>    </span><a href = "#H_E55106AA"><span>MATLAB
+</span></a><span>    </span><a href = "#H_86A7C33D"><span>Octave
+</span></a><span>    </span><a href = "#H_1417A719"><span>C++ Compiler
+</span></a><span>    </span><a href = "#H_12DC6A38"><span>OpenCL
+</span></a><span>    </span><a href = "#H_E15DE64C"><span>ArrayFire
+</span></a><span>    </span><a href = "#H_0042B18C"><span>OMEGA</span></a></div></div><h2  class = 'S4' id = 'H_325FAD2D' ><span>Windows</span></h2><div  class = 'S5'><span>This section specifies the necessary installation information when using OMEGA on Windows.</span></div><h3  class = 'S6' id = 'H_DBAB111C' ><span>MATLAB</span></h3><div  class = 'S5'><span>Simply download and install MATLAB for Windows. Any version from 2009b and up should work, but the latest version is always recommended. If you are using an older version, however, you should use 64-bit version as 32-bit version is not supported.</span></div><div  class = 'S5'><span>Image processing toolbox and parallel computing toolbox are used for some specific features. However, (slower) fallback alternatives are used if these toolboxes are not found in most cases. The only function that requires image processing toolbox is the anisotropic diffusion MRP prior when using either implementation 1 or 4. Due to this, it does not work on Octave. A warning is produced if AD-MRP prior is used without the toolbox.</span></div><h3  class = 'S6' id = 'H_A83FEF6C' ><span>Octave</span></h3><div  class = 'S5'><span>Simply download the </span><a href = "https://www.gnu.org/software/octave/download.html#ms-windows"><span>binary installer for Octave</span></a><span> and install the software (Windows-64, though the large data version should work as well). io and statistics packages are required for some features, but are easy to install with the following commands in the Octave user interface: </span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge io</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge statistics</span></div><div  class = 'S5'><span>after which you need to load the statistics package</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg load statistics</span></div><h3  class = 'S6' id = 'H_F28F8020' ><span>C++ Compiler</span></h3><div  class = 'S5'><span>You need a C++11 compiler to compile the necessary MEX-files on MATLAB. For a list of supported compilers for each version of MATLAB, see </span><a href = "https://www.mathworks.com/support/requirements/previous-releases.html"><span>here</span></a><span>. On Octave the built-in compiler is sufficient.</span></div><div  class = 'S5'><span>On MATLAB, however, </span><a href = "https://visualstudio.microsoft.com/downloads/"><span>Visual Studio</span></a><span> is highly recommended. Depending on your MATLAB version, you might need an </span><a href = "https://visualstudio.microsoft.com/vs/older-downloads/"><span>older version</span></a><span>. To configure the C++ MEX-compiler you can use the command </span><span style=' font-family: monospace;'>mex -setup C++</span><span> which will show the currently selected compiler, list all available compilers and show the necessary commands to switch the compiler. </span></div><h3  class = 'S6' id = 'H_D46F3139' ><span>OpenCL</span></h3><div  class = 'S5'><span>If you have a Nvidia GPU, then </span><a href = "https://developer.nvidia.com/cuda-downloads"><span>CUDA toolkit</span></a><span> is recommended. Both Development and Runtime libraries are required, especially if CUDA support is desired.</span></div><div  class = 'S5'><span>If you have Intel GPU/CPU, you should use the </span><a href = "https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html"><span>Intel OpenCL SDK</span></a><span>. When using a CPU you might need to install the </span><a href = "https://software.intel.com/content/www/us/en/develop/articles/opencl-drivers.html"><span>runtimes</span></a><span> as well. </span></div><div  class = 'S5'><span>If you are using AMD GPUs, it is recommended to download and install </span><a href = "https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases"><span>OCL-SDK</span></a><span>. Additionally, you should install official </span><a href = "https://www.amd.com/en/support"><span>drivers</span></a><span>.</span></div><div  class = 'S5'><span>For AMD CPUs you should first install the </span><a href = "https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases"><span>OCL-SDK </span></a><span>and then either the Intel CPU runtimes from above or build </span><a href = "https://github.com/pocl/pocl/blob/master/README.Windows"><span>POCL</span></a><span> on Windows. If you are using a newer version of Visual Studio, you need to do some modification to the POCL Windows script (</span><a href = "https://github.com/pocl/pocl/blob/master/windows/setup_and_build_win64.sh"><span>setup_and_build_win64.sh</span></a><span>). For Visual Studio 2019 you need to change the following sections on lines 29 and 38 </span><span style=' font-family: monospace;'>"Visual Studio 12 Win64"</span><span> to </span><span style=' font-family: monospace;'>"Visual Studio 16" -A x64</span><span>. For older Visual Studios, simply replace the number 12 with the version you are using (see e.g. </span><a href = "https://en.wikipedia.org/wiki/Microsoft_Visual_Studio#History"><span>Wikipedia</span></a><span>).</span></div><h3  class = 'S6' id = 'H_9B94ADA7' ><span>ArrayFire</span></h3><div  class = 'S5'><span>On Windows simply download the Windows binary from </span><a href = "https://arrayfire.com/download/"><span>ArrayFire</span></a><span> and install it.</span></div><div  class = 'S5'><span>The above, however, only works when using MATLAB. If you wish to use ArrayFire on Octave, you need to download the ArrayFire </span><a href = "https://github.com/arrayfire/arrayfire/archive/master.zip"><span>source</span></a><span> and manually build it with </span><a href = "http://mingw-w64.org/"><span>MinGW-w64</span></a><span>. That, however, is rather difficult as the CMake files assume Visual Studio and you have to manually edit them accordingly.</span></div><h3  class = 'S6' id = 'H_301BE4AA' ><span>OMEGA</span></h3><div  class = 'S5'><span>Download either a release version from https://github.com/villekf/OMEGA/releases[releases], clone the current master with e.g. https://desktop.github.com/[GitHub desktop] or download an archive of the https://github.com/villekf/OMEGA/archive/master.zip[master-branch]. If you downloaded either a release or master branch archive, you need to extract the contents to the folder of your choosing. </span></div><div  class = 'S5'><span>Regardless of the method used to download OMEGA, you need to add the source and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by simply right clicking the folders and selecting "Add to path --&gt; Selected folders" by selecting the OMEGA folder itself and selecting "Add to path --&gt; Selected folders and subfolders". Alternatively, if you are using for example Octave, you can add the paths with addpath('C:\path\to\OMEGA\source') and addpath('C:\path\to\OMEGA\mat-files') or simply with addpath(genpath('C:\path\to\OMEGA\')). On MATLAB you can also add these folders to the list of folders in "Set path".</span></div><h2  class = 'S4' id = 'H_DC2735F7' ><span>Linux</span></h2><h3  class = 'S6' id = 'H_8904F8B6' ><span>MATLAB</span></h3><div  class = 'S5'><span>Simply download and install MATLAB for Linux. Any version from 2009b and up should work, but the latest version is always recommended. If you are using an older version, however, you should use 64-bit version as 32-bit version is not supported.</span></div><div  class = 'S5'><span>Image processing toolbox and parallel computing toolbox are used for some specific features. However, (slower) fallback alternatives are used if these toolboxes are not found in most cases. The only function that requires image processing toolbox is the anisotropic diffusion MRP prior when using either implementation 1 or 4. Due to this, it does not work on Octave. A warning is produced if AD-MRP prior is used without the toolbox.</span></div><h3  class = 'S6' id = 'H_5863F23D' ><span>Octave</span></h3><div  class = 'S5'><span>There are several different ways to install Octave on Linux systems. For instructions on how to install Octave on variety of Linux distributions see the </span><a href = "https://wiki.octave.org/Category:Installation"><span>Octave wiki</span></a><span>. You also need to install the Octave development files (e.g. </span><span style=' font-family: monospace;'>liboctave-dev</span><span> on Debian/Ubuntu). Alternatively, you can use </span><a href = "https://wiki.octave.org/Octave_for_GNU/Linux#Distribution_independent"><span>distribution independent</span></a><span> methods or just </span><a href = "https://wiki.octave.org/Building"><span>build from source</span></a><span>.</span></div><div  class = 'S5'><span>io and statistics packages are required for some features, but are easy to install with the following commands in the Octave user interface: </span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge io</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge statistics</span></div><div  class = 'S5'><span>after which you need to load the statistics package</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg load statistics</span></div><h3  class = 'S6' id = 'H_7B8EE135' ><span>C++ Compiler</span></h3><div  class = 'S5'><span>A C++ compiler should already be included, but GCC/G++ is recommended. Any version 4.7 or up should be sufficient.</span></div><h3  class = 'S6' id = 'H_78AFDF5C' ><span>OpenCL</span></h3><div  class = 'S5'><span>If you are using any GPU on Linux, it should be sufficient to simply download the OpenCL libraries and headers</span></div><div  class = 'S5'><span>Debian/Ubuntu: </span><span style=' font-family: monospace;'>sudo apt-get install ocl-icd-opencl-dev opencl-headers ocl-icd-libopencl1</span></div><div  class = 'S5'><span>as well as the official drivers.</span></div><div  class = 'S5'><span>Alternatively, if you have a Nvidia GPU, then </span><a href = "https://developer.nvidia.com/cuda-downloads"><span>CUDA toolkit</span></a><span> can be used. Both Development and Runtime libraries are required, especially if CUDA support is desired.</span></div><div  class = 'S5'><span>AMD GPUs should work with only the drivers.</span></div><div  class = 'S5'><span>If you have Intel GPU/CPU, you can use the </span><a href = "https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html"><span>Intel OpenCL SDK</span></a><span>. When using a CPU you might need to install the </span><a href = "https://software.intel.com/content/www/us/en/develop/articles/opencl-drivers.html"><span>runtimes</span></a><span> as well. The runtimes, however, might not anymore support your current OS version.</span></div><div  class = 'S5'><span>Alternatively, and especially when using AMD CPUs, </span><a href = "http://portablecl.org/docs/html/install.html"><span>POCL</span></a><span> is recommended. Note that if you use the default installation path, you need to move /usr/local/etc/OpenCL/vendors/pocl.icd to /etc/OpenCL/vendors/.</span></div><div  class = 'S5'><span>A useful, but not necessary, package is </span><a href = "https://github.com/Oblomov/clinfo"><span>clinfo</span></a><span> that should be available as a package (e.g. </span><span style=' font-family: monospace;'>sudo apt-get install clinfo</span><span>). clinfo displays all the available OpenCL platforms, the devices available and various other features. A short list of OpenCL platforms and devices can be obtained in OMEGA with the </span><span style=' font-family: monospace;'>OpenCL_device_info()</span><span> function.</span></div><h3  class = 'S6' id = 'H_2A169BAC' ><span>ArrayFire</span></h3><div  class = 'S5'><span>Simply download the Linux binary from </span><a href = "https://arrayfire.com/download/"><span>ArrayFire</span></a><span> and install it. Alternatively, you can </span><a href = "https://github.com/arrayfire/arrayfire/wiki/Build-Instructions-for-Linux"><span>build from source</span></a><span>. Note, however, that if you are using the official binary that you should install it to the default location in /opt and secondly that you should rename all the libforge files in </span><span style=' font-family: monospace;'>/opt/arrayfire/lib64</span><span> to something else (e.g. </span><span style=' font-family: monospace;'>libforge.so.old</span><span>). Alternatively, you can use a "</span><a href = "http://arrayfire.s3.amazonaws.com/3.6.2/ArrayFire-no-gl-v3.6.2_Linux_x86_64.sh"><span>no-GL</span></a><span>" version, but it is an older version that should, nevertheless, work. If you are building ArrayFire from source, it is recommended to disable Forge (set </span><span style=' font-family: monospace;'>AF_BUILD_FORGE</span><span> to </span><span style=' font-family: monospace;'>OFF</span><span>).</span></div><h3  class = 'S6' id = 'H_4C84FF51' ><span>OMEGA</span></h3><div  class = 'S5'><span>Download either a release version from </span><a href = "https://github.com/villekf/OMEGA/releases"><span>releases</span></a><span>, clone the current master with e.g. </span><span style=' font-family: monospace;'>git clone https://github.com/villekf/OMEGA.git</span><span> or download an archive of the </span><a href = "https://github.com/villekf/OMEGA/archive/master.zip"><span>master-branch</span></a><span>. If you downloaded either a release or master branch archive, you need to extract the contents to the folder of your choosing. </span></div><div  class = 'S5'><span>Regardless of the method used to download OMEGA, you need to add the source and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by simply right clicking the folders and selecting "Add to path --&gt; Selected folders" by selecting the OMEGA folder itself and selecting "Add to path --&gt; Selected folders and subfolders". Alternatively, if you are using for example Octave, you can add the paths with </span><span style=' font-family: monospace;'>addpath('/path/to/OMEGA/source')</span><span> and </span><span style=' font-family: monospace;'>addpath('/path/to/OMEGA/mat-files')</span><span> or simply with </span><span style=' font-family: monospace;'>addpath(genpath('/path/to/OMEGA/'))</span><span>. On MATLAB you can also add these folders to the list of folders in "Set path".</span></div><h2  class = 'S4' id = 'H_3FB53F91' ><span>Mac</span></h2><div  class = 'S5'><span>NOTE: Mac build of OMEGA hasn't been tested so far.</span></div><h3  class = 'S6' id = 'H_E55106AA' ><span>MATLAB</span></h3><div  class = 'S5'><span>Simply download and install MATLAB for Windows. Any version from 2009b and up should work, but the latest version is always recommended. If you are using an older version, however, you should use 64-bit version as 32-bit version is not supported.</span></div><div  class = 'S5'><span>Image processing toolbox and parallel computing toolbox are used for some specific features. However, (slower) fallback alternatives are used if these toolboxes are not found in most cases. The only function that requires image processing toolbox is the anisotropic diffusion MRP prior when using either implementation 1 or 4. Due to this, it does not work on Octave. A warning is produced if AD-MRP prior is used without the toolbox.</span></div><h3  class = 'S6' id = 'H_86A7C33D' ><span>Octave</span></h3><div  class = 'S5'><span>To install Octave on Mac, see their </span><a href = "https://wiki.octave.org/Octave_for_macOS"><span>wiki</span></a><span> for instructions.</span></div><div  class = 'S5'><span>io and statistics packages are required for some features, but are easy to install with the following commands in the Octave user interface: </span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge io</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg install -forge statistics</span></div><div  class = 'S5'><span>after which you need to load the statistics package</span></div><div  class = 'S5'><span style=' font-family: monospace;'>pkg load statistics</span></div><h3  class = 'S6' id = 'H_1417A719' ><span>C++ Compiler</span></h3><div  class = 'S5'><span>It is recommended to install and use Xcode from the Mac app store.</span></div><h3  class = 'S6' id = 'H_12DC6A38' ><span>OpenCL</span></h3><div  class = 'S5'><span>OpenCL should already be included with your Mac installation.</span></div><h3  class = 'S6' id = 'H_E15DE64C' ><span>ArrayFire</span></h3><div  class = 'S5'><span>Simply download the Mac binary from </span><a href = "https://arrayfire.com/download/"><span>ArrayFire</span></a><span> and install it. Alternatively, you can </span><a href = "https://github.com/arrayfire/arrayfire/wiki/Build-Instructions-for-OSX"><span>build from source</span></a><span>.</span></div><h3  class = 'S6' id = 'H_0042B18C' ><span>OMEGA</span></h3><div  class = 'S5'><span>Download either a release version from </span><a href = "https://github.com/villekf/OMEGA/releases"><span>releases</span></a><span>, clone the current master with e.g. </span><span style=' font-family: monospace;'>git clone https://github.com/villekf/OMEGA.git</span><span> or download an archive of the https://github.com/villekf/OMEGA/archive/master.zip[master-branch]. If you downloaded either a release or master branch archive, you need to extract the contents to the folder of your choosing. </span></div><div  class = 'S5'><span>Regardless of the method used to download OMEGA, you need to add the source and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by simply right clicking the folders and selecting "Add to path --&gt; Selected folders" by selecting the OMEGA folder itself and selecting "Add to path --&gt; Selected folders and subfolders". Alternatively, if you are using for example Octave, you can add the paths with </span><span style=' font-family: monospace;'>addpath('/path/to/OMEGA/source')</span><span> and </span><span style=' font-family: monospace;'>addpath('/path/to/OMEGA/mat-files')</span><span> or simply with </span><span style=' font-family: monospace;'>addpath(genpath('/path/to/OMEGA/'))</span><span>. On MATLAB you can also add these folders to the list of folders in "Set path".</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Installation help
+%% Windows
+% This section specifies the necessary installation information when using OMEGA 
+% on Windows.
+% MATLAB
+% Simply download and install MATLAB for Windows. Any version from 2009b and 
+% up should work, but the latest version is always recommended. If you are using 
+% an older version, however, you should use 64-bit version as 32-bit version is 
+% not supported.
+% 
+% Image processing toolbox and parallel computing toolbox are used for some 
+% specific features. However, (slower) fallback alternatives are used if these 
+% toolboxes are not found in most cases. The only function that requires image 
+% processing toolbox is the anisotropic diffusion MRP prior when using either 
+% implementation 1 or 4. Due to this, it does not work on Octave. A warning is 
+% produced if AD-MRP prior is used without the toolbox.
+% Octave
+% Simply download the <https://www.gnu.org/software/octave/download.html#ms-windows 
+% binary installer for Octave> and install the software (Windows-64, though the 
+% large data version should work as well). io and statistics packages are required 
+% for some features, but are easy to install with the following commands in the 
+% Octave user interface: 
+% 
+% |pkg install -forge io|
+% 
+% |pkg install -forge statistics|
+% 
+% after which you need to load the statistics package
+% 
+% |pkg load statistics|
+% C++ Compiler
+% You need a C++11 compiler to compile the necessary MEX-files on MATLAB. For 
+% a list of supported compilers for each version of MATLAB, see <https://www.mathworks.com/support/requirements/previous-releases.html 
+% here>. On Octave the built-in compiler is sufficient.
+% 
+% On MATLAB, however, <https://visualstudio.microsoft.com/downloads/ Visual 
+% Studio> is highly recommended. Depending on your MATLAB version, you might need 
+% an <https://visualstudio.microsoft.com/vs/older-downloads/ older version>. To 
+% configure the C++ MEX-compiler you can use the command |mex -setup C++| which 
+% will show the currently selected compiler, list all available compilers and 
+% show the necessary commands to switch the compiler. 
+% OpenCL
+% If you have a Nvidia GPU, then <https://developer.nvidia.com/cuda-downloads 
+% CUDA toolkit> is recommended. Both Development and Runtime libraries are required, 
+% especially if CUDA support is desired.
+% 
+% If you have Intel GPU/CPU, you should use the <https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html 
+% Intel OpenCL SDK>. When using a CPU you might need to install the <https://software.intel.com/content/www/us/en/develop/articles/opencl-drivers.html 
+% runtimes> as well. 
+% 
+% If you are using AMD GPUs, it is recommended to download and install <https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases 
+% OCL-SDK>. Additionally, you should install official <https://www.amd.com/en/support 
+% drivers>.
+% 
+% For AMD CPUs you should first install the <https://github.com/GPUOpen-LibrariesAndSDKs/OCL-SDK/releases 
+% OCL-SDK >and then either the Intel CPU runtimes from above or build <https://github.com/pocl/pocl/blob/master/README.Windows 
+% POCL> on Windows. If you are using a newer version of Visual Studio, you need 
+% to do some modification to the POCL Windows script (<https://github.com/pocl/pocl/blob/master/windows/setup_and_build_win64.sh 
+% setup_and_build_win64.sh>). For Visual Studio 2019 you need to change the following 
+% sections on lines 29 and 38 |"Visual Studio 12 Win64"| to |"Visual Studio 16" 
+% -A x64|. For older Visual Studios, simply replace the number 12 with the version 
+% you are using (see e.g. <https://en.wikipedia.org/wiki/Microsoft_Visual_Studio#History 
+% Wikipedia>).
+% ArrayFire
+% On Windows simply download the Windows binary from <https://arrayfire.com/download/ 
+% ArrayFire> and install it.
+% 
+% The above, however, only works when using MATLAB. If you wish to use ArrayFire 
+% on Octave, you need to download the ArrayFire <https://github.com/arrayfire/arrayfire/archive/master.zip 
+% source> and manually build it with <http://mingw-w64.org/ MinGW-w64>. That, 
+% however, is rather difficult as the CMake files assume Visual Studio and you 
+% have to manually edit them accordingly.
+% OMEGA
+% Download either a release version from https://github.com/villekf/OMEGA/releases[releases], 
+% clone the current master with e.g. https://desktop.github.com/[GitHub desktop] 
+% or download an archive of the https://github.com/villekf/OMEGA/archive/master.zip[master-branch]. 
+% If you downloaded either a release or master branch archive, you need to extract 
+% the contents to the folder of your choosing. 
+% 
+% Regardless of the method used to download OMEGA, you need to add the source 
+% and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by 
+% simply right clicking the folders and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected folders" 
+% by selecting the OMEGA folder itself and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected 
+% folders and subfolders". Alternatively, if you are using for example Octave, 
+% you can add the paths with addpath('C:\path\to\OMEGA\source') and addpath('C:\path\to\OMEGA\mat-files') 
+% or simply with addpath(genpath('C:\path\to\OMEGA\')). On MATLAB you can also 
+% add these folders to the list of folders in "Set path".
+%% Linux
+% MATLAB
+% Simply download and install MATLAB for Linux. Any version from 2009b and up 
+% should work, but the latest version is always recommended. If you are using 
+% an older version, however, you should use 64-bit version as 32-bit version is 
+% not supported.
+% 
+% Image processing toolbox and parallel computing toolbox are used for some 
+% specific features. However, (slower) fallback alternatives are used if these 
+% toolboxes are not found in most cases. The only function that requires image 
+% processing toolbox is the anisotropic diffusion MRP prior when using either 
+% implementation 1 or 4. Due to this, it does not work on Octave. A warning is 
+% produced if AD-MRP prior is used without the toolbox.
+% Octave
+% There are several different ways to install Octave on Linux systems. For instructions 
+% on how to install Octave on variety of Linux distributions see the <https://wiki.octave.org/Category:Installation 
+% Octave wiki>. You also need to install the Octave development files (e.g. |liboctave-dev| 
+% on Debian/Ubuntu). Alternatively, you can use <https://wiki.octave.org/Octave_for_GNU/Linux#Distribution_independent 
+% distribution independent> methods or just <https://wiki.octave.org/Building 
+% build from source>.
+% 
+% io and statistics packages are required for some features, but are easy to 
+% install with the following commands in the Octave user interface: 
+% 
+% |pkg install -forge io|
+% 
+% |pkg install -forge statistics|
+% 
+% after which you need to load the statistics package
+% 
+% |pkg load statistics|
+% C++ Compiler
+% A C++ compiler should already be included, but GCC/G++ is recommended. Any 
+% version 4.7 or up should be sufficient.
+% OpenCL
+% If you are using any GPU on Linux, it should be sufficient to simply download 
+% the OpenCL libraries and headers
+% 
+% Debian/Ubuntu: |sudo apt-get install ocl-icd-opencl-dev opencl-headers ocl-icd-libopencl1|
+% 
+% as well as the official drivers.
+% 
+% Alternatively, if you have a Nvidia GPU, then <https://developer.nvidia.com/cuda-downloads 
+% CUDA toolkit> can be used. Both Development and Runtime libraries are required, 
+% especially if CUDA support is desired.
+% 
+% AMD GPUs should work with only the drivers.
+% 
+% If you have Intel GPU/CPU, you can use the <https://software.intel.com/content/www/us/en/develop/tools/opencl-sdk.html 
+% Intel OpenCL SDK>. When using a CPU you might need to install the <https://software.intel.com/content/www/us/en/develop/articles/opencl-drivers.html 
+% runtimes> as well. The runtimes, however, might not anymore support your current 
+% OS version.
+% 
+% Alternatively, and especially when using AMD CPUs, <http://portablecl.org/docs/html/install.html 
+% POCL> is recommended. Note that if you use the default installation path, you 
+% need to move /usr/local/etc/OpenCL/vendors/pocl.icd to /etc/OpenCL/vendors/.
+% 
+% A useful, but not necessary, package is <https://github.com/Oblomov/clinfo 
+% clinfo> that should be available as a package (e.g. |sudo apt-get install clinfo|). 
+% clinfo displays all the available OpenCL platforms, the devices available and 
+% various other features. A short list of OpenCL platforms and devices can be 
+% obtained in OMEGA with the |OpenCL_device_info()| function.
+% ArrayFire
+% Simply download the Linux binary from <https://arrayfire.com/download/ ArrayFire> 
+% and install it. Alternatively, you can <https://github.com/arrayfire/arrayfire/wiki/Build-Instructions-for-Linux 
+% build from source>. Note, however, that if you are using the official binary 
+% that you should install it to the default location in /opt and secondly that 
+% you should rename all the libforge files in |/opt/arrayfire/lib64| to something 
+% else (e.g. |libforge.so.old|). Alternatively, you can use a "<http://arrayfire.s3.amazonaws.com/3.6.2/ArrayFire-no-gl-v3.6.2_Linux_x86_64.sh 
+% no-GL>" version, but it is an older version that should, nevertheless, work. 
+% If you are building ArrayFire from source, it is recommended to disable Forge 
+% (set |AF_BUILD_FORGE| to |OFF|).
+% OMEGA
+% Download either a release version from <https://github.com/villekf/OMEGA/releases 
+% releases>, clone the current master with e.g. |git clone https://github.com/villekf/OMEGA.git| 
+% or download an archive of the <https://github.com/villekf/OMEGA/archive/master.zip 
+% master-branch>. If you downloaded either a release or master branch archive, 
+% you need to extract the contents to the folder of your choosing. 
+% 
+% Regardless of the method used to download OMEGA, you need to add the source 
+% and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by 
+% simply right clicking the folders and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected folders" 
+% by selecting the OMEGA folder itself and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected 
+% folders and subfolders". Alternatively, if you are using for example Octave, 
+% you can add the paths with |addpath('/path/to/OMEGA/source')| and |addpath('/path/to/OMEGA/mat-files')| 
+% or simply with |addpath(genpath('/path/to/OMEGA/'))|. On MATLAB you can also 
+% add these folders to the list of folders in "Set path".
+%% Mac
+% NOTE: Mac build of OMEGA hasn't been tested so far.
+% MATLAB
+% Simply download and install MATLAB for Windows. Any version from 2009b and 
+% up should work, but the latest version is always recommended. If you are using 
+% an older version, however, you should use 64-bit version as 32-bit version is 
+% not supported.
+% 
+% Image processing toolbox and parallel computing toolbox are used for some 
+% specific features. However, (slower) fallback alternatives are used if these 
+% toolboxes are not found in most cases. The only function that requires image 
+% processing toolbox is the anisotropic diffusion MRP prior when using either 
+% implementation 1 or 4. Due to this, it does not work on Octave. A warning is 
+% produced if AD-MRP prior is used without the toolbox.
+% Octave
+% To install Octave on Mac, see their <https://wiki.octave.org/Octave_for_macOS 
+% wiki> for instructions.
+% 
+% io and statistics packages are required for some features, but are easy to 
+% install with the following commands in the Octave user interface: 
+% 
+% |pkg install -forge io|
+% 
+% |pkg install -forge statistics|
+% 
+% after which you need to load the statistics package
+% 
+% |pkg load statistics|
+% C++ Compiler
+% It is recommended to install and use Xcode from the Mac app store.
+% OpenCL
+% OpenCL should already be included with your Mac installation.
+% ArrayFire
+% Simply download the Mac binary from <https://arrayfire.com/download/ ArrayFire> 
+% and install it. Alternatively, you can <https://github.com/arrayfire/arrayfire/wiki/Build-Instructions-for-OSX 
+% build from source>.
+% OMEGA
+% Download either a release version from <https://github.com/villekf/OMEGA/releases 
+% releases>, clone the current master with e.g. |git clone https://github.com/villekf/OMEGA.git| 
+% or download an archive of the https://github.com/villekf/OMEGA/archive/master.zip[master-branch]. 
+% If you downloaded either a release or master branch archive, you need to extract 
+% the contents to the folder of your choosing. 
+% 
+% Regardless of the method used to download OMEGA, you need to add the source 
+% and mat-files folders to the MATLAB/Octave path. In MATLAB you can do this by 
+% simply right clicking the folders and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected folders" 
+% by selecting the OMEGA folder itself and selecting "Add to path REPLACE_WITH_DASH_DASH> Selected 
+% folders and subfolders". Alternatively, if you are using for example Octave, 
+% you can add the paths with |addpath('/path/to/OMEGA/source')| and |addpath('/path/to/OMEGA/mat-files')| 
+% or simply with |addpath(genpath('/path/to/OMEGA/'))|. On MATLAB you can also 
+% add these folders to the list of folders in "Set path".
+##### SOURCE END #####
+--></body></html>

@@ -1,0 +1,79 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Using TOF data</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }
+.S2 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: bold; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Using TOF data</span></h1><div  class = 'S1'><span>Preliminary TOF support has been added to OMEGA, for both static and  dynamic data. Both GATE simulated data and measured data can be used.  Below you’ll first find information on how to enable TOF in GATE data  and then how to use measured GATE data.</span></div><h2  class = 'S2'><span>TOF properties</span></h2><div  class = 'S1'><span>The following parameters can and need to be set to use TOF data:</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_bins</span><span> this variable determines both the  number of TOF bins and also whether TOF data is used at all. Setting it  to 1 will disable the use of TOF data, however, it will not convert TOF  data into non-TOF data (for that see </span><span style=' font-family: monospace;'>options.TOF_bins_used</span><span> below). This value needs to correspond to the number of TOF bins you have (or want to have when using GATE data).</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_width</span><span> this is the width of each TOF time bin (in seconds). Currently each bin needs to have identical lengths.</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_offset</span><span> this value specifies possible offset  in the TOF data (in seconds). What this means is that if your TOF bins  are not centered in zero (center of FOV) you can specify the offset  here. Offset is applied to Biograph mCT and Vision data obtained from  the scanner.</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_noise_FWHM</span><span> This parameter has two  properties. The first one applies to any TOF data that is saved by OMEGA (GATE, Inveon/Biograph list-mode), the second only to GATE data. The  first use of this parameter is in naming purposes as this value is  included in the filename. If you use Biograph data it is recommended to  set this to the actual time resolution of the scanner although it is not necessary. This variable is ignored if you manually load the  measurement data. The second use of this variable is to add temporal  noise to the GATE data with the specified full width at half maximum  (FWHM, in seconds). For more information on creating GATE TOF data see  the next section.</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_FWHM</span><span> the FWHM of the TOF time resolution  used in image reconstruction (in seconds). This variable is used solely  for image reconstruction purposes and as such can be different from the  above </span><span style=' font-family: monospace;'>options.TOF_noise_FWHM</span><span>. This is the actual time resolution of the device that is used when computing the TOF weighted reconstruction.</span></div><div  class = 'S1'><span style=' font-family: monospace;'>options.TOF_bins_used</span><span> the number of TOF bins used. Currently this value has to either be the same as </span><span style=' font-family: monospace;'>options.TOF_bins</span><span> or 1. In the latter case the TOF data set is converted (summed) into a  non-TOF data set before the reconstruction. In the future this will  allow TOF mashing.</span></div><h2  class = 'S2'><span>Enabling TOF in GATE data</span></h2><div  class = 'S1'><span>TOF data can be enabled simply by adding more TOF bins than 1.</span></div><div  class = 'S1'><span>TOF in GATE data can either be included directly in GATE by setting the (</span><a href = "https://opengate.readthedocs.io/en/latest/digitizer_and_detector_modeling.html#time-resolution"><span style=' text-decoration: underline;'>temporal resolution module</span></a><span>) or by simply adding the preferred temporal noise in OMEGA. In the first case, you will only be able to use the one temporal resolution that you set in GATE, but in the latter case you will be able to choose any  temporal resolution and use the same simulated data to create different  TOF data sets each with different temporal resolution.</span></div><div  class = 'S1'><span>If you are using TOF data with the temporal resolution module, you should set </span><span style=' font-family: monospace;'>options.TOF_noise_FWHM = 0</span><span> such that no additional noise is included. </span><span style=' font-family: monospace;'>options.TOF_FWHM</span><span> on the other should be the FWHM of the added temporal noise multiplied with sqrt(2).</span></div><div  class = 'S1'><span>When using GATE data, the actual temporal resolution will most likely differ from the one specified by </span><span style=' font-family: monospace;'>options.TOF_noise_FWHM</span><span>. If you want to know the actual time resolution with the specified added noise you should run a simulation with a point source. Alternative,  multiplying with sqrt(2) should be relatively accurate in most cases.</span></div><h2  class = 'S2'><span>TOF in other PET data</span></h2><div  class = 'S1'><span>Any PET data with TOF can be used. TOF is assumed to be the fourth  dimension of the matrix (potential time steps are assumed to be the  fifth dimension). All values except for </span><span style=' font-family: monospace;'>options.TOF_noise_FWHM</span><span> need to be filled.</span></div><div  class = 'S1'><span>Biograph mCT and Vision allow for automatic extraction of TOF data.  However, currently only the default number of bins (13 for mCT and 33  for Vision) are available.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Using TOF data
+% Preliminary TOF support has been added to OMEGA, for both static and  dynamic 
+% data. Both GATE simulated data and measured data can be used.  Below you’ll 
+% first find information on how to enable TOF in GATE data  and then how to use 
+% measured GATE data.
+%% TOF properties
+% The following parameters can and need to be set to use TOF data:
+% 
+% |options.TOF_bins| this variable determines both the  number of TOF bins and 
+% also whether TOF data is used at all. Setting it  to 1 will disable the use 
+% of TOF data, however, it will not convert TOF  data into non-TOF data (for that 
+% see |options.TOF_bins_used| below). This value needs to correspond to the number 
+% of TOF bins you have (or want to have when using GATE data).
+% 
+% |options.TOF_width| this is the width of each TOF time bin (in seconds). Currently 
+% each bin needs to have identical lengths.
+% 
+% |options.TOF_offset| this value specifies possible offset  in the TOF data 
+% (in seconds). What this means is that if your TOF bins  are not centered in 
+% zero (center of FOV) you can specify the offset  here. Offset is applied to 
+% Biograph mCT and Vision data obtained from  the scanner.
+% 
+% |options.TOF_noise_FWHM| This parameter has two  properties. The first one 
+% applies to any TOF data that is saved by OMEGA (GATE, Inveon/Biograph list-mode), 
+% the second only to GATE data. The  first use of this parameter is in naming 
+% purposes as this value is  included in the filename. If you use Biograph data 
+% it is recommended to  set this to the actual time resolution of the scanner 
+% although it is not necessary. This variable is ignored if you manually load 
+% the  measurement data. The second use of this variable is to add temporal  noise 
+% to the GATE data with the specified full width at half maximum  (FWHM, in seconds). 
+% For more information on creating GATE TOF data see  the next section.
+% 
+% |options.TOF_FWHM| the FWHM of the TOF time resolution  used in image reconstruction 
+% (in seconds). This variable is used solely  for image reconstruction purposes 
+% and as such can be different from the  above |options.TOF_noise_FWHM|. This 
+% is the actual time resolution of the device that is used when computing the 
+% TOF weighted reconstruction.
+% 
+% |options.TOF_bins_used| the number of TOF bins used. Currently this value 
+% has to either be the same as |options.TOF_bins| or 1. In the latter case the 
+% TOF data set is converted (summed) into a  non-TOF data set before the reconstruction. 
+% In the future this will  allow TOF mashing.
+%% Enabling TOF in GATE data
+% TOF data can be enabled simply by adding more TOF bins than 1.
+% 
+% TOF in GATE data can either be included directly in GATE by setting the (<https://opengate.readthedocs.io/en/latest/digitizer_and_detector_modeling.html#time-resolution 
+% temporal resolution module>) or by simply adding the preferred temporal noise 
+% in OMEGA. In the first case, you will only be able to use the one temporal resolution 
+% that you set in GATE, but in the latter case you will be able to choose any  
+% temporal resolution and use the same simulated data to create different  TOF 
+% data sets each with different temporal resolution.
+% 
+% If you are using TOF data with the temporal resolution module, you should 
+% set |options.TOF_noise_FWHM = 0| such that no additional noise is included. 
+% |options.TOF_FWHM| on the other should be the FWHM of the added temporal noise 
+% multiplied with sqrt(2).
+% 
+% When using GATE data, the actual temporal resolution will most likely differ 
+% from the one specified by |options.TOF_noise_FWHM|. If you want to know the 
+% actual time resolution with the specified added noise you should run a simulation 
+% with a point source. Alternative,  multiplying with sqrt(2) should be relatively 
+% accurate in most cases.
+%% TOF in other PET data
+% Any PET data with TOF can be used. TOF is assumed to be the fourth  dimension 
+% of the matrix (potential time steps are assumed to be the  fifth dimension). 
+% All values except for |options.TOF_noise_FWHM| need to be filled.
+% 
+% Biograph mCT and Vision allow for automatic extraction of TOF data.  However, 
+% currently only the default number of bins (13 for mCT and 33  for Vision) are 
+% available.
+##### SOURCE END #####
+--></body></html>
