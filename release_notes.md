@@ -1,6 +1,6 @@
 # Release notes
 
-## 1.1
+## OMEGA v1.1
 
 ### New features
 
@@ -92,12 +92,12 @@
   
 - Added functions to automatically create GATE compatible voxelized phantoms and/or sources
   - Supports either Interfile or MetaImage output
-  - Input can be binary 32-bit floats, DICOM images or BMP/PNG/TIFF (grayscale) images
+  - Input can be binary images, DICOM images or BMP/PNG/TIFF (grayscale) images
   
 - Added MATLAB/Octave class to compute forward and backward projections
   - Includes operator overloading, e.g. computing `y = A * x` and `x = A' * y` operations with the `A` system matrix class object
-  - Can compute the operations matrix-free with implementation 3 or with matrices with implementation 1
-  - Can be used to extract the system matrix (or a subset of it)
+  - Can compute the operations matrix-free with implementations 3 or 4, or with matrices with implementation 1
+  - Can be used to extract the system matrix (or a subset of it) with implementation 1
   - See `forward_backward_projections_example.m` for examples
   
 - Added support for different number of crystals in axial direction as well as transaxial multiplier
@@ -169,7 +169,7 @@
 - Orthogonal and volume-based ray tracers can be computed faster by selecting the new `apply_accleration` variable
   - Gives about 30% faster speeds, but uses more device memory, especially on GPUs
   
-- Added ability to specify the maximum ring difference with raw list-mode data
+- Added ability to specify the maximum ring difference with raw data
 
 - Sinogram creation can now load data created from different file type than specified (e.g. if ROOT data is selected, but no ROOT raw list-mode data is found, but ASCII is available then the ASCII data is used)
 
@@ -186,7 +186,7 @@
 - Converted OpenCL code to the C++ API
   - Does not require any actions from the user
   - Implementation 3 should now clear all memory after computations
-  - Implementation 2 still leaves residual memory to the device that is cleared when MATLAB/Octave is closed
+  - Implementation 2 might still leave residual memory to the device that is cleared when MATLAB/Octave is closed
   
 - Fixed corrections in the forward and backward projection case
 
@@ -207,7 +207,9 @@
 
 - Fixed the load of delayed coincidences with mCT 32-bit list-mode data
 
-## 1.0
+- Fixed various issues with Octave
+
+## OMEGA v1.0
 
 ### New features
 
