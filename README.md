@@ -3,7 +3,7 @@ Open-source MATLAB Emission Tomography Software
 
 ## Purpose
 
-The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any PET data, including simulated [GATE](http://www.opengatecollaboration.org/) data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
+The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any positron emission tomography (PET) data, including simulated [GATE](http://www.opengatecollaboration.org/) data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
 
 ## Introduction
 
