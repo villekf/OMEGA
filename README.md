@@ -39,7 +39,7 @@ The algorithms implemented so far are:
 
 ## Installation
 
-You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform (Visual Studio on Windows, GCC on Linux). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4 and 7.3 on Ubuntu 16.04/18.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
+You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform (Visual Studio on Windows, GCC on Linux). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
@@ -98,7 +98,7 @@ Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFi
 
 Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the CUDA folder should be on the system path. `install_mex` always attempts to build the CUDA code as well so no additional input is required from the user if all the header and library data is found. By default `install_mex` looks for CUDA in `/usr/local/cuda/` on Linux. On Windows, CUDA location is determined from the environmental variables (PATH).
 
-
+For additional install help, see the [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) help on the wiki.
 
 ## Getting Started
 
@@ -170,7 +170,7 @@ For Octave, 5.1 and 5.2 works. 4.4 should also work but is untested. io and stat
 
 C++11 compiler is required.
 
-OpenCL SDK/headers are required for OpenCL functionality.
+OpenCL SDK/headers/library are required for OpenCL functionality.
 
 ArrayFire is required for implementation 2.
 
@@ -187,7 +187,7 @@ https://github.com/stefanengblom/stenglib (FSPARSE, used when creating sparse ma
 
 ### MATLAB & Octave
 
-Raw list-mode data with non-GATE data is still experimental (i.e. the data needs to be formatted in the same way as done in OMEGA).
+Raw data with non-GATE data is still experimental (i.e. the data needs to be formatted in the same way as done in OMEGA).
 
 Multi-device/GPU reconstruction only supports OSEM and MLEM.
 
@@ -256,7 +256,7 @@ If you wish to use this software in your work, at the moment cite the GitHub pag
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from Jane and Aatos Erkko foundation.
 
