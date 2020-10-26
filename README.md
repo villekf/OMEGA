@@ -3,7 +3,7 @@ Open-source MATLAB Emission Tomography Software
 
 ## Purpose
 
-The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any PET data, including simulated GATE data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
+The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any PET data, including simulated [GATE](http://www.opengatecollaboration.org/) data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
 
 ## Introduction
 
@@ -104,7 +104,7 @@ Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the C
 
 First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. 
 
-GATE users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
+[GATE](http://www.opengatecollaboration.org/) users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
 
 A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the `gate_main_example.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
 
@@ -123,7 +123,7 @@ The following features are currently present:
 - Supports both MATLAB and Octave
 - Reconstruct any PET sinogram/raw list-mode data
 - Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in MATLAB/Octave NLM algorithms in  MATLAB/Octave (OpenCL support in addition to traditional C++)
-- Import GATE LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their raw list-mode format or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
+- Import [GATE](http://www.opengatecollaboration.org/) LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their raw list-mode format or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
 - Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
 - Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)
 - Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), pure OpenCL version (multidevice support, e.g. multiple GPUs or heterogenous computing) or OpenCL version utilizing ArrayFire libraries
