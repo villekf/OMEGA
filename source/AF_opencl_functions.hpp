@@ -66,7 +66,8 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
 	cl::Buffer& d_lor_mlem,	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
-	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, const float* TOFCenter);
+	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0);
 
 // Prepass phase for MRAMLA, MBSREM, COSEM, ACOSEM, ECOSEM, RBI
 void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t* pituus, const std::vector<cl::Buffer>& lor, const std::vector<cl::Buffer>& zindex,

@@ -133,12 +133,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Initial value
 	array x00(Nx * Ny * Nz, (float*)mxGetData(mxGetField(options, 0, "x0")), afHost);
 
-	// For custom prior
-	if (MethodList.CUSTOM) {
-		osa_iter0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "osa_iter"));
-		iter0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "iter"));
-		t0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "tt"));
-	}
 
 	array pj3, apu_sum, E, apu_sum_mlem;
 
@@ -156,6 +150,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	for (uint32_t kk = 0; kk < subsets; kk++)
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 
+	uint32_t subsetsUsed = subsets;
+	// For custom prior
+	if (MethodList.CUSTOM) {
+		osa_iter0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "osa_iter"));
+		iter0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "iter"));
+		t0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "tt"));
+	}
+
 	// Struct containing ArrayFire arrays containing the image estimates and other necessary vectors/matrices
 	AF_im_vectors vec;
 	// Struct containing beta-values for the MAP-methods
@@ -172,6 +174,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	// Power factor for ACOSEM
 	w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
+
+	if (MethodList.CUSTOM) {
+		if (w_vec.MBSREM_prepass && osa_iter0 == 0U) {
+			subsetsUsed = subsets;
+		}
+		else
+			subsetsUsed = osa_iter0 + 1U;
+	}
 
 
 	// Adjust the number of reconstruction methods and create the output vector containing all the estimates
@@ -239,8 +249,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Create the kernels
 	cl::Kernel kernel_ml, kernel, kernel_mramla;
 
-	status = createKernels(kernel_ml, kernel, kernel_mramla, OpenCLStruct.kernelNLM, osem_bool, program_os, program_ml, program_mbsrem, MethodList, w_vec, projector_type, mlem_bool, precompute,
-		n_rays, n_rays3D);
+	status = createKernels(kernel_ml, kernel, kernel_mramla, OpenCLStruct.kernelNLM, osem_bool, program_os, program_ml, program_mbsrem, MethodList, w_vec, projector_type, 
+		mlem_bool, precompute, n_rays, n_rays3D);
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to create kernels\n");
 		return;
@@ -277,7 +287,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, af_context, subsets, pituus, atten, norm, scat, pseudos, V, af_queue, d_atten, d_norm, d_scat, d_pseudos, d_V, 
 		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, atomic_64bit, randoms_correction, 
 		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem, d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko,
-		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter);
+		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter, subsetsUsed, osa_iter0);
 	if (status != CL_SUCCESS) {
 		mexPrintf("Buffer creation failed\n");
 		return;
@@ -493,7 +503,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		if (tt > 0u) {
 			float* apu = (float*)mxGetData(mxGetCell(Sin, tt));
 			if (osem_bool) {
-				for (uint32_t kk = 0u; kk < subsets; kk++) {
+				for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
 					if (TOF) {
 						if (!loadTOF && kk == 0) {
 							d_Sino[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * nBins, NULL, &status);

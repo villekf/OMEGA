@@ -210,7 +210,8 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
 	cl::Buffer& d_lor_mlem, cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
-	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, const float* TOFCenter)
+	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0)
 {
 	cl_int status = CL_SUCCESS;
 	// Create the necessary buffers
@@ -274,7 +275,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
+		for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
 			// How many voxels does each LOR traverse
 			if (precompute)
 				d_lor[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
@@ -456,22 +457,22 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 
 
 	// assign values to the buffers
-	status = af_queue.enqueueWriteBuffer(d_V, CL_TRUE, 0, sizeof(float) * size_V, V);
+	status = af_queue.enqueueWriteBuffer(d_V, CL_FALSE, 0, sizeof(float) * size_V, V);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
-	status = af_queue.enqueueWriteBuffer(d_x, CL_TRUE, 0, sizeof(float) * size_of_x, x);
+	status = af_queue.enqueueWriteBuffer(d_x, CL_FALSE, 0, sizeof(float) * size_of_x, x);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
-	status = af_queue.enqueueWriteBuffer(d_y, CL_TRUE, 0, sizeof(float) * size_of_x, y);
+	status = af_queue.enqueueWriteBuffer(d_y, CL_FALSE, 0, sizeof(float) * size_of_x, y);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
 	}
-	status = af_queue.enqueueWriteBuffer(d_z, CL_TRUE, 0, sizeof(float) * size_z, z_det);
+	status = af_queue.enqueueWriteBuffer(d_z, CL_FALSE, 0, sizeof(float) * size_z, z_det);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
@@ -512,7 +513,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
+		for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
 			if (raw) {
 				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 				if (status != CL_SUCCESS) {
@@ -531,12 +532,12 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				}
 			}
 			else {
-				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
+				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
 				}
-				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
+				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
@@ -555,7 +556,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
-			if (size_norm > 1) {
+			if (size_norm > 1ULL) {
 				status = af_queue.enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk], &norm[pituus[kk]]);
 			}
 			else {
@@ -565,7 +566,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
-			if (size_scat > 1) {
+			if (size_scat > 1ULL) {
 				status = af_queue.enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk], &scat[pituus[kk]]);
 			}
 			else {
@@ -581,7 +582,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 						status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sin[pituus[kk] + koko * to]);
 				}
 				else {
-					if (kk == 0) {
+					if (kk == osa_iter0) {
 						for (int64_t to = 0LL; to < nBins; to++)
 							status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sin[pituus[kk] + koko * to]);
 					}
@@ -598,6 +599,11 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				status = af_queue.enqueueWriteBuffer(d_sc_ra[kk], CL_FALSE, 0, sizeof(float) * length[kk], &apu[pituus[kk]]);
 			else
 				status = af_queue.enqueueWriteBuffer(d_sc_ra[kk], CL_FALSE, 0, sizeof(float), apu);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+			status = af_queue.finish();
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
