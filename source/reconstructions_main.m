@@ -4763,7 +4763,7 @@ else
         end
         filename = [header_directory, filename];
         if options.use_CUDA
-            header_directory = strcat('"', header_directory);
+            header_directory = strcat('-I"', header_directory);
             header_directory = strcat(header_directory,'"');
         end
         joku = algorithms_char();
