@@ -77,7 +77,11 @@ else % If Image Processing Toolbox does not exist or Octave is used (slower and 
     else
         padd = padding(reshape(im, Nx, Ny, Nz), [max(0, floor(medx / 2)) max(0, floor(medy / 2)) max(0, floor(medz / 2))]);
     end
-    grad = padd(varargin{2});
+    if min(varargin{2}(:) == 0)
+        grad = padd(varargin{2} + uint32(1));
+    else
+        grad = padd(varargin{2});
+    end
     grad = median(grad, 2);
 end
 grad = grad(:);

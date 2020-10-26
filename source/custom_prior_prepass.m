@@ -85,7 +85,11 @@ options.N = Nx * Ny * Nz;
 
 options.MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
 options.empty_weight = false;
-options.MBSREM_prepass = true;
+if options.MBSREM || options.mramla || options.rbi || options.RBI_OSL || options.cosem || options.ecosem || options.acosem || any(options.COSEM_OSL)
+    options.MBSREM_prepass = true;
+else
+    options.MBSREM_prepass = false;
+end
 
 % if custom
 options.rekot = reko_maker(options);
@@ -544,13 +548,21 @@ else
 end
 
 if options.precompute_lor && options.subsets > 1 || options.implementation == 2  && options.subsets > 1 || options.implementation == 4 && options.subsets > 1
-    options.pituus = [0;cumsum(options.pituus)];
+    if exist('OCTAVE_VERSION','builtin') == 5
+        options.pituus = [int64(0);cumsum(options.pituus,'native')];
+    else
+        options.pituus = [0;cumsum(options.pituus)];
+    end
     if iscell(options.index)
         options.index = cell2mat(options.index);
     end
     indeksi = options.index;
 elseif options.implementation == 1
-    options.pituus = [0;cumsum(options.pituus)];
+    if exist('OCTAVE_VERSION','builtin') == 5
+        options.pituus = [int64(0);cumsum(options.pituus,'native')];
+    else
+        options.pituus = [0;cumsum(options.pituus)];
+    end
     if iscell(options.index)
         options.index = cell2mat(options.index);
     end

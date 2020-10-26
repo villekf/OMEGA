@@ -195,9 +195,9 @@ if use_raw_data == false && subsets > 1
         pituus2 = cumsum(pituus);
         for kk = 1 : length(pituus2)
             if kk == 1
-                pituus(kk) = sum(joku(1:pituus2(kk)));
+                pituus(kk) = int64(sum(joku(1:pituus2(kk))));
             else
-                pituus(kk) = sum(joku(1+pituus2(kk-1) : pituus2(kk)));
+                pituus(kk) = int64(sum(joku(1+pituus2(kk-1) : pituus2(kk))));
             end
         end
         index = index(joku);

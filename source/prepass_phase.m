@@ -233,9 +233,9 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                 end
                 if options.projector_type == 2 || options.projector_type == 3
-                    lor2 = [uint64(0); cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    lor2 = [uint64(0); uint64(cumsum(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
                 else
-                    lor2 = [uint64(0); cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    lor2 = [uint64(0); uint64(cumsum(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
                 end
                 if exist('OCTAVE_VERSION','builtin') == 0
                     [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
