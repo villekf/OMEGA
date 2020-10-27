@@ -1099,7 +1099,63 @@ ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
 f_osem = ff;
 
-%% ADMM
+%% EM-PKMA with NLM regularization
+% This example demonstrates the use of included priors, in this case the NLM
+% prior
+
+options.subsets = 1;
+
+A = forwardBackwardProject(options);
+load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+if options.implementation == 1
+    raw_SinM = double(raw_SinM(A.index));
+else
+    raw_SinM = single(raw_SinM(A.index));
+end
+[f, A] = backwardProject(A, raw_SinM);
+A.sens(A.sens == 0) = 1;
+beta = 0.5;
+lambda = 0.2;
+N = options.Nx*options.Ny*options.Nz;
+delta = 0.1;
+rho = 0.5;
+% NLM parameters need to be specified
+options.Ndx = 2;
+options.Ndy = 2;
+options.Ndz = 2;
+options.sigma = 10;
+options.Nlx = 2;
+options.Nly = 2;
+options.Nlz = 2;
+options.NLM_gauss = 1;
+options.NLM_use_anatomical = false;
+options.NLM_reference_image = 'reference_image.mat';
+options.NLTV = false;
+options.NLM_MRP = false;
+% Such prepass functions exist for all the priors that need one, see the
+% GitHub wiki or the included documentation for more information (Computing
+% the forward and or backward projections)
+options = NLMPrepass(options);
+
+
+for iter = 1 : options.Niter
+    S = (f + options.epps) ./ A.sens;
+    f_ = f;
+    % Compute the gradient of the prior
+    grad = NLM(f, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
+        options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+    ff = A' * (ones(length(raw_SinM),1,'single') - raw_SinM ./ (A * f));
+    f = f - beta .* S .* (ff + lambda * grad);
+    f(f < 0) = 0;
+    alpha = 1 + (rho * iter) / (iter + delta);
+    f = (1 - alpha) .* f_ + alpha .* f;
+end
+
+ff = reshape(f, options.Nx,options.Ny,options.Nz);
+
+f_osem = ff;
+
+%% ADMM with TV
 
 options.subsets = 1;
 
