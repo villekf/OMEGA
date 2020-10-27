@@ -1,6 +1,6 @@
 # Release notes
 
-## OMEGA v1.1
+## OMEGA v1.1.0
 
 ### New features
 
@@ -209,7 +209,7 @@
 
 - Fixed various issues with Octave
 
-## OMEGA v1.0
+## OMEGA v1.0.0
 
 ### New features
 
