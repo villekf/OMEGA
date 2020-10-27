@@ -214,7 +214,7 @@ https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
 
-If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libForge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
+If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (3.6.2 is the latest). Finally, you can also simply build AF from source, preferably without building Forge. This seems to apply only to Linux and affects both MATLAB and Octave.
 
 ### MATLAB
