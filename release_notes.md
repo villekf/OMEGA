@@ -203,7 +203,7 @@
 - You can now save only the very last iteration or all iterations
   - Previously all iterations were always saved
   
-- Fixed assymmetric parallel level set
+- Fixed asymmetric parallel level set
 
 - Fixed the load of delayed coincidences with mCT 32-bit list-mode data
 
