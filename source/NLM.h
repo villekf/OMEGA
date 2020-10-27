@@ -97,7 +97,8 @@ void NLM(double* grad, const double* u_ref, const double* u, const double* gauss
 		//	mexPrintf("weight_sum = %f\n", weight_sum);
 		//	mexPrintf("output = %f\n", output);
 		//}
-		weight_sum = 1. / weight_sum;
+		if (weight_sum != 0.)
+			weight_sum = 1. / weight_sum;
 		output *= weight_sum;
 
 		grad[n] = output;

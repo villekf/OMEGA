@@ -40,13 +40,13 @@ function output = NLM(input,Ndx, Ndy, Ndz, Nlx, Nly, Nlz, h2, epps, Nx, Ny, Nz, 
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-input = reshape(input, Nx, Ny, Nz);
+input = reshape(double(input), Nx, Ny, Nz);
 padx = Nlx + Ndx;
 pady = Nly + Ndy;
 padz = Nlz + Ndz;
 % Padd the images (symmetric)
 if options.NLM_use_anatomical
-    padInput = padding(options.NLM_ref,[padx pady padz]);
+    padInput = padding(double(options.NLM_ref),[padx pady padz]);
 else
     padInput = padding(input,[padx pady padz]);
 end
@@ -67,12 +67,12 @@ else
 end
 if exist('OCTAVE_VERSION','builtin') == 0
 %%% MEX
-    output = NLM_func(padInput, input, options.gaussianNLM, int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
-        N, M, K, h2*h2, type, epps);
+    output = NLM_func(padInput, input, double(options.gaussianNLM), int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
+        N, M, K, double(h2*h2), type, double(epps));
 elseif exist('OCTAVE_VERSION','builtin') == 5
 %%% OCT
-    output = NLM_oct(padInput, input, options.gaussianNLM, int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
-        N, M, K, h2*h2, type, epps);
+    output = NLM_oct(padInput, input, double(options.gaussianNLM), int32(Ndx), int32(Ndy), int32(Ndz), int32(Nlx), int32(Nly), int32(Nlz),...
+        N, M, K, double(h2*h2), type, double(epps));
 end
 output = reshape(output, N, M, K);
 % Convert back to original image size
