@@ -1,10 +1,10 @@
 function options = loadMeasurementData(options, varargin)
 %LOADMEASUREMENTDATA Loads the measurement data
-%   Loads the measurement data for non-GATE situations from either a
+%   Loads the measurement data from a PET examination from either a
 %   mat-file, a NIfTI file, Analyze 7.5 file, DICOM file, Interfile,
-%   MetaImage file or raw data file in the specified bit-format. For the
+%   MetaImage file or binary data file in the specified bit-format. For the
 %   last case the default is 32-bit integer (int32). A different bit format
-%   for the raw data file can be input as an optional parameter. The
+%   for the binary data file can be input as an optional parameter. The
 %   measurement data will be saved in structure as SinM for sinogram data
 %   or coincidences for raw data. Raw data supports only mat-files. 
 %
@@ -27,19 +27,19 @@ function options = loadMeasurementData(options, varargin)
 %   options = loadMeasurementData(options,'uint16', skip)
 %
 % Inputs:
-%   type = The type of raw data used. Used only for raw data. E.g. 'int8',
-%   'uint16', 'int32', 'single', 'double', 'uint64'.
+%   type = The type of binary data used. Used only for binary data. E.g.
+%   'int8', 'uint16', 'int32', 'single', 'double', 'uint64'.
 %
 %   skip = Number of bytes skipped before the actual data. I.e. the length
 %   of possible header in bytes. If the header is at the end of file, use
 %   negative value. Unnecessary if no header is present. Applicable ONLY
-%   for raw data.
+%   for binary data.
 %
 % See also dicomread, load_nii, niftiread, loadInterfile
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -54,14 +54,14 @@ function options = loadMeasurementData(options, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-[file, fpath] = uigetfile('*.*','Select PET Sinogram or list-mode data');
+[file, fpath] = uigetfile('*.*','Select PET Sinogram or raw data');
 
 if ~isfield(options,'TOF_bins')
     options.TOF_bins = 1;
 end
 if isequal(file, 0)
     if isfield(options,'SinM') || isfield(options,'coincidences')
-        warning('Previously loaded measurement data found. Using the data already stored in struct.')
+        warning('Previously loaded measurement data found. Using the data already stored in struct. Clear the variable first if you want to load new data.')
         return
     else
         error('No file was selected')
