@@ -88,7 +88,9 @@ classdef forwardBackwardProject
             obj.OProperties.y = y;
             obj.OProperties.z_det = z_det;
             
-            [obj.OProperties.normalization_correction, obj.OProperties.randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
+            [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
+            obj.OProperties.normalization_correction = normalization_correction;
+            obj.OProperties.randoms_correction = randoms_correction;
             
             if obj.OProperties.use_raw_data
                 size_x = uint32(obj.OProperties.det_w_pseudo);
