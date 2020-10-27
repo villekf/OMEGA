@@ -121,9 +121,9 @@ Sinograms created with v0.9 need to be transposed for them to work.
 The following features are currently present:
 
 - Supports both MATLAB and Octave
-- Reconstruct any PET sinogram/raw list-mode data
+- Reconstruct any PET sinogram/list-mode data
 - Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in MATLAB/Octave NLM algorithms in  MATLAB/Octave (OpenCL support in addition to traditional C++)
-- Import [GATE](http://www.opengatecollaboration.org/) LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their raw list-mode format or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
+- Import [GATE](http://www.opengatecollaboration.org/) LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their list-mode format, in the OMEGA specific raw data format, or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
 - Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
 - Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)
 - Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), pure OpenCL version (multidevice support, e.g. multiple GPUs or heterogenous computing) or OpenCL version utilizing ArrayFire libraries
@@ -214,7 +214,7 @@ https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
 
-If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libForge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
+If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (3.6.2 is the latest). Finally, you can also simply build AF from source, preferably without building Forge. This seems to apply only to Linux and affects both MATLAB and Octave.
 
 ### MATLAB
