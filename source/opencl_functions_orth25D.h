@@ -16,8 +16,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#pragma once
-#include "general_orth_opencl_functions.h"
+//#pragma once
+//#include "general_orth_opencl_functions.h"
 
 // Denominator (forward projection), multi-GPU version, orthogonal distance based ray tracer
 //void orth_distance_multi(const int tempi, const uint d_N0, const float y_diff, const float x_diff, const float z_diff,

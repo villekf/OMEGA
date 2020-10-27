@@ -1,7 +1,7 @@
 /**************************************************************************
 * Special functions for the 3D orthogonal distance-based ray tracer.
 *
-* Copyright (C) 2020  Ville-Veikko Wettenhovi
+* Copyright (C) 2020 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -16,8 +16,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#pragma once
-#include "general_orth_opencl_functions.h"
+//#pragma once
+//#include "general_orth_opencl_functions.h"
 
 // Denominator (forward projection), multi-GPU version, orthogonal distance based ray tracer
 void orth_distance_multi_3D(const int tempi, const uint d_N0, const uint d_N4, const float y_diff, const float x_diff, const float z_diff,

@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#pragma once
+//#pragma once
 
 // Compute the Euclidean norm of a vector
 inline float e_norm(const float x, const float y, const float z) {

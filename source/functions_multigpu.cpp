@@ -294,19 +294,23 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	std::string options = "-cl-single-precision-constant";
 	if (crystal_size_z == 0.f && projector_type == 2u) {
 		options += " -DCRYST";
+		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
+		std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
 		std::ifstream sourceHeader2(kernelFile + "opencl_functions_orth25D.h");
 		std::string contentHeader2((std::istreambuf_iterator<char>(sourceHeader2)), std::istreambuf_iterator<char>());
 		//content = content + contentHeader2;
 		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 		std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
-		content = contentHeader + contentHeader2 + contentHeader3 + contentF;
+		content = contentHeader + contentHeader1 + contentHeader2 + contentHeader3 + contentF;
 	}
 	else if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u) {
 		options += " -DCRYSTZ";
+		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
+		std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
 		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 		std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
 		//content = content + contentHeader3;
-		content = contentHeader + contentHeader3 + contentF;
+		content = contentHeader + contentHeader1 + contentHeader3 + contentF;
 	}
 	else
 		content = contentHeader + contentF;
