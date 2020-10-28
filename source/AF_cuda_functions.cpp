@@ -970,122 +970,189 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 
 	nvrtcResult status = NVRTC_SUCCESS;
 
-	std::vector<const char*> options;
+	std::vector<const char*> options(50, 0);
+	int uu = 0;
 
-	options.emplace_back(header_directory);
+	options[uu] = header_directory;
+	uu++;
 
 	//std::string options = header_directory;
 	//options += " --maxrregcount=";
 
-	if (crystal_size_z == 0.f && projector_type == 2u)
-		options.emplace_back("-DCRYST");
-	if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u)
-		options.emplace_back("-DCRYSTZ");
-	if (projector_type == 3u)
-		options.emplace_back("-DVOL");
-	if (precompute)
-		options.emplace_back("-DPRECOMPUTE");
-	if (raw == 1)
-		options.emplace_back("-DRAW");
-	if (projector_type == 1u)
-		options.emplace_back("-DSIDDON");
-	else if (projector_type == 2u || projector_type == 3u)
-		options.emplace_back("-DORTH");
-	if (attenuation_correction == 1u)
-		options.emplace_back("-DATN");
-	if (normalization_correction == 1u)
-		options.emplace_back("-DNORM");
-	if (randoms_correction == 1u)
-		options.emplace_back("-DRANDOMS");
+	if (crystal_size_z == 0.f && projector_type == 2u) {
+		options[uu] = "-DCRYST";
+		uu++;
+	}
+	if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u) {
+		options[uu] = "-DCRYSTZ";
+		uu++;
+	}
+	if (projector_type == 3u) {
+		options[uu] = "-DVOL";
+		uu++;
+	}
+	if (precompute) {
+		options[uu] = "-DPRECOMPUTE";
+		uu++;
+	}
+	if (raw == 1) {
+		options[uu] = "-DRAW";
+		uu++;
+	}
+	if (projector_type == 1u) {
+		options[uu] = "-DSIDDON";
+		uu++;
+	}
+	else if (projector_type == 2u || projector_type == 3u) {
+		options[uu] = "-DORTH";
+		uu++;
+	}
+	if (attenuation_correction == 1u) {
+		options[uu] = "-DATN";
+		uu++;
+	}
+	if (normalization_correction == 1u) {
+		options[uu] = "-DNORM";
+		uu++;
+	}
+	if (randoms_correction == 1u) {
+		options[uu] = "-DRANDOMS";
+		uu++;
+	}
 	if (TOF && projector_type == 1u) {
-		options.emplace_back("-DTOF");
+		options[uu] = "-DTOF";
+		uu++;
 	}
 	std::string apuB = ("-DNBINS=" + std::to_string(nBins));
-	options.emplace_back(apuB.c_str());
-	if (scatter == 1u)
-		options.emplace_back("-DSCATTER");
+	options[uu] = apuB.c_str();
+	uu++;
+	if (scatter == 1u) {
+		options[uu] = "-DSCATTER";
+		uu++;
+	}
 	if (MethodList.NLM) {
-		options.emplace_back("-DNLM_");
+		options[uu] = "-DNLM_";
+		uu++;
 	}
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
 		std::string apu1 = ("-DN_RAYS=" + std::to_string(n_rays * n_rays3D));
-		options.emplace_back(apu1.c_str());
-		if (n_rays > 1)
-			options.emplace_back("-DN_RAYS2D");
+		options[uu] = apu1.c_str();
+		uu++;
+		if (n_rays > 1) {
+			options[uu] = "-DN_RAYS2D";
+			uu++;
+		}
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
 		char buffer12[20];
-		snprintf(buffer12, sizeof(buffer12), "-DN_RAYS3D=%u", n_rays3D);
-		options.emplace_back(buffer12);
+		std::snprintf(buffer12, sizeof(buffer12), "-DN_RAYS3D=%u", n_rays3D);
+		options[uu] = buffer12;
 #else
 		std::string apu3 = ("-DN_RAYS3D=" + std::to_string(n_rays3D));
-		options.emplace_back(apu3.c_str());
+		options[uu] = apu3.c_str();
 #endif
+		uu++;
 	}
 	if (osem_bool) {
+		int ll = uu;
 		std::vector<const char*> os_options(options.size(), 0);
 		
-		for (int kk = 0; kk < options.size(); kk++) {
+		for (int kk = 0; kk < ll; kk++) {
 			os_options[kk] = options[kk];
 		}
-		if ((projector_type == 2 || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) && dec > 0) {
-			char buffer3[20];
-			snprintf(buffer3, sizeof(buffer3), "-DDEC=%d", dec);
-			os_options.push_back(buffer3);
-		}
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
 		char buffer4[20];
-		snprintf(buffer4, sizeof(buffer4), "-DN_REKOS=%d", n_rekos);
-		os_options.push_back(buffer4);
-		if (n_rekos == 1)
-			os_options.emplace_back("-DNREKOS1");
-		else if (n_rekos == 2)
-			os_options.emplace_back("-DNREKOS2");
-		if (MethodList.MRAMLA || MethodList.MBSREM)
-			os_options.emplace_back("-DMRAMLA");
-		if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0u || MethodList.ECOSEM)
-			os_options.emplace_back("-DCOSEM");
+		std::snprintf(buffer4, sizeof(buffer4), "-DN_REKOS=%d", n_rekos);
+		os_options[ll] = buffer4;
+#else
+		const std::string buffer4 = ("-DN_REKOS=" + std::to_string(n_rekos));
+		os_options[ll] = buffer4.c_str();
+#endif
+		ll++;
+		if (n_rekos == 1) {
+			os_options[ll] = "-DNREKOS1";
+			ll++;
+		}
+		else if (n_rekos == 2) {
+			os_options[ll] = "-DNREKOS2";
+			ll++;
+		}
+		if (MethodList.MRAMLA || MethodList.MBSREM) {
+			os_options[ll] = "-DMRAMLA";
+			ll++;
+		}
+		if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0u || MethodList.ECOSEM) {
+			os_options[ll] = "-DCOSEM";
+			ll++;
+		}
+		if ((projector_type == 2U || projector_type == 3U || TOF) && dec > 0) {
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
+			char buffer3[20];
+			std::snprintf(buffer3, sizeof(buffer3), "-DDEC=%d", dec);
+			os_options[ll] = buffer3;
+#else
+			const std::string buffer3 = ("-DDEC=" + std::to_string(dec));
+			os_options[ll] = buffer3.c_str();
+#endif
+			ll++;
+		}
 
-
-		status = buildProgramCUDA(verbose, k_path, program_os, atomic_64bit, os_options);
+		status = buildProgramCUDA(verbose, k_path, program_os, atomic_64bit, os_options, ll);
 	}
 	if (mlem_bool) {
+		int rr = uu;
 		std::vector<const char*> ml_options = options;
-		if ((projector_type == 2 || projector_type == 3u) && dec > 0) {
-			std::string apu8 = ("-DDEC=" + std::to_string(dec));
-			ml_options.emplace_back(apu8.c_str());
-		}
 		std::string apu9 = ("-DN_REKOS=" + std::to_string(n_rekos));
-		ml_options.emplace_back(apu9.c_str());
-		if (n_rekos_mlem == 1)
-			ml_options.emplace_back("-DNREKOS1");
-		else if (n_rekos_mlem == 2)
-			ml_options.emplace_back("-DNREKOS2");
+		ml_options[rr] = apu9.c_str();
+		rr++;
+		if (n_rekos_mlem == 1) {
+			ml_options[rr] = "-DNREKOS1";
+			rr++;
+		}
+		else if (n_rekos_mlem == 2) {
+			ml_options[rr] = "-DNREKOS2";
+			rr++;
+		}
+		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0) {
+			std::string apu8 = ("-DDEC=" + std::to_string(dec));
+			ml_options[rr] = apu8.c_str();
+			rr++;
+		}
 
-		status = buildProgramCUDA(verbose, k_path, program_ml, atomic_64bit, ml_options);
+		status = buildProgramCUDA(verbose, k_path, program_ml, atomic_64bit, ml_options, rr);
 	}
 	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
-		options.emplace_back("-DMBSREM");
-		if (n_rekos == 1)
-			options.emplace_back("-DNREKOS1");
-		else if (n_rekos == 2)
-			options.emplace_back("-DNREKOS2");
-		if (MethodList.MRAMLA || MethodList.MBSREM)
-			options.emplace_back("-DMRAMLA");
-		status = buildProgramCUDA(verbose, k_path, program_mbsrem, atomic_64bit, options);
+		options[uu] = "-DMBSREM";
+		uu++;
+		if (n_rekos == 1) {
+			options[uu] = "-DNREKOS1";
+			uu++;
+		}
+		else if (n_rekos == 2) {
+			options[uu] = "-DNREKOS2";
+			uu++;
+		}
+		if (MethodList.MRAMLA || MethodList.MBSREM) {
+			options[uu] = "-DMRAMLA";
+			uu++;
+		}
+		status = buildProgramCUDA(verbose, k_path, program_mbsrem, atomic_64bit, options, uu);
 	}
 	return status;
 }
 
-nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, std::vector<const char*>& options) {
+nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, std::vector<const char*>& options, int uu) {
 	nvrtcResult status = NVRTC_SUCCESS;
 	size_t pituus;
 	if (atomic_64bit) {
-		pituus = options.size();
-		options.emplace_back("-DCAST=unsigned long long int");
-		options.emplace_back("-DATOMIC");
+		options[uu] = "-DCAST=unsigned long long int";
+		uu++;
+		options[uu] = "-DATOMIC";
 	}
-	else
-		options.emplace_back("-DCAST=float");
+	else {
+		options[uu] = "-DCAST=float";
+	}
+	options.erase(options.end() - (options.size() - uu) + 1, options.end());
 	if (DEBUG) {
 		for (int uu = 0; uu < options.size(); uu++)
 			mexPrintf("%s", options[uu]);

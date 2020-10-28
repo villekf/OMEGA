@@ -670,7 +670,7 @@ __device__ void orth_distance_perpendicular_multi_3D(const float* center1, const
 		* temp *= expf(jelppi);
 #endif
 #ifdef NORM
-		* temp *= d_norm[idx];
+		* temp *= d_norm;
 #endif
 		* temp *= global_factor;
 	}

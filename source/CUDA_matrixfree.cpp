@@ -138,7 +138,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	ind++;
 
 
-	const uint32_t dec = (uint32_t)mxGetScalar(prhs[ind]);
+	const int32_t dec = (int32_t)mxGetScalar(prhs[ind]);
 	ind++;
 
 	// The device used
