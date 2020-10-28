@@ -1297,7 +1297,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	}
 	if (mlem_bool) {
 		std::string ml_options = options;
-		if ((projector_type == 2 || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) > 2)) || TOF) && dec > 0)
+		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0)
 			ml_options += (" -DDEC=" + std::to_string(dec));
 		ml_options += (" -DN_REKOS=" + std::to_string(n_rekos_mlem));
 		ml_options += " -DAF";
