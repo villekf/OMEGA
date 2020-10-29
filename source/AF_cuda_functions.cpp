@@ -1239,7 +1239,7 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 
 nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrtcProgram& program_ml, nvrtcProgram& program_mbsrem, CUfunction& kernel_os, CUfunction& kernel_ml,
 	CUfunction& kernel_mbsrem, CUfunction& kernelNLM, const bool osem_bool, const bool mlem_bool, const RecMethods& MethodList, const Weighting& w_vec, const bool precompute, const uint32_t projector_type, 
-	const uint16_t n_rays, const uint16_t n_rays3D) {
+	const uint16_t n_rays, const uint16_t n_rays3D, CUmodule& moduleOS, CUmodule& moduleML, CUmodule& moduleMB) {
 
 	nvrtcResult status = NVRTC_SUCCESS;
 	CUresult status2 = CUDA_SUCCESS;
@@ -1263,23 +1263,22 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
-		CUmodule module;
-		status2 = cuModuleLoadData(&module, ptx);
+		status2 = cuModuleLoadData(&moduleOS, ptx);
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1))))
-			status2 = cuModuleGetFunction(&kernel_os, module, "kernel_multi");
+			status2 = cuModuleGetFunction(&kernel_os, moduleOS, "kernel_multi");
 		else
-			status2 = cuModuleGetFunction(&kernel_os, module, "siddon_multi");
+			status2 = cuModuleGetFunction(&kernel_os, moduleOS, "siddon_multi");
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			mexPrintf("Unable to find the kernel function\n");
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (MethodList.NLM) {
-			status2 = cuModuleGetFunction(&kernelNLM, module, "NLM");
+			status2 = cuModuleGetFunction(&kernelNLM, moduleOS, "NLM");
 			if (status2 != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status2) << std::endl;
 				mexPrintf("Unable to find the NLM kernel function\n");
@@ -1307,22 +1306,21 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
-		CUmodule module;
-		status2 = cuModuleLoadData(&module, ptx);
+		status2 = cuModuleLoadData(&moduleML, ptx);
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1))))
-			status2 = cuModuleGetFunction(&kernel_ml, module, "kernel_multi");
+			status2 = cuModuleGetFunction(&kernel_ml, moduleML, "kernel_multi");
 		else
-			status2 = cuModuleGetFunction(&kernel_ml, module, "siddon_multi");
+			status2 = cuModuleGetFunction(&kernel_ml, moduleML, "siddon_multi");
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (MethodList.NLM && !osem_bool) {
-			status2 = cuModuleGetFunction(&kernelNLM, module, "NLM");
+			status2 = cuModuleGetFunction(&kernelNLM, moduleML, "NLM");
 			if (status2 != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status2) << std::endl;
 				mexPrintf("Unable to find the NLM kernel function\n");
@@ -1351,16 +1349,15 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
-		CUmodule module;
-		status2 = cuModuleLoadData(&module, ptx);
+		status2 = cuModuleLoadData(&moduleMB, ptx);
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1))))
-			status2 = cuModuleGetFunction(&kernel_mbsrem, module, "kernel_multi");
+			status2 = cuModuleGetFunction(&kernel_mbsrem, moduleMB, "kernel_multi");
 		else
-			status2 = cuModuleGetFunction(&kernel_mbsrem, module, "siddon_multi");
+			status2 = cuModuleGetFunction(&kernel_mbsrem, moduleMB, "siddon_multi");
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;

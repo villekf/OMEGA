@@ -111,7 +111,7 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 
 nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrtcProgram& program_ml, nvrtcProgram& program_mbsrem, CUfunction& kernel_os, CUfunction& kernel_ml,
 	CUfunction& kernel_mbsrem, CUfunction& kernelNLM, const bool osem_bool, const bool mlem_bool, const RecMethods& MethodList, const Weighting& w_vec, const bool precompute, const uint32_t projector_type,
-	const uint16_t n_rays, const uint16_t n_rays3D);
+	const uint16_t n_rays, const uint16_t n_rays3D, CUmodule& moduleOS, CUmodule& moduleML, CUmodule& moduleMB);
 
 void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, RecMethodsOpenCL& MethodListOpenCL, const uint32_t im_dim,
 	af::array* testi, const float epps, const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const Beta& beta, const uint32_t Nx, const uint32_t Ny,

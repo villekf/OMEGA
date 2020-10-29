@@ -211,9 +211,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	CUfunction kernel_os = NULL;
 	CUfunction kernel_ml = NULL;
 	CUfunction kernel_mbsrem = NULL;
+	CUmodule moduleOS, moduleML, moduleMB;
 
 	status1 = createKernelsCUDA(verbose, program_os, program_ml, program_mbsrem, kernel_os, kernel_ml, kernel_mbsrem, CUDAStruct.kernelNLM, osem_bool, mlem_bool, MethodList, w_vec,
-		precompute, projector_type, n_rays, n_rays3D);
+		precompute, projector_type, n_rays, n_rays3D, moduleOS, moduleML, moduleMB);
 	if (status1 != NVRTC_SUCCESS) {
 		mexPrintf("Failed to create the kernels\n");
 		mexEvalString("pause(.0001);");
@@ -451,6 +452,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			gpuErrchk(cuMemFree(d_zcenter));
 			gpuErrchk(cuMemFree(d_V));
 			if (osem_bool) {
+				gpuErrchk(cuModuleUnload(moduleOS));
 				gpuErrchk(cuMemFree(d_reko_type));
 				for (uint32_t kk = 0u; kk < subsets; kk++) {
 					gpuErrchk(cuMemFree(d_lor[kk]));
@@ -459,10 +461,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					gpuErrchk(cuMemFree(d_L[kk]));
 					gpuErrchk(cuMemFree(d_norm[kk]));
 					gpuErrchk(cuMemFree(d_scat[kk]));
-					gpuErrchk(cuMemFree(d_Sino[kk]));
 					//if (randoms_correction)
 					gpuErrchk(cuMemFree(d_sc_ra[kk]));
 				}
+				for (uint32_t kk = 0u; kk < TOFsubsets; kk++)
+					gpuErrchk(cuMemFree(d_Sino[kk]));
 			}
 			if (mlem_bool) {
 				gpuErrchk(cuMemFree(d_reko_type_mlem));
@@ -474,7 +477,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				gpuErrchk(cuMemFree(d_scat_mlem));
 				gpuErrchk(cuMemFree(d_Sino_mlem));
 				gpuErrchk(cuMemFree(d_sc_ra_mlem));
+				gpuErrchk(cuModuleUnload(moduleML));
 			}
+			if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+				MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
+				gpuErrchk(cuModuleUnload(moduleMB));
 			return;
 		}
 
@@ -595,6 +602,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_zcenter));
 						gpuErrchk(cuMemFree(d_V));
 						if (osem_bool) {
+							gpuErrchk(cuModuleUnload(moduleOS));
 							gpuErrchk(cuMemFree(d_reko_type));
 							for (uint32_t kk = 0u; kk < subsets; kk++) {
 								gpuErrchk(cuMemFree(d_lor[kk]));
@@ -644,10 +652,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 								gpuErrchk(cuMemFree(d_L[kk]));
 								gpuErrchk(cuMemFree(d_norm[kk]));
 								gpuErrchk(cuMemFree(d_scat[kk]));
-								gpuErrchk(cuMemFree(d_Sino[kk]));
 								//if (randoms_correction)
 								gpuErrchk(cuMemFree(d_sc_ra[kk]));
 							}
+							for (uint32_t kk = 0u; kk < TOFsubsets; kk++)
+								gpuErrchk(cuMemFree(d_Sino[kk]));
 						}
 						if (mlem_bool) {
 							gpuErrchk(cuMemFree(d_reko_type_mlem));
@@ -659,7 +668,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_scat_mlem));
 							gpuErrchk(cuMemFree(d_Sino_mlem));
 							gpuErrchk(cuMemFree(d_sc_ra_mlem));
+							gpuErrchk(cuModuleUnload(moduleML));
 						}
+						if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+							MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
+							gpuErrchk(cuModuleUnload(moduleMB));
 						mexPrintf("Failed to synchronize\n");
 						return;
 					}
@@ -820,6 +833,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					gpuErrchk(cuMemFree(d_zcenter));
 					gpuErrchk(cuMemFree(d_V));
 					if (osem_bool) {
+						gpuErrchk(cuModuleUnload(moduleOS));
 						gpuErrchk(cuMemFree(d_reko_type));
 						for (uint32_t kk = 0u; kk < subsets; kk++) {
 							gpuErrchk(cuMemFree(d_lor[kk]));
@@ -828,10 +842,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_L[kk]));
 							gpuErrchk(cuMemFree(d_norm[kk]));
 							gpuErrchk(cuMemFree(d_scat[kk]));
-							gpuErrchk(cuMemFree(d_Sino[kk]));
 							//if (randoms_correction)
 							gpuErrchk(cuMemFree(d_sc_ra[kk]));
 						}
+						for (uint32_t kk = 0u; kk < TOFsubsets; kk++)
+							gpuErrchk(cuMemFree(d_Sino[kk]));
 					}
 					if (mlem_bool) {
 						gpuErrchk(cuMemFree(d_reko_type_mlem));
@@ -843,7 +858,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_scat_mlem));
 						gpuErrchk(cuMemFree(d_Sino_mlem));
 						gpuErrchk(cuMemFree(d_sc_ra_mlem));
+						gpuErrchk(cuModuleUnload(moduleML));
 					}
+					if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+						MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
+						gpuErrchk(cuModuleUnload(moduleMB));
 					mexPrintf("Failed to launch the MLEM kernel\n");
 					break;
 				}
@@ -924,6 +943,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	gpuErrchk(cuMemFree(d_zcenter));
 	gpuErrchk(cuMemFree(d_V));
 	if (osem_bool) {
+		gpuErrchk(cuModuleUnload(moduleOS));
 		gpuErrchk(cuMemFree(d_reko_type));
 		for (uint32_t kk = 0u; kk < subsets; kk++) {
 			gpuErrchk(cuMemFree(d_lor[kk]));
@@ -932,10 +952,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			gpuErrchk(cuMemFree(d_L[kk]));
 			gpuErrchk(cuMemFree(d_norm[kk]));
 			gpuErrchk(cuMemFree(d_scat[kk]));
-			gpuErrchk(cuMemFree(d_Sino[kk]));
 			//if (randoms_correction)
 			gpuErrchk(cuMemFree(d_sc_ra[kk]));
 		}
+		for (uint32_t kk = 0u; kk < TOFsubsets; kk++)
+			gpuErrchk(cuMemFree(d_Sino[kk]));
 	}
 	if (mlem_bool) {
 		gpuErrchk(cuMemFree(d_reko_type_mlem));
@@ -948,7 +969,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		gpuErrchk(cuMemFree(d_Sino_mlem));
 		//if (randoms_correction)
 		gpuErrchk(cuMemFree(d_sc_ra_mlem));
+		gpuErrchk(cuModuleUnload(moduleML));
 	}
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
+		gpuErrchk(cuModuleUnload(moduleMB));
 
 
 	return;
