@@ -1,5 +1,9 @@
-## An example macro for mCT PET simulation using the XCAT phantom ##
-## Due to the use of XCAT phantom, this can be rather slow ##
+## An example macro for mCT PET simulation using the XCAT phantom 	##
+## Due to the use of XCAT phantom, this can be rather slow 			##
+## Obtain the XCAT phantom/source from the releases page:  			##
+## https://github.com/villekf/OMEGA/releases						##
+## Put the .bin-files to the data-folder (headers are already 		##
+## included)														##
 
 ## Machine ##
 /control/execute                                macros/mCT_Geom_cylindricalPET.mac
