@@ -43,7 +43,7 @@
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
 #ifndef ATOMIC
-inline void atomicAdd_g_f(volatile __global float *addr, float val) {
+void atomicAdd_g_f(volatile __global float *addr, float val) {
 	union {
 		unsigned int u32;
 		float        f32;
@@ -69,7 +69,7 @@ typedef struct _RecMethodsOpenCL {
 
 #ifndef MBSREM
 // Denominator (forward projection)
-inline void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
+void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
 #ifdef NREKOS1
 	ax[0] += (local_ele * d_OSEM[local_ind]);
 #elif defined(NREKOS2)
@@ -85,7 +85,7 @@ inline void denominator(float local_ele, float* ax, uint local_ind, const uint d
 }
 
 // Nominator (backprojection) in MLEM
-inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
+void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
 	const float temp, const __global float* d_sc_ra, const uint idx) {
 	float local_rand = 0.f;
 #ifdef RANDOMS
@@ -174,7 +174,7 @@ inline void nominator(__constant uchar* MethodList, float* ax, const float d_Sin
 #endif
 #ifdef MBSREM
 // Nominator (backprojection), COSEM
-inline void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
+void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
 	const uint idx) {
 	*axCOSEM *= temp;
 	if (*axCOSEM < d_epps)
@@ -186,7 +186,7 @@ inline void nominator_cosem(float* axCOSEM, const float local_sino, const float 
 }
 #endif
 #ifndef MBSREM
-inline void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
+void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
 	const uint d_N, __global CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
 #ifdef ATOMIC
@@ -220,7 +220,7 @@ inline void rhs(__constant uchar* MethodList, const float local_ele, const float
 #else
 
 // Nominator (backprojection), multi-GPU version
-inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
+void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
 	const uint idx) {
 	*axOSEM *= temp;
 #ifdef BP
@@ -238,14 +238,14 @@ inline void nominator_multi(float* axOSEM, const float d_Sino, const float d_epp
 
 #if defined(MBSREM) || !defined(AF)
 // Denominator (forward projection), multi-GPU version
-inline void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
+void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
 	*axOSEM += (local_ele * *d_OSEM);
 }
 #endif
 
 #if defined(RAW) && !defined(N_RAYS)
 // Get the detector coordinates for the current (raw) measurement
-inline void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
+void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
 	float* zd) {
 	// Get the current detector numbers
@@ -275,7 +275,7 @@ inline void get_detector_coordinates_raw(const __global float *d_x, const __glob
 
 #if defined(N_RAYS) && defined(RAW)
 // Get the detector coordinates for the current (raw) measurement
-inline void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
+void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, 
 	const ushort lor, const float cr_pz) {
 	uint ps = 0;
@@ -330,7 +330,7 @@ inline void get_detector_coordinates_raw_multiray(const __global float* d_x, con
 
 #if !defined(N_RAYS) && !defined(RAW)
 // Get the detector coordinates for the current sinogram bin
-inline void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
+void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
 	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
 	const __global float *d_zdet) {
 
@@ -359,7 +359,7 @@ inline void get_detector_coordinates(const __global uint *d_xyindex, const __glo
 
 #if defined(N_RAYS) && !defined(RAW)
 // Get the detector coordinates for the current sinogram bin
-inline void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x,	const uint idx, 
+void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x,	const uint idx, 
 	const ushort d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float* d_x, const __global float* d_y,
 	const __global float* d_zdet, const ushort lor, const float cr_pz) {
 
@@ -424,7 +424,7 @@ inline void get_detector_coordinates_multiray(const __global uint* d_xyindex, co
 
 #ifdef FIND_LORS
 // Get the detector coordinates for the current measurement (precomputation phase)
-inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
+void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
 	float* zd, const __global float *d_x, const __global float *d_y, const __global float *d_zdet) {
 
 	const uint id = idx % d_size_x;
@@ -439,7 +439,7 @@ inline void get_detector_coordinates_precomp(const uint d_size_x, const uint idx
 #endif
 
 // Compute the voxel index where the current perpendicular measurement starts
-inline int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
+int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
 	int tempi = 0;
 	float start = d_b - d + d_d;
 	for (uint ii = 0u; ii < d_N; ii++) {
@@ -453,7 +453,7 @@ inline int perpendicular_start(const float d_b, const float d, const float d_d, 
 }
 
 // Compute the probability for the perpendicular elements
-inline void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
+void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, 
 	const __global float* d_norm, const uint idx, const float global_factor, const __global float* d_scat) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -480,7 +480,7 @@ inline void perpendicular_elements(const float d_b, const float d_d1, const uint
 
 #ifdef N_RAYS
 // Compute the probability for the perpendicular elements
-inline float perpendicular_elements_multiray(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
+float perpendicular_elements_multiray(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	const __global float* d_atten, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, float* jelppi) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 
@@ -491,7 +491,7 @@ inline float perpendicular_elements_multiray(const float d_b, const float d_d1, 
 #endif
 
 // Compute functions (9) and (29) (detector larger than source)
-inline void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, int* v_u, const float diff, const float b, const float d, const float s) {
+void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, int* v_u, const float diff, const float b, const float d, const float s) {
 
 	if (tmin == t_min)
 		// (11)
@@ -509,7 +509,7 @@ inline void d_g_s(const float tmin, const float t_min, uint* v_min, float* t_0, 
 }
 
 // Compute functions (9) and (29) (source larger than detector)
-inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, int* v_u, const float diff, const float b, const float d, const float s, 
+void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, int* v_u, const float diff, const float b, const float d, const float s, 
 	const uint N) {
 
 	if (tmin == t_min)
@@ -528,7 +528,7 @@ inline void s_g_d(const float tmin, const float t_min, uint* v_max, float* t_0, 
 }
 
 // same as above, but for precomputation phase
-inline void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
 	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
@@ -556,7 +556,7 @@ inline void d_g_s_precomp(const float tmin, const float t_min, const float tmax,
 }
 
 // same as above, but for precomputation phase
-inline void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
 	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
@@ -584,7 +584,7 @@ inline void s_g_d_precomp(const float tmin, const float t_min, const float tmax,
 }
 
 // Compute the index of the current voxel
-inline uint compute_ind(const int tempj, const int tempi, const int tempk, const uint d_N1, const uint d_N2, const uint d_N, const uint d_Nx, 
+uint compute_ind(const int tempj, const int tempi, const int tempk, const uint d_N1, const uint d_N2, const uint d_N, const uint d_Nx, 
 	const uint d_Nyx) {
 	uint local_ind = convert_uint_sat(tempj) * d_Nx + convert_uint_sat(tempi) + convert_uint_sat(tempk) * d_Nyx;
 #ifndef PRECOMPUTE
@@ -601,11 +601,11 @@ inline uint compute_ind(const int tempj, const int tempi, const int tempk, const
 }
 
 #ifdef ATN
-inline float compute_matrix_element(const float t0, const float tc, const float L) {
+float compute_matrix_element(const float t0, const float tc, const float L) {
 	return (t0 - tc) * L;
 }
 
-inline void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
+void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
 	const uint Nyx, const __global float* d_atten) {
 	*jelppi += (compute_matrix_element(t0, *tc, LL) * -d_atten[tempi + tempj * Nx + Nyx * tempk]);
 	*tc = t0;
@@ -614,7 +614,7 @@ inline void compute_attenuation(float* tc, float* jelppi, const float LL, const 
 
 #ifdef SIDDON
 // compute the distance that the ray traverses in the current voxel
-inline float compute_element(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, float* temp) {
+float compute_element(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, float* temp) {
 	float local_ele = (*t0 - *tc) * L;
 	*temp_ijk += u;
 	*tc = *t0;
@@ -624,7 +624,7 @@ inline float compute_element(float* t0, float* tc, const float L, const float tu
 }
 
 // compute the probability of emission in the current voxel
-inline float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
+float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
 	float local_ele = (*t0 - *tc) * L * temp;
 	*temp_ijk += u;
 	*tc = *t0;
@@ -634,11 +634,11 @@ inline float compute_element_2nd(float* t0, float* tc, const float L, const floa
 #endif
 
 // compute the initial voxel index (beginning of the ray)
-inline int voxel_index(const float pt, const float diff, const float d, const float apu) {
+int voxel_index(const float pt, const float diff, const float d, const float apu) {
 	return convert_int_rtz((pt * diff - apu) / d);
 }
 
-inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
+bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
 	const float d1, const float d2, const uint N1, const uint N2, int* temp1, int* temp2, float* t1u, float* t2u, uint* Np,
 	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20) {
 	// If neither x- nor y-directions are perpendicular
@@ -720,7 +720,7 @@ inline bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	return false;
 }
 
-inline bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
+bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
 	const float maxxx, const float maxyy, const float bzb, const float dx, const float dy, const float dz,
 	const uint Nx, const uint Ny, const uint Nz, int* tempi, int* tempj, int* tempk, float* tyu, float* txu, float* tzu,
 	uint* Np, const int TYYPPI, const float ys, const float xs, const float yd, const float xd, const float zs, const float zd, float* tc, 
@@ -808,14 +808,14 @@ inline bool siddon_pre_loop_3D(const float bx, const float by, const float bz, c
 #ifdef TOF
 #define _2PI 0.3989423f
 
-inline float normPDF(const float x, const float mu, const float sigma) {
+float normPDF(const float x, const float mu, const float sigma) {
 
 	const float a = (x - mu) / sigma;
 
 	return _2PI / sigma * native_exp(-0.5f * a * a);
 }
 
-inline void TOFDis(const float x_diff, const float y_diff, const float z_diff, const float tc, const float LL, float* D, float* DD) {
+void TOFDis(const float x_diff, const float y_diff, const float z_diff, const float tc, const float LL, float* D, float* DD) {
 	const float xI = x_diff * tc;
 	const float yI = y_diff * tc;
 	const float zI = z_diff * tc;
@@ -823,12 +823,12 @@ inline void TOFDis(const float x_diff, const float y_diff, const float z_diff, c
 	*DD = *D;
 }
 
-inline float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
+float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
 	return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - element * sign(DD), TOFCenter, sigma_x)) / 2.f) + epps;
 }
 
 
-inline float TOFLoop(const float DD, const float element, __private float* TOFVal, __constant float* TOFCenter,
+float TOFLoop(const float DD, const float element, __private float* TOFVal, __constant float* TOFCenter,
 	const float sigma_x, float* D, const uint tid, const float epps) {
 	float TOFSum = 0.f;
 #ifdef DEC
@@ -858,7 +858,7 @@ inline float TOFLoop(const float DD, const float element, __private float* TOFVa
 }
 
 
-inline void denominatorTOF(float* ax, const float element, const __global float* d_OSEM, uint local_ind, const float TOFSum, __private float* TOFVal,
+void denominatorTOF(float* ax, const float element, const __global float* d_OSEM, uint local_ind, const float TOFSum, __private float* TOFVal,
 	const float DD, __constant float* TOFCenter, const float sigma_x, float* D, const uint tid, const float epps, const uint d_N) {
 #if defined(AF) && !defined(MBSREM)
 	uint ll = NBINS;
@@ -890,7 +890,7 @@ inline void denominatorTOF(float* ax, const float element, const __global float*
 
 
 // Nominator (y for backprojection)
-inline void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float* d_Sino, const float d_epsilon_mramla, const float d_epps,
+void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float* d_Sino, const float d_epsilon_mramla, const float d_epps,
 	const float temp, const __global float* d_sc_ra, const uint idx, const long TOFSize, const float local_sino) {
 	float local_rand = 0.f;
 #ifdef RANDOMS
@@ -933,7 +933,7 @@ inline void nominatorTOF(__constant uchar* MethodList, float* ax, const __global
 }
 
 
-inline void backprojectTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, const float* yax, 
+void backprojectTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, const float* yax, 
 	__global CAST* d_Summ
 #ifndef DEC
 	, const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum
@@ -1026,7 +1026,7 @@ inline void backprojectTOF(const uint local_ind, const float local_ele, const ui
 }
 
 
-inline void sensTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, __global CAST * d_Summ, 
+void sensTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, __global CAST * d_Summ, 
 #ifndef DEC
 	const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum, 
 #endif

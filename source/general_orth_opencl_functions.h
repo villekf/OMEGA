@@ -20,12 +20,12 @@
 //#pragma once
 
 // Compute the Euclidean norm of a vector
-inline float e_norm(const float x, const float y, const float z) {
+float e_norm(const float x, const float y, const float z) {
 	return native_sqrt(x * x + y * y + z * z);
 }
 
 // Compute the linear weight for the current voxel
-inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
+float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 	const float xp) {
 
 	//float x1, y1, z1, x0, y0, z0;
@@ -51,7 +51,7 @@ inline float compute_element_orth_3D(const float xs, const float ys, const float
 	//return x0;
 }
 
-inline float compute_element_orth_3D_per(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
+float compute_element_orth_3D_per(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 	const float xp, const float yp, const float zp) {
 
 	//float x1, y1, z1, x0, y0, z0;
@@ -76,7 +76,7 @@ inline float compute_element_orth_3D_per(const float xs, const float ys, const f
 }
 
 // Gaussian weight
-//inline float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
+//float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 //	const float xp, const float yp, const float zp) {
 //
 //	float x1, y1, z1, x0, y0, z0;
@@ -100,26 +100,26 @@ inline float compute_element_orth_3D_per(const float xs, const float ys, const f
 //	return gauss;
 //}
 
-inline uint compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
+uint compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
 	uint local_ind = tempi * d_N + tempijk + convert_uint_sat(tempk) * Nyx;
 	return local_ind;
 }
 
 // compute orthogonal distance (2D)
-//inline float compute_element_orth(const float x_diff, const float y_diff, const float x_center, const float length_) {
+//float compute_element_orth(const float x_diff, const float y_diff, const float x_center, const float length_) {
 //	float local_ele = 1.f - fabs(x_diff + y_diff * x_center) / length_;
 //	return local_ele;
 //}
 
 // compute voxel index, orthogonal distance based ray tracer
-inline uint compute_ind_orth(const int tempi, const uint temp_ijk, const uint d_N) {
+uint compute_ind_orth(const int tempi, const uint temp_ijk, const uint d_N) {
 	uint local_ind = convert_uint_sat(tempi) * d_N + temp_ijk;
 	return local_ind;
 }
 
 #ifdef AF
 #ifndef MBSREM
-inline void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_ele, float* temp, float* ax, const bool no_norm,
+void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_ele, float* temp, float* ax, const bool no_norm,
 	__global CAST* Summ, __global CAST* d_rhs_OSEM, const float local_sino, const __global float* d_OSEM, const uint local_ind,
 	const uint im_dim, __constant uchar* MethodList) {
 	if (RHS) {
@@ -148,7 +148,7 @@ inline void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_
 	}
 }
 #else
-inline void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, float* axACOSEM, __global CAST* Summ, const float local_sino, 
+void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, float* axACOSEM, __global CAST* Summ, const float local_sino, 
 	const __global float* d_COSEM, const __global float* d_ACOSEM, const uint local_ind, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL,
 	__global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku, const uchar MBSREM_prepass, float* axCOSEM, const uint idx) {
 	if (RHS) {
