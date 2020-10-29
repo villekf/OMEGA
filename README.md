@@ -39,6 +39,8 @@ The algorithms implemented so far are:
 
 ## Installation
 
+For additional install help, see the [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) help on the wiki.
+
 You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform (Visual Studio on Windows, GCC on Linux). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
@@ -93,6 +95,8 @@ This software also uses ArrayFire library for the GPU/OpenCL implementation. You
 https://arrayfire.com/download/
 and the source code from here:  
 https://github.com/arrayfire/arrayfire
+
+On Windows you should install [Visual Studio 2015 (x64) runtime libraries](https://www.microsoft.com/en-in/download/details.aspx?id=48145) first before installing ArrayFire.
 
 Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`). Alternatively, on Linux, you can also build/install it directly into the `/usr/local/` folder.
 
