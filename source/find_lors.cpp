@@ -72,21 +72,26 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	commandQueues.push_back(af_queue);
 
+
+	std::string kernelFile = header_directory;
 	std::string kernel_path;
 
 	kernel_path = k_path;
 	kernel_path += ".cl";
-
-	std::fstream sourceFile(kernel_path.c_str());
-	std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
+	// Load the source text file
+	std::ifstream sourceFile(kernel_path.c_str());
+	std::string contentF((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
+	// Load the header text file
+	std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
+	std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
+	std::string content = contentHeader + contentF;
 	std::vector<std::string> testi;
 	testi.push_back(content);
 	cl::Program::Sources source(testi);
 	program = cl::Program(context, source);
-	std::string options = header_directory;
+	std::string options = "-DFIND_LORS";
 	if (raw == 1)
 		options += " -DRAW";
-	options += " -DFIND_LORS";
 	options += (" -DLOCAL_SIZE=" + std::to_string(local_size));
 	options += " -DCAST=float"; 
 	if (DEBUG) {
