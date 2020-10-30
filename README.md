@@ -106,13 +106,14 @@ For additional install help, see the [installation help](https://github.com/vill
 
 ## Getting Started
 
-First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. 
+First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. In case you have trouble compiling the mex-files, you can also try using the precompiled files on the [releases](https://github.com/villekf/OMEGA/releases) (MATLAB only).
 
 [GATE](http://www.opengatecollaboration.org/) users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
 
 A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the `gate_main_example.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
 
-Example MAT-files for non-GATE situation can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522199.svg)](https://doi.org/10.5281/zenodo.3522199). These files are based on the above GATE-example. The original simulated GATE data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3526859.svg)](https://doi.org/10.5281/zenodo.3526859).
+Example MAT-files for non-GATE situation can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522199.svg)](https://doi.org/10.5281/zenodo.3522199).
+ These files are based on the above GATE-example. The original simulated GATE data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3526859.svg)](https://doi.org/10.5281/zenodo.3526859).
 
 Open preclinical PET data measured with Siemens Inveon PET can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056).
 
@@ -205,7 +206,7 @@ Only machines with a total number of detectors of up to 65536 are supported. I.e
 
 Due to the same reason as above, maximum number of counts per pixel is 65535 (applies only to GATE data).
 
-Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as seprate cases).
+Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases).
 
 Only cylindrical symmetric devices are supported inherently, for other types of machines the user has to input the detector coordinates.
 
@@ -213,15 +214,17 @@ Attenuation correction can be applied only with attenuation images (e.g. CT imag
 
 ECAT geometry is supported only with ASCII data. ROOT data might also work (untested).
 
-If you get GLIBCXX_3.4.XX/CXXABI_1.3.XX not found error or an error about "undefined reference to dlopen/dlclose/dlsomethingelse" when building or running files, this should be fixed with one of the methods presented here:  
-https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
-
-If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
-
 If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (3.6.2 is the latest). Finally, you can also simply build AF from source, preferably without building Forge. This seems to apply only to Linux and affects both MATLAB and Octave.
 
 ### MATLAB
+
+If you get GLIBCXX_3.4.XX/CXXABI_1.3.XX not found error or an error about "undefined reference to dlopen/dlclose/dlsomethingelse" when building or running files, this should be fixed with one of the methods presented here:  
+https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
+
+Or see the solutions in [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1).
+
+If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
 
 ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected.
 
@@ -229,9 +232,10 @@ ROOT is not supported on Windows, though it should, theoretically, work if you u
 
 ### Octave
 
-Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due to a compiler incompatability between MinGW and ArrayFire. As mentioned elsewhere, this can be fixed by building ArrayFire from source with MinGW.
+Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due to a compiler incompatibility between MinGW and ArrayFire. As mentioned elsewhere, this can be fixed by building ArrayFire from source with MinGW.
 
-Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
+Almost all MATLAB-based code runs significantly slower compared to
+ MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
 
