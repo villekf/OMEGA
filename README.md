@@ -106,7 +106,7 @@ For additional install help, see the [installation help](https://github.com/vill
 
 ## Getting Started
 
-First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. 
+First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. In case you have trouble compiling the mex-files, you can also try using the precompiled files on the [releases](https://github.com/villekf/OMEGA/releases) (MATLAB only).
 
 [GATE](http://www.opengatecollaboration.org/) users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
 
