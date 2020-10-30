@@ -230,6 +230,9 @@ root_path = strrep(root_path, '\','/');
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MATLAB %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if exist('OCTAVE_VERSION','builtin') == 0
     cc = mex.getCompilerConfigurations('C++','Selected');
+    if isempty(cc)
+        error('No C++ compiler selected!')
+    end
     if ispc
         OMPPath = ['"' matlabroot '/bin/win64"'];
         OMPLib = '-liomp5md';
