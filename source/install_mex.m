@@ -235,13 +235,23 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
     if ispc
         OMPPath = ['"' matlabroot '/bin/win64"'];
-        OMPLib = '-liomp5md';
+        if strcmp(cc.Manufacturer, 'GNU')
+            OMPLib = '';
+        else
+            OMPLib = '-liomp5md';
+        end
+        LPLib = '';
+        ldflags = 'LDFLAGS="$LDFLAGS -fopenmp"';
     elseif ismac
         OMPPath = [matlabroot '/sys/os/maci64'];
         OMPLib = '-liomp5';
+        LPLib = '-lpthread';
+        ldflags = '';
     elseif isunix
         OMPPath = [matlabroot '/sys/os/glnxa64'];
         OMPLib = '-liomp5';
+        LPLib = '-lpthread';
+        ldflags = '';
     end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -260,8 +270,8 @@ if exist('OCTAVE_VERSION','builtin') == 0
         cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], compflags, cxxflags, '-DMATLAB',...
-            'LDFLAGS="$LDFLAGS -fopenmp"', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
+        mex('-largeArrayDims', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPLib, LPLib, compflags, cxxflags, '-DMATLAB',...
+            ldflags, [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
             [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
             [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
             [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
@@ -285,7 +295,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-I ' folder], ['-L' OMPPath], [folder '/NLM_func.cpp'])
+        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPLib, LPLib, ldflags, [folder '/NLM_func.cpp'])
     catch ME
         if verbose
             warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
@@ -296,9 +306,9 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
     try
         if verLessThan('matlab','9.4')
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], ['-I ' folder], [folder '/createSinogramASCII.cpp'])
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCII.cpp'])
         else
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, 'LDFLAGS="$LDFLAGS -fopenmp"', ['-L' OMPPath], ['-I ' folder], [folder '/createSinogramASCIICPP.cpp'])
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCIICPP.cpp'])
         end
     catch ME
         if verbose

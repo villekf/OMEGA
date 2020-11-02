@@ -64,7 +64,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const uint32_t tid = 0U;
 	size_t* indi = 0;
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 		Det detectors;
 		uint32_t ind = 0U;

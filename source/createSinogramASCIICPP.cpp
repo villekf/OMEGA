@@ -130,7 +130,7 @@ public:
 		for (int ll = 0; ll < pituus; ll++)
 			seg_p[ll] = static_cast<uint32_t>(seg[ll]);
 
-#pragma omp parallel for
+#pragma omp parallel for ordered schedule(dynamic)
 		for (int64_t kk = 0; kk < koko; kk++) {
 			double aika = 0.;
 			if (NT > 1)

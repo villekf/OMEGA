@@ -60,7 +60,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 
 	//mexPrintf("fp = %u\n", fp);
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
@@ -515,7 +515,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 
@@ -862,7 +862,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 

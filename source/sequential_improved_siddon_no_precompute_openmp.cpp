@@ -71,8 +71,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 	const size_t nRays = static_cast<size_t>(n_rays) * static_cast<size_t>(n_rays3D);
 	vector<double> TOFVal(nRays * nBins * dec_v * threads, 0.);
-
-#pragma omp parallel for schedule(dynamic)
+	
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
@@ -578,7 +578,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
+#ifdef _OPENMP
+#if _OPENMP >= 201511
+#pragma omp parallel for ordered schedule(dynamic)
+#else
 #pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		const double local_sino = Sino[lo];
@@ -950,7 +956,13 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
+#ifdef _OPENMP
+#if _OPENMP >= 201511
+#pragma omp parallel for ordered schedule(dynamic)
+#else
 #pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		const double local_sino = Sino[lo];

@@ -36,7 +36,7 @@ void NLM(double* grad, const double* u_ref, const double* u, const double* gauss
 	int start = min_z * Nxy + 1;
 	int end = max_z * Nxy;
 
-#pragma omp parallel for
+#pragma omp parallel for ordered schedule(dynamic)
 	for (int n = start; n < end; n++) {
 		const int z = n / Nxy;
 		const int y = (n - z * Nxy) / static_cast<int32_t>(Nx);
