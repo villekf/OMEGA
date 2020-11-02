@@ -277,31 +277,27 @@ if exist('OCTAVE_VERSION','builtin') == 0
             [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
         disp('Implementations 1 & 4 built with OpenMP (parallel) support')
     catch ME
+        mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], 'COMPFLAGS="$COMPFLAGS -std=c++11"', '-DMATLAB', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
+            [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
+            [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
+            [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
+            [folder '/vol_siddon_precomputed.cpp'])
         if verbose
-            mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], 'COMPFLAGS="$COMPFLAGS -std=c++11"', '-DMATLAB', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
-                [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
-                [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
-                [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
-                [folder '/vol_siddon_precomputed.cpp'])
             warning('Implementations 1 & 4 built without OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], 'COMPFLAGS="$COMPFLAGS -std=c++11"', '-DMATLAB', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
-                [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
-                [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
-                [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
-                [folder '/vol_siddon_precomputed.cpp'])
             warning('Implementations 1 & 4 built without OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
     try
         mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPLib, LPLib, ldflags, [folder '/NLM_func.cpp'])
     catch ME
+        mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/NLM_func.cpp'])
         if verbose
-            warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
+            warning('NLM support for implementations 1 and 4 built without OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            warning('NLM support for implementations 1 and 4 not enabled. Use install_mex(1) to see compiler error.')
+            warning('NLM support for implementations 1 and 4 built without OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
         end
     end
     try
@@ -311,11 +307,16 @@ if exist('OCTAVE_VERSION','builtin') == 0
             mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCIICPP.cpp'])
         end
     catch ME
+        if verLessThan('matlab','9.4')
+            mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCII.cpp'])
+        else
+            mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCIICPP.cpp'])
+        end
         if verbose
-            warning('ASCII sinogram creation not enabled. Compiler error: ')
+            warning('ASCII sinogram creation built without OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            warning('ASCII sinogram creation not enabled. Use install_mex(1) to see compiler error.')
+            warning('ASCII sinogram creation built without OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
