@@ -538,16 +538,16 @@ elseif options.use_machine == 0
                 && ascii_ind.scatter_index_rd1 == 0 && ascii_ind.scatter_index_rd2 == 0
             error('Store scatter selected, but no scatter data saved in coincidence mask')
         end
-        if options.scatter_components(1) == 1 && (ascii_ind.scatter_index_cp1 == 0 || ascii_ind.scatter_index_cp2 == 0)
+        if options.store_scatter && options.scatter_components(1) == 1 && (ascii_ind.scatter_index_cp1 == 0 || ascii_ind.scatter_index_cp2 == 0)
             warning('Compton scattering in the phantom selected, but no Compton scattering in the phantom selected in coincidence mask')
         end
-        if options.scatter_components(2) == 1 && (ascii_ind.scatter_index_cd1 == 0 || ascii_ind.scatter_index_cd2 == 0)
+        if options.store_scatter && options.scatter_components(2) == 1 && (ascii_ind.scatter_index_cd1 == 0 || ascii_ind.scatter_index_cd2 == 0)
             warning('Compton scattering in the detector selected, but no Compton scattering in the detector selected in coincidence mask')
         end
-        if options.scatter_components(3) == 1 && (ascii_ind.scatter_index_rp1 == 0 || ascii_ind.scatter_index_rp2 == 0)
+        if options.store_scatter && options.scatter_components(3) == 1 && (ascii_ind.scatter_index_rp1 == 0 || ascii_ind.scatter_index_rp2 == 0)
             warning('Rayleigh scattering in the phantom selected, but no Rayleigh scattering in the phantom selected in coincidence mask')
         end
-        if options.scatter_components(4) == 1 && (ascii_ind.scatter_index_rd1 == 0 || ascii_ind.scatter_index_rd2 == 0)
+        if options.store_scatter && options.scatter_components(4) == 1 && (ascii_ind.scatter_index_rd1 == 0 || ascii_ind.scatter_index_rd2 == 0)
             warning('Rayleigh scattering in the detector selected, but no Rayleigh scattering in the detector selected in coincidence mask')
         end
         if options.store_randoms && (ascii_ind.event_index1 == 0 || ascii_ind.event_index2 == 0)
