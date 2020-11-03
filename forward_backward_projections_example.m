@@ -832,7 +832,7 @@ end
 A = forwardBackwardProject(options);
 % Load the measurement data
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -880,7 +880,7 @@ options.subsets = 1;
 A = forwardBackwardProject(options);
 % Load measurement data
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -915,7 +915,7 @@ options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -966,7 +966,7 @@ if options.TOF_bins > 1
 else
     raw_SinM = raw_SinM(:);
 end
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index,:));
 else
     raw_SinM = single(raw_SinM(A.index,:));
@@ -1000,7 +1000,7 @@ options.subsets = 16;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -1039,7 +1039,7 @@ options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -1065,7 +1065,7 @@ options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -1107,7 +1107,7 @@ options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -1161,7 +1161,7 @@ options.subsets = 1;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
     raw_SinM = single(raw_SinM(A.index));
@@ -1215,7 +1215,7 @@ f = options.x0(:);
 % Either use the same raw_SinM variable name or rename all instances of
 % raw_SinM
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
-if options.implementation == 1
+if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(index));
 else
     raw_SinM = single(raw_SinM(index));
