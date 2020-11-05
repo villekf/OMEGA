@@ -111,6 +111,8 @@
   
 - It is now possible to save only scattered coincidences that have undergone N scatter events in the same medium and with the same type (e.g. Compton in phantom)
   - For example, by setting `options.scatter_components = [2 0 0 0];`, only scattered events that have undergone at least two Compton scatter events in the phantom will be stored in the scatter data
+  
+- Compilation on MacOS should now work with both OpenMP (as long as it is installed) and OpenCL
 
 ### Bug fixes and enhancements
 
