@@ -14,7 +14,7 @@
 * Currently this code is slow on (at least) CUDA devices.
 * This code has been deprecated and might be removed in a future release.
 * 
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2019 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #include "functions.hpp"
+#include "AF_opencl_functions.hpp"
 
 using namespace af;
 
@@ -82,7 +83,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	cl_program program = clCreateProgramWithSource(af_context, 1, (const char **)&sourceCode, NULL, &status);
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to create OpenCL program\n");
 		return;
 	}
@@ -95,7 +96,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	status = clBuildProgram(program, 1, &af_device_id, NULL, NULL, NULL);
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to build OpenCL program. Build log: \n");
 		size_t len;
 		char *buffer;
@@ -113,7 +114,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	cl_kernel kernel = clCreateKernel(program, "siddon", &status);
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to create OpenCL kernel\n");
 		return;
 	}
@@ -157,7 +158,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	cl_mem d_raw = clCreateBuffer(af_context, CL_MEM_READ_ONLY, sizeof(uint8_t), NULL, &status);
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Buffer creation failed\n");
 	}
 	else if (verbose){
@@ -198,7 +199,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 	status = clEnqueueWriteBuffer(af_queue, d_raw, CL_FALSE, 0, sizeof(uint8_t), &raw, 0, NULL, NULL);
 
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Buffer write failed\n");
 	}
 	else if (verbose) {
@@ -247,7 +248,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			cl_mem d_indices = clCreateBuffer(af_context, CL_MEM_READ_WRITE, outputSize1, NULL, &status);
 
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				mexPrintf("Failed to create buffer for system matrix indices. Check that you have sufficient memory available\n");
 			}
 			//else if (verbose) {
@@ -258,7 +259,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			cl_mem d_elements = clCreateBuffer(af_context, CL_MEM_READ_WRITE, outputSize2, NULL, &status);
 
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				mexPrintf("Failed to create buffer for system matrix elements. Check that you have sufficient memory available\n");
 			}
 			//else if (verbose) {
@@ -320,7 +321,7 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 			////sync();
 
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				mexPrintf("Failed to execute the OpenCL kernel\n");
 			}
 			//else if (verbose) {
@@ -361,12 +362,12 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 			status = clReleaseMemObject(d_indices);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				mexPrintf("Failed to release the memory of indices\n");
 			}
 			status = clReleaseMemObject(d_elements);
 			if (status != CL_SUCCESS) {
-				std::cerr << getErrorString(status) << std::endl;
+				getErrorString(status);
 				mexPrintf("Failed to release the memory of elements\n");
 			}
 
@@ -412,12 +413,12 @@ void reconstruction(const size_t koko, const uint16_t* lor1, const float* z_det,
 
 	status = clReleaseProgram(program);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to release program\n");
 	}
 	status = clReleaseKernel(kernel);
 	if (status != CL_SUCCESS) {
-		std::cerr << getErrorString(status) << std::endl;
+		getErrorString(status);
 		mexPrintf("Failed to release kernel\n");
 	}
 
