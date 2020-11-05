@@ -47,9 +47,9 @@ MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlab
 
 Visual studio can be downloaded from [here](https://visualstudio.microsoft.com/).
 
-To install the OMEGA software, either simply extract the package or obtain the source code through git:  
+To install the OMEGA software, either simply extract the release/master package, download the MATLAB toolbox file from [releases](https://github.com/villekf/OMEGA/releases) (`OMEGA.-.Open-source.MATLAB.emission.tomography.software.mltbx`) or obtain the source code through git:  
 `git clone https://github.com/villekf/OMEGA`
-and then add the OMEGA folder and subfolders to MATLAB/Octave path. Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`.
+and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file). Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`.
 
 Certain features on Octave (such as normalization calculation) require packages io and statistics. You can install them from the Octave user interface with the following commands (io has to be installed first):
 
