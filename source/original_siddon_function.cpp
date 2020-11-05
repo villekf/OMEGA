@@ -311,7 +311,7 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 					for (uint32_t ii = 0u; ii < Ny; ii++) {
 						apu1 = abs(yy_vec[ii] - detectors.yd);
-						if (ii > 0 && apu1 < apu2 || ii == 0u) {
+						if ((ii > 0 && apu1 < apu2) || ii == 0u) {
 							tempj = ii;
 							apu2 = apu1;
 						}
@@ -461,7 +461,7 @@ int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 					for (uint32_t ii = 0u; ii < Nx; ii++) {
 						apu1 = abs(xx_vec[ii] - detectors.xd);
-						if (ii > 0u && apu1 < apu2 || ii == 0u) {
+						if ((ii > 0u && apu1 < apu2) || ii == 0u) {
 							tempi = ii;
 							apu2 = apu1;
 						}

@@ -86,7 +86,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				detectors.zd = detectors.zs;
 			}
 			else {
-				if (loop1 > blocks && loop2 > blocks || loop1 < block1 && loop2 < block1)
+				if ((loop1 > blocks && loop2 > blocks) || (loop1 < block1 && loop2 < block1))
 					continue;
 				detectors.zs = z_det_vec[loop1];
 				detectors.zd = z_det_vec[loop2];

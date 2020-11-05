@@ -33,7 +33,7 @@
 #endif
 #define DEBUG false
 
-#pragma pack(1)
+#pragma pack(1) 
 
 // Struct for the TV-prior
 typedef struct TVdata_ {

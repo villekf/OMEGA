@@ -199,14 +199,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				n_rekos--;
 		}
 		vec.im_os = constant(0.f, im_dim * n_rekos2, 1);
-		for (int kk = 0; kk < n_rekos2; kk++) {
+		for (uint32_t kk = 0U; kk < n_rekos2; kk++) {
 			vec.im_os(seq(kk* im_dim, (kk + 1)* im_dim - 1)) = x00;
 		}
 	}
 	
 	if (mlem_bool) {
 		vec.im_mlem = constant(0.f, im_dim * n_rekos_mlem, 1);
-		for (int kk = 0; kk < n_rekos_mlem; kk++) {
+		for (uint32_t kk = 0U; kk < n_rekos_mlem; kk++) {
 			vec.im_mlem(seq(kk * im_dim, (kk + 1) * im_dim - 1)) = x00;
 		}
 	}
@@ -542,7 +542,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					}
 				}
 				vec.im_os = constant(0.f, im_dim * n_rekos2, 1);
-				for (int kk = 0; kk < n_rekos2; kk++) {
+				for (uint32_t kk = 0U; kk < n_rekos2; kk++) {
 					vec.im_os(seq(kk * im_dim, (kk + 1) * im_dim - 1)) = x00;
 				}
 			}
@@ -571,7 +571,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					}
 				}
 				vec.im_mlem = constant(0.f, im_dim * n_rekos_mlem, 1);
-				for (int kk = 0; kk < n_rekos_mlem; kk++) {
+				for (uint32_t kk = 0U; kk < n_rekos_mlem; kk++) {
 					vec.im_mlem(seq(kk * im_dim, (kk + 1) * im_dim - 1)) = x00;
 				}
 			}
@@ -845,7 +845,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				// Use previously computed normalization factor if available
 				if (compute_norm_matrix == 0u) {
 					if (osem_bool && no_norm == 1u && iter == 0u) {
-						for (int kk = 0; kk < subsets; kk++)
+						for (uint32_t kk = 0U; kk < subsets; kk++)
 							Summ_mlem += Summ[kk];
 					}
 					if (no_norm_mlem == 1u) {

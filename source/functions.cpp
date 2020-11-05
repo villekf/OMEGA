@@ -2675,7 +2675,7 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 af::array computeConvolution(const af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, 
 	const uint32_t n_rekos) {
 	af::array apu = af::moddims(vec, Nx, Ny, Nz, n_rekos);
-	for (int ff = 0; ff < n_rekos; ff++) {
+	for (uint32_t ff = 0U; ff < n_rekos; ff++) {
 		af::array apu2 = padding(apu(af::span, af::span, af::span, ff), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 		apu2 = af::convolve3(apu2, g);
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
@@ -2691,7 +2691,7 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 		it = iter + 1U;
 	af::array jelppi = padding(vec(af::span, it), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
 	af::array apu = padding(vec(af::span, it), Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);
-	for (int kk = 0; kk < subsets; kk++) {
+	for (uint32_t kk = 0U; kk < subsets; kk++) {
 		af::array apu2 = convolve3(jelppi, g) + epps;
 		apu2 = apu2(af::seq(w_vec.g_dim_x + 1, Nx + w_vec.g_dim_x), af::seq(w_vec.g_dim_y + 1, Ny + w_vec.g_dim_y), af::seq(w_vec.g_dim_z + 1, Nz + w_vec.g_dim_z));
 		apu2 = padding(apu2, Nx, Ny, Nz, w_vec.g_dim_x + 1, w_vec.g_dim_y + 1, w_vec.g_dim_z + 1);

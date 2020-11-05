@@ -27,7 +27,6 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Con
 	cl_uint& num_devices_context, cl::vector<cl::Device> &devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz,
 	const uint32_t subsets, const uint8_t raw) {
 	cl_int status = CL_SUCCESS;
-	cl_uint num_platforms;
 	cl_float mem_portions;
 	// These variables are used to determine if the normalization constant is memory-wise possible to store
 	if (raw == 1u)
@@ -164,7 +163,6 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Con
 // Get context for a single device
 cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, cl_uint& num_devices_context, cl::vector<cl::Device>& devices) {
 	cl_int status = CL_SUCCESS;
-	cl_uint num_platforms = 0;
 
 	cl_uint num_devices = 0;
 	cl::vector<cl::Platform> platforms;
@@ -179,7 +177,12 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 		mexEvalString("pause(.0001);");
 	}
 
-	if (device > platforms.size() - 1 || device < 0) {
+	if (platforms.size() == 0) {
+		std::cerr << "No platforms available!" << std::endl;
+		return -1;
+	}
+
+	if (device > platforms.size() - 1 || device < 0 || platforms.size() == 0) {
 		std::cerr << "The specified platform number is greater or smaller than the available platform numbers!" << std::endl;
 		return -1;
 	}
@@ -386,6 +389,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		std::vector<std::string> testi;
 		testi.push_back(content);
 		cl::Program::Sources source(testi);
+		//cl::Program::Sources source(1, std::make_pair(content.c_str(), content.length() + 1));
 		// Create the program from the source
 		// Build the program
 		program = cl::Program(context, source);
@@ -438,6 +442,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		std::vector<std::string> testi;
 		testi.push_back(content);
 		cl::Program::Sources source(testi);
+		//cl::Program::Sources source(1, std::make_pair(content.c_str(), content.length() + 1));
 		program = cl::Program(context, source);
 		//try {
 			status = program.build(options.c_str());

@@ -92,7 +92,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint64_t * tpoints, char *argv, c
 
 	uint64_t window = static_cast<uint64_t>(coincidence_window);
 	fseek(streami, header_bytes, SEEK_SET);
-	while (i = fread(&ew1, 1, 8, streami) != 0) {
+	while ((i = fread(&ew1, 1, 8, streami)) != 0) {
 
 		i1++;
 		ll++;
@@ -202,7 +202,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint64_t * tpoints, char *argv, c
 					if (obtain_trues || store_randoms || store_scatter) {
 						event_true = (eventID1 == eventID2 && n_ComptonP1 == 0 && n_ComptonP2 == 0);
 						event_scattered = (eventID1 == eventID2 && (n_ComptonP1 > 0 || n_ComptonP2 > 0));
-						if (source && outsize2 == 1ULL || !storeRawData) {
+						if (source && (outsize2 == 1ULL || !storeRawData)) {
 							if (event_true && obtain_trues)
 								trues_loc[i1] = true;
 						}

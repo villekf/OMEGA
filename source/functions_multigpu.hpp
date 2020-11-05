@@ -23,8 +23,6 @@
 #include <string>
 #include <cmath>
 
-#pragma pack(1)
-
 #define DEBUG false
 
 void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues,
