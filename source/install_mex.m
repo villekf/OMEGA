@@ -180,7 +180,27 @@ else
     elseif exist('/usr/local/cuda/targets/x86_64-linux/include/','dir') == 7
         optargs = {false, '/usr/local/cuda/targets/x86_64-linux/include/','/usr/local/cuda/lib64/',af_path, '/opt/root/', true, cuda_path};
     else
-        optargs = {false, '/usr/local/include/','/usr/lib/x86_64-linux-gnu/',af_path, '/opt/root/', true, cuda_path};
+        if ismac
+            if exist('/System/Library/Frameworks/OpenCL.framework/','dir') == 7
+                if exist('/System/Library/Frameworks/OpenCL.framework/Headers','dir') == 7
+                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Headers','/System/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                else
+                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/System/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                end
+            elseif exist('/Library/Frameworks/OpenCL.framework/','dir') == 7
+                if exist('/Library/Frameworks/OpenCL.framework/Headers/','dir') == 7
+                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Headers','/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                else
+                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                end
+            else
+                warning(['OpenCL not found! If you want to use implementations 2 or 3, insert the paths manually by using '...
+                'install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIBRARY'')']);
+                optargs = {false, '','',af_path, '/opt/root/', true, cuda_path};
+            end
+        else
+            optargs = {false, '/usr/local/include/','/usr/lib/x86_64-linux-gnu/',af_path, '/opt/root/', true, cuda_path};
+        end
     end
 end
 
@@ -214,7 +234,7 @@ root_path = optargs{5};
 use_CUDA = optargs{6};
 cuda_path = optargs{7};
 
-if isempty(opencl_include_path) || isempty(opencl_lib_path)
+if ispc && (isempty(opencl_include_path) || isempty(opencl_lib_path))
     warning('No OpenCL SDK detected. If one is installed, insert the paths manually by using install_mex(0, ''C:\PATH\TO\OPENCL\INCLUDE'', ''C:\PATH\TO\OPENCL\LIB\X64'')')
 end
 
@@ -231,7 +251,7 @@ root_path = strrep(root_path, '\','/');
 if exist('OCTAVE_VERSION','builtin') == 0
     cc = mex.getCompilerConfigurations('C++','Selected');
     if isempty(cc)
-        error('No C++ compiler selected!')
+        error('No C++ compiler selected! Use mex -setup C++ to select a C++ compiler')
     end
     if ispc
         OMPPath = ['"' matlabroot '/bin/win64"'];
@@ -255,6 +275,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    OMPh = '';
     if strcmp(cc.Manufacturer, 'Microsoft')
         compflags = 'COMPFLAGS="$COMPFLAGS /openmp"';
         cxxflags = 'CXXFLAGS="$CXXFLAGS"';
@@ -267,10 +288,15 @@ if exist('OCTAVE_VERSION','builtin') == 0
         cxxflags = 'CXXFLAGS="$CXXFLAGS"';
     else
         compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
-        cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
+        if ismac
+            cxxflags = 'CXXFLAGS="$CXXFLAGS -Xpreprocessor -fopenmp"';
+            OMPh = '-I/usr/local/opt/libomp/include';
+        else
+            cxxflags = 'CXXFLAGS="$CXXFLAGS -fopenmp"';
+        end
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPLib, LPLib, compflags, cxxflags, '-DMATLAB',...
+        mex('-largeArrayDims', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPh, OMPLib, LPLib, compflags, cxxflags, '-DMATLAB',...
             ldflags, [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
             [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
             [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
@@ -290,7 +316,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     try
-        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPLib, LPLib, ldflags, [folder '/NLM_func.cpp'])
+        mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPh, OMPLib, LPLib, ldflags, [folder '/NLM_func.cpp'])
     catch ME
         mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/NLM_func.cpp'])
         if verbose
@@ -302,9 +328,9 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
     try
         if verLessThan('matlab','9.4')
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCII.cpp'])
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCII.cpp'])
         else
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCIICPP.cpp'])
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCIICPP.cpp'])
         end
     catch ME
         if verLessThan('matlab','9.4')
@@ -514,18 +540,23 @@ if exist('OCTAVE_VERSION','builtin') == 0
             compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
             cxxflags = 'CXXFLAGS="$CXXFLAGS -DOPENCL -Wno-ignored-attributes"';
         end
+        if ismac
+            cxxlib = 'CXXLIBS="$CXXLIBS -framework OpenCL"';
+        else
+            cxxlib = '-lOpenCL';
+        end
         try
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                 ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64' , '-L/opt/amdgpu-pro/lib64',['-I ' folder], ...
                 ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                 [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'], [folder '/AF_opencl_functions.cpp'])
         end
         try
-            mex('-largeArrayDims', '-outdir', folder, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
+            mex('-largeArrayDims', '-outdir', folder, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
                 ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
             
-            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+            mex('-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                 ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                 ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                 [folder '/OpenCL_matrixfree.cpp'], [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], ...
@@ -545,10 +576,10 @@ if exist('OCTAVE_VERSION','builtin') == 0
             end
         end
         try
-            mex('-largeArrayDims', '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
+            mex('-largeArrayDims', '-outdir', folder, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
             
-            mex('-largeArrayDims', '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
+            mex('-largeArrayDims', '-outdir', folder, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
                 [folder '/functions_multigpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'],[folder '/forward_backward_projections.cpp'], ...
                 [folder '/multigpu_OSEM.cpp'])
@@ -570,24 +601,33 @@ if exist('OCTAVE_VERSION','builtin') == 0
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OCTAVE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 else
     joku = getenv('CXXFLAGS');
-    cxxflags = '-std=c++11 -fopenmp -fPIC';
+    if ismac
+        cxxflags = '-std=c++11 -Xpreprocessor -fopenmp -fPIC';
+        OMPlib = '-lomp';
+    else
+        cxxflags = '-std=c++11 -fopenmp -fPIC';
+        OMPlib = '-lgomp';
+    end
     if any(strfind(joku,'-fopenmp')) == 0
         cxxflags = [cxxflags ' ', joku];
         setenv('CXXFLAGS',cxxflags);
     end
+    jokuL = getenv('LDFLAGS');
     setenv('LDFLAGS','-fopenmp');
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    [~, sys] = mkoctfile('-DOCTAVE', ['-I ' folder], '-lgomp', ...
+    [~, sys] = mkoctfile('-DOCTAVE', ['-I ' folder], OMPlib, ...
         [folder '/projector_oct.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], ...
         [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
         [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
         [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp']);
+    setenv('CXXFLAGS',joku);
+    setenv('LDFLAGS',jokuL);
     if sys == 0
         movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
         disp('Implementations 1 & 4 built with OpenMP (parallel) support')
     else
         if verbose
-            mkoctfile('-DOCTAVE', ['-I ' folder], '"--std=c++11"', [folder '/projector_oct.cpp'], [folder '/projector_functions.cpp'], ...
+            mkoctfile('-DOCTAVE', ['-I ' folder], [folder '/projector_oct.cpp'], [folder '/projector_functions.cpp'], ...
                 [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
                 [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
                 [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
@@ -604,24 +644,50 @@ else
             warning('Implementations 1 & 4 built without OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
-    [~, sys] = mkoctfile(['-I ' folder], '-lgomp', [folder '/NLM_oct.cpp']);
+    if any(strfind(joku,'-fopenmp')) == 0
+        cxxflags = [cxxflags ' ', joku];
+        setenv('CXXFLAGS',cxxflags);
+    end
+    setenv('LDFLAGS','-fopenmp');
+    [~, sys] = mkoctfile(['-I ' folder], OMPlib, [folder '/NLM_oct.cpp']);
+    setenv('CXXFLAGS',joku);
+    setenv('LDFLAGS',jokuL);
     if sys == 0
         movefile('NLM_oct.oct', [folder '/NLM_oct.oct'],'f');
     else
-        if verbose
-            warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
+        [~, sys] = mkoctfile(['-I ' folder], [folder '/NLM_oct.cpp']);
+        if sys == 0
+            movefile('NLM_oct.oct', [folder '/NLM_oct.oct'],'f');
+            warning('NLM support built without OpenMP (parallel) support.')
         else
-            warning('NLM support for implementations 1 and 4 not enabled. Use install_mex(1) to see compiler error.')
+            if verbose
+                warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
+            else
+                warning('NLM support for implementations 1 and 4 not enabled. Use install_mex(1) to see compiler error.')
+            end
         end
     end
-    [~, sys] = mkoctfile(['-I' folder], '-lgomp', [folder '/createSinogramASCIIOct.cpp']);
+    if any(strfind(joku,'-fopenmp')) == 0
+        cxxflags = [cxxflags ' ', joku];
+        setenv('CXXFLAGS',cxxflags);
+    end
+    setenv('LDFLAGS','-fopenmp');
+    [~, sys] = mkoctfile(['-I' folder], OMPlib, [folder '/createSinogramASCIIOct.cpp']);
+    setenv('CXXFLAGS',joku);
+    setenv('LDFLAGS',jokuL);
     if sys == 0
         movefile('createSinogramASCIIOct.oct', [folder '/createSinogramASCIIOct.oct'],'f');
     else
-        if verbose
-            warning('ASCII sinogram creation not enabled. Compiler error: ')
+        [~, sys] = mkoctfile(['-I' folder], [folder '/createSinogramASCIIOct.cpp']);
+        if sys == 0
+            movefile('createSinogramASCIIOct.oct', [folder '/createSinogramASCIIOct.oct'],'f');
+            warning('ASCII sinogram creation built without OpenMP (parallel) support.')
         else
-            warning('ASCII sinogram creation not enabled. Use install_mex(1) to see compiler error.')
+            if verbose
+                warning('ASCII sinogram creation not enabled. Compiler error: ')
+            else
+                warning('ASCII sinogram creation not enabled. Use install_mex(1) to see compiler error.')
+            end
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
