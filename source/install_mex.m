@@ -309,10 +309,10 @@ if exist('OCTAVE_VERSION','builtin') == 0
             [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
             [folder '/vol_siddon_precomputed.cpp'])
         if verbose
-            warning('Implementations 1 & 4 built without OpenMP (parallel) support. Compiler error: ')
+            warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            warning('Implementations 1 & 4 built without OpenMP (parallel) support, Use install_mex(1) to see compiler error')
+            warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
     try
@@ -320,10 +320,10 @@ if exist('OCTAVE_VERSION','builtin') == 0
     catch ME
         mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/NLM_func.cpp'])
         if verbose
-            warning('NLM support for implementations 1 and 4 built without OpenMP (parallel) support. Compiler error: ')
+            warning('NLM support for implementations 1 and 4 built WITHOUT OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            warning('NLM support for implementations 1 and 4 built without OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
+            warning('NLM support for implementations 1 and 4 built WITHOUT OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
         end
     end
     try
@@ -339,10 +339,10 @@ if exist('OCTAVE_VERSION','builtin') == 0
             mex('-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCIICPP.cpp'])
         end
         if verbose
-            warning('ASCII sinogram creation built without OpenMP (parallel) support. Compiler error: ')
+            warning('ASCII sinogram creation built WITHOUT OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
         else
-            warning('ASCII sinogram creation built without OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
+            warning('ASCII sinogram creation built WITHOUT OpenMP (parallel) support. Use install_mex(1) to see compiler error.')
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -633,7 +633,7 @@ else
                 [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
                 [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
             movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
-            warning('Implementations 1 & 4 built without OpenMP (parallel) support.')
+            warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support.')
         else
             mkoctfile('-DOCTAVE', ['-I ' folder], '"--std=c++11"', [folder '/projector_oct.cpp'], [folder '/projector_functions.cpp'], ...
                 [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
@@ -641,7 +641,7 @@ else
                 [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
                 [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
             movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
-            warning('Implementations 1 & 4 built without OpenMP (parallel) support, Use install_mex(1) to see compiler error')
+            warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
     if any(strfind(joku,'-fopenmp')) == 0
@@ -658,7 +658,7 @@ else
         [~, sys] = mkoctfile(['-I ' folder], [folder '/NLM_oct.cpp']);
         if sys == 0
             movefile('NLM_oct.oct', [folder '/NLM_oct.oct'],'f');
-            warning('NLM support built without OpenMP (parallel) support.')
+            warning('NLM support built WITHOUT OpenMP (parallel) support.')
         else
             if verbose
                 warning('NLM support for implementations 1 and 4 not enabled. Compiler error: ')
@@ -681,7 +681,7 @@ else
         [~, sys] = mkoctfile(['-I' folder], [folder '/createSinogramASCIIOct.cpp']);
         if sys == 0
             movefile('createSinogramASCIIOct.oct', [folder '/createSinogramASCIIOct.oct'],'f');
-            warning('ASCII sinogram creation built without OpenMP (parallel) support.')
+            warning('ASCII sinogram creation built WITHOUT OpenMP (parallel) support.')
         else
             if verbose
                 warning('ASCII sinogram creation not enabled. Compiler error: ')
