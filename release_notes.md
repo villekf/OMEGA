@@ -160,7 +160,7 @@
 - Fixed implementation 2 when using custom prior
 
 - Fixed bugs in normalization
-  - Raw-list mode data with cylindrical normalization data should now work
+  - Raw data with cylindrical normalization data should now work
   
 - Implementation 1 should be slightly more numerically stable
 
