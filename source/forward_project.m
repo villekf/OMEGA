@@ -582,9 +582,17 @@ if options.implementation == 1
             TOFSize = int64(size(xy_index,1));
         end
         if options.projector_type == 2 || options.projector_type == 3
-            lor2 = [uint64(0); uint64(cumsum(lor_orth(n_meas(1)+1:n_meas(2))))];
+            if exist('OCTAVE_VERSION','builtin') == 0
+                lor2 = [uint64(0);cumsum(uint64(lor_orth(n_meas(1)+1:n_meas(2))))];
+            else
+                lor2 = [uint64(0);cumsum(uint64(lor_orth(n_meas(1)+1:n_meas(21))),'native')];
+            end
         else
-            lor2 = [uint64(0); uint64(cumsum(lor_a(n_meas(1)+1:n_meas(2))))];
+            if exist('OCTAVE_VERSION','builtin') == 0
+                lor2 = [uint64(0);cumsum(uint64(lor_a(n_meas(1)+1:n_meas(2))))];
+            else
+                lor2 = [uint64(0);cumsum(uint64(lor_a(n_meas(1)+1:n_meas(2))),'native')];
+            end
         end
         if exist('OCTAVE_VERSION','builtin') == 0
             [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...

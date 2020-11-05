@@ -204,14 +204,30 @@ if options.implementation == 1
             z_index_input = options.z_index(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
             TOFSize = int64(size(xy_index_input,1));
         end
+        if options.projector_type == 2 || options.projector_type == 3
+            if exist('OCTAVE_VERSION','builtin') == 0
+                lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+            else
+                lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
+            end
+        else
+        end
         if (options.projector_type == 2 || options.projector_type == 3) && options.subsets > 1
-            lor2 = [uint64(0); uint64(cumsum(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
+            if exist('OCTAVE_VERSION','builtin') == 0
+                lor2 = [uint64(0);cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
+            else
+                lor2 = [uint64(0);cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))),'native')];
+            end
         elseif (options.projector_type == 2 || options.projector_type == 3) && options.subsets == 1
             lor2 = [0; uint64(options.lor_orth)];
         elseif options.projector_type == 1 && options.subsets == 1
             lor2 = [0; uint64(options.lor_a)];
         else
-            lor2 = [uint64(0); uint64(cumsum(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
+            if exist('OCTAVE_VERSION','builtin') == 0
+                lor2 = [uint64(0);cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
+            else
+                lor2 = [uint64(0);cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))),'native')];
+            end
         end
         if exist('OCTAVE_VERSION','builtin') == 0
             [A, ~] = projector_mex( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, options.y, ...
