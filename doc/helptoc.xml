@@ -35,6 +35,12 @@
             <tocitem target="acknowledgments.html">Acknowledgments
             </tocitem>
         </tocitem>
+        <tocitem target="installation_help.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Installation help
+        </tocitem>
+        <tocitem target="toolbox_overview.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Toolbox overview
+        </tocitem>
         <!-- User Guide comes next -->
         <tocitem target="tutorials.html" 
             image="HelpIcon.USER_GUIDE">Tutorials
@@ -94,6 +100,9 @@
         <!-- Optional List of Examples, with hyperlinks to examples in other files -->
         <tocitem target="extract_GATE_data.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Extracting GATE scatter, randoms and trues data
+        </tocitem>
+        <tocitem target="using_tof_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using TOF data
         </tocitem>
         <tocitem target="useful_information.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Useful information
