@@ -72,7 +72,7 @@ else
     prop = [];
 end
 fid = fopen(hdrFile,'w');
-element_types=struct('double','MET_DOUBLE','int8','MET_CHAR','uint8','MET_UCHAR','int16','MET_SHORT','uint16','MET_USHORT','int32','MET_INT','uint32','MET_UINT',...
+element_types=struct('double','MET_DOUBLE','single','MET_FLOAT','int8','MET_CHAR','uint8','MET_UCHAR','int16','MET_SHORT','uint16','MET_USHORT','int32','MET_INT','uint32','MET_UINT',...
     'int64','MET_LONG', 'uint64', 'MET_ULONG');
 
 %write header file information
