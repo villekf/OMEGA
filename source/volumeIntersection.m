@@ -9,7 +9,11 @@ k = abs((B - C) ./ (A - C));
 alpha = (B - C) ./ C;
 s = (b + R) .* (b - R);
 Gamma_f = @(x) 1 ./ ((1 + alpha .* x.^2) .* sqrt(1 - x.^2) .* sqrt(1 - k .* x.^2));
-Gamma = integral(Gamma_f, 0, 1, 'ArrayValued', true);
+if exist('integral','file') == 2
+    Gamma = integral(Gamma_f, 0, 1, 'ArrayValued', true,'AbsTol',1e-6);
+else
+    Gamma = quadv(Gamma_f, 0, 1);
+end
 [K,E] = ellipke(k);
 heaviside_f = zeros(size(b));
 heaviside_f(R - b > 0) = 1;
