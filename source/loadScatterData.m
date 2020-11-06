@@ -49,7 +49,7 @@ if strcmp(scatter_file(end-3:end), '.scn')
                 temp = temp / s_length;
             end
         end
-        options.ScatterC = temp;
+        options.ScatterC = 1 - temp;
     end
 else
     
