@@ -123,7 +123,7 @@ elseif strcmp(FileName(end-2:end),'img') || strcmp(FileName(end-2:end),'nii') ||
             img = flipud(permute(img, [2 1 3 4 5]));
         end
     end
-    if options.partions > 1
+    if options.partitions > 1
         if options.TOF_bins > 1
             if size(img,5) > 1
                 options.SinM = cell(options.partitions,1);
@@ -166,7 +166,7 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
                 img = permute(img, [2 1 3 4 5]);
             end
         end
-        if options.partions > 1
+        if options.partitions > 1
             error('No 4D data in DICOM files')
         end
         options.SinM = img;
@@ -175,7 +175,7 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
     end
 elseif strcmp(FileName(end-2:end),'i33') || strcmp(FileName(end-2:end),'h33')
     options.SinM = loadInterfile(FileName);
-    if options.partions > 1
+    if options.partitions > 1
         apu = options.SinM;
         options.SinM = cell(options.partitions, 1);
         for kk = 1 : options.partitions
@@ -193,7 +193,7 @@ elseif strcmp(FileName(end-2:end),'i33') || strcmp(FileName(end-2:end),'h33')
     end
 elseif strcmp(FileName(end-2:end),'mhd') || strcmp(FileName(end-2:end),'mha')
     options.SinM = loadMetaImage(FileName);
-    if options.partions > 1
+    if options.partitions > 1
         apu = options.SinM;
         options.SinM = cell(options.partitions, 1);
         for kk = 1 : options.partitions
