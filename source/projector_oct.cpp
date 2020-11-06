@@ -150,7 +150,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	const double* randoms = randoms_.fortran_vec();
 
 	// Number of measurements/LORs
-	const uint32_t pituus = prhs(ind).uint32_scalar_value();
+	const int64_t pituus = prhs(ind).int64_scalar_value();
 	ind++;
 
 	// Is the attenuation correction included
@@ -513,6 +513,22 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			rhs_.resize(dim_vector(N, 1));
 
 		double* rhs = rhs_.fortran_vec();
+
+		if (!no_norm) {
+			for (int64_t ll = 0LL; ll < imDim; ll++) {
+				Summ[ll] = 0.;
+			}
+		}
+		if (fp == 1) {
+			for (int64_t ll = 0LL; ll < pituus; ll++) {
+				rhs[ll] = 0.;
+			}
+		}
+		else {
+			for (int64_t ll = 0LL; ll < N; ll++) {
+				rhs[ll] = 0.;
+			}
+		}
 
 		//clock_t time = clock();
 		//std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
