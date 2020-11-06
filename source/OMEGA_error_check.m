@@ -59,6 +59,9 @@ end
 if ~isfield(options, 'use_ASCII')
     options = set_GATE_variables(options);
 end
+if ~isfield(options, 'options.only_sinos')
+    options.only_sinos = false;
+end
 
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
