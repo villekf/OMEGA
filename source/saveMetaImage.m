@@ -8,15 +8,16 @@ function saveMetaImage(filename, img, varargin)
 %   https://se.mathworks.com/matlabcentral/fileexchange/41594-medical-image-processing-toolbox
 %
 % Examples:
-%   saveInterfile(filename, img)
-%   saveInterfile(filename, img, type)
-%   saveInterfile(filename, img, [], options)
-%   saveInterfile(filename, img, type, options, windows_format)
+%   saveMetaImage(filename, img)
+%   saveMetaImage('image_name', img)
+%   saveMetaImage(filename, img, type)
+%   saveMetaImage(filename, img, [], options)
+%   saveMetaImage(filename, img, type, options, windows_format)
 %
 % Input:
 %   filename = Name of the image and header files (without file type).
 %   Saves the header file as [filename '.mhd'] and image file as [filename
-%   '.raw'].
+%   '.raw']. Needs to be char input.
 %
 %   img = The 3D or 4D image
 %

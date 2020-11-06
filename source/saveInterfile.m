@@ -9,6 +9,7 @@ function saveInterfile(filename, img, varargin)
 %
 % Examples:
 %  saveInterfile(filename, img)
+%  saveInterfile('image_name', img)
 %  saveInterfile(filename, img, reko)
 %  saveInterfile(filename, img, reko, type)
 %  saveInterfile(filename, img, [], [], options)
@@ -17,7 +18,7 @@ function saveInterfile(filename, img, varargin)
 % Input:
 %  filename = Name of the image and header files (without file type).
 %  Saves the header file as [filename '.h33'] and image file as [filename
-%  '.i33'].
+%  '.i33']. Needs to be char input.
 %
 %  img = The 3D or 4D image
 %
