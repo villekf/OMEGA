@@ -1559,8 +1559,9 @@ options.NLM_MRP = false;
 % Load scatter data (if applicable)
 % You can also manually load the scatter data by inputting it into
 % options.ScatterC variable.
-if (options.scatter_correction && ~isfield(options,'ScatterC') && options.corrections_during_reconstruction) ...
-        || (options.scatter_correction && ~isfield(options,'ScatterC') && ~options.corrections_during_reconstruction && ~options.only_reconstructions)
+if ~isfield(options,'ScatterC') && ((options.scatter_correction && ~options.only_reconstructions && ~options.corrections_during_reconstruction) ...
+        || (options.scatter_correction && options.use_raw_data && ~options.corrections_during_reconstruction) ...
+        || (options.scatter_correction && options.corrections_during_reconstruction && ~options.only_sinos))
   options = loadScatterData(options);
 end
  
