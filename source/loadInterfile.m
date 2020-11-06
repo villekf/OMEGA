@@ -50,24 +50,6 @@ for kk = 1 : length(M)
             type = 'single';
         elseif ~cellfun('isempty',strfind(M{kk},'double')) || ~cellfun('isempty',strfind(M{kk},'long float'))
             type = 'double';
-        elseif ~cellfun('isempty',strfind(M{kk},'signed integer'))
-            for hh = 1 : length(M)
-                if ~cellfun('isempty',strfind(M{hh},'number of bytes per pixel'))
-                    apu = cell2mat(M{hh});
-                    if strcmp(apu(end), '1')
-                        type = 'int8';
-                    elseif strcmp(apu(end), '2')
-                        type = 'int16';
-                    elseif strcmp(apu(end), '4')
-                        type = 'int32';
-                    elseif strcmp(apu(end), '8')
-                        type = 'int64';
-                    else
-                        error('Cannot read number of bytes per pixel')
-                    end
-                    break
-                end
-            end
         elseif ~cellfun('isempty',strfind(M{kk},'unsigned integer'))
             for hh = 1 : length(M)
                 if ~cellfun('isempty',strfind(M{hh},'number of bytes per pixel'))
@@ -80,6 +62,24 @@ for kk = 1 : length(M)
                         type = 'uint32';
                     elseif strcmp(apu(end), '8')
                         type = 'uint64';
+                    else
+                        error('Cannot read number of bytes per pixel')
+                    end
+                    break
+                end
+            end
+        elseif ~cellfun('isempty',strfind(M{kk},'signed integer'))
+            for hh = 1 : length(M)
+                if ~cellfun('isempty',strfind(M{hh},'number of bytes per pixel'))
+                    apu = cell2mat(M{hh});
+                    if strcmp(apu(end), '1')
+                        type = 'int8';
+                    elseif strcmp(apu(end), '2')
+                        type = 'int16';
+                    elseif strcmp(apu(end), '4')
+                        type = 'int32';
+                    elseif strcmp(apu(end), '8')
+                        type = 'int64';
                     else
                         error('Cannot read number of bytes per pixel')
                     end
