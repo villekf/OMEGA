@@ -183,8 +183,14 @@ if interpolateSinogram
     
     
     % Angles
-    angle_o = atand((yy1_o-yy2_o)./(xx1_o-xx2_o)) + 90;
-    angle = atand((yy1-yy2)./(xx1-xx2)) + 90;
+    angle_o = atand((yy1_o-yy2_o)./(xx1_o-xx2_o));
+    angle_o = angle_o - min(angle_o(:,1));
+    angle_o(angle_o<0) = angle_o(angle_o<0) + 180;
+    angle_o = [-angle_o(:,2), angle_o, abs(angle_o(:,1)-180)];
+    angle = atand((yy1-yy2)./(xx1-xx2));
+    angle = angle - min(angle(:,1));
+    angle(angle<0) = angle(angle<0) + 180;
+    angle = [-angle(:,2), angle, abs(angle(:,1)-180)];
     
     
     % Orthogonal distances
@@ -193,93 +199,104 @@ if interpolateSinogram
     distance_o = ((abs((y_o(:,1)-y_o(:,2))*x0 - (x_o(:,1) - x_o(:,2))*y0 + x_o(:,1).*y_o(:,2) - y_o(:,1).*x_o(:,2))./sqrt((y_o(:,1)-y_o(:,2)).^2 + (x_o(:,1)-x_o(:,2)).^2)));
     distance_o = reshape(distance_o, options.Ndist, options.Nang);
     distance_o(options.Ndist/2 + 1 : end,:) = -distance_o(options.Ndist/2 + 1 : end,:);
+    distance_o = [distance_o(:,1), distance_o, distance_o(:,1)];
     distance = ((abs((y(:,1)-y(:,2))*x0 - (x(:,1) - x(:,2))*y0 + x(:,1).*y(:,2) - y(:,1).*x(:,2))./sqrt((y(:,1)-y(:,2)).^2 + (x(:,1)-x(:,2)).^2)));
     distance = reshape(distance, options.Ndist, options.Nang);
     distance(options.Ndist/2 + 1 : end,:) = -distance(options.Ndist/2 + 1 : end,:);
+    distance = [distance(:,1), distance, distance(:,1)];
     
     % Interpolate the sinogram
     tic
     if iscell(options.SinM)
         uus_SinM = cell(size(options.SinM));
         for hh = 1 : options.partitions
-            apu_SinM = zeros(size(options.SinM{hh}));
-            % Use parfor if available
+            for uu = 1 : size(apu_SinM,4)
+                apu_SinM = zeros(size(options.SinM{hh},1),size(options.SinM{hh},2)+2,size(options.SinM{hh},3));
+                % Use parfor if available
+                if license('test','Distrib_Computing_Toolbox')
+                    temp = options.SinM{hh}(:,:,:,uu);
+                    temp = [temp(:,end,:), temp, temp(:,1,:)];
+                    Ndist = options.Ndist;
+                    Nang = options.Nang;
+                    arc_interpolation = options.arc_interpolation;
+                    try
+                        parfor kk = 1 : size(options.SinM,3)
+                            if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                                F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
+                                apu_SinM(:,:,kk) = F(angle, distance);
+                            else
+                                apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
+                            end
+                        end
+                    catch
+                        for kk = 1 : size(options.SinM,3)
+                            if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                                F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
+                                apu_SinM(:,:,kk) = F(angle, distance);
+                            else
+                                apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), angle, distance, arc_interpolation);
+                            end
+                        end
+                    end
+                else
+                    for kk = 1 : size(options.SinM,3)
+                        if exist('scatteredInterpolant', 'file') == 2 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
+                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), [],1));
+                            apu_SinM(:,:,kk) = F(angle, distance);
+                        else
+                            apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM{hh}(:,end,kk,uu), options.SinM{hh}(:,:,kk,uu), options.SinM{hh}(:,1,kk,uu)]), angle, distance, options.arc_interpolation);
+                        end
+                    end
+                end
+                apu_SinM(isnan(apu_SinM)) = single(0);
+                uus_SinM{hh}(:,:,:,uu) = single(apu_SinM);
+            end
+            endTime = toc;
+            options.SinM{hh} = uus_SinM{hh};
+        end
+    else
+        for uu = 1 : size(options.SinM,4)
+            uus_SinM = zeros(size(options.SinM,1),size(options.SinM,2)+2,size(options.SinM,3));
             if license('test','Distrib_Computing_Toolbox')
-                temp = options.SinM{hh};
+                temp = options.SinM(:,:,:,uu);
+                temp = [temp(:,end,:), temp, temp(:,1,:)];
                 Ndist = options.Ndist;
                 Nang = options.Nang;
                 arc_interpolation = options.arc_interpolation;
                 try
                     parfor kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',arc_interpolation) || strcmp('v4',arc_interpolation))
-                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), Ndist*Nang,1));
-                            apu_SinM(:,:,kk) = F(angle, distance);
+                        if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
+                            uus_SinM(:,:,kk) = F(angle, distance);
                         else
-                            apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
+                            uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
                         end
                     end
                 catch
                     for kk = 1 : size(options.SinM,3)
-                        if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',options.arc_interpolation) || strcmp('v4',options.arc_interpolation))
-                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(options.SinM(:,:,kk)), options.Ndist*options.Nang,1));
-                            apu_SinM(:,:,kk) = F(angle, distance);
+                        if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',arc_interpolation) && ~strcmp('v4',arc_interpolation))
+                            F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), [],1));
+                            uus_SinM(:,:,kk) = F(angle, distance);
                         else
-                            apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double(options.SinM(:,:,kk)), angle, distance, options.arc_interpolation);
+                            uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
                         end
                     end
                 end
             else
                 for kk = 1 : size(options.SinM,3)
-                    if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',options.arc_interpolation) || strcmp('v4',options.arc_interpolation))
-                        F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(options.SinM(:,:,kk)), options.Ndist*options.Nang,1));
-                        apu_SinM(:,:,kk) = F(angle, distance);
-                    else
-                        apu_SinM(:,:,kk) = griddata(angle_o, distance_o, double(options.SinM(:,:,kk)), angle, distance, options.arc_interpolation);
-                    end
-                end
-            end
-            uus_SinM{hh} = single(apu_SinM);
-            endTime = toc;
-            options.SinM{hh} = uus_SinM{hh};
-        end
-    else
-        uus_SinM = zeros(size(options.SinM));
-        if license('test','Distrib_Computing_Toolbox')
-            temp = options.SinM;
-            Ndist = options.Ndist;
-            Nang = options.Nang;
-            arc_interpolation = options.arc_interpolation;
-            try
-                parfor kk = 1 : size(options.SinM,3)
-                    if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',arc_interpolation) || strcmp('v4',arc_interpolation))
-                        F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(temp(:,:,kk)), Ndist*Nang,1));
+                    if exist('scatteredInterpolant', 'file') == 3 && (~strcmp('cubic',options.arc_interpolation) && ~strcmp('v4',options.arc_interpolation))
+                        F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double([options.SinM(:,end,kk,uu), options.SinM(:,:,kk,uu), options.SinM(:,1,kk,uu)]), [],1));
                         uus_SinM(:,:,kk) = F(angle, distance);
                     else
-                        uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(temp(:,:,kk)), angle, distance, arc_interpolation);
-                    end
-                end
-            catch
-                for kk = 1 : size(options.SinM,3)
-                    if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',options.arc_interpolation) || strcmp('v4',options.arc_interpolation))
-                        F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(options.SinM(:,:,kk)), options.Ndist*options.Nang,1));
-                        uus_SinM(:,:,kk) = F(angle, distance);
-                    else
-                        uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(options.SinM(:,:,kk)), angle, distance, options.arc_interpolation);
+                        uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double([options.SinM(:,end,kk,uu), options.SinM(:,:,kk,uu), options.SinM(:,1,kk,uu)]), angle, distance, options.arc_interpolation);
                     end
                 end
             end
-        else
-            for kk = 1 : size(options.SinM,3)
-                if exist('scatteredInterpolant', 'file') == 2 && (strcmp('cubic',options.arc_interpolation) || strcmp('v4',options.arc_interpolation))
-                    F = scatteredInterpolant(angle_o(:), distance_o(:), reshape(double(options.SinM(:,:,kk)), options.Ndist*options.Nang,1));
-                    uus_SinM(:,:,kk) = F(angle, distance);
-                else
-                    uus_SinM(:,:,kk) = griddata(angle_o, distance_o, double(options.SinM(:,:,kk)), angle, distance, options.arc_interpolation);
-                end
-            end
+            uus_SinM = uus_SinM(:,2:end-1,:);
+            uus_SinM(isnan(uus_SinM)) = single(0);
+            options.SinM(:,:,:,uu) = single(uus_SinM);
         end
         endTime = toc;
-        options.SinM = single(uus_SinM);
     end
     if options.verbose
         disp(['Arc correction complete in ' num2str(endTime) ' seconds'])
