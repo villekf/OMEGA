@@ -35,7 +35,7 @@ if strcmp(scatter_file(end-3:end), '.scn')
     options.ScatterC = fread(fid, inf, 'single=>single',0,'l');
     fclose(fid);
     s_length = length(options.ScatterC)/(options.Nang*options.Ndist*options.TotSinos);
-    options.ScatterC = reshape(options.ScatterC,options.Ndist,options.Nang,options.TotSinos,s_length);
+    options.ScatterC = 1 - reshape(options.ScatterC,options.Ndist,options.Nang,options.TotSinos,s_length);
     if s_length > 1
         if options.partitions > 1
             temp = cell(s_length, 1);
@@ -49,7 +49,7 @@ if strcmp(scatter_file(end-3:end), '.scn')
                 temp = temp / s_length;
             end
         end
-        options.ScatterC = 1 - temp;
+        options.ScatterC = temp;
     end
 else
     
