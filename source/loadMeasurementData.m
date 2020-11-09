@@ -114,11 +114,11 @@ elseif strcmp(FileName(end-2:end),'img') || strcmp(FileName(end-2:end),'nii') ||
         nii = load_nii(FileName);
         img = nii.img;
     else
-        error('Image processing toolbox or Tools for NIfTI and ANALYZE image toolbox not found, check that the files are in MATLAB path')
+        error('Image processing toolbox or Tools for NIfTI and ANALYZE image toolbox not found, check that the files are in path')
     end
     if size(img,1) ~= options.Ndist
         if size(img,2) ~= options.Nang
-            error('Size mismatch between input file and sinogram dimensions')
+            warning('Size mismatch between input file and sinogram dimensions')
         else
             img = flipud(permute(img, [2 1 3 4 5]));
         end
@@ -161,7 +161,7 @@ elseif strcmp(FileName(end-2:end),'dcm') || strcmp(FileName(end-2:end),'dicom')
         img = squeeze(dicomread(FileName));
         if size(img,1) ~= options.Ndist
             if size(img,2) ~= options.Nang
-                error('Size mismatch between input file and sinogram dimensions')
+                warning('Size mismatch between input file and sinogram dimensions')
             else
                 img = permute(img, [2 1 3 4 5]);
             end

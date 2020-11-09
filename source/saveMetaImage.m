@@ -53,6 +53,9 @@ else
 end
 img = cast(img,type);
 koko = size(img);
+if length(koko) == 2
+    koko = [koko, 1];
+end
 fid = fopen([filename '.raw'],'w');
 fwrite(fid, img(:), type);
 fclose(fid);

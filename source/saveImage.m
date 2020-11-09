@@ -166,15 +166,21 @@ for kk = 1 : pituus
             info.Description = description;
             info.PixelDimensions = voxel_size;
             niftiwrite(kuva,filename,info);
-        else
+        elseif exist('make_nii', 'file') == 2
             nii = make_nii(kuva, voxel_size, origin, [], description);
             save_nii(nii, filename);
+        else
+            error('Image processing toolbox or Tools for NIfTI and ANALYZE image toolbox not found, check that the files are in path')
         end
         % Analyze 7.5
     elseif strcmp(type, 'analyze')
         filename = [filename '.img'];
         ana = make_ana(kuva, voxel_size, origin, [], description);
-        save_untouch_nii(ana, filename);
+        if exist('save_untouch_nii', 'file') == 2
+            save_untouch_nii(ana, filename);
+        else
+            error('Tools for NIfTI and ANALYZE image toolbox not found, check that the files are in path')
+        end
         % DICOM
     elseif strcmp(type, 'dicom')
         if size(kuva,4) > 1
