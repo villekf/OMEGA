@@ -36,6 +36,10 @@ const static bool PRECOMPUTE = true;
 
 const static bool DISCARD = false;
 
+const static bool RHS = false, SUMMA = false;
+
+const static bool no_norm = true;
+
 using namespace std;
 
 void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* rhs, const double maxyy,
@@ -90,11 +94,9 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 		double ax = 0.;
 		double* osem_apu = nullptr;
 		double* Summ = nullptr;
-		const bool no_norm = true;
 		vector<double> elements;
 		vector<uint32_t> v_indices;
 		const double local_sino = 0.;
-		const bool RHS = false, SUMMA = false;
 		const uint32_t tid = 0u;
 
 		uint32_t N0 = Nx;
