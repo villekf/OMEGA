@@ -830,6 +830,12 @@ end
 % Construct the forward and backward projections object (you need to rerun
 % this if you make any changes to the system): 
 A = forwardBackwardProject(options);
+% Alternatively, you can use the below method to create the same class
+% object without the need to use any of the main-files. Note that many
+% features (such as corrections) are not available in this case:
+% A = forwardBackwardProject(Nx, Ny, Nz, FOV_tr, axial_fov, diameter, rings, cr_p, cr_pz, cryst_per_block, blocks_per_ring, ...
+% det_per_ring, Ndist, Nang,NSinos, span, ring_difference, subsets, implementation, use_device, projector_type, tube_width_z, ...
+% tube_radius, voxel_radius, use_psf, FWHM);
 % Load the measurement data
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
 % Alternatively, if your measurement data is in other format, you can use
