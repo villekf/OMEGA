@@ -59,7 +59,7 @@ end
 if ~isfield(options, 'use_ASCII')
     options = set_GATE_variables(options);
 end
-if ~isfield(options, 'options.only_sinos')
+if ~isfield(options, 'only_sinos')
     options.only_sinos = false;
 end
 
