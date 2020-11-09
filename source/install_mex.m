@@ -18,6 +18,7 @@ function install_mex(varargin)
 %   install_mex
 %   install_mex(1)
 %   install_mex(1, OPENCL_INCLUDE_PATH, OPENCL_LIB_PATH, AF_PATH, ROOT_PATH, USE_CUDA, CUDA_PATH)
+%   install_mex(1, '/path/to/cl.h', '/path/to/libOpenCL.so', '/path/to/Arrayfire', '/path/to/ROOT', true, '/path/to/cuda')
 % INPUTS:
 %   Input 1: If the value is set to 1, then the (possible) compiler errors
 %   are displayed. Otherwise only warnings are displayed if the
