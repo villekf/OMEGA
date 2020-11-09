@@ -412,6 +412,8 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 					}
 					return status;
 				}
+				options.erase(pituus, options.size() + 1);
+				options += " -DCAST=float";
 			}
 			else {
 				if (verbose)
@@ -420,8 +422,6 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		//}
 		//catch (cl::Error& e) {
 		//	//mexPrintf("%s\n", e.what());
-		//	options.erase(pituus, options.size() + 1);
-		//	options += " -DCAST=float";
 		//	mexPrintf("Failed to build 64-bit atomics program.\n");
 		//	status = -1;
 		//}
