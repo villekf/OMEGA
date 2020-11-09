@@ -175,6 +175,12 @@ For Octave, 5.1 and 5.2 works. 4.4 should also work but is untested. io and stat
 
 C++11 compiler is required.
 
+For Windows Visual Studio 2019 or 2017 is recommended with "Desktop development with C++", no other options are required. https://visualstudio.microsoft.com/
+
+For Linux it is recommended to use GCC which usually comes bundled with the system. 
+
+On MacOS Xcode is required https://apps.apple.com/us/app/xcode/id497799835?mt=12.
+
 OpenCL SDK/headers/library are required for OpenCL functionality.
 
 ArrayFire is required for implementation 2.
