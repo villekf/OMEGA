@@ -656,6 +656,6 @@ end
 if ~isfield(options, 'scatter')
     options.scatter = false;
 end
-if options.implementation == 2 || options.implementation == 3
+if (options.implementation == 2 || options.implementation == 3) && isfield(options,'deblur_iterations')
     options.deblur_iterations = uint32(options.deblur_iterations);
 end
