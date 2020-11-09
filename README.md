@@ -39,9 +39,9 @@ The algorithms implemented so far are:
 
 ## Installation
 
-For additional install help, see the [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) on the wiki.
+For additional install help, see [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) on the wiki.
 
-You're going to need C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work so I recommend those depending on your platform (Visual Studio on Windows, GCC on Linux). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
+You're going to need a C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio on Windows, GCC on Linux, clang should work on MacOS). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ on Windows and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
@@ -49,7 +49,7 @@ Visual studio can be downloaded from [here](https://visualstudio.microsoft.com/)
 
 To install the OMEGA software, either simply extract the release/master package, download the MATLAB toolbox file from [releases](https://github.com/villekf/OMEGA/releases) (`OMEGA.-.Open-source.MATLAB.emission.tomography.software.mltbx`) or obtain the source code through git:  
 `git clone https://github.com/villekf/OMEGA`
-and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file). Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Unix-platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`.
+and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file). Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Linux and MacOS platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`. `OpenCL_include_path` should be the folder where `cl.h` is located, `OpenCL_lib_path` the folder where `OpenCL.lib/libOpenCL.so` (Windows/Linux) is located, `AF_PATH` the path to ArrayFire installation location and `ROOT_PATH` to ROOT installation location.
 
 Certain features on Octave (such as normalization calculation) require packages io and statistics. You can install them from the Octave user interface with the following commands (io has to be installed first):
 
@@ -61,7 +61,7 @@ and then you need to load the statistics package:
 
 `pkg load statistics`
 
-In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK and (for implementation 2) ArrayFire (see below). On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
+In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK/library and (for implementation 2) ArrayFire (see below). On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
 
 Headers:
 `sudo apt-get install opencl-headers`
@@ -74,9 +74,9 @@ Alternative libraries in case the above one fails:
 or
 `sudo apt-get install intel-opencl-icd`
 
-In case the above doesn't work or you use Windows then you need to obtain an OpenCL SDK. The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can also add these manually to `install_mex` by adding `-I/path/to/CL` and `-L/path/to/OpenCLlib` before the .cpp file (simply replace the CUDA paths with the correct ones). On Ubuntu you can use command `find / -iname cl.h 2>/dev/null` to find the required cl.h file and `find / -iname libOpenCL.so 2>/dev/null` to find the required library file. See `install_mex.m` for further details.
+In case the above doesn't work or you use Windows then you need to obtain an OpenCL SDK. The SDK can be any (or all) of the following: CUDA Toolkit, Intel OpenCL SDK, OCL-SDK, AMD APP SDK. On all cases, the OpenCL library and header files need to be on your system's PATH. By default, the install_mex-file assumes that you have installed CUDA toolkit (Linux and Windows), AMD APP SDK v3.0 (Linux and Windows), OCL-SDK (Windows), AMD GPU Pro drivers (Linux) or Intel SDK (Linux and Windows). If you get an error message like "CL/cl.h: No such file or directory", the headers could not be found. You can manually add custom OpenCL paths with `install_mex(0, '/path/to/cl.h', '/path/to/libOpenCL.so')`. On Ubuntu you can use command `find / -iname cl.h 2>/dev/null` to find the required cl.h file and `find / -iname libOpenCL.so 2>/dev/null` to find the required library file. See `install_mex.m` for further details.
 
-All library paths needs to be on system path when running the mex-files or otherwise the required libraries will not be found.
+**All library paths needs to be on system path when running the mex-files or otherwise the required libraries will not be found.**
 
 Links:  
 https://software.intel.com/en-us/intel-opencl  
@@ -98,19 +98,19 @@ https://github.com/arrayfire/arrayfire
 
 On Windows you should install [Visual Studio 2015 (x64) runtime libraries](https://www.microsoft.com/en-in/download/details.aspx?id=48145) first before installing ArrayFire.
 
-Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib/`). Alternatively, on Linux, you can also build/install it directly into the `/usr/local/` folder.
+Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux/MacOS) should cause `install_mex` to automatically locate everything. However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` (bulding from source) or `/opt/arrayfire/lib64` (installer) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib64/`). Alternatively, on Linux, you can also build/install it directly into the `/usr/local/` folder.
 
 Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the CUDA folder should be on the system path. `install_mex` always attempts to build the CUDA code as well so no additional input is required from the user if all the header and library data is found. By default `install_mex` looks for CUDA in `/usr/local/cuda/` on Linux. On Windows, CUDA location is determined from the environmental variables (PATH).
 
-For additional install help, see the [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) help on the wiki.
+For additional install help, see [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) on the wiki.
 
 ## Getting Started
 
-First download either the latest relase package or do a git clone of the project. Then you need to put the extracted/cloned OMEGA-folder and all its subfolders to MATLAB/Octave path and run `install_mex`. In case you have trouble compiling the mex-files, you can also try using the precompiled files on the [releases](https://github.com/villekf/OMEGA/releases) (MATLAB only).
+First you should build the required mex-files by running `install_mex`. In case you have trouble compiling the mex-files, you can also try using the precompiled files available on the [releases](https://github.com/villekf/OMEGA/releases) (MATLAB only) page.
 
 [GATE](http://www.opengatecollaboration.org/) users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
 
-A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then run the `gate_main_example.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
+A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then input correct path for the GATE output data in `gate_main.m` (`options.fpath`). After this simply run `gate_main.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
 
 Example MAT-files for non-GATE situation can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522199.svg)](https://doi.org/10.5281/zenodo.3522199).
  These files are based on the above GATE-example. The original simulated GATE data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3526859.svg)](https://doi.org/10.5281/zenodo.3526859).
@@ -185,6 +185,7 @@ The following third-party MATLAB codes are NOT required, but can be useful as th
 https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
 https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
 https://github.com/stefanengblom/stenglib (FSPARSE, used when creating sparse matrices. Recommended only for R2019b and eaerlier.)
+https://www.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image (Tools for NIfTI and ANALYZE image, to load/save Analyze files and also NIfTI files in absence of image processing toolbox).
 
 
 
@@ -204,7 +205,7 @@ LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
 Only machines with a total number of detectors of up to 65536 are supported. I.e. if you have a machine with more detectors than 65536 then nothing will work. This can be easily fixed though, if necessary, since it is simply caused by using 16-bit unsigned integers. Put up an issue on the GitHub page or send me an e-mail if you need a version with support for higher number of detectors.
 
-Due to the same reason as above, maximum number of counts per pixel is 65535 (applies only to GATE data).
+Due to the same reason as above, maximum number of counts per sinogram pixel is 65535 (applies only to GATE data).
 
 Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases).
 
@@ -232,10 +233,9 @@ ROOT is not supported on Windows, though it should, theoretically, work if you u
 
 ### Octave
 
-Implementation 2 (ArrayFire matrix free OpenCL) is not supported on  Windows due to a compiler incompatibility between MinGW and ArrayFire. As mentioned elsewhere, this can be fixed by building ArrayFire from source with MinGW.
+Implementation 2 (ArrayFire matrix free OpenCL) is not supported on Windows due to a compiler incompatibility between MinGW and ArrayFire. This can be fixed by building ArrayFire from source with MinGW.
 
-Almost all MATLAB-based code runs significantly slower compared to
- MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
+Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
 
@@ -259,7 +259,7 @@ For feature requests, post an issue on GitHub. I do not guarantee that a specifi
 
 ## Citations
 
-If you wish to use this software in your work, at the moment cite the GitHub page. This will most likely change soon though so check back here later.
+If you wish to use this software in your work, at the moment cite the GitHub page. An article has been sent to peer review so this is expected to change in the near future.
 
 
 ## Acknowledgments
