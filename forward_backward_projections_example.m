@@ -366,7 +366,7 @@ options.normalization_scatter_correction = false;
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
 % true.
-options.normalization_correction = true;
+options.normalization_correction = false;
 
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients
@@ -832,6 +832,11 @@ end
 A = forwardBackwardProject(options);
 % Load the measurement data
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
+% Alternatively, if your measurement data is in other format, you can use
+% e.g. loadMeasurementData-function to load the data. The data is in this
+% case saved to the variable options.SinM in the case of sinogram data. In
+% this case, replace all raw_SinM variables with options.SinM.
+% options = loadMeasurementData(options);
 if options.implementation == 1 || options.implementation == 4
     raw_SinM = double(raw_SinM(A.index));
 else
