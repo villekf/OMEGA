@@ -251,6 +251,7 @@ MAT-files that are over 2 GB are not supported by Octave and such large data set
 
 Here is a list of features that should appear in future releases:
 
+- Support for transmission tomography (e.g. CT) data
 - Support for SPECT data
 - Fourier rebinning
 - New projectors
