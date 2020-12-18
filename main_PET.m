@@ -848,7 +848,7 @@ options.OSL_MLEM = false;
 
 %%% One-Step Late OSEM (OSL-OSEM)
 % Supported by implementations 1, 2 and 4
-options.OSL_OSEM = true;
+options.OSL_OSEM = false;
 
 %%% Modified BSREM (MBSREM)
 % Supported by implementations 1 and 2
