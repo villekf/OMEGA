@@ -19,13 +19,13 @@ function pz = save_image_properties(options, pz, subsets)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if options.implementation == 1
-    image_properties.Implementation = 'MATLAB';
+    image_properties.Implementation = 'MATLAB (1)';
 elseif options.implementation == 3
-    image_properties.Implementation = 'Matrix-free multi-device OpenCL';
+    image_properties.Implementation = 'Matrix-free multi-device OpenCL (3)';
 elseif options.implementation == 4
-    image_properties.Implementation = 'CPU matrix-free';
+    image_properties.Implementation = 'CPU matrix-free (4)';
 elseif options.implementation == 2
-    image_properties.Implementation = 'Matrix-free ArrayFire OpenCL';
+    image_properties.Implementation = 'Matrix-free ArrayFire OpenCL (2)';
 end
 if options.projector_type == 0
     image_properties.Projector = 'Original Siddon''s ray tracer';
@@ -58,11 +58,21 @@ end
 if options.use_psf
     if options.deblurring
         image_properties.PSF = 'PSF enabled with deblurring';
+        image_properties.deblur_iterations = options.deblur_iterations;
     else
         image_properties.PSF = 'PSF enabled';
     end
+    image_properties.PSF_FWHM = options.FWHM;
 else
     image_properties.PSF = 'No PSF';
+end
+if isfield(options,'TOF_bins')
+    if options.TOF_bins > 1
+        image_properties.TOF = 'TOF enabled';
+        image_properties.N_TOF_bins = options.TOF_bins;
+        image_properties.TOF_bin_width = options.TOF_width;
+        image_properties.TOF_FWHM = options.TOF_FWHM;
+    end
 end
 image_properties.Nx = options.Nx;
 image_properties.Ny = options.Ny;
@@ -93,6 +103,7 @@ image_properties.subset_type = options.subset_type;
 image_properties.normalization = options.normalization_correction;
 image_properties.randoms = options.randoms_correction;
 image_properties.scatter = options.scatter_correction;
+image_properties.gapFilling = options.fill_sinogram_gaps;
 if isfield(options,'DOI')
     image_properties.DOI = options.DOI;
 end
