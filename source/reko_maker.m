@@ -3,7 +3,7 @@ function rekot = reko_maker(options)
 % Indices: 
 % 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = RBI, 7 = DRAMA,
 % 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = OSL-OSEM MRP, 12 = OSL-MLEM MRP,
-% 13 = MBSREM MRP, 14 = BSREM MRP, 15 = ROSEM-MAP MRP, 16 = RBI-OSL MRP, 17
+% 13 = BSREM MRP, 14 = MBSREM MRP, 15 = ROSEM-MAP MRP, 16 = RBI-OSL MRP, 17
 % - 22 = Quadratic, 23 - 28 = L-filter, 29 - 34 = FMH, 35 - 40 = Weighted
 % mean, 41 - 46 = TV, 47 - 52 = AD, 53 - 58 = APLS
 % Total ML-methods + Total MAP-methods * Total number of priors + extra
@@ -80,11 +80,11 @@ if options.OSL_MLEM && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.MRP
+if options.BSREM && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.MRP
+if options.MBSREM && options.MRP
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -108,11 +108,11 @@ if options.OSL_MLEM && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.quad
+if options.BSREM && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.quad
+if options.MBSREM && options.quad
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -136,11 +136,11 @@ if options.OSL_MLEM && options.Huber
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.Huber
+if options.BSREM && options.Huber
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.Huber
+if options.MBSREM && options.Huber
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -164,11 +164,11 @@ if options.OSL_MLEM && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.L
+if options.BSREM && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.L
+if options.MBSREM && options.L
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -192,11 +192,11 @@ if options.OSL_MLEM && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.FMH
+if options.BSREM && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.FMH
+if options.MBSREM && options.FMH
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -220,11 +220,11 @@ if options.OSL_MLEM && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.weighted_mean
+if options.BSREM && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.weighted_mean
+if options.MBSREM && options.weighted_mean
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -248,11 +248,11 @@ if options.OSL_MLEM && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.TV
+if options.BSREM && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.TV
+if options.MBSREM && options.TV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -276,11 +276,11 @@ if options.OSL_MLEM && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.AD
+if options.BSREM && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.AD
+if options.MBSREM && options.AD
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -304,11 +304,11 @@ if options.OSL_MLEM && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.APLS
+if options.BSREM && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.APLS
+if options.MBSREM && options.APLS
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -332,11 +332,11 @@ if options.OSL_MLEM && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.TGV
+if options.BSREM && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.TGV
+if options.MBSREM && options.TGV
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -360,11 +360,11 @@ if options.OSL_MLEM && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.NLM
+if options.BSREM && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.NLM
+if options.MBSREM && options.NLM
     rekot(gg) = true;
 end
 gg = gg + 1;
@@ -388,11 +388,11 @@ if options.OSL_MLEM && options.custom
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.MBSREM && options.custom
+if options.BSREM && options.custom
     rekot(gg) = true;
 end
 gg = gg + 1;
-if options.BSREM && options.custom
+if options.MBSREM && options.custom
     rekot(gg) = true;
 end
 gg = gg + 1;
