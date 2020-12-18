@@ -204,6 +204,7 @@ elseif options.normalization_correction && options.use_raw_data && ~options.corr
             fid = fopen(file);
             normalization = fread(fid, inf, 'single=>single',0,'l');
             fclose(fid);
+            options.InveonNorm = true;
         else
             data = load(file);
             variables = fieldnames(data);
@@ -312,7 +313,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             options.ScatterC = permute(options.ScatterC,[2 1 3]);
                         end
                         if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            options.ScatterC = single(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            else
+                                options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -327,7 +332,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             end
                         end
                         if normalization_correction && options.normalize_scatter
-                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            else
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -375,7 +384,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         options.ScatterC = permute(options.ScatterC,[2 1 3]);
                     end
                     if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                        options.ScatterC = single(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                            options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        else
+                            options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        end
                     end
                     if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                         options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -401,7 +414,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             end
                         end
                         if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            else
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -450,7 +467,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             options.ScatterC = permute(options.ScatterC,[2 1 3]);
                         end
                         if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            options.ScatterC = single(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            else
+                                options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -465,7 +486,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             end
                         end
                         if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            else
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -511,7 +536,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     %    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
                     % end
                     if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                        options.ScatterC = single(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                            options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        else
+                            options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                        end
                     end
                     if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                         options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -537,7 +566,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             end
                         end
                         if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            else
+                                options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                            end
                         end
                         if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                             options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
@@ -570,7 +603,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     options.ScatterC = permute(options.ScatterC,[2 1 3]);
                 end
                 if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                    options.ScatterC = single(options.ScatterC) .* reshape(1./options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                    if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                        options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                    else
+                        options.ScatterC = single(options.ScatterC) .* reshape(1 ./ options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
+                    end
                 end
                 if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                     options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
@@ -594,7 +631,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         end
                     end
                     if normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
-                        options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1./options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                        if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
+                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                        else
+                            options.ScatterC{kk} = single(options.ScatterC{kk}) .* reshape(1 ./ options.normalization, size(options.ScatterC{kk}, 1), size(options.ScatterC{kk}, 2), size(options.ScatterC{kk}, 3));
+                        end
                     end
                     if options.scatter_variance_reduction && ~ScatterProp.variance_reduction
                         options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
