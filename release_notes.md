@@ -26,6 +26,8 @@
   
 - Fixed a bug in `scaleImages`
 
+- Fixed errors and crashes when loading only raw data
+
 ## OMEGA v1.1.0
 
 ### New features
