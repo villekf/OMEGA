@@ -347,12 +347,30 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LMF support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    mex('-largeArrayDims', '-outdir', folder, [folder '/gate_lmf_matlab.cpp'])
-    disp('LMF support enabled')
+    try
+        mex('-largeArrayDims', '-outdir', folder, [folder '/gate_lmf_matlab.cpp'])
+        disp('LMF support enabled')
+    catch ME
+        if verbose
+            warning('LMF support not enabled. Compiler error: ')
+            disp(ME.message);
+        else
+            warning('LMF support not enabled. Use install_mex(1) to see compiler error.')
+        end
+    end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% Inveon support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    mex('-largeArrayDims', '-outdir', folder, [folder '/inveon_list2matlab.cpp'])
-    disp('Inveon support enabled')
+    try
+        mex('-largeArrayDims', '-outdir', folder, [folder '/inveon_list2matlab.cpp'])
+        disp('Inveon support enabled')
+    catch ME
+        if verbose
+            warning('Inveon support not enabled. Compiler error: ')
+            disp(ME.message);
+        else
+            warning('Inveon support not enabled. Use install_mex(1) to see compiler error.')
+        end
+    end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ROOT support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if ispc
