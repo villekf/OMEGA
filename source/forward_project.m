@@ -255,7 +255,11 @@ if ~luokka
         lor_a = uint16(0);
     end
     if normalization_correction
-        normalization = options.normalization;
+        if options.implementation == 1 || options.implementation == 4
+            normalization = double(options.normalization);
+        else
+            normalization = single(options.normalization);
+        end
     else
         if options.implementation == 1 || options.implementation == 4
             normalization = 0;
@@ -267,13 +271,13 @@ if ~luokka
     if randoms_correction
         if iscell(options.SinDelayed)
             if options.implementation == 1 || options.implementation == 4
-                SinDelayed = options.SinDelayed{1};
+                SinDelayed = double(options.SinDelayed{1});
             else
                 SinDelayed{1} = single(options.SinDelayed{1});
             end
         else
             if options.implementation == 1 || options.implementation == 4
-                SinDelayed = options.SinDelayed;
+                SinDelayed = double(options.SinDelayed);
             else
                 SinDelayed{1} = single(options.SinDelayed);
             end
@@ -288,7 +292,7 @@ if ~luokka
     
     if options.scatter_correction && ~options.subtract_scatter
         if options.implementation == 1 || options.implementation == 4
-            scatter_input = options.ScatterC;
+            scatter_input = double(options.ScatterC);
         else
             if iscell(options.ScatterFB)
                 options.ScatterFB{1} = {single(options.ScatterC{1})};
@@ -305,7 +309,11 @@ if ~luokka
     end
 else
     if normalization_correction
-        normalization = options.normalization(nn(1) : nn(2));
+        if options.implementation == 1 || options.implementation == 4
+            normalization = double(options.normalization(nn(1) : nn(2)));
+        else
+            normalization = single(options.normalization(nn(1) : nn(2)));
+        end
     else
         if options.implementation == 1 || options.implementation == 4
             normalization = 0;
@@ -317,13 +325,13 @@ else
     if randoms_correction
         if iscell(options.SinDelayed)
             if options.implementation == 1 || options.implementation == 4
-                SinDelayed = options.SinDelayed{1}(nn(1) : nn(2));
+                SinDelayed = double(options.SinDelayed{1}(nn(1) : nn(2)));
             else
                 SinDelayed{1} = single(options.SinDelayed{1}(nn(1) : nn(2)));
             end
         else
             if options.implementation == 1 || options.implementation == 4
-                SinDelayed = options.SinDelayed(nn(1) : nn(2));
+                SinDelayed = double(options.SinDelayed(nn(1) : nn(2)));
             else
                 SinDelayed{1} = single(options.SinDelayed(nn(1) : nn(2)));
             end
