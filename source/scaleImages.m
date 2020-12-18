@@ -87,7 +87,7 @@ if iscell(pz)
         end
     end
 else
-    pz = pz * scale;
+    pz = pz / scale;
 end
 end
 
