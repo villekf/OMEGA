@@ -108,18 +108,20 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 
 	double ms = 0;		// seconds
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#if (defined(WIN32) || defined(_WIN32) || (defined(__WIN32) && !defined(__CYGWIN__)) || defined(_WIN64)) && defined(_MSC_VER)
 	errno_t err;
 	err = fopen_s(&streami, argv[0], "rb");
 	if (err != 0) {
-		mexPrintf("No file opened %s\n", in_file);
-		exit(1);
+		mexErrMsgIdAndTxt("MATLAB:inveon_list2matlab:invalidFile",
+			"Error opening file or no file opened");
+		return;
 	}
 #else
 	streami = fopen(argv[0], "rb");
 	if (streami == NULL) {
-		mexPrintf("No file opened %s\n", in_file);
-		exit(1);
+		mexErrMsgIdAndTxt("MATLAB:inveon_list2matlab:invalidFile",
+			"Error opening file or no file opened");
+		return;
 	}
 #endif
 

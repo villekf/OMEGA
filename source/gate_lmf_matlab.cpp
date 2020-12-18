@@ -46,7 +46,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint64_t * tpoints, char *argv, c
 	uint64_t ms = 0;
 	uint64_t ms2 = 0;
 
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__)
+#if (defined(WIN32) || defined(_WIN32) || (defined(__WIN32) && !defined(__CYGWIN__)) || defined(_WIN64)) && defined(_MSC_VER)
 	fopen_s(&streami, argv, "rb");
 #else
 	streami = fopen(argv, "rb");
