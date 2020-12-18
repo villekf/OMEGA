@@ -1,5 +1,29 @@
 # Release notes
 
+## OMEGA v1.1.1
+
+### New features
+
+- Added `imageMed.m` function to easily visualize various views of an input 3D matrix
+
+- Improved the memory efficiency of MRP with implementation 2 and also slightly improved the speed
+
+### Bug fixes and enhancements
+
+- Additional parameters are now saved in the `pz` cell matrix
+  - These include the FWHM of the PSF, TOF information and whether gap filling was used
+  
+- Fixed possible crashes when using implementation 2 with MBSREM/MRAMLA
+
+- Improved the accuracy of MBSREM/MRAMLA with implementation 1 and 2
+
+- Fixed MBSREM estimates with implementation 2
+
+- Fixed scatter correction with Inveon when using the scn-file(s)
+
+- MBSREM, ROSEM and MRAMLA can now correctly use manual relaxation parameters
+  - There is also now a check to make sure that the number of input relaxation parameters is at least the number of iterations
+
 ## OMEGA v1.1.0
 
 ### New features
