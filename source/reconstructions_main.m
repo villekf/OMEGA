@@ -1322,7 +1322,7 @@ else
                             SinD = 0;
                         end
                         if normalization_correction
-                            norm_input = options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1));
+                            norm_input = double(options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                         else
                             norm_input = 0;
                         end
@@ -4252,12 +4252,12 @@ else
                             im_vectors.MRP_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.MRP && options.BSREM
                             med = MRP(im_vectors.OSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.MRP_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, ...
                                 options.beta_mrp_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.MRP_BSREM(:, iter_n);
                         elseif options.MRP && options.ROSEM_MAP
                             med = MRP(im_vectors.OSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.MRP_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_mrp_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.MRP_ROSEM(:, iter_n);
                         elseif options.MRP && options.RBI_OSL
@@ -4268,12 +4268,12 @@ else
                             im_vectors.Quad_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.quad && options.BSREM
                             med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_quad_bsrem, ...
+                            im_vectors.Quad_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_quad_bsrem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.Quad_BSREM(:, iter_n);
                         elseif options.quad && options.ROSEM_MAP
                             med = Quadratic_prior(im_vectors.OSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Quad_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_quad_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Quad_ROSEM(:, iter_n);
                         elseif options.quad && options.RBI_OSL
@@ -4284,12 +4284,12 @@ else
                             im_vectors.Huber_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.Huber && options.BSREM
                             med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Huber_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, ...
                                 options.beta_huber_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Huber_BSREM(:, iter_n);
                         elseif options.Huber && options.ROSEM_MAP
                             med = Huberratic_prior(im_vectors.OSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Huber_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_huber_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Huber_ROSEM(:, iter_n);
                         elseif options.Huber && options.RBI_OSL
@@ -4300,12 +4300,12 @@ else
                             im_vectors.L_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.L && options.BSREM
                             med = L_filter(im_vectors.OSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_L_bsrem, ...
+                            im_vectors.L_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_L_bsrem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.L_BSREM(:, iter_n);
                         elseif options.L && options.ROSEM_MAP
                             med = L_filter(im_vectors.OSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.L_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_L_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.L_ROSEM(:, iter_n);
                         elseif options.L && options.RBI_OSL
@@ -4317,13 +4317,13 @@ else
                         elseif options.FMH && options.BSREM
                             med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_fmh_bsrem, ...
+                            im_vectors.FMH_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_fmh_bsrem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.FMH_BSREM(:, iter_n);
                         elseif options.FMH && options.ROSEM_MAP
                             med = FMH(im_vectors.OSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
                                 options.med_no_norm);
-                            im_vectors.FMH_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.FMH_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_fmh_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.FMH_ROSEM(:, iter_n);
                         elseif options.FMH && options.RBI_OSL
@@ -4335,13 +4335,13 @@ else
                         elseif options.weighted_mean && options.BSREM
                             med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Weighted_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, ...
                                 options.beta_weighted_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.Weighted_BSREM(:, iter_n);
                         elseif options.weighted_mean && options.ROSEM_MAP
                             med = Weighted_mean(im_vectors.OSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
                                 options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.Weighted_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_weighted_rosem, ...
                                 med, epps);
                             im_vectors.OSEM_apu = im_vectors.Weighted_ROSEM(:, iter_n);
@@ -4353,12 +4353,12 @@ else
                             im_vectors.TV_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TV && options.BSREM
                             grad = TVpriorFinal(im_vectors.OSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                            im_vectors.TV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TV_bsrem, ...
+                            im_vectors.TV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_TV_bsrem, ...
                                 grad, epps);
                             im_vectors.OSEM_apu = im_vectors.TV_BSREM(:, iter_n);
                         elseif options.TV && options.ROSEM_MAP
                             grad = TVpriorFinal(im_vectors.OSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                            im_vectors.TV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.TV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_TV_rosem, grad, epps);
                             im_vectors.OSEM_apu = im_vectors.TV_ROSEM(:, iter_n);
                         elseif options.TV && options.RBI_OSL
@@ -4369,11 +4369,11 @@ else
                             im_vectors.AD_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.AD && options.BSREM
                             med = AD(im_vectors.OSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_ad_bsrem, med, epps);
+                            im_vectors.AD_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_ad_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.AD_BSREM(:, iter_n);
                         elseif options.AD && options.ROSEM_MAP
                             med = AD(im_vectors.OSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.AD_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_ad_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.AD_ROSEM(:, iter_n);
                         elseif options.AD && options.RBI_OSL
@@ -4384,12 +4384,12 @@ else
                             im_vectors.APLS_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.APLS && options.BSREM
                             grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
-                            im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_APLS_bsrem, ...
+                            im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_APLS_bsrem, ...
                                 grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_BSREM(:, iter_n);
                         elseif options.APLS && options.ROSEM_MAP
                             grad = TVpriorFinal(im_vectors.OSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
-                            im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_APLS_rosem, grad, epps);
                             im_vectors.OSEM_apu = im_vectors.APLS_ROSEM(:, iter_n);
                         elseif options.APLS && options.RBI_OSL
@@ -4400,12 +4400,12 @@ else
                             im_vectors.TGV_OSL(:, iter_n) = im_vectors.OSEM_apu;
                         elseif options.TGV && options.BSREM
                             grad = TGV(im_vectors.OSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, SinD, randoms_correction, is_transposed, options.beta_TGV_bsrem, ...
+                            im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam, iter, options.beta_TGV_bsrem, ...
                                 grad, epps);
                             im_vectors.OSEM_apu = im_vectors.TGV_BSREM(:, iter_n);
                         elseif options.TGV && options.ROSEM_MAP
                             grad = TGV(im_vectors.OSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_TGV_rosem, grad, epps);
                             im_vectors.OSEM_apu = im_vectors.TGV_ROSEM(:, iter_n);
                         elseif options.TGV && options.RBI_OSL
@@ -4417,13 +4417,13 @@ else
                         elseif options.NLM && options.BSREM
                             med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_NLM_bsrem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.NLM_BSREM(:, iter_n);
                         elseif options.NLM && options.ROSEM_MAP
                             med = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                                 options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, SinD, randoms_correction, is_transposed, ...
+                            im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(im_vectors.OSEM_apu, options.lam_rosem, iter, ...
                                 options.beta_NLM_rosem, med, epps);
                             im_vectors.OSEM_apu = im_vectors.NLM_ROSEM(:, iter_n);
                         elseif options.NLM && options.RBI_OSL
@@ -4711,8 +4711,9 @@ else
             end
         end
         if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
+            options.randSize = uint64(diff(pituus));
             if ~iscell(options.SinDelayed)
-                options.SinDelayed = {options.SinDelayed};
+                options.SinDelayed = {single(full(options.SinDelayed))};
             end
             if issparse(options.SinDelayed{1})
                 for kk = 1 : length(options.SinDelayed)
@@ -4723,6 +4724,9 @@ else
                     options.SinDelayed{kk} = single(options.SinDelayed{kk});
                 end
             end
+        else
+            options.randSize = uint64(1);
+            options.SinDelayed = {single(0)};
         end
         if use_raw_data
             xy_index = uint32(0);
