@@ -445,7 +445,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 					if (fp == 1) {
 #pragma unroll NBINS
 						for (int to = 0; to < NBINS; to++)
-							d_rhs_OSEM[idx + to * m_size] = ax[to];
+							d_rhs_OSEM[idx + to * m_size + cumsum] = ax[to];
 					}
 #else
 					if (axOSEM == 0.f) {
@@ -1045,5 +1045,39 @@ __kernel void NLM(__global float* grad, const __global float* u, const __global 
 
 	grad[n] = output;
 
+}
+#endif
+
+#ifdef MEDIAN
+__kernel void medianFilter3D(const __global float* grad, __global float* output, const uint Nx, const uint Ny, const uint Nz) {
+	int xid = get_global_id(0);
+	int yid = get_global_id(1);
+	int zid = get_global_id(2);
+	if (xid < SEARCH_WINDOW_X || xid >= Nx + SEARCH_WINDOW_X || yid < SEARCH_WINDOW_Y || yid >= Ny + SEARCH_WINDOW_Y || zid < SEARCH_WINDOW_Z || zid >= Nz + SEARCH_WINDOW_Z)
+		return;
+	int koko = (SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1);
+	float median[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	float medianF[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	int uu = 0;
+	for (int x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
+		for (int y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
+			for (int z = -SEARCH_WINDOW_Z; z <= SEARCH_WINDOW_Z; z++) {
+				uint pikseli = (xid + x) + (yid + y) * get_global_size(0) + (zid + z) * get_global_size(0) * get_global_size(1);
+				median[uu] = grad[pikseli];
+				uu++;
+			}
+		}
+	}
+	for (int hh = 0; hh < koko; hh++) {
+		int ind = 0;
+		for (int ll = 0; ll < koko; ll++) {
+			if (median[hh] > median[ll] || (median[hh] == median[ll] && hh < ll))
+				ind++;
+		}
+		medianF[ind] = median[hh];
+		if (ind == koko / 2)
+			break;
+	}
+	output[xid + yid * get_global_size(0) + zid * get_global_size(0) * get_global_size(1)] = medianF[koko / 2];
 }
 #endif

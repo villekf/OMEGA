@@ -1,8 +1,12 @@
 /**************************************************************************
-* Matrix free projectors for OSEM or MLEM.
-* This function calculates d_Summ = sum(A,1) (sum of every row) and
-* rhs = A*(y./(A'*x)), where A is the system matrix, y the measurements
-* and x the estimate/image.
+* Matrix free projectors for various ML and MAP algorithms.
+* This function calculates the sensitivity image d_Summ = sum(A,1) (sum of 
+* every row) and rhs = A*(y./(A'*x)) (forward and backward projections), 
+* where A is the system matrix, y the measurements and x the 
+* estimate/image.
+* 
+* This code is also used for the precomputation phase, where the number of
+* voxels that each LOR traverses is computed.
 *
 * Used by implementations 2 and 3.
 *
@@ -37,23 +41,25 @@
 * d_size_x = the number of detector elements,
 * d_TotSinos = Total number of sinograms,
 * d_det_per_ring = number of detectors per ring,
-* d_raw = if 1 then raw list-mode data is used otherwise sinogram
-* data
+* d_raw = if 1 then raw data is used otherwise sinogram data
 * pRows = number of pseudo rings,
 * d_Nxy = d_Nx * d_Ny,
 * fp = if 1, then only forward projection is computed, if 2 only 
-* backprojection, if 0 then both
+* backprojection, if 0 then both,
 * tube_width = the width of of the strip used for orthogonal distance based
 * projector (2D),
-* crystal_size_z = the width of of the tube used for orthogonal distance based
-* projector (3D),
+* crystal_size_z = the width of of the tube used for orthogonal distance 
+* based projector (3D),
 * bmin = smaller orthogonal distances than this are fully inside the TOR, 
-* volume projector only
+* volume projector only,
 * bmax = Distances greater than this do not touch the TOR, volume projector
-* only
-* Vmax = Full volume of the spherical "voxel", volume projector only
+* only,
+* Vmax = Full volume of the spherical "voxel", volume projector only,
+* d_epsilon_mramla = Epsilon value for MRAMLA and MBSREM,
+* d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * d_atten = attenuation data (images),
 * d_norm = normalization coefficients,
+* d_scat = scatter coefficients when using the system matrix method, 
 * d_Summ = buffer for d_Summ,
 * d_lor = number of pixels that each LOR traverses,
 * d_pseudos = location of pseudo rings,
@@ -106,8 +112,8 @@ void siddon_precomp(const uint d_Nxy, const uint d_N, const uint d_Nx, const uin
 	const float d_dz, const float d_dx, const float d_dy, const float d_bz, const float d_bx, const float d_by,
 	const float d_bzb, const float d_maxxx, const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x,
 	const ushort d_TotSinos, const uint d_det_per_ring, const uchar d_raw, const uint d_pRows,
-	__constant uint* d_pseudos, const __global float* d_x,
-	const __global float* d_y, const __global float* d_zdet, __global ushort* d_lor, const __global ushort* d_L, const ulong m_size) {
+	__constant uint* restrict d_pseudos, const __global float* restrict d_x,
+	const __global float* restrict d_y, const __global float* restrict d_zdet, __global ushort* restrict d_lor, const __global ushort* restrict d_L, const ulong m_size) {
 
 #else
 
@@ -116,15 +122,15 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x, const uint d_TotSinos, 
 	const uint d_det_per_ring, const uint d_pRows, const uint d_Nxy, const uchar fp, const float sigma_x, 
 	const float tube_width_xy, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, const float d_epsilon_mramla, 
-	__constant float* TOFCenter, const __global float* d_atten, __constant uint* d_pseudos, const __global float* d_x, const __global float* d_y, const __global float* d_zdet,
-	__constant float* x_center, __constant float* y_center, __constant float* z_center, __constant float* V, __constant uchar * MethodList, 
-	const __global float* d_norm, const __global float* d_scat, __global CAST* d_Summ, const __global ushort* d_lor, const __global uint* d_xyindex, 
-	const __global ushort* d_zindex, const __global ushort* d_L, const __global float* d_Sino, const __global float* d_sc_ra, const __global float* d_OSEM,
+	__constant float* TOFCenter, const __global float* restrict d_atten, __constant uint* d_pseudos, const __global float* restrict d_x, const __global float* restrict d_y, const __global float* restrict d_zdet,
+	__constant float* x_center, __constant float* y_center, __constant float* z_center, __constant float* V, __constant uchar * MethodList,
+	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ, const __global ushort* restrict d_lor, const __global uint* restrict d_xyindex,
+	const __global ushort* restrict d_zindex, const __global ushort* restrict d_L, const __global float* restrict d_Sino, const __global float* restrict d_sc_ra, const __global float* restrict d_OSEM,
 #ifndef MBSREM
-	__global CAST* d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
+	__global CAST* restrict d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
-	const uint d_alku, const uchar MBSREM_prepass, __global float* d_ACOSEM_lhs, __global float* d_Amin, __global CAST* d_co, 
-	__global CAST* d_aco, __global float* d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL
+	const uint d_alku, const uchar MBSREM_prepass, __global float* restrict d_ACOSEM_lhs, __global float* restrict d_Amin, __global CAST* restrict d_co,
+	__global CAST* restrict d_aco, __global float* restrict d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL
 #endif
 ) {
 #endif
@@ -1541,24 +1547,26 @@ __kernel void Convolution3D_f(const __global float* input, __global float* outpu
 	//int radius_z = floor((float)window_size_z / 2.0f);
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
+		ind_uus.z = ind.z + k;
+		if (ind_uus.z >= get_global_size(2))
+			ind_uus.z = ind.z - k + 1;
+		else if (ind_uus.z < 0)
+			ind_uus.z = ind.z - (k + 1);
+		ind_uus.z *= Nyx;
 		for (int j = -window_size_y; j <= window_size_y; j++) {
+			ind_uus.y = ind.y + j;
+			if (ind_uus.y >= get_global_size(1))
+				ind_uus.y = ind.y - j + 1;
+			else if (ind_uus.y < 0)
+				ind_uus.y = ind.y - (j + 1);
+			ind_uus.y *= get_global_size(0);
 			for (int i = -window_size_x; i <= window_size_x; i++) {
 				ind_uus.x = ind.x + i;
-				ind_uus.y = ind.y + j;
-				ind_uus.z = ind.z + k;
 				if (ind_uus.x >= get_global_size(0))
 					ind_uus.x = ind.x - i + 1;
 				else if (ind_uus.x < 0)
 					ind_uus.x = ind.x - (i + 1);
-				if (ind_uus.y >= get_global_size(1))
-					ind_uus.y = ind.y - j + 1;
-				else if (ind_uus.y < 0)
-					ind_uus.y = ind.y - (j + 1);
-				if (ind_uus.z >= get_global_size(2))
-					ind_uus.z = ind.z - k + 1;
-				else if (ind_uus.z < 0)
-					ind_uus.z = ind.z - (k + 1);
-				uint indeksi = ind_uus.x + ind_uus.y * get_global_size(0) + ind_uus.z * Nyx;
+				uint indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
 				float p = input[indeksi];
 				p *= convolution_window[c];
 				result += p;
@@ -1645,5 +1653,39 @@ __kernel void NLM(__global float* grad, const __global float* u, const __global 
 
 	grad[n] = output;
 
+}
+#endif
+
+#ifdef MEDIAN
+__kernel void medianFilter3D(const __global float* grad, __global float* output, const uint Nx, const uint Ny, const uint Nz) {
+	int xid = get_global_id(0);
+	int yid = get_global_id(1);
+	int zid = get_global_id(2);
+	if (xid < SEARCH_WINDOW_X || xid >= Nx + SEARCH_WINDOW_X || yid < SEARCH_WINDOW_Y || yid >= Ny + SEARCH_WINDOW_Y || zid < SEARCH_WINDOW_Z || zid >= Nz + SEARCH_WINDOW_Z)
+		return;
+	int koko = (SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1);
+	float median[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	float medianF[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	int uu = 0;
+	for (int x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
+		for (int y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
+			for (int z = -SEARCH_WINDOW_Z; z <= SEARCH_WINDOW_Z; z++) {
+				uint pikseli = (xid + x) + (yid + y) * get_global_size(0) + (zid + z) * get_global_size(0) * get_global_size(1);
+				median[uu] = grad[pikseli];
+				uu++;
+			}
+		}
+	}
+	for (int hh = 0; hh < koko; hh++) {
+		int ind = 0;
+		for (int ll = 0; ll < koko; ll++) {
+			if (median[hh] > median[ll] || (median[hh] == median[ll] && hh < ll))
+				ind++;
+		}
+		medianF[ind] = median[hh];
+		if (ind == koko / 2)
+			break;
+	}
+	output[xid + yid * get_global_size(0) + zid * get_global_size(0) * get_global_size(1)] = medianF[koko / 2];
 }
 #endif
