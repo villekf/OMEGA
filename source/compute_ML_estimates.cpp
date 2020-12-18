@@ -19,7 +19,7 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	// OSL-MLEM with Median Root Prior
 	if (MethodList.OSLMLEM && MethodList.MRP) {
 		array dU = MRP(vec.im_mlem(seq(ee, ee + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets, w_vec.med_no_norm,
-			im_dim);
+			im_dim, OpenCLStruct);
 		vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.MRP_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
 		ee += im_dim;
 	}

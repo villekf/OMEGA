@@ -132,6 +132,7 @@ typedef struct matlabArrays_ {
 typedef struct _kernelStruct {
 #ifdef OPENCL
 	cl::Kernel kernelNLM;
+	cl::Kernel kernelMed;
 	cl::CommandQueue* af_queue;
 #else
 	CUfunction kernelNLM = NULL;
@@ -205,7 +206,7 @@ af::array COSEM(const af::array &im, const af::array &C_co, const af::array &D, 
 
 // Priors
 af::array MRP(const af::array &im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
-	const float epps, const af::array &offsets, const bool med_no_norm, const uint32_t im_dim);
+	const float epps, const af::array &offsets, const bool med_no_norm, const uint32_t im_dim, const kernelStruct& OpenCLStruct);
 
 af::array Quadratic_prior(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t inffi, const af::array& offsets, const af::array& weights_quad, const uint32_t im_dim);

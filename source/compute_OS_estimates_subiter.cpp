@@ -14,8 +14,13 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	uint64_t yy = 0u;
 	float uu;
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM == 1u) {
-		array u1 = afcl::array(length[osa_iter], d_Sino[osa_iter].get(), f32, true);
+		const af::array u1 = afcl::array(length[osa_iter], d_Sino[osa_iter](), f32, true);
+		clRetainMemObject(d_Sino[osa_iter]());
 		uu = af::sum<float>(u1);
+		//if (DEBUG) {
+		//	mexPrintf("uu = %f\n", uu);
+		//	mexEvalString("pause(.0001);");
+		//}
 	}
 
 	// Compute the (matrix free) algorithms
@@ -91,7 +96,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		// OSL-OSEM
 		if (MethodList.OSLOSEM) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta.MRP_OSEM, epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)));
 			yy += im_dim;
 		}
@@ -106,14 +111,14 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		}
 		if (MethodList.MBSREM) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = MBSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)), w_vec.U,
 				pj3, w_vec.lambda_MBSREM, iter, im_dim, beta.MRP_MBSREM, dU, *testi, epps);
 			yy += im_dim;
 		}
 		if (MethodList.ROSEMOSL) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = ROSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta.MRP_ROSEMOSL, epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
 				w_vec.lambda_ROSEM, iter);
 			yy += im_dim;
@@ -125,7 +130,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		}
 		if (MethodList.RBIOSL) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = RBI(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
 				w_vec.D, beta.MRP_RBI, dU);
 			yy += im_dim;
@@ -136,7 +141,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		}
 		if (MethodList.OSLCOSEM > 0u) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			if (MethodList.OSLCOSEM == 1u)
 				vec.C_osl(span, osa_iter) = vec.rhs_os(seq(yy, yy + im_dim - 1u)) * pow(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.h_ACOSEM_2);
 			else

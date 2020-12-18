@@ -83,6 +83,12 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Con
 	std::vector<cl_int> ignores(devices2.size());
 	if (devices2.size() > 1ULL) {
 		cl_ulong mem_max = 0ULL;
+		for (size_t i = 0ULL; i < devices2.size(); i++) {
+			cl_ulong mem;
+			status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
+			if (mem > mem_max)
+				mem_max = mem;
+		}
 		for (size_t i = 0ULL; i < devices2.size(); i++)
 		{
 			cl_device_type type;

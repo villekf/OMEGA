@@ -116,7 +116,7 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 	MethodListOpenCL.OSLCOSEM = static_cast<cl_char>(MethodList.OSLCOSEM);
 }
 
-cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, const bool osem_bool, const cl::Program &program_os, const cl::Program& program_ml,
+cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, cl::Kernel& kernelMed, const bool osem_bool, const cl::Program &program_os, const cl::Program& program_ml,
 	const cl::Program& program_mbsrem, const RecMethods MethodList, const Weighting w_vec, const uint32_t projector_type, const bool mlem_bool, const bool precompute,
 	const uint16_t n_rays, const uint16_t n_rays3D)
 {
@@ -194,6 +194,22 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 		}
 		else if (DEBUG) {
 			mexPrintf("NLM kernel successfully created\n");
+			mexEvalString("pause(.0001);");
+		}
+	}
+	if (MethodList.MRP) {
+		if (osem_bool)
+			kernelMed = cl::Kernel(program_os, "medianFilter3D", &status);
+		else if (mlem_bool)
+			kernelMed = cl::Kernel(program_ml, "medianFilter3D", &status);
+
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrintf("Failed to create Median kernel\n");
+			return status;
+		}
+		else if (DEBUG) {
+			mexPrintf("Median kernel successfully created\n");
 			mexEvalString("pause(.0001);");
 		}
 	}
@@ -712,7 +728,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix, 
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, 
-	const size_t koko, const bool randoms_correction, const uint32_t Nt) {
+	const size_t koko, const bool randoms_correction, const uint64_t* randSize, const uint32_t Nt) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -748,6 +764,11 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	const size_t local_size = 64ULL;
 
 	for (uint32_t osa_iter = eka; osa_iter < subsets; osa_iter++) {
+
+		if (DEBUG) {
+			mexPrintf("prepass kernel iteration started\n");
+			mexEvalString("pause(.0001);");
+		}
 
 		cl_uint kernelInd_MRAMLA_sub = kernelInd_MRAMLA;
 
@@ -941,9 +962,11 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					C_co(af::span, osa_iter) = computeConvolution(C_co(af::span, osa_iter), g, Nx, Ny, Nz, w_vec, 1u) * cosem;
 				else
 					C_co(af::span, osa_iter) = C_co(af::span, osa_iter) * cosem;
-				//mexPrintf("co = %f\n", af::sum<float>(C_co(af::span, osa_iter)));
-				//mexPrintf("dim0 = %u\n", C_co(af::span, osa_iter).dims(0));
-				//mexPrintf("dim1 = %u\n", C_co(af::span, osa_iter).dims(1));
+				//if (DEBUG) {
+					//mexPrintf("co = %f\n", af::sum<float>(C_co(af::span, osa_iter)));
+					//mexPrintf("dim0 = %u\n", C_co(af::span, osa_iter).dims(0));
+					//mexPrintf("dim1 = %u\n", C_co(af::span, osa_iter).dims(1));
+				//}
 			}
 			if (MethodListOpenCL.ACOSEM) {
 				if (atomic_64bit)
@@ -1013,12 +1036,15 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 		}
 		if (alku == 0u && (MethodListOpenCL.MBSREM || MethodListOpenCL.MRAMLA) && w_vec.MBSREM_prepass && Nt == 1U) {
 			uint32_t H = osa_iter;
+			uint32_t L = 0U;
 			if (TOF && !loadTOF)
 				H = 0;
-			const af::array Sino = afcl::array(length[osa_iter] * nBins, d_Sino[H](), f32, true);
-			af::array rand;
 			if (randoms_correction)
-				rand = afcl::array(length[osa_iter], d_sc_ra[osa_iter](), f32, true);
+				L = osa_iter;
+			const af::array Sino = afcl::array(length[osa_iter] * nBins, d_Sino[H](), f32, true);
+			clRetainMemObject(d_Sino[H]());
+			const af::array rand = afcl::array(randSize[L], d_sc_ra[L](), f32, true);
+			clRetainMemObject(d_sc_ra[H]());
 			if (U_skip) {
 				float UU = w_vec.U;
 				const af::array Aind = apu_Amin > 0.f;
@@ -1265,6 +1291,12 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	}
 	if (find_lors)
 		options += " -DFIND_LORS";
+	if (MethodList.MRP) {
+		options += " -DMEDIAN";
+		options += (" -DSEARCH_WINDOW_X=" + std::to_string(w_vec.Ndx));
+		options += (" -DSEARCH_WINDOW_Y=" + std::to_string(w_vec.Ndy));
+		options += (" -DSEARCH_WINDOW_Z=" + std::to_string(w_vec.Ndz));
+	}
 	//if (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1)) {
 	//	options += " -DORTH";
 	//	options += " -DCRYSTZ";

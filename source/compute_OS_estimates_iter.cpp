@@ -65,7 +65,7 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.MRP_BSREM(span, it) = MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_BSREM[iter], beta.MRP_BSREM, dU, epps);
 			yy += im_dim;
 		}
@@ -75,7 +75,7 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.ROSEMMAP) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, OpenCLStruct);
 			vec.MRP_ROSEM(span, it) = MAP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_ROSEM[iter], beta.MRP_ROSEM, dU, epps);
 			yy += im_dim;
 		}

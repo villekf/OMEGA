@@ -52,7 +52,7 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 // Load the OpenCL binary and create an OpenCL program from it
 //cl_int CreateProgramFromBinary(cl_context af_context, cl_device_id af_device_id, FILE *fp, cl_program &program);
 
-cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel& kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, const bool osem_bool, const cl::Program& program_os, const cl::Program& program_ml,
+cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel& kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, cl::Kernel& kernelMed, const bool osem_bool, const cl::Program& program_os, const cl::Program& program_ml,
 	const cl::Program& program_mbsrem, const RecMethods MethodList, const Weighting w_vec, const uint32_t projector_type, const bool mlem_bool, const bool precompute,
 	const uint16_t n_rays, const uint16_t n_rays3D);
 
@@ -77,7 +77,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix,
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins,
-	const size_t koko, const bool randoms_correction, const uint32_t Nt = 1U);
+	const size_t koko, const bool randoms_correction, const uint64_t* randSize = nullptr, const uint32_t Nt = 1U);
 
 void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx,
 	const float dy, const float dz, const float bx, const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax,

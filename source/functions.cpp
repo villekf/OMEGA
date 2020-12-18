@@ -650,10 +650,15 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	}
 	if ((MethodList.L || MethodList.FMH || MethodList.MRP || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
 		// Index values for the neighborhood
+#ifdef OPENCL
+		if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP)
+			w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
+#else
 		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
-		if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
-			w_vec.inffi = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
+#endif
 	}
+	if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
+		w_vec.inffi = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
 	// Weights for the various priors
 	if (MethodList.Quad && MethodList.MAP) {
 		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);	
@@ -2003,7 +2008,7 @@ float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t ra
 {
 	af::array hk_summa = Sino * af::log(Sino) - Sino;
 	hk_summa(af::isNaN(hk_summa)) = 0.f;
-	af::array P_Sino, apu;
+	af::array P_Sino, apu, Iind;
 	if (TOF && randoms_correction) {
 		af::array rInd = rand == 0.f;
 		P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
@@ -2013,23 +2018,31 @@ float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t ra
 	}
 	else {
 		if (randoms_correction == 1u) {
-			P_Sino = Sino(Sino > 0.f & rand == 0.f);
+			Iind = (Sino > 0.f & rand == 0.f);
+			if (af::sum<float>(Iind) == 0.f)
+				return 1e8f;
+			P_Sino = Sino(Iind);
 			apu = D + rand;
 			apu = af::sum(Sino * af::log(apu) - apu);
 		}
 		else {
-			P_Sino = Sino(Sino > 0.f);
+			Iind = (Sino > 0.f);
+			P_Sino = Sino(Iind);
 			apu = af::sum(Sino * af::log(D) - D);
 		}
 		if (randoms_correction == 1u)
-			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & rand == 0.f), batchMinus);
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
 		else
-			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f), batchMinus);
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
+	}
+	if (DEBUG) {
+		mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+		mexEvalString("pause(.0001);");
 	}
 	af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
 	float eps;
 	eps = af::min<float>(epsilon);
-	eps = eps <= 0.f ? epps : eps;
+	eps = eps <= 0.f ? af::min<float>(P_Sino) : eps;
 	return eps;
 }
 
@@ -2118,13 +2131,19 @@ af::array MBSREM(const af::array & im, const af::array & rhs, const float U, con
 	af::array output;
 	const af::array pp = im < (U / 2.f);
 	UU(pp) = im(pp) / (pj3(pp));
-	UU(!pp) = (U - im(!pp)) / (pj3(!pp));
+	UU(!pp) = (U - im(!pp)) / (pj3(!pp)); 
 	if (beta == 0.f)
 		output = im + lam[iter] * UU * rhs;
 	else
 		output = im + lam[iter] * UU * (rhs - beta * dU);
 	output(output < epps) = epps;
 	output(output >= U) = U - epps;
+	if (DEBUG) {
+		mexPrintf("U = %f\n", U);
+		mexPrintf("lam[iter] = %f\n", lam[iter]);
+		mexPrintf("output = %f\n", af::sum<float>(lam[iter] * UU * rhs));
+		mexEvalString("pause(.0001);");
+	}
 	return output;
 }
 
@@ -2192,11 +2211,46 @@ af::array COSEM(const af::array & im, const af::array & C_co, const af::array & 
 	return output;
 }
 
-af::array MRP(const af::array & im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps,
-	const af::array& offsets, const bool med_no_norm, const uint32_t im_dim)
+af::array MRP(const af::array& im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps,
+	const af::array& offsets, const bool med_no_norm, const uint32_t im_dim, const kernelStruct& OpenCLStruct)
 {
-	af::array padd = af::flat(padding(im, Nx, Ny, Nz, medx, medy, medz));
+	af::array padd = padding(im, Nx, Ny, Nz, medx, medy, medz);
+#ifdef OPENCL
+	cl::Kernel kernelMed(OpenCLStruct.kernelMed);
+	uint32_t kernelIndMed = 0U;
+	const af::dim4 dimmi(padd.dims(0), padd.dims(1), padd.dims(2));
+	cl::NDRange global_size(padd.dims(0), padd.dims(1), padd.dims(2));
+	af::array grad = af::constant(0.f, dimmi);
+	padd = af::flat(padd);
+	grad = af::flat(grad);
+	cl::Buffer d_grad = cl::Buffer(*grad.device<cl_mem>(), true);
+	cl::Buffer d_padd = cl::Buffer(*padd.device<cl_mem>(), true);
+	af::sync();
+	kernelMed.setArg(kernelIndMed++, d_padd);
+	kernelMed.setArg(kernelIndMed++, d_grad);
+	kernelMed.setArg(kernelIndMed++, Nx);
+	kernelMed.setArg(kernelIndMed++, Ny);
+	kernelMed.setArg(kernelIndMed++, Nz);
+	cl_int status = (*OpenCLStruct.af_queue).enqueueNDRangeKernel(kernelMed, cl::NullRange, global_size, cl::NullRange);
+	if (status != CL_SUCCESS) {
+		getErrorString(status);
+		mexPrintf("Failed to launch the Median filter kernel\n");
+		mexEvalString("pause(.0001);");
+	}
+	else if (DEBUG) {
+		mexPrintf("Median kernel launched successfully\n");
+		mexEvalString("pause(.0001);");
+	}
+	status = (*OpenCLStruct.af_queue).finish();
+	grad.unlock();
+	padd.unlock();
+	grad = af::moddims(grad, dimmi);
+	grad = grad(af::seq(medx, Nx + medx - 1), af::seq(medy, Ny + medy - 1), af::seq(medz, Nz + medz - 1));
+	grad = af::flat(grad);
+#else
+	padd = af::flat(padd);
 	af::array grad = af::median(af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1)), 1);
+#endif
 	if (med_no_norm)
 		grad = im - grad;
 	else
@@ -2213,11 +2267,11 @@ af::array Quadratic_prior(const af::array & im, const uint32_t Ndx, const uint32
 	//weights(weights.elements() / 2) *= -1.f;
 	//af::eval(weights);
 	//weights = af::moddims(weights, weights_quad.dims(0), weights_quad.dims(1), weights_quad.dims(2));
-	if (DEBUG) {
-		const char* R = af::toString("weights", weights);
-		mexPrintf("weights = %s\n", R);
-		mexPrintf("weights.elements() / 2 = %d\n", weights.elements() / 2);
-	}
+	//if (DEBUG) {
+	//	const char* R = af::toString("weights", weights);
+	//	mexPrintf("weights = %s\n", R);
+	//	mexPrintf("weights.elements() / 2 = %d\n", weights.elements() / 2);
+	//}
 	if (Ndz == 0 || Nz == 1) {
 		grad = af::convolve2(apu_pad, weights);
 		grad = grad(af::seq(Ndx, Nx + Ndx - 1), af::seq(Ndy, Ny + Ndy - 1), af::span);

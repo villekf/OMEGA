@@ -249,7 +249,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Create the kernels
 	cl::Kernel kernel_ml, kernel, kernel_mramla;
 
-	status = createKernels(kernel_ml, kernel, kernel_mramla, OpenCLStruct.kernelNLM, osem_bool, program_os, program_ml, program_mbsrem, MethodList, w_vec, projector_type, 
+	status = createKernels(kernel_ml, kernel, kernel_mramla, OpenCLStruct.kernelNLM, OpenCLStruct.kernelMed, osem_bool, program_os, program_ml, program_mbsrem, MethodList, w_vec, projector_type,
 		mlem_bool, precompute, n_rays, n_rays3D);
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to create kernels\n");
@@ -461,13 +461,15 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		uint32_t alku = 0u;
 
+		const uint64_t* randSize = (uint64_t*)mxGetData(mxGetField(options, 0, "randSize"));
+
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U)
 			w_vec.Amin = constant(0.f, koko * nBins, 1);
 
 		// Run the prepass phase
 		MRAMLA_prepass(subsets, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino, koko, x00, vec.C_co,
 			vec.C_aco, vec.C_osl, alku, kernel_mramla, d_L, raw, MethodListOpenCL, length, atomic_64bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, 
-			d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps, TOF, loadTOF, Sin, nBins, koko, randoms_correction, Nt);
+			d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps, TOF, loadTOF, Sin, nBins, koko, randoms_correction, randSize, Nt);
 
 
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && tt == 0) {
@@ -588,6 +590,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				w_vec.U = max<float>(Sino(Aind) / w_vec.Amin(Aind));
 			}
 			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, E, TOF, nBins);
+		}
+		if (DEBUG && MethodList.MRAMLA) {
+			mexPrintf("w_vec.epsilon_mramla = %f\n", w_vec.epsilon_mramla);
+			mexEvalString("pause(.0001);");
 		}
 		if (osem_bool) {
 			kernel.setArg(kernelInd_OSEMTIter++, w_vec.epsilon_mramla);
@@ -799,6 +805,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					if (DEBUG) {
 						mexPrintf("Summ = %f\n", af::sum<float>(*testi));
+						if (MethodList.MRAMLA)
+							mexPrintf("pj3 = %f\n", af::sum<float>(pj3));
 						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
 						mexEvalString("pause(.0001);");
 					//	vec.im_os = vec.rhs_os;
@@ -838,6 +846,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					mexPrintf("Iteration %d complete\n", iter + 1u);
 					mexEvalString("pause(.0001);");
 				}
+				af::deviceGC();
 			}
 			// Compute MLEM separately
 			if (mlem_bool) {

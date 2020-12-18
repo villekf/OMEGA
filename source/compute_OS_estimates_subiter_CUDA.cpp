@@ -105,7 +105,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		// OSL-OSEM
 		if (MethodList.OSLOSEM) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, CUDAStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta.MRP_OSEM, epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)));
 			yy += im_dim;
 		}
@@ -116,7 +116,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.MBSREM) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, CUDAStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = MBSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)), w_vec.U,
 				pj3, w_vec.lambda_MBSREM, iter, im_dim, beta.MRP_MBSREM, dU, *testi, epps);
 			yy += im_dim;
@@ -128,14 +128,14 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.RBIOSL) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, CUDAStruct);
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = RBI(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
 				w_vec.D, beta.MRP_RBI, dU);
 			yy += im_dim;
 		}
 		if (MethodList.OSLCOSEM > 0u) {
 			array dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
-				w_vec.med_no_norm, im_dim);
+				w_vec.med_no_norm, im_dim, CUDAStruct);
 			if (MethodList.OSLCOSEM == 1u)
 				vec.C_osl(span, osa_iter) = vec.rhs_os(seq(yy, yy + im_dim - 1u)) * pow(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.h_ACOSEM_2);
 			else
