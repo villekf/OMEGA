@@ -23,6 +23,8 @@
 
 - MBSREM, ROSEM and MRAMLA can now correctly use manual relaxation parameters
   - There is also now a check to make sure that the number of input relaxation parameters is at least the number of iterations
+  
+- Fixed a bug in `scaleImages`
 
 ## OMEGA v1.1.0
 
