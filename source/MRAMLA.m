@@ -172,7 +172,7 @@ for ii = 1 : options.Niter
         pp = rmM_apu<U/2;
         dU(pp) = rmM_apu(pp)./(pj3(pp)+epps);
         dU(~pp) = (U-rmM_apu(~pp))./(pj3(~pp)+epps);
-        rmM_apu = rmM_apu + lam(ii).*dU.*(A'*(uu./(A*rmM_apu+epps))-full(sum(A,1)'));
+        rmM_apu = rmM_apu + lam(ii).*dU.*(A'*(uu./(A*rmM_apu+epps) - 1));
         rmM_apu(rmM_apu<0) = 0;
         tElapsed = toc(tStart);
         disp(['MRAMLA sub-iteration ' num2str(kk) ' took ' num2str(tElapsed) ' seconds'])

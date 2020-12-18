@@ -56,6 +56,6 @@ end
 % end
 epsilon_mramla = min(min([P_Sino';exp((apu - hk_summa)./double(P_Sino))']));
 if epsilon_mramla <= 0
-    epsilon_mramla = epps;
+    epsilon_mramla = min(P_Sino);
 end
 
