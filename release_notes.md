@@ -28,6 +28,10 @@
 
 - Fixed errors and crashes when loading only raw data
 
+- `gate_main_simple` should now work without errors
+
+- LMF and Inveon support are now optional in the sense that if they cannot be built only a warning is displayed
+
 ## OMEGA v1.1.0
 
 ### New features
