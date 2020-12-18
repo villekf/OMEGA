@@ -371,8 +371,15 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lam = lam;
         end
-    elseif (options.BSREM || options.ramla) && options.implementation == 2
-        options.lam = single(options.lam);
+    elseif (options.BSREM || options.ramla)
+        if numel(options.lambda0) < options.Niter
+            error('The number of relaxation values needs to be at least equal to the number of iterations')
+        end
+        if options.implementation == 2
+            options.lam = single(options.lambda0);
+        else
+            options.lam = double(options.lambda0);
+        end
     end
     if (options.MBSREM || options.mramla) && length(options.lambda0_mbsrem) == 1
         lam_mbsrem = zeros(options.Niter,1);
@@ -385,8 +392,15 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lam_mbsrem = lam_mbsrem;
         end
-    elseif (options.MBSREM || options.mramla) && options.implementation == 2
-        options.lam_mbsrem = single(options.lam_mbsrem);
+    elseif (options.MBSREM || options.mramla)
+        if numel(options.lambda0_mbsrem) < options.Niter
+            error('The number of relaxation values needs to be at least equal to the number of iterations')
+        end
+        if options.implementation == 2
+            options.lam_mbsrem = single(options.lambda0_mbsrem);
+        else
+            options.lam_mbsrem = double(options.lambda0_mbsrem);
+        end
     end
     if (options.ROSEM_MAP || options.rosem) && length(options.lambda0_rosem) == 1
         lam_rosem = zeros(options.Niter,1);
@@ -399,8 +413,15 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lam_rosem = lam_rosem;
         end
-    elseif (options.ROSEM_MAP || options.rosem) && options.implementation == 2
-        options.lambda0_rosem = single(options.lambda0_rosem);
+    elseif (options.ROSEM_MAP || options.rosem)
+        if numel(options.lambda0_rosem) < options.Niter
+            error('The number of relaxation values needs to be at least equal to the number of iterations')
+        end
+        if options.implementation == 2
+            options.lam_rosem = single(options.lambda0_rosem);
+        else
+            options.lam_rosem = double(options.lambda0_rosem);
+        end
     end
     if options.drama
         lam_drama = zeros(options.Niter,options.subsets);
@@ -430,7 +451,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         % These values are needed in order to vectorize the calculation of
         % certain priors
         % Specifies the indices of the center pixel and its neighborhood
-        if (options.MRP && (options.implementation == 2 || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
+        if (options.MRP && ((options.implementation == 2 && options.use_CUDA) || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
             options = computeOffsets(options);
         else
             options.tr_offsets = uint32(0);
