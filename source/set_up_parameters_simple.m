@@ -29,6 +29,7 @@ options.TOF_width = 0;
 options.TOF_offset = 0;
 options.TOF_noise_FWHM = 0;
 options.TOF_FWHM = 0;
+options.use_machine = 0;
 options.TOF_bins_used = options.TOF_bins;
 options.fill_sinogram_gaps = false;
 options.gap_filling_method = 'fillmissing';
