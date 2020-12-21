@@ -26,11 +26,12 @@ classdef forwardBackwardProject
         nn
         gaussK
         sens
-        osa_iter
+        subset
         index
         sysmat
         trans
         TOF
+        n_meas_subs
     end
     
     methods
@@ -159,11 +160,12 @@ classdef forwardBackwardProject
             if iscell(obj.index)
                 obj.index = cell2mat(obj.index);
             end
+            obj.n_meas_subs = obj.n_meas;
             if obj.OProperties.subsets > 1
                 obj.n_meas = [int64(0);int64(cumsum(obj.n_meas))];
             end
             if obj.OProperties.subsets == 1
-                obj.osa_iter = 1;
+                obj.subset = 1;
             end
             
             
@@ -340,16 +342,18 @@ classdef forwardBackwardProject
             %   y = The result of y = A * input
             
             if nargin >=3 && ~isempty(varargin{1})
-                obj.osa_iter = varargin{1};
+                obj.subset = varargin{1};
             elseif obj.OProperties.subsets > 1 && nargin == 2
-                error('When using subsets you must specify the current subset number (e.g. y = forwardProject(A, input, subset_number))')
+%                 error('When using subsets you must specify the current subset number (e.g. y = forwardProject(A, input, subset_number))')
+            else
+                obj.subset = 1;
             end
             
             if obj.OProperties.use_psf
                 input = computeConvolution(input, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
             end
-            y = forward_project(obj.OProperties, obj.index(obj.nn(obj.osa_iter) + 1:obj.nn(obj.osa_iter+1)), obj.nn(obj.osa_iter + 1) - obj.nn(obj.osa_iter), input, [obj.nn(obj.osa_iter) + 1 , obj.nn(obj.osa_iter+1)], ...
-                obj.osa_iter, true);
+            y = forward_project(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, [obj.nn(obj.subset) + 1 , obj.nn(obj.subset+1)], ...
+                obj.subset, true);
         end
         
         
@@ -371,9 +375,9 @@ classdef forwardBackwardProject
             %   sens. Can be omitted if sensitivity image is not required.
             
             if nargin >=3 && ~isempty(varargin{1})
-                obj.osa_iter = varargin{1};
-            elseif obj.OProperties.subsets > 1 && nargin == 2
-                error('When using subsets you must specify the current subset number (e.g. f = backwardProject(A, input, subset_number))')
+                obj.subset = varargin{1};
+            elseif obj.OProperties.subsets == 1
+                obj.subset = 1;
             end
             if nargout >= 2
                 iter = 1;
@@ -381,16 +385,16 @@ classdef forwardBackwardProject
                 iter = 10;
             end
             if iter == 1
-                [f, norm] = backproject(obj.OProperties, obj.index(obj.nn(obj.osa_iter) + 1:obj.nn(obj.osa_iter+1)), obj.nn(obj.osa_iter + 1) - obj.nn(obj.osa_iter), input, ...
-                    [obj.nn(obj.osa_iter) + 1,obj.nn(obj.osa_iter+1)], obj.osa_iter, true);
+                [f, norm] = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
+                    [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
                 
-                obj.sens(:,obj.osa_iter) = norm;
+                obj.sens(:,obj.subset) = norm;
                 if obj.OProperties.use_psf
-                    obj.sens(:,obj.osa_iter) = computeConvolution(obj.sens(:,obj.osa_iter), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
+                    obj.sens(:,obj.subset) = computeConvolution(obj.sens(:,obj.subset), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
                 end
             else
-                f = backproject(obj.OProperties, obj.index(obj.nn(obj.osa_iter) + 1:obj.nn(obj.osa_iter+1)), obj.nn(obj.osa_iter + 1) - obj.nn(obj.osa_iter), input, ...
-                    [obj.nn(obj.osa_iter) + 1,obj.nn(obj.osa_iter+1)], obj.osa_iter, true);
+                f = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
+                    [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
             end
             if obj.OProperties.use_psf
                 f = computeConvolution(f, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
@@ -403,8 +407,13 @@ classdef forwardBackwardProject
             %MTIMES Automatically compute either the forward projection or
             %backprojection, based on the input vector length.
             %   Backprojection is selected if transpose operator is used.
-            if obj.trans == true || size(input,1) == obj.n_meas(end) || size(input,2) == obj.n_meas(end) || size(input,1) == obj.n_meas(end) * obj.OProperties.TOF_bins || size(input,2) == obj.n_meas(end) * obj.OProperties.TOF_bins
-                if size(input,2) == obj.n_meas(end)
+            if obj.OProperties.subsets > 1
+                subs = obj.n_meas_subs(obj.subset);
+            else
+                subs = obj.n_meas(end);
+            end
+            if obj.trans == true || size(input,1) == subs || size(input,2) == subs || size(input,1) == subs * obj.OProperties.TOF_bins || size(input,2) == subs * obj.OProperties.TOF_bins
+                if size(input,2) == subs
                     input = input';
                 end
                 f = backwardProject(obj, input);
@@ -434,12 +443,12 @@ classdef forwardBackwardProject
                 obj.OProperties.implementation = 1;
             end
             if nargin >= 2 && ~isempty(varargin{1})
-                obj.osa_iter = varargin{1};
+                obj.subset = varargin{1};
             elseif obj.OProperties.subsets > 1 && nargin == 1
                 error('When using subsets you must specify the current subset number (e.g. sysMat = formMatrix(A, subset_number))')
             end
-            A = forward_project(obj.OProperties, obj.index(obj.nn(obj.osa_iter) + 1:obj.nn(obj.osa_iter+1)), obj.nn(obj.osa_iter + 1) - obj.nn(obj.osa_iter), [], [obj.nn(obj.osa_iter) + 1 , obj.nn(obj.osa_iter+1)], ...
-                obj.osa_iter, true, true);
+            A = forward_project(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), [], [obj.nn(obj.subset) + 1 , obj.nn(obj.subset+1)], ...
+                obj.subset, true, true);
         end
         function obj = transpose(obj)
             obj.trans = true;
