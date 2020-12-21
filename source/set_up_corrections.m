@@ -166,6 +166,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
                 error('Size mismatch between the current data and the normalization data file')
             end
+            options.InveonNorm = true;
             %             options.normalization = 1 ./ options.normalization;
         else
             data = load(file);
