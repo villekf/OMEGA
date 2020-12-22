@@ -30,7 +30,15 @@
 
 - `gate_main_simple` should now work without errors
 
+- `main_PET` had erroneously set OSL-OSEM to true despite using implementation 4 and OSEM already
+
 - LMF and Inveon support are now optional in the sense that if they cannot be built only a warning is displayed
+
+- LMF and Inveon files should now compile on Windows with older versions of MinGW
+
+- Fix loading of detector coordinates with simulated GATE data when using ROOT files
+
+- Fix detector coordinates when transaxial multiplier is greater than 1
 
 ## OMEGA v1.1.0
 
