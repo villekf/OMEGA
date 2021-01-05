@@ -44,9 +44,12 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz,
 	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
 	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, const double crystal_size_z,
-	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V) {
+	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V, const uint32_t nCores) {
 
-	setThreads();
+	if (nCores == 1U)
+		setThreads();
+	else
+		omp_set_num_threads(nCores);
 
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 

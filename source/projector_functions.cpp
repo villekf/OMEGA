@@ -2019,7 +2019,7 @@ void setThreads() {
 #ifdef _OPENMP
 	if (omp_get_max_threads() == 1) {
 		int n_threads = std::thread::hardware_concurrency();
-		omp_set_num_threads(n_threads);
+		omp_set_num_threads(n_threads / 2);
 	}
 #endif
 }

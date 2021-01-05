@@ -231,6 +231,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	const bool verbose = (bool)mxGetScalar(prhs[ind]);
 	ind++;
 
+	// Number of physical CPU cores
+	const uint32_t nCores = (uint32_t)mxGetScalar(prhs[ind]);
+	ind++;
+
 	// Is raw list-mode data used
 	const bool raw = (bool)mxGetScalar(prhs[ind]);
 	ind++;
@@ -332,7 +336,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, scatter, scatter_coef);
+				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, scatter, 
+				scatter_coef, nCores);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -348,7 +353,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			// run the Improved Siddon's algorithm, precomputed_lor = true
 			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef);
+				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -399,7 +404,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			vol_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin, 
-				bmax, Vmax, V, scatter, scatter_coef);
+				bmax, Vmax, V, scatter, scatter_coef, nCores);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -510,13 +515,13 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				sequential_orth_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det, 
 					NSlices, Nx, Ny, Nz, d, dz,	bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
-					no_norm, dec_v, global_factor, fp, scatter, scatter_coef);
+					no_norm, dec_v, global_factor, fp, scatter, scatter_coef, nCores);
 			}
 			else {
 				sequential_orth_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
 					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
-					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef);
+					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef, nCores);
 			}
 		}
 		// Improved Siddon
@@ -541,13 +546,13 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm, global_factor, fp, scatter, scatter_coef, TOF, TOFSize, 
-					sigma_x, TOFCenter, nBins, dec_v);
+					sigma_x, TOFCenter, nBins, dec_v, nCores);
 			}
 			else {
 				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, TotSinos,
 					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays, n_rays3D, global_factor, fp, list_mode_format, 
-					scatter, scatter_coef, TOF, TOFSize, sigma_x, TOFCenter, nBins, dec_v);
+					scatter, scatter_coef, TOF, TOFSize, sigma_x, TOFCenter, nBins, dec_v, nCores);
 			}
 
 
@@ -588,13 +593,13 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				sequential_volume_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det,
 					NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index,
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
-					no_norm, dec_v, global_factor, fp, scatter, scatter_coef);
+					no_norm, dec_v, global_factor, fp, scatter, scatter_coef, nCores);
 			}
 			else {
 				sequential_volume_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
 					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index,
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
-					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef);
+					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef, nCores);
 			}
 		}
 	}
@@ -845,7 +850,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		improved_siddon_precomputation_phase(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz,
 			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center, 
-			bmin, bmax, Vmax, V);
+			bmin, bmax, Vmax, V, nCores);
 
 	}
 }

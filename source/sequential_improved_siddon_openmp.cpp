@@ -43,9 +43,12 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	const bool normalization,  const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, 
 	const double epps,  const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, 
 	const bool raw, const bool no_norm, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const bool TOF, 
-	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v) {
+	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v, const uint32_t nCores) {
 
-	setThreads();
+	if (nCores == 1U)
+		setThreads();
+	else
+		omp_set_num_threads(nCores);
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -75,7 +78,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 			continue;
 		Det detectors;
 
-		// Raw list-mode data
+		// Raw data
 		if (raw) {
 			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows);
 		}
@@ -493,9 +496,12 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
 
-	setThreads();
+	if (nCores == 1U)
+		setThreads();
+	else
+		omp_set_num_threads(nCores);
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -576,7 +582,6 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
 
 			if (fabs(y_diff) < 1e-8) {
-
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					double temppi = detectors.xs;
 					detectors.xs = detectors.ys;
@@ -750,7 +755,6 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 				if (tx0 < ty0 && tx0 < tz0) {
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
-
 					tempi += iu;
 					tx0 += txu;
 					xyz = 1U;
@@ -841,9 +845,12 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
 
-	setThreads();
+	if (nCores == 1U)
+		setThreads();
+	else
+		omp_set_num_threads(nCores);
 
 	const uint32_t Nyx = Ny * Nx;
 

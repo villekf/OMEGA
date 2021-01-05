@@ -49,9 +49,12 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size, 
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const bool scatter, 
-	const double* scatter_coef) {
+	const double* scatter_coef, const uint32_t nCores) {
 
-	setThreads();
+	if (nCores == 1U)
+		setThreads();
+	else
+		omp_set_num_threads(nCores);
 
 	// Precompute
 	const double bzb = bz + static_cast<double>(Nz) * dz;
