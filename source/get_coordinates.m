@@ -49,13 +49,18 @@ else
 end
 
 if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))
-    x = options.x;
-    y = options.y;
+    x = options.x(:);
+    y = options.y(:);
     if isfield(options,'z')
-        z = options.z;
+        z = options.z(:);
+    elseif isfield(options,'z_det')
+        z = options.z_det(:);
     else
-        z = options.z_det;
+        z = zeros(numel(x),1);
     end
+%     x = x + max(abs(x(:)));
+%     y = y + max(abs(y(:)));
+%     z = z + max(abs(z(:)));
 else
     if options.use_raw_data == false
         [~, ~, xp, yp] = detector_coordinates(options);
