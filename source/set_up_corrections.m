@@ -95,10 +95,12 @@ if options.attenuation_correction
                 error('Error: Attenuation data is of different size than the reconstructed image')
             end
         end
-        if size(options.vaimennus,3) == 1
-            options.vaimennus = options.vaimennus(2*block1+1:(2*rings+1)*options.Nx*options.Ny);
-        else
-            options.vaimennus = options.vaimennus(:,:,2*block1+1:2*rings+1);
+        if rings > 0
+            if size(options.vaimennus,3) == 1
+                options.vaimennus = options.vaimennus(2*block1+1:(2*rings+1)*options.Nx*options.Ny);
+            else
+                options.vaimennus = options.vaimennus(:,:,2*block1+1:2*rings+1);
+            end
         end
         options.vaimennus = options.vaimennus(:) / 10;
         if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
@@ -676,7 +678,7 @@ end
 if ~isfield(options,'global_correction_factor') || isempty(options.global_correction_factor) || options.global_correction_factor <= 0
     options.global_correction_factor = 1;
 end
-if options.use_raw_data && ~options.corrections_during_reconstruction
+if options.use_raw_data && ~options.corrections_during_reconstruction && ~options.listmode
     if iscell(options.SinM)
         for kk = 1 : options.partitions
             options.SinM{kk} = options.SinM{kk} * options.global_correction_factor;
