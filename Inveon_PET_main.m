@@ -5,7 +5,7 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% MACHINE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% SCANNER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -14,7 +14,7 @@ clear
 options.blocks_per_ring = (16);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% machine/crystal rings) 
+%%% scanner/crystal rings) 
 % Multiplying this with the below cryst_per_block should equal the total
 % number of crystal rings. 
 options.linear_multip = (4);
@@ -61,7 +61,7 @@ options.rings = options.linear_multip * options.cryst_per_block;
 %%% Number of detectors
 options.detectors = options.det_per_ring*options.rings;
 
-%%% Machine name
+%%% Scanner name
 % Used for naming purposes (measurement data)
 options.machine_name = 'Inveon';
 
@@ -75,9 +75,9 @@ options.machine_name = 'Inveon';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Use Inveon data
-% 0/false = Don't use Inveon machine data (use GATE data instead)
+% 0/false = Don't use Inveon scanner data (use GATE data instead)
 % 1 = Use list-mode data (.lst)
-% 2 = Use machine created sinogram data (.scn)
+% 2 = Use scanner created sinogram data (.scn)
 options.use_machine = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -269,7 +269,7 @@ options.flip_image = false;
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
-% This current setting is for machine list-mode data or sinogram data.
+% This current setting is for scanner list-mode data or sinogram data.
 % Positive values perform the rotation in clockwise direction
 options.offangle = options.det_w_pseudo * (2/4) - options.cryst_per_block/2;
  
@@ -328,7 +328,7 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99]. This varies from device to
 % device. If you see a slight shift in the sinograms when comparing with
-% the machine sinograms then use the other option here. For Inveon, this
+% the scanner sinograms then use the other option here. For Inveon, this
 % should be -1.
 options.ndist_side = -1;
 
@@ -561,7 +561,7 @@ options.normalization_correction = true;
 % formation or before image reconstruction (see below).
 % NOTE: If you have previously computed normalization coefficients with
 % OMEGA, you do not need to set this to true. The normalization
-% coefficients for the specified machine will be automatically loaded. Use
+% coefficients for the specified scanner will be automatically loaded. Use
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 % NOTE: Supports .nrm files created by the Inveon AW. 
@@ -720,7 +720,7 @@ options.TOF_bins_used = options.TOF_bins;
 options.name = 'open_PET_data';
 
 %%% Precompute data 
-% This should be done when using data from a certain machine the first time
+% This should be done when using data from a certain scanner the first time
 % as it can speed up reconstruction. Especially recommended for raw
 % list-mode data. Not mandatory and the precomputed data is only used if 
 % the below precompute_lor is set to true. If using solely implementation 

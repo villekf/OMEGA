@@ -5,7 +5,7 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% MACHINE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% SCANNER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -14,7 +14,7 @@ clear
 options.blocks_per_ring = (48);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% machine/crystal rings) 
+%%% scanner/crystal rings) 
 % Multiplying this with the below cryst_per_block should equal the total
 % number of crystal rings. 
 options.linear_multip = (4);
@@ -61,7 +61,7 @@ options.rings = options.linear_multip * options.cryst_per_block + sum(options.ps
 %%% Number of detectors
 options.detectors = options.det_per_ring*options.rings;
 
-%%% Machine name
+%%% Scanner name
 options.machine_name = 'Biograph_mCT';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -269,7 +269,7 @@ options.flip_image = false;
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
-% This current setting is for machine list-mode data.
+% This current setting is for scanner list-mode data.
 % Positive values perform the rotation in clockwise direction
 options.offangle = options.det_w_pseudo * (0/4);
 
@@ -330,7 +330,7 @@ options.NSinos = options.TotSinos;
 % from the positive side (-1). E.g. if Ndist = 200, then with +1 the
 % interval is [-99,100] and with -1 [-100,99]. This varies from device to
 % device. If you see a slight shift in the sinograms when comparing with
-% the machine sinograms then use the other option here. For mCT, this
+% the scanner sinograms then use the other option here. For mCT, this
 % should be 1.
 options.ndist_side = -1;
 
@@ -548,7 +548,7 @@ options.normalization_correction = false;
 % formation or before image reconstruction (see below).
 % NOTE: If you have previously computed normalization coefficients with
 % OMEGA, you do not need to set this to true. The normalization
-% coefficients for the specified machine will be automatically loaded. Use
+% coefficients for the specified scanner will be automatically loaded. Use
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
@@ -701,7 +701,7 @@ options.TOF_bins_used = options.TOF_bins;
 options.name = 'mCT_examination';
 
 %%% Precompute data 
-% This should be done when using data from a certain machine the first time
+% This should be done when using data from a certain scanner the first time
 % as it can speed up reconstruction. Especially recommended for raw
 % list-mode data. Not mandatory and the precomputed data is only used if 
 % the below precompute_lor is set to true. If using solely implementation 

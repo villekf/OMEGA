@@ -6,7 +6,7 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% MACHINE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%% SCANNER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15,7 +15,7 @@ clear
 options.blocks_per_ring = (42);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% machine/crystal rings) 
+%%% scanner/crystal rings) 
 % Multiplying this with the below cryst_per_block should equal the total
 % number of crystal rings. 
 options.linear_multip = (4);
@@ -54,7 +54,7 @@ options.FOVa_y = options.FOVa_x;
 %%% Axial FOV (mm)
 options.axial_fov = floor(76.8 - options.cr_pz/10);
 
-%%% Machine name
+%%% Scanner name
 % Used for naming purposes (measurement data)
 options.machine_name = 'Cylindrical_PET_example';
  

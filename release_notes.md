@@ -8,6 +8,8 @@
 
 - Improved the memory efficiency of MRP with implementation 2 and also slightly improved the speed
 
+- Custom detector/list-mode reconstruction is now supported by implementations 2 and 3
+
 ### Bug fixes and enhancements
 
 - Additional parameters are now saved in the `pz` cell matrix
@@ -39,6 +41,13 @@
 - Fix loading of detector coordinates with simulated GATE data when using ROOT files
 
 - Fix detector coordinates when transaxial multiplier is greater than 1
+
+- PSF with implementation 3 is now identical with the other implementations
+
+- Trapezoidal rule with TOF now uses 6 integration points
+  - This can be easily increased by modifying a single value in the source code (see wiki on TOF for details)
+  
+- Changed the words "machine" to "scanner"
 
 ## OMEGA v1.1.0
 
