@@ -41,6 +41,9 @@ end
 if ~isfield(options, 'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end
+if ~isfield(options, 'TOF_bins_used') || options.TOF_bins_used == 0
+    options.TOF_bins_used = 1;
+end
 if ~isfield(options, 'TOF_FWHM')
     options.TOF_FWHM = 0;
 end
@@ -301,7 +304,76 @@ if options.implementation == 4 && PRIOR_summa > 1 && MAP
     error(['Implementation ' num2str(options.implementation) ' supports only one prior at a time.'])
 end
 if options.implementation == 4 && (PRIOR_summa == 1 && ((options.mlem && options.OSL_MLEM)) || OS_I4_summa > 1)
-    error(['Implementation ' num2str(options.implementation) ' supports only one OS and one MLEM algorithm at a time.'])
+    
+    reko = {};
+    if options.mlem
+        reko = [reko;{'MLEM'}];
+    end
+    if options.osem
+        reko = [reko;{'OSEM'}];
+    end
+    if options.ramla
+        reko = [reko;{'RAMLA'}];
+    end
+    if options.mramla
+        reko = [reko;{'MRAMLA'}];
+    end
+    if options.rosem
+        reko = [reko;{'ROSEM'}];
+    end
+    if options.rbi
+        reko = [reko;{'RBI'}];
+    end
+    if options.drama
+        reko = [reko;{'DRAMA'}];
+    end
+    if options.cosem
+        reko = [reko;{'COSEM'}];
+    end
+    if options.acosem
+        reko = [reko;{'ACOSEM'}];
+    end
+    if options.ecosem
+        reko = [reko;{'ECOSEM'}];
+    end
+    if options.OSL_MLEM && PRIOR
+        reko = [reko;{'MLEM-OSL'}];
+    end
+    if options.OSL_OSEM && PRIOR
+        reko = [reko;{'OSEM-OSL'}];
+    end
+    if options.BSREM && PRIOR
+        reko = [reko;{'BSREM'}];
+    end
+    if options.MBSREM && PRIOR
+        reko = [reko;{'MBSREM'}];
+    end
+    if options.ROSEM_MAP && PRIOR
+        reko = [reko;{'ROSEM-MAP'}];
+    end
+    if options.RBI_OSL && PRIOR
+        reko = [reko;{'RBI-OSL'}];
+    end
+    if any(options.COSEM_OSL) && PRIOR
+        if options.COSEM_OSL == 1 && PRIOR
+            reko = [reko;{'ACOSEM-OSL'}];
+        elseif options.COSEM_OSL == 2 && PRIOR
+            reko = [reko;{'COSEM-OSL'}];
+        end
+    end
+    for kk = 1 : length(reko)
+        if kk == 1
+            dispi = reko{kk};
+        else
+            dispi = [dispi, ', ' reko{kk}];
+        end
+        if kk == length(reko) && length(reko) > 1
+            dispi = [dispi, ' reconstruction methods selected.'];
+        elseif kk == length(reko) && length(reko) == 1
+            dispi = [dispi, ' reconstruction method selected.'];
+        end
+    end
+    error(['Implementation ' num2str(options.implementation) ' supports only one OS and one MLEM algorithm at a time. ' dispi])
 end
 if options.implementation == 1 && ~options.precompute_lor
     if options.projector_type == 2 || options.projector_type == 3
