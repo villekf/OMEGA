@@ -130,7 +130,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	__global CAST* restrict d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
 	const uint d_alku, const uchar MBSREM_prepass, __global float* restrict d_ACOSEM_lhs, __global float* restrict d_Amin, __global CAST* restrict d_co,
-	__global CAST* restrict d_aco, __global float* restrict d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL
+	__global CAST* restrict d_aco, __global float* restrict d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL, const ulong cumsum
 #endif
 ) {
 #endif
@@ -158,13 +158,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 	float xs, xd, ys, yd, zs, zd;
 	// Load the next detector index
-#ifdef RAW // raw list-mode data
+#ifdef RAW // raw data
+#ifdef LISTMODE
+	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
+#else
 	get_detector_coordinates_raw(d_x, d_y, d_zdet, d_L, d_det_per_ring, idx, d_pseudos, d_pRows, &xs, &xd, &ys, &yd, &zs, &zd);
+#endif
 #else // Sinogram data
 #ifdef FIND_LORS // Precomputation phase
 	get_detector_coordinates_precomp(d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet);
 #else // Not the precomputation phase
-	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet);
+	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
 #endif
 #endif
 
@@ -1489,34 +1493,66 @@ __kernel void mlem(const __global CAST* d_Summ, const __global CAST* d_rhs, __gl
 __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 	__constant float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
 	int4 ind = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
-	int4 ind_uus = (0, 0, 0, 0);
+	int4 ind_uus = (int4)(0, 0, 0, 0);
 	float result = 0.f;
 	const uint Nyx = get_global_size(0) * get_global_size(1);
 	//int radius_x = floor((float)window_size_x / 2.0f);
 	//int radius_y = floor((float)window_size_y / 2.0f);
 	//int radius_z = floor((float)window_size_z / 2.0f);
 	int c = 0;
+
 	for (int k = -window_size_z; k <= window_size_z; k++) {
-		ind_uus.z = ind.z + k;
-		if (ind_uus.z >= get_global_size(2))
-			ind_uus.z = ind.z - k + 1;
-		else if (ind_uus.z < 0)
-			ind_uus.z = ind.z - (k + 1);
+		if (ind.z < window_size_z) {
+			if (k < -ind.z)
+				ind_uus.z = abs(k) - 1 - ind.z;
+			else
+				ind_uus.z = k + ind.z;
+		}
+		else {
+			ind_uus.z = ind.z + k;
+			if (ind_uus.z >= get_global_size(2))
+				ind_uus.z = get_global_size(2) - 1 - (ind_uus.z - get_global_size(2));
+			//if (ind_uus.z < 0)
+			//	ind_uus.z = ind.z - (k + 1);
+		}
 		ind_uus.z *= Nyx;
 		for (int j = -window_size_y; j <= window_size_y; j++) {
-			ind_uus.y = ind.y + j;
-			if (ind_uus.y >= get_global_size(1))
-				ind_uus.y = ind.y - j + 1;
-			else if (ind_uus.y < 0)
-				ind_uus.y = ind.y - (j + 1);
+			if (ind.y < window_size_y) {
+				if (j < -ind.y)
+					ind_uus.y = abs(j) - 1 - ind.y;
+				else
+					ind_uus.y = j + ind.y;
+			}
+			else {
+				ind_uus.y = ind.y + j;
+				if (ind_uus.y >= get_global_size(1))
+					ind_uus.y = get_global_size(1) - 1 - (ind_uus.y - get_global_size(1));
+				//if (ind_uus.y < 0)
+				//	ind_uus.y = ind.y - (j + 1);
+			}
 			ind_uus.y *= get_global_size(0);
-			for (int i = -window_size_x; i <= window_size_x; i++) {
-				ind_uus.x = ind.x + i;
-				if (ind_uus.x >= get_global_size(0))
-					ind_uus.x = ind.x - i + 1;
-				else if (ind_uus.x < 0)
-					ind_uus.x = ind.x - (i + 1);
-				uint indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
+			for (int i = (-window_size_x); i <= window_size_x; i++) {
+				//int indx = convert_int(ind.x);
+				//indx += i;
+				if (ind.x < window_size_x) {
+					if (i < -ind.x)
+						ind_uus.x = abs(i) - 1 - ind.x;
+					else
+						ind_uus.x = i + ind.x;
+				}
+				else {
+					ind_uus.x = ind.x + i;
+					if (ind_uus.x >= get_global_size(0))
+						ind_uus.x = get_global_size(0) - 1 - (ind_uus.x - get_global_size(0));
+					//if (ind_uus.x < 0)
+					//	ind_uus.x = ind.x - (i + 1);
+				}
+				//if (indx >= get_global_size(0))
+				//	indx = ind.x - i + 1;
+				//else if (indx < 0)
+				//	indx = abs(convert_int(ind.x)) - 1;
+				//int indeksi = indx + ind_uus.y + ind_uus.z;
+				int indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
 #ifdef ATOMIC
 				float p = convert_float(input[indeksi]) / TH;
 #else
@@ -1539,7 +1575,7 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 __kernel void Convolution3D_f(const __global float* input, __global float* output,
 	__constant float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
 	int4 ind = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
-	int4 ind_uus = (0, 0, 0, 0);
+	int4 ind_uus = (int4)(0, 0, 0, 0);
 	float result = 0.f;
 	const uint Nyx = get_global_size(0) * get_global_size(1);
 	//int radius_x = floor((float)window_size_x / 2.0f);
@@ -1547,26 +1583,57 @@ __kernel void Convolution3D_f(const __global float* input, __global float* outpu
 	//int radius_z = floor((float)window_size_z / 2.0f);
 	int c = 0;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
-		ind_uus.z = ind.z + k;
-		if (ind_uus.z >= get_global_size(2))
-			ind_uus.z = ind.z - k + 1;
-		else if (ind_uus.z < 0)
-			ind_uus.z = ind.z - (k + 1);
+		if (ind.z < window_size_z) {
+			if (k < -ind.z)
+				ind_uus.z = abs(k) - 1 - ind.z;
+			else
+				ind_uus.z = k + ind.z;
+		}
+		else {
+			ind_uus.z = ind.z + k;
+			if (ind_uus.z >= get_global_size(2))
+				ind_uus.z = get_global_size(2) - 1 - (ind_uus.z - get_global_size(2));
+			//if (ind_uus.z < 0)
+			//	ind_uus.z = ind.z - (k + 1);
+		}
 		ind_uus.z *= Nyx;
 		for (int j = -window_size_y; j <= window_size_y; j++) {
-			ind_uus.y = ind.y + j;
-			if (ind_uus.y >= get_global_size(1))
-				ind_uus.y = ind.y - j + 1;
-			else if (ind_uus.y < 0)
-				ind_uus.y = ind.y - (j + 1);
+			if (ind.y < window_size_y) {
+				if (j < -ind.y)
+					ind_uus.y = abs(j) - 1 - ind.y;
+				else
+					ind_uus.y = j + ind.y;
+			}
+			else {
+				ind_uus.y = ind.y + j;
+				if (ind_uus.y >= get_global_size(1))
+					ind_uus.y = get_global_size(1) - 1 - (ind_uus.y - get_global_size(1));
+				//if (ind_uus.y < 0)
+				//	ind_uus.y = ind.y - (j + 1);
+			}
 			ind_uus.y *= get_global_size(0);
-			for (int i = -window_size_x; i <= window_size_x; i++) {
-				ind_uus.x = ind.x + i;
-				if (ind_uus.x >= get_global_size(0))
-					ind_uus.x = ind.x - i + 1;
-				else if (ind_uus.x < 0)
-					ind_uus.x = ind.x - (i + 1);
-				uint indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
+			for (int i = (-window_size_x); i <= window_size_x; i++) {
+				//int indx = convert_int(ind.x);
+				//indx += i;
+				if (ind.x < window_size_x) {
+					if (i < -ind.x)
+						ind_uus.x = abs(i) - 1 - ind.x;
+					else
+						ind_uus.x = i + ind.x;
+				}
+				else {
+					ind_uus.x = ind.x + i;
+					if (ind_uus.x >= get_global_size(0))
+						ind_uus.x = get_global_size(0) - 1 - (ind_uus.x - get_global_size(0));
+					//if (ind_uus.x < 0)
+					//	ind_uus.x = ind.x - (i + 1);
+				}
+				//if (indx >= get_global_size(0))
+				//	indx = ind.x - i + 1;
+				//else if (indx < 0)
+				//	indx = abs(convert_int(ind.x)) - 1;
+				//int indeksi = indx + ind_uus.y + ind_uus.z;
+				int indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
 				float p = input[indeksi];
 				p *= convolution_window[c];
 				result += p;

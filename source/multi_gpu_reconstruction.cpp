@@ -78,10 +78,12 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 
+	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+
 	// Build the program and get the command queues
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 
 		projector_type, header_directory, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, 
-		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
+		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
@@ -200,6 +202,8 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 
 	cl::vector<cl::Device> devices;
 
+	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, 1u,
 		raw);
 
@@ -214,7 +218,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	std::vector<cl::CommandQueue> commandQueues;
 
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, projector_type, header_directory, crystal_size_z, 
-		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
+		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");

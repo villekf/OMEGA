@@ -273,7 +273,7 @@ void get_detector_coordinates_raw(const __global float *d_x, const __global floa
 
 
 
-#if defined(N_RAYS) && defined(RAW)
+#if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
 // Get the detector coordinates for the current (raw) measurement
 void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
 	const uint d_det_per_ring, const uint idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, 
@@ -328,12 +328,20 @@ void get_detector_coordinates_raw_multiray(const __global float* d_x, const __gl
 }
 #endif
 
-#if !defined(N_RAYS) && !defined(RAW)
+#if !defined(N_RAYS) && (!defined(RAW) || defined(LISTMODE))
 // Get the detector coordinates for the current sinogram bin
 void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
 	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
-	const __global float *d_zdet) {
+	const __global float *d_zdet, const ulong cumsum) {
 
+#ifdef LISTMODE
+	*xs = d_x[idx + cumsum];
+	*xd = d_x[idx + d_size_x + cumsum];
+	*ys = d_y[idx + cumsum];
+	*yd = d_y[idx + d_size_x + cumsum];
+	*zs = d_zdet[idx + cumsum];
+	*zd = d_zdet[idx + d_size_x + cumsum];
+#else
 	if (d_xyindex[idx] >= d_size_x) {
 		*xs = d_x[d_xyindex[idx]];
 		*xd = d_x[d_xyindex[idx] - d_size_x];
@@ -354,6 +362,7 @@ void get_detector_coordinates(const __global uint *d_xyindex, const __global ush
 		*zs = d_zdet[d_zindex[idx]];
 		*zd = d_zdet[d_zindex[idx] + d_TotSinos];
 	}
+#endif
 }
 #endif
 
@@ -823,8 +832,14 @@ void TOFDis(const float x_diff, const float y_diff, const float z_diff, const fl
 	*DD = *D;
 }
 
-float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
-	return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - element * sign(DD), TOFCenter, sigma_x)) / 2.f) + epps;
+float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, float dX) {
+	float output = normPDF(D, TOFCenter, sigma_x);
+	dX *= sign(DD);
+	for (long tr = 1L; tr < convert_long(TRAPZ_BINS) - 1; tr++)
+		output += (normPDF(D - dX * convert_float(tr), TOFCenter, sigma_x) * 2.f);
+	output += normPDF(D - element * sign(DD), TOFCenter, sigma_x);
+	//return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - element * sign(DD), TOFCenter, sigma_x)) / 2.f);
+	return output;
 }
 
 
@@ -834,13 +849,14 @@ float TOFLoop(const float DD, const float element, __private float* TOFVal, __co
 #ifdef DEC
 	__private float apu[NBINS];
 #endif
+	const float dX = element / TRAPZ_BINS;
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {
 #ifdef DEC
-		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
 		TOFSum += apu[to];
 #else
-		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
 		TOFSum += apu;
 #endif
 	}
@@ -869,12 +885,15 @@ void denominatorTOF(float* ax, const float element, const __global float* d_OSEM
 	const uint ii = 0U;
 #endif
 	float apu = element * d_OSEM[local_ind];
+#ifndef DEC
+	const float dX = element / TRAPZ_BINS;
+#endif
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {
 #ifdef DEC
 		ax[to + ii] += (apu * TOFVal[to + tid]);
 #else
-		const float jelppi = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum;
+		const float jelppi = (TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum;
 		ax[to + ii] += (apu * jelppi);
 #endif
 	}
@@ -955,6 +974,9 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 #else
 	const uint ii = 0U;
 #endif
+#ifndef DEC
+	const float dX = element / TRAPZ_BINS;
+#endif
 
 	float yaxTOF = 0.f;
 #pragma unroll NBINS
@@ -963,7 +985,7 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 #ifdef DEC
 		const float apu = local_ele * TOFVal[to + tid];
 #else
-		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+		const float apu = local_ele * ((TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 #endif
 
 #ifdef MBSREM
@@ -1036,13 +1058,16 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 #endif
 	const uchar no_norm) {
 	float val = 0.f;
+#ifndef DEC
+	const float dX = element / TRAPZ_BINS;
+#endif
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {
 
 #ifdef DEC
 		const float apu = local_ele * TOFVal[to + tid];
 #else
-		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+		const float apu = local_ele * ((TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 #endif
 #ifdef MBSREM
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {

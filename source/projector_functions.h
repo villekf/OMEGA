@@ -41,6 +41,7 @@
 #define H_THR 0.99
 #define TOF_THR 0.0001
 #define _2PI 0.3989422804014327
+#define TRAPZ_BINS 6.
 
 struct Det {
 	double xd, xs, yd, ys, zd, zs;
@@ -232,7 +233,7 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size, 
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const bool scatter, 
-	const double* scatter_coef);
+	const double* scatter_coef, const uint32_t nCores = 1U);
 
 void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
@@ -241,7 +242,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos,
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size,
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const double bmin,
-	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef);
+	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
 
 int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, std::vector<uint32_t>& indices,
 	std::vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const std::vector<double>& xx_vec, const double dy,
@@ -265,7 +266,7 @@ extern void improved_siddon_precomputed(const int64_t loop_var_par, const uint32
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor, 
-	const bool scatter, const double* scatter_coef);
+	const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
 
 void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
@@ -274,7 +275,7 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const bool no_norm, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const bool TOF,
-	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v);
+	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v, const uint32_t nCores = 1U);
 
 void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
@@ -284,7 +285,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, const bool list_mode_format,
 	const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
-	const int64_t nBins, const uint32_t dec_v);
+	const int64_t nBins, const uint32_t dec_v, const uint32_t nCores = 1U);
 
 void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx,	const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
@@ -293,7 +294,7 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
-	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef);
+	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
 
 void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
@@ -302,7 +303,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
 	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
-	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
+	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef, 
+	const uint32_t nCores = 1U);
 
 
 // Source: http://www.alecjacobson.com/weblog/?p=4544 & https://ideone.com/Z7zldb
@@ -378,12 +380,13 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
 	uint64_t N2 = 0ULL);
 
-void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, uint16_t* lor, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const std::vector<double>& z_det_vec, const double dy, const std::vector<double>& yy_vec,
-	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz,
-	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
-	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, const double crystal_size_z,
-	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V);
+void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, uint16_t* lor, 
+	const double maxyy,	const double maxxx, const std::vector<double>& xx_vec, const std::vector<double>& z_det_vec, const double dy, const std::vector<double>& yy_vec,
+	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
+	const double dz,	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
+	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, 
+	const double crystal_size_z,	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, 
+	const double* V, const uint32_t nCores = 1U);
 
 void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
@@ -392,7 +395,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef);
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef, 
+	const uint32_t nCores = 1U);
 
 void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
 	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
@@ -401,7 +405,7 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef);
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
 
 //void orth_distance_rhs_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, const double temp, double& ax,
 //	const double d_b, const double d, const double d_d1, const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const uint32_t d_N,
@@ -427,25 +431,28 @@ T normPDF(const T x, const T mu, const T sigma) {
 template <typename T>
 void TOFLoop(T& TOFSum, const T DD, const int64_t nBins, const T element, std::vector<T>& TOFVal, const T* TOFCenter, 
 	const T sigma_x, T& D, const int64_t tid, const T epps) {
+	const T dX = element / static_cast<T>(TRAPZ_BINS);
 	if (DD > 0) {
 		for (int64_t to = 0LL; to < nBins; to++) {
-			TOFVal[to + tid] = (element * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.));
+			//TOFVal[to + tid] = (dX * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.));
+			TOFVal[to + tid] = normPDF(D, TOFCenter[to], sigma_x);
+			for (int64_t tr = 1LL; tr < static_cast<int64_t>(TRAPZ_BINS) - 1; tr++)
+				TOFVal[to + tid] += (normPDF(D - dX * static_cast<T>(tr), TOFCenter[to], sigma_x) * 2.);
+			TOFVal[to + tid] += normPDF(D - element, TOFCenter[to], sigma_x);
+			TOFVal[to + tid] *= dX;
 			TOFSum += TOFVal[to + tid];
-			//TOFVal[to + tid] = (element * (normPDF(D + element, TOFCenter[to], sigma_x) + normPDF(D, TOFCenter[to], sigma_x)) / 2.);
-			//TOFSum += TOFVal[to + tid];
-			//TOFVal[to] = (element * (normPDF(D + element, TOFCenter[to], sigma_x) + normPDF(D, TOFCenter[to], sigma_x)) / 2.);
-			//TOFSum += TOFVal[to];
 		}
 		D -= element;
 	}
 	else {
 		for (int64_t to = 0LL; to < nBins; to++) {
-			TOFVal[to + tid] = (element * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D + element, TOFCenter[to], sigma_x)) / 2.));
+			//TOFVal[to + tid] = (dX * ((normPDF(D, TOFCenter[to], sigma_x) + normPDF(D + element, TOFCenter[to], sigma_x)) / 2.));
+			TOFVal[to + tid] = normPDF(D, TOFCenter[to], sigma_x);
+			for (int64_t tr = 1LL; tr < TRAPZ_BINS - 1; tr++)
+				TOFVal[to + tid] += (normPDF(D + dX * static_cast<T>(tr), TOFCenter[to], sigma_x) * 2.);
+			TOFVal[to + tid] += normPDF(D + element, TOFCenter[to], sigma_x);
+			TOFVal[to + tid] *= dX;
 			TOFSum += TOFVal[to + tid];
-			//TOFVal[to + tid] = (element * (normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.);
-			//TOFSum += TOFVal[to + tid];
-			//TOFVal[to] = (element * (normPDF(D, TOFCenter[to], sigma_x) + normPDF(D - element, TOFCenter[to], sigma_x)) / 2.);
-			//TOFSum += TOFVal[to];
 		}
 		D += element;
 	}
@@ -470,18 +477,20 @@ template <typename T>
 void ForwardProject(T& t0, T& tc, const T tu, const T LL, const bool attenuation_correction, T& jelppi, const T* atten, 
 	uint32_t& tempijk, const bool TOF, const T DD, const int64_t nBins, std::vector<T>& TOFVal, const T* TOFCenter, 
 	const T sigma_x, T& D, const T* osem_apu, std::vector<T>& ax, const T epps, T& temp, int32_t& tempInd, const int32_t u, 
-	const uint32_t incr, const int64_t tid, const uint32_t ind) {
+	const uint32_t incr, const int64_t tid, const uint32_t ind, const uint8_t fp = 0) {
 
 	T element = (t0 - tc) * LL;
 
 	if (attenuation_correction)
 		jelppi += (element * -atten[tempijk]);
 
-	if (TOF) {
-		TOFWeightsFP(DD, nBins, element, TOFVal, TOFCenter, sigma_x, D, osem_apu, tempijk, ax, epps, tid + ind * nBins);
+	if (fp != 2) {
+		if (TOF) {
+			TOFWeightsFP(DD, nBins, element, TOFVal, TOFCenter, sigma_x, D, osem_apu, tempijk, ax, epps, tid + ind * nBins);
+		}
+		else
+			ax[0] += (element * osem_apu[tempijk]);
 	}
-	else
-		ax[0] += (element * osem_apu[tempijk]);
 
 	temp += element;
 

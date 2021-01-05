@@ -65,7 +65,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	const cl::vector<cl::Device> & devices, const bool verbose, std::vector<cl::CommandQueue> & commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction, 
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float dc_z, 
-	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins);
+	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const bool listmode = false);
 
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin,
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx,

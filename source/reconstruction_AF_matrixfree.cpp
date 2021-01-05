@@ -48,7 +48,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Number of voxels
 	const uint32_t Nxy = Nx * Ny;
 	const uint32_t im_dim = Nxy * Nz;
-	const cl_ulong st = 0ULL;
 	const cl_uchar fp = 0;
 
 	// Distance between rays in multi-ray Siddon
@@ -211,6 +210,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 	}
 
+	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+
 	float* scat = nullptr;
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 	size_t size_scat = 1ULL;
@@ -221,7 +222,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	status = createProgram(verbose, k_path, af_context, af_device_id, fileName, program_os, program_ml, program_mbsrem, atomic_64bit, device, header_directory,
 		projector_type, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, local_size, n_rays, n_rays3D, false, MethodList, osem_bool, 
-		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
+		mlem_bool, n_rekos2, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode);
 	if (status != CL_SUCCESS) {
 		std::cerr << "Error while creating program" << std::endl;
 		return;
@@ -287,7 +288,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, af_context, subsets, pituus, atten, norm, scat, pseudos, V, af_queue, d_atten, d_norm, d_scat, d_pseudos, d_V, 
 		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, atomic_64bit, randoms_correction, 
 		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem, d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko,
-		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter, subsetsUsed, osa_iter0);
+		reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter, subsetsUsed, osa_iter0, listmode);
 	if (status != CL_SUCCESS) {
 		mexPrintf("Buffer creation failed\n");
 		return;
@@ -646,6 +647,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		for (uint32_t iter = iter0; iter < Niter; iter++) {
 
 
+			cl_ulong st = 0ULL;
 			// Compute any of the other algorithms, if applicable
 			if (osem_bool) {
 
@@ -713,6 +715,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					const size_t global_size = length[osa_iter] + erotus;
 
 					const uint64_t m_size = static_cast<uint64_t>(length[osa_iter]);
+
+					if (DEBUG) {
+						mexPrintf("global_size = %u\n", global_size);
+						mexPrintf("size_x = %u\n", size_x);
+						mexPrintf("st = %u\n", st);
+						mexEvalString("pause(.0001);");
+					}
 
 					af::sync();
 
@@ -808,8 +817,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						if (MethodList.MRAMLA)
 							mexPrintf("pj3 = %f\n", af::sum<float>(pj3));
 						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
+						af::array apu1 = (vec.im_os / *testi * vec.rhs_os);
+						mexPrintf("apu1 = %f\n", af::sum<float>(apu1));
+						mexPrintf("erotus = %f\n", af::sum<float>(af::abs(*testi - vec.rhs_os)));
 						mexEvalString("pause(.0001);");
-					//	vec.im_os = vec.rhs_os;
+						//vec.im_os = vec.rhs_os;
 					}
 
 
@@ -818,12 +830,19 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						compute_norm_matrix, OpenCLStruct.kernelNLM, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, OpenCLStruct, TOF, loadTOF, Sin, nBins, 
 						randoms_correction);
 
+
+					if (DEBUG) {
+						mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
+					}
+
 					vec.im_os(vec.im_os < epps) = epps;
 
 					if (verbose) {
 						mexPrintf("Sub-iteration %d complete\n", osa_iter + 1u);
 						mexEvalString("pause(.0001);");
 					}
+
+					st += length[osa_iter];
 
 					status = af_queue.finish();
 

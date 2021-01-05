@@ -94,7 +94,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 	__global CAST* d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
 	const uint d_alku, const uchar MBSREM_prepass, __global float* d_ACOSEM_lhs, __global float* d_Amin, __global CAST* d_co,
-	__global CAST* d_aco, __global float* d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL
+	__global CAST* d_aco, __global float* d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL, const ulong cumsum
 #endif
 ) {
 	// Get the current global index

@@ -227,7 +227,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	cl::Buffer& d_lor_mlem, cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
 	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
-	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0)
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const bool listmode)
 {
 	cl_int status = CL_SUCCESS;
 	// Create the necessary buffers
@@ -530,7 +530,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			return status;
 		}
 		for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
-			if (raw) {
+			if (raw && !listmode) {
 				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -547,13 +547,30 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					return status;
 				}
 			}
-			else {
+			else if (!listmode) {
 				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
 				}
 				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+				status = af_queue.enqueueWriteBuffer(d_L[kk], CL_FALSE, 0, sizeof(uint16_t), L);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+			}
+			else {
+				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t), z_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
@@ -762,6 +779,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	cl::Buffer d_ACOSEM_lhs = cl::Buffer(*apu.device<cl_mem>(), true);
 
 	const size_t local_size = 64ULL;
+	cl_ulong st = 0ULL;
 
 	for (uint32_t osa_iter = eka; osa_iter < subsets; osa_iter++) {
 
@@ -923,6 +941,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, d_E);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, m_size);
 		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, MethodListOpenCL);
+		kernel_mramla.setArg(kernelInd_MRAMLA_sub++, st);
 		cl::NDRange local(local_size);
 		cl::NDRange global(global_size);
 		// Compute the kernel
@@ -951,6 +970,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 		apu_Amin.unlock();
 		cosem_psf.unlock();
 		af::sync();
+		st += length[osa_iter];
 
 		if (alku == 0u) {
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM)) {
@@ -1217,7 +1237,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem, 
 	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, 
-	const bool TOF, const int64_t nBins) {
+	const bool TOF, const int64_t nBins, const bool listmode) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -1281,8 +1301,11 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		options += " -DRANDOMS";
 	if (TOF && projector_type == 1u) {
 		options += " -DTOF";
+		options += (" -DTRAPZ_BINS=" + std::to_string(6.f));
 	}
 	options += (" -DNBINS=" + std::to_string(nBins));
+	if (listmode)
+		options += " -DLISTMODE";
 	options += " -DFP";
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
 		options += (" -DN_RAYS=" + std::to_string(n_rays * n_rays3D));
@@ -1404,7 +1427,7 @@ cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_con
 						std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
 						mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
 					}
-					return status;
+					//return status;
 				}
 				options.erase(pituus, options.size() + 1);
 				options += " -DCAST=float";

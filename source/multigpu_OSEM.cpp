@@ -116,6 +116,9 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		}
 	}
 
+
+	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+
 	size_t size_scat = 1ULL;
 	if (scatter == 1U) {
 		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
@@ -393,7 +396,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (raw) {
+			if (raw && !listmode) {
 				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -410,13 +413,30 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else {
+			else if (!listmode) {
 				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
 				d_zindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk * num_devices_context + i], NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				d_L[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+			}
+			else {
+				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				d_zindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -554,7 +574,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 			}
 
-			if (raw) {
+			if (raw && !listmode) {
 				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -572,7 +592,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else {
+			else if (!listmode) {
 				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t) * length[kk * num_devices_context + i], 
 					&xy_index[cumsum[kk * num_devices_context + i]]);
 				if (status != CL_SUCCESS) {
@@ -581,6 +601,23 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 				status = commandQueues[i].enqueueWriteBuffer(d_zindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t) * length[kk * num_devices_context + i], 
 					&z_index[cumsum[kk * num_devices_context + i]]);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				status = commandQueues[i].enqueueWriteBuffer(d_L[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t), L);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+			}
+			else {
+				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t), xy_index);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				status = commandQueues[i].enqueueWriteBuffer(d_zindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t), z_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
