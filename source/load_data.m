@@ -340,6 +340,21 @@ elseif options.use_machine == 0
     
     time_intervals = linspace(alku, loppu, options.partitions + 1);
     
+    if partitions > 1
+        if store_coordinates
+            x_coordinate = cell(partitions,1);
+            y_coordinate = cell(partitions,1);
+            z_coordinate = cell(partitions,1);
+        end
+    else
+        lisays = uint16(1);
+        if store_coordinates
+            x_coordinate = [];
+            y_coordinate = [];
+            z_coordinate = [];
+        end
+    end
+    
     
     
     %% LMF data
@@ -585,21 +600,6 @@ elseif options.use_machine == 0
                 if size(delay_names,1) == 0
                     error('No ASCII (.dat) delayed coincidence files were found. Check your filepath (options.fpath) or current folder.')
                 end
-            end
-        end
-        
-        if partitions > 1
-            if store_coordinates
-                x_coordinate = cell(partitions,1);
-                y_coordinate = cell(partitions,1);
-                z_coordinate = cell(partitions,1);
-            end
-        else
-            lisays = uint16(1);
-            if store_coordinates
-                x_coordinate = [];
-                y_coordinate = [];
-                z_coordinate = [];
             end
         end
         li = 1;
