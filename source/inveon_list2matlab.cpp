@@ -94,7 +94,8 @@ void saveSinogram(uint16_t L1, uint16_t L2, uint16_t* Sino, const uint32_t Ndist
 
 void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, const double vali, const double alku, const double loppu, const size_t outsize2,
 	const uint32_t detectors, const size_t pituus, const bool randoms_correction, uint16_t *DD1, uint16_t *DD2, uint16_t *Sino, uint16_t* SinoD, const bool saveRawData, 
-	const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint64_t sinoSize, const uint32_t* seg, const int32_t nDistSide)
+	const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint64_t sinoSize, const uint32_t* seg, const int32_t nDistSide, 
+	const bool storeCoordinates)
 {
 
 	static uint64_t i;
@@ -164,7 +165,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 							L2 = L3;
 						}
 						if (saveRawData) {
-							if (outsize2 == 1) {
+							if (outsize2 == 1 && !storeCoordinates) {
 								LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
 							}
 							else {
@@ -187,7 +188,7 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, char **argv, 
 							L2 = L3;
 						}
 						if (saveRawData) {
-							if (outsize2 == 1) {
+							if (outsize2 == 1 && !storeCoordinates) {
 								DD1[L1 * detectors + L2] = DD1[L1 * detectors + L2] + static_cast<uint16_t>(1);
 							}
 							else {
@@ -228,9 +229,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 16) {
+	if (nrhs != 17) {
 		mexErrMsgIdAndTxt("MATLAB:list2matlab_aivi:invalidNumInputs",
-			"16 input arguments required.");
+			"17 input arguments required.");
 	}
 	else if (nlhs > 7) {
 		mexErrMsgIdAndTxt("MATLAB:list2matlab_aivi:maxlhs",
@@ -252,6 +253,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	uint32_t* seg = (uint32_t*)mxGetData(prhs[13]);
 	uint64_t NT = (uint64_t)mxGetScalar(prhs[14]);
 	int32_t nDistSide = (int32_t)mxGetScalar(prhs[15]);
+	bool storeCoordinates = (bool)mxGetScalar(prhs[16]);
 	//double energy_low1 = (double)mxGetScalar(prhs[7]);
 	//double energy_low2 = (double)mxGetScalar(prhs[8]);
 	//double energy_high1 = (double)mxGetScalar(prhs[9]);
@@ -261,7 +263,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	size_t outsize2 = (loppu - alku) / vali;
 
 	if (saveRawData) {
-		if (outsize2 == 1) {
+		if (outsize2 == 1 && !storeCoordinates) {
 			plhs[0] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
 			plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 			if (randoms_correction) {
@@ -350,7 +352,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	}
 
 	histogram(LL1, LL2, tpoints, argv, vali, alku, loppu, outsize2, detectors, pituus, randoms_correction, DD1, DD2, Sino, SinoD, saveRawData, 
-		Ndist, Nang, ringDifference, span, sinoSize, seg, nDistSide);
+		Ndist, Nang, ringDifference, span, sinoSize, seg, nDistSide, storeCoordinates);
 	return;
 
 }

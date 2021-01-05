@@ -138,6 +138,12 @@ if ~isfield(options,'store_raw_data')
 end
 
 TOF = options.TOF_bins > 1;
+    
+if nargout == 8
+    store_coordinates = true;
+else
+    store_coordinates = false;
+end
 
 disp('Beginning data load')
 
@@ -152,6 +158,10 @@ if options.use_machine == 1
     
     if options.verbose
         tic
+    end
+    
+    if store_coordinates
+        options.store_raw_data = true;
     end
     
     if partitions > 1
@@ -174,7 +184,7 @@ if options.use_machine == 1
     % Load the data from the binary file
     [LL1, LL2, tpoints, DD1, DD2, raw_SinM, SinD] = inveon_list2matlab(nimi,(vali),(alku),(loppu),pituus, uint32(detectors), options.randoms_correction, sinoSize, ...
         options.store_raw_data, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
-        uint64(options.partitions));
+        uint64(options.partitions), int32(options.ndist_side), store_coordinates);
     toc
     
     % If no time steps, the output matirx LL1 is a options.detectors x
@@ -183,42 +193,58 @@ if options.use_machine == 1
     if options.store_raw_data
         LL1(LL1==0) = [];
         LL2(LL2==0) = [];
-        %     ring_number1 = idivide(LL1-1, options.det_per_ring);
-        %     ring_number2 = idivide(LL2-1, options.det_per_ring);
-        %     ring_pos1 = mod(LL1-1, options.det_per_ring);
-        %     ring_pos2 = mod(LL2-1, options.det_per_ring);
-        if partitions == 1
-            prompts = LL1';
-            if options.randoms_correction
-                delays = DD1';
-            end
-            clear LL1 LL2 DD1 DD2
-            % Else the outputs are vectors LL1 and LL2 containing the detector
-            % pairs for all the counts.
-            % Form a similar (sparse) detectors x detectors matrix
+        if store_coordinates
+            ring_number1 = idivide(LL1-1, options.det_per_ring) + 1;
+            ring_number2 = idivide(LL2-1, options.det_per_ring) + 1;
+            ring_pos1 = mod(LL1-1, options.det_per_ring) + 1;
+            ring_pos2 = mod(LL2-1, options.det_per_ring) + 1;
+            clear LL1 LL2
+            [x, y] = detector_coordinates(options);
+            z_length = single(options.rings * options.cr_pz);
+            z = linspace(single(0), z_length, options.rings + 1)';
+            z = z(2:end) - z(2) / 2;
+            x = single(x);
+            y = single(y);
+            x_coordinate = [x(ring_pos1) x(ring_pos1)];
+            y_coordinate = [y(ring_pos1) y(ring_pos2)];
+            clear ring_pos1 ring_pos1
+            z_coordinate = [z(ring_number1) z(ring_number2)];
+            clear ring_number1 ring_number2
+            options.store_raw_data = false;
         else
-            prompts = cell(partitions,1);
-            if options.randoms_correction
-                delays = cell(partitions,1);
-            end
-            %         ll = 1;
-            % Obtain the counts that were within a specified time-window
-            for kk = 1 : partitions
-                apu1 = LL1(tpoints(kk) + 1:tpoints(kk+1));
-                apu1(apu1 == 0) = [];
-                apu2 = LL2(tpoints(kk) + 1:tpoints(kk+1));
-                apu2(apu2 == 0) = [];
-                prompts{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+            if partitions == 1
+                prompts = LL1';
                 if options.randoms_correction
-                    apu1 = DD1(tpoints(kk) + 1:tpoints(kk+1));
-                    apu1(apu1 == 0) = [];
-                    apu2 = DD2(tpoints(kk) + 1:tpoints(kk+1));
-                    apu2(apu2 == 0) = [];
-                    delays{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    delays = DD1';
                 end
-                %             ll = ll + tpoints(kk+1);
+                clear LL1 LL2 DD1 DD2
+                % Else the outputs are vectors LL1 and LL2 containing the detector
+                % pairs for all the counts.
+                % Form a similar (sparse) detectors x detectors matrix
+            else
+                prompts = cell(partitions,1);
+                if options.randoms_correction
+                    delays = cell(partitions,1);
+                end
+                %         ll = 1;
+                % Obtain the counts that were within a specified time-window
+                for kk = 1 : partitions
+                    apu1 = LL1(tpoints(kk) + 1:tpoints(kk+1));
+                    apu1(apu1 == 0) = [];
+                    apu2 = LL2(tpoints(kk) + 1:tpoints(kk+1));
+                    apu2(apu2 == 0) = [];
+                    prompts{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    if options.randoms_correction
+                        apu1 = DD1(tpoints(kk) + 1:tpoints(kk+1));
+                        apu1(apu1 == 0) = [];
+                        apu2 = DD2(tpoints(kk) + 1:tpoints(kk+1));
+                        apu2(apu2 == 0) = [];
+                        delays{kk} = accumarray([apu1 apu2],1,[options.detectors options.detectors],[],[],true);
+                    end
+                    %             ll = ll + tpoints(kk+1);
+                end
+                clear LL1 LL2 DD1 DD2 apu1 apu2
             end
-            clear LL1 LL2 DD1 DD2 apu1 apu2
         end
     end
     
@@ -256,12 +282,6 @@ elseif options.use_machine == 0
         if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
             options.fpath = [options.fpath '/'];
         end
-    end
-    
-    if nargout == 8
-        store_coordinates = true;
-    else
-        store_coordinates = false;
     end
     
     if TOF
