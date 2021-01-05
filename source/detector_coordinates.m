@@ -44,35 +44,41 @@ else
     DOI = 0;
 end
 
+if isfield(options, 'transaxial_multip')
+    transaxial_multip = options.transaxial_multip;
+else
+    transaxial_multip = 1;
+end
+
 orig_diameter = diameter;
 diameter = diameter + DOI * 2;
 
 %% Non-pseudo detectors
 
 % All angles, starting from 90 degrees
-angle = 90:-360/blocks_per_ring:-270;
+angle = 90:-360/(blocks_per_ring * transaxial_multip):-270;
 
 % Width of the topmost blocks (diameter)
-widths = (cryst_per_block)*cr_p*cosd(angle(1:(blocks_per_ring/2 + 1)));
-widthsy = (cryst_per_block)*cr_p*sind(angle(1:(blocks_per_ring/2)));
+widths = (cryst_per_block)*cr_p*cosd(angle(1:((blocks_per_ring * transaxial_multip)/2 + 1)));
+widthsy = (cryst_per_block)*cr_p*sind(angle(1:((blocks_per_ring * transaxial_multip)/2)));
 
 % Gap between adjacent blocks
 % If negative, then the crystal size is smaller on the edges of the block
 % than the crystal pitch
-erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:(blocks_per_ring/2 + 1))))/2;
-erotusy = (diameter - sum(abs(widthsy)))/sum(abs(sind(angle(1:(blocks_per_ring/2)))))/2;
+erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:((blocks_per_ring * transaxial_multip)/2 + 1))))/2;
+erotusy = (diameter - sum(abs(widthsy)))/sum(abs(sind(angle(1:((blocks_per_ring * transaxial_multip)/2)))))/2;
 
 % starting points
 alkupistex = diameter - DOI;
 alkupistey = diameter/2 - (cryst_per_block/2 + 0.5)*cr_p - DOI;
 
 ii = 1;
-x = zeros(blocks_per_ring*cryst_per_block,1);
-y = zeros(blocks_per_ring*cryst_per_block,1);
+x = zeros((blocks_per_ring * transaxial_multip)*cryst_per_block,1);
+y = zeros((blocks_per_ring * transaxial_multip)*cryst_per_block,1);
 %%
 % Compute the detector coordinates of each detector (crystal) in each block
 % Only for the 1/4th of the ring
-for blocks = 1:ceil(blocks_per_ring/4)
+for blocks = 1:ceil((blocks_per_ring * transaxial_multip)/4)
     for crystals = 1:cryst_per_block
         % Moving to the next block
         if blocks > 1 && crystals == 1
@@ -94,7 +100,7 @@ end
 
 % If the blocks can be divided by 4, compute an extra block (i.e. the top
 % block) first
-if mod(blocks_per_ring,4) == 0
+if mod((blocks_per_ring * transaxial_multip),4) == 0
     blocks = blocks + 1;
     x(ii) = alkupistex - (cr_p * 0.5)*cosd(angle(blocks)) - erotus * cosd(angle(blocks - 1)) - erotus * cosd(angle(blocks)) - (cr_p * 0.5)*cosd(angle(blocks - 1));
     y(ii) = alkupistey + (cr_p * 0.5)*sind(angle(blocks)) + erotusy * sind(angle(blocks - 1)) + erotusy * sind(angle(blocks)) + (cr_p * 0.5)*sind(angle(blocks - 1));
@@ -109,15 +115,15 @@ if mod(blocks_per_ring,4) == 0
         ii=ii+1;
     end
     % Symmmetry
-    x(ii:ii + (blocks_per_ring*cryst_per_block)/4 - 1) = -(flip(x(1:(blocks_per_ring*cryst_per_block)/4) - orig_diameter));
-    y(ii:ii + (blocks_per_ring*cryst_per_block)/4 - 1) = (flip(y(1:(blocks_per_ring*cryst_per_block)/4)));
-    x(ii + (blocks_per_ring*cryst_per_block)/4:end) = flip(x(cryst_per_block + 1:(blocks_per_ring*cryst_per_block)/2));
-    y(ii + (blocks_per_ring*cryst_per_block)/4:end) = -(y(cryst_per_block + 1:(blocks_per_ring*cryst_per_block)/2) - orig_diameter);
+    x(ii:ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 - 1) = -(flip(x(1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/4) - orig_diameter));
+    y(ii:ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 - 1) = (flip(y(1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/4)));
+    x(ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4:end) = flip(x(cryst_per_block + 1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/2));
+    y(ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4:end) = -(y(cryst_per_block + 1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/2) - orig_diameter);
 else
-    x(ii:ii + (blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2-1) = -(flip(x(1:(blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2)) - orig_diameter);
-    y(ii:ii + (blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2-1) = (flip(y(1:(blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2)));
-    x(ii + (blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2:end) = flip(x(cryst_per_block + 1:(blocks_per_ring*cryst_per_block)/2));
-    y(ii + (blocks_per_ring*cryst_per_block)/4 + cryst_per_block/2:end) = -(y(cryst_per_block + 1:(blocks_per_ring*cryst_per_block)/2) - orig_diameter);
+    x(ii:ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2-1) = -(flip(x(1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2)) - orig_diameter);
+    y(ii:ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2-1) = (flip(y(1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2)));
+    x(ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2:end) = flip(x(cryst_per_block + 1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/2));
+    y(ii + ((blocks_per_ring * transaxial_multip)*cryst_per_block)/4 + cryst_per_block/2:end) = -(y(cryst_per_block + 1:((blocks_per_ring * transaxial_multip)*cryst_per_block)/2) - orig_diameter);
 end
 
 %% Pseudo detectors
@@ -128,25 +134,25 @@ end
 % determine if pseudo detectors are present
 if options.det_w_pseudo > options.det_per_ring
     
-    angle = linspace(90,-270,blocks_per_ring + 1)';
+    angle = linspace(90,-270,(blocks_per_ring * transaxial_multip) + 1)';
     % starting points
     alkupistex = diameter - DOI;
     alkupistey = diameter/2 - ((cryst_per_block + 1)/2 + 0.5)*cr_p - DOI;
     
     % Width of the topmost blocks (diameter)
-    widths = (cryst_per_block + 1)*cr_p*cosd(angle(1:(blocks_per_ring/2 + 1)));
-    widthsy = (cryst_per_block + 1)*cr_p*sind(angle(1:(blocks_per_ring/2)));
+    widths = (cryst_per_block + 1)*cr_p*cosd(angle(1:((blocks_per_ring * transaxial_multip)/2 + 1)));
+    widthsy = (cryst_per_block + 1)*cr_p*sind(angle(1:((blocks_per_ring * transaxial_multip)/2)));
     
     % Gap
-    erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:(blocks_per_ring/2 + 1))))/2;
-    erotusy = (diameter - sum(abs(widthsy)))/sum(abs(sind(angle(1:(blocks_per_ring/2)))))/2;
+    erotus = (diameter - sum(abs(widths)))/sum(cosd(angle(1:((blocks_per_ring * transaxial_multip)/2 + 1))))/2;
+    erotusy = (diameter - sum(abs(widthsy)))/sum(abs(sind(angle(1:((blocks_per_ring * transaxial_multip)/2)))))/2;
     
     ii = 1;
-    xp = zeros(blocks_per_ring*(cryst_per_block + 1),1);
-    yp = zeros(blocks_per_ring*(cryst_per_block + 1),1);
+    xp = zeros((blocks_per_ring * transaxial_multip)*(cryst_per_block + 1),1);
+    yp = zeros((blocks_per_ring * transaxial_multip)*(cryst_per_block + 1),1);
     
     % Compute the detector coordinates of each detector (crystal) in each block
-    for blocks = 1:ceil(blocks_per_ring/4)
+    for blocks = 1:ceil((blocks_per_ring * transaxial_multip)/4)
         for crystals = 1:cryst_per_block + 1
             if blocks > 1 && crystals == 1
                 xp(ii) = alkupistex - (cr_p * 0.5) * cosd(angle(blocks)) - erotus * cosd(angle(blocks - 1)) - erotus * cosd(angle(blocks)) - (cr_p * 0.5)*cosd(angle(blocks - 1));
@@ -160,7 +166,7 @@ if options.det_w_pseudo > options.det_per_ring
             ii=ii+1;
         end
     end
-    if mod(blocks_per_ring, 4) == 0
+    if mod((blocks_per_ring * transaxial_multip), 4) == 0
         blocks = blocks + 1;
         xp(ii) = alkupistex - (cr_p * 0.5)*cosd(angle(blocks)) - erotus * cosd(angle(blocks - 1)) - erotus * cosd(angle(blocks)) - (cr_p * 0.5)*cosd(angle(blocks - 1));
         yp(ii) = alkupistey + (cr_p * 0.5)*sind(angle(blocks)) + erotusy * sind(angle(blocks - 1)) + erotusy * sind(angle(blocks)) + (cr_p * 0.5)*sind(angle(blocks - 1));
@@ -174,15 +180,15 @@ if options.det_w_pseudo > options.det_per_ring
             alkupistey = yp(ii);
             ii=ii+1;
         end
-        xp(ii:ii+(blocks_per_ring*(cryst_per_block+1))/4 - 1) = -(flip(xp(1:(blocks_per_ring*(cryst_per_block+1))/4) - orig_diameter));
-        yp(ii:ii+(blocks_per_ring*(cryst_per_block+1))/4 - 1) = (flip(yp(1:(blocks_per_ring*(cryst_per_block+1))/4)));
-        xp(ii+(blocks_per_ring*(cryst_per_block+1))/4:end) = flip(xp((cryst_per_block+1)+1:(blocks_per_ring*(cryst_per_block+1))/2));
-        yp(ii+(blocks_per_ring*(cryst_per_block+1))/4:end) = -(yp((cryst_per_block+1)+1:(blocks_per_ring*(cryst_per_block+1))/2) - orig_diameter);
+        xp(ii:ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4 - 1) = -(flip(xp(1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4) - orig_diameter));
+        yp(ii:ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4 - 1) = (flip(yp(1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4)));
+        xp(ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4:end) = flip(xp((cryst_per_block+1)+1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/2));
+        yp(ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4:end) = -(yp((cryst_per_block+1)+1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/2) - orig_diameter);
     else
-        xp(ii:ii+(blocks_per_ring*(cryst_per_block+1))/4+(cryst_per_block+1)/2-1) = -(flip(xp(1:(blocks_per_ring*(cryst_per_block+1))/4 +(cryst_per_block+1)/2)) - orig_diameter);
-        yp(ii:ii+(blocks_per_ring*(cryst_per_block+1))/4+(cryst_per_block+1)/2-1) = (flip(yp(1:(blocks_per_ring*(cryst_per_block+1))/4 +(cryst_per_block+1)/2)));
-        xp(ii+(blocks_per_ring*(cryst_per_block+1))/4+(cryst_per_block+1)/2:end) = flip(xp((cryst_per_block+1)+1:(blocks_per_ring*(cryst_per_block+1))/2));
-        yp(ii+(blocks_per_ring*(cryst_per_block+1))/4+(cryst_per_block+1)/2:end) = -(yp((cryst_per_block+1)+1:(blocks_per_ring*(cryst_per_block+1))/2) - orig_diameter);
+        xp(ii:ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4+(cryst_per_block+1)/2-1) = -(flip(xp(1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4 +(cryst_per_block+1)/2)) - orig_diameter);
+        yp(ii:ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4+(cryst_per_block+1)/2-1) = (flip(yp(1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4 +(cryst_per_block+1)/2)));
+        xp(ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4+(cryst_per_block+1)/2:end) = flip(xp((cryst_per_block+1)+1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/2));
+        yp(ii+((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/4+(cryst_per_block+1)/2:end) = -(yp((cryst_per_block+1)+1:((blocks_per_ring * transaxial_multip)*(cryst_per_block+1))/2) - orig_diameter);
     end
     
     
