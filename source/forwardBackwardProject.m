@@ -44,23 +44,44 @@ classdef forwardBackwardProject
             %   after any parameters are changed, otherwise the
             %   reconstructions may not work or might produce wrong
             %   results.
+            %
             %   Alternatively, the user can manually input the necessary
             %   variables. In this case, however, all corrections are
             %   always disabled and precomputed data is never used.
+            %
+            %   Two different cases are possible, a simplified one that
+            %   requires the detector coordinates, image size and FOV
+            %   sizes and a more complex one that requires several
+            %   different parameters (see below).
+            %
+            %   The simplified case will always use improved Siddon. The
+            %   number of subsets can be optionally specified, with the
+            %   default being no subsets (i.e. subsets = 1). Default
+            %   implementation is 4, but it can be changed to 3 (OpenCL) in
+            %   which case the default platform is 0, but this can be
+            %   changed as well. Only one device is used at all times.
             %   Examples:
             %       A = forwardBackwardProject(options);
+            %       A = forwardBackwardProject(x_det, y_det, z_det, Nx, Ny, Nz, FOV_tr, axial_fov);
+            %       A = forwardBackwardProject(x_det, y_det, z_det, Nx, Ny, Nz, FOV_tr, axial_fov, subsets);
+            %       A = forwardBackwardProject(x_det, y_det, z_det, Nx, Ny, Nz, FOV_tr, axial_fov, subsets, implementation, use_device);
             %       A = forwardBackwardProject(Nx, Ny, Nz, FOV_tr, axial_fov, diameter, rings, cr_p, cr_pz, cryst_per_block, blocks_per_ring, 
             %           det_per_ring, Ndist, Nang,NSinos, span, ring_difference, subsets, implementation, use_device, projector_type, tube_width_z, 
             %           tube_radius, voxel_radius, use_psf, FWHM);
             %   INPUTS:
+            %       x_det = Detector coordinates in the x-direction
+            %       (transaxial)
+            %       y_det = Detector coordinates in the y-direction
+            %       (transaxial)
+            %       z_det = Detector coordinates in the z-direction (axial)
             %       Nx = Image size in x-direction
             %       Ny = Image size in y-direction
             %       Nz = Image size in z-direction
             %       FOV_tr = FOV size in transaxial direction
             %       axial_fov = FOV size in axial direction
-            %       diameter = Diameter of the device/distance between
-            %       opposite detectors
-            %       rings = Number of device rings
+            %       diameter = Diameter of the scanner bore/distance
+            %       between opposite detectors
+            %       rings = Number of scanner rings
             %       cr_p = Crystal pitch/size in transaxial direction
             %       cr_pz = Crystal pitch/size in axial direction
             %       cryst_per_block = Number of crystals per block in the
@@ -87,7 +108,7 @@ classdef forwardBackwardProject
             %       use_psf = Whether PSF is used
             %       FWHM = (PSF only) The size of the FWHM of the Gaussian
             %       PSF (3 dimensions)
-            if nargin > 1
+            if nargin > 1 && isscalar(options)
                 obj.OProperties.Nx = options;
                 obj.OProperties.Ny = varargin{1};
                 obj.OProperties.Nz = varargin{2};
@@ -150,12 +171,104 @@ classdef forwardBackwardProject
                 else
                     obj.OProperties.segment_table = [obj.OProperties.segment_table(1), repelem(obj.OProperties.segment_table(2:end),2)];
                 end
+                obj.OProperties.simple = false;
+            elseif nargin > 1
+                obj.OProperties.x = options;
+                obj.OProperties.y = varargin{1};
+                obj.OProperties.z = varargin{2};
+                obj.OProperties.Nx = varargin{3};
+                obj.OProperties.Ny = varargin{4};
+                obj.OProperties.Nz = varargin{5};
+                obj.OProperties.FOVa_x = varargin{6};
+                obj.OProperties.FOVa_y = obj.OProperties.FOVa_x;
+                obj.OProperties.axial_fov = varargin{7};
+                obj.OProperties.diameter = 0;
+                if nargin >= 10 && ~isempty(varargin{8})
+                    obj.OProperties.subsets = varargin{8};
+                else
+                    obj.OProperties.subsets = 1;
+                end
+                if nargin >= 11 && ~isempty(varargin{9})
+                    obj.OProperties.implementation = varargin{9};
+                else
+                    obj.OProperties.implementation = 4;
+                end
+                obj.OProperties.rings = 0;
+                obj.OProperties.cr_p = 0;
+                obj.OProperties.cr_pz = 0;
+                obj.OProperties.cryst_per_block = 0;
+                obj.OProperties.blocks_per_ring = 0;
+                obj.OProperties.det_per_ring = 0;
+                obj.OProperties.Nang = 0;
+                obj.OProperties.Ndist = 0;
+                obj.OProperties.NSinos = 0;
+                obj.OProperties.span = 0;
+                obj.OProperties.ring_difference = 0;
+                if nargin >= 12 && ~isempty(varargin{10})
+                    obj.OProperties.use_device = varargin{10};
+                else
+                    obj.OProperties.use_device = 0;
+                end
+                obj.OProperties.projector_type = 1;
+                obj.OProperties.tube_width_z = 0;
+                obj.OProperties.tube_radius = 0;
+                obj.OProperties.voxel_radius = 0;
+                obj.OProperties.use_psf = false;
+                obj.OProperties.FWHM = 0;
+                obj.OProperties.deblurring = false;
+                obj.OProperties.deblur_iterations = 0;
+                obj.OProperties.TotSinos = obj.OProperties.NSinos;
+                obj.OProperties.use_raw_data = true;
+                obj.OProperties.precompute_lor = false;
+                obj.OProperties.tube_width_xy = 0;
+                obj.OProperties.det_w_pseudo = obj.OProperties.det_per_ring;
+                obj.OProperties.corrections_during_reconstruction = false;
+                obj.OProperties.randoms_correction = false;
+                obj.OProperties.normalization_correction = false;
+                obj.OProperties.attenuation_correction = false;
+                obj.OProperties.scatter_correction = false;
+                obj.OProperties.arc_correction = false;
+                obj.OProperties.sampling = 1;
+                obj.OProperties.partitions = 1;
+                obj.OProperties.n_rays_transaxial = 1;
+                obj.OProperties.n_rays_axial = 1;
+                obj.OProperties.subset_type = 1;
+                obj.OProperties.pseudot = [];
+                obj.OProperties.apply_acceleration = false;
+                obj.OProperties.cpu_to_gpu_factor = 0;
+                obj.OProperties.machine_name = 'PET';
+                obj.OProperties.name = '';
+                obj.OProperties.flip_image = false;
+                obj.OProperties.use_64bit_atomics = true;
+                obj.OProperties.verbose = true;
+                obj.OProperties.offangle = 0;
+                obj.OProperties.ndist_side = 1;
+                obj.OProperties.epps = 1e-8;
+                obj.OProperties.segment_table = 0;
+                obj.OProperties.simple = true;
             else
                 obj.OProperties = options;
+                obj.OProperties.simple = false;
             end
-            [obj.index, obj.n_meas, obj.OProperties.subsets] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
-                obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos);
-            
+            obj.OProperties.listmode = false;
+            if (isfield(obj.OProperties,'x') && isfield(obj.OProperties,'y') && (isfield(obj.OProperties,'z') || isfield(obj.OProperties,'z_det')))
+                obj.index = uint32(1:numel(obj.OProperties.x)/2)';
+                det_per_ring = numel(obj.OProperties.x) / 2;
+                obj.n_meas = floor(det_per_ring / obj.OProperties.subsets);
+                obj.n_meas = int64([repmat(obj.n_meas,obj.OProperties.subsets - 1,1); det_per_ring - obj.n_meas*(obj.OProperties.subsets - 1)]);
+                obj.OProperties.listmode = true;
+                if obj.OProperties.implementation == 1
+                    error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
+                end
+                obj.OProperties.precompute_lor = false;
+                obj.OProperties.diameter = 0;
+%                 if abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:))) > obj.OProperties.diameter
+%                     obj.OProperties.diameter = abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:)));
+%                 end
+            else
+                [obj.index, obj.n_meas, obj.OProperties.subsets] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
+                    obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos);
+            end
             obj.nn = [int64(0);int64(cumsum(obj.n_meas))];
             if iscell(obj.index)
                 obj.index = cell2mat(obj.index);
@@ -199,7 +312,6 @@ classdef forwardBackwardProject
                 pseudot = [];
             end
             % Number of rings
-            R = double(obj.OProperties.diameter);
             FOVax = obj.OProperties.FOVa_x;
             FOVay = obj.OProperties.FOVa_y;
             FOVax = double(FOVax);
@@ -214,28 +326,54 @@ classdef forwardBackwardProject
             obj.OProperties.y = y;
             obj.OProperties.z_det = z_det;
             
-            [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
-            obj.OProperties.normalization_correction = normalization_correction;
-            obj.OProperties.randoms_correction = randoms_correction;
-            
-            if obj.OProperties.use_raw_data
-                size_x = uint32(obj.OProperties.det_w_pseudo);
+            if ~obj.OProperties.listmode
+                [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
+                obj.OProperties.normalization_correction = normalization_correction;
+                obj.OProperties.randoms_correction = randoms_correction;
             else
-                size_x = uint32(obj.OProperties.Nang*obj.OProperties.Ndist);
+                obj.OProperties.normalization_correction = false;
+                obj.OProperties.randoms_correction = false;
+                obj.OProperties.scatter_correction = false;
+                [~, ~, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
             end
             
-            [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,~,discard] = ...
-                form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF);
+            if obj.OProperties.use_raw_data
+                if obj.OProperties.listmode
+                    size_x = uint32(obj.OProperties.det_w_pseudo);
+                else
+                    size_x = uint32(numel(x));
+                end
+            else
+                if obj.OProperties.listmode
+                    size_x = uint32(numel(x) / 2);
+                else
+                    size_x = uint32(obj.OProperties.Nang*obj.OProperties.Ndist);
+                end
+                if isfield(obj.OProperties,'sampling') && obj.OProperties.sampling > 1 && ~obj.OProperties.precompute_lor
+                    size_x = size_x * obj.OProperties.sampling;
+                end
+            end
+            
+            if ~obj.OProperties.listmode
+                [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,~,discard] = ...
+                    form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF);
+            else
+                obj.OProperties.LL = uint16(0);
+                obj.OProperties.xy_index = uint32(0);
+                obj.OProperties.z_index = uint16(0);
+                obj.OProperties.summa = zeros(obj.OProperties.subsets, 1, 'uint64');
+            end
             if ~obj.OProperties.precompute_lor
                 obj.OProperties.lor_a = uint16(0);
             end
             if obj.OProperties.subsets == 1
                 obj.nn = int64(obj.n_meas);
-                if obj.OProperties.precompute_lor
+                if obj.OProperties.precompute_lor && ~obj.OProperties.listmode
                     obj.index = find(discard);
                 end
             end
             
+            R = double(obj.OProperties.diameter);
             etaisyys_x = (R-FOVax)/2;
             etaisyys_y = (R-FOVay)/2;
             if obj.OProperties.implementation == 2 || obj.OProperties.implementation == 3 || obj.OProperties.implementation == 5
@@ -247,7 +385,9 @@ classdef forwardBackwardProject
                 xx = double(linspace(etaisyys_x, R - etaisyys_x, obj.OProperties.Nx + 1));
                 yy = double(linspace(etaisyys_y, R - etaisyys_y, obj.OProperties.Ny + 1));
             end
-            zz=zz(2*block1+1:2*blocks);
+            if ~obj.OProperties.simple
+                zz=zz(2*block1+1:2*blocks);
+            end
             
             % Distance of adjacent pixels
             dx = diff(xx(1:2));
@@ -319,7 +459,7 @@ classdef forwardBackwardProject
                 obj.OProperties.bmax = double(bmax);
             end
             % Multi-ray Siddon
-            if obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1
+            if (obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1) && ~obj.OProperties.listmode
                 [x,y] = getMultirayCoordinates(obj.OProperties);
                 obj.OProperties.x = x;
                 obj.OProperties.y = y;
