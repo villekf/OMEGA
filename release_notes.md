@@ -51,6 +51,9 @@
   
 - Changed the words "machine" to "scanner"
 
+- PSF related functions now accept non-struct input values
+  - options-struct is no longer necessary input variable
+
 ## OMEGA v1.1.0
 
 ### New features
