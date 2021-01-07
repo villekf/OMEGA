@@ -53,6 +53,9 @@ if ~isstruct(options) && nargin >= 7
     end
 end
 if ~isfield(options,'use_psf') || options.use_psf
+    if numel(options.FWHM) == 2
+        options.FWHM(3) = 0;
+    end
     dx = options.FOVa_x / options.Nx;
     dy = options.FOVa_y / options.Ny;
     dz = options.axial_fov / options.Nz;
