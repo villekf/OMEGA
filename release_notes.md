@@ -10,6 +10,8 @@
 
 - Custom detector/list-mode reconstruction is now supported by implementations 2 and 3
 
+- Detector coordinates can now be extracted from Inveon list-mode data files to perform list-mode reconstruction
+
 ### Bug fixes and enhancements
 
 - Additional parameters are now saved in the `pz` cell matrix
