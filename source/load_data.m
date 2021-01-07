@@ -205,7 +205,7 @@ if options.use_machine == 1
             z = z(2:end) - z(2) / 2;
             x = single(x);
             y = single(y);
-            x_coordinate = [x(ring_pos1) x(ring_pos1)];
+            x_coordinate = [x(ring_pos1) x(ring_pos2)];
             y_coordinate = [y(ring_pos1) y(ring_pos2)];
             clear ring_pos1 ring_pos1
             z_coordinate = [z(ring_number1) z(ring_number2)];
