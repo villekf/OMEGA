@@ -7,10 +7,10 @@ function gaussK = gaussianKernel(x, y, z, sigma_x, sigma_y, sigma_z)
 %   normalized.
 %
 % Example:
-%   gaussK = gaussianKernel(x, y, z, sigma);
+%   gaussK = gaussianKernel(x, y, z, sigma_x, sigma_y, sigma_z);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2021 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
