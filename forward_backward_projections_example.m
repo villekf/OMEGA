@@ -870,7 +870,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 f_osem = ff;
@@ -914,7 +914,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
@@ -960,7 +960,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
@@ -1281,7 +1281,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, options, gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
