@@ -117,7 +117,7 @@ if ~options.listmode
     Z = options.axial_fov;
 else
     if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
-        options.diameter = abs(min(options.x(:))) + abs(max(options.x(:)));
+        options.diameter = (min(options.x(:))) + (max(options.x(:)));
     end
     if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
         if min(options.z_det(:)) < 0
@@ -210,13 +210,13 @@ if ~luokka
             options = rmfield(options, 'y');
         end
         [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
-        options.x = x;
-        options.y = y;
-        options.z_det = z_det;
+        options.x = x(:);
+        options.y = y(:);
+        options.z_det = z_det(:);
     else
-        x = options.x;
-        y = options.y;
-        z_det = options.z_det;
+        x = options.x(:);
+        y = options.y(:);
+        z_det = options.z_det(:);
     end
     
     if ~isfield(options,'normalization')
@@ -229,9 +229,18 @@ if ~luokka
         save_scat = true;
     end
 else
-    x = options.x;
-    y = options.y;
-    z_det = options.z_det;
+    if options.listmode
+        x = options.x(nn(1):nn(2),:);
+        y = options.y(nn(1):nn(2),:);
+        z_det = options.z_det(nn(1):nn(2),:);
+        x = x(:);
+        y = y(:);
+        z_det = z_det(:);
+    else
+        x = options.x(:);
+        y = options.y(:);
+        z_det = options.z_det(:);
+    end
 end
 
 if isfield(options,'norm_full')
