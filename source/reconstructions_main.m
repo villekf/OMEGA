@@ -719,7 +719,7 @@ if options.use_raw_data
     options.rings = rings;
     options.detectors = det_per_ring * rings;
 end
-if ~isfield('global_correction_factor', options) || isempty(options.global_correction_factor)
+if ~isfield(options, 'global_correction_factor') || isempty(options.global_correction_factor)
     if options.implementation == 2 || options.implementation == 3
         options.global_correction_factor = single(1);
     else
@@ -908,6 +908,9 @@ if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isf
     options.listmode = true;
     if options.implementation == 1
         error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
+    end
+    if options.implementation == 2 && options.use_CUDA
+        error('CUDA support not enabled for list-mode data')
     end
     if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
         diameter = (min(options.x(:))) + (max(options.x(:)));
@@ -3210,13 +3213,13 @@ else
                 % Only one algorihtm/prior at a time
             elseif options.implementation == 4
                 
-                if ~isfield('vaimennus',options)
+                if ~isfield(options, 'vaimennus')
                     options.vaimennus = 0;
                 end
-                if ~isfield('normalization',options)
+                if ~isfield(options, 'normalization')
                     options.normalization = 0;
                 end
-                if ~isfield('scatter',options)
+                if ~isfield(options, 'scatter')
                     options.scatter = false;
                 end
                 if llo == 1
@@ -4822,13 +4825,13 @@ else
         else
             dc_z = single(options.cr_pz);
         end
-        if ~isfield('vaimennus',options)
+        if ~isfield(options, 'vaimennus')
             options.vaimennus = single(0);
         end
-        if ~isfield('normalization',options)
+        if ~isfield(options, 'normalization')
             options.normalization = single(0);
         end
-        if ~isfield('scatter',options)
+        if ~isfield(options, 'scatter')
             options.scatter = false;
         end
         
@@ -4979,13 +4982,13 @@ else
         n_rays = uint16(options.n_rays_transaxial);
         n_rays3D = uint16(options.n_rays_axial);
         dc_z = single(z_det(2,1) - z_det(1,1));
-        if ~isfield('vaimennus',options)
+        if ~isfield(options, 'vaimennus')
             options.vaimennus = single(0);
         end
-        if ~isfield('normalization',options)
+        if ~isfield(options, 'normalization')
             options.normalization = single(0);
         end
-        if ~isfield('scatter',options)
+        if ~isfield(options, 'scatter')
             options.scatter = false;
         end
         
