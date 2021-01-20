@@ -52,13 +52,16 @@ if TVtype ~= 3
     im = reshape(im,Nx,Ny,Nz);
     f = (zeros(Nx,Ny,Nz));
     f(1:Nx-1,:,:) = -diff(im);
-    f(end,:,:) = im(end,:,:) - im(1,:,:);
+%     f(end,:,:) = im(end,:,:) - im(1,:,:);
+    f(end,:,:) = -f(Nx-1,:,:);
     g = (zeros(Nx,Ny,Nz));
     g(:,1:Ny-1,:) = -diff(im,1,2);
-    g(:,end,:) = im(:,end,:) - im(:,1,:);
+%     g(:,end,:) = im(:,end,:) - im(:,1,:);
+    g(:,end,:) = -g(:,Ny-1,:);
     h = (zeros(Nx,Ny,Nz));
     h(:,:,1:Nz-1) = -diff(im,1,3);
-    h(:,:,end) = im(:,:,end) - im(:,:,1);
+%     h(:,:,end) = im(:,:,end) - im(:,:,1);
+    h(:,:,end) = -h(:,:,Nz-1);
     
     f = f(:);
     g = g(:);
@@ -94,13 +97,16 @@ if TVtype ~= 3
             if TVtype == 2
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(aData.reference_image);
-                fp(end,:,:) = aData.reference_image(end,:,:) - aData.reference_image(1,:,:);
+                % fp(end,:,:) = aData.reference_image(end,:,:) - aData.reference_image(1,:,:);
+                fp(end,:,:) = -fp(Nx-1,:,:);
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(aData.reference_image,1,2);
-                gp(:,end,:) = aData.reference_image(:,end,:) - aData.reference_image(:,1,:);
+                % gp(:,end,:) = aData.reference_image(:,end,:) - aData.reference_image(:,1,:);
+                gp(:,end,:) = -gp(:,Ny-1,:);
                 hp = (zeros(Nx,Ny,Nz));
                 hp(:,:,1:Nz-1) = -diff(aData.reference_image,1,3);
-                hp(:,:,end) = aData.reference_image(:,:,end) - aData.reference_image(:,:,1);
+                % hp(:,:,end) = aData.reference_image(:,:,end) - aData.reference_image(:,:,1);
+                hp(:,:,end) = -hp(:,:,Nz-1);
                 
                 fp = fp(:);
                 gp = gp(:);
@@ -115,13 +121,16 @@ if TVtype ~= 3
             if TVtype == 5
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(options.APLS_ref_image);
-                fp(end,:,:) = options.APLS_ref_image(end,:,:) - options.APLS_ref_image(1,:,:);
+%                 fp(end,:,:) = options.APLS_ref_image(end,:,:) - options.APLS_ref_image(1,:,:);
+                fp(end,:,:) = -fp(Nx-1,:,:);
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(options.APLS_ref_image,1,2);
-                gp(:,end,:) = options.APLS_ref_image(:,end,:) - options.APLS_ref_image(:,1,:);
+%                 gp(:,end,:) = options.APLS_ref_image(:,end,:) - options.APLS_ref_image(:,1,:);
+                gp(:,end,:) = -gp(:,Ny-1,:);
                 hp = (zeros(Nx,Ny,Nz));
                 hp(:,:,1:Nz-1) = -diff(options.APLS_ref_image,1,3);
-                hp(:,:,end) = options.APLS_ref_image(:,:,end) - options.APLS_ref_image(:,:,1);
+%                 hp(:,:,end) = options.APLS_ref_image(:,:,end) - options.APLS_ref_image(:,:,1);
+                hp(:,:,end) = -hp(:,:,Nz-1);
                 
                 fp = fp(:) + options.epps;
                 gp = gp(:) + options.epps;
@@ -150,14 +159,13 @@ if TVtype ~= 3
                     apu2 = sign(g) - sign(g) ./ (abs(g)/options.SATVPhi + 1); % y-direction
                     apu3 = sign(h) - sign(h) ./ (abs(h)/options.SATVPhi + 1); % z-direction
                 end
-                apu4 = apu1 + apu2 + apu3;
             else
                 pval = sqrt(f.^2 + g.^2 + h.^2 + options.TVsmoothing);
                 apu1 = f./pval; % x-direction
                 apu2 = g./pval; % y-direction
                 apu3 = h./pval; % z-direction
-                apu4 = apu1 + apu2 + apu3;
             end
+            apu4 = apu1 + apu2 + apu3;
         end
         apu1=reshape(apu1,Nx,Ny,Nz);
         apu2=reshape(apu2,Nx,Ny,Nz);
@@ -198,9 +206,9 @@ else
         padd = padding(reshape(im,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd = padd(varargin{1});
         padd(:,isinf(options.weights)) = [];
-        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2))),options.weights_quad(~isinf(options.weights_quad))'),2);
+        grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2))),options.weights_quad([1:floor(numel(options.weights_quad)/2),ceil(numel(options.weights_quad)/2) + 1 : numel(options.weights_quad)])),2);
         if nargout >= 2
-            varargout{1} = sum(bsxfun(@times, sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2) - 1, options.weights_quad(~isinf(options.weights_quad)')),2);
+            varargout{1} = sum(bsxfun(@times, sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2) - 1, options.weights_quad([1:floor(numel(options.weights_quad)/2),ceil(numel(options.weights_quad)/2) + 1 : numel(options.weights_quad)])),2);
         end
     end
 end
