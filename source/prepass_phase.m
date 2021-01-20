@@ -34,6 +34,9 @@ if exist('feature','builtin') == 5
 else
     nCores = uint32(1);
 end
+if ~isfield(options,'listmode')
+    options.listmode = false;
+end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.ramla || options.MBSREM || options.mramla || options.rosem || options.drama || options.ROSEM_MAP || options.ecosem ...
@@ -109,6 +112,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 E = ones(options.Nang*options.Ndist*options.NSinos,1);
             end
         end
+        if options.implementation == 1 && options.precompute_lor == false
+            iij = double(0:Nx);
+            jji = double(0:Ny);
+            kkj = double(0:Nz);
+        end
         
         if verbose
             disp('Prepass phase for MRAMLA, COSEM, ACOSEM and ECOSEM started')
@@ -148,7 +156,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             else
                 scatter_input = 0;
             end
-            if options.precompute_lor == false
+            if options.precompute_lor == false && ~options.listmode
                 if use_raw_data == false
                     if options.projector_type == 1 || options.projector_type == 0
                         if exist('OCTAVE_VERSION','builtin') == 0 && exist('projector_mex','file') == 3
@@ -156,14 +164,14 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                                 zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
                                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
                                 false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
+                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
                                 uint32(options.projector_type), iij, jji, kkj);
                         elseif exist('OCTAVE_VERSION','builtin') == 5 && exist('projector_oct','file') == 3
                             [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                                 zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
                                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
                                 false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
+                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
                                 uint32(options.projector_type), iij, jji, kkj);
                         else
                             % The below lines allow for pure MATLAB
@@ -192,13 +200,13 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                                 zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
                                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, ...
                                 L, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
+                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                         elseif exist('OCTAVE_VERSION','builtin') == 5
                             [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
                                 zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
                                 randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, ...
                                 L, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
+                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                         end
                     elseif options.projector_type == 2
                         error('Unsupported projector type')
@@ -231,6 +239,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     disp(['Sparse matrix formation took ' num2str(tElapsed) ' seconds'])
                 end
             else
+                if options.listmode
+                    if osa_iter == 1
+                        lor_a = lor_pixel_count_prepass(options, false);
+                    end
+                end
                 if use_raw_data
                     L_input = LL(pituus(osa_iter) * 2 + 1 : pituus(osa_iter + 1) * 2);
                     xy_index_input = uint32(0);
@@ -241,25 +254,33 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                 end
                 if options.projector_type == 2 || options.projector_type == 3
-                    lor2 = [uint64(0); uint64(cumsum(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    if exist('OCTAVE_VERSION','builtin') == 0
+                        lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    else
+                        lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
+                    end
                 else
-                    lor2 = [uint64(0); uint64(cumsum(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    if exist('OCTAVE_VERSION','builtin') == 0
+                        lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
+                    else
+                        lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
+                    end
                 end
                 if exist('OCTAVE_VERSION','builtin') == 0
                     [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
                         norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
                         randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
                         z_index_input, uint32(NSinos), L_input, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                        use_raw_data, uint32(0), lor2, summa(osa_iter), ...
-                        options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
+                        use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
+                        false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
                         options.tube_width_z, bmin, bmax, Vmax, V);
                 elseif exist('OCTAVE_VERSION','builtin') == 5
                     [A, ~] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
                         norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
                         randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
                         z_index_input, uint32(NSinos), L_input, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                        use_raw_data, uint32(0), lor2, summa(osa_iter), ...
-                        options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
+                        use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
+                        false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
                         options.tube_width_z, bmin, bmax, Vmax, V);
                 end
 %                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
@@ -465,6 +486,16 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options = computeOffsets(options);
         else
             options.tr_offsets = uint32(0);
+            if options.implementation == 2 && isfield(options,'Ndx')
+                options.Ndx = uint32(options.Ndx);
+                options.Ndy = uint32(options.Ndy);
+                options.Ndz = uint32(options.Ndz);
+            end
+            if options.MRP
+                options.medx = options.Ndx*2 + 1;
+                options.medy = options.Ndy*2 + 1;
+                options.medz = options.Ndz*2 + 1;
+            end
         end
         if options.quad || (options.TV && options.TVtype == 3)
             options = quadWeights(options, options.empty_weight);
