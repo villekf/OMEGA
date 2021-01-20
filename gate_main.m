@@ -1105,7 +1105,7 @@ options.h = 2;
 % Use scalar if you want it to decrease as
 % lambda0_mbsrem/current_iteration_number. Use vector (length = Niter) if
 % you want your own relaxation parameters.
-options.lambda0_mbsrem = 0.2;
+options.lambda0_mbsrem = 1;
 
 %%% Upper bound for MRAMLA/MBSREM (use 0 for default (computed) value)
 options.U = 0;
@@ -1116,7 +1116,7 @@ options.U = 0;
 % Use scalar if you want it to decrease as
 % lambda0/current_iteration_number. Use vector (length = Niter) if you want
 % your own relaxation parameters.
-options.lambda0 = 0.2;
+options.lambda0 = 0.5;
  
 
 %%%%%%%%%%%%%%%%%%%%%%% ROSEM & ROSEM-MAP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%
@@ -1151,19 +1151,19 @@ options.Ndz = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% MRP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for MRP with OSL-OSEM
-options.beta_mrp_osem = 0.1;
+options.beta_mrp_osem = 0.25;
 %%% Regularization parameter for MRP with OSL-MLEM
 options.beta_mrp_mlem = 1.5;
 %%% Regularization parameter for MRP with MBSREM
-options.beta_mrp_mbsrem = 0.3;
+options.beta_mrp_mbsrem = 0.1;
 %%% Regularization parameter for MRP with BSREM
-options.beta_mrp_bsrem = 0.1;
+options.beta_mrp_bsrem = 0.7;
 %%% Regularization parameter for MRP with ROSEM
-options.beta_mrp_rosem = 2;
+options.beta_mrp_rosem = 0.6;
 %%% Regularization parameter for MRP with RBI
 options.beta_mrp_rbi = 0.1;
 %%% Regularization parameter for MRP with OSL-(A)COSEM
-options.beta_mrp_cosem = 1;
+options.beta_mrp_cosem = 0.1;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% QP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1172,11 +1172,11 @@ options.beta_quad_osem = 0.001;
 %%% Regularization parameter for quadratic prior with OSL-MLEM
 options.beta_quad_mlem = 0.1;
 %%% Regularization parameter for quadratic prior with MBSREM
-options.beta_quad_mbsrem = 0.05;
+options.beta_quad_mbsrem = 0.01;
 %%% Regularization parameter for quadratic prior with BSREM
 options.beta_quad_bsrem = 0.03;
 %%% Regularization parameter for quadratic prior with ROSEM
-options.beta_quad_rosem = 0.1;
+options.beta_quad_rosem = 0.05;
 %%% Regularization parameter for quadratic prior with RBI
 options.beta_quad_rbi = 0.05;
 %%% Regularization parameter for quadratic prior (OSL-(A)COSEM)
@@ -1200,7 +1200,7 @@ options.beta_huber_mlem = 0.1;
 %%% Regularization parameter for Huber prior with MBSREM
 options.beta_huber_mbsrem = 0.05;
 %%% Regularization parameter for Huber prior with BSREM
-options.beta_huber_bsrem = 0.03;
+options.beta_huber_bsrem = 0.25;
 %%% Regularization parameter for Huber prior with ROSEM
 options.beta_huber_rosem = 0.1;
 %%% Regularization parameter for Huber prior with RBI
@@ -1221,19 +1221,19 @@ options.weights_huber = [];
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%% L-FILTER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for L-filter with OSL-OSEM
-options.beta_L_osem = 0.1;
+options.beta_L_osem = 0.3;
 %%% Regularization parameter for L-filter with OSL-MLEM
-options.beta_L_mlem = 0.1;
+options.beta_L_mlem = 0.3;
 %%% Regularization parameter for L-filter with MBSREM
-options.beta_L_mbsrem = 0.1;
+options.beta_L_mbsrem = 0.3;
 %%% Regularization parameter for L-filter with BSREM
-options.beta_L_bsrem = 0.03;
+options.beta_L_bsrem = 2;
 %%% Regularization parameter for L-filter with ROSEM
-options.beta_L_rosem = 3;
+options.beta_L_rosem = 1.5;
 %%% Regularization parameter for L-filter with RBI
-options.beta_L_rbi = 0.09;
+options.beta_L_rbi = 0.5;
 %%% Regularization parameter for L-filter (OSL-(A)COSEM)
-options.beta_L_cosem = 0.1;
+options.beta_L_cosem = 0.5;
 
 %%% Weighting factors for the L-filter pixels
 % Otherwise the same as in quadratic prior, but center pixel is not Inf.
@@ -1251,19 +1251,19 @@ options.oneD_weights = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FMH PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for FMH with OSL-OSEM
-options.beta_fmh_osem = 0.1;
+options.beta_fmh_osem = 0.85;
 %%% Regularization parameter for FMH with OSL-MLEM
-options.beta_fmh_mlem = 0.1;
+options.beta_fmh_mlem = 1.2;
 %%% Regularization parameter for FMH with MBSREM
-options.beta_fmh_mbsrem = 0.6;
+options.beta_fmh_mbsrem = 1.7;
 %%% Regularization parameter for FMH with BSREM
 options.beta_fmh_bsrem = 5;
 %%% Regularization parameter for FMH with ROSEM
-options.beta_fmh_rosem = 8;
+options.beta_fmh_rosem = 4;
 %%% Regularization parameter for FMH with RBI
-options.beta_fmh_rbi = 0.5;
+options.beta_fmh_rbi = 1.4;
 %%% Regularization parameter for FMH (OSL-(A)COSEM)
-options.beta_fmh_cosem = 0.1;
+options.beta_fmh_cosem = 0.68;
 
 %%% Pixel weights for FMH
 % The matrix size needs to be [Ndx*2+1, 4] if Nz = 1 or Ndz = 0, or
@@ -1287,19 +1287,19 @@ options.fmh_center_weight = 4;
 options.mean_type = 3;
 
 %%% Regularization parameter for weighted mean with OSL-OSEM
-options.beta_weighted_osem = 0.1;
+options.beta_weighted_osem = 0.3;
 %%% Regularization parameter for weighted mean with OSL-MLEM
-options.beta_weighted_mlem = 0.1;
+options.beta_weighted_mlem = 0.7;
 %%% Regularization parameter for weighted mean with MBSREM
-options.beta_weighted_mbsrem = 0.1;
+options.beta_weighted_mbsrem = 0.3;
 %%% Regularization parameter for weighted mean with BSREM
-options.beta_weighted_bsrem = 5;
+options.beta_weighted_bsrem = 2;
 %%% Regularization parameter for weighted mean with ROSEM
-options.beta_weighted_rosem = 3;
+options.beta_weighted_rosem = 1.5;
 %%% Regularization parameter for weighted mean with RBI
-options.beta_weighted_rbi = 0.04;
+options.beta_weighted_rbi = 0.4;
 %%% Regularization parameter for weighted mean (OSL-(A)COSEM)
-options.beta_weighted_cosem = 0.2;
+options.beta_weighted_cosem = 0.6;
 
 %%% Pixel weights for weighted mean
 % The number of pixels needs to be the amount of neighboring pixels,
@@ -1317,19 +1317,19 @@ options.weighted_center_weight = 2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for TV OSL-OSEM
-options.beta_TV_osem = 0.01;
+options.beta_TV_osem = 0.03;
 %%% Regularization parameter for TV with OSL-MLEM
 options.beta_TV_mlem = 0.1;
 %%% Regularization parameter for TV with MBSREM
-options.beta_TV_mbsrem = 0.01;
+options.beta_TV_mbsrem = 0.05;
 %%% Regularization parameter for TV with BSREM
-options.beta_TV_bsrem = 0.05;
+options.beta_TV_bsrem = 0.2;
 %%% Regularization parameter for TV with ROSEM
-options.beta_TV_rosem = 0.07;
+options.beta_TV_rosem = 0.2;
 %%% Regularization parameter for TV with RBI
-options.beta_TV_rbi = 0.002;
+options.beta_TV_rbi = 0.02;
 %%% Regularization parameter for TV (OSL-(A)COSEM)
-options.beta_TV_cosem = 0.003;
+options.beta_TV_cosem = 0.1;
 
 %%% "Smoothing" parameter
 % Also used to prevent zero values in square root.
@@ -1374,30 +1374,30 @@ options.SATVPhi = 0.2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% ADMRP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for AD with OSL-OSEM
-options.beta_ad_osem = 0.1;
+options.beta_ad_osem = 0.02;
 %%% Regularization parameter for AD with OSL-MLEM
-options.beta_ad_mlem = 0.1;
+options.beta_ad_mlem = 0.01;
 %%% Regularization parameter for AD with MBSREM
-options.beta_ad_mbsrem = 0.3;
+options.beta_ad_mbsrem = 0.02;
 %%% Regularization parameter for AD with BSREM
-options.beta_ad_bsrem = 0.2;
+options.beta_ad_bsrem = 1.5;
 %%% Regularization parameter for AD with ROSEM
-options.beta_ad_rosem = 0.0003;
+options.beta_ad_rosem = 1.5;
 %%% Regularization parameter for AD with RBI
-options.beta_ad_rbi = 0.05;
+options.beta_ad_rbi = 1;
 %%% Regularization parameter for AD with (OSL-(A)COSEM)
-options.beta_ad_cosem = 0.1;
+options.beta_ad_cosem = 0.01;
 
 %%% Time step variable for AD (implementation 2 only)
 options.TimeStepAD = 0.0625;
 
 %%% Conductivity/connectivity for AD (edge threshold)
-options.KAD = 2;
+options.KAD = 5;
 
 %%% Number of iterations for AD filter
 % NOTE: This refers to the AD smoothing part, not the actual reconstruction
 % phase.
-options.NiterAD = 1;
+options.NiterAD = 5;
 
 %%% Flux/conduction type for AD filter
 % 1 = Exponential
@@ -1412,19 +1412,19 @@ options.DiffusionType = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% APLS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for APLS with OSL-OSEM
-options.beta_APLS_osem = 0.01;
+options.beta_APLS_osem = 0.08;
 %%% Regularization parameter for APLS with OSL-MLEM
 options.beta_APLS_mlem = 0.1;
 %%% Regularization parameter for APLS with MBSREM
 options.beta_APLS_mbsrem = 0.1;
 %%% Regularization parameter for APLS with BSREM
-options.beta_APLS_bsrem = 0.005;
+options.beta_APLS_bsrem = 0.3;
 %%% Regularization parameter for APLS with ROSEM
-options.beta_APLS_rosem = 0.1;
+options.beta_APLS_rosem = 0.15;
 %%% Regularization parameter for APLS with RBI
 options.beta_APLS_rbi = 0.1;
 %%% Regularization parameter for APLS (OSL-(A)COSEM)
-options.beta_APLS_cosem = 0.01;
+options.beta_APLS_cosem = 0.08;
 
 %%% Scaling parameter (eta)
 % See the wiki for details:
@@ -1443,19 +1443,19 @@ options.APLS_reference_image = 'reference_image.mat';
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TGV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for TGV with OSL-OSEM
-options.beta_TGV_osem = 0.1;
+options.beta_TGV_osem = 0.03;
 %%% Regularization parameter for TGV with OSL-MLEM
-options.beta_TGV_mlem = 0.1;
+options.beta_TGV_mlem = 0.05;
 %%% Regularization parameter for TGV with MBSREM
-options.beta_TGV_mbsrem = 0.1;
+options.beta_TGV_mbsrem = 0.055;
 %%% Regularization parameter for TGV with BSREM
-options.beta_TGV_bsrem = 1;
+options.beta_TGV_bsrem = 0.3;
 %%% Regularization parameter for TGV with ROSEM
-options.beta_TGV_rosem = 0.25;
+options.beta_TGV_rosem = 0.15;
 %%% Regularization parameter for TGV with RBI
 options.beta_TGV_rbi = 0.1;
 %%% Regularization parameter for TGV (OSL-(A)COSEM)
-options.beta_TGV_cosem = 0.05;
+options.beta_TGV_cosem = 0.02;
 
 %%% TGV weights
 % First part
@@ -1464,7 +1464,7 @@ options.betaTGV = 1;
 options.alphaTGV = 2;
 
 %%% Number of TGV iterations
-options.NiterTGV = 30;
+options.NiterTGV = 10;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1475,13 +1475,13 @@ options.beta_NLM_mlem = 0.01;
 %%% Regularization parameter for NLM with MBSREM
 options.beta_NLM_mbsrem = 0.05;
 %%% Regularization parameter for NLM with BSREM
-options.beta_NLM_bsrem = 0.01;
+options.beta_NLM_bsrem = 0.1;
 %%% Regularization parameter for NLM with ROSEM
-options.beta_NLM_rosem = 0.1;
+options.beta_NLM_rosem = 0.05;
 %%% Regularization parameter for NLM with RBI
-options.beta_NLM_rbi = 0.01;
+options.beta_NLM_rbi = 0.1;
 %%% Regularization parameter for NLM (OSL-(A)COSEM)
-options.beta_NLM_cosem = 0.01;
+options.beta_NLM_cosem = 0.1;
 
 %%% Filter parameter
 options.sigma = 10;
