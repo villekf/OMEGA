@@ -294,7 +294,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i] * nBins, NULL, &status);
+		if (listmode != 2)
+			d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[i] * nBins, NULL, &status);
+		else
+			d_Sino[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -307,7 +310,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			getErrorString(status);
 			return;
 		}
-		if (raw && !listmode) {
+		if (raw && listmode != 1) {
 			d_xyindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 			d_zindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			d_L[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[i] * 2, NULL, &status);
@@ -316,7 +319,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		else if (!listmode) {
+		else if (listmode != 1) {
 			d_xyindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -426,20 +429,22 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			getErrorString(status);
 			return;
 		}
-		if (TOF) {
+		if (TOF && listmode != 2) {
 			for (int64_t to = 0LL; to < nBins; to++) {
 				status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, sizeof(float) * length[i] * to, sizeof(float) * length[i], &Sino[cumsum[i] + koko * to]);
 			}
 		}
-		else
+		else if (listmode != 2)
 			status = commandQueues[i].enqueueWriteBuffer(d_Sino[i], CL_FALSE, 0, sizeof(float) * length[i], &Sino[cumsum[i]]);
+		else
+			status = commandQueues[i].enqueueFillBuffer(d_Sino[i], zero, 0, sizeof(cl_float));
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 
 
-		if (raw && !listmode) {
+		if (raw && listmode != 1) {
 			status = commandQueues[i].enqueueWriteBuffer(d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 			status = commandQueues[i].enqueueWriteBuffer(d_zindex[i], CL_FALSE, 0, sizeof(uint16_t), z_index);
 			status = commandQueues[i].enqueueWriteBuffer(d_L[i], CL_FALSE, 0, sizeof(uint16_t) * length[i] * 2, &L[cumsum[i] * 2]);
@@ -448,7 +453,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		else if (!listmode){
+		else if (listmode != 1){
 			status = commandQueues[i].enqueueWriteBuffer(d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t) * length[i], &xy_index[cumsum[i]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);

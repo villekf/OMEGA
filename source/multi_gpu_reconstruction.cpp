@@ -78,7 +78,11 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 
-	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
+	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
+
+	if (listmode == 1 && computeSensImag)
+		compute_norm_matrix = 0u;
 
 	// Build the program and get the command queues
 	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 

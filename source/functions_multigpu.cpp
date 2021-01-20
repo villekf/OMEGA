@@ -276,7 +276,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	const cl::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
 	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
 	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
-	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const bool listmode) {
+	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const uint8_t listmode) {
 	cl_int status = CL_SUCCESS;
 
 
@@ -361,8 +361,10 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		options += (" -DTRAPZ_BINS=" + std::to_string(6.f));
 	}
 	options += (" -DNBINS=" + std::to_string(nBins));
-	if (listmode)
+	if (listmode == 1)
 		options += " -DLISTMODE";
+	else if (listmode == 2)
+		options += " -DLISTMODE2";
 	//if (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1)) {
 	//	options += " -DORTH";
 	//	options += " -DCRYSTZ";
