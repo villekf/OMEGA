@@ -2,7 +2,7 @@ function [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_dat
 % INDEX_MAKER Form the subset indices for any of the subset types
 %
 % Example:
-%   [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, 
+%   [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets,
 %   use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos)
 % INPUTS:
 %   Nx, Ny, Nz = Image (matrix) size in x-, y-, and z-directions
@@ -28,7 +28,7 @@ function [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_dat
 %   used, otherwise returns the previously used value
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019 Ville-Veikko Wettenhovi
+% Copyright (C) 2020 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -71,6 +71,83 @@ end
 index = 0;
 % Sinogram data
 if use_raw_data == false && subsets > 1
+    index = cell(subsets,1);
+    pituus = zeros(subsets, 1, 'int64');
+    % Take every nth column from the sinogram
+    if options.subset_type == 4
+        for i=1:subsets
+            osa = length(i:subsets:Nang);
+            index1 = repmat(uint32((i-1)*Ndist+1:i*Ndist)', osa*NSinos,1);
+            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                index1 = index1 + uint32(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+            else
+                index1 = index1 + uint32(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+            end
+            index{i} = index1;
+            pituus(i) = int64(length(index{i}));
+        end
+        % Take every nth row from the sinogram
+    elseif options.subset_type == 5
+        for i=1:subsets
+            osa = length(i:subsets:Ndist);
+            index1 = repmat(uint32((i-1)+1:Ndist:Nang*Ndist)', osa*NSinos,1);
+            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                index1 = index1 + repmat(uint32(repeat_elem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repeat_elem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+            else
+                index1 = index1 + repmat(uint32(repelem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repelem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+            end
+            index{i} = index1;
+            pituus(i) = int64(length(index{i}));
+        end
+        % Take every nth (column) measurement
+    elseif options.subset_type == 1
+        for i=1:subsets
+            index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
+            [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+            index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
+            index{i} = index1;
+            pituus(i) = int64(length(index{i}));
+        end
+        % Take every nth (row) measurement
+    elseif options.subset_type == 2
+        for i=1:subsets
+            index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
+            index{i} = index1;
+            pituus(i) = int64(length(index{i}));
+        end
+        % Pick the measurements randomly
+    elseif options.subset_type == 3
+        indices = uint32(Ndist*Nang*NSinos);
+        port = uint32(floor(Ndist*Nang*NSinos/subsets));
+        if options.use_Shuffle
+            apu = Shuffle(indices(end), 'index')';
+        else
+            apu = uint32(randperm(indices(end)))';
+        end
+        for i = 1 : subsets
+            if i == subsets
+                index1 = uint32(apu(port*(i-1)+1:end));
+            else
+                index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+            end
+            index{i} = index1;
+            pituus(i) = int64(length(index{i}));
+        end
+        % Pick the subsets based on the angles of the LORs
+    elseif options.subset_type == 6
+        [index, pituus] = subset_angles(options);
+        subsets = length(pituus);
+        if options.NSinos < options.TotSinos
+            if options.NSinos == options.Nz
+                subsets = 180 / options.n_angles;
+            else
+                error(['Number of sinograms with subset_type = 6 has to be either ' num2str(options.Nz) ' or ' num2str(options.TotSinos)]);
+            end
+        end
+        % Use golden angle sampling
+    elseif options.subset_type == 7
+        [index, pituus] = goldenAngleSubsets(options);
+    end
     if options.precompute_lor
         lor_file = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(Ndist) 'x' ...
             num2str(Nang) 'x' num2str(TotSinos) '.mat'];
@@ -112,81 +189,10 @@ if use_raw_data == false && subsets > 1
         if use_raw_data == false && NSinos ~= TotSinos
             discard = discard(1:NSinos*Ndist*Nang);
         end
-%         lor_a = lor;
+        %         lor_a = lor;
         clear lor
         ind_apu = uint32(find(discard));
-        index = cell(subsets, 1);
-        pituus = zeros(subsets, 1, 'int64');
-        % Take every nth column from the sinogram
-        if options.subset_type == 4
-            for i=1:subsets
-                osa = length(i-1:subsets:Ndist);
-                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                    index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repeat_elem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repeat_elem(Ndist*Nang*(0:NSinos-1)',...
-                        Ndist*osa));
-                else
-                    index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repelem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repelem(Ndist*Nang*(0:NSinos-1)',...
-                        Ndist*osa));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Take every nth row from the sinogram
-        elseif options.subset_type == 5
-            for i=1:subsets
-                osa = length(i-1:subsets:Nang);
-                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                    index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repeat_elem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
-                        repeat_elem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
-                else
-                    index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repelem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
-                        repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Take every nth (column) measurement
-        elseif options.subset_type == 1
-            for i=1:subsets
-                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
-                index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Take every nth (row) measurement
-        elseif options.subset_type == 2
-            for i=1:subsets
-                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Pick the measurements randomly
-        elseif options.subset_type == 3
-            indices = uint32(Ndist*Nang*NSinos);
-            port = uint32(floor(Ndist*Nang*NSinos/subsets));
-            if options.use_Shuffle
-                apu = Shuffle(indices(end), 'index')';
-            else
-                apu = uint32(randperm(indices(end)))';
-            end
-            for i = 1 : subsets
-                if i == subsets
-                    index1 = uint32(apu(port*(i-1)+1:end));
-                else
-                    index1 = uint32(apu(port*(i-1)+1:(port*(i))));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Pick the subsets based on the angles of the LORs
-        elseif options.subset_type == 6
-            [index, pituus] = subset_angles(options);
-            subsets = length(pituus);
-        % Use golden angle sampling
-        elseif options.subset_type == 7
-            [index, pituus] = goldenAngleSubsets(options);
-        end
+        
         if iscell(index)
             index = cell2mat(index);
         end
@@ -201,85 +207,9 @@ if use_raw_data == false && subsets > 1
             end
         end
         index = index(joku);
-    else
-        % Same as above, but for precompute_lor = false case
-        index = cell(subsets,1);
-        pituus = zeros(subsets, 1, 'int64');
-        if options.subset_type == 4
-            for i=1:subsets
-                osa = length(i-1:subsets:Ndist);
-                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                    index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repeat_elem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repeat_elem(Ndist*Nang*(0:NSinos-1)',...
-                        Ndist*osa));
-                else
-                    index1 = uint32(repmat(repmat((1:Ndist)', osa,1) + repelem((i-1:subsets:Ndist)'*Ndist,Ndist), NSinos, 1) + repelem(Ndist*Nang*(0:NSinos-1)',...
-                        Ndist*osa));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        elseif options.subset_type == 5
-            for i=1:subsets
-                osa = length(i-1:subsets:Nang);
-                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                    index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repeat_elem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
-                        repeat_elem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
-                else
-                    index1 = uint32(repmat(repmat((1:Ndist:Ndist*Nang)', osa,1) + repelem((i-1:subsets:Nang)',Nang), NSinos, 1) + ...
-                        repelem(Ndist*Nang*(0:NSinos-1)',Nang*osa));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        elseif options.subset_type == 1
-            for i=1:subsets
-                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
-                index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        elseif options.subset_type == 2
-            for i=1:subsets
-                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        elseif options.subset_type == 3
-            indices = uint32(Ndist*Nang*NSinos);
-            port = uint32(floor(Ndist*Nang*NSinos/subsets));
-            if options.use_Shuffle
-                apu = Shuffle(indices(end), 'index')';
-            else
-                apu = uint32(randperm(indices(end)))';
-            end
-            for i = 1 : subsets
-                if i == subsets
-                    index1 = uint32(apu(port*(i-1)+1:end));
-                else
-                    index1 = uint32(apu(port*(i-1)+1:(port*(i))));
-                end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
-            end
-        % Pick the subsets based on the angles of the LORs
-        elseif options.subset_type == 6
-            [index, pituus] = subset_angles(options);
-            subsets = length(pituus);
-            if options.NSinos < options.TotSinos
-                if options.NSinos == options.Nz
-                    subsets = 180 / options.n_angles;
-                else
-                    error(['Number of sinograms with subset_type = 6 has to be either ' num2str(options.Nz) ' or ' num2str(options.TotSinos)]);
-                end
-            end
-        % Use golden angle sampling
-        elseif options.subset_type == 7
-            [index, pituus] = goldenAngleSubsets(options);
-        end
     end
 elseif subsets > 1
-    % For raw list-mode data
+    % For raw data
     if options.precompute_lor
         lor_file = [folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'];
         if exist(lor_file, 'file') == 2
@@ -326,7 +256,7 @@ elseif subsets > 1
         end
         % Use only LORs that go through the FOV
         LL = LL(lor > 0,:);
-%         lor_a = lor(lor > 0);
+        %         lor_a = lor(lor > 0);
         clear lor
         index = cell(subsets, 1);
         pituus = zeros(subsets, 1, 'int64');
@@ -348,12 +278,12 @@ elseif subsets > 1
                 index{i} = index1;
                 pituus(i) = int64(length(index{i}));
             end
-        % Based on the angles of the LORs
+            % Based on the angles of the LORs
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options, LL);
             subsets = length(pituus);
         else
-        % Every nth measurements
+            % Every nth measurements
             for i=1:subsets
                 index1 = uint32(i:subsets:length(LL))';
                 index{i} = index1;
