@@ -258,6 +258,9 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	const uint32_t type = prhs(ind).uint32_scalar_value();
 	ind++;
 
+	const uint8_t list_mode_format = prhs(ind).uint8_scalar_value();
+	ind++;
+
 	// Number of measurements/LORs
 	int64_t loop_var_par = pituus;
 
@@ -356,7 +359,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, scatter, 
-				scatter_coef, nCores);
+				scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -373,7 +376,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			// run the Improved Siddon's algorithm, precomputed_lor = true
 			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores);
+				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -433,7 +436,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			vol_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin, 
-				bmax, Vmax, V, scatter, scatter_coef, nCores);
+				bmax, Vmax, V, scatter, scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -494,9 +497,6 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		ind++;
 
 		const uint8_t fp = prhs(ind).uint8_scalar_value();
-		ind++;
-
-		const bool list_mode_format = prhs(ind).bool_value();
 		ind++;
 
 		size_t imDim;
@@ -947,7 +947,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 
 		improved_siddon_precomputation_phase(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz,
 			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center, 
-			bmin, bmax, Vmax, V, nCores);
+			bmin, bmax, Vmax, V, nCores, list_mode_format);
 
 
 		retval(0) = octave_value(lor_);

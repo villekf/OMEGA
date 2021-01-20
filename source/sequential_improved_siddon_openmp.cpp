@@ -63,7 +63,13 @@ void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_
 
 	//mexPrintf("fp = %u\n", fp);
 
+#ifdef _OPENMP
+#if _OPENMP >= 201511
 #pragma omp parallel for ordered schedule(dynamic)
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
@@ -521,7 +527,13 @@ void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, c
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
+#ifdef _OPENMP
+#if _OPENMP >= 201511
 #pragma omp parallel for ordered schedule(dynamic)
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 
@@ -869,7 +881,13 @@ void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x,
 	std::vector<double> store_elements(threads * dec_v, 0.);
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
+#ifdef _OPENMP
+#if _OPENMP >= 201511
 #pragma omp parallel for ordered schedule(dynamic)
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 

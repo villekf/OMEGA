@@ -153,15 +153,15 @@ void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool
 
 // Get the detector coordinates for the current raw list-mode measurement
 void get_detector_coordinates_raw(const uint32_t det_per_ring, const double* x, const double* y, const double* z, Det& detectors,
-	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const bool list_mode_format) {
+	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const uint8_t list_mode_format) {
 	uint32_t ps;
-	if (list_mode_format) {
-		detectors.zs = z[ll];
-		detectors.zd = z[ll + det_per_ring];
+	if (list_mode_format == 1) {
 		detectors.xs = x[ll];
 		detectors.xd = x[ll + det_per_ring];
 		detectors.ys = y[ll];
 		detectors.yd = y[ll + det_per_ring];
+		detectors.zs = z[ll];
+		detectors.zd = z[ll + det_per_ring];
 	}
 	else {
 		const uint32_t detektorit1 = static_cast<uint32_t>(L[ll * 2ULL]) - 1u;

@@ -46,7 +46,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, 
-	const bool list_mode_format, const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
+	const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
 	const int64_t nBins, const uint32_t dec_v, const uint32_t nCores) {
 
 	if (nCores == 1U)
@@ -74,8 +74,14 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 	const size_t nRays = static_cast<size_t>(n_rays) * static_cast<size_t>(n_rays3D);
 	vector<double> TOFVal(nRays * nBins * dec_v * threads, 0.);
-	
+
+#ifdef _OPENMP
+#if _OPENMP >= 201511
 #pragma omp parallel for ordered schedule(dynamic)
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
@@ -83,7 +89,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			for (int64_t to = 0LL; to < nBins; to++)
 				local_sino += Sino[lo + TOFSize * to];
 		}
-		else {
+		else if (list_mode_format <= 1) {
 			local_sino = Sino[lo];
 		}
 		if (no_norm && local_sino == 0.)
@@ -122,7 +128,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 		vector<bool> pass(nRays, false);
 
-		if (fp == 2) {
+		if (fp == 2 && list_mode_format <= 1) {
 			for (int64_t to = 0LL; to < nBins; to++)
 				yax[to] = osem_apu[lo + to * loop_var_par];
 		}
@@ -141,9 +147,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			// Raw list-mode data
 			if (raw) {
 				// Pure list-mode format (e.g. event-by-event)
-				if (list_mode_format)
+				if (list_mode_format > 0)
 					get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode_format);
-				// Raw list-mode format
+				// Raw data format
 				else
 					get_detector_coordinates_raw_N(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, lor + 1u, dc_z, n_rays, n_rays3D);
 			}
@@ -180,7 +186,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						// Determine the starting coordinate, ray length and compute attenuation effects
 						double element = perpendicular_elements_multiray(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, attenuation_correction,
 							apu, 1u, jelppi);
-						if (fp != 2) {
+						if (fp != 2 && list_mode_format <= 1) {
 							if (TOF) {
 								xI = (dx * Nx) / 2.;
 								if (x_diff[lor] > 0.)
@@ -210,7 +216,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						double element = perpendicular_elements_multiray(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, attenuation_correction,
 							apu, Nx, jelppi);
 
-						if (fp != 2) {
+						if (fp != 2 && list_mode_format <= 1) {
 							if (TOF) {
 								yI = (dy * Ny) / 2.;
 								if (y_diff[lor] > 0.)
@@ -293,15 +299,15 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 				for (uint32_t ii = 0; ii < Np; ii++) {
 					if (tx0 < ty0 && tx0 < tz0) {
 						ForwardProject(tx0, tc, txu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii, fp);
+							sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii, fp, list_mode_format);
 					}
 					else if (ty0 < tz0) {
 						ForwardProject(ty0, tc, tyu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempj, ju, Nx, tid, ii, fp);
+							sigma_x, D, osem_apu, ax, epps, temp, tempj, ju, Nx, tid, ii, fp, list_mode_format);
 					}
 					else {
 						ForwardProject(tz0, tc, tzu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempk, ku, Nyx, tid, ii, fp);
+							sigma_x, D, osem_apu, ax, epps, temp, tempk, ku, Nyx, tid, ii, fp, list_mode_format);
 					}
 					// Number of voxels traversed
 					Np_n[lor]++;
@@ -342,7 +348,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					// Global correction factor
 					temp *= global_factor;
 					// Special, only forward projection, case
-					if (fp == 1) {
+					if (fp == 1 && list_mode_format <= 1) {
 						if (TOF) {
 							for (int64_t to = 0LL; to < nBins; to++) {
 								if (ax[to] < epps)
@@ -366,7 +372,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						break;
 					}
 					// Forward projection when backprojection is also computed
-					if (local_sino != 0.) {
+					if (local_sino != 0. && list_mode_format <= 1) {
 						if (fp != 2) {
 							if (TOF) {
 								for (int64_t to = 0LL; to < nBins; to++) {
@@ -406,7 +412,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 					if (fabs(y_diff[lor]) < 1e-8) {
 
-						if (local_sino != 0.) {
+						if (local_sino != 0. && list_mode_format <= 1) {
 							for (uint32_t k = 0; k < Nx; k++) {
 								// "Right-hand side", backprojection
 								double val = dx;
@@ -453,7 +459,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						}
 					}
 					else if (fabs(x_diff[lor]) < 1e-8) {
-						if (local_sino != 0.) {
+						if (local_sino != 0. && list_mode_format <= 1) {
 							for (uint32_t k = 0; k < Ny; k++) {
 								double val = dy;
 								double val_rhs = 0.;
@@ -517,7 +523,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					D = D_a[lor];
 					DD = D;
 
-					if (local_sino != 0.) {
+					if (local_sino != 0. && list_mode_format <= 1) {
 						for (uint32_t ii = 0; ii < Np_n[lor]; ii++) {
 							if (tx0 < ty0 && tx0 < tz0) {
 								backwardProjection(tx0, tc, txu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
@@ -563,7 +569,8 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, 
+	const uint32_t nCores) {
 
 	if (nCores == 1U)
 		setThreads();
@@ -596,7 +603,9 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
-		const double local_sino = Sino[lo];
+		double local_sino = 0.;
+		if (list_mode_format <= 1)
+			local_sino = Sino[lo];
 		if (no_norm && local_sino == 0.)
 			continue;
 
@@ -640,7 +649,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 		double* xcenter = x_center;
 		double* ycenter = y_center;
 
-		if (fp == 2) {
+		if (fp == 2 && list_mode_format <= 1) {
 			ax = osem_apu[lo];
 		}
 
@@ -665,7 +674,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						orth_distance_denominator_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp == 1) {
+						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -675,7 +684,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							rhs[lo] = ax;
 							continue;
 						}
-						if (local_sino > 0.) {
+						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
 								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 							}
@@ -692,7 +701,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						orth_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp == 1) {
+						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -702,7 +711,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							rhs[lo] = ax;
 							continue;
 						}
-						if (local_sino > 0.) {
+						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
 								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 							}
@@ -723,7 +732,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						orth_distance_denominator_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp == 1) {
+						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -733,7 +742,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							rhs[lo] = ax;
 							continue;
 						}
-						if (local_sino > 0.) {
+						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
 								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 							}
@@ -750,7 +759,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 						orth_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
-						if (fp == 1) {
+						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
 								ax = epps;
 							else
@@ -760,7 +769,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							rhs[lo] = ax;
 							continue;
 						}
-						if (local_sino > 0.) {
+						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
 								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 							}
@@ -912,7 +921,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 
-			if (fp == 1) {
+			if (fp == 1 && list_mode_format <= 1) {
 				if (ax == 0.)
 					ax = epps;
 				else
@@ -922,7 +931,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 				rhs[lo] = ax;
 				continue;
 			}
-			if (local_sino != 0.) {
+			if (local_sino != 0. && list_mode_format <= 1) {
 				if (fp != 2) {
 					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 				}
@@ -944,7 +953,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
 	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool list_mode_format, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
 
 	if (nCores == 1U)
 		setThreads();
@@ -977,7 +986,9 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
-		const double local_sino = Sino[lo];
+		double local_sino = 0.;
+		if (list_mode_format <= 1)
+			local_sino = Sino[lo];
 		if (no_norm && local_sino == 0.)
 			continue;
 
@@ -1021,7 +1032,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 		double* xcenter = x_center;
 		double* ycenter = y_center;
 
-		if (fp == 2) {
+		if (fp == 2 && list_mode_format <= 1) {
 			ax = osem_apu[lo];
 		}
 
@@ -1040,7 +1051,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
-					if (fp == 1) {
+					if (fp == 1 && list_mode_format <= 1) {
 						if (ax == 0.)
 							ax = epps;
 						else
@@ -1050,7 +1061,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 						rhs[lo] = ax;
 						continue;
 					}
-					if (local_sino != 0.) {
+					if (local_sino != 0. && list_mode_format <= 1) {
 						if (fp != 2) {
 							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 						}
@@ -1069,7 +1080,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
 						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
-					if (fp == 1) {
+					if (fp == 1 && list_mode_format <= 1) {
 						if (ax == 0.)
 							ax = epps;
 						else
@@ -1079,7 +1090,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 						rhs[lo] = ax;
 						continue;
 					}
-					if (local_sino != 0.) {
+					if (local_sino != 0. && list_mode_format <= 1) {
 						if (fp != 2) {
 							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 						}
@@ -1227,7 +1238,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 
-			if (fp == 1) {
+			if (fp == 1 && list_mode_format <= 1) {
 				if (ax == 0.)
 					ax = epps;
 				else
@@ -1237,7 +1248,7 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 				rhs[lo] = ax;
 				continue;
 			}
-			if (local_sino != 0.) {
+			if (local_sino != 0. && list_mode_format <= 1) {
 				if (fp != 2) {
 					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
 				}

@@ -45,7 +45,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos,
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size,
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const double bmin, 
-	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
+	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t nCores, const uint8_t list_mode) {
 
 	if (nCores == 1U)
 		setThreads();
@@ -71,7 +71,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 
 		// Raw list-mode data
 		if (raw) {
-			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows);
+			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode);
 		}
 		// Sinogram data
 		else {
@@ -85,6 +85,8 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 
 		// Load the number of voxels the LOR traverses (precomputed)
 		uint32_t Np = static_cast<uint32_t>(lor1[lo]);
+		if (Np == 0U)
+			continue;
 		// The initial index for the sparse matrix elements
 		const uint64_t N12 = lor2[lo];
 		const uint64_t N22 = lor2[lo + 1];

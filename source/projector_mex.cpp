@@ -44,10 +44,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 {
 	// Check for the number of input and output arguments
-	if (nrhs < 34)
-		mexErrMsgTxt("Too few input arguments. There must be at least 34.");
-	else if (nrhs > 61)
-		mexErrMsgTxt("Too many input arguments. There can be at most 61.");
+	if (nrhs < 36)
+		mexErrMsgTxt("Too few input arguments. There must be at least 46.");
+	else if (nrhs > 60)
+		mexErrMsgTxt("Too many input arguments. There can be at most 60.");
 
 	if (nlhs > 3 || nlhs < 1)
 		mexErrMsgTxt("Invalid number of output arguments. There can be at most three.");
@@ -242,7 +242,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	const uint32_t type = (uint32_t)mxGetScalar(prhs[ind]);
 	ind++;
 
-	//44
+	const uint8_t list_mode_format = (uint8_t)mxGetScalar(prhs[ind]);
+	ind++;
+
+	//46
 
 	// Number of measurements/LORs
 	int64_t loop_var_par = pituus;
@@ -254,10 +257,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	// Implementation 1, with precomputed_lor = true
 	if (type == 0u) {
 
-		if (nrhs < 48)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 48.");
-		else if (nrhs > 57)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 57.");
+		if (nrhs < 50)
+			mexErrMsgTxt("Too few input arguments. There must be at least 50.");
+		else if (nrhs > 59)
+			mexErrMsgTxt("Too many input arguments. There can be at most 59.");
 
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
@@ -277,6 +280,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
 		ind++;
+
+		//50
 
 		// output sizes
 		const mwSize N = static_cast<mwSize>(Nx) * static_cast<mwSize>(Ny) * static_cast<mwSize>(Nz);
@@ -311,9 +316,6 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		if (projector_type == 2u) {
 
-			if (nrhs != 57)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 57.");
-
 			// Width of the TOR
 			const double crystal_size = (double)mxGetScalar(prhs[ind]);
 			ind++;
@@ -337,7 +339,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, scatter, 
-				scatter_coef, nCores);
+				scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -353,7 +355,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			// run the Improved Siddon's algorithm, precomputed_lor = true
 			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores);
+				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -365,9 +367,6 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			}
 		}
 		else if ((projector_type == 3u)) {
-
-			if (nrhs != 57)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 57.");
 
 			// Width of the TOR
 			const double crystal_size = (double)mxGetScalar(prhs[ind]);
@@ -404,7 +403,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			vol_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin, 
-				bmax, Vmax, V, scatter, scatter_coef, nCores);
+				bmax, Vmax, V, scatter, scatter_coef, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -424,8 +423,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		if (nrhs < 53)
 			mexErrMsgTxt("Too few input arguments.  There must be at least 53.");
-		else if (nrhs > 61)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 61.");
+		else if (nrhs > 60)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 60.");
 
 		if (nlhs != 2)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be two.");
@@ -459,8 +458,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const uint8_t fp = (uint8_t)mxGetScalar(prhs[ind]);
 		ind++;
 
-		const bool list_mode_format = (bool)mxGetScalar(prhs[ind]);
-		ind++;
+		// 53
 
 		size_t imDim;
 
@@ -488,8 +486,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Orthogonal
 		if (projector_type == 2u) {
 
-			if (nrhs < 56)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 56.");
+			if (nrhs < 58)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 58.");
 
 			// Width of the strip in 2D case
 			const double crystal_size = (double)mxGetScalar(prhs[ind]);
@@ -527,8 +525,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Improved Siddon
 		else if (projector_type == 1u) {
 
-			if (nrhs < 54)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 54.");
+			if (nrhs < 56)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 56.");
 
 			// Number of rays in Siddon (transaxial)
 			uint16_t n_rays = (uint16_t)mxGetScalar(prhs[ind]);
@@ -558,8 +556,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		}
 		else if ((projector_type == 3u)) {
-			if (nrhs < 59)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 59.");
+			if (nrhs < 60)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 60.");
 
 			// Coordinates of the pixel centers in y-direction
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -606,10 +604,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	// Implementation 1, precomputed_lor = false
 	else if (type == 2u) {
 
-		if (nrhs < 48)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 48.");
-		else if (nrhs > 54)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 54.");
+		if (nrhs < 49)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 49.");
+		else if (nrhs > 56)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 56.");
 
 		if (nlhs != 3)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be three.");
@@ -635,6 +633,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Projector
 		const uint32_t projector_type = (uint32_t)mxGetScalar(prhs[ind]);
 		ind++;
+
+		// 51
 
 		// Number of LORs
 		if (index_size > 1ULL && !raw) {
@@ -677,8 +677,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		}
 		else if (projector_type == 2u) {
 
-			if (nrhs != 54)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 54.");
+			if (nrhs != 56)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 56.");
 
 			const double crystal_size = (double)mxGetScalar(prhs[ind]);
 			ind++;
@@ -704,8 +704,8 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// Original Siddon's ray tracer
 		else if (projector_type == 0u) {
 
-			if (nrhs < 51)
-				mexErrMsgTxt("Too few input arguments.  There must be at least 51.");
+			if (nrhs < 54)
+				mexErrMsgTxt("Too few input arguments.  There must be at least 54.");
 
 			// Voxel numbers in x-direction
 			const double* iij = (double*)mxGetData(prhs[ind]);
@@ -760,10 +760,10 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	}
 	// Precomputation phase
 	else if (type == 3u) {
-		if (nrhs < 57)
-			mexErrMsgTxt("Too few input arguments.  There must be at least 57.");
-		else if (nrhs > 57)
-			mexErrMsgTxt("Too many input arguments.  There can be at most 57.");
+		if (nrhs < 59)
+			mexErrMsgTxt("Too few input arguments.  There must be at least 59.");
+		else if (nrhs > 59)
+			mexErrMsgTxt("Too many input arguments.  There can be at most 59.");
 
 		if (nlhs != 3)
 			mexErrMsgTxt("Invalid number of output arguments. There has to be three.");
@@ -850,7 +850,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		improved_siddon_precomputation_phase(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz,
 			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center, 
-			bmin, bmax, Vmax, V, nCores);
+			bmin, bmax, Vmax, V, nCores, list_mode_format);
 
 	}
 }

@@ -44,7 +44,8 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz,
 	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
 	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, const double crystal_size_z,
-	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V, const uint32_t nCores) {
+	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V, const uint32_t nCores, 
+	const uint8_t list_mode_format) {
 
 	if (nCores == 1U)
 		setThreads();
@@ -73,32 +74,42 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 		uint32_t ind = 0U;
 
 		if (raw) {
-			const uint32_t detektorit1 = static_cast<uint32_t>(L[lo * 2ULL]) - 1u;
-			const uint32_t detektorit2 = static_cast<uint32_t>(L[lo * 2ULL + 1ULL]) - 1u;
-
-			if (detektorit1 == detektorit2)
-				continue;
-
-			const uint32_t loop1 = ((detektorit1) / det_per_ring);
-			const uint32_t loop2 = ((detektorit2) / det_per_ring);
-
-			if (loop1 == loop2) {
-				if (loop1 > blocks || loop1 < block1 || loop2 > blocks || loop2 < block1)
-					continue;
-				detectors.zs = z_det_vec[loop1];
-				detectors.zd = detectors.zs;
+			if (list_mode_format) {
+				detectors.zs = z_det[lo];
+				detectors.zd = z_det[lo + det_per_ring];
+				detectors.xs = x[lo];
+				detectors.xd = x[lo + det_per_ring];
+				detectors.ys = y[lo];
+				detectors.yd = y[lo + det_per_ring];
 			}
 			else {
-				if ((loop1 > blocks && loop2 > blocks) || (loop1 < block1 && loop2 < block1))
-					continue;
-				detectors.zs = z_det_vec[loop1];
-				detectors.zd = z_det_vec[loop2];
-			}
+				const uint32_t detektorit1 = static_cast<uint32_t>(L[lo * 2ULL]) - 1u;
+				const uint32_t detektorit2 = static_cast<uint32_t>(L[lo * 2ULL + 1ULL]) - 1u;
 
-			detectors.xs = x[detektorit1 - det_per_ring * (loop1)];
-			detectors.xd = x[detektorit2 - det_per_ring * (loop2)];
-			detectors.ys = y[detektorit1 - det_per_ring * (loop1)];
-			detectors.yd = y[detektorit2 - det_per_ring * (loop2)];
+				if (detektorit1 == detektorit2)
+					continue;
+
+				const uint32_t loop1 = ((detektorit1) / det_per_ring);
+				const uint32_t loop2 = ((detektorit2) / det_per_ring);
+
+				if (loop1 == loop2) {
+					if (loop1 > blocks || loop1 < block1 || loop2 > blocks || loop2 < block1)
+						continue;
+					detectors.zs = z_det_vec[loop1];
+					detectors.zd = detectors.zs;
+				}
+				else {
+					if ((loop1 > blocks && loop2 > blocks) || (loop1 < block1 && loop2 < block1))
+						continue;
+					detectors.zs = z_det_vec[loop1];
+					detectors.zd = z_det_vec[loop2];
+				}
+
+				detectors.xs = x[detektorit1 - det_per_ring * (loop1)];
+				detectors.xd = x[detektorit2 - det_per_ring * (loop2)];
+				detectors.ys = y[detektorit1 - det_per_ring * (loop1)];
+				detectors.yd = y[detektorit2 - det_per_ring * (loop2)];
+			}
 		}
 		else {
 			const uint32_t id = lo % size_x;

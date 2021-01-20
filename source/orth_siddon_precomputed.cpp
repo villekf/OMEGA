@@ -49,7 +49,7 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size, 
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const bool scatter, 
-	const double* scatter_coef, const uint32_t nCores) {
+	const double* scatter_coef, const uint32_t nCores, const uint8_t list_mode) {
 
 	if (nCores == 1U)
 		setThreads();
@@ -60,16 +60,26 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 	const uint32_t Nyx = Ny * Nx;
 
-
+#ifdef _OPENMP
+#if _OPENMP >= 201511
 #pragma omp parallel for ordered schedule(dynamic)
+#else
+#pragma omp parallel for schedule(dynamic)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		Det detectors;
 		double kerroin, jelppi = 0., LL;
 
+		// Load the number of voxels the LOR traverses (precomputed)
+		uint32_t Np = static_cast<uint32_t>(lor1[lo]);
+		if (Np == 0U)
+			continue;
+
 		// Raw list-mode data
 		if (raw) {
-			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows);
+			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode);
 		}
 		// Sinogram data
 		else {
@@ -80,9 +90,6 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 		double x_diff = (detectors.xd - detectors.xs);
 		double y_diff = (detectors.yd - detectors.ys);
 		const double z_diff = (detectors.zd - detectors.zs);
-
-		// Load the number of voxels the LOR traverses (precomputed)
-		uint32_t Np = static_cast<uint32_t>(lor1[lo]);
 		// The initial index for the sparse matrix elements
 		const uint64_t N12 = lor2[lo];
 		const uint64_t N22 = lor2[lo + 1];
