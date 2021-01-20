@@ -60,18 +60,18 @@
 - Fixed subset_type 4 and 5
   - Both subset types were giving incorrect sinogram indices
 
-- Beta values for MBSREM and BSREM were incorrectly flipped with AD and APLS priors
+- Beta values for MBSREM and BSREM were incorrectly flipped with AD and APLS priors (implementation 2)
   - MBSREM beta-values were used for BSREM and vice versa
 
-- Fixed ADMRP with MLEM
+- Fixed ADMRP with MLEM (implementations 2 and 4)
 
-- Fixed OSL-COSEM with MRP
+- Fixed OSL-COSEM with MRP (implementation 2)
   - OSL-COSEM with MRP was throwing an error previously
 
 - Fixed OSL-MLEM when using TV prior and any of the subsequent priors (implementation 2)
   - Further estimates were not correctly updated
 
-- Fixed OSL-MLEM with APLS
+- Fixed OSL-MLEM with APLS (implementation 2)
 
 - Fixed APLS when TV is not applied at the same time
   - APLS reconstructions were giving incorrect results
