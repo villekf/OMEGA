@@ -46,7 +46,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 	// Row-action Maximum Likelihood (RAMLA)
 	if (MethodList.RAMLA) {
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-			w_vec.lambda_BSREM, iter);
+			w_vec.lambda_BSREM, iter, *testi);
 		yy += im_dim;
 	}
 
@@ -111,7 +111,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -151,7 +151,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 					d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, 
 					kernel_mbsrem, atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter);
 				//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
-				vec.im_os(seq(yy, yy + im_dim - 1u)) = batchFunc(vec.im_os(seq(yy, yy + im_dim - 1u)), a_Summa / w_vec.ACOSEM_rhs, batchMul);
+				vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (a_Summa / w_vec.ACOSEM_rhs);
 			}
 			yy += im_dim;
 		}
@@ -166,7 +166,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -222,7 +222,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -278,7 +278,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -334,7 +334,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -390,7 +390,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -445,7 +445,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -505,7 +505,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -590,7 +590,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -642,7 +642,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -694,7 +694,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {
@@ -745,7 +745,7 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		if (MethodList.BSREM) {
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-				w_vec.lambda_BSREM, iter);
+				w_vec.lambda_BSREM, iter, *testi);
 			yy += im_dim;
 		}
 		if (MethodList.MBSREM) {

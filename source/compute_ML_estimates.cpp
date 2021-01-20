@@ -62,17 +62,26 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	if (MethodList.OSLMLEM && MethodList.TV) {
 		array dU = TVprior(Nx, Ny, Nz, data, vec.im_mlem(seq(ee, ee + im_dim - 1u)), epps, data.TVtype, w_vec, w_vec.tr_offsets);
 		vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.TV_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
+		ee += im_dim;
 	}
 	// OSL-MLEM with Anisotropic Diffusion smoothing prior
 	if (MethodList.OSLMLEM && MethodList.AD) {
-		array dU = AD(vec.im_mlem(seq(ee, ee + im_dim - 1u)), Nx, Ny, Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
-			w_vec.DiffusionType, w_vec.med_no_norm);
-		vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.AD_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
+		if (iter == 0u) {
+			if (MethodList.MLEM)
+				vec.im_mlem(seq(ee, ee + im_dim - 1u)) = vec.im_mlem(seq(0, im_dim - 1u));
+			else
+				vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), Summ_mlem, vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
+		}
+		else {
+			array dU = AD(vec.im_mlem(seq(ee, ee + im_dim - 1u)), Nx, Ny, Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
+				w_vec.DiffusionType, w_vec.med_no_norm);
+			vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.AD_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
+		}
 		ee += im_dim;
 	}
 	// OSL-MLEM with Asymmetric Parallel Level Sets prior
 	if (MethodList.OSLMLEM && MethodList.APLS) {
-		array dU = TVprior(Nx, Ny, Nz, data, vec.im_mlem(seq(ee, ee + im_dim - 1u)), epps, 4, w_vec, w_vec.tr_offsets);
+		array dU = TVprior(Nx, Ny, Nz, data, vec.im_mlem(seq(ee, ee + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
 		vec.im_mlem(seq(ee, ee + im_dim - 1u)) = EM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), OSL(Summ_mlem, dU, beta.APLS_MLEM, epps), vec.rhs_mlem(seq(ee, ee + im_dim - 1u)));
 		ee += im_dim;
 	}

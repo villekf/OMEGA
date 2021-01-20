@@ -17,6 +17,7 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
+#define TRAPZ_BINS 6.f
 
 #ifdef MBSREM
 // Struct for boolean operators indicating whether a certain method is selected (OpenCL)
@@ -63,9 +64,9 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
 		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0] - 1.f;
+			ax[0] = d_Sino / ax[0];
 	}
 #else
 	ax[0] = d_Sino / ax[0];
@@ -82,9 +83,9 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
 		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0] - 1.f;
+			ax[0] = d_Sino / ax[0];
 	}
 #else
 	ax[0] = d_Sino / ax[0];
@@ -100,9 +101,9 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		ax[1] = d_Sino / ax[1];
 	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
 		if (ax[1] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[1] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
+			ax[1] = d_Sino / d_epsilon_mramla - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
 		else
-			ax[1] = d_Sino / ax[1] - 1.f;
+			ax[1] = d_Sino / ax[1];
 	}
 #else
 	ax[1] = d_Sino / ax[1];
@@ -121,9 +122,9 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 			ax[kk] = d_Sino / ax[kk];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[kk] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-				ax[kk] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+				ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
 			else
-				ax[kk] = d_Sino / ax[kk] - 1.f;
+				ax[kk] = d_Sino / ax[kk];
 		}
 #else
 		ax[kk] = d_Sino / ax[kk];
@@ -787,8 +788,14 @@ __device__ void TOFDis(const float x_diff, const float y_diff, const float z_dif
 	*DD = *D;
 }
 
-__device__ float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, const float epps) {
-	return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - copysignf(element, DD), TOFCenter, sigma_x)) / 2.f) + epps;
+__device__ float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, float dX) {
+	float output = normPDF(D, TOFCenter, sigma_x);
+	dX = copysignf(dX, DD);
+	for (long long int tr = 1LL; tr < (long long int)(TRAPZ_BINS) - 1LL; tr++)
+		output += (normPDF(D - dX * (float)tr, TOFCenter, sigma_x) * 2.f);
+	output += normPDF(D - copysignf(element, DD), TOFCenter, sigma_x);
+	//return (element * (normPDF(D, TOFCenter, sigma_x) + normPDF(D - element * sign(DD), TOFCenter, sigma_x)) / 2.f);
+	return output;
 }
 
 
@@ -798,13 +805,14 @@ __device__ float TOFLoop(const float DD, const float element, float* TOFVal, con
 #ifdef DEC
 	float apu[NBINS];
 #endif
+	const float dX = element / (TRAPZ_BINS - 1.f);
 #pragma unroll NBINS
 	for (long long int to = 0L; to < NBINS; to++) {
 #ifdef DEC
-		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		apu[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
 		TOFSum += apu[to];
 #else
-		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps);
+		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
 		TOFSum += apu;
 #endif
 	}
@@ -833,12 +841,15 @@ __device__ void denominatorTOF(float* ax, const float element, const float* d_OS
 	const unsigned int ii = 0U;
 #endif
 	float apu = element * d_OSEM[local_ind];
+#ifndef DEC
+	const float dX = element / (TRAPZ_BINS - 1.f);
+#endif
 #pragma unroll NBINS
 	for (long long int to = 0L; to < NBINS; to++) {
 #ifdef DEC
 		ax[to + ii] += (apu * TOFVal[to + tid]);
 #else
-		const float jelppi = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum;
+		const float jelppi = (TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum;
 		ax[to + ii] += (apu * jelppi);
 #endif
 	}
@@ -881,9 +892,9 @@ __device__ void nominatorTOF(const unsigned char* MethodList, float* ax, const f
 			ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[to + ii] <= d_epsilon_mramla && local_rand == 0.f && local_sino > 0.f)
-				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - 1.f - (d_Sino[idx + to * TOFSize] / (d_epsilon_mramla * d_epsilon_mramla)) * (ax[to + ii] - d_epsilon_mramla);
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / (d_epsilon_mramla * d_epsilon_mramla)) * (ax[to + ii] - d_epsilon_mramla);
 			else
-				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii] - 1.f;
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		}
 #else
 		ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
@@ -917,6 +928,9 @@ __device__ void backprojectTOF(const unsigned int local_ind, const float local_e
 #else
 	const unsigned int ii = 0U;
 #endif
+#ifndef DEC
+	const float dX = element / (TRAPZ_BINS - 1.f);
+#endif
 
 	float yaxTOF = 0.f;
 #pragma unroll NBINS
@@ -925,7 +939,7 @@ __device__ void backprojectTOF(const unsigned int local_ind, const float local_e
 #ifdef DEC
 		const float apu = local_ele * TOFVal[to + tid];
 #else
-		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+		const float apu = local_ele * ((TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 #endif
 
 #ifdef MBSREM
@@ -998,13 +1012,16 @@ __device__ void sensTOF(const unsigned int local_ind, const float local_ele, con
 #endif
 	const unsigned char no_norm) {
 	float val = 0.f;
+#ifndef DEC
+	const float dX = element / (TRAPZ_BINS - 1.f);
+#endif
 #pragma unroll NBINS
 	for (long long int to = 0L; to < NBINS; to++) {
 
 #ifdef DEC
 		const float apu = local_ele * TOFVal[to + tid];
 #else
-		const float apu = local_ele * (TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], epps) / TOFSum);
+		const float apu = local_ele * ((TOFWeight(local_ele / temp, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 #endif
 #ifdef MBSREM
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u) {

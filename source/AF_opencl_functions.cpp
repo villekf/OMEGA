@@ -35,7 +35,7 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_COSEM;
 				yy -= im_dim;
 			}
-			if (MethodList.RBIMAP) {
+			if (MethodList.RBIOSL) {
 				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_RBI;
 				yy -= im_dim;
 			}
@@ -227,7 +227,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	cl::Buffer& d_lor_mlem, cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
 	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
-	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const bool listmode)
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const uint8_t listmode)
 {
 	cl_int status = CL_SUCCESS;
 	// Create the necessary buffers
@@ -346,7 +346,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				return status;
 			}
 			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-			if (raw) {
+			if (raw && listmode != 1) {
 				d_xyindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -363,13 +363,30 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					return status;
 				}
 			}
-			else {
+			else if (listmode != 1) {
 				d_xyindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
 				}
 				d_zindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+				d_L[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+			}
+			else {
+				d_xyindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return status;
+				}
+				d_zindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return status;
@@ -397,10 +414,12 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			return status;
 		}
 		// Measurement data
-		if (TOF)
+		if (TOF && listmode != 2)
 			d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko * nBins, NULL, &status);
-		else
+		else if (listmode != 2)
 			d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * koko, NULL, &status);
+		else
+			d_Sino_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return status;
@@ -424,7 +443,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			return status;
 		}
 		// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-		if (raw) {
+		if (raw && listmode != 1) {
 			d_xyindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -441,13 +460,30 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				return status;
 			}
 		}
-		else {
+		else if (listmode != 1) {
 			d_xyindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * koko, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
 			}
 			d_zindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * koko, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+			d_L_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+		}
+		else {
+			d_xyindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+			d_zindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
@@ -530,7 +566,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			return status;
 		}
 		for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
-			if (raw && !listmode) {
+			if (raw && listmode != 1) {
 				status = af_queue.enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -547,7 +583,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					return status;
 				}
 			}
-			else if (!listmode) {
+			else if (listmode != 1) {
 				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -621,7 +657,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					}
 				}
 			}
-			else
+			else if (listmode != 2)
 				status = af_queue.enqueueWriteBuffer(d_Sino[kk], CL_FALSE, 0, sizeof(float) * length[kk], &Sin[pituus[kk]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -664,7 +700,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		}
 		if (TOF)
 			status = af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko * nBins, Sin);
-		else
+		else if (listmode != 2)
 			status = af_queue.enqueueWriteBuffer(d_Sino_mlem, CL_FALSE, 0, sizeof(float) * koko, Sin);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
@@ -689,7 +725,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
-		if (raw) {
+		if (raw && listmode != 1) {
 			status = af_queue.enqueueWriteBuffer(d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t), xy_index);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -706,13 +742,30 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				return status;
 			}
 		}
-		else {
+		else if (listmode != 1) {
 			status = af_queue.enqueueWriteBuffer(d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t) * koko, xy_index);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
 			}
 			status = af_queue.enqueueWriteBuffer(d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t) * koko, z_index);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+			status = af_queue.enqueueWriteBuffer(d_L_mlem, CL_FALSE, 0, sizeof(uint16_t), L);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+		}
+		else {
+			status = af_queue.enqueueWriteBuffer(d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t), xy_index);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return status;
+			}
+			status = af_queue.enqueueWriteBuffer(d_zindex_mlem, CL_FALSE, 0, sizeof(uint16_t), z_index);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
@@ -982,11 +1035,6 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					C_co(af::span, osa_iter) = computeConvolution(C_co(af::span, osa_iter), g, Nx, Ny, Nz, w_vec, 1u) * cosem;
 				else
 					C_co(af::span, osa_iter) = C_co(af::span, osa_iter) * cosem;
-				//if (DEBUG) {
-					//mexPrintf("co = %f\n", af::sum<float>(C_co(af::span, osa_iter)));
-					//mexPrintf("dim0 = %u\n", C_co(af::span, osa_iter).dims(0));
-					//mexPrintf("dim1 = %u\n", C_co(af::span, osa_iter).dims(1));
-				//}
 			}
 			if (MethodListOpenCL.ACOSEM) {
 				if (atomic_64bit)
@@ -1018,6 +1066,11 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				else
 					C_osl(af::span, osa_iter) = C_osl(af::span, osa_iter) * af::pow(cosem, w_vec.h_ACOSEM_2);
 			}
+			//if (DEBUG) {
+			//	mexPrintf("co = %f\n", af::sum<float>(C_aco(af::span, osa_iter)));
+			//	mexPrintf("dim0 = %u\n", C_aco(af::span, osa_iter).dims(0));
+			//	mexPrintf("dim1 = %u\n", C_aco(af::span, osa_iter).dims(1));
+			//}
 
 			if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && w_vec.MBSREM_prepass && Nt > 1U) {
 				sub_index_array = af::range(af::dim4(length[osa_iter] * nBins), 0, s64) + pituus[osa_iter] * nBins;
@@ -1028,19 +1081,36 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			}
 
 			if (w_vec.MBSREM_prepass) {
+				if (DEBUG) {
+					mexPrintf("D = %f\n", af::sum<float>(w_vec.D));
+					mexEvalString("pause(.0001);");
+				}
 				if (compute_norm_matrix == 0u) {
 					if (atomic_64bit)
 						Summ[osa_iter] = (apu_summa).as(f32) / TH;
 					else
 						Summ[osa_iter] = apu_summa;
+					af::sync();
 					w_vec.D += Summ[osa_iter];
 					Summ[osa_iter](Summ[osa_iter] < epps) = epps;
 					if (use_psf)
 						Summ[osa_iter] = computeConvolution(Summ[osa_iter], g, Nx, Ny, Nz, w_vec, 1u);
+					if (DEBUG) {
+						mexPrintf("Summ[osa_iter] = %f\n", af::sum<float>(Summ[osa_iter]));
+						mexEvalString("pause(.0001);");
+					}
 				}
 				else {
-					Summ[0] = apu_summa;
-					w_vec.D += apu_summa.as(f32);
+					if (atomic_64bit)
+						Summ[0] = (apu_summa).as(f32) / TH;
+					else
+						Summ[0] = apu_summa;
+					w_vec.D += Summ[0];
+					if (DEBUG) {
+						mexPrintf("Summ[0] = %f\n", af::sum<float>(Summ[0]));
+						mexPrintf("atomic_64bit = %d\n", atomic_64bit);
+						mexEvalString("pause(.0001);");
+					}
 				}
 
 				if ((MethodListOpenCL.MRAMLA || MethodListOpenCL.MBSREM) && Nt > 1U) {
@@ -1064,7 +1134,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			const af::array Sino = afcl::array(length[osa_iter] * nBins, d_Sino[H](), f32, true);
 			clRetainMemObject(d_Sino[H]());
 			const af::array rand = afcl::array(randSize[L], d_sc_ra[L](), f32, true);
-			clRetainMemObject(d_sc_ra[H]());
+			clRetainMemObject(d_sc_ra[L]());
 			if (U_skip) {
 				float UU = w_vec.U;
 				const af::array Aind = apu_Amin > 0.f;
@@ -1076,6 +1146,10 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins);
 			if (eps_mramla < w_vec.epsilon_mramla)
 				w_vec.epsilon_mramla = eps_mramla;
+			if (DEBUG) {
+				mexPrintf("w_vec.epsilon_mramla = %f\n", w_vec.epsilon_mramla);
+				mexEvalString("pause(.0001);");
+			}
 		}
 		af::deviceGC();
 	}
@@ -1237,7 +1311,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem, 
 	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, 
-	const bool TOF, const int64_t nBins, const bool listmode) {
+	const bool TOF, const int64_t nBins, const uint8_t listmode) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -1301,11 +1375,12 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		options += " -DRANDOMS";
 	if (TOF && projector_type == 1u) {
 		options += " -DTOF";
-		options += (" -DTRAPZ_BINS=" + std::to_string(6.f));
 	}
 	options += (" -DNBINS=" + std::to_string(nBins));
-	if (listmode)
+	if (listmode == 1)
 		options += " -DLISTMODE";
+	else if (listmode == 2)
+		options += " -DLISTMODE2";
 	options += " -DFP";
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
 		options += (" -DN_RAYS=" + std::to_string(n_rays * n_rays3D));

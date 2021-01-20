@@ -21,7 +21,7 @@
 // Loads the input data and forms device data variables
 void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt)
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt, const uint32_t iter0)
 {
 	uint32_t Ni = 1U;
 	if (saveIter)
@@ -432,13 +432,13 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			vec.AD_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.AD_MBSREM(af::span, 0) = x0;
 			
-			beta.AD_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_bsrem"));
+			beta.AD_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mbsrem"));
 		}
 		if (MethodList.BSREM) {
 			vec.AD_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.AD_BSREM(af::span, 0) = x0;
 			
-			beta.AD_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mbsrem"));
+			beta.AD_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
 			vec.AD_ROSEM = af::constant(0.f, im_dim, Ni);
@@ -477,13 +477,13 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			vec.APLS_MBSREM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_MBSREM(af::span, 0) = x0;
 			
-			beta.APLS_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_bsrem"));
+			beta.APLS_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mbsrem"));
 		}
 		if (MethodList.BSREM) {
 			vec.APLS_BSREM = af::constant(0.f, im_dim, Ni);
 			vec.APLS_BSREM(af::span, 0) = x0;
 			
-			beta.APLS_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mbsrem"));
+			beta.APLS_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_bsrem"));
 		}
 		if (MethodList.ROSEMMAP) {
 			vec.APLS_ROSEM = af::constant(0.f, im_dim, Ni);
@@ -709,14 +709,14 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		uint32_t Flux = (uint32_t)mxGetScalar(mxGetField(options, 0, "FluxType"));
 		// Diffusion type
 		uint32_t Diffusion = (uint32_t)mxGetScalar(mxGetField(options, 0, "DiffusionType"));
-		if (Flux == 1U)
-			w_vec.FluxType = AF_FLUX_EXPONENTIAL;
-		else if (Flux == 2U)
+		if (Flux == 2U)
 			w_vec.FluxType = AF_FLUX_QUADRATIC;
-		if (Diffusion == 1U)
-			w_vec.DiffusionType = AF_DIFFUSION_GRAD;
-		else if (Diffusion == 2U)
+		else
+			w_vec.FluxType = AF_FLUX_EXPONENTIAL;
+		if (Diffusion == 2U)
 			w_vec.DiffusionType = AF_DIFFUSION_MCDE;
+		else
+			w_vec.DiffusionType = AF_DIFFUSION_GRAD;
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
 			w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
 	}
@@ -744,6 +744,9 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	if (MethodList.APLS && MethodList.MAP) {
 		// Eta value
 		data.eta = (float)mxGetScalar(mxGetField(options, 0, "eta"));
+		// Tau-value
+		if (!MethodList.TV)
+			data.tau = (float)mxGetScalar(mxGetField(options, 0, "tau"));
 		// Smoothing value
 		data.APLSsmoothing = (float)mxGetScalar(mxGetField(options, 0, "APLSsmoothing"));
 		// Anatomical reference image
@@ -793,6 +796,11 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			w_vec.dU_MBSREM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_MBSREM")), afHost);
 
 			beta.custom_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_mbsrem"));
+
+			if (iter0 > 0 || osa_iter0 > 0) {
+				w_vec.U = (float)mxGetScalar(mxGetField(options, 0, "U"));
+				w_vec.epsilon_mramla = (float)mxGetScalar(mxGetField(options, 0, "epsilon_mramla"));
+			}
 		}
 		if (MethodList.BSREM) {
 			vec.custom_BSREM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_bsrem_apu")), afHost);
@@ -1261,10 +1269,22 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 			ArrayList.custom_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
 		else
 			ArrayList.custom_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.OSLCOSEM > 0)
+		if (MethodList.OSLCOSEM > 0) {
 			ArrayList.custom_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
+			ArrayList.c_osl_custom = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+		}
+		else {
 			ArrayList.custom_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+			ArrayList.c_osl_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+		}
+		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
+			mwSize dimmiD[3] = { static_cast<mwSize>(0), static_cast<mwSize>(0), static_cast<mwSize>(0)};
+			for (int ii = 0; ii < 3; ii++)
+				dimmiD[ii] = dimmi[ii];
+			ArrayList.D_custom = mxCreateNumericArray(3, dimmiD, mxSINGLE_CLASS, mxREAL);
+		}
+		else
+			ArrayList.D_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 	}
 
 
@@ -1471,6 +1491,9 @@ void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const Re
 		if (MethodList.OSLCOSEM > 0) {
 			ArrayList.ele_custom_cosem = (float*)mxGetData(ArrayList.custom_cosem);
 			ArrayList.ele_c_osl_custom = (float*)mxGetData(ArrayList.c_osl_custom);
+		}
+		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
+			ArrayList.ele_D_custom = (float*)mxGetData(ArrayList.D_custom);
 		}
 	}
 
@@ -1688,7 +1711,7 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 			vec.custom_COSEM.host(ArrayList.ele_custom_cosem);
 			vec.C_osl.host(ArrayList.ele_c_osl_custom);
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI))
 			w_vec.D.host(ArrayList.ele_D_custom);
 	}
 
@@ -1993,8 +2016,22 @@ void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, 
 		if (MethodList.OSLCOSEM > 0)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.c_osl_custom));
 		oo++;
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL))
+		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBI || MethodList.RBIOSL)
 			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.D_custom));
+		oo++;
+		if (MethodList.MBSREM) {
+			mxArray* epsilon = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+			float* epsilon1 = (float*)mxGetData(epsilon);
+			epsilon1[0] = w_vec.epsilon_mramla;
+			mxSetCell(cell, static_cast<mwIndex>(oo), (epsilon));
+		}
+		oo++;
+		if (MethodList.MBSREM) {
+			mxArray* UU = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+			float* U = (float*)mxGetData(UU);
+			U[0] = w_vec.U;
+			mxSetCell(cell, static_cast<mwIndex>(oo), (UU));
+		}
 		oo++;
 	}
 	else
@@ -2035,10 +2072,10 @@ float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t ra
 		else
 			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
 	}
-	if (DEBUG) {
-		mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
-		mexEvalString("pause(.0001);");
-	}
+	//if (DEBUG) {
+	//	mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+	//	mexEvalString("pause(.0001);");
+	//}
 	af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
 	float eps;
 	eps = af::min<float>(epsilon);
@@ -2130,26 +2167,28 @@ af::array MBSREM(const af::array & im, const af::array & rhs, const float U, con
 	af::array UU = af::constant(0.f, im_dim);
 	af::array output;
 	const af::array pp = im < (U / 2.f);
-	UU(pp) = im(pp) / (pj3(pp));
-	UU(!pp) = (U - im(!pp)) / (pj3(!pp)); 
+	UU(pp) = im(pp) / (pj3(pp) + epps);
+	UU(!pp) = (U - im(!pp)) / (pj3(!pp) + epps);
 	if (beta == 0.f)
-		output = im + lam[iter] * UU * rhs;
+		output = im + lam[iter] * UU * (rhs - Summ);
 	else
-		output = im + lam[iter] * UU * (rhs - beta * dU);
+		output = im + lam[iter] * UU * (rhs - beta * dU - Summ);
 	output(output < epps) = epps;
 	output(output >= U) = U - epps;
-	if (DEBUG) {
-		mexPrintf("U = %f\n", U);
-		mexPrintf("lam[iter] = %f\n", lam[iter]);
-		mexPrintf("output = %f\n", af::sum<float>(lam[iter] * UU * rhs));
-		mexEvalString("pause(.0001);");
-	}
+	//if (DEBUG) {
+	//	mexPrintf("U = %f\n", U);
+	//	mexPrintf("lam[iter] = %f\n", lam[iter]);
+	//	mexPrintf("beta = %f\n", beta);
+	//	mexPrintf("Summ = %f\n", af::sum<float>(Summ));
+	//	mexPrintf("output = %f\n", af::sum<float>(lam[iter] * UU * rhs));
+	//	mexEvalString("pause(.0001);");
+	//}
 	return output;
 }
 
-af::array BSREM(const af::array & im, const af::array & rhs, const float * lam, const uint32_t iter)
+af::array BSREM(const af::array & im, const af::array & rhs, const float * lam, const uint32_t iter, const af::array& Summ)
 {
-	return ((1.f - lam[iter]) * im + lam[iter] * im * rhs);
+	return ((1.f - lam[iter] * Summ) * im + lam[iter] * im * rhs);
 }
 
 af::array ECOSEM(const af::array & im, const af::array & D, const af::array & OSEM_apu, const af::array & COSEM_apu, const float epps)
@@ -2495,11 +2534,14 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 		af::array f = af::constant(0.f, Nx, Ny, Nz);
 		af::array h = af::constant(0.f, Nx, Ny, Nz);
 		f(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(im);
-		f(Nx - 1u, af::span, af::span) = im(im.dims(0) - 1ULL, af::span, af::span) - im(0, af::span, af::span);
+		//f(Nx - 1u, af::span, af::span) = im(im.dims(0) - 1ULL, af::span, af::span) - im(0, af::span, af::span);
+		f(af::end, af::span, af::span) = f(Nx - 2u, af::span, af::span) * -1.f;
 		g(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(im, 1);
-		g(af::span, Ny - 1u, af::span) = im(af::span, im.dims(1) - 1ULL, af::span) - im(af::span, 0, af::span);
+		//g(af::span, Ny - 1u, af::span) = im(af::span, im.dims(1) - 1ULL, af::span) - im(af::span, 0, af::span);
+		g(af::span, af::end, af::span) = g(af::span, Ny - 2u, af::span) * -1.f;
 		h(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(im, 2);
-		h(af::span, af::span, Nz - 1u) = im(af::span, af::span, im.dims(2) - 1ULL) - im(af::span, af::span, 0);
+		//h(af::span, af::span, Nz - 1u) = im(af::span, af::span, im.dims(2) - 1ULL) - im(af::span, af::span, 0);
+		h(af::span, af::span, af::end) = h(af::span, af::span, Nz - 2u) * -1.f;
 
 		af::array pval, apu1, apu2, apu3, apu4;
 		g = af::flat(g);
@@ -2521,11 +2563,14 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					af::array fp = af::constant(0.f, Nx, Ny, Nz);
 					af::array hp = af::constant(0.f, Nx, Ny, Nz);
 					fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.reference_image);
-					fp(Nx - 1u, af::span, af::span) = S.reference_image(im.dims(0) - 1ULL, af::span, af::span) - S.reference_image(0, af::span, af::span);
+					//fp(Nx - 1u, af::span, af::span) = S.reference_image(im.dims(0) - 1ULL, af::span, af::span) - S.reference_image(0, af::span, af::span);
+					fp(af::end, af::span, af::span) = fp(Nx - 2u, af::span, af::span) * -1.f;
 					gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.reference_image, 1);
-					gp(af::span, Ny - 1u, af::span) = S.reference_image(af::span, im.dims(1) - 1ULL, af::span) - S.reference_image(af::span, 0, af::span);
+					//gp(af::span, Ny - 1u, af::span) = S.reference_image(af::span, im.dims(1) - 1ULL, af::span) - S.reference_image(af::span, 0, af::span);
+					gp(af::span, af::end, af::span) = gp(af::span, Ny - 2u, af::span) * -1.f;
 					hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.reference_image, 2);
-					hp(af::span, af::span, Nz - 1u) = S.reference_image(af::span, af::span, im.dims(2) - 1ULL) - S.reference_image(af::span, af::span, 0);
+					//hp(af::span, af::span, Nz - 1u) = S.reference_image(af::span, af::span, im.dims(2) - 1ULL) - S.reference_image(af::span, af::span, 0);
+					hp(af::span, af::span, af::end) = hp(af::span, af::span, Nz - 2u) * -1.f;
 
 					pval = af::sqrt(af::pow(f, 2.) + af::pow(g, 2.) + af::pow(h, 2.) + S.T * (af::pow(fp, 2.) + af::pow(gp, 2.) + af::pow(hp, 2.)) + S.TVsmoothing);
 					apu1 = f / pval;
@@ -2539,11 +2584,14 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					af::array fp = af::constant(0.f, Nx, Ny, Nz);
 					af::array hp = af::constant(0.f, Nx, Ny, Nz);
 					fp(af::seq(0, Nx - 2u), af::span, af::span) = -af::diff1(S.APLSReference);
-					fp(Nx - 1u, af::span, af::span) = S.APLSReference(im.dims(0) - 1ULL, af::span, af::span) - S.APLSReference(0, af::span, af::span);
+					//fp(Nx - 1u, af::span, af::span) = S.APLSReference(im.dims(0) - 1ULL, af::span, af::span) - S.APLSReference(0, af::span, af::span);
+					fp(af::end, af::span, af::span) = fp(Nx - 2u, af::span, af::span) * -1.f;
 					gp(af::span, af::seq(0, Ny - 2u), af::span) = -af::diff1(S.APLSReference, 1);
-					gp(af::span, Ny - 1u, af::span) = S.APLSReference(af::span, im.dims(1) - 1ULL, af::span) - S.APLSReference(af::span, 0, af::span);
+					//gp(af::span, Ny - 1u, af::span) = S.APLSReference(af::span, im.dims(1) - 1ULL, af::span) - S.APLSReference(af::span, 0, af::span);
+					gp(af::span, af::end, af::span) = gp(af::span, Ny - 2u, af::span) * -1.f;
 					hp(af::span, af::span, af::seq(0, Nz - 2u)) = -af::diff1(S.APLSReference, 2);
-					hp(af::span, af::span, Nz - 1u) = S.APLSReference(af::span, af::span, im.dims(2) - 1ULL) - S.APLSReference(af::span, af::span, 0);
+					//hp(af::span, af::span, Nz - 1u) = S.APLSReference(af::span, af::span, im.dims(2) - 1ULL) - S.APLSReference(af::span, af::span, 0);
+					hp(af::span, af::span, af::end) = hp(af::span, af::span, Nz - 2u) * -1.f;
 
 					fp = af::flat(fp) + epps;
 					gp = af::flat(gp) + epps;
@@ -2555,7 +2603,7 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 					af::array apu = af::sum(af::join(1, f, g, h) * epsilon, 1);
 
 					pval = (f * f + g * g + h * h - apu * apu + S.APLSsmoothing);
-					pval(pval < 0) = S.APLSsmoothing;
+					pval(pval <= 0.f) = S.APLSsmoothing;
 					pval = af::sqrt(pval);
 					apu1 = (f - (apu * epsilon(af::span, 0))) / pval;
 					apu2 = (g - (apu * epsilon(af::span, 1))) / pval;
@@ -2566,24 +2614,27 @@ af::array TVprior(const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const
 			// If anatomical prior is not used
 			else {
 				if (TVtype == 4U) {
-					af::array ff = af::constant(0.f, f.dims(0), f32);
-					ff(f > 0) = 1.f;
-					ff(f < 0) = -1.f;
-					af::array gg = af::constant(0.f, g.dims(0), f32);
-					gg(g > 0) = 1.f;
-					gg(g < 0) = -1.f;
-					af::array hh = af::constant(0.f, h.dims(0), f32);
-					hh(h > 0) = 1.f;
-					hh(h < 0) = -1.f;
+					//af::array ff = af::constant(0.f, f.dims(0), f32);
+					//ff(f > 0) = 1.f;
+					//ff(f < 0) = -1.f;
+					//af::array gg = af::constant(0.f, g.dims(0), f32);
+					//gg(g > 0) = 1.f;
+					//gg(g < 0) = -1.f;
+					//af::array hh = af::constant(0.f, h.dims(0), f32);
+					//hh(h > 0) = 1.f;
+					//hh(h < 0) = -1.f;
+					const af::array ff = f / af::abs(f);
+					const af::array gg = g / af::abs(g);
+					const af::array hh = h / af::abs(h);
 					if (S.SATVPhi == 0.f) {
 						apu1 = ff;
 						apu2 = gg;
 						apu3 = hh;
 					}
 					else {
-						apu1 = ff - ff / (af::abs(f) / S.SATVPhi + 1);
-						apu2 = gg - gg / (af::abs(g) / S.SATVPhi + 1);
-						apu3 = hh - hh / (af::abs(h) / S.SATVPhi + 1);
+						apu1 = ff - ff / (af::abs(f) / S.SATVPhi + 1.f);
+						apu2 = gg - gg / (af::abs(g) / S.SATVPhi + 1.f);
+						apu3 = hh - hh / (af::abs(h) / S.SATVPhi + 1.f);
 					}
 				}
 				else {

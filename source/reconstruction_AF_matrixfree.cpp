@@ -90,6 +90,12 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	// Obtain the reconstruction methods used
 	get_rec_methods(options, MethodList);
+
+	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
+	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
+
+	if (listmode == 2)
+		MethodList.MLEM = true;
 	OpenCLRecMethods(MethodList, MethodListOpenCL);
 	cl_int status = CL_SUCCESS;
 
@@ -117,7 +123,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		getErrorString(status);
 		return;
 	}
-	if ((static_cast<cl_float>(mem) * mem_portions) > image_bytes && !MethodList.CUSTOM)
+	if (((static_cast<cl_float>(mem) * mem_portions) > image_bytes && !MethodList.CUSTOM) || (listmode == 1 && computeSensImag))
 		compute_norm_matrix = 0u;
 
 	mem_loc = af_device_id.getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status);
@@ -169,7 +175,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	OpenCL_im_vectors vec_opencl;
 
 	// Load the necessary data from the MATLAB input and form the necessary variables
-	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter, Nt);
+	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter, Nt, iter0);
 
 	// Power factor for ACOSEM
 	w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
@@ -180,6 +186,10 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		}
 		else
 			subsetsUsed = osa_iter0 + 1U;
+	}
+	if (DEBUG) {
+		mexPrintf("subsetsUsed = %u\n", subsetsUsed);
+		mexEvalString("pause(.0001);");
 	}
 
 
@@ -209,8 +219,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			vec.im_mlem(seq(kk * im_dim, (kk + 1) * im_dim - 1)) = x00;
 		}
 	}
-
-	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
 
 	float* scat = nullptr;
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
@@ -245,6 +253,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			Summ.assign(1ULL, constant(0LL, im_dim, 1, s64));
 		else
 			Summ.assign(1ULL, constant(0.f, im_dim, 1));
+	}
+
+	if (DEBUG) {
+		mexPrintf("Summ[0] = %f\n", af::sum<float>(Summ[0]));
+		mexPrintf("w_vec.MBSREM_prepass = %u\n", w_vec.MBSREM_prepass);
 	}
 
 	// Create the kernels
@@ -403,6 +416,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			Summ_mlem = constant(0.f, im_dim, 1);
 	}
 
+	if (!osem_bool && w_vec.MBSREM_prepass)
+		w_vec.MBSREM_prepass = false;
+
 	// Loop through each time-step
 	for (uint32_t tt = t0; tt < Nt; tt++) {
 	// Compute the prepass phase for MRAMLA, MBSREM, RBI, COSEM, ACOSEM or ECOSEM if applicable
@@ -482,6 +498,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			mexEvalString("pause(.0001);");
 		}
 	}
+	if ((MethodList.MRAMLA || MethodList.MBSREM) && MethodList.CUSTOM && (iter0 > 0 || osa_iter0 > 0)) {
+		pj3 = w_vec.D / static_cast<float>(subsets);
+		if (DEBUG) {
+			mexPrintf("pj3 = %f\n", af::sum<float>(pj3));
+			mexPrintf("w_vec.D = %f\n", af::sum<float>(w_vec.D));
+			mexEvalString("pause(.0001);");
+		}
+	}
 
 
 		cl_uint kernelInd_OSEMTIter = kernelInd_OSEM;
@@ -501,6 +525,32 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			if (mlem_bool)
 				no_norm_mlem = 1u;
 		}
+
+
+		if (computeSensImag && listmode == 1) {
+			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
+			if (mlem_bool) {
+				Summ_mlem = array(im_dim, 1, apu);
+				if (use_psf) {
+					Summ_mlem = computeConvolution(Summ_mlem, g, Nx, Ny, Nz, w_vec, 1u);
+					af::sync();
+				}
+				no_norm_mlem = 1u;
+			}
+			if (osem_bool) {
+				for (uint32_t osa_iter = 0; osa_iter < subsets; osa_iter++) {
+					Summ[osa_iter] = array(im_dim, 1, apu) / static_cast<float>(subsets);
+					if (use_psf) {
+						Summ[osa_iter] = computeConvolution(Summ[osa_iter], g, Nx, Ny, Nz, w_vec, 1u);
+						af::sync();
+					}
+				}
+				no_norm = 1u;
+			}
+		}
+
+		if (listmode == 2)
+			af_queue.enqueueFillBuffer(d_Sino_mlem, zerof, 0, sizeof(cl_float));
 
 		// Load the measurement and randoms data from the cell arrays
 		if (tt > 0u) {
@@ -592,8 +642,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			}
 			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, E, TOF, nBins);
 		}
-		if (DEBUG && MethodList.MRAMLA) {
+		if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM)) {
 			mexPrintf("w_vec.epsilon_mramla = %f\n", w_vec.epsilon_mramla);
+			mexPrintf("osem_bool = %u\n", osem_bool);
 			mexEvalString("pause(.0001);");
 		}
 		if (osem_bool) {
@@ -817,9 +868,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						if (MethodList.MRAMLA)
 							mexPrintf("pj3 = %f\n", af::sum<float>(pj3));
 						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
-						af::array apu1 = (vec.im_os / *testi * vec.rhs_os);
-						mexPrintf("apu1 = %f\n", af::sum<float>(apu1));
-						mexPrintf("erotus = %f\n", af::sum<float>(af::abs(*testi - vec.rhs_os)));
+						//af::array apu1 = (vec.im_os / *testi * vec.rhs_os);
+						//mexPrintf("apu1 = %f\n", af::sum<float>(apu1));
+						//mexPrintf("erotus = %f\n", af::sum<float>(af::abs(*testi - vec.rhs_os)));
 						mexEvalString("pause(.0001);");
 						//vec.im_os = vec.rhs_os;
 					}
@@ -831,9 +882,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						randoms_correction);
 
 
-					if (DEBUG) {
-						mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
-					}
+					//if (DEBUG) {
+					//	mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
+					//}
 
 					vec.im_os(vec.im_os < epps) = epps;
 
@@ -981,6 +1032,12 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					af::sync();
 				}
 
+				if (listmode == 2) {
+					vec.MLEM = Summ_mlem;
+					break_iter = true;
+					break;
+				}
+
 				computeMLEstimates(vec, w_vec, MethodList, im_dim, epps, iter, subsets, beta, Nx, Ny, Nz, data, Summ_mlem, break_iter, OpenCLStruct, saveIter);
 
 				if (no_norm_mlem == 0u)
@@ -998,10 +1055,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				break;
 		}
 
+		if (MethodList.CUSTOM && (MethodList.MBSREM || MethodList.RBI || MethodList.RBIOSL))
+			af::eval(w_vec.D);
+
 		// Transfer the device data to host MATLAB cell array
 		device_to_host_cell(ArrayList, MethodList, vec, oo, cell, w_vec);
 
-		if (verbose) {
+		if (verbose && listmode != 2) {
 			mexPrintf("Time step %d complete\n", tt + 1u);
 			mexEvalString("pause(.0001);");
 		}

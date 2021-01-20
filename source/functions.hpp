@@ -143,7 +143,7 @@ typedef struct _kernelStruct {
 // Function for loading the data and forming the initial data variables (initial image estimates, etc.)
 void form_data_variables(AF_im_vectors &vec, Beta &beta, Weighting &w_vec, const mxArray* options, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt);
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt, const uint32_t iter0 = 0U);
 
 // Get the reconstruction methods used
 void get_rec_methods(const mxArray *options, RecMethods &MethodList);
@@ -185,7 +185,7 @@ af::array OSL(const af::array& Summ, const af::array& dU, const float beta, cons
 af::array MBSREM(const af::array & im, const af::array & rhs, const float U, const af::array & pj3, const float* lam, const uint32_t iter, const uint32_t im_dim,
 	const float beta, const af::array &dU, const af::array & Summ, const float epps);
 
-af::array BSREM(const af::array &im, const af::array &rhs, const float *lam, const uint32_t iter);
+af::array BSREM(const af::array &im, const af::array &rhs, const float *lam, const uint32_t iter, const af::array& Summ);
 
 //af::array COSEM(const af::array &im, const af::array &C_co, const af::array &D);
 

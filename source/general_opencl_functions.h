@@ -39,6 +39,7 @@
 #ifdef VOL
 #define CC 1e3f
 #endif
+#define TRAPZ_BINS 6.f
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
@@ -102,10 +103,10 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
-		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+		if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0] - 1.f;
+			ax[0] = d_Sino / ax[0];
 	}
 #else
 	ax[0] = d_Sino / ax[0];
@@ -122,9 +123,9 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
 		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0] - 1.f;
+			ax[0] = d_Sino / ax[0];
 	}
 #else
 	ax[0] = d_Sino / ax[0];
@@ -140,9 +141,9 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 		ax[1] = d_Sino / ax[1];
 	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
 		if (ax[1] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[1] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
+			ax[1] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
 		else
-			ax[1] = d_Sino / ax[1] - 1.f;
+			ax[1] = d_Sino / ax[1];
 	}
 #else
 	ax[1] = d_Sino / ax[1];
@@ -161,9 +162,9 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 			ax[kk] = d_Sino / ax[kk];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[kk] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-				ax[kk] = d_Sino / d_epsilon_mramla - 1.f - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+				ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
 			else
-				ax[kk] = d_Sino / ax[kk] - 1.f;
+				ax[kk] = d_Sino / ax[kk];
 		}
 #else
 		ax[kk] = d_Sino / ax[kk];
@@ -849,7 +850,7 @@ float TOFLoop(const float DD, const float element, __private float* TOFVal, __co
 #ifdef DEC
 	__private float apu[NBINS];
 #endif
-	const float dX = element / TRAPZ_BINS;
+	const float dX = element / (TRAPZ_BINS - 1.f);
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {
 #ifdef DEC
@@ -886,7 +887,7 @@ void denominatorTOF(float* ax, const float element, const __global float* d_OSEM
 #endif
 	float apu = element * d_OSEM[local_ind];
 #ifndef DEC
-	const float dX = element / TRAPZ_BINS;
+	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {
@@ -936,9 +937,9 @@ void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float*
 			ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[to + ii] <= d_epsilon_mramla && local_rand == 0.f && local_sino > 0.f)
-				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - 1.f - (d_Sino[idx + to * TOFSize] / native_powr(d_epsilon_mramla, 2)) * (ax[to + ii] - d_epsilon_mramla);
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / native_powr(d_epsilon_mramla, 2)) * (ax[to + ii] - d_epsilon_mramla);
 			else
-				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii] - 1.f;
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		}
 #else
 #if defined(AF) || defined(BP)
@@ -975,7 +976,7 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 	const uint ii = 0U;
 #endif
 #ifndef DEC
-	const float dX = element / TRAPZ_BINS;
+	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
 
 	float yaxTOF = 0.f;
@@ -1059,7 +1060,7 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 	const uchar no_norm) {
 	float val = 0.f;
 #ifndef DEC
-	const float dX = element / TRAPZ_BINS;
+	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++) {

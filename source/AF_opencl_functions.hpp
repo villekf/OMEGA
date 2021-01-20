@@ -67,7 +67,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	cl::Buffer& d_lor_mlem,	cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
 	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
-	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const bool listmode = false);
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const uint8_t listmode = 0);
 
 // Prepass phase for MRAMLA, MBSREM, COSEM, ACOSEM, ECOSEM, RBI
 void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t* pituus, const std::vector<cl::Buffer>& lor, const std::vector<cl::Buffer>& zindex,
@@ -91,7 +91,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
 	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction,
-	const bool TOF, const int64_t nBins, const bool listmode = false);
+	const bool TOF, const int64_t nBins, const uint8_t listmode = 0);
 
 cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
 	bool& atomic_64bit, std::string options);
