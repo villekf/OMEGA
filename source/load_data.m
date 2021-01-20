@@ -203,6 +203,9 @@ if options.use_machine == 1
             z_length = single(options.rings * options.cr_pz);
             z = linspace(single(0), z_length, options.rings + 1)';
             z = z(2:end) - z(2) / 2;
+            if min(z(:)) == 0
+                z = z + (options.axial_fov - (options.rings) * options.cr_pz)/2 + options.cr_pz/2;
+            end
             x = single(x);
             y = single(y);
             x_coordinate = [x(ring_pos1) x(ring_pos2)];
