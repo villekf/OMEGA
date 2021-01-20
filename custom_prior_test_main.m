@@ -1644,29 +1644,30 @@ for t = 1 : options.partitions
 %             options.grad_OSEM = custom_prior(options.im_vectors.custom_OSL_apu);
             options.grad_OSEM = MRP(options.im_vectors.custom_OSL_apu, options.medx, options.medy, options.medz, options.Nx, options.Ny, options.Nz, options.epps, options.tr_offsets, options.med_no_norm);
             %%% OSL-MLEM (implementation 2 only)
-            % options.grad_MLEM = custom_prior(options.im_vectors.custom_MLEM(:,iter));
+            % options.grad_MLEM = custom_prior(options.im_vectors.custom_MLEM_apu);
             %%% MBSREM
-            % options.grad_MBSREM = custom_prior(options.im_vectors.custom_MBSREM(:,iter));
-            %%% BSREM
-            % options.grad_BSREM = custom_prior(options.im_vectors.custom_BSREM(:,iter));
-            %%% ROSEM-MAP
-            % options.grad_ROSEM = custom_prior(options.im_vectors.custom_ROSEM(:,iter));
+            % options.grad_MBSREM = custom_prior(options.im_vectors.custom_MBSREM_apu);
             %%% RBI-OSL
-            % options.grad_RBI = custom_prior(options.im_vectors.custom_RBI(:,iter));
+            % options.grad_RBI = custom_prior(options.im_vectors.custom_RBI_apu);
             %%% OSL-COSEM
-            % options.grad_COSEM = custom_prior(options.im_vectors.custom_COSEM(:,iter));
+            % options.grad_COSEM = custom_prior(options.im_vectors.custom_COSEM_apu);
             
             % Reconstruction
             options = custom_prior_reconstruction(options, t, iter, osa_iter);
         end
-        options = init_next_iter(options, iter, options.im_vectors);
+        %%% BSREM
+        % options.grad_BSREM = custom_prior(options.im_vectors.custom_BSREM_apu);
+        %%% ROSEM-MAP
+        % options.grad_ROSEM = custom_prior(options.im_vectors.custom_ROSEM_apu);
+        options = init_next_iter(options, iter);
         % PSF deblurring
         if options.use_psf && options.deblurring
-            options.im_vectors = computeDeblur(options.im_vectors, options, iter, gaussK, Nx, Ny, Nz);
+            [gaussK, options.g_dim_x, options.g_dim_y, options.g_dim_z] = PSFKernel(options.Nx, options.Ny, options.Nz, options.FOVa_x, options.FOVa_y, options.axial_fov, options.FWHM, options.implementation);
+            options.im_vectors = computeDeblur(options.im_vectors, options, iter, gaussK, options.Nx, options.Ny, options.Nz);
         end
     end
     % Output is contained in pz, just like in gate_main.m
-    [options, pz] = save_custom_prior_iterations(options, t, pz, options.im_vectors);
+    [options, pz] = save_custom_prior_iterations(options, t, pz);
     if options.partitions > 1
         options.im_vectors = form_image_vectors(options, options.N);
     end
