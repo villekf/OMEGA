@@ -55,7 +55,7 @@ algo_char = algorithms_char();
 % 79 = TGV (RBI), 80 = TGV (OSL-COSEM), 81 = NLM (OSL-OSEM), 82 =  NLM (OSL-MLEM), 
 % 83 = NLM (BSREM), 84 = NLM (MBSREM), 85 = NLM (ROSEM), 86 = NLM (RBI), 87 = NLM (OSL-COSEM), 
 % 88 = Custom prior (OSL-OSEM), 89 =  Custom prior (OSL-MLEM), 90 = Custom prior (BSREM), 
-% 92 = Custom prior (MBSREM), 92 = Custom prior (ROSEM), 93 = Custom prior (RBI), 
+% 91 = Custom prior (MBSREM), 92 = Custom prior (ROSEM), 93 = Custom prior (RBI), 
 % 94 = Custom prior (OSL-COSEM)
 % Inputing algorithm number that does not exist in the cell array shows all
 % the available algorithms present in the cell array
@@ -106,7 +106,7 @@ end
 figure
 set(gcf, 'Position', [min(gg(3)/2-im_size/2*jj,gg(3)), min(gg(4)/2-im_size/2*hh, im_size * jj), gg(4), im_size * hh]);
 
-clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
 if v_plane == 2
     koko = size(img,1);
 elseif v_plane == 3
@@ -125,7 +125,7 @@ for kk = 1 : koko
         end
         subplot(hh, jj, ll)
         if color_from_algo == 0
-            clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+            clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
             imagesc(img(:,:,kk,end),clim)
         else
             imagesc(img(:,:,kk,end),clim)
@@ -198,7 +198,7 @@ else
 end
 for kk = 1 : koko
     for ll = 1 : N_iter
-        clim = [0 max(max(max(max(img(:,:,:,end - ll + 1)))))/color_scale];
+        clim = [0 max(max(max(max(img(:,:,2:end-1,end - ll + 1)))))/color_scale];
         subplot(hh, jj, ll)
         imagesc(img(:,:,kk,end - ll + 1),clim)
         axis image
@@ -304,8 +304,8 @@ elseif source_coordinates == 7
 end
 
 
-clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
-clim2 = [0 max(max(max(max(FOV(:,:,:)))))/color_scale];
+clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
+clim2 = [0 max(max(max(max(FOV(:,:,2:end-1)))))/color_scale];
 if v_plane == 2
     koko = size(img,1);
     FOV = rot90(permute(FOV, [3 2 1]),2);
@@ -325,7 +325,7 @@ for kk = 1 : koko
         end
         subplot(hh, jj, ll)
         if color_from_algo == 0
-            clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+            clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
             imagesc(img(:,:,kk,end),clim)
         else
             imagesc(img(:,:,kk,end),clim)
@@ -424,7 +424,7 @@ for kk = 1 : max([koko1, koko2, koko3])
         if kk <= koko3
             subplot(hh, jj, 1 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,kk,end),clim)
             else
                 imagesc(img(:,:,kk,end),clim)
@@ -433,7 +433,7 @@ for kk = 1 : max([koko1, koko2, koko3])
         else
             subplot(hh, jj, 1 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,koko3,end),clim)
             else
                 imagesc(img(:,:,koko3,end),clim)
@@ -445,7 +445,7 @@ for kk = 1 : max([koko1, koko2, koko3])
             img = rot90(permute(img, [3 2 1 4]),2);
             subplot(hh, jj, 2 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,kk,end),clim)
             else
                 imagesc(img(:,:,kk,end),clim)
@@ -455,7 +455,7 @@ for kk = 1 : max([koko1, koko2, koko3])
             img = rot90(permute(img, [3 2 1 4]),2);
             subplot(hh, jj, 2 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,koko1,end),clim)
             else
                 imagesc(img(:,:,koko1,end),clim)
@@ -467,7 +467,7 @@ for kk = 1 : max([koko1, koko2, koko3])
             img = permute(img, [3 1 2 4]);
             subplot(hh, jj, 3 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,kk,end),clim)
             else
                 imagesc(img(:,:,kk,end),clim)
@@ -477,7 +477,7 @@ for kk = 1 : max([koko1, koko2, koko3])
             img = permute(img, [3 1 2 4]);
             subplot(hh, jj, 3 + jj*(ll - 1))
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,koko2,end),clim)
             else
                 imagesc(img(:,:,koko2,end),clim)
@@ -600,7 +600,7 @@ for kk = 1 : size(pz,2)
         end
         subplot(hh, jj, ll)
             if color_from_algo == 0
-                clim = [0 max(max(max(max(img(:,:,:,end)))))/color_scale];
+                clim = [0 max(max(max(max(img(:,:,2:end-1,end)))))/color_scale];
                 imagesc(img(:,:,slice,end),clim)
             else
                 imagesc(img(:,:,slice,end),clim)
