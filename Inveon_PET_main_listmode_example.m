@@ -824,7 +824,7 @@ options.verbose = true;
 % (Supports only one algorithm at a time)
 % See the wiki for more information: 
 % https://github.com/villekf/OMEGA/wiki/Useful-information#selecting-the-correct-implementation
-options.implementation = 3;
+options.implementation = 2;
 
 % Applies to implementations 2 and 3 ONLY
 %%% Device used (this is applicable to implementation 2), or platform used
@@ -1105,7 +1105,7 @@ options.COSEM_OSL = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Median Root Prior (MRP)
-options.MRP = true;
+options.MRP = false;
 
 %%% Quadratic Prior (QP)
 options.quad = false;
@@ -1660,6 +1660,22 @@ end
 % individually
 options.SinM = ones(size(options.x,1),1,'single');
 
+% Since the measurement vector contains all ones, but does not contain
+% every possible LOR (and also contains some duplicates) the sensitivity
+% image is computed for the every possible LOR. Having this value set to
+% true, the sensitivity image is computed for all applicable LORs. This
+% requires correct values in the scanner properties, mainly the number of
+% detectors per ring, number of rings and possible pseudo gaps. If this is
+% set to false, then the sensitivity image is computed for the input
+% detector coordinates only.
+% NOTE: If you use your own detector coordinates, you can include the
+% necessary coordinates for sensitivity image, that are missing from the
+% measurements, by adding zero measurements to the corresponding
+% coordinates. Coordinates that appear multiple times, however, will cause
+% the sensitivity image values to be incorrect in these coordinates as the
+% values are added multiple times. 
+options.compute_sensitivity_image = true;
+
 if options.only_sinos == false
     
     tStart = tic;
@@ -1669,38 +1685,33 @@ if options.only_sinos == false
     
 end
 
-%% List-mode data (custom detector coordinates) example with RAMLA
-% In this example, the detector coordinates of each (coincidence) event is
-% input to the class constructor
-% NOTE: Use of subsets is completely optional
-% NOTE: It is not necessary to use any main-file when using this 
+%% List-mode example with ATP-WLS
+% No sensititivity image is required here
 
-% Subsets, implementation and the chosen device/platform are optional
+options.subsets = 1;
+
+% The forward/backward projection class is formed from the custom input
+% coordinates
+% NOTE: No corrections are applied and PSF needs to be computed manually
 A = forwardBackwardProject(options.x, options.y, options.z, options.Nx, options.Ny, options.Nz, options.FOVa_x, options.axial_fov, ...
     options.subsets, options.implementation, options.use_device);
-
-% The measurement data
+% Assuming the use of implementation 2/3
 raw_SinM = ones(size(options.x,1),1,'single');
 
 
 % PSF has to be performed manually when using custom detectors/list-mode
 % data 
 [gaussK, g_dim_x, g_dim_y, g_dim_z] = PSFKernel(options.Nx, options.Ny, options.Nz, options.FOVa_x, options.FOVa_y, options.axial_fov, options.FWHM, options.implementation);
-% Compute the RAMLA-estimate for the specified number of iterations and
-% subsets (use 1 subset if you want to use a method that doesn't use
-% subsets):
+
+
 f = options.x0(:);
-for iter = 1 : options.Niter
-    for osa_iter = 1 : options.subsets
-        % Compute the PSF
-        f = computeConvolution(f, g_dim_x, g_dim_y, g_dim_z, options.Nx, options.Ny, options.Nz, gaussK);
-        % The result is stored in y
-        y = forwardProject(A, f, osa_iter);
-        % The result is stored in x
-        x = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (y + options.epps), osa_iter);
-        x = computeConvolution(x, g_dim_x, g_dim_y, g_dim_z, options.Nx, options.Ny, options.Nz, gaussK);
-        f = f .* (x + options.epps);
-    end
+NN = sum(raw_SinM(:));
+tau = 0.1 / NN;
+for iter = 1 : 10
+    f = computeConvolution(f, g_dim_x, g_dim_y, g_dim_z, options.Nx, options.Ny, options.Nz, gaussK);
+    x = ((A' * (raw_SinM.^2 ./ (A * f).^2) + 2 * tau * NN) ./ (1 + 2 * tau * sum(f)));
+    x = computeConvolution(x, g_dim_x, g_dim_y, g_dim_z, options.Nx, options.Ny, options.Nz, gaussK);
+    f = f .* x;
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
