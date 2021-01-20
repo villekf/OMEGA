@@ -9,6 +9,7 @@
 - Improved the memory efficiency of MRP with implementation 2 and also slightly improved the speed
 
 - Custom detector/list-mode reconstruction is now supported by implementations 2 and 3
+  - Sensitivity image can now be computed separately for all valid LORs
 
 - Detector coordinates can now be extracted from Inveon list-mode data files to perform list-mode reconstruction
 
@@ -53,6 +54,44 @@
 
 - PSF related functions now accept non-struct input values
   - options-struct is no longer necessary input variable
+  
+- Fixed RAMLA when using implementation 2
+
+- Fixed subset_type 4 and 5
+  - Both subset types were giving incorrect sinogram indices
+
+- Beta values for MBSREM and BSREM were incorrectly flipped with AD and APLS priors
+  - MBSREM beta-values were used for BSREM and vice versa
+
+- Fixed ADMRP with MLEM
+
+- Fixed OSL-COSEM with MRP
+  - OSL-COSEM with MRP was throwing an error previously
+
+- Fixed OSL-MLEM when using TV prior and any of the subsequent priors (implementation 2)
+  - Further estimates were not correctly updated
+
+- Fixed OSL-MLEM with APLS
+
+- Fixed APLS when TV is not applied at the same time
+  - APLS reconstructions were giving incorrect results
+
+- Fixed RBI-OSL with APLS when using implementation 1
+
+- Fixed BSREM for all supported implementations
+  - BSREM was giving incorrect results for implementations 1 and 2
+  - BSREM methods did not work when using implementation 4
+  
+- Fixed MRP with implementations 1 and 4 when not using FMH or L-filter at the same time
+
+- Fixed Huber prior for ROSEM-MAP and BSREM when using implementation 4
+
+- Fixed NLM when using BSREM with implementation 4
+
+- Various fixes to the forward/backward projection class/functions
+
+- Various fixes to the custom prior reconstruction
+  - Algorithms other than OSL should now work
 
 ## OMEGA v1.1.0
 
