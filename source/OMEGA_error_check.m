@@ -839,9 +839,9 @@ if options.verbose
         end
         if options.use_raw_data
             if options.partitions == 1
-                dispi = 'Using STATIC raw list-mode data';
+                dispi = 'Using STATIC raw data';
             else
-                dispi = 'Using DYNAMIC raw list-mode data';
+                dispi = 'Using DYNAMIC raw data';
             end
             if options.reconstruct_trues
                 dispi = strcat(dispi, ' (trues)');
