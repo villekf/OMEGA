@@ -58,36 +58,32 @@ if options.MRP && options.MBSREM
 end
 
 if options.MRP && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = MRP(options.im_vectors.MRP_BSREM_apu, options.medx, options.medy, options.medz, options.Nx, options.Ny, options.Nz, options.epps, options.tr_offsets, options.med_no_norm);
     options.im_vectors.MRP_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.MRP_BSREM_apu, options.lam, iter, options.beta_mrp_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.MRP_BSREM_apu = options.im_vectors.MRP_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM MRP iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.MRP && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = MRP(options.im_vectors.MRP_ROSEM_apu, options.medx, options.medy, options.medz, options.Nx, options.Ny, options.Nz, options.epps, options.tr_offsets, options.med_no_norm);
     options.im_vectors.MRP_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.MRP_ROSEM_apu, options.lam_rosem, iter, options.beta_mrp_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.MRP_ROSEM_apu = options.im_vectors.MRP_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM MRP iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -110,36 +106,32 @@ if options.quad && options.MBSREM
 end
 
 if options.quad && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Quadratic_prior(options.im_vectors.Quad_BSREM_apu, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
     options.im_vectors.Quad_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.Quad_BSREM_apu = options.im_vectors.Quad_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM quadratic iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.quad && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Quadratic_prior(options.im_vectors.Quad_ROSEM_apu, options.weights_quad, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz);
     options.im_vectors.Quad_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.Quad_ROSEM_apu = options.im_vectors.Quad_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM quadratic iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -162,38 +154,34 @@ if options.Huber && options.MBSREM
 end
 
 if options.Huber && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Huber_prior(options.im_vectors.Huber_BSREM_apu, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
         options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
     options.im_vectors.Huber_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.Huber_BSREM_apu = options.im_vectors.Huber_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM Huber iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.Huber && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Huber_prior(options.im_vectors.Huber_ROSEM_apu, options.weights_huber, options.Nx, options.Ny, options.Nz, ...
         options.Ndx, options.Ndy, options.Ndz, options.huber_delta);
     options.im_vectors.Huber_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.Huber_ROSEM_apu = options.im_vectors.Huber_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM Huber iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -216,36 +204,32 @@ if options.L && options.MBSREM
 end
 
 if options.L && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = L_filter(options.im_vectors.L_BSREM_apu, options.tr_offsets, options.a_L, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.L_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.L_BSREM_apu, options.lam, iter, options.beta_L_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.L_BSREM_apu = options.im_vectors.L_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM L-filter iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.L && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = L_filter(options.im_vectors.L_ROSEM_apu, options.tr_offsets, options.a_L, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.L_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.L_ROSEM_apu, options.lam_rosem, iter, options.beta_L_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.L_ROSEM_apu = options.im_vectors.L_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM L-filter iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -268,36 +252,32 @@ if options.FMH && options.MBSREM
 end
 
 if options.FMH && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = FMH(options.im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.FMH_BSREM_apu = options.im_vectors.FMH_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM FMH iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.FMH && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = FMH(options.im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.FMH_ROSEM_apu = options.im_vectors.FMH_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM FMH iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -320,36 +300,32 @@ if options.weighted_mean && options.MBSREM
 end
 
 if options.weighted_mean && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Weighted_mean(options.im_vectors.Weighted_BSREM_apu, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.med_no_norm);
     options.im_vectors.Weighted_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.Weighted_BSREM_apu = options.im_vectors.Weighted_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM weighted mean iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.weighted_mean && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = Weighted_mean(options.im_vectors.Weighted_ROSEM_apu, options.weighted_weights, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.mean_type, options.epps, options.med_no_norm);
     options.im_vectors.Weighted_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.Weighted_ROSEM_apu = options.im_vectors.Weighted_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM weighted mean iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -372,36 +348,32 @@ if options.TV && options.MBSREM
 end
 
 if options.TV && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TVpriorFinal(options.im_vectors.TV_BSREM_apu, options.TVdata, options.Nx, options.Ny, options.Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
     options.im_vectors.TV_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.TV_BSREM_apu, options.lam, iter, options.beta_TV_bsrem, grad, options.epps);
-    if verbose
+    options.im_vectors.TV_BSREM_apu = options.im_vectors.TV_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM TV iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 
 if options.TV && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TVpriorFinal(options.im_vectors.TV_ROSEM_apu, options.TVdata, options.Nx, options.Ny, options.Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
     options.im_vectors.TV_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.TV_ROSEM_apu, options.lam_rosem, iter, options.beta_TV_rosem, grad, options.epps);
-    if verbose
+    options.im_vectors.TV_ROSEM_apu = options.im_vectors.TV_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM TV iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 
@@ -424,35 +396,31 @@ if options.AD && options.MBSREM
 end
 
 if options.AD && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = AD(options.im_vectors.AD_BSREM_apu, options.FluxType, options.Nx, options.Ny, options.Nz, options);
     options.im_vectors.AD_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.AD_BSREM_apu, options.lam, iter, options.beta_ad_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.AD_BSREM_apu = options.im_vectors.AD_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM AD iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 if options.AD && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = AD(options.im_vectors.AD_ROSEM_apu, options.FluxType, options.Nx, options.Ny, options.Nz, options);
     options.im_vectors.AD_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.AD_ROSEM_apu, options.lam_rosem, iter, options.beta_ad_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.AD_ROSEM_apu = options.im_vectors.AD_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM AD iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 if options.AD && options.RBI_OSL
@@ -472,35 +440,31 @@ if options.APLS && options.MBSREM
     options.im_vectors.APLS_MBSREM(:, iter_n) = options.im_vectors.APLS_MBSREM_apu;
 end
 if options.APLS && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TVpriorFinal(options.im_vectors.APLS_BSREM(:, iter), 0, options.Nx, options.Ny, options.Nz, true, options, 4);
     options.im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, options.epps);
-    if verbose
+    options.im_vectors.APLS_BSREM_apu = options.im_vectors.APLS_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM APLS iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 if options.APLS && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TVpriorFinal(options.im_vectors.APLS_ROSEM(:, iter), 0, options.Nx, options.Ny, options.Nz, true, options, 4);
     options.im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, options.epps);
-    if verbose
+    options.im_vectors.APLS_ROSEM_apu = options.im_vectors.APLS_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM APLS iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 if options.APLS && options.RBI_OSL
@@ -520,35 +484,31 @@ if options.TGV && options.MBSREM
     options.im_vectors.TGV_MBSREM(:, iter_n) = options.im_vectors.TGV_MBSREM_apu;
 end
 if options.TGV && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TGV(options.im_vectors.TGV_BSREM(:, iter),options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
     options.im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.TGV_BSREM_apu, options.lam, iter, options.beta_TGV_bsrem, grad, options.epps);
-    if verbose
+    options.im_vectors.TGV_BSREM_apu = options.im_vectors.TGV_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM TGV iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 if options.TGV && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     grad = TGV(options.im_vectors.TGV_ROSEM(:, iter),options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
     options.im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, options.beta_TGV_rosem, grad, options.epps);
-    if verbose
+    options.im_vectors.TGV_ROSEM_apu = options.im_vectors.TGV_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM TGV iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 if options.TGV && options.RBI_OSL
@@ -564,35 +524,31 @@ if options.NLM && options.MBSREM
     options.im_vectors.NLM_MBSREM(:, iter_n) = options.im_vectors.NLM_MBSREM_apu;
 end
 if options.NLM && options.BSREM
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = NLM(options.im_vectors.NLM_BSREM_apu, options.options.Ndx, options.options.Ndy, options.options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
-    options.im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.NLM_BSREM_apu, options.lam_rosem, iter, options.beta_NLM_bsrem, med, options.epps);
-    if verbose
+    options.im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.NLM_BSREM_apu, options.lam, iter, options.beta_NLM_bsrem, med, options.epps);
+    options.im_vectors.NLM_BSREM_apu = options.im_vectors.NLM_BSREM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['BSREM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['BSREM NLM iteration ' num2str(iter) ' finished'])
     end
-    else
-    end
 end
 if options.NLM && options.ROSEM_MAP
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     med = NLM(options.im_vectors.NLM_ROSEM_apu, options.options.Ndx, options.options.Ndy, options.options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
     options.im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, options.beta_NLM_rosem, med, options.epps);
-    if verbose
+    options.im_vectors.NLM_ROSEM_apu = options.im_vectors.NLM_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM NLM iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 if options.NLM && options.RBI_OSL
@@ -612,34 +568,29 @@ if options.MBSREM && options.custom
     options.im_vectors.custom_MBSREM(:, iter_n) = options.im_vectors.custom_MBSREM_apu;
 end
 if options.BSREM && options.custom
-    if options.implementation == 1
-        if verbose
-            tStart = tic;
-        end
-        options.im_vectors.custom_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.custom_BSREM_apu, options.lam_rosem, iter, options.beta_custom_bsrem, options.grad_BSREM, options.epps);
-        if verbose
-            tElapsed = toc(tStart);
-            disp(['BSREM custom prior iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-        else
-            disp(['BSREM custom prior iteration ' num2str(iter) ' finished'])
-        end
+    if options.verbose
+        tStart = tic;
+    end
+    options.im_vectors.custom_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.custom_BSREM_apu, options.lam, iter, options.beta_custom_bsrem, options.grad_BSREM, options.epps);
+    options.im_vectors.custom_BSREM_apu = options.im_vectors.custom_BSREM(:, iter_n);
+    if options.verbose
+        tElapsed = toc(tStart);
+        disp(['BSREM custom prior iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
-        
+        disp(['BSREM custom prior iteration ' num2str(iter) ' finished'])
     end
 end
 if options.ROSEM_MAP && options.custom
-    if options.implementation == 1
-    if verbose
+    if options.verbose
         tStart = tic;
     end
     options.im_vectors.custom_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.custom_ROSEM_apu, options.lam_rosem, iter, options.beta_custom_rosem, options.grad_ROSEM, options.epps);
-    if verbose
+    options.im_vectors.custom_ROSEM_apu = options.im_vectors.custom_ROSEM(:, iter_n);
+    if options.verbose
         tElapsed = toc(tStart);
         disp(['ROSEM custom prior iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
     else
         disp(['ROSEM custom prior iteration ' num2str(iter) ' finished'])
-    end
-    else
     end
 end
 if options.RBI_OSL && options.custom

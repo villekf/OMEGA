@@ -1,4 +1,4 @@
-function pz = images_to_cell(im_vectors, llo, pz, options)
+function [pz, varargout] = images_to_cell(im_vectors, llo, pz, options)
 %IMAGES_TO_CELL Save the images at current time-step to a cell vector
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -375,4 +375,7 @@ end
 gg = gg + 1;
 if options.NLM && any(options.COSEM_OSL)
     pz{gg, llo} = im_vectors.NLM_COSEM;
+end
+if nargout > 1
+    varargout{1} = gg;
 end

@@ -52,6 +52,10 @@ if options.precompute_lor == false && options.implementation == 3
     error('precompute_lor must be set to true if using method 3')
 end
 
+if (options.MBSREM) && options.implementation == 2
+    error('BSREM, MBSREM and ROSEM-MAP do not work with implementation 2. Use implementation 1 instead')
+end
+
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
@@ -497,7 +501,65 @@ end
 % Compute the indices for the subsets used.
 % For Sinogram data, five different methods to select the subsets are
 % available. For raw list-mode data, three methods are available.
-[options.index, options.pituus, options.subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
+
+if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))) && numel(options.x) / 2 == numel(options.SinM)
+    %     index = uint32(1:numel(options.SinM))';
+    options.index = 0;
+    det_per_ring = numel(options.SinM);
+    options.det_per_ring = det_per_ring;
+    options.pituus = floor(det_per_ring / subsets);
+    options.pituus = int64([repmat(options.pituus,subsets - 1,1); det_per_ring - options.pituus*(subsets - 1)]);
+    list_mode_format = true;
+    options.listmode = true;
+%     if options.implementation == 1
+%         error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
+%     end
+    if options.implementation == 2 && options.use_CUDA
+        error('CUDA support not enabled for list-mode data')
+    end
+    if options.implementation == 4 || options.implementation == 1
+        use_raw_data = true;
+        options.use_raw_data = use_raw_data;
+    end
+    if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
+        diameter = (min(options.x(:))) + (max(options.x(:)));
+    elseif abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter > 0
+        diameter = options.diameter;
+    else
+        diameter = 0;
+    end
+    if isfield(options,'z')
+        if abs(min(options.z(:))) < abs(max(options.z(:))) / 2
+            if min(options.z(:)) < 0
+                Z = options.axial_fov - min(options.z(:)) * 2;
+            elseif max(options.z(:)) > options.axial_fov
+                Z = options.axial_fov + (max(options.z(:)) - options.axial_fov) * 2;
+            else
+                Z = options.axial_fov;
+            end
+        else
+            Z = 0;
+        end
+    else
+        if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
+            if min(options.z_det(:)) < 0
+                Z = options.axial_fov - min(options.z_det(:)) * 2;
+            elseif max(options.z_det(:)) > options.axial_fov
+                Z = options.axial_fov + (max(options.z_det(:)) - options.axial_fov) * 2;
+            else
+                Z = options.axial_fov;
+            end
+        else
+            Z = 0;
+        end
+    end
+    options.Z = Z;
+else
+    options.listmode = false;
+    [options.index, options.pituus, options.subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
+    Z = axial_fov;
+    options.Z = Z;
+end
 
 
 %%
@@ -592,16 +654,17 @@ end
 
 
 % Pixels
-etaisyys_x=(R-FOVax)/2;
-etaisyys_y=(R-FOVay)/2;
-if options.implementation == 2 || options.implementation == 4
-    options.zz=linspace(single(0),single(axial_fow),Nz+1);
-    options.xx = single(linspace(etaisyys_x,R-etaisyys_x,Nx+1));
-    options.yy = single(linspace(etaisyys_y,R-etaisyys_y,Ny+1));
+etaisyys_x = (R - FOVax) / 2;
+etaisyys_y = (R - FOVay) / 2;
+etaisyys_z = (Z - axial_fow) / 2;
+if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+    options.zz = single(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
+    options.xx = single(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
+    options.yy = single(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
 else
-    options.zz=linspace(double(0),double(axial_fow),Nz+1);
-    options.xx = double(linspace(etaisyys_x,R-etaisyys_x,Nx+1));
-    options.yy = double(linspace(etaisyys_y,R-etaisyys_y,Ny+1));
+    options.zz = double(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
+    options.xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
+    options.yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
 end
 options.zz=options.zz(2*options.block1+1:2*options.blocks+2);
 
@@ -633,7 +696,7 @@ end
 
 options.zmax = max(max(options.z_det));
 if options.zmax==0
-    if options.implementation == 2 || options.implementation == 4
+    if options.implementation == 2 || options.implementation == 3
         options.zmax = single(1);
     else
         options.zmax = double(1);
@@ -710,9 +773,9 @@ end
 if options.MBSREM || options.mramla
     if iscell(options.SinDelayed)
         if iscell(options.SinM)
-            options.epsilon_mramla = MBSREM_epsilon(options.SinM{1}, options.epps, options.randoms_correction, options.SinDelayed{llo}, options.E);
+            options.epsilon_mramla = MBSREM_epsilon(options.SinM{1}, options.epps, options.randoms_correction, options.SinDelayed{1}, options.E);
         else
-            options.epsilon_mramla = MBSREM_epsilon(options.SinM, options.epps, options.randoms_correction, options.SinDelayed{llo}, options.E);
+            options.epsilon_mramla = MBSREM_epsilon(options.SinM, options.epps, options.randoms_correction, options.SinDelayed{1}, options.E);
         end
     else
         if iscell(options.SinM)

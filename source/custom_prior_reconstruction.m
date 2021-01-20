@@ -39,6 +39,12 @@ end
 if ~isfield(options,'TOF_bins')
     options.TOF_bins = 1;
 end
+if ~isfield(options,'listmode')
+    options.listmode = false;
+end
+if ~isfield(options,'compute_sensitivity_image')
+    options.compute_sensitivity_image = false;
+end
 TOF = options.TOF_bins > 1 && options.projector_type == 1;
 
 if t == 1 && osa_iter == 1 && iter == 1
@@ -59,6 +65,12 @@ if options.implementation == 1
     Nx = options.Nx;
     Ny = options.Ny;
     Nz = options.Nz;
+    
+    if options.MBSREM || options.mramla
+        if options.U == 0 || isempty(options.U)
+            options.U = max(double(Sino) ./ options.Amin);
+        end
+    end
     
     if options.precompute_lor == false
         iij = double(0:options.Nx);
@@ -113,15 +125,15 @@ if options.implementation == 1
                         options.x, options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, ...
                         normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
                         options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, ...
-                        options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, ...
-                        options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
+                        TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, ...
+                        options.use_raw_data, uint32(2), options.listmode, options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
                 elseif exist('OCTAVE_VERSION','builtin') == 5 && exist('projector_oct','file') == 3
                     [ lor, indices, alkiot] = projector_oct( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, ...
                         options.x, options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, ...
                         normalization, SinD, options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
                         options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), options.NSinos, uint16(0), options.pseudot, options.det_per_ring, ...
-                        options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, ...
-                        options.use_raw_data, uint32(2), options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
+                        TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, ...
+                        options.use_raw_data, uint32(2), options.listmode, options.ind_size, options.block1, options.blocks, options.index{osa_iter}, uint32(options.projector_type), iij, jji, kkj);
                 else
                     % The below lines allow for pure MATLAB
                     % implemention, i.e. no MEX-files will be
@@ -152,14 +164,14 @@ if options.implementation == 1
                         options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, normalization, SinD, ...
                         uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), ...
                         uint32(0), options.NSinos, L, options.pseudot, options.det_per_ring, ...
-                        options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(2), options.ind_size, options.block1, ...
+                        TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(2), options.listmode, options.ind_size, options.block1, ...
                         options.blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                 elseif exist('OCTAVE_VERSION','builtin') == 5
                     [ lor, indices, alkiot] = projector_oct( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, ...
                         options.y, options.dy, options.yy, options.xx , options.NSinos, options.NSlices, options.size_x, options.zmax, options.vaimennus, normalization, SinD, ...
                         uint32(0), options.attenuation_correction, options.normalization_correction, options.randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), ...
                         uint32(0), options.NSinos, L, options.pseudot, options.det_per_ring, ...
-                        options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(2), options.ind_size, options.block1, ...
+                        TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(2), options.listmode, options.ind_size, options.block1, ...
                         options.blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
                 end
             else
@@ -210,14 +222,6 @@ if options.implementation == 1
             z_index_input = options.z_index(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1));
             TOFSize = int64(size(xy_index_input,1));
         end
-        if options.projector_type == 2 || options.projector_type == 3
-            if exist('OCTAVE_VERSION','builtin') == 0
-                lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
-            else
-                lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
-            end
-        else
-        end
         if (options.projector_type == 2 || options.projector_type == 3) && options.subsets > 1
             if exist('OCTAVE_VERSION','builtin') == 0
                 lor2 = [uint64(0);cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
@@ -225,9 +229,9 @@ if options.implementation == 1
                 lor2 = [uint64(0);cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))),'native')];
             end
         elseif (options.projector_type == 2 || options.projector_type == 3) && options.subsets == 1
-            lor2 = [0; uint64(options.lor_orth)];
+            lor2 = [uint64(0); uint64(sum(uint64(options.lor_orth)))];
         elseif options.projector_type == 1 && options.subsets == 1
-            lor2 = [0; uint64(options.lor_a)];
+            lor2 = [uint64(0); uint64(sum(uint64(options.lor_a)))];
         else
             if exist('OCTAVE_VERSION','builtin') == 0
                 lor2 = [uint64(0);cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
@@ -241,8 +245,8 @@ if options.implementation == 1
                 options.pituus(osa_iter + 1) - options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
                 options.scatter, scatter_input, options.global_correction_factor, options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)), xy_index_input, z_index_input, options.NSinos, ...
                 L_input, options.pseudot, options.det_per_ring, ...
-                options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(0), lor2, options.summa(osa_iter), options.attenuation_phase, ...
-                uint32(options.projector_type), options.tube_width_xy, options.x_center, options.y_center, options.z_center, options.tube_width_z, int32(0), options.bmin, ...
+                TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(0), options.listmode, lor2, options.summa(osa_iter), options.attenuation_phase, ...
+                uint32(options.projector_type), options.tube_width_xy, options.x_center, options.y_center, options.z_center, options.tube_width_z, options.bmin, ...
                 options.bmax, options.Vmax, options.V);
         elseif exist('OCTAVE_VERSION','builtin') == 5
             [A, ~] = projector_oct( options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, options.y, ...
@@ -250,8 +254,8 @@ if options.implementation == 1
                 options.pituus(osa_iter + 1) - options.pituus(osa_iter), options.attenuation_correction, options.normalization_correction, options.randoms_correction, ...
                 options.scatter, scatter_input, options.global_correction_factor, options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)), xy_index_input, z_index_input, options.NSinos, ...
                 L_input, options.pseudot, options.det_per_ring, ...
-                options.TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(0), lor2, options.summa(osa_iter), options.attenuation_phase, ...
-                uint32(options.projector_type), options.tube_width_xy, options.x_center, options.y_center, options.z_center, options.tube_width_z, int32(0), options.bmin, ...
+                TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), options.dec, options.verbose, nCores, options.use_raw_data, uint32(0), options.listmode, lor2, options.summa(osa_iter), options.attenuation_phase, ...
+                uint32(options.projector_type), options.tube_width_xy, options.x_center, options.y_center, options.z_center, options.tube_width_z, options.bmin, ...
                 options.bmax, options.Vmax, options.V);
         end
         uu = double(Sino(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1)));
@@ -263,7 +267,7 @@ if options.implementation == 1
     else
         Summ = full(sum(A,1))';
     end
-    Summ(Summ <= 0) = options.epps;
+    Summ(Summ < options.epps) = options.epps;
     if options.use_psf
         Summ = computeConvolution(Summ, options, Nx, Ny, Nz, gaussK);
     end
@@ -297,9 +301,9 @@ if options.implementation == 1
         end
         options.im_vectors.RAMLA_apu = BSREM_subiter(options.im_vectors.RAMLA_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
             options, Nx, Ny, Nz, gaussK);
-        if any(options.im_vectors.RAMLA_apu < 0)
-            warning('Negative values in RAMLA, lower options.lambda value!')
-        end
+%         if any(options.im_vectors.RAMLA_apu < 0)
+%             warning('Negative values in RAMLA, lower options.lambda value!')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['RAMLA sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -413,9 +417,9 @@ if options.implementation == 1
             options.im_vectors.MRP_BSREM_apu = BSREM_subiter(options.im_vectors.MRP_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, options, ...
                 Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.MRP_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value!')
-        end
+%         if any(options.im_vectors.MRP_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value!')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -507,9 +511,9 @@ if options.implementation == 1
             options.im_vectors.Quad_BSREM_apu = BSREM_subiter(options.im_vectors.Quad_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.Quad_BSREM_apu < 0)
-            warning('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.Quad_BSREM_apu < 0)
+%             warning('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -603,9 +607,9 @@ if options.implementation == 1
             options.im_vectors.Huber_BSREM_apu = BSREM_subiter(options.im_vectors.Huber_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.Huber_BSREM_apu < 0)
-            warning('Negative values in BSREM, it is recommended to lower lambda value')
-        end
+%         if any(options.im_vectors.Huber_BSREM_apu < 0)
+%             warning('Negative values in BSREM, it is recommended to lower lambda value')
+%         end
         if verbose
             tElapsed = toc(tStart);
             disp(['BSREM Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -699,9 +703,9 @@ if options.implementation == 1
             options.im_vectors.L_BSREM_apu = BSREM_subiter(options.im_vectors.L_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.L_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.L_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -793,9 +797,9 @@ if options.implementation == 1
             options.im_vectors.FMH_BSREM_apu = BSREM_subiter(options.im_vectors.FMH_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.FMH_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.FMH_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -884,9 +888,9 @@ if options.implementation == 1
             options.im_vectors.Weighted_BSREM_apu = BSREM_subiter(options.im_vectors.Weighted_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.Weighted_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.Weighted_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -975,9 +979,9 @@ if options.implementation == 1
             options.im_vectors.TV_BSREM_apu = BSREM_subiter(options.im_vectors.TV_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, options, ...
                 Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.TV_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.TV_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1073,9 +1077,9 @@ if options.implementation == 1
             options.im_vectors.AD_BSREM_apu = BSREM_subiter(options.im_vectors.AD_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.AD_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.AD_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1168,9 +1172,9 @@ if options.implementation == 1
             options.im_vectors.APLS_BSREM_apu = BSREM_subiter(options.im_vectors.APLS_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.APLS_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.APLS_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1255,9 +1259,9 @@ if options.implementation == 1
             options.im_vectors.TGV_BSREM_apu = BSREM_subiter(options.im_vectors.TGV_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.TGV_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.TGV_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1344,9 +1348,9 @@ if options.implementation == 1
             options.im_vectors.NLM_BSREM_apu = BSREM_subiter(options.im_vectors.NLM_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.NLM_BSREM_apu < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.NLM_BSREM_apu < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1414,7 +1418,7 @@ if options.implementation == 1
             tStart = tic;
         end
         options.im_vectors.custom_MBSREM_apu = MBSREM(options.im_vectors.custom_MBSREM_apu, options.U, options.pj3, A, options.epps, uu, options.epsilon_mramla, ...
-            options.lam_mbsrem, iter, SinD, options.randoms_correction, options.is_transposed, ptions.beta_custom_mbsrem, options.grad_MBSREM, options, Nx, Ny, Nz, gaussK);
+            options.lam_mbsrem, iter, SinD, options.randoms_correction, options.is_transposed, options.beta_custom_mbsrem, options.grad_MBSREM, options, Nx, Ny, Nz, gaussK);
         if options.verbose
             tElapsed = toc(tStart);
             disp(['MBSREM custom prior sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1430,9 +1434,9 @@ if options.implementation == 1
             options.im_vectors.custom_BSREM_apu = BSREM_subiter(options.im_vectors.custom_BSREM_apu, options.lam, options.epps, iter, A, uu, SinD, options.is_transposed, ...
                 options, Nx, Ny, Nz, gaussK);
         end
-        if any(options.im_vectors.custom_BSREM(:,iter) < 0)
-            error('Negative values in BSREM, lower options.lambda value')
-        end
+%         if any(options.im_vectors.custom_BSREM(:,iter) < 0)
+%             error('Negative values in BSREM, lower options.lambda value')
+%         end
         if options.verbose
             tElapsed = toc(tStart);
             disp(['BSREM custom prior sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
@@ -1480,6 +1484,10 @@ if options.implementation == 1
             disp(['COSEM-OSL custom prior sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
         end
     end
+    fn = fieldnames(options.im_vectors);
+    for kk = 2 : 2 : numel(fn)
+        options.im_vectors.(fn{kk})(options.im_vectors.(fn{kk}) < 0) = options.epps;
+    end
     clear A
 else
     %%
@@ -1493,6 +1501,9 @@ else
         options.x0 = options.x00;
     else
         options.x0 = updateInitialValue(options.im_vectors, options);
+    end
+    if (options.rbi || options.MBSREM || options.RBI_OSL || options.COSEM_OSL > 0) && t == 1 && iter == 1 && osa_iter == 1
+        options.D = zeros(options.N,1,'single');
     end
     
     if isfield(options, 'grad_OSEM') && options.OSL_OSEM
@@ -1520,7 +1531,7 @@ else
         options.beta_custom_rosem = single(options.beta_custom_rosem);
         options.custom_rosem_apu = options.im_vectors.custom_ROSEM_apu;
     end
-    if isfield(options, 'grad_RBI') && options.RBI
+    if isfield(options, 'grad_RBI') && options.RBI_OSL
         options.grad_RBI = single(options.grad_RBI);
         options.beta_custom_rbi = single(options.beta_custom_rbi);
         options.custom_rbi_apu = options.im_vectors.custom_RBI_apu;
@@ -1564,11 +1575,14 @@ else
     end
     if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
             && ~options.reconstruct_trues && ~options.reconstruct_scatter
+        options.randSize = uint64(diff(pituus));
         if issparse(options.SinDelayed{1})
             for kk = 1 : length(options.SinDelayed)
                 options.SinDelayed{kk} = single(full(options.SinDelayed{kk}));
             end
         end
+    else
+        options.randSize = uint64(1);
     end
     if options.use_raw_data
         options.xy_index = uint32(0);
@@ -1650,7 +1664,7 @@ else
     options.iter = uint32(iter - 1);
     options.osa_iter = uint32(osa_iter - 1);
     %         filename = [kernel_path(1:end-length(kernel_file) + 3), filename];
-    rekot = [options.rekot; false; false];
+    rekot = [options.rekot; false; false; false; false];
     tic
     if ~options.use_CUDA
         [pz] = OpenCL_matrixfree( kernel_path, options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, ...
@@ -1675,19 +1689,23 @@ else
     toc
     
     options.im_vectors = transfer_im_vectors(options.im_vectors, pz, options, iter);
-    pz{end} = 0;
     %     if (options.cosem || options.ecosem)
     %         options.C_co = pz{end-3};
     %     end
     %     if options.acosem
     %         options.C_aco = pz{end-2};
     %     end
-    if any(options.COSEM_OSL)
-        options.C_osl = pz{end-1};
+    if any(options.COSEM_OSL) && osa_iter == 1 && iter == 1 && t == 1
+        options.C_osl = pz{end-5};
     end
     if (options.mramla || options.MBSREM || options.RBI_OSL || options.rbi || options.cosem || options.ecosem...
             || options.acosem || any(options.COSEM_OSL)) && options.MBSREM_prepass && osa_iter == 1 && iter == 1 && t == 1
-        options.D = pz{end};
+        options.D = pz{end-4}(:);
     end
+    if options.MBSREM && osa_iter == 1 && iter == 1 && t == 1
+        options.epsilon_mramla = pz{end-3};
+        options.U = pz{end - 2};
+    end
+    pz{end} = 0;
     
 end
