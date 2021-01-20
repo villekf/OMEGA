@@ -37,8 +37,11 @@ end
 if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end
+if ~isfield(options,'use_machine')
+    options.use_machine = 0;
+end
 
-if ~options.use_raw_data
+if ~options.use_raw_data && options.randoms_correction
     if options.partitions == 1
         load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
             num2str(options.TotSinos) '_span' num2str(options.span)];
