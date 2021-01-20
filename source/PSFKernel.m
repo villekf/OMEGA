@@ -56,9 +56,9 @@ if ~isfield(options,'use_psf') || options.use_psf
     if numel(options.FWHM) == 2
         options.FWHM(3) = 0;
     end
-    dx = options.FOVa_x / options.Nx;
-    dy = options.FOVa_y / options.Ny;
-    dz = options.axial_fov / options.Nz;
+    dx = options.FOVa_x / double(options.Nx);
+    dy = options.FOVa_y / double(options.Ny);
+    dz = options.axial_fov / double(options.Nz);
     
     g_pituus_x = ceil(2*(options.FWHM(1) / (2 * sqrt(2 * log(2)))) / dx);
     g_pituus_y = ceil(2*(options.FWHM(2) / (2 * sqrt(2 * log(2)))) / dy);
