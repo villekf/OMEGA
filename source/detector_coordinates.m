@@ -32,6 +32,9 @@ function [varargout] = detector_coordinates(options)
 if nargout > 4
     error('Too many output arguments')
 end
+if ~isfield(options,'listmode')
+    options.listmode = false;
+end
 
 cr_p = options.cr_p;
 diameter = options.diameter;
@@ -211,6 +214,13 @@ if options.offangle ~= 0
     xp = circshift(xp, round(options.offangle));
     y = circshift(y, round(options.offangle));
     yp = circshift(yp, round(options.offangle));
+end
+
+if (options.implementation == 2 || options.implementation == 3 || options.implementation == 5) && options.listmode > 0
+    x = single(x);
+    y = single(y);
+    xp = single(xp);
+    yp = single(yp);
 end
 
 if nargout >= 1
