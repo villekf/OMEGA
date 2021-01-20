@@ -27,7 +27,7 @@ function im = BSREM_subiter(im, lambda, epps, iter, varargin)
 % ACOSEM_im, ECOSEM_im, MBSREM
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019  Ville-Veikko Wettenhovi, Samuli Summala
+% Copyright (C) 2021 Ville-Veikko Wettenhovi, Samuli Summala
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
