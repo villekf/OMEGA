@@ -142,11 +142,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifndef FIND_LORS // Not the precomputation phase
 #ifdef TOF
 	float local_sino = 0.f;
+#ifndef LISTMODE2
 #pragma unroll NBINS
 	for (long to = 0L; to < NBINS; to++)
 		local_sino += d_Sino[idx + m_size * to];
+#endif
+#else
+#ifdef LISTMODE2
+	const float local_sino = 0.f;
 #else
 	const float local_sino = (d_Sino[idx]);
+#endif
 #endif
 #ifndef MBSREM
 	if (no_norm == 1u && local_sino == 0.f)
@@ -255,6 +261,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #endif
 #ifndef AF
+#ifndef LISTMODE2
 	if (fp == 2) {
 #ifdef TOF
 #pragma unroll NBINS
@@ -264,6 +271,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		axOSEM = d_OSEM[idx + cumsum];
 #endif
 	}
+#endif
 #endif
 #ifdef ORTH // Orthogonal or volume-based ray tracer
 	uchar xyz = 0u;
@@ -1459,6 +1467,14 @@ __kernel void mlem(const __global CAST* d_Summ, const __global CAST* d_rhs, __gl
 	uint gid = get_global_id(0);
 
 	for (uint i = gid; i < im_dim; i += get_global_size(0)) {
+#ifdef LISTMODE2
+#ifdef ATOMIC
+		float Summ = convert_float(d_Summ[i]);
+		d_mlem[i] = Summ / TH;
+#else
+		d_mlem[i] = d_Summ[i];
+#endif
+#else
 #ifdef ATOMIC
 		float rhs = convert_float(d_rhs[i]);
 		float Summ = convert_float(d_Summ[i]);
@@ -1486,6 +1502,7 @@ __kernel void mlem(const __global CAST* d_Summ, const __global CAST* d_rhs, __gl
 #endif
 		if (d_mlem[i] < d_epps)
 			d_mlem[i] = d_epps;
+#endif
 	}
 }
 
