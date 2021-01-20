@@ -32,8 +32,8 @@ function sens = OSL(Summ, beta, dU, epps)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if nargin == 4
-    sens = (Summ + beta * dU);
-    sens(sens < epps) = epps;
+    sens = (Summ + beta * dU + epps);
+%     sens(sens < epps) = epps;
 else
     error('Invalid number of input arguments')
 end
