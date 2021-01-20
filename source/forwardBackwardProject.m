@@ -257,9 +257,6 @@ classdef forwardBackwardProject
                 obj.n_meas = floor(det_per_ring / obj.OProperties.subsets);
                 obj.n_meas = int64([repmat(obj.n_meas,obj.OProperties.subsets - 1,1); det_per_ring - obj.n_meas*(obj.OProperties.subsets - 1)]);
                 obj.OProperties.listmode = true;
-                if obj.OProperties.implementation == 1
-                    error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
-                end
                 obj.OProperties.precompute_lor = false;
                 obj.OProperties.diameter = 0;
 %                 if abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:))) > obj.OProperties.diameter
@@ -323,8 +320,25 @@ classdef forwardBackwardProject
             
             [x, y, z_det, obj.OProperties] = get_coordinates(obj.OProperties, blocks, pseudot);
             obj.OProperties.x = x;
+            if obj.OProperties.listmode
+                clear x
+            end
             obj.OProperties.y = y;
+            if obj.OProperties.listmode
+                clear y
+            end
             obj.OProperties.z_det = z_det;
+            if obj.OProperties.listmode
+                clear z_det
+            end
+            if isfield(obj.OProperties,'z')
+                obj.OProperties = rmfield(obj.OProperties,'z');
+            end
+            if obj.OProperties.listmode
+                obj.OProperties.x = reshape(obj.OProperties.x, numel(obj.OProperties.x)/2,2);
+                obj.OProperties.y = reshape(obj.OProperties.y, numel(obj.OProperties.y)/2,2);
+                obj.OProperties.z_det = reshape(obj.OProperties.z_det, numel(obj.OProperties.z_det)/2,2);
+            end
             
             if ~obj.OProperties.listmode
                 [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
@@ -367,7 +381,7 @@ classdef forwardBackwardProject
                 obj.OProperties.lor_a = uint16(0);
             end
             if obj.OProperties.subsets == 1
-                obj.nn = int64(obj.n_meas);
+                obj.nn = [int64(0);int64(sum(obj.n_meas))];
                 if obj.OProperties.precompute_lor && ~obj.OProperties.listmode
                     obj.index = find(discard);
                 end
@@ -516,7 +530,7 @@ classdef forwardBackwardProject
             
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};
-            elseif obj.OProperties.subsets == 1
+            elseif obj.OProperties.subsets == 1 || isempty(obj.OProperties.subsets)
                 obj.subset = 1;
             end
             if nargout >= 2
