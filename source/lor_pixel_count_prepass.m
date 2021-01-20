@@ -1,4 +1,4 @@
-function [varargout] = lor_pixel_count_prepass(options)
+function [varargout] = lor_pixel_count_prepass(options, varargin)
 %% Count the number of voxels each LOR traverses
 % This function counts the number of voxels that each LOR traverses, i.e.
 % the total number of voxels along each LOR. This is needed for all
@@ -36,6 +36,14 @@ function [varargout] = lor_pixel_count_prepass(options)
 if nargout > 4
     error('Too many output arguments')
 end
+if nargin >= 2 && ~isempty(varargin)
+    save_file = varargin{1};
+else
+    save_file = true;
+end
+if ~isfield(options,'listmode')
+    options.listmode = false;
+end
 rings = options.rings;
 diameter = options.diameter;
 FOVax = options.FOVa_x;
@@ -62,6 +70,11 @@ end
 
 % Diameter of the device (mm)
 R=double(diameter);
+if isfield(options,'Z')
+    Z = options.Z;
+else
+    Z = axial_fov;
+end
 % Transaxial FOV (mm)
 FOVax=double(FOVax);
 FOVay=double(FOVay);
@@ -81,6 +94,29 @@ Ny=uint32(Ny);
 Nx=uint32(Nx);
 Nz=uint32(Nz);
 
+etaisyys_x = (R - FOVax) / 2;
+etaisyys_y = (R - FOVay) / 2;
+etaisyys_z = (Z - axial_fov) / 2;
+if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+    zz = single(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
+    xx = single(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
+    yy = single(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
+else
+    zz = double(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
+    xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
+    yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
+end
+
+% Distance of adjacent pixels
+dx = diff(xx(1:2));
+dy = diff(yy(1:2));
+dz = diff(zz(1:2));
+
+% Distance of the reconstructed image from the origin
+bx = xx(1);
+by = yy(1);
+bz = zz(1);
+
 folder = fileparts(which('lor_pixel_count_prepass.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
@@ -93,39 +129,26 @@ end
 
 %% Raw data and non-OpenCL methods
 if (options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
+    % Detector coordinates
+    [x, y, z] = get_coordinates(options, blocks, pseudot, false);
     % Detector pair (LOR) vector
-    LL = form_detector_pairs_raw(rings, det_per_ring);
+    if ~save_file
+        LL = zeros(numel(x),1,'uint16');
+    else
+        LL = form_detector_pairs_raw(rings, det_per_ring);
+    end
     if sum(pseudot) == 0
         pseudot = [];
     end
-    % Detector coordinates
-    [x, y, z] = get_coordinates(options, blocks, pseudot, false);
     
 %     blocks = uint32(rings);
     
-    x=double(x);
-    y=double(y);
-    z_det = double(z);
-    
-    % Pixel boundaries
-    etaisyys=(R-FOVax)/2;
-    xx=linspace(etaisyys,R-etaisyys,Nx+1);
-    etaisyys=(R-FOVay)/2;
-    yy=linspace(etaisyys,R-etaisyys,Ny+1);
-    zz=linspace(double(0),double(axial_fov),Nz+1);
+    x = double(x(:));
+    y = double(y(:));
+    z_det = double(z(:));
 %     zz=zz(2*block1-1:2*blocks);
     
-    % Distance of adjacent pixels
-    dx = diff(xx(1:2));
-    dy = diff(yy(1:2));
-    dz = diff(zz(1:2));
-    
-    % Distance of the reconstructed image from the origin
-    bx = xx(1);
-    by = yy(1);
-    bz = zz(1);
-    
-    size_x = uint32(size(x,1));
+    size_x = uint32(numel(x)) / 2;
     
     zmax = max(max(z_det));
     if zmax==0
@@ -183,13 +206,13 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
         [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
             zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, LL, pseudot, uint32(det_per_ring), ...
             false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
             bmin, bmax, Vmax, V, type);
     elseif exist('OCTAVE_VERSION','builtin') == 5
         [ lor, lor_orth, lor_vol] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
             zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, LL, pseudot, uint32(det_per_ring), ...
             false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
             bmin, bmax, Vmax, V, type);
     end
     clear LL
@@ -197,54 +220,56 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     file_string = [folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'];
     crystal_size_xy = options.tube_width_xy;
     crystal_size_z = options.tube_width_z;
-    if exist(file_string,'file') == 2
-        if type == 0
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','-append')
-            else
-                save(file_string,'lor','-append','-v7')
-            end
-        elseif type == 1 || type == 2
-            variableInfo = who('-file', file_string);
-            if any(strcmp(variableInfo,'lor_orth'))
-                lor_file = matfile(file_string);
-                if length(lor_file.lor_orth) > length(lor_orth)
-                    lor_temp = load(file_string,'lor_orth');
-                    lor_temp.lor_orth(1:length(lor_orth)) = lor_orth;
-                    lor_orth = lor_temp.lor_orth;
-                    clear lor_temp
+    if save_file
+        if exist(file_string,'file') == 2
+            if type == 0
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','-append')
+                else
+                    save(file_string,'lor','-append','-v7')
+                end
+            elseif type == 1 || type == 2
+                variableInfo = who('-file', file_string);
+                if any(strcmp(variableInfo,'lor_orth'))
+                    lor_file = matfile(file_string);
+                    if length(lor_file.lor_orth) > length(lor_orth)
+                        lor_temp = load(file_string,'lor_orth');
+                        lor_temp.lor_orth(1:length(lor_orth)) = lor_orth;
+                        lor_orth = lor_temp.lor_orth;
+                        clear lor_temp
+                    end
+                end
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append')
+                else
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append','-v7')
+                end
+            elseif type == 3
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-append')
+                else
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-append','-v7')
                 end
             end
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append')
-            else
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append','-v7')
-            end
-        elseif type == 3
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_vol','bmax','Vmax','-append')
-            else
-                save(file_string,'lor','lor_vol','bmax','Vmax','-append','-v7')
-            end
-        end
-    else
-        if type == 0
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','-v7.3')
-            else
-                save(file_string,'lor','-v7')
-            end
-        elseif type == 1 || type == 2
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7.3')
-            else
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7')
-            end
-        elseif type == 3
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_vol','bmax','Vmax','-v7.3')
-            else
-                save(file_string,'lor','lor_vol','bmax','Vmax','-v7')
+        else
+            if type == 0
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','-v7.3')
+                else
+                    save(file_string,'lor','-v7')
+                end
+            elseif type == 1 || type == 2
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7.3')
+                else
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7')
+                end
+            elseif type == 3
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-v7.3')
+                else
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-v7')
+                end
             end
         end
     end
@@ -275,24 +300,6 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         x=single(x);
         y=single(y);
         z_det = single(z);
-        
-        % Pixel boundaries
-        etaisyys = (R-FOVax)/2;
-        xx = single(linspace(etaisyys,R-etaisyys,Nx+1));
-        etaisyys = (R-FOVay)/2;
-        yy = single(linspace(etaisyys,R-etaisyys,Ny+1));
-        zz = linspace(single(0),single(axial_fov),Nz+1);
-%         zz = zz(2*block1-1:2*blocks);
-        
-        % Distance of adjacent pixels
-        dx = diff(xx(1:2));
-        dy = diff(yy(1:2));
-        dz = diff(zz(1:2));
-        
-        % Distance of the reconstructed image from the origin
-        bx = xx(1);
-        by = yy(1);
-        bz = zz(1);
         
         size_x = uint32(size(x,1));
         
@@ -329,21 +336,23 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
         %     lor = lor(lor > 0);
         % save([folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'],'lor_opencl','-v7.3','-append')
         file_string = [folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'];
-        if exist(file_string,'file') == 2
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor_opencl','-append')
+        if save_file
+            if exist(file_string,'file') == 2
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor_opencl','-append')
+                else
+                    save(file_string,'lor_opencl','-append','-v7')
+                end
             else
-                save(file_string,'lor_opencl','-append','-v7')
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor_opencl','-v7.3')
+                else
+                    save(file_string,'lor_opencl','-v7')
+                end
             end
-        else
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor_opencl','-v7.3')
-            else
-                save(file_string,'lor_opencl','-v7')
+            if nargout >= 2
+                varargout{2} = lor_opencl;
             end
-        end
-        if nargout >= 2
-            varargout{2} = lor_opencl;
         end
     else
         error('OpenCL mex-file not found. If you want to use OpenCL methods, build the OpenCL mex-files first')
@@ -353,30 +362,14 @@ end
 if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
     [x, y, z] = get_coordinates(options, options.rings - 1, [], false);
     
-    x=double(x);
-    y=double(y);
-    z_det = double(z);
+    x = double(x(:));
+    y = double(y(:));
+    z_det = double(z(:));
     
-    
-    
-    % Pixel boundaries
-    etaisyys=(R-FOVax)/2;
-    xx=linspace(etaisyys,R-etaisyys,Nx+1);
-    etaisyys=(R-FOVay)/2;
-    yy=linspace(etaisyys,R-etaisyys,Ny+1);
-    zz=linspace(double(0),double(axial_fov),Nz+1);
-    
-    % Distance of adjacent pixels
-    dx=diff(xx(1:2));
-    dy=diff(yy(1:2));
-    dz=diff(zz(1:2));
-    
-    % Distance of the reconstructed image from the origin
-    bx=xx(1);
-    by=yy(1);
-    bz=zz(1);
-    
-    size_x = uint32(size(x,1));
+    size_x = uint32(numel(x)) / 2;
+    if ~save_file
+        TotSinos = uint32(1);
+    end
     
     zmax = max(max(z_det));
     if zmax==0
@@ -432,13 +425,13 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
         [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
             zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
             false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
             bmin, bmax, Vmax, V, type);
     elseif exist('OCTAVE_VERSION','builtin') == 5
         [ lor, lor_orth, lor_vol] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
             zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
             false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
             bmin, bmax, Vmax, V, type);
     end
     
@@ -446,54 +439,56 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
         num2str(options.Nang) 'x' num2str(options.TotSinos) '.mat'];
     crystal_size_xy = options.tube_width_xy;
     crystal_size_z = options.tube_width_z;
-    if exist(file_string,'file') == 2
-        if type == 0
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','-append')
-            else
-                save(file_string,'lor','-append','-v7')
-            end
-        elseif type == 1 || type == 2
-            variableInfo = who('-file', file_string);
-            if any(strcmp(variableInfo,'lor_orth'))
-                lor_file = matfile(file_string);
-                if length(lor_file.lor_orth) > length(lor_orth)
-                    lor_temp = load(file_string,'lor_orth');
-                    lor_temp.lor_orth(1:length(lor_orth)) = lor_orth;
-                    lor_orth = lor_temp.lor_orth;
-                    clear lor_temp
+    if save_file
+        if exist(file_string,'file') == 2
+            if type == 0
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','-append')
+                else
+                    save(file_string,'lor','-append','-v7')
+                end
+            elseif type == 1 || type == 2
+                variableInfo = who('-file', file_string);
+                if any(strcmp(variableInfo,'lor_orth'))
+                    lor_file = matfile(file_string);
+                    if length(lor_file.lor_orth) > length(lor_orth)
+                        lor_temp = load(file_string,'lor_orth');
+                        lor_temp.lor_orth(1:length(lor_orth)) = lor_orth;
+                        lor_orth = lor_temp.lor_orth;
+                        clear lor_temp
+                    end
+                end
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append')
+                else
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append','-v7')
+                end
+            elseif type == 3
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-append')
+                else
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-append','-v7')
                 end
             end
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append')
-            else
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-append','-v7')
-            end
-        elseif type == 3
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_vol','bmax','Vmax','-append')
-            else
-                save(file_string,'lor','lor_vol','bmax','Vmax','-append','-v7')
-            end
-        end
-    else
-        if type == 0
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','-v7.3')
-            else
-                save(file_string,'lor','-v7')
-            end
-        elseif type == 1 || type == 2
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7.3')
-            else
-                save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7')
-            end
-        elseif type == 3
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor','lor_vol','bmax','Vmax','-v7.3')
-            else
-                save(file_string,'lor','lor_vol','bmax','Vmax','-v7')
+        else
+            if type == 0
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','-v7.3')
+                else
+                    save(file_string,'lor','-v7')
+                end
+            elseif type == 1 || type == 2
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7.3')
+                else
+                    save(file_string,'lor','lor_orth','crystal_size_xy','crystal_size_z','-v7')
+                end
+            elseif type == 3
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-v7.3')
+                else
+                    save(file_string,'lor','lor_vol','bmax','Vmax','-v7')
+                end
             end
         end
     end
@@ -516,26 +511,6 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
         x = single(x);
         y = single(y);
         z_det = single(z);
-        
-        
-        
-        % Pixel boundaries
-        etaisyys = (R-FOVax)/2;
-        xx = single(linspace(etaisyys,R-etaisyys,Nx+1));
-        etaisyys = (R-FOVay)/2;
-        yy = single(linspace(etaisyys,R-etaisyys,Ny+1));
-        zz = linspace(single(0),single(axial_fov),Nz+1);
-%         zz = zz(2*block1-1:2*blocks);
-        
-        % Distance of adjacent pixels
-        dx = diff(xx(1:2));
-        dy = diff(yy(1:2));
-        dz = diff(zz(1:2));
-        
-        % Distance of the reconstructed image from the origin
-        bx = xx(1);
-        by = yy(1);
-        bz = zz(1);
         
         size_x = uint32(size(x,1));
         
@@ -570,17 +545,19 @@ if (~options.use_raw_data && (options.implementation == 2 || options.implementat
         
         file_string = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(options.Ndist) 'x' ...
             num2str(options.Nang) 'x' num2str(options.TotSinos) '.mat'];
-        if exist(file_string,'file') == 2
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor_opencl','-append')
+        if save_file
+            if exist(file_string,'file') == 2
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor_opencl','-append')
+                else
+                    save(file_string,'lor_opencl','-append','-v7')
+                end
             else
-                save(file_string,'lor_opencl','-append','-v7')
-            end
-        else
-            if exist('OCTAVE_VERSION', 'builtin') == 0
-                save(file_string,'lor_opencl','-v7.3')
-            else
-                save(file_string,'lor_opencl','-v7')
+                if exist('OCTAVE_VERSION', 'builtin') == 0
+                    save(file_string,'lor_opencl','-v7.3')
+                else
+                    save(file_string,'lor_opencl','-v7')
+                end
             end
         end
         if nargout >= 2
