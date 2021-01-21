@@ -218,9 +218,9 @@ else
             lor2 = [uint64(0);cumsum(uint64(options.lor_orth(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))),'native')];
         end
     elseif (options.projector_type == 2 || options.projector_type == 3) && options.subsets == 1
-        lor2 = [0; uint64(options.lor_orth)];
+        lor2 = [0; uint64(cumsum(uint64(options.lor_orth)))];
     elseif options.projector_type == 1 && options.subsets == 1
-        lor2 = [0; cumsum(uint64(options.lor_a))];
+        lor2 = [0; uint64(cumsum(uint64(options.lor_a)))];
     else
         if exist('OCTAVE_VERSION','builtin') == 0
             lor2 = [uint64(0);cumsum(uint64(options.lor_a(options.pituus(osa_iter)+1:options.pituus(osa_iter + 1))))];
