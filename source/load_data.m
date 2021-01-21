@@ -852,8 +852,8 @@ elseif options.use_machine == 0
                     ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind2)/cryst_per_block));
                     % Only a single ring
                 elseif options.rings == 1
-                    ring_number1 = uint16(0);
-                    ring_number2 = uint16(0);
+                    ring_number1 = zeros(size(M,1),1,'uint16');
+                    ring_number2 = zeros(size(M,1),1,'uint16');
                     % No modules and no repeated axial rings
                 elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && no_submodules
                     ring_number1 = uint16(M(:,rsector_ind1));
