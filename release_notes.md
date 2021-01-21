@@ -92,6 +92,11 @@
 
 - Various fixes to the custom prior reconstruction
   - Algorithms other than OSL should now work
+  
+- GATE ASCII data load now supports 2D data
+
+- Slightly improved the speed of sinogram coordinate creation
+  - Slightly improves the speed of reconstructions
 
 ## OMEGA v1.1.0
 
