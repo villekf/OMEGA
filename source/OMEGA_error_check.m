@@ -65,6 +65,9 @@ end
 if ~isfield(options, 'only_sinos')
     options.only_sinos = false;
 end
+if ~isfield(options, 'only_reconstructions')
+    options.only_reconstructions = false;
+end
 
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
@@ -87,6 +90,9 @@ OS_I4_summa = sum([options.osem, options.ramla, options.rosem, options.drama, op
 N_PRIORS = (options.MRP + options.quad + options.Huber + options.L + options.FMH + options.weighted_mean + options.TV + options.AD + options.APLS ...
     + options.TGV + options.NLM + options.custom);
 
+if options.only_sinos && options.only_reconstructions
+    error('options.only_sinos and options.only_reconstructions cannot be both set to true')
+end
 % Check for various illegal values
 if options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter
     error(['Transaxial FOV is larger than the machine diameter (' num2str(options.diameter) ')'])
@@ -134,10 +140,13 @@ end
 if options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data
     error('ndist_side cannot be 0 when Ndist is even')
 end
-if (mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0
+if ((mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0) && ~options.use_raw_data
     error('Sampling rate has to be divisible by two and positive or one')
 end
-if options.sampling > 1 && options.precompute_lor
+if ((mod(options.sampling_raw, 2) > 0 && options.sampling_raw ~= 1) || options.sampling_raw < 0) && options.use_raw_data
+    error('Sampling rate has to be divisible by two and positive or one')
+end
+if ((options.sampling > 1 && ~options.use_raw_data) || (options.sampling_raw > 1 && options.use_raw_data)) && options.precompute_lor
     warning('Increased sampling rate is not supported for precomputed data')
 end
 if options.arc_correction && options.use_raw_data
