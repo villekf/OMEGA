@@ -97,6 +97,8 @@
 
 - Slightly improved the speed of sinogram coordinate creation
   - Slightly improves the speed of reconstructions
+  
+- Fixed increased sampling (interpolation) for raw data
 
 ## OMEGA v1.1.0
 
