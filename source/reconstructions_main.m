@@ -57,6 +57,9 @@ end
 if ~isfield(options,'listmode')
     options.listmode = false;
 end
+if ~isfield(options,'sampling_raw')
+    options.sampling_raw = 1;
+end
 
 options.listmode = false;
 
@@ -1167,6 +1170,10 @@ if exist('feature','builtin') == 5
     nCores = uint32(feature('numcores'));
 else
     nCores = uint32(1);
+end
+
+if options.use_raw_data && options.sampling_raw > 1
+    det_per_ring = det_per_ring * 2;
 end
 
 %% This computes a whole observation matrix and uses it to compute the MLEM (no on-the-fly calculations)

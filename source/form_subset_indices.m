@@ -84,6 +84,9 @@ end
 if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
     options.Ndist = options.Ndist * options.sampling;
 end
+if ~isfield(options,'sampling_raw')
+    options.sampling_raw = 1;
+end
 % for the precomputed version, index vectors are needed
 if options.use_raw_data == false && options.precompute_lor
     
@@ -1018,9 +1021,9 @@ elseif options.use_raw_data == false && ~options.precompute_lor
     LL = [];
     clear discard I yt xt xy_index2 index apu
 elseif options.use_raw_data && ~options.precompute_lor
-    
+    det_per_ring = options.det_per_ring * options.sampling_raw;
     if ~exist('LL','var')
-        LL = form_detector_pairs_raw(rings, options.det_per_ring);
+        LL = form_detector_pairs_raw(rings, det_per_ring);
     end
     if subsets > 1 || fpbp
         LL = LL(index,:);
@@ -1123,10 +1126,10 @@ elseif options.use_raw_data && ~options.precompute_lor
     if subsets > 1
         for kk = 1 : subsets
             apu = LL(pituus(kk) + 1 : pituus(kk + 1),:) - 1;
-            apu2 = idivide(apu, uint16(options.det_per_ring));
+            apu2 = idivide(apu, uint16(det_per_ring));
             idx = apu2(:,1) == apu2(:,2);
             apu2 = apu(idx,:);
-            ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+            ind = mod(apu2, uint16(det_per_ring)) + 1;
             yt = y(ind);
             y_i = yt(:,1) > yt(:,2);
             apu2(y_i,:) = fliplr(apu2(y_i,:));
@@ -1135,10 +1138,10 @@ elseif options.use_raw_data && ~options.precompute_lor
         end
     else
         apu = LL - 1;
-        apu2 = idivide(apu, uint16(options.det_per_ring));
+        apu2 = idivide(apu, uint16(det_per_ring));
         idx = apu2(:,1) == apu2(:,2);
         apu2 = apu(idx,:);
-        ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+        ind = mod(apu2, uint16(det_per_ring)) + 1;
         yt = y(ind);
         y_i = yt(:,1) > yt(:,2);
         apu2(y_i,:) = fliplr(apu2(y_i,:));

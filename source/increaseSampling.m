@@ -30,7 +30,7 @@ if options.use_raw_data
     if interpolateSinogram
         for hh = 1 : options.partitions
             % Create a (sparse) matrix and interpolate new detectors
-            [K, ~, V] = find(options.coincidences{hh});
+            [K, ~, V] = find(options.SinM{hh});
             L = find(tril(true(options.detectors,options.detectors), 0));
             L = L(K);
             
@@ -42,10 +42,10 @@ if options.use_raw_data
             SinM_uus = zeros(size(coincidences,1)*options.sampling_raw, size(coincidences,2)*options.sampling_raw,'single');
             SinM_uus(1:end-1,1:end-1) = interp2(joku, options.sampling_raw / 2, options.sampling_interpolation_method_raw);
             SinM_uus = single(SinM_uus(tril(true(size(SinM_uus)), 0)));
-            options.coincidences{hh} = SinM_uus;
+            options.SinM{hh} = SinM_uus;
         end
         if options.verbose
-            disp(['Raw data sampling increased by ' num2str(options.sampling) 'x'])
+            disp(['Raw data sampling increased by ' num2str(options.sampling_raw) 'x'])
         end
     end
 else

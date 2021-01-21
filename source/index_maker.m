@@ -59,6 +59,9 @@ if nargin - 7 >= 4 && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(va
     end
 end
 
+if ~isfield(options,'sampling_raw')
+    options.sampling_raw = 1;
+end
 folder = fileparts(which('index_maker.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
@@ -291,11 +294,15 @@ elseif subsets > 1
             end
         end
     else
+        det_per_ring = options.det_per_ring * options.sampling_raw;
         % Same as above, but for precompute_lor = false case
-        LL = form_detector_pairs_raw(options.rings, options.det_per_ring);
+        LL = form_detector_pairs_raw(options.rings, det_per_ring);
         index = cell(subsets, 1);
         pituus = zeros(subsets, 1, 'int64');
         if options.ring_difference_raw < options.rings
+            if options.sampling_raw > 1
+                error('Increasing sampling cannot be used with smaller ring difference than the number of rings!')
+            end
             testi = zeros(options.detectors,options.detectors,'uint32');
             testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
             for kk = options.rings : - 1 : options.ring_difference_raw + 1
