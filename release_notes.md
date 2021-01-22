@@ -100,6 +100,10 @@
   
 - Fixed increased sampling (interpolation) for raw data
 
+- Fixed TV type 2 when using anatomical prior (implementation 2)
+
+- Fixed TV type 3 when using anatomical prior (implementation 1 & 4)
+
 ## OMEGA v1.1.0
 
 ### New features
