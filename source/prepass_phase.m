@@ -370,7 +370,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 end
                 rowMin(isnan(rowMin)) = epps;
                 if options.precompute_lor == false
-                    Amin(index{osa_iter}) = rowMin;
+                    if iscell(index)
+                        Amin(index{osa_iter}) = rowMin;
+                    else
+                        Amin(index(pituus(osa_iter)+1:pituus(osa_iter + 1))) = rowMin;
+                    end
                 else
                     Amin(pituus(osa_iter)+1:pituus(osa_iter + 1)) = rowMin;
                 end
