@@ -193,14 +193,14 @@ else
     if anatomical
         padd = padding(reshape(im,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd = padd(varargin{1});
-        padd(:,isinf(options.weights)) = [];
+        padd(:,floor(size(padd,2) / 2) + 1) = [];
         padd2 = padding(reshape(aData.reference_image,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
         padd2 = padd2(varargin{1});
-        padd2(:,isinf(options.weights)) = [];
+        padd2(:,floor(size(padd,2) / 2) + 1) = [];
         grad = sum(bsxfun(@times,(bsxfun(@minus,im, padd)./options.C^2 .* (1./sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + ...
-            (bsxfun(@minus,aData.reference_image, padd2)./options.T).^2))),options.weights_quad(~isinf(options.weights_quad)')),2);
+            (bsxfun(@minus,aData.reference_image(:), padd2)./options.T).^2))),options.weights_quad([1:floor(numel(options.weights_quad) / 2), ceil(numel(options.weights_quad) / 2) + 1 : end])),2);
         if nargout >= 2
-            varargout{1} = sum(bsxfun(@times, sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + (bsxfun(@minus,aData.reference_image, padd2)./options.T).^2) - 1, options.weights_quad(~isinf(options.weights_quad)')),2);
+            varargout{1} = sum(bsxfun(@times, sqrt(1 + (bsxfun(@minus,im, padd)./options.C).^2 + (bsxfun(@minus,aData.reference_image, padd2)./options.T).^2) - 1, options.weights_quad([1:floor(numel(options.weights_quad) / 2), ceil(numel(options.weights_quad) / 2) + 1 : end])'),2);
         end
     else
         padd = padding(reshape(im,Nx,Ny,Nz),[options.Ndx options.Ndy options.Ndz]);
