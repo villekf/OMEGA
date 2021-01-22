@@ -47,6 +47,8 @@ MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlab
 
 Visual studio can be downloaded from [here](https://visualstudio.microsoft.com/).
 
+On Ubuntu you can install g++ with `sudo apt install build-essential`.
+
 To install the OMEGA software, either simply extract the release/master package, download the MATLAB toolbox file from [releases](https://github.com/villekf/OMEGA/releases) (`OMEGA.-.Open-source.MATLAB.emission.tomography.software.mltbx`) or obtain the source code through git:  
 `git clone https://github.com/villekf/OMEGA`
 and then add the OMEGA folder and subfolders to MATLAB/Octave path (this is done automatically if you install with the mltbx-file). Finally, run `install_mex` in the source folder to build the necessary MEX-files. Both ROOT and OpenCL support will be installed, if the corresponding files are found. ROOT is, however, only supported on Linux and MacOS platforms. Possible compilation errors can be seen with `install_mex(1)`. OpenCL include and library paths, ArrayFire path and ROOT path can also be set manually with `install_mex(0, OpenCL_include_path, OpenCL_lib_path, AF_PATH, ROOT_PATH)`. `OpenCL_include_path` should be the folder where `cl.h` is located, `OpenCL_lib_path` the folder where `OpenCL.lib/libOpenCL.so` (Windows/Linux) is located, `AF_PATH` the path to ArrayFire installation location and `ROOT_PATH` to ROOT installation location.
@@ -231,9 +233,9 @@ https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 Or see the solutions in [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1).
 
-If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file).
+If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1) for details.
 
-ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected.
+ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data).
 
 ROOT is not supported on Windows, though it should, theoretically, work if you use ROOT with 32-bit MATLAB, but this is untested.
 
