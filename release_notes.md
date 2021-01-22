@@ -13,6 +13,8 @@
 
 - Detector coordinates can now be extracted from Inveon list-mode data files to perform list-mode reconstruction
 
+- `install_mex` will now try to use the supported g++ compiler if available instead of default (Linux only)
+
 ### Bug fixes and enhancements
 
 - Additional parameters are now saved in the `pz` cell matrix
