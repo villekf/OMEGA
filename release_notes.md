@@ -106,6 +106,9 @@
 
 - Fixed TV type 3 when using anatomical prior (implementation 1 & 4)
 
+- Fixed MLEM when using implementation 1
+  - Fixed also errors when creating the system matrix
+
 ## OMEGA v1.1.0
 
 ### New features
