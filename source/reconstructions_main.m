@@ -82,6 +82,8 @@ if options.use_raw_data
     RandProp.smoothing = false;
     RandProp.variance_reduction = false;
     ScatterProp.smoothing = false;
+    ScatterProp.variance_reduction = false;
+    ScatterProp.normalization = false;
     if options.partitions == 1
         load_string = [options.machine_name '_measurements_' options.name '_static_raw'];
         if options.use_ASCII && options.use_machine == 0
@@ -135,7 +137,10 @@ if options.use_raw_data
     if options.randoms_correction && ~options.reconstruct_trues && ~options.reconstruct_scatter
         if ((options.use_ASCII || options.use_LMF || options.use_root) && options.use_machine == 0) || options.use_machine == 1
             options.SinDelayed = loadStructFromFile(load_string, 'delayed_coincidences');
-            if iscell(options.SinDelayed)
+            if ~isfield(options,'SinDelayed')
+                warning('No randoms correction data detected, disabling randoms correction!')
+                options.randoms_correction = false;
+            elseif iscell(options.SinDelayed)
                 if numel(options.SinDelayed{1}) == 1
                     warning('No randoms correction data detected, disabling randoms correction!')
                     options.randoms_correction = false;
@@ -146,262 +151,53 @@ if options.use_raw_data
                     options.randoms_correction = false;
                 end
             end
-            if isfield(options,'SinDelayed')
-                if iscell(options.SinM) && iscell(options.SinDelayed)
-                    for kk = 1 : length(options.SinM)
-                        if options.variance_reduction
-                            options.SinDelayed{kk} = Randoms_variance_reduction(single(options.SinDelayed{kk}), options);
-                            RandProp.variance_reduction = true;
-                        end
-                        if options.randoms_smoothing
-                            options.SinDelayed{kk} = randoms_smoothing(options.SinDelayed{kk}, options);
-                            RandProp.smoothing = true;
-                        end
-                        if ~options.corrections_during_reconstruction
-                            options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk} / options.TOF_bins);
-                        end
-                        if ~options.corrections_during_reconstruction
-                            options.SinM{kk}(options.SinM{kk} < 0) = 0;
-                        end
-                    end
-                else
-                    if options.variance_reduction
-                        options.SinDelayed = Randoms_variance_reduction(single(options.SinDelayed), options);
-                        RandProp.variance_reduction = true;
-                    end
-                    if options.randoms_smoothing
-                        options.SinDelayed = randoms_smoothing(options.SinDelayed, options);
-                        RandProp.smoothing = true;
-                    end
-                    if ~options.corrections_during_reconstruction
-                        options.SinM = options.SinM - single(options.SinDelayed / options.TOF_bins);
-                    end
-                    if ~options.corrections_during_reconstruction
-                        options.SinM(options.SinM < 0) = 0;
-                    end
-                end
-                if ~options.corrections_during_reconstruction
-                    options = rmfield(options,'SinDelayed');
-                end
-            else
-                disp('Delayed coincidences not found, randoms correction not performed')
-                options.SinDelayed = 0;
-                options.randoms_correction = false;
-            end
+%             [options,RandProp, options.SinDelayed] = applyScatterRandoms(options,RandProp, options.SinDelayed, 0);
         else
-            if isfield(options,'SinDelayed')
+            if ~isfield(options,'SinDelayed')
                 options = loadDelayedData(options);
-                if iscell(options.SinDelayed)
-                    if iscell(options.SinM)
-                        for kk = 1 : length(options.SinM)
-                            if numel(options.SinDelayed{kk}) ~= numel(options.SinM{kk})
-                                error('Size mismatch between randoms correction data and measurement data')
-                            end
-                            if options.variance_reduction
-                                options.SinDelayed{kk} = Randoms_variance_reduction(single(options.SinDelayed{kk}), options);
-                                RandProp.variance_reduction = true;
-                            end
-                            if options.randoms_smoothing
-                                options.SinDelayed{kk} = randoms_smoothing(double(options.SinDelayed{kk}), options);
-                                RandProp.smoothing = true;
-                            end
-                            if ~options.corrections_during_reconstruction
-                                options.SinM{kk} = options.SinM{kk} - single(options.SinDelayed{kk} / options.TOF_bins);
-                            end
-                            if ~options.corrections_during_reconstruction
-                                options.SinM{kk}(options.SinM{kk} < 0) = 0;
-                            end
-                        end
-                    else
-                        if numel(options.SinDelayed{1}) ~= numel(options.SinM)
-                            error('Size mismatch between randoms correction data and measurement data')
-                        end
-                        options.SinM = options.SinM - single(options.SinDelayed{1}(:) / options.TOF_bins);
-                        options.SinM(options.SinM < 0) = 0;
-                    end
-                else
-                    if iscell(options.SinM)
-                        for kk = 1 : length(options.SinM)
-                            if numel(options.SinDelayed) ~= numel(options.SinM{kk})
-                                error('Size mismatch between randoms correction data and measurement data')
-                            end
-                            if options.variance_reduction
-                                options.SinDelayed = Randoms_variance_reduction(single(options.SinDelayed), options);
-                                RandProp.variance_reduction = true;
-                            end
-                            if options.randoms_smoothing
-                                options.SinDelayed = randoms_smoothing(single(options.SinDelayed), options);
-                                RandProp.smoothing = true;
-                            end
-                            if ~options.corrections_during_reconstruction
-                                options.SinM{kk} = (options.SinM{kk}) - single(options.SinDelayed(:) / options.TOF_bins);
-                            end
-                            if ~options.corrections_during_reconstruction
-                                options.SinM{kk}(options.SinM{kk} < 0) = 0;
-                            end
-                        end
-                    else
-                        if numel(options.SinDelayed) ~= numel(options.SinM)
-                            error('Size mismatch between randoms correction data and measurement data')
-                        end
-                        if options.variance_reduction
-                            options.SinDelayed = Randoms_variance_reduction(single(options.SinDelayed), options);
-                            RandProp.variance_reduction = true;
-                        end
-                        if options.randoms_smoothing
-                            options.SinDelayed = randoms_smoothing(options.SinDelayed, options);
-                            RandProp.smoothing = true;
-                        end
-                        if ~options.corrections_during_reconstruction
-                            options.SinM = options.SinM - single(options.SinDelayed(:) / options.TOF_bins);
-                        end
-                        if ~options.corrections_during_reconstruction
-                            options.SinM(options.SinM < 0) = 0;
-                        end
-                    end
-                end
             end
+%             [options,RandProp, options.SinDelayed] = applyScatterRandoms(options,RandProp, options.SinDelayed, 0);
         end
     end
     if options.scatter_correction && ~options.corrections_during_reconstruction
         if ~isfield(options,'ScatterC')
             options = loadScatterData(options);
         end
-        if iscell(options.ScatterC)
-            if iscell(options.SinM)
-                for kk = 1 : length(options.SinM)
-                    if numel(options.ScatterC{kk}) ~= numel(options.SinM{kk})
-                        error('Size mismatch between options.scatter correction data and measurement data')
-                    end
-                    if options.scatter_variance_reduction
-                        options.ScatterC{kk} = Randoms_variance_reduction(single(options.ScatterC{kk}), options);
-                    end
-                    if options.scatter_smoothing
-                        options.ScatterC{kk} = randoms_smoothing(options.ScatterC{kk}, options);
-                        if options.subtract_scatter
-                            options.SinM{kk} = full(options.SinM{kk}) - single(options.ScatterC{kk}(:));
-                        else
-                            options.SinM{kk} = full(options.SinM{kk}) .* single(options.ScatterC{kk}(:));
-                        end
-                        ScatterProp.smoothing = true;
-                    else
-                        if options.subtract_scatter
-                            options.SinM{kk} = full(options.SinM{kk}) - single(options.ScatterC{kk}(:));
-                        else
-                            options.SinM{kk} = full(options.SinM{kk}) .* single(options.ScatterC{kk}(:));
-                        end
-                    end
-                    options.SinM{kk}(options.SinM{kk} < 0) = 0;
-                end
-            else
-                if numel(options.ScatterC{1}) ~= numel(options.SinM)
-                    error('Size mismatch between options.scatter correction data and measurement data')
-                end
-                if options.scatter_variance_reduction
-                    options.ScatterC{1} = Randoms_variance_reduction(single(options.ScatterC{1}), options);
-                end
-                if options.scatter_smoothing
-                    options.ScatterC{1} = randoms_smoothing(single(options.ScatterC{1}), options);
-                    if options.subtract_scatter
-                        options.SinM = full(options.SinM) - single(options.ScatterC{1}(:));
-                    else
-                        options.SinM = full(options.SinM) .* single(options.ScatterC{1}(:));
-                    end
-                    ScatterProp.smoothing = true;
-                else
-                    if options.subtract_scatter
-                        options.SinM = (options.SinM) - single(options.ScatterC{1}(:));
-                    else
-                        options.SinM = (options.SinM) .* single(options.ScatterC{1}(:));
-                    end
-                end
-                options.SinM(options.SinM < 0) = 0;
-            end
-        else
-            if iscell(options.SinM)
-                for kk = 1 : length(options.SinM)
-                    if numel(options.ScatterC) ~= numel(options.SinM{kk})
-                        error('Size mismatch between options.scatter correction data and measurement data')
-                    end
-                    if options.scatter_variance_reduction
-                        options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
-                    end
-                    if options.scatter_smoothing
-                        options.ScatterC = randoms_smoothing(options.ScatterC, options);
-                        if options.subtract_scatter
-                            options.SinM{kk} = full(options.SinM{kk}) - single(options.ScatterC(:));
-                        else
-                            options.SinM{kk} = full(options.SinM{kk}) .* single(options.ScatterC(:));
-                        end
-                        ScatterProp.smoothing = true;
-                    else
-                        if options.subtract_scatter
-                            options.SinM{kk} = (options.SinM{kk}) - single(options.ScatterC(:));
-                        else
-                            options.SinM{kk} = (options.SinM{kk}) .* single(options.ScatterC(:));
-                        end
-                    end
-                    options.SinM{kk}(options.SinM{kk} < 0) = 0;
-                end
-            else
-                if numel(options.ScatterC) ~= numel(options.SinM)
-                    error('Size mismatch between options.scatter correction data and measurement data')
-                end
-                if options.scatter_variance_reduction
-                    options.ScatterC = Randoms_variance_reduction(single(options.ScatterC), options);
-                end
-                if options.scatter_smoothing
-                    options.ScatterC = randoms_smoothing(options.ScatterC, options);
-                    if options.subtract_scatter
-                        options.SinM = full(options.SinM) - single(options.ScatterC(:));
-                    else
-                        options.SinM = full(options.SinM) .* single(options.ScatterC(:));
-                    end
-                    ScatterProp.smoothing = true;
-                else
-                    if options.subtract_scatter
-                        options.SinM = options.SinM - single(options.ScatterC(:));
-                    else
-                        options.SinM = options.SinM .* single(options.ScatterC(:));
-                    end
-                end
-                options.SinM(options.SinM < 0) = 0;
-            end
-        end
+%         [options,ScatterProp, options.ScatterC] = applyScatterRandoms(options,ScatterProp, options.ScatterC, 1);
     end
-    if options.normalization_correction && ~options.corrections_during_reconstruction
-        if options.use_user_normalization
-            [file, fpath] = uigetfile({'*.mat'},'Select normalization datafile');
-            if isequal(file, 0)
-                error('No file was selected')
-            end
-            if any(strfind(file, '.nrm'))
-                error('Inveon normalization data cannot be used with raw list-mode data')
-            else
-                data = load([fpath file]);
-                variables = fieldnames(data);
-                normalization = data.(variables{1});
-                clear data
-                if numel(normalization) ~= sum(1:options.detectors)
-                    error('Size mismatch between the current data and the normalization data file')
-                end
-            end
-        else
-            norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-            if exist(norm_file, 'file') == 2
-                normalization = loadStructFromFile(norm_file,'normalization');
-            else
-                error('Normalization correction selected, but no normalization data found')
-            end
-        end
-        if iscell(options.SinM)
-            for kk = 1 : length(options.SinM)
-                options.SinM{kk} = options.SinM{kk} .* single(full(normalization));
-            end
-        else
-            options.SinM = options.SinM .* single(full(normalization));
-        end
-    end
+%     if options.normalization_correction && ~options.corrections_during_reconstruction
+%         if options.use_user_normalization
+%             [file, fpath] = uigetfile({'*.mat'},'Select normalization datafile');
+%             if isequal(file, 0)
+%                 error('No file was selected')
+%             end
+%             if any(strfind(file, '.nrm'))
+%                 error('Inveon normalization data cannot be used with raw list-mode data')
+%             else
+%                 data = load([fpath file]);
+%                 variables = fieldnames(data);
+%                 normalization = data.(variables{1});
+%                 clear data
+%                 if numel(normalization) ~= sum(1:options.detectors)
+%                     error('Size mismatch between the current data and the normalization data file')
+%                 end
+%             end
+%         else
+%             norm_file = [folder options.machine_name '_normalization_listmode.mat'];
+%             if exist(norm_file, 'file') == 2
+%                 normalization = loadStructFromFile(norm_file,'normalization');
+%             else
+%                 error('Normalization correction selected, but no normalization data found')
+%             end
+%         end
+%         if iscell(options.SinM)
+%             for kk = 1 : length(options.SinM)
+%                 options.SinM{kk} = options.SinM{kk} .* single(full(normalization));
+%             end
+%         else
+%             options.SinM = options.SinM .* single(full(normalization));
+%         end
+%     end
     
     clear coincidences options.coincidences true_coincidences delayed_coincidences
     % Sinogram data
@@ -491,28 +287,29 @@ else
             end
         end
         if ~options.corrections_during_reconstruction && ~isempty(appliedCorrections)
-            if ~appliedCorrections.normalization && options.normalization_correction
-                error('Normalization correction selected, but no normalization correction applied to the sinogram')
+            if appliedCorrections.normalization
+                options.normalization_correction = false;
+%                 error('Normalization correction selected, but no normalization correction applied to the sinogram')
             end
-            if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with smoothing')) ...
-                    && options.variance_reduction
-                error('Randoms variance correction selected, but no variance reduction has been performed')
+            if ~isempty(strfind(appliedCorrections.randoms,'randoms correction'))
+                options.randoms_correction = false;
+%                 error('Randoms variance correction selected, but no variance reduction has been performed')
             end
-            if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with variance reduction')) ...
-                    && options.randoms_smoothing
-                error('Randoms smoothing selected, but no smoothing has been performed')
+%             if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with variance reduction')) ...
+%                     && options.randoms_smoothing
+%                 error('Randoms smoothing selected, but no smoothing has been performed')
+%             end
+            if ~isempty(strfind(appliedCorrections.scatter, 'scatter correction'))
+                options.scatter_correction = false;
+%                 error('Scatter variance correction selected, but no variance reduction has been performed')
             end
-            if (strcmp(appliedCorrections.scatter, 'scatter correction') || strcmp(appliedCorrections.scatter, 'scatter correction with smoothing')) ...
-                    && options.scatter_variance_reduction
-                error('Scatter variance correction selected, but no variance reduction has been performed')
-            end
-            if (strcmp(appliedCorrections.scatter, 'scatter correction') || strcmp(appliedCorrections.scatter, 'scatter correction with variance reduction')) ...
-                    && options.scatter_smoothing
-                error('Scatter smoothing selected, but no smoothing has been performed')
-            end
-            if ~isempty(strfind(appliedCorrections.scatter,'normalized scatter correction')) && options.normalized_scatter
-                error('Normalized scatter correction selected, but no normalization has been performed')
-            end
+%             if (strcmp(appliedCorrections.scatter, 'scatter correction') || strcmp(appliedCorrections.scatter, 'scatter correction with variance reduction')) ...
+%                     && options.scatter_smoothing
+%                 error('Scatter smoothing selected, but no smoothing has been performed')
+%             end
+%             if ~isempty(strfind(appliedCorrections.scatter,'normalized scatter correction')) && options.normalized_scatter
+%                 error('Normalized scatter correction selected, but no normalization has been performed')
+%             end
             if ~appliedCorrections.gapFilling && options.fill_sinogram_gaps
                 appliedCorrections.gapFilling = true;
                 [~, ~, xp, yp] = detector_coordinates(options);
@@ -619,11 +416,13 @@ else
             clear Sin
         end
     end
-    if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
-        if options.use_machine == 0
-            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
-        elseif options.use_machine == 1 || options.use_machine == 3
-            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
+    if options.partitions == 1 && options.randoms_correction && ~options.reconstruct_scatter && ~options.reconstruct_trues
+        if options.use_machine == 0 || options.use_machine == 1 || options.use_machine == 3
+            try
+                [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
+            catch
+                options = loadDelayedData(options);
+            end
         else
             options = loadDelayedData(options);
         end
@@ -638,51 +437,53 @@ else
                 options.randoms_correction = false;
             end
         end
-    elseif options.randoms_correction && options.corrections_during_reconstruction && ~options.reconstruct_scatter && ~options.reconstruct_trues
-        if options.use_machine == 0
-            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
-        elseif options.use_machine == 1 || options.use_machine == 3
-            [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile, 'SinDelayed','RandProp');
+    elseif options.randoms_correction && ~options.reconstruct_scatter && ~options.reconstruct_trues
+        if options.use_machine == 0 || options.use_machine == 1 || options.use_machine == 3
+            try
+                [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
+            catch
+                options = loadDelayedData(options);
+            end
         else
             options = loadDelayedData(options);
-            if length(options.SinDelayed) < options.partitions && iscell(options.SinDelayed)
-                warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
-                temp = options.SinDelayed;
-                options.SinDelayed = cell(options.partitions,1);
-                if sum(size(temp{1})) > 1
-                    if size(temp{1},1) ~= size(options.Nang)
-                        temp{1} = permute(temp{1},[2 1 3]);
+        end
+        if length(options.SinDelayed) < options.partitions && iscell(options.SinDelayed)
+            warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
+            temp = options.SinDelayed;
+            options.SinDelayed = cell(options.partitions,1);
+            if sum(size(temp{1})) > 1
+                if size(temp{1},1) ~= size(options.Nang)
+                    temp{1} = permute(temp{1},[2 1 3]);
+                end
+            end
+            for kk = 1 : options.partitions
+                options.SinDelayed{kk} = temp{1};
+            end
+        elseif options.partitions > 1
+            warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
+            temp = options.SinDelayed;
+            options.SinDelayed = cell(options.partitions,1);
+            if sum(size(temp)) > 1
+                if size(temp,1) ~= size(options.Nang)
+                    temp = permute(temp,[2 1 3]);
+                end
+            end
+            for kk = 1 : options.partitions
+                options.SinDelayed{kk} = temp;
+            end
+        else
+            if iscell(options.SinDelayed)
+                for kk = 1 : length(options.SinDelayed)
+                    if sum(size(options.SinDelayed{kk})) > 1
+                        if size(options.SinDelayed{kk},1) ~= size(options.Nang)
+                            options.SinDelayed{kk} = permute(options.SinDelayed{kk},[2 1 3]);
+                        end
                     end
-                end
-                for kk = 1 : options.partitions
-                    options.SinDelayed{kk} = temp{1};
-                end
-            elseif options.partitions > 1
-                warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
-                temp = options.SinDelayed;
-                options.SinDelayed = cell(options.partitions,1);
-                if sum(size(temp)) > 1
-                    if size(temp,1) ~= size(options.Nang)
-                        temp = permute(temp,[2 1 3]);
-                    end
-                end
-                for kk = 1 : options.partitions
-                    options.SinDelayed{kk} = temp;
                 end
             else
-                if iscell(options.SinDelayed)
-                    for kk = 1 : length(options.SinDelayed)
-                        if sum(size(options.SinDelayed{kk})) > 1
-                            if size(options.SinDelayed{kk},1) ~= size(options.Nang)
-                                options.SinDelayed{kk} = permute(options.SinDelayed{kk},[2 1 3]);
-                            end
-                        end
-                    end
-                else
-                    if sum(size(options.SinDelayed)) > 1
-                        if size(options.SinDelayed,1) ~= size(options.Nang)
-                            options.SinDelayed = permute(options.SinDelayed,[2 1 3]);
-                        end
+                if sum(size(options.SinDelayed)) > 1
+                    if size(options.SinDelayed,1) ~= size(options.Nang)
+                        options.SinDelayed = permute(options.SinDelayed,[2 1 3]);
                     end
                 end
             end
