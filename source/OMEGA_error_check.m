@@ -398,16 +398,16 @@ if options.TOF_bins_used > 1 && (options.projector_type > 1 || options.projector
     error('TOF is currently only supported with improved Siddon (projector_type = 1)')
 end
 if options.TOF_bins > 1 && options.TOF_width <= 0
-    error('TOF width must be greater than zero.')
+    error('TOF width (options.TOF_width) must be greater than zero.')
 end
 if options.TOF_bins > 1 && options.TOF_bins_used == 1
     disp('Summing TOF bins.')
 end
 if options.TOF_bins_used > 1 && options.TOF_FWHM == 0
-    error('TOF enabled, but the TOF FWHM is zero. FWHM must be nonzero.')
+    error('TOF enabled, but the TOF FWHM (options.TOF_FWHM) is zero. FWHM must be nonzero.')
 end
 if options.TOF_bins > 1 && options.use_raw_data
-    error('TOF data is only available with sinogram data.')
+    error('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = false).')
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose
