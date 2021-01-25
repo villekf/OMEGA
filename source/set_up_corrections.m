@@ -648,6 +648,9 @@ elseif (options.randoms_correction || options.scatter_correction) && ~options.re
         options = rmfield(options,'ScatterC');
         options.scatter_correction = false;
     end
+    if options.verbose
+        disp('Precorrections completed')
+    end
 else
     randoms_correction = false;
     options.scatter_correction = false;

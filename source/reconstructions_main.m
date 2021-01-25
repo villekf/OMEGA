@@ -263,6 +263,7 @@ else
         end
     end
     if ~options.reconstruct_trues && ~options.reconstruct_scatter
+        loadRaw = false;
         if isfield(options,'SinM') == 0
             if ((options.randoms_correction || options.scatter_correction || options.normalization_correction) && ~options.corrections_during_reconstruction) ...
                     || options.fill_sinogram_gaps
@@ -270,6 +271,7 @@ else
                     [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'SinM','appliedCorrections');
                 catch
                     [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                    loadRaw = true;
                 end
             else
                 options.SinM = loadStructFromFile(sinoFile, 'raw_SinM');
@@ -287,22 +289,88 @@ else
             end
         end
         if ~options.corrections_during_reconstruction && ~isempty(appliedCorrections)
+            normalization_correction = options.normalization_correction;
+            if appliedCorrections.normalization && ~options.normalization_correction
+                warning('Normalization correction not selected, but data precorrected with normalization! Precorrecting without normalization.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                loadRaw = true;
+            end
             if appliedCorrections.normalization
-                options.normalization_correction = false;
-%                 error('Normalization correction selected, but no normalization correction applied to the sinogram')
+                normalization_correction = false;
             end
-            if ~isempty(strfind(appliedCorrections.randoms,'randoms correction'))
-                options.randoms_correction = false;
-%                 error('Randoms variance correction selected, but no variance reduction has been performed')
+            randoms_correction = options.randoms_correction;
+            if ~isempty(strfind(appliedCorrections.randoms,'variance reduction')) && ~options.variance_reduction && options.randoms_correction
+                warning('Randoms variance correction not selected, but data precorrected with randoms with applied variance reduction! Precorrecting without variance reduction.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                loadRaw = true;
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+            elseif ~isempty(strfind(appliedCorrections.randoms,'smoothing')) && ~options.randoms_smoothing && options.randoms_correction
+                warning('Randoms smoothing not selected, but data precorrected with randoms with applied smoothing! Precorrecting without smoothing.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                loadRaw = true;
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+            elseif isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw && randoms_correction
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                loadRaw = true;
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+            elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && randoms_correction && ...
+                    ((options.variance_reduction && isempty(strfind(appliedCorrections.randoms,'variance reduction'))) ...
+                    || (options.randoms_smoothing && isempty(strfind(appliedCorrections.randoms,'smoothing'))))
+                warning('Randoms corrections selected, but data not precorrected with selected options! Precorrecting with selected options.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                loadRaw = true;
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+            elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw
+                randoms_correction = false;
+                %                 error('Randoms variance correction selected, but no variance reduction has been performed')
             end
-%             if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with variance reduction')) ...
-%                     && options.randoms_smoothing
-%                 error('Randoms smoothing selected, but no smoothing has been performed')
-%             end
-            if ~isempty(strfind(appliedCorrections.scatter, 'scatter correction'))
+            %             if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with variance reduction')) ...
+            %                     && options.randoms_smoothing
+            %                 error('Randoms smoothing selected, but no smoothing has been performed')
+            %             end
+            if ~isempty(strfind(appliedCorrections.scatter,'variance reduction')) && ~options.scatter_variance_reduction && options.scatter_correction
+                warning('Scatter variance correction not selected, but data precorrected with scatter with applied variance reduction! Precorrecting without variance reduction.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                if ~randoms_correction && options.randoms_correction
+                    randoms_correction = true;
+                end
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+                loadRaw = true;
+            elseif ~isempty(strfind(appliedCorrections.scatter,'smoothing')) && ~options.scatter_smoothing && options.scatter_correction
+                warning('Scatter smoothing not selected, but data precorrected with scatter with applied smoothing! Precorrecting without smoothing.')
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                if ~randoms_correction && options.randoms_correction
+                    randoms_correction = true;
+                end
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+                loadRaw = true;
+            elseif isempty(strfind(appliedCorrections.scatter,'scatter correction')) && ~loadRaw && options.scatter_correction
+                [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
+                if ~randoms_correction && options.randoms_correction
+                    randoms_correction = true;
+                end
+                if appliedCorrections.normalization && ~normalization_correction
+                    normalization_correction = true;
+                end
+                loadRaw = true;
+            elseif ~isempty(strfind(appliedCorrections.scatter, 'scatter correction')) && ~loadRaw
                 options.scatter_correction = false;
-%                 error('Scatter variance correction selected, but no variance reduction has been performed')
+                %                 error('Scatter variance correction selected, but no variance reduction has been performed')
             end
+            options.randoms_correction = randoms_correction;
+            options.normalization_correction = normalization_correction;
 %             if (strcmp(appliedCorrections.scatter, 'scatter correction') || strcmp(appliedCorrections.scatter, 'scatter correction with variance reduction')) ...
 %                     && options.scatter_smoothing
 %                 error('Scatter smoothing selected, but no smoothing has been performed')
@@ -310,7 +378,7 @@ else
 %             if ~isempty(strfind(appliedCorrections.scatter,'normalized scatter correction')) && options.normalized_scatter
 %                 error('Normalized scatter correction selected, but no normalization has been performed')
 %             end
-            if ~appliedCorrections.gapFilling && options.fill_sinogram_gaps
+            if (~appliedCorrections.gapFilling || loadRaw) && options.fill_sinogram_gaps
                 appliedCorrections.gapFilling = true;
                 [~, ~, xp, yp] = detector_coordinates(options);
                 for llo = 1 : options.partitions
