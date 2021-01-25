@@ -15,6 +15,8 @@
 
 - `install_mex` will now try to use the supported g++ compiler if available instead of default (Linux only)
 
+- Sinogram/raw data precorrection is now applied automatically before reconstructions with the selected corrections
+
 ### Bug fixes and enhancements
 
 - Additional parameters are now saved in the `pz` cell matrix
@@ -94,6 +96,8 @@
 
 - Various fixes to the custom prior reconstruction
   - Algorithms other than OSL should now work
+  
+- Various fixes to `mainPET.m` single reconstruction section
   
 - GATE ASCII data load now supports 2D data
 
