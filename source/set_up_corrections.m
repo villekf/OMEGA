@@ -762,10 +762,20 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
             else
                 data = load(file);
                 variables = fieldnames(data);
-                options.normalization = data.(variables{1});
+                if any(strcmp(variables,'normalization'))
+                    options.normalization = data.(variables{strcmp(variables,'normalization')});
+                else
+                    options.normalization = data.(variables{1});
+                end
                 clear data
-                if numel(options.normalization) ~= numel(options.SinM{1})
-                    error('Size mismatch between the current data and the normalization data file')
+                if iscell(options.SinM)
+                    if numel(options.normalization) ~= numel(options.SinM{1})
+                        error('Size mismatch between the current data and the normalization data file')
+                    end
+                else
+                    if numel(options.normalization) ~= numel(options.SinM)
+                        error('Size mismatch between the current data and the normalization data file')
+                    end
                 end
             end
             options.normalization = options.normalization(:);
