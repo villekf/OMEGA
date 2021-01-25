@@ -52,9 +52,9 @@ if options.precompute_lor == false && options.implementation == 3
     error('precompute_lor must be set to true if using method 3')
 end
 
-if (options.MBSREM) && options.implementation == 2
-    error('BSREM, MBSREM and ROSEM-MAP do not work with implementation 2. Use implementation 1 instead')
-end
+% if (options.MBSREM) && options.implementation == 2
+%     error('BSREM, MBSREM and ROSEM-MAP do not work with implementation 2. Use implementation 1 instead')
+% end
 
 Nx = options.Nx;
 Ny = options.Ny;
@@ -118,7 +118,8 @@ end
 
 [gaussK, options] = PSFKernel(options);
 
-if custom
+if custom || (isfield(options,'quad') && isfield(options,'Huber') && isfield(options,'FMH') && isfield(options,'L') && ...
+        isfield(options,'weighted_mean') && isfield(options,'MRP') && isfield(options,'MAP'))
     if (options.quad || options.Huber || options.FMH || options.L || options.weighted_mean || options.MRP) && options.MAP
         Ndx = options.Ndx;
         Ndy = options.Ndy;
@@ -238,8 +239,8 @@ if custom
         % Perform corrections if needed
         if options.randoms_correction && ~options.reconstruct_trues && ~options.reconstruct_scatter
             if (options.use_ASCII || options.use_LMF || options.use_root) && options.use_machine == 0
-                load(load_string, 'delayed_coincidences')
-                if exist('delayed_coincidences','var')
+                try
+                    load(load_string, 'delayed_coincidences')
                     if ~options.corrections_during_reconstruction
                         if iscell(options.SinM) && iscell(delayed_coincidences)
                             for kk = 1 : length(options.SinM)
@@ -251,8 +252,19 @@ if custom
                             options.SinM(options.SinM < 0) = 0;
                         end
                     end
-                else
-                    disp('Delayed coincidences not found, randoms correction not performed')
+                catch
+                    options = loadDelayedData(options);
+                    if ~options.corrections_during_reconstruction
+                        if iscell(options.SinM) && iscell(options.SinDelayed)
+                            for kk = 1 : length(options.SinM)
+                                options.SinM{kk} = options.SinM{kk} - options.SinDelayed{kk};
+                                options.SinM{kk}(options.SinM{kk} < 0) = 0;
+                            end
+                        else
+                            options.SinM = options.SinM - options.SinDelayed;
+                            options.SinM(options.SinM < 0) = 0;
+                        end
+                    end
                 end
             else
                 if iscell(options.SinD)
@@ -371,10 +383,12 @@ if custom
             end
         end
         if options.partitions == 1 && options.randoms_correction && options.corrections_during_reconstruction
-            if options.use_machine == 0
-                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
-            elseif  options.use_machine == 1
-                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
+            if options.use_machine == 0 || options.use_machine == 1
+                try
+                    options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
+                catch
+                    options = loadDelayedData(options);
+                end
             else
                 [dfile, dfpath] = uigetfile('*.mat','Select delayed coincidence datafile');
                 if isequal(dfile, 0)
@@ -394,10 +408,12 @@ if custom
                 clear data variables
             end
         elseif options.randoms_correction && options.corrections_during_reconstruction
-            if options.use_machine == 0
-                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
-            elseif  options.use_machine == 1
-                options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
+            if options.use_machine == 0 || options.use_machine == 1
+                try
+                    options.SinDelayed = loadStructFromFile(sinoFile,'SinDelayed');
+                catch
+                    options = loadDelayedData(options);
+                end
             else
                 [options.file, options.fpath] = uigetfile('*.mat','Select delayed coincidence datafile');
                 if isequal(options.file, 0)
@@ -583,12 +599,16 @@ options.TotSinos = int32(TotSinos);
 
 [x, y, z_det, options] = get_coordinates(options, options.blocks, options.pseudot);
 
-if ~custom
+if ~custom && ~isfield(options,'randoms_correction')
     options.randoms_correction = false;
+end
+if ~custom && ~isfield(options,'scatter_correction')
     options.scatter_correction = false;
 end
 
-[options.normalization_correction, options.randoms_correction, options] = set_up_corrections(options, options.blocks, [], []);
+[normalization_correction, randoms_correction, options] = set_up_corrections(options, options.blocks, [], []);
+options.normalization_correction = normalization_correction;
+options.randoms_correction = randoms_correction;
 
 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
     options.x = single(x);
@@ -770,7 +790,7 @@ end
     gaussK, options.bmin, options.bmax, options.Vmax, options.V);
 
 
-if options.MBSREM || options.mramla
+if (options.MBSREM || options.mramla) && (options.implementation == 1 || options.implementation == 4)
     if iscell(options.SinDelayed)
         if iscell(options.SinM)
             options.epsilon_mramla = MBSREM_epsilon(options.SinM{1}, options.epps, options.randoms_correction, options.SinDelayed{1}, options.E);
@@ -782,6 +802,13 @@ if options.MBSREM || options.mramla
             options.epsilon_mramla = MBSREM_epsilon(options.SinM{1}, options.epps, options.randoms_correction, options.SinDelayed, options.E);
         else
             options.epsilon_mramla = MBSREM_epsilon(options.SinM, options.epps, options.randoms_correction, options.SinDelayed, options.E);
+        end
+    end
+    if options.U == 0 || isempty(options.U)
+        if iscell(options.SinM)
+            options.U = max(double(options.SinM{1}) ./ options.Amin);
+        else
+            options.U = max(double(options.SinM) ./ options.Amin);
         end
     end
 end

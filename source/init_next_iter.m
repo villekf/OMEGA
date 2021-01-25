@@ -255,7 +255,7 @@ if options.FMH && options.BSREM
     if options.verbose
         tStart = tic;
     end
-    med = FMH(options.im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
+    med = FMH(options.im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, options.N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_BSREM(:,iter_n) = BSREM_iter(options.im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, options.epps);
     options.im_vectors.FMH_BSREM_apu = options.im_vectors.FMH_BSREM(:, iter_n);
     if options.verbose
@@ -270,7 +270,7 @@ if options.FMH && options.ROSEM_MAP
     if options.verbose
         tStart = tic;
     end
-    med = FMH(options.im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
+    med = FMH(options.im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, options.Nx, options.Ny, options.Nz, options.N, options.Ndx, options.Ndy, options.Ndz, options.epps, options.med_no_norm);
     options.im_vectors.FMH_ROSEM(:,iter_n) = BSREM_iter(options.im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, options.epps);
     options.im_vectors.FMH_ROSEM_apu = options.im_vectors.FMH_ROSEM(:, iter_n);
     if options.verbose
@@ -443,7 +443,7 @@ if options.APLS && options.BSREM
     if options.verbose
         tStart = tic;
     end
-    grad = TVpriorFinal(options.im_vectors.APLS_BSREM(:, iter), 0, options.Nx, options.Ny, options.Nz, true, options, 4);
+    grad = TVpriorFinal(options.im_vectors.APLS_BSREM_apu, 0, options.Nx, options.Ny, options.Nz, true, options, 5);
     options.im_vectors.APLS_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, options.epps);
     options.im_vectors.APLS_BSREM_apu = options.im_vectors.APLS_BSREM(:, iter_n);
     if options.verbose
@@ -457,7 +457,7 @@ if options.APLS && options.ROSEM_MAP
     if options.verbose
         tStart = tic;
     end
-    grad = TVpriorFinal(options.im_vectors.APLS_ROSEM(:, iter), 0, options.Nx, options.Ny, options.Nz, true, options, 4);
+    grad = TVpriorFinal(options.im_vectors.APLS_ROSEM_apu, 0, options.Nx, options.Ny, options.Nz, true, options, 5);
     options.im_vectors.APLS_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, options.epps);
     options.im_vectors.APLS_ROSEM_apu = options.im_vectors.APLS_ROSEM(:, iter_n);
     if options.verbose
@@ -487,7 +487,7 @@ if options.TGV && options.BSREM
     if options.verbose
         tStart = tic;
     end
-    grad = TGV(options.im_vectors.TGV_BSREM(:, iter),options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
+    grad = TGV(options.im_vectors.TGV_BSREM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
     options.im_vectors.TGV_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.TGV_BSREM_apu, options.lam, iter, options.beta_TGV_bsrem, grad, options.epps);
     options.im_vectors.TGV_BSREM_apu = options.im_vectors.TGV_BSREM(:, iter_n);
     if options.verbose
@@ -501,7 +501,7 @@ if options.TGV && options.ROSEM_MAP
     if options.verbose
         tStart = tic;
     end
-    grad = TGV(options.im_vectors.TGV_ROSEM(:, iter),options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
+    grad = TGV(options.im_vectors.TGV_ROSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, options.Nx, options.Ny, options.Nz);
     options.im_vectors.TGV_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, options.beta_TGV_rosem, grad, options.epps);
     options.im_vectors.TGV_ROSEM_apu = options.im_vectors.TGV_ROSEM(:, iter_n);
     if options.verbose
@@ -527,7 +527,7 @@ if options.NLM && options.BSREM
     if options.verbose
         tStart = tic;
     end
-    med = NLM(options.im_vectors.NLM_BSREM_apu, options.options.Ndx, options.options.Ndy, options.options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+    med = NLM(options.im_vectors.NLM_BSREM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
     options.im_vectors.NLM_BSREM(:, iter_n) = BSREM_iter(options.im_vectors.NLM_BSREM_apu, options.lam, iter, options.beta_NLM_bsrem, med, options.epps);
     options.im_vectors.NLM_BSREM_apu = options.im_vectors.NLM_BSREM(:, iter_n);
     if options.verbose
@@ -541,7 +541,7 @@ if options.NLM && options.ROSEM_MAP
     if options.verbose
         tStart = tic;
     end
-    med = NLM(options.im_vectors.NLM_ROSEM_apu, options.options.Ndx, options.options.Ndy, options.options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+    med = NLM(options.im_vectors.NLM_ROSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
     options.im_vectors.NLM_ROSEM(:, iter_n) = BSREM_iter(options.im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, options.beta_NLM_rosem, med, options.epps);
     options.im_vectors.NLM_ROSEM_apu = options.im_vectors.NLM_ROSEM(:, iter_n);
     if options.verbose
