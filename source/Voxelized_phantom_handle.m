@@ -295,6 +295,9 @@ else
 end
 
 koko = size(A);
+if numel(koko) == 2
+    koko = [koko, 1];
+end
 prop.FOV_x = (pixsize(1) * 10) * koko(1);
 prop.FOV_y = (pixsize(2) * 10) * koko(2);
 prop.axial_FOV = (pixsize(3) * 10) * koko(3);
