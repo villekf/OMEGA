@@ -24,7 +24,6 @@ classdef forwardBackwardProject
         OProperties
         n_meas
         nn
-        gaussK
         sens
         subset
         index
@@ -291,7 +290,8 @@ classdef forwardBackwardProject
             
             obj.TOF = obj.OProperties.TOF_bins > 1;
             
-            [obj.gaussK, obj.OProperties] = PSFKernel(obj.OProperties);
+            [gaussK, obj.OProperties] = PSFKernel(obj.OProperties);
+            obj.OProperties.gaussK = gaussK;
             if obj.OProperties.implementation == 1 || obj.OProperties.implementation == 4
                 obj.sens = zeros(obj.OProperties.Nx*obj.OProperties.Ny*obj.OProperties.Nz,obj.OProperties.subsets);
             else
@@ -313,7 +313,7 @@ classdef forwardBackwardProject
             FOVay = obj.OProperties.FOVa_y;
             FOVax = double(FOVax);
             FOVay = double(FOVay);
-            axial_fow = double(obj.OProperties.axial_fov);
+            axial_fov = double(obj.OProperties.axial_fov);
             rings = obj.OProperties.rings;
             blocks = uint32(rings + length(pseudot) - 1);
             block1 = uint32(0);
@@ -369,7 +369,7 @@ classdef forwardBackwardProject
             end
             
             if ~obj.OProperties.listmode
-                [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,~,discard] = ...
+                [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,obj.OProperties.lor_orth,discard] = ...
                     form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF);
             else
                 obj.OProperties.LL = uint16(0);
@@ -388,95 +388,31 @@ classdef forwardBackwardProject
             end
             
             R = double(obj.OProperties.diameter);
-            etaisyys_x = (R-FOVax)/2;
-            etaisyys_y = (R-FOVay)/2;
-            if obj.OProperties.implementation == 2 || obj.OProperties.implementation == 3 || obj.OProperties.implementation == 5
-                zz = linspace(single(0), single(axial_fow), obj.OProperties.Nz + 1);
-                xx = single(linspace(etaisyys_x, R - etaisyys_x, obj.OProperties.Nx + 1));
-                yy = single(linspace(etaisyys_y, R - etaisyys_y, obj.OProperties.Ny + 1));
+            if abs(min(obj.OProperties.z_det(:))) < abs(max(obj.OProperties.z_det(:))) / 2
+                if min(obj.OProperties.z_det(:)) < 0
+                    Z = obj.OProperties.axial_fov - min(obj.OProperties.z_det(:)) * 2;
+                elseif max(obj.OProperties.z_det(:)) > obj.OProperties.axial_fov
+                    Z = obj.OProperties.axial_fov + (max(obj.OProperties.z_det(:)) - obj.OProperties.axial_fov) * 2;
+                else
+                    Z = obj.OProperties.axial_fov;
+                end
             else
-                zz = linspace(double(0), double(axial_fow), obj.OProperties.Nz + 1);
-                xx = double(linspace(etaisyys_x, R - etaisyys_x, obj.OProperties.Nx + 1));
-                yy = double(linspace(etaisyys_y, R - etaisyys_y, obj.OProperties.Ny + 1));
+                Z = 0;
             end
+            [obj.OProperties.xx,obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.OProperties.bx,obj.OProperties.by,...
+                obj.OProperties.bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.implementation);
             if ~obj.OProperties.simple
-                zz=zz(2*block1+1:2*blocks);
+                obj.OProperties.zz = obj.OProperties.zz(2*block1+1:2*blocks);
             end
+            [obj.OProperties.x_center,obj.OProperties.y_center,obj.OProperties.z_center,obj.OProperties.dec] = computePixelCenters(obj.OProperties.xx,...
+                obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.TOF,obj.OProperties);
             
-            % Distance of adjacent pixels
-            dx = diff(xx(1:2));
-            dy = diff(yy(1:2));
-            dz = diff(zz(1:2));
+            [obj.OProperties.V,obj.OProperties.Vmax,obj.OProperties.bmin,obj.OProperties.bmax] = computeVoxelVolumes(obj.OProperties.dx,obj.OProperties.dy,...
+                obj.OProperties.dz,obj.OProperties);
             
-            if obj.OProperties.projector_type == 2 || obj.OProperties.projector_type == 3
-                obj.OProperties.x_center = xx(1 : end - 1)' + dx/2;
-                obj.OProperties.y_center = yy(1 : end - 1)' + dy/2;
-                obj.OProperties.z_center = zz(1 : end - 1)' + dz/2;
-                temppi = min([obj.OProperties.FOVa_x / obj.OProperties.Nx, obj.OProperties.axial_fov / obj.OProperties.Nz]);
-                if obj.OProperties.tube_width_z > 0
-                    temppi = max([1,round(obj.OProperties.tube_width_z / temppi)]);
-                else
-                    temppi = max([1,round(obj.OProperties.tube_width_xy / temppi)]);
-                end
-                temppi = temppi * temppi * 4;
-                if obj.OProperties.apply_acceleration
-                    if obj.OProperties.tube_width_z == 0
-                        dec = uint32(sqrt(obj.OProperties.Nx^2 + obj.OProperties.Ny^2) * temppi);
-                    else
-                        dec = uint32(sqrt(obj.OProperties.Nx^2 + obj.OProperties.Ny^2 + obj.OProperties.Nz^2) * temppi);
-                    end
-                else
-                    dec = uint32(0);
-                end
-                obj.OProperties.dec = dec;
-            elseif (obj.OProperties.projector_type == 1 && obj.TOF)
-                obj.OProperties.x_center = xx(1);
-                obj.OProperties.y_center = yy(1);
-                obj.OProperties.z_center = zz(1);
-                if obj.OProperties.apply_acceleration && obj.OProperties.n_rays_transaxial * obj.OProperties.n_rays_axial == 1
-                    dec = uint32(sqrt(obj.OProperties.Nx^2 + obj.OProperties.Ny^2 + obj.OProperties.Nz^2) * 2);
-                else
-                    dec = uint32(0);
-                end
-                obj.OProperties.dec = dec;
-            else
-                obj.OProperties.x_center = xx(1);
-                obj.OProperties.y_center = yy(1);
-                obj.OProperties.z_center = zz(1);
-                obj.OProperties.dec = uint32(0);
-            end
-            
-            if obj.OProperties.projector_type == 3
-                voxel_radius = (sqrt(2) * obj.OProperties.voxel_radius * dx) / 2;
-                bmax = obj.OProperties.tube_radius + voxel_radius;
-                b = linspace(0, bmax, 10000)';
-                b(obj.OProperties.tube_radius > (b + voxel_radius)) = [];
-                b = unique(round(b*10^3)/10^3);
-                V = volumeIntersection(obj.OProperties.tube_radius, voxel_radius, b);
-                Vmax = (4*pi)/3*voxel_radius^3;
-                bmin = min(b);
-            else
-                V = 0;
-                Vmax = 0;
-                bmin = 0;
-                bmax = 0;
-            end
-            if obj.OProperties.implementation == 2 || obj.OProperties.implementation == 3
-                obj.OProperties.V = single(V);
-                obj.OProperties.Vmax = single(Vmax);
-                obj.OProperties.bmin = single(bmin);
-                obj.OProperties.bmax = single(bmax);
-            else
-                obj.OProperties.V = double(V);
-                obj.OProperties.Vmax = double(Vmax);
-                obj.OProperties.bmin = double(bmin);
-                obj.OProperties.bmax = double(bmax);
-            end
             % Multi-ray Siddon
             if (obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1) && ~obj.OProperties.listmode
-                [x,y] = getMultirayCoordinates(obj.OProperties);
-                obj.OProperties.x = x;
-                obj.OProperties.y = y;
+                [obj.OProperties.x,obj.OProperties.y] = getMultirayCoordinates(obj.OProperties);
             end
             obj.trans = false;
         end
@@ -504,7 +440,7 @@ classdef forwardBackwardProject
             end
             
             if obj.OProperties.use_psf
-                input = computeConvolution(input, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
+                input = computeConvolution(input, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
             end
             y = forward_project(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, [obj.nn(obj.subset) + 1 , obj.nn(obj.subset+1)], ...
                 obj.subset, true);
@@ -544,14 +480,14 @@ classdef forwardBackwardProject
                 
                 obj.sens(:,obj.subset) = norm;
                 if obj.OProperties.use_psf
-                    obj.sens(:,obj.subset) = computeConvolution(obj.sens(:,obj.subset), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
+                    obj.sens(:,obj.subset) = computeConvolution(obj.sens(:,obj.subset), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
                 end
             else
                 f = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
                     [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
             end
             if obj.OProperties.use_psf
-                f = computeConvolution(f, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.gaussK);
+                f = computeConvolution(f, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
             end
             if nargout >= 2
                 varargout{1} = obj;
