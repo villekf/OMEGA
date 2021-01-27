@@ -387,7 +387,13 @@ classdef forwardBackwardProject
                 end
             end
             
-            R = double(obj.OProperties.diameter);
+            if abs(min(obj.OProperties.x(:))) < abs(max(obj.OProperties.x(:))) / 2 && obj.OProperties.diameter == 0
+                R = (min(obj.OProperties.x(:))) + (max(obj.OProperties.x(:)));
+            elseif abs(min(obj.OProperties.x(:))) < abs(max(obj.OProperties.x(:))) / 2 && obj.OProperties.diameter > 0
+                R = obj.OProperties.diameter;
+            else
+                R = 0;
+            end
             if abs(min(obj.OProperties.z_det(:))) < abs(max(obj.OProperties.z_det(:))) / 2
                 if min(obj.OProperties.z_det(:)) < 0
                     Z = obj.OProperties.axial_fov - min(obj.OProperties.z_det(:)) * 2;

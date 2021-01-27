@@ -108,8 +108,6 @@ if options.listmode
         options.use_raw_data = use_raw_data;
     end
 end
-% Diameter of the PET-scanner (bore) (mm)
-R=double(options.diameter);
 % Transaxial FOV (x-direction, horizontal) (mm)
 FOVax=double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)
@@ -282,6 +280,13 @@ end
 
 
 if ~luokka
+    if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
+        R = (min(options.x(:))) + (max(options.x(:)));
+    elseif abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter > 0
+        R = options.diameter;
+    else
+        R = 0;
+    end
     if isfield(options,'z')
         if abs(min(options.z(:))) < abs(max(options.z(:))) / 2
             if min(options.z(:)) < 0
@@ -536,19 +541,15 @@ if options.implementation == 1
         x_center, y_center, z_center, bmin, bmax, Vmax, V, lor_orth, options.gaussK,is_transposed, scatter_input, normalization, SinDelayed, double(n_meas(end)));
     
     if size(A,2) == size(rhs,1)
-        if no_norm
-            bp = A * rhs;
-        else
-            bp = A * rhs;
+        bp = A * rhs;
+        if ~no_norm
             if nargout >= 2
                 varargout{1} = full(sum(A,2));
             end
         end
     else
-        if no_norm
-            bp = A' * rhs;
-        else
-            bp = A' * rhs;
+        bp = A' * rhs;
+        if ~no_norm
             if nargout >= 2
                 varargout{1} = full(sum(A,1))';
             end

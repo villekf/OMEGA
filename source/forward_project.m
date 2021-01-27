@@ -192,6 +192,27 @@ if options.implementation == 3 || options.implementation == 2
 end
 
 if ~luokka
+    if iternn == 1 || (options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1)
+        if (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && isfield(options,'x') && isfield(options,'y')
+            options = rmfield(options, 'x');
+            options = rmfield(options, 'y');
+        end
+        [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
+        options.x = x(:);
+        options.y = y(:);
+        options.z_det = z_det(:);
+    else
+        x = options.x(:);
+        y = options.y(:);
+        z_det = options.z_det(:);
+    end
+    if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
+        R = (min(options.x(:))) + (max(options.x(:)));
+    elseif abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter > 0
+        R = options.diameter;
+    else
+        R = 0;
+    end
     if isfield(options,'z')
         if abs(min(options.z(:))) < abs(max(options.z(:))) / 2
             if min(options.z(:)) < 0
@@ -217,22 +238,7 @@ if ~luokka
             Z = 0;
         end
     end
-    R = double(options.diameter);
     [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(R, FOVax, FOVay, Z, options.axial_fov, Nx, Ny, Nz, options.implementation);
-    if iternn == 1 || (options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1)
-        if (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && isfield(options,'x') && isfield(options,'y')
-            options = rmfield(options, 'x');
-            options = rmfield(options, 'y');
-        end
-        [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
-        options.x = x(:);
-        options.y = y(:);
-        options.z_det = z_det(:);
-    else
-        x = options.x(:);
-        y = options.y(:);
-        z_det = options.z_det(:);
-    end
     
     if ~isfield(options,'normalization')
         save_norm = true;
@@ -563,9 +569,17 @@ if options.implementation == 1
         varargout{1} = A;
     else
         if size(A,2) ~= size(f,1)
-            varargout{1} = A' * f;
+            if randoms_correction
+                varargout{1} = A' * f + SinDelayed;
+            else
+                varargout{1} = A' * f;
+            end
         else
-            varargout{1} = A * f;
+            if randoms_correction
+                varargout{1} = A * f + SinDelayed;
+            else
+                varargout{1} = A * f;
+            end
         end
     end
     if nargout >= 2
