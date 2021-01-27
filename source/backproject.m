@@ -362,7 +362,6 @@ if ~luokka
             options.ScatterFB{1} = single(0);
         end
     end
-    [gaussK, options] = PSFKernel(options);
 else
     if options.normalization_correction
         normalization = options.normalization(nn(1) : nn(2));
@@ -566,11 +565,9 @@ elseif options.implementation == 4
         xy_index = uint32(0);
         z_index = uint32(0);
         TOFSize = int64(size(LL,1));
-        fullSize = size(LL,1);
     else
         LL = uint16(0);
         TOFSize = int64(numel(xy_index));
-        fullSize = length(xy_index);
     end
     list_mode_format = options.listmode;
     if numel(rhs) ~= n_meas(end) * options.TOF_bins

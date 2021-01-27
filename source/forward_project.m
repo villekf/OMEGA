@@ -396,7 +396,6 @@ if ~luokka
             options.ScatterFB{1} = single(0);
         end
     end
-    [gaussK, options] = PSFKernel(options);
 else
     if normalization_correction
         if options.implementation == 1 || options.implementation == 4
