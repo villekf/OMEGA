@@ -206,6 +206,17 @@ if interpolateSinogram
     distance = [distance(:,1), distance, distance(:,1)];
     
     % Interpolate the sinogram
+    if iscell(options.SinM)
+        if numel(options.SinM{1}) == size(options.SinM{1},1)
+            for kk = 1 : options.partitions
+                options.SinM{kk} = reshape(options.SinM{kk}, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+            end
+        end
+    else
+        if numel(options.SinM) == size(options.SinM,1)
+            options.SinM = reshape(options.SinM, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+        end
+    end
     tic
     if iscell(options.SinM)
         uus_SinM = cell(size(options.SinM));

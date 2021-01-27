@@ -38,6 +38,7 @@ if iscell(SinM)
                 end
             end
         end
+        SinM_uus{hh} = SinM_uus{hh}(:);
     end
     SinM = SinM_uus;
 else
@@ -52,7 +53,7 @@ else
         end
         end
     end
-    SinM = single(SinM_uus);
+    SinM = single(SinM_uus(:));
 end
 end
 

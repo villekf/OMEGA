@@ -99,6 +99,17 @@ else
     % Interpolate the sinogram
     if interpolateSinogram
         
+        if iscell(options.SinM)
+            if numel(options.SinM{1}) == size(options.SinM{1},1)
+                for kk = 1 : options.partitions
+                    options.SinM{kk} = reshape(options.SinM{kk}, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+                end
+            end
+        else
+            if numel(options.SinM) == size(options.SinM,1)
+                options.SinM = reshape(options.SinM, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+            end
+        end
         options.SinM = interpolateSinog(options.SinM, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
         if options.verbose
             disp(['Sinogram sampling increased by ' num2str(options.sampling) 'x'])
