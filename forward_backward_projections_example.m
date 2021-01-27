@@ -9,14 +9,14 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% R-sectors/modules/blocks/buckets in transaxial direction
 options.blocks_per_ring = (42);
 
 %%% R-sectors/modules/blocks/buckets in axial direction (i.e. number of physical
-%%% scanner/crystal rings) 
+%%% scanner/crystal rings)
 % Multiplying this with the below cryst_per_block should equal the total
-% number of crystal rings. 
+% number of crystal rings.
 options.linear_multip = (4);
 
 %%% R-sectors/modules/blocks/buckets in transaxial direction
@@ -74,15 +74,15 @@ options.detectors = options.det_per_ring*options.rings;
 %%% Scanner name
 % Used for naming purposes (measurement data)
 options.machine_name = 'Cylindrical_PET_example';
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -90,7 +90,7 @@ options.machine_name = 'Cylindrical_PET_example';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Reconstructed image pixel count (X-direction)
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
 options.Nx = 128;
@@ -110,15 +110,15 @@ options.flip_image = false;
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 options.offangle = options.det_w_pseudo * (3/4);
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -126,7 +126,7 @@ options.offangle = options.det_w_pseudo * (3/4);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Span factor/axial compression
 options.span = 3;
 
@@ -139,7 +139,7 @@ options.ring_difference = options.rings - 1;
 % function to determine potential values (see help ndist_max for usage).
 options.Ndist = 200;
 
-%%% Number of angles (tangential positions) in sinogram 
+%%% Number of angles (tangential positions) in sinogram
 % This is the final amount after possible mashing, maximum allowed is the
 % number of detectors per ring/2.
 options.Nang = options.det_per_ring/2;
@@ -186,7 +186,7 @@ options.fill_sinogram_gaps = false;
 
 %%% Which method used to fill the gaps?
 % Either MATLAB's built-in fillmissing or inpaint_nans from file exchange.
-% For inpaint_nans see: 
+% For inpaint_nans see:
 % https://se.mathworks.com/matlabcentral/fileexchange/4551-inpaint_nans
 % See wiki for more details.
 % NOTE: GNU Octave does not support fillmissing.
@@ -199,11 +199,11 @@ options.interpolation_method_fillmissing = 'linear';
 %%% Interpolation method used with inpaint_nans
 % See inpaint_nans.m for details.
 options.interpolation_method_inpaint = 0;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -223,7 +223,7 @@ options.use_raw_data = false;
 % If the above use_raw_data is set to false, you can still save the raw
 % data during data load by setting this to true.
 options.store_raw_data = false;
- 
+
 %%% Maximum ring difference in raw data
 options.ring_difference_raw = options.rings;
 
@@ -237,15 +237,15 @@ options.sampling_raw = 1;
 % All the methods are available that are supported by interp2 (see help
 % interp2).
 options.sampling_interpolation_method_raw = 'linear';
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -253,7 +253,7 @@ options.sampling_interpolation_method_raw = 'linear';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%% Randoms correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, stores the delayed coincidences during data load and
 % later corrects for randoms during the data formation/load or during
@@ -272,7 +272,7 @@ options.variance_reduction = false;
 % NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
 % function.
 options.randoms_smoothing = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% Scatter correction %%%%%%%%%%%%%%%%%%%%%%%%%%%
 % If set to true, will prompt the user to load the scatter sinogram/raw
 % data. Corrects for scatter during data formation/load or during
@@ -301,7 +301,7 @@ options.normalize_scatter = false;
 % NOTE: Mean window size can be adjusted by modifying the randoms_smoothing
 % function.
 options.scatter_smoothing = false;
- 
+
 %%% Subtract scatter
 % If set to true, the scattered coincidences are subtracted from the
 % sinogram or the forward projection. If set to false, the scattered
@@ -309,7 +309,7 @@ options.scatter_smoothing = false;
 % matrix. The latter choices are applied if
 % options.corrections_during_reconstruction = true.
 options.subtract_scatter = true;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Image-based attenuation correction
 % Include attenuation correction from images (e.g. CT-images) (for this you
@@ -323,7 +323,7 @@ options.attenuation_correction = false;
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image.
 options.attenuation_datafile = '';
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Compute the normalization coefficients
 % If set to true, then the normalization coefficients are computed after
@@ -332,7 +332,7 @@ options.compute_normalization = false;
 
 % Normalization correction components to include (1 means that the
 % component is included, 0 that it is not included)
-% First: Axial geometric correction 
+% First: Axial geometric correction
 % Second: Detector efficiency correction, use 1 for fan-sum algorithm (both
 % sinogram and raw list-mode data) or 2 for SPC (only raw list-mode data)
 % Third: Block profile correction
@@ -356,13 +356,13 @@ options.normalization_attenuation = [];
 
 % Apply scatter correction to normalization cylinder
 % If cylinder is used for normalization correction, applies also scatter
-% correction. Requires the above cylinder radius. 
+% correction. Requires the above cylinder radius.
 % NOTE: Applicable only to sinogram data,
 options.normalization_scatter_correction = false;
- 
+
 %%% Apply normalization correction
 % If set to true, normalization correction is applied to either data
-% formation or in the image reconstruction by using precomputed 
+% formation or in the image reconstruction by using precomputed
 % normalization coefficients. I.e. once you have computed the normalization
 % coefficients, turn above compute_normalization to false and set this to
 % true.
@@ -371,7 +371,7 @@ options.normalization_correction = false;
 %%% Use user-made normalization
 % Use either a .mat or .nrm file containing the normalization coefficients
 % for normalization correction if normalization_correction is also set to
-% true. 
+% true.
 % User will be prompted for the location of the file either during sinogram
 % formation or before image reconstruction (see below).
 % NOTE: If you have previously computed normalization coefficients with
@@ -380,7 +380,7 @@ options.normalization_correction = false;
 % this only if you want to use normalization coefficients computed outside
 % of OMEGA.
 options.use_user_normalization = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Arc correction %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Apply arc correction
 % NOTE: Arc correction is an experimental feature. It is currently
@@ -403,7 +403,7 @@ options.arc_interpolation = 'linear';
 % This correction factor will be applied (if nonzero) to all LORs equally.
 % This can be e.g. dead time correction factor.
 options.global_correction_factor = [];
- 
+
 %%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
 % If set to true, all the corrections are performed during the
 % reconstruction step, otherwise the corrections are performed to the
@@ -413,14 +413,14 @@ options.global_correction_factor = [];
 % NOTE: Attenuation correction is always performed during reconstruction
 % regardless of the choice here.
 options.corrections_during_reconstruction = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -429,7 +429,7 @@ options.corrections_during_reconstruction = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Total time of the measurement (s)
 % Use inf if you want the whole examination (static measurement only)
 options.tot_time = inf;
@@ -444,14 +444,14 @@ options.start = 0;
 % Use inf if you want to the end of the examination (static measurement
 % only)
 options.end = options.tot_time;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -483,14 +483,14 @@ options.TOF_offset = 0;
 % to GATE data.
 % Firstly this specifies the FWHM of TOF data used for file naming and
 % loading purposes. This value is included in the filename when data is
-% imported/saved and also used when that same data is later loaded. 
+% imported/saved and also used when that same data is later loaded.
 % Secondly, this is the FWHM of the ADDED temporal noise to the time
 % differences. If you are using GATE data and have set a custom temporal
 % blurring in GATE then you should set to this zero if you wish to use the
 % same temporal resolution. If no custom temporal blurring was applied then
 % use this value to control the accuracy of the TOF data. For example if
 % you want to have TOF data with 500 ps FWHM then set this value to
-% 500e-12. 
+% 500e-12.
 options.TOF_noise_FWHM = 200e-12;
 
 %%% FWHM of the TOF data (s)
@@ -506,15 +506,15 @@ options.TOF_FWHM = 210e-12;
 % options.TOF_bins or 1 (or 0) which converts the TOF data into non-TOF
 % data during reconstruction phase.
 options.TOF_bins_used = options.TOF_bins;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
- 
+
+
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -522,18 +522,18 @@ options.TOF_bins_used = options.TOF_bins;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Name of current datafile/examination
 % This is used to name the saved measurement data and also load it in
 % future sessions.
 options.name = 'cylpet_example';
 
-%%% Precompute data 
+%%% Precompute data
 % This should be done when using data from a certain scanner the first time
 % as it can speed up reconstruction. Especially recommended for raw
-% list-mode data. Not mandatory and the precomputed data is only used if 
-% the below precompute_lor is set to true. If using solely implementation 
-% 1, this is HIGHLY recommended. 
+% list-mode data. Not mandatory and the precomputed data is only used if
+% the below precompute_lor is set to true. If using solely implementation
+% 1, this is HIGHLY recommended.
 options.precompute = false;
 
 %%% Use precomputed geometrical matrix information
@@ -559,17 +559,17 @@ options.precompute_all = false;
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this true.
 options.verbose = true;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
- 
+
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -578,14 +578,14 @@ options.verbose = true;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% IMPLEMENTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Reconstruction implementation used
 % 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
 % (Slow and memory intensive)
 % 3 = Multi-GPU/device matrix-free OpenCL.
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++.
-% See the wiki for more information: 
+% See the wiki for more information:
 % https://github.com/villekf/OMEGA/wiki/Useful-information#selecting-the-correct-implementation
 % NOTE: Forward and/or backward projections are ONLY supported with
 % implementations 1, 3 and 4.
@@ -617,7 +617,7 @@ options.use_64bit_atomics = true;
 % Alternatively, set this to 0 to use only a single device on the specific
 % platform (the one with the highest memory count will be used).
 options.cpu_to_gpu_factor = 1;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 0 = Regular Siddon's algorithm (only available with implementation 1 and
@@ -690,7 +690,7 @@ options.n_rays_axial = 1;
 % Applies only if using implementation 3. Can speed up computations by
 % around 30% if set to true.
 options.apply_acceleration = true;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations
 options.Niter = 4;
@@ -701,7 +701,7 @@ options.subsets = 8;
 %%% Subset type (n = subsets)
 % 1 = Every nth (column) measurement is taken
 % 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
-% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.) 
+% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.)
 % 3 = Measurements are selected randomly
 % 4 = (Sinogram only) Take every nth column in the sinogram
 % 5 = (Sinogram only) Take every nth row in the sinogram
@@ -720,17 +720,17 @@ options.n_angles = 2;
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
 
-%%% Epsilon value 
+%%% Epsilon value
 % A small value to prevent division by zero and square root of zero. Should
 % not be smaller than eps.
 options.epps = 1e-8;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MISC SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Use Shuffle (recommended)
-% NOTE: Applies only when using subset_type = 3. 
+% NOTE: Applies only when using subset_type = 3.
 % Accelerates the subset formation and uses less memory. Not included in
 % OMEGA, needs to be manually downloaded and installed.
-% Download from: 
+% Download from:
 % https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
 options.use_Shuffle = false;
 
@@ -739,20 +739,20 @@ options.use_Shuffle = false;
 % Download from: https://github.com/stefanengblom/stenglib
 % NOTE: This applies only to implementation 1 when precompute_lor is false.
 % Enabling this will automatically cause the function to be called if it is
-% found on MATLAB path. 
+% found on MATLAB path.
 % NOTE: Suggested only for MATLAB 2019b and earlier.
 options.use_fsparse = false;
- 
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
- 
+
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%% 
+%%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 %%% Implementation 3
 % Uncomment the below line and run it to determine the available platforms,
 % their respective numbers and device numbers
@@ -809,7 +809,7 @@ options.use_fsparse = false;
 % transaxial coordinates are "deeper" in the crystal.
 % options.DOI = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
- 
+
 
 
 
@@ -828,7 +828,7 @@ end
 % has been selected.
 
 % Construct the forward and backward projections object (you need to rerun
-% this if you make any changes to the system): 
+% this if you make any changes to the system):
 A = forwardBackwardProject(options);
 % Alternatively, you can use the below method to create the same class
 % object without the need to use any of the main-files. Note that many
@@ -1009,6 +1009,9 @@ f_osem = ff;
 % has to be performed manually here.
 options.subsets = 16;
 
+% This requires the use of implementation 1
+options.implementation = 1;
+
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
 if options.implementation == 1 || options.implementation == 4
@@ -1025,15 +1028,20 @@ for iter = 1 : options.Niter
         sysMat = formMatrix(A, osa_iter);
         
         if options.use_psf
-            f = computeConvolution(f, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
+            f2 = computeConvolution(f, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
+        else
+            f2 = f;
         end
         
-        y = sysMat' * f;
+        y = sysMat' * f2;
+        if options.randoms_correction
+            y = y + double(A.OProperties.SinDelayed(A.nn(osa_iter) + 1:A.nn(osa_iter+1)));
+        end
         Summ = full(sum(sysMat,2));
         if options.use_psf
             Summ = computeConvolution(Summ, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
         end
-        x = sysMat * (raw_SinM ./ y);
+        x = sysMat * (raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ y);
         if options.use_psf
             x = computeConvolution(x, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
         end
@@ -1082,12 +1090,15 @@ else
     raw_SinM = single(raw_SinM(A.index));
 end
 [f, A] = backwardProject(A, raw_SinM);
-A.sens(A.sens == 0) = 1;
+A.sens(A.sens < options.epps) = options.epps;
 beta = 0.5;
 lambda = 0.2;
 N = options.Nx*options.Ny*options.Nz;
 delta = 0.1;
 rho = 0.5;
+options.TV_use_anatomical = false;
+options.TVsmoothing = 1e-3;
+options.tau = 1e-8;
 % Such prepass functions exist for all the priors that need one, see the
 % GitHub wiki or the included documentation for more information (Computing
 % the forward and or backward projections)
@@ -1112,9 +1123,9 @@ f_osem = ff;
 
 %% EM-PKMA with NLM regularization
 % This example demonstrates the use of included priors, in this case the NLM
-% prior
+% prior. This also uses subsets.
 
-options.subsets = 1;
+options.subsets = 16;
 
 A = forwardBackwardProject(options);
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
@@ -1123,10 +1134,10 @@ if options.implementation == 1 || options.implementation == 4
 else
     raw_SinM = single(raw_SinM(A.index));
 end
-[f, A] = backwardProject(A, raw_SinM);
-A.sens(A.sens == 0) = 1;
+% [f, A] = backwardProject(A, raw_SinM);
+% A.sens(A.sens == 0) = 1;
 beta = 0.5;
-lambda = 0.2;
+lambda = 0.01;
 N = options.Nx*options.Ny*options.Nz;
 delta = 0.1;
 rho = 0.5;
@@ -1150,16 +1161,26 @@ options = NLMPrepass(options);
 
 
 for iter = 1 : options.Niter
-    S = (f + options.epps) ./ A.sens;
-    f_ = f;
-    % Compute the gradient of the prior
-    grad = NLM(f, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-        options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
-    ff = A' * (ones(length(raw_SinM),1,'single') - raw_SinM ./ (A * f));
-    f = f - beta .* S .* (ff + lambda * grad);
-    f(f < 0) = 0;
-    alpha = 1 + (rho * iter) / (iter + delta);
-    f = (1 - alpha) .* f_ + alpha .* f;
+    for osa_iter = 1 : options.subsets
+        A.subset = osa_iter;
+        if iter == 1
+            [ff, A] = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)));
+            A.sens(:,A.sens(:,osa_iter) < options.epps) = options.epps;
+            if osa_iter == 1
+                f = ff;
+            end
+        end
+        S = (f + options.epps) ./ A.sens(:,osa_iter);
+        f_ = f;
+        % Compute the gradient of the prior
+        grad = NLM(f, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
+            options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+        ff = A' * (ones(length(raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1))),1,'single') - raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (A * f));
+        f = f - beta .* S .* (ff + lambda * grad);
+        f(f < 0) = 0;
+        alpha = 1 + (rho * iter) / (iter + delta);
+        f = (1 - alpha) .* f_ + alpha .* f;
+    end
 end
 
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
