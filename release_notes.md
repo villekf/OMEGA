@@ -95,7 +95,7 @@
 - Various fixes to the forward/backward projection class/functions
 
 - Various fixes to the custom prior reconstruction
-  - Algorithms other than OSL should now work
+  - Algorithms other than OSEM-OSL should now work
   
 - Various fixes to `mainPET.m` single reconstruction section
   
@@ -112,6 +112,8 @@
 
 - Fixed MLEM when using implementation 1
   - Fixed also errors when creating the system matrix
+  
+- Fixed COSEM-OSL when using implementation 1
 
 ## OMEGA v1.1.0
 
