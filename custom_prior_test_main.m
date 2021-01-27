@@ -1659,7 +1659,7 @@ for t = 1 : options.partitions
         % options.grad_BSREM = custom_prior(options.im_vectors.custom_BSREM_apu);
         %%% ROSEM-MAP
         % options.grad_ROSEM = custom_prior(options.im_vectors.custom_ROSEM_apu);
-        options = init_next_iter(options, iter);
+        options.im_vectors = init_next_iter(options.im_vectors, options, iter);
         % PSF deblurring
         if options.use_psf && options.deblurring
             [gaussK, options.g_dim_x, options.g_dim_y, options.g_dim_z] = PSFKernel(options.Nx, options.Ny, options.Nz, options.FOVa_x, options.FOVa_y, options.axial_fov, options.FWHM, options.implementation);

@@ -2691,7 +2691,7 @@ if options.only_system_matrix || options.single_reconstructions
                     end
                 end
             end
-            options = init_next_iter(options, iter);
+            options.im_vectors = init_next_iter(options.im_vectors, options, iter);
             % Compute the PSF deblurring
             if options.use_psf && options.deblurring
                 options.im_vectors = computeDeblur(options.im_vectors, options, iter, gaussK, options.Nx, options.Ny, options.Nz);
