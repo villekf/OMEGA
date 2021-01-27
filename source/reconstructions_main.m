@@ -25,6 +25,7 @@ function pz = reconstructions_main(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Check if certain variables are present
 if ~isfield(options,'use_machine')
     options.use_machine = 0;
 end
@@ -63,12 +64,14 @@ end
 
 options.listmode = false;
 
+% Is TOF enabled?
 TOF = options.TOF_bins > 1 && options.projector_type == 1;
 
 folder = fileparts(which('reconstructions_main.m'));
 folder = strrep(folder, 'source','mat-files/');
 folder = strrep(folder, '\','/');
 
+% Special requirements for span 1 case
 if options.span == 1
     options.TotSinos = options.rings^2;
     options.NSinos = options.TotSinos;
@@ -151,56 +154,19 @@ if options.use_raw_data
                     options.randoms_correction = false;
                 end
             end
-%             [options,RandProp, options.SinDelayed] = applyScatterRandoms(options,RandProp, options.SinDelayed, 0);
         else
             if ~isfield(options,'SinDelayed')
                 options = loadDelayedData(options);
             end
-%             [options,RandProp, options.SinDelayed] = applyScatterRandoms(options,RandProp, options.SinDelayed, 0);
         end
     end
     if options.scatter_correction && ~options.corrections_during_reconstruction
         if ~isfield(options,'ScatterC')
             options = loadScatterData(options);
         end
-%         [options,ScatterProp, options.ScatterC] = applyScatterRandoms(options,ScatterProp, options.ScatterC, 1);
     end
-%     if options.normalization_correction && ~options.corrections_during_reconstruction
-%         if options.use_user_normalization
-%             [file, fpath] = uigetfile({'*.mat'},'Select normalization datafile');
-%             if isequal(file, 0)
-%                 error('No file was selected')
-%             end
-%             if any(strfind(file, '.nrm'))
-%                 error('Inveon normalization data cannot be used with raw list-mode data')
-%             else
-%                 data = load([fpath file]);
-%                 variables = fieldnames(data);
-%                 normalization = data.(variables{1});
-%                 clear data
-%                 if numel(normalization) ~= sum(1:options.detectors)
-%                     error('Size mismatch between the current data and the normalization data file')
-%                 end
-%             end
-%         else
-%             norm_file = [folder options.machine_name '_normalization_listmode.mat'];
-%             if exist(norm_file, 'file') == 2
-%                 normalization = loadStructFromFile(norm_file,'normalization');
-%             else
-%                 error('Normalization correction selected, but no normalization data found')
-%             end
-%         end
-%         if iscell(options.SinM)
-%             for kk = 1 : length(options.SinM)
-%                 options.SinM{kk} = options.SinM{kk} .* single(full(normalization));
-%             end
-%         else
-%             options.SinM = options.SinM .* single(full(normalization));
-%         end
-%     end
-    
     clear coincidences options.coincidences true_coincidences delayed_coincidences
-    % Sinogram data
+% Sinogram data
 else
     RandProp.smoothing = false;
     RandProp.variance_reduction = false;
@@ -282,10 +248,6 @@ else
                 appliedCorrections = loadStructFromFile(sinoFile,'appliedCorrections');
             catch
                 appliedCorrections = [];
-                %                 appliedCorrections.normalization = false;
-                %                 appliedCorrections.randoms = false;
-                %                 appliedCorrections.scatter = false;
-                %                 appliedCorrections.gapFilling = false;
             end
         end
         if ~options.corrections_during_reconstruction && ~isempty(appliedCorrections)
@@ -330,12 +292,7 @@ else
                 end
             elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw
                 randoms_correction = false;
-                %                 error('Randoms variance correction selected, but no variance reduction has been performed')
             end
-            %             if (strcmp(appliedCorrections.randoms, 'randoms correction') || strcmp(appliedCorrections.randoms, 'randoms correction with variance reduction')) ...
-            %                     && options.randoms_smoothing
-            %                 error('Randoms smoothing selected, but no smoothing has been performed')
-            %             end
             if ~isempty(strfind(appliedCorrections.scatter,'variance reduction')) && ~options.scatter_variance_reduction && options.scatter_correction
                 warning('Scatter variance correction not selected, but data precorrected with scatter with applied variance reduction! Precorrecting without variance reduction.')
                 [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
@@ -367,17 +324,9 @@ else
                 loadRaw = true;
             elseif ~isempty(strfind(appliedCorrections.scatter, 'scatter correction')) && ~loadRaw
                 options.scatter_correction = false;
-                %                 error('Scatter variance correction selected, but no variance reduction has been performed')
             end
             options.randoms_correction = randoms_correction;
             options.normalization_correction = normalization_correction;
-%             if (strcmp(appliedCorrections.scatter, 'scatter correction') || strcmp(appliedCorrections.scatter, 'scatter correction with variance reduction')) ...
-%                     && options.scatter_smoothing
-%                 error('Scatter smoothing selected, but no smoothing has been performed')
-%             end
-%             if ~isempty(strfind(appliedCorrections.scatter,'normalized scatter correction')) && options.normalized_scatter
-%                 error('Normalized scatter correction selected, but no normalization has been performed')
-%             end
             if (~appliedCorrections.gapFilling || loadRaw) && options.fill_sinogram_gaps
                 appliedCorrections.gapFilling = true;
                 [~, ~, xp, yp] = detector_coordinates(options);
@@ -570,6 +519,7 @@ else
     end
 end
 
+% Vector to identify the reconstruction algorithms
 rekot = reko_maker(options);
 
 Nx = options.Nx;
@@ -626,6 +576,7 @@ OS_bool = options.osem || options.rosem || options.ramla || options.OSL_OSEM || 
 pz = cell(length(rekot),partitions);
 
 N = Nx * Ny * Nz;
+options.N = N;
 
 temp = pseudot;
 if ~isempty(temp) && temp > 0
@@ -654,6 +605,10 @@ if (options.quad || options.FMH || options.L || options.weighted_mean || options
     Ndx = options.Ndx;
     Ndy = options.Ndy;
     Ndz = options.Ndz;
+else
+    Ndx = 0;
+    Ndy = 0;
+    Ndz = 0;
 end
 if options.L && options.MAP
     if ~isempty(options.a_L)
@@ -734,6 +689,7 @@ if (options.implementation == 3 || options.implementation == 1 ) && ~any(rekot(c
     subsets = 1;
 end
 
+% TOF parameters
 if TOF
     if options.TOF_bins_used ~= options.TOF_bins
         if iscell(options.SinM)
@@ -773,20 +729,14 @@ end
 
 %%
 
-% Compute the indices for the subsets used.
-% For Sinogram data, six different methods to select the subsets are
-% available. For raw list-mode data, three methods are available.
+% Whether list-mode or sinogram/raw data is used
 if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))) && numel(options.x) / 2 == numel(options.SinM)
-    %     index = uint32(1:numel(options.SinM))';
     index = 0;
     det_per_ring = numel(options.SinM);
     pituus = floor(det_per_ring / subsets);
     pituus = int64([repmat(pituus,subsets - 1,1); det_per_ring - pituus*(subsets - 1)]);
     list_mode_format = true;
     options.listmode = true;
-%     if options.implementation == 1
-%         error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
-%     end
     if options.implementation == 2 && options.use_CUDA
         error('CUDA support not enabled for list-mode data')
     end
@@ -828,6 +778,9 @@ if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isf
     end
     options.Z = Z;
 else
+% Compute the indices for the subsets used.
+% For Sinogram data, six different methods to select the subsets are
+% available. For data, three methods are available.
     options.listmode = false;
     [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
     Z = axial_fov;
@@ -842,8 +795,6 @@ R = double(diameter);
 FOVax = double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)
 FOVay = double(FOVay);
-% Axial FOV (mm)
-axial_fow = double(axial_fov);
 % Number of rings
 blocks = uint32(rings - 1);
 % First ring
@@ -852,18 +803,19 @@ block1=uint32(0);
 NSinos = uint32(NSinos);
 NSlices = uint32(Nz);
 
-% Coordinates of the detectors
-[x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
-
 if ~list_mode_format
     % Load correction data
     [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks, RandProp, ScatterProp);
 else
+    % list-mode does not support corrections
     options.normalization_correction = false;
     options.randoms_correction = false;
     options.scatter_correction = false;
     [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks, RandProp, ScatterProp);
 end
+
+% Coordinates of the detectors
+[x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
 
 if options.use_raw_data
     if list_mode_format
@@ -903,6 +855,7 @@ else
 end
 if ~options.precompute_lor
     lor_a = uint16(0);
+    lor_orth = uint16(0);
 end
 
 if use_raw_data
@@ -913,31 +866,7 @@ if use_raw_data
     end
 end
 
-
-% Pixel boundaries
-etaisyys_x = (R - FOVax) / 2;
-etaisyys_y = (R - FOVay) / 2;
-etaisyys_z = (Z - axial_fow) / 2;
-if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-    zz = single(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    xx = single(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    yy = single(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
-else
-    zz = double(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
-end
-%     zz = zz(2*block1 + 1 : 2*blocks + 2);
-
-% Distance of adjacent pixels
-dx = diff(xx(1:2));
-dy = diff(yy(1:2));
-dz = diff(zz(1:2));
-
-% Distance of image from the origin
-bx = xx(1);
-by = yy(1);
-bz = zz(1);
+[xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, Nx, Ny, Nz, options.implementation);
 
 % Number of pixels
 Ny = uint32(Ny);
@@ -964,70 +893,9 @@ if zmax==0
     end
 end
 
-% Coordinates of the centers of the voxels
-if options.projector_type == 2 || options.projector_type == 3
-    x_center = xx(1 : end - 1)' + dx/2;
-    y_center = yy(1 : end - 1)' + dy/2;
-    z_center = zz(1 : end - 1)' + dz/2;
-    temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
-    if options.tube_width_z > 0
-        temppi = max([1,round(options.tube_width_z / temppi)]);
-    else
-        temppi = max([1,round(options.tube_width_xy / temppi)]);
-    end
-    temppi = temppi * temppi * 4;
-    if options.apply_acceleration || options.implementation == 4
-        if options.tube_width_z == 0
-            dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
-        else
-            dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * temppi);
-        end
-    else
-        dec = uint32(0);
-    end
-elseif (options.projector_type == 1 && TOF)
-    x_center = xx(1);
-    y_center = yy(1);
-    z_center = zz(1);
-    if (options.apply_acceleration || options.implementation == 4) && options.n_rays_transaxial * options.n_rays_axial == 1
-        dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * 2);
-    else
-        dec = uint32(0);
-    end
-else
-    x_center = xx(1);
-    y_center = yy(1);
-    z_center = zz(1);
-    dec = uint32(0);
-end
+[x_center,y_center,z_center,dec] = computePixelCenters(xx,yy,zz,dx,dy,dz,TOF,options);
 
-% Compute the various volumes available for the spherical voxels in
-% volume-based ray tracer
-if options.projector_type == 3
-    dp = max([dx,dy,dz]);
-    options.voxel_radius = sqrt(2) * options.voxel_radius * (dp / 2);
-    bmax = options.tube_radius + options.voxel_radius;
-    b = linspace(0, bmax, 10000)';
-    b(options.tube_radius > (b + options.voxel_radius)) = [];
-    b = unique(round(b*10^3)/10^3);
-    V = volumeIntersection(options.tube_radius, options.voxel_radius, b);
-    diffis = [diff(V);0];
-    b = b(diffis <= 0);
-    V = V(diffis <= 0);
-    Vmax = (4*pi)/3*options.voxel_radius^3;
-    bmin = min(b);
-else
-    V = 0;
-    Vmax = 0;
-    bmin = 0;
-    bmax = 0;
-end
-if options.implementation == 2 || options.implementation == 3
-    V = single(V);
-    Vmax = single(Vmax);
-    bmin = single(bmin);
-    bmax = single(bmax);
-end
+[V,Vmax,bmin,bmax] = computeVoxelVolumes(dx,dy,dz,options);
 
 if options.implementation == 1
     iij = double(0:Nx);
@@ -1173,25 +1041,7 @@ else
     end
     
     % Compute PSF kernel
-    if options.use_psf
-        g_pituus_x = ceil(2*(options.FWHM(1) / (2 * sqrt(2 * log(2)))) / dx);
-        g_pituus_y = ceil(2*(options.FWHM(2) / (2 * sqrt(2 * log(2)))) / dy);
-        g_pituus_z = ceil(2*(options.FWHM(3) / (2 * sqrt(2 * log(2)))) / dz);
-        g_x = linspace(-g_pituus_x * dx, g_pituus_x * dx, 2*g_pituus_x + 1)';
-        g_y = linspace(-g_pituus_y * dy, g_pituus_y * dy, 2*g_pituus_y + 1);
-        g_z = zeros(1,1,g_pituus_z*2+1);
-        g_z(1,1,:) = linspace(-g_pituus_z * dz, g_pituus_z * dz, 2*g_pituus_z + 1);
-        gaussK = gaussianKernel(g_x, g_y, g_z, options.FWHM(1) / (2 * sqrt(2 * log(2))), options.FWHM(2) / (2 * sqrt(2 * log(2))), options.FWHM(3) / (2 * sqrt(2 * log(2))));
-        
-        options.g_dim_x = uint32(g_pituus_x);
-        options.g_dim_y = uint32(g_pituus_y);
-        options.g_dim_z = uint32(g_pituus_z);
-        if options.implementation == 2 || options.implementation == 3
-            gaussK = single(gaussK(:));
-        end
-    else
-        gaussK = single(0);
-    end
+    [gaussK, options] = PSFKernel(options);
     
     % Perform various prepass steps, if necessary
     % These include computing weights, matrices required by some algorithms
@@ -1261,8 +1111,6 @@ else
                 for iter = 1 : Niter
                     
                     for osa_iter = 1 : subsets
-                        
-                        % Randoms correction during reconstruction
                         if randoms_correction
                             if iscell(options.SinDelayed)
                                 SinD = double(options.SinDelayed{llo}(pituus(osa_iter)+1:pituus(osa_iter + 1)));
@@ -1286,1829 +1134,31 @@ else
                         else
                             scatter_input = 0;
                         end
-                        % No precomputation done
-                        % This is sequential (non-parallel) code
-                        % SLOW
-                        % Supports PURE MATLAB computation
-                        if options.precompute_lor == false && ~options.listmode
-                            if use_raw_data == false
-                                TOFSize = int64(pituus(osa_iter + 1) - pituus(osa_iter));
-                                % Siddon
-                                if options.projector_type == 1 || options.projector_type == 0
-                                    if exist('OCTAVE_VERSION','builtin') == 0 && exist('projector_mex','file') == 3
-                                        [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                            zmax, options.vaimennus, norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                                            randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint16(0), NSinos, uint16(0), pseudot, det_per_ring, ...
-                                            TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                                            use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter)+1:pituus(osa_iter + 1)), ...
-                                            uint32(options.projector_type), iij, jji, kkj);
-                                    elseif exist('OCTAVE_VERSION','builtin') == 5 && exist('projector_oct','file') == 3
-                                        [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                            zmax, options.vaimennus, norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                                            randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint16(0), NSinos, uint16(0), pseudot, det_per_ring, ...
-                                            TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                                            use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter)+1:pituus(osa_iter + 1)), ...
-                                            uint32(options.projector_type), iij, jji, kkj);
-                                    else
-                                        % The below lines allow for pure MATLAB
-                                        % implemention, i.e. no MEX-files will be
-                                        % used. Currently the below function
-                                        % uses parfor-loops (requires parallel
-                                        % computing toolbox).
-                                        % NOTE: The below method is not
-                                        % recommended since it is much slower
-                                        % method.
-                                        [ lor, indices, alkiot, ~] = improved_siddon_atten( int32(Ny), int32(Nx), int32(Nz), dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
-                                            NSinos, NSlices, options.vaimennus, index(pituus(osa_iter)+1:pituus(osa_iter + 1)), pituus(osa_iter + 1) - pituus(osa_iter), ...
-                                            attenuation_correction);
-                                        alkiot = cell2mat(alkiot);
-                                        indices = cell2mat(indices) - 1;
-                                        lor = lor(:,2);
-                                    end
-                                    % Orthogonal distance based
-                                elseif options.projector_type == 2
-                                    error('Unsupported projector type')
-                                else
-                                    error('Unsupported projector type')
-                                end
-                            else
-                                L = LL(pituus(osa_iter) * 2 + 1 : pituus(osa_iter + 1) * 2);
-                                TOFSize = int64(size(L,1));
-                                if options.projector_type == 1
-                                    if exist('OCTAVE_VERSION','builtin') == 0
-                                        [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                            zmax, options.vaimennus, norm_input, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                                            randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint16(0), NSinos, L, pseudot, det_per_ring, ...
-                                            TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                                            use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
-                                    elseif exist('OCTAVE_VERSION','builtin') == 5
-                                        [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                            zmax, options.vaimennus, norm_input, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                                            randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint16(0), NSinos, L, pseudot, det_per_ring, ...
-                                            TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                                            use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
-                                    end
-                                elseif options.projector_type == 2
-                                    error('Unsupported projector type')
-                                else
-                                    error('Unsupported projector type')
+                        if options.listmode
+                            if iter == 1 && osa_iter == 1
+                                lor_a = lor_pixel_count_prepass(options, false);
+                                for lla = 1 : subsets
+                                    summa(lla) = uint64(sum(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))));
                                 end
                             end
-                            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                                lor = repeat_elem(uint32(1:length(lor))',uint32(lor));
-                            elseif exist('OCTAVE_VERSION','builtin') == 5
-                                lor = repelem(uint32(1:length(lor)),uint32(lor));
-                            else
-                                lor = repelem(uint32(1:length(lor)),uint32(lor))';
-                            end
-                            uu = double(Sino(pituus(osa_iter) + 1 : pituus(osa_iter + 1)));
-                            
-                            A_length = length(uu);
-                            if verbose
-                                tStart = tic;
-                            end
-                            % Form the sparse matrix
-                            if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.8')
-                                indices = uint32(indices) + 1;
-                                A = sparse(lor,indices,double(alkiot), A_length, double(N));
-                            elseif options.use_fsparse && exist('fsparse','file') == 3
-                                indices = int32(indices) + 1;
-                                A = fsparse(int32(lor),(indices),double(alkiot),[A_length double(N) length(alkiot)]);
-                            elseif options.use_fsparse && exist('fsparse','file') == 0
-                                warning('options.fsparse set to true, but no FSparse mex-file found. Using regular sparse')
-                                indices = double(indices) + 1;
-                                A = sparse(double(lor),(indices),double(alkiot), A_length, double(N));
-                            else
-                                indices = double(indices) + 1;
-                                A = sparse(double(lor),(indices),double(alkiot), A_length, double(N));
-                            end
-                            clear indices alkiot lor
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['Sparse matrix formation took ' num2str(tElapsed) ' seconds'])
-                            end
-                            % Precomputation performed
-                            % Parallel
-                            % Faster
-                            % Only C++ code (no pure MATLAB implementation)
-                        else
-                            if options.listmode
-                                if iter == 1 && osa_iter == 1
-                                    lor_a = lor_pixel_count_prepass(options, false);
-                                    for lla = 1 : subsets
-                                        summa(lla) = uint64(sum(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))));
-                                    end
-                                end
-                            end
-                            if use_raw_data
-                                L_input = LL(pituus(osa_iter) * 2 + 1 : pituus(osa_iter + 1) * 2);
-                                xy_index_input = uint32(0);
-                                z_index_input = uint16(0);
-                                TOFSize = int64(size(L_input,1));
-                            else
-                                L_input = uint16(0);
-                                xy_index_input = xy_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
-                                z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
-                                TOFSize = int64(size(xy_index_input,1));
-                            end
-                            if options.projector_type == 2 || options.projector_type == 3
-                                if exist('OCTAVE_VERSION','builtin') == 0
-                                    lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
-                                else
-                                    lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
-                                end
-                            else
-                                if exist('OCTAVE_VERSION','builtin') == 0
-                                    lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
-                                else
-                                    lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
-                                end
-                            end
-                            if exist('OCTAVE_VERSION','builtin') == 0
-                                [A, ll] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                                    norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
-                                    randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
-                                    z_index_input, NSinos, L_input, pseudot, det_per_ring, ...
-                                    TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
-                                    options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
-                                    options.tube_width_z, bmin, bmax, Vmax, V);
-                            elseif exist('OCTAVE_VERSION','builtin') == 5
-                                [A, ll] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                                    norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
-                                    randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
-                                    z_index_input, NSinos, L_input, pseudot, det_per_ring, ...
-                                    TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
-                                    options.attenuation_phase, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
-                                    options.tube_width_z, bmin, bmax, Vmax, V);
-                            end
-                            uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
-                            if options.attenuation_phase
-                                uu = uu ./ ll;
-                            end
-                            clear lor2
                         end
-                        % Sensitivity image
-                        if is_transposed
-                            Summ = full(sum(A,2));
-                        else
-                            Summ = full(sum(A,1))';
-                        end
-                        Summ(Summ < options.epps) = options.epps;
-                        if options.use_psf
-                            Summ = computeConvolution(Summ, options, Nx, Ny, Nz, gaussK);
-                        end
-                        % Compute OSEM
-                        if options.osem || options.ecosem || options.attenuation_phase
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.OSEM_apu = OSEM_im(im_vectors.OSEM_apu, A, epps, uu, Summ, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute MRAMLA
-                        if options.mramla
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.MRAMLA_apu = MBSREM(im_vectors.MRAMLA_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, iter, ...
-                                SinD, randoms_correction, is_transposed, [], [], options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MRAMLA sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RAMLA
-                        if options.ramla
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.RAMLA_apu = BSREM_subiter(im_vectors.RAMLA_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-%                             if any(im_vectors.RAMLA_apu < 0)
-%                                 warning('Negative values in RAMLA, lower lambda value!')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RAMLA sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ROSEM
-                        if options.rosem
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.ROSEM_apu = ROSEM_subiter(im_vectors.ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RBI
-                        if options.rbi
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.RBI_apu = RBI_subiter(im_vectors.RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, [], [], options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute DRAMA
-                        if options.drama
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.DRAMA_apu = DRAMA_subiter(im_vectors.DRAMA_apu, options.lam_drama, epps, iter, Summ, osa_iter, A, uu, SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['DRAMA sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute COSEM
-                        if options.cosem || options.ecosem
-                            if verbose
-                                tStart = tic;
-                            end
-                            [im_vectors.COSEM_apu, C_co] = COSEM_im(im_vectors.COSEM_apu, A, epps, uu, C_co, D, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ECOSEM
-                        if options.ecosem
-                            if verbose
-                                tStart = tic;
-                            end
-                            im_vectors.ECOSEM_apu = ECOSEM_im(im_vectors.ECOSEM_apu, epps, D, im_vectors.COSEM_apu, im_vectors.OSEM_apu);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ECOSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ACOSEM
-                        if options.acosem
-                            if verbose
-                                tStart = tic;
-                            end
-                            [im_vectors.ACOSEM_apu, C_aco] = ACOSEM_im(im_vectors.ACOSEM_apu, A, epps, uu, C_aco, D, options.h, osa_iter, SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ACOSEM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with MRP
-                        if options.MRP && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = MRP(im_vectors.MRP_OSL_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_OSL_apu = OSEM_im(im_vectors.MRP_OSL_apu, A, epps, uu, OSL(Summ, options.beta_mrp_osem, med, epps), SinD, is_transposed, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.MRP_OSL_apu = OSL_OSEM(im_vectors.MRP_OSL_apu, Summ, options.beta_mrp_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute MBSREM with MRP
-                        if options.MRP && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = MRP(im_vectors.MRP_MBSREM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_MBSREM_apu = MBSREM(im_vectors.MRP_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_mrp_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute BSREM with MRP
-                        if options.MRP && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.MRP_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.MRP_BSREM_apu = BSREM_subiter(im_vectors.MRP_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.MRP_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, lower lambda value!')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ROSEM-MAP with MRP
-                        if options.MRP && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.MRP_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.MRP_ROSEM_apu = ROSEM_subiter(im_vectors.MRP_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RBI-OSL with MRP
-                        if options.MRP && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = MRP(im_vectors.MRP_RBI_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            im_vectors.MRP_RBI_apu = RBI_subiter(im_vectors.MRP_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_mrp_rbi, med, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute COSEM-OSL with MRP
-                        if options.MRP && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = MRP(im_vectors.MRP_COSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.MRP_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.MRP_COSEM_apu, D, options.beta_mrp_cosem, med, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.MRP_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.MRP_COSEM_apu, D, options.beta_mrp_cosem, med, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL MRP sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with Quadratic prior
-                        if options.quad && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Quadratic_prior(im_vectors.Quad_OSL_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz, options);
-                            im_vectors.Quad_OSL_apu = OSEM_im(im_vectors.Quad_OSL_apu, A, epps, uu, OSL(Summ, options.beta_quad_osem, med, epps), SinD, is_transposed, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.Quad_OSL_apu = OSL_OSEM(im_vectors.Quad_OSL_apu, Summ, options.beta_quad_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute MBSREM with Quadratic prior
-                        if options.quad && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Quadratic_prior(im_vectors.Quad_MBSREM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_MBSREM_apu = MBSREM(im_vectors.Quad_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_quad_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute BSREM with Quadratic prior
-                        if options.quad && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.Quad_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.Quad_BSREM_apu = BSREM_subiter(im_vectors.Quad_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.Quad_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ROSEM-MAP with Quadratic prior
-                        if options.quad && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.Quad_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.Quad_ROSEM_apu = ROSEM_subiter(im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RBI-OSL with Quadratic prior
-                        if options.quad && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Quadratic_prior(im_vectors.Quad_RBI_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            im_vectors.Quad_RBI_apu = RBI_subiter(im_vectors.Quad_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_quad_rbi, med, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute COSEM-OSL with Quadratic prior
-                        if options.quad && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Quadratic_prior(im_vectors.Quad_COSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.Quad_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Quad_COSEM_apu, D, options.beta_quad_cosem, med, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.Quad_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Quad_COSEM_apu, D, options.beta_quad_cosem, med, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL Quadratic sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with Huber prior
-                        if options.Huber && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Huber_prior(im_vectors.Huber_OSL_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_OSL_apu = OSEM_im(im_vectors.Huber_OSL_apu, A, epps, uu, OSL(Summ, options.beta_huber_osem, med, epps), SinD, is_transposed, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.Huber_OSL_apu = OSL_OSEM(im_vectors.Huber_OSL_apu, Summ, options.beta_huber_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute MBSREM with Huber prior
-                        if options.Huber && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Huber_prior(im_vectors.Huber_MBSREM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_MBSREM_apu = MBSREM(im_vectors.Huber_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_huber_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute BSREM with Huber prior
-                        if options.Huber && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.Huber_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.Huber_BSREM_apu = BSREM_subiter(im_vectors.Huber_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.Huber_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ROSEM-MAP with Huber prior
-                        if options.Huber && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.Huber_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.Huber_ROSEM_apu = ROSEM_subiter(im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RBI-OSL with Huber prior
-                        if options.Huber && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Huber_prior(im_vectors.Huber_RBI_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            im_vectors.Huber_RBI_apu = RBI_subiter(im_vectors.Huber_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_huber_rbi, med, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute COSEM-OSL with Huber prior
-                        if options.Huber && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Huber_prior(im_vectors.Huber_COSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.Huber_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Huber_COSEM_apu, D, options.beta_huber_cosem, med, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.Huber_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Huber_COSEM_apu, D, options.beta_huber_cosem, med, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL Huber sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with L-filter prior
-                        if options.L && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = L_filter(im_vectors.L_OSL_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_OSL_apu = OSEM_im(im_vectors.L_OSL_apu, A, epps, uu, OSL(Summ, options.beta_L_osem, med, epps), SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.L_OSL_apu = OSL_OSEM(im_vectors.L_OSL_apu, Summ, options.beta_L_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute MBSREM with L-filter prior
-                        if options.L && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = L_filter(im_vectors.L_MBSREM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_MBSREM_apu = MBSREM(im_vectors.L_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_L_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute BSREM with L-filter prior
-                        if options.L && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.L_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.L_BSREM_apu = BSREM_subiter(im_vectors.L_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.L_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute ROSEM-MAP with L-filter prior
-                        if options.L && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.L_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.L_ROSEM_apu = ROSEM_subiter(im_vectors.L_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute RBI-OSL with L-filter prior
-                        if options.L && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = L_filter(im_vectors.L_RBI_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            im_vectors.L_RBI_apu = RBI_subiter(im_vectors.L_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_L_rbi, med, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute COSEM-OSL with L-filter prior
-                        if options.L && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = L_filter(im_vectors.L_COSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.L_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.L_COSEM_apu, D, options.beta_L_cosem, med, epps, A, uu, C_osl, ...
-                                    options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.L_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.L_COSEM_apu, D, options.beta_L_cosem, med, epps, A, uu, C_osl, 0, ...
-                                    options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL L-filter sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with FMH prior
-                        if options.FMH && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = FMH(im_vectors.FMH_OSL_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                                options.med_no_norm);
-                            im_vectors.FMH_OSL_apu = OSEM_im(im_vectors.FMH_OSL_apu, A, epps, uu, OSL(Summ, options.beta_fmh_osem, med, epps), SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.FMH_OSL_apu = OSL_OSEM(im_vectors.FMH_OSL_apu, Summ, options.beta_fmh_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.FMH && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = FMH(im_vectors.FMH_MBSREM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                                options.med_no_norm);
-                            im_vectors.FMH_MBSREM_apu = MBSREM(im_vectors.FMH_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_fmh_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.FMH && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.FMH_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.FMH_BSREM_apu = BSREM_subiter(im_vectors.FMH_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.FMH_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.FMH && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.FMH_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.FMH_ROSEM_apu = ROSEM_subiter(im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.FMH && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = FMH(im_vectors.FMH_RBI_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                                options.med_no_norm);
-                            im_vectors.FMH_RBI_apu = RBI_subiter(im_vectors.FMH_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_fmh_rbi, med, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.FMH && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = FMH(im_vectors.FMH_COSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                                options.med_no_norm);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.FMH_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.FMH_COSEM_apu, D, options.beta_fmh_cosem, med, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.FMH_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.FMH_COSEM_apu, D, options.beta_fmh_cosem, med, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL FMH sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with weighted mean prior
-                        if options.weighted_mean && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Weighted_mean(im_vectors.Weighted_OSL_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_OSL_apu = OSEM_im(im_vectors.Weighted_OSL_apu, A, epps, uu, OSL(Summ, options.beta_weighted_osem, med, epps), SinD, ...
-                                is_transposed, options, Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.Weighted_OSL_apu = OSL_OSEM(im_vectors.Weighted_OSL_apu, Summ, options.beta_weighted_osem, med, epps, A, uu, SinD, ...
-                            %                                 is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.weighted_mean && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Weighted_mean(im_vectors.Weighted_MBSREM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_MBSREM_apu = MBSREM(im_vectors.Weighted_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, ...
-                                options.lam_mbsrem, iter, SinD, randoms_correction, is_transposed, options.beta_weighted_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.weighted_mean && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.Weighted_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.Weighted_BSREM_apu = BSREM_subiter(im_vectors.Weighted_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.Weighted_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.weighted_mean && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.Weighted_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.Weighted_ROSEM_apu = ROSEM_subiter(im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, ...
-                                    is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.weighted_mean && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Weighted_mean(im_vectors.Weighted_RBI_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.med_no_norm);
-                            im_vectors.Weighted_RBI_apu = RBI_subiter(im_vectors.Weighted_RBI_apu, A, uu, epps, Summ, ...
-                                D, SinD, is_transposed, options.beta_weighted_rbi, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.weighted_mean && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = Weighted_mean(im_vectors.Weighted_COSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                                options.mean_type, epps, options.med_no_norm);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.Weighted_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Weighted_COSEM_apu, D, options.beta_weighted_cosem, ...
-                                    med, epps, A, uu, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.Weighted_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.Weighted_COSEM_apu, D, options.beta_weighted_cosem, ...
-                                    med, epps, A, uu, C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL weighted mean sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with TV prior
-                        if options.TV && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.TV_OSL_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
-                                options.tr_offsets);
-                            im_vectors.TV_OSL_apu = OSEM_im(im_vectors.TV_OSL_apu, A, epps, uu, OSL(Summ, options.beta_TV_osem, grad, epps), SinD, is_transposed, ...
-                                options, Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.TV_OSL_apu = OSL_OSEM(im_vectors.TV_OSL_apu, Summ, options.beta_TV_osem, grad, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TV && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.TV_MBSREM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
-                                options.tr_offsets);
-                            im_vectors.TV_MBSREM_apu = MBSREM(im_vectors.TV_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_TV_mbsrem, grad, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TV && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.TV_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.TV_BSREM_apu = BSREM_subiter(im_vectors.TV_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.TV_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TV && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.TV_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.TV_ROSEM_apu = ROSEM_subiter(im_vectors.TV_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TV && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.TV_RBI_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
-                                options.tr_offsets);
-                            im_vectors.TV_RBI_apu = RBI_subiter(im_vectors.TV_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_TV_rbi, grad, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TV && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.TV_COSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, ...
-                                options.tr_offsets);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.TV_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.TV_COSEM_apu, D, options.beta_TV_cosem, grad, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.TV_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.TV_COSEM_apu, D, options.beta_TV_cosem, grad, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL TV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with MRP-AD prior
-                        if options.AD && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if osa_iter > 1
-                                med = AD(im_vectors.AD_OSL_apu, options.FluxType, Nx, Ny, Nz, options);
-                                im_vectors.AD_OSL_apu = OSEM_im(im_vectors.AD_OSL_apu, A, epps, uu, OSL(Summ, options.beta_ad_osem, med, epps), SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                                %                                 im_vectors.AD_OSL_apu = OSL_OSEM(im_vectors.AD_OSL_apu, Summ, options.beta_ad_osem, med, epps, A, uu, SinD, is_transposed);
-                            else
-                                im_vectors.AD_OSL_apu = OSEM_im(im_vectors.AD_OSL_apu, A, epps, uu, Summ, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.AD && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if osa_iter > 1
-                                med = AD(im_vectors.AD_MBSREM_apu, options.FluxType, Nx, Ny, Nz, options);
-                                im_vectors.AD_MBSREM_apu = MBSREM(im_vectors.AD_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                    iter, SinD, randoms_correction, is_transposed, options.beta_ad_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            else
-                                im_vectors.AD_MBSREM_apu = MBSREM(im_vectors.AD_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, iter, ...
-                                    SinD, randoms_correction, is_transposed, [], [], options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.AD && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.AD_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.AD_BSREM_apu = BSREM_subiter(im_vectors.AD_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.AD_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.AD && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.AD_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.AD_ROSEM_apu = ROSEM_subiter(im_vectors.AD_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.AD && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = AD(im_vectors.AD_RBI_apu, options.FluxType, Nx, Ny, Nz, options);
-                            im_vectors.AD_RBI_apu = RBI_subiter(im_vectors.AD_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_ad_rbi, med, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.AD && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = AD(im_vectors.AD_COSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.AD_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.AD_COSEM_apu, D, options.beta_ad_cosem, med, epps, A, uu, ...
-                                    C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.AD_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.AD_COSEM_apu, D, options.beta_ad_cosem, med, epps, A, uu, ...
-                                    C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL AD sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with APLS prior
-                        if options.APLS && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.APLS_OSL_apu, [], Nx, Ny, Nz, true, options, 5);
-                            im_vectors.APLS_OSL_apu = OSEM_im(im_vectors.APLS_OSL_apu, A, epps, uu, OSL(Summ, options.beta_APLS_osem, grad, epps), SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.APLS_OSL_apu = OSL_OSEM(im_vectors.APLS_OSL_apu, Summ, options.beta_APLS_osem, grad, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.APLS && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.APLS_MBSREM_apu, [], Nx, Ny, Nz, true, options, 5);
-                            im_vectors.APLS_MBSREM_apu = MBSREM(im_vectors.APLS_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_APLS_mbsrem, grad, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.APLS && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.APLS_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.APLS_BSREM_apu = BSREM_subiter(im_vectors.APLS_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.APLS_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.APLS && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.APLS_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.APLS_ROSEM_apu = ROSEM_subiter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.APLS && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.APLS_RBI_apu, [], Nx, Ny, Nz, true, options, 5);
-                            im_vectors.APLS_RBI_apu = RBI_subiter(im_vectors.APLS_RBI_apu, A, uu, epps, Summ, D, SinD, ...
-                                is_transposed, options.beta_APLS_rbi, grad, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.APLS && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TVpriorFinal(im_vectors.APLS_COSEM_apu, [], Nx, Ny, Nz, true, options, 5);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.APLS_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.APLS_COSEM_apu, D, options.beta_APLS_cosem, grad, A, uu, ...
-                                    epps, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.APLS_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.APLS_COSEM_apu, D, options.beta_APLS_cosem, grad, A, uu, ...
-                                    epps, C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL APLS sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with TGV prior
-                        if options.TGV && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TGV(im_vectors.TGV_OSL_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_OSL_apu = OSEM_im(im_vectors.TGV_OSL_apu, A, epps, uu, OSL(Summ, options.beta_TGV_osem, grad, epps), SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TGV && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TGV(im_vectors.TGV_MBSREM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_MBSREM_apu = MBSREM(im_vectors.TGV_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_TGV_mbsrem, grad, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TGV && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.TGV_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.TGV_BSREM_apu = BSREM_subiter(im_vectors.TGV_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.TGV_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TGV && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.TGV_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.TGV_ROSEM_apu = ROSEM_subiter(im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TGV && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TGV(im_vectors.TGV_RBI_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            im_vectors.TGV_RBI_apu = RBI_subiter(im_vectors.TGV_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_TGV_rbi, grad, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.TGV && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            grad = TGV(im_vectors.TGV_COSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.TGV_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.TGV_COSEM_apu, D, options.beta_TGV_cosem, grad, A, uu, ...
-                                    epps, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.TGV_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.TGV_COSEM_apu, D, options.beta_TGV_cosem, grad, A, uu, ...
-                                    epps, C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL TGV sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        % Compute OSL with NLM prior
-                        if options.NLM && options.OSL_OSEM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = NLM(im_vectors.NLM_OSL_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                                options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_OSL_apu = OSEM_im(im_vectors.NLM_OSL_apu, A, epps, uu, OSL(Summ, options.beta_NLM_osem, med, epps), SinD, is_transposed, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            %                             im_vectors.NLM_OSL_apu = OSL_OSEM(im_vectors.NLM_OSL_apu, Summ, options.beta_NLM_osem, med, epps, A, uu, SinD, is_transposed);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['OSEM-OSL NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.NLM && options.MBSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = NLM(im_vectors.NLM_MBSREM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                                options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_MBSREM_apu = MBSREM(im_vectors.NLM_MBSREM_apu, options.U, options.pj3, A, epps, uu, options.epsilon_mramla, options.lam_mbsrem, ...
-                                iter, SinD, randoms_correction, is_transposed, options.beta_NLM_mbsrem, med, options, Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['MBSREM NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.NLM && options.BSREM
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.ramla
-                                im_vectors.NLM_BSREM_apu = im_vectors.RAMLA_apu;
-                            else
-                                im_vectors.NLM_BSREM_apu = BSREM_subiter(im_vectors.NLM_BSREM_apu, options.lam, epps, iter, A, uu, SinD, is_transposed, options, ...
-                                    Nx, Ny, Nz, gaussK);
-                            end
-%                             if any(im_vectors.NLM_BSREM_apu < 0)
-%                                 warning('Negative values in BSREM, it is recommended to lower lambda value')
-%                             end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['BSREM NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.NLM && options.ROSEM_MAP
-                            if verbose
-                                tStart = tic;
-                            end
-                            if iter == 1 && options.rosem
-                                im_vectors.NLM_ROSEM_apu = im_vectors.ROSEM_apu;
-                            else
-                                im_vectors.NLM_ROSEM_apu = ROSEM_subiter(im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, Summ, epps, A, uu, SinD, is_transposed, ...
-                                    options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['ROSEM-MAP NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.NLM && options.RBI_OSL
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = NLM(im_vectors.NLM_RBI_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                                options.sigma, epps, Nx, Ny, Nz, options);
-                            im_vectors.NLM_RBI_apu = RBI_subiter(im_vectors.NLM_RBI_apu, A, uu, epps, Summ, D, SinD, is_transposed, options.beta_NLM_rbi, med, options, ...
-                                Nx, Ny, Nz, gaussK);
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['RBI-OSL NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
-                        if options.NLM && any(options.COSEM_OSL)
-                            if verbose
-                                tStart = tic;
-                            end
-                            med = NLM(im_vectors.NLM_COSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                                options.sigma, epps, Nx, Ny, Nz, options);
-                            if options.COSEM_OSL == 1
-                                [im_vectors.NLM_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.NLM_COSEM_apu, D, options.beta_NLM_cosem, med, A, uu, ...
-                                    epps, C_osl, options.h, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            else
-                                [im_vectors.NLM_COSEM_apu, C_osl] = COSEM_OSL(im_vectors.NLM_COSEM_apu, D, options.beta_NLM_cosem, med, A, uu, ...
-                                    epps, C_osl, 0, options.COSEM_OSL, osa_iter, SinD, is_transposed, options, Nx, Ny, Nz, gaussK);
-                            end
-                            if verbose
-                                tElapsed = toc(tStart);
-                                disp(['COSEM-OSL NLM sub-iteration ' num2str(osa_iter) ' took ' num2str(tElapsed) ' seconds'])
-                            end
-                        end
+                        uu = double(Sino(pituus(osa_iter) + 1 : pituus(osa_iter + 1)));
+                        koko = length(uu);
+                        [A,ll, Summ] = computeImplementation1(options,use_raw_data,randoms_correction, pituus,osa_iter, normalization_correction,...
+                            Nx, Ny, Nz, dx, dy, dz, bx, by, bz, x, y, z_det, xx, yy, size_x, NSinos, NSlices, zmax, attenuation_correction, pseudot, det_per_ring, ...
+                            TOF, sigma_x, TOFCenter, dec, nCores, ind_size, block1, blocks, index, iij, jji, kkj, LL, N, summa, lor_a, xy_index, z_index, ...
+                            x_center, y_center, z_center, bmin, bmax, Vmax, V, lor_orth, gaussK,is_transposed, scatter_input, norm_input, SinD, koko);
+                        if options.attenuation_phase
+                            uu = uu ./ ll;
+                        end
+                        [im_vectors,C_co,C_aco,C_osl] = computeEstimatesImp1(im_vectors, options, A, uu, Summ, SinD, is_transposed, gaussK, iter, osa_iter, C_co, C_aco,C_osl,...
+                            randoms_correction, N, Ndx, Ndy, Ndz, D);
                         clear A
-                        fn = fieldnames(im_vectors);
-                        for kk = 2 : 2 : numel(fn)
-                            im_vectors.(fn{kk})(im_vectors.(fn{kk}) < 0) = epps;
-                        end
                     end
-                    if options.save_iter
-                        iter_n = iter + 1;
-                    else
-                        iter_n = 1;
-                    end
-                    if options.osem
-                        im_vectors.OSEM(:, iter_n) = im_vectors.OSEM_apu;
-                    end
-                    
-                    if options.mramla
-                        im_vectors.MRAMLA(:, iter_n) = im_vectors.MRAMLA_apu;
-                    end
-                    
-                    if options.ramla
-                        im_vectors.RAMLA(:, iter_n) = im_vectors.RAMLA_apu;
-                    end
-                    
-                    if options.rosem
-                        im_vectors.ROSEM(:, iter_n) = im_vectors.ROSEM_apu;
-                    end
-                    
-                    if options.rbi
-                        im_vectors.RBI(:, iter_n) = im_vectors.RBI_apu;
-                    end
-                    
-                    if options.drama
-                        im_vectors.DRAMA(:, iter_n) = im_vectors.DRAMA_apu;
-                    end
-                    
-                    if options.cosem
-                        im_vectors.COSEM(:, iter_n) = im_vectors.COSEM_apu;
-                    end
-                    
-                    if options.ecosem
-                        im_vectors.ECOSEM(:, iter_n) = im_vectors.ECOSEM_apu;
-                    end
-                    
-                    if options.acosem
-                        im_vectors.ACOSEM(:, iter_n) = im_vectors.ACOSEM_apu;
-                    end
-                    
-                    if options.MRP && options.OSL_OSEM
-                        im_vectors.MRP_OSL(:, iter_n) = im_vectors.MRP_OSL_apu;
-                    end
-                    if options.MRP && options.MBSREM
-                        im_vectors.MRP_MBSREM(:, iter_n) = im_vectors.MRP_MBSREM_apu;
-                    end
-                    
-                    if options.MRP && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = MRP(im_vectors.MRP_BSREM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                        im_vectors.MRP_BSREM_apu = BSREM_iter(im_vectors.MRP_BSREM_apu, options.lam, iter, options.beta_mrp_bsrem, med, epps);
-                        im_vectors.MRP_BSREM(:, iter_n) = im_vectors.MRP_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM MRP iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.MRP && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = MRP(im_vectors.MRP_ROSEM_apu, options.medx, options.medy, options.medz, Nx, Ny, Nz, epps, options.tr_offsets, options.med_no_norm);
-                        im_vectors.MRP_ROSEM_apu = BSREM_iter(im_vectors.MRP_ROSEM_apu, options.lam_rosem, iter, options.beta_mrp_rosem, med, epps);
-                        im_vectors.MRP_ROSEM(:, iter_n) = im_vectors.MRP_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM MRP iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM MRP iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.MRP && options.RBI_OSL
-                        im_vectors.MRP_RBI(:, iter_n) = im_vectors.MRP_RBI_apu;
-                    end
-                    
-                    if options.MRP && any(options.COSEM_OSL)
-                        im_vectors.MRP_COSEM(:, iter_n) = im_vectors.MRP_COSEM_apu;
-                    end
-                    
-                    if options.quad && options.OSL_OSEM
-                        im_vectors.Quad_OSL(:, iter_n) = im_vectors.Quad_OSL_apu;
-                    end
-                    if options.quad && options.MBSREM
-                        im_vectors.Quad_MBSREM(:, iter_n) = im_vectors.Quad_MBSREM_apu;
-                    end
-                    
-                    if options.quad && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Quadratic_prior(im_vectors.Quad_BSREM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                        im_vectors.Quad_BSREM_apu = BSREM_iter(im_vectors.Quad_BSREM_apu, options.lam, iter, options.beta_quad_bsrem, med, epps);
-                        im_vectors.Quad_BSREM(:, iter_n) = im_vectors.Quad_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM quadratic iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.quad && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Quadratic_prior(im_vectors.Quad_ROSEM_apu, options.weights_quad, Nx, Ny, Nz, Ndx, Ndy, Ndz);
-                        im_vectors.Quad_ROSEM_apu = BSREM_iter(im_vectors.Quad_ROSEM_apu, options.lam_rosem, iter, options.beta_quad_rosem, med, epps);
-                        im_vectors.Quad_ROSEM(:, iter_n) = im_vectors.Quad_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM quadratic iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM quadratic iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.quad && options.RBI_OSL
-                        im_vectors.Quad_RBI(:, iter_n) = im_vectors.Quad_RBI_apu;
-                    end
-                    
-                    if options.quad && any(options.COSEM_OSL)
-                        im_vectors.Quad_COSEM(:, iter_n) = im_vectors.Quad_COSEM_apu;
-                    end
-                    
-                    if options.Huber && options.OSL_OSEM
-                        im_vectors.Huber_OSL(:, iter_n) = im_vectors.Huber_OSL_apu;
-                    end
-                    if options.Huber && options.MBSREM
-                        im_vectors.Huber_MBSREM(:, iter_n) = im_vectors.Huber_MBSREM_apu;
-                    end
-                    
-                    if options.Huber && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Huber_prior(im_vectors.Huber_BSREM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                        im_vectors.Huber_BSREM_apu = BSREM_iter(im_vectors.Huber_BSREM_apu, options.lam, iter, options.beta_huber_bsrem, med, epps);
-                        im_vectors.Huber_BSREM(:, iter_n) = im_vectors.Huber_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM Huber iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.Huber && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Huber_prior(im_vectors.Huber_ROSEM_apu, options.weights_huber, Nx, Ny, Nz, Ndx, Ndy, Ndz, options.huber_delta);
-                        im_vectors.Huber_ROSEM_apu = BSREM_iter(im_vectors.Huber_ROSEM_apu, options.lam_rosem, iter, options.beta_huber_rosem, med, epps);
-                        im_vectors.Huber_ROSEM(:, iter_n) = im_vectors.Huber_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM Huber iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM Huber iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.Huber && options.RBI_OSL
-                        im_vectors.Huber_RBI(:, iter_n) = im_vectors.Huber_RBI_apu;
-                    end
-                    
-                    if options.Huber && any(options.COSEM_OSL)
-                        im_vectors.Huber_COSEM(:, iter_n) = im_vectors.Huber_COSEM_apu;
-                    end
-                    
-                    if options.L && options.OSL_OSEM
-                        im_vectors.L_OSL(:, iter_n) = im_vectors.L_OSL_apu;
-                    end
-                    if options.L && options.MBSREM
-                        im_vectors.L_MBSREM(:, iter_n) = im_vectors.L_MBSREM_apu;
-                    end
-                    
-                    if options.L && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = L_filter(im_vectors.L_BSREM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                        im_vectors.L_BSREM_apu = BSREM_iter(im_vectors.L_BSREM_apu, options.lam, iter, options.beta_L_bsrem, med, epps);
-                        im_vectors.L_BSREM(:, iter_n) = im_vectors.L_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM L-filter iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.L && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = L_filter(im_vectors.L_ROSEM_apu, options.tr_offsets, options.a_L, Nx, Ny, Nz, Ndx, Ndy, Ndz, epps, options.med_no_norm);
-                        im_vectors.L_ROSEM_apu = BSREM_iter(im_vectors.L_ROSEM_apu, options.lam_rosem, iter, options.beta_L_rosem, med, epps);
-                        im_vectors.L_ROSEM(:, iter_n) = im_vectors.L_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM L-filter iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM L-filter iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.L && options.RBI_OSL
-                        im_vectors.L_RBI(:, iter_n) = im_vectors.L_RBI_apu;
-                    end
-                    
-                    if options.L && any(options.COSEM_OSL)
-                        im_vectors.L_COSEM(:, iter_n) = im_vectors.L_COSEM_apu;
-                    end
-                    
-                    if options.FMH && options.OSL_OSEM
-                        im_vectors.FMH_OSL(:, iter_n) = im_vectors.FMH_OSL_apu;
-                    end
-                    if options.FMH && options.MBSREM
-                        im_vectors.FMH_MBSREM(:, iter_n) = im_vectors.FMH_MBSREM_apu;
-                    end
-                    
-                    if options.FMH && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = FMH(im_vectors.FMH_BSREM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                            options.med_no_norm);
-                        im_vectors.FMH_BSREM_apu = BSREM_iter(im_vectors.FMH_BSREM_apu, options.lam, iter, options.beta_fmh_bsrem, med, epps);
-                        im_vectors.FMH_BSREM(:, iter_n) = im_vectors.FMH_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM FMH iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.FMH && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = FMH(im_vectors.FMH_ROSEM_apu, options.tr_offsets, options.fmh_weights, Nx, Ny, Nz, N, Ndx, Ndy, Ndz, epps, ...
-                            options.med_no_norm);
-                        im_vectors.FMH_ROSEM_apu = BSREM_iter(im_vectors.FMH_ROSEM_apu, options.lam_rosem, iter, options.beta_fmh_rosem, med, epps);
-                        im_vectors.FMH_ROSEM(:, iter_n) = im_vectors.FMH_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM FMH iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM FMH iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.FMH && options.RBI_OSL
-                        im_vectors.FMH_RBI(:, iter_n) = im_vectors.FMH_RBI_apu;
-                    end
-                    
-                    if options.FMH && any(options.COSEM_OSL)
-                        im_vectors.FMH_COSEM(:, iter_n) = im_vectors.FMH_COSEM_apu;
-                    end
-                    
-                    if options.weighted_mean && options.OSL_OSEM
-                        im_vectors.Weighted_OSL(:, iter_n) = im_vectors.Weighted_OSL_apu;
-                    end
-                    if options.weighted_mean && options.MBSREM
-                        im_vectors.Weighted_MBSREM(:, iter_n) = im_vectors.Weighted_MBSREM_apu;
-                    end
-                    
-                    if options.weighted_mean && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Weighted_mean(im_vectors.Weighted_BSREM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                            options.mean_type, epps, options.med_no_norm);
-                        im_vectors.Weighted_BSREM_apu = BSREM_iter(im_vectors.Weighted_BSREM_apu, options.lam, iter, options.beta_weighted_bsrem, ...
-                            med, epps);
-                        im_vectors.Weighted_BSREM(:, iter_n) = im_vectors.Weighted_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM weighted mean iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.weighted_mean && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = Weighted_mean(im_vectors.Weighted_ROSEM_apu, options.weighted_weights, Nx, Ny, Nz, Ndx, Ndy, Ndz, ...
-                            options.mean_type, epps, options.med_no_norm);
-                        im_vectors.Weighted_ROSEM_apu = BSREM_iter(im_vectors.Weighted_ROSEM_apu, options.lam_rosem, iter, options.beta_weighted_rosem, ...
-                            med, epps);
-                        im_vectors.Weighted_ROSEM(:, iter_n) = im_vectors.Weighted_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM weighted mean iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM weighted mean iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.weighted_mean && options.RBI_OSL
-                        im_vectors.Weighted_RBI(:, iter_n) = im_vectors.Weighted_RBI_apu;
-                    end
-                    
-                    if options.weighted_mean && any(options.COSEM_OSL)
-                        im_vectors.Weighted_COSEM(:, iter_n) = im_vectors.Weighted_COSEM_apu;
-                    end
-                    
-                    if options.TV && options.OSL_OSEM
-                        im_vectors.TV_OSL(:, iter_n) = im_vectors.TV_OSL_apu;
-                    end
-                    if options.TV && options.MBSREM
-                        im_vectors.TV_MBSREM(:, iter_n) = im_vectors.TV_MBSREM_apu;
-                    end
-                    
-                    if options.TV && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TVpriorFinal(im_vectors.TV_BSREM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                        im_vectors.TV_BSREM_apu = BSREM_iter(im_vectors.TV_BSREM_apu, options.lam, iter, options.beta_TV_bsrem, grad, epps);
-                        im_vectors.TV_BSREM(:, iter_n) = im_vectors.TV_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM TV iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.TV && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TVpriorFinal(im_vectors.TV_ROSEM_apu, options.TVdata, Nx, Ny, Nz, options.TV_use_anatomical, options, options.TVtype, options.tr_offsets);
-                        im_vectors.TV_ROSEM_apu = BSREM_iter(im_vectors.TV_ROSEM_apu, options.lam_rosem, iter, options.beta_TV_rosem, grad, epps);
-                        im_vectors.TV_ROSEM(:, iter_n) = im_vectors.TV_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM TV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM TV iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    
-                    if options.TV && options.RBI_OSL
-                        im_vectors.TV_RBI(:, iter_n) = im_vectors.TV_RBI_apu;
-                    end
-                    
-                    if options.TV && any(options.COSEM_OSL)
-                        im_vectors.TV_COSEM(:, iter_n) = im_vectors.TV_COSEM_apu;
-                    end
-                    
-                    if options.AD && options.OSL_OSEM
-                        im_vectors.AD_OSL(:, iter_n) = im_vectors.AD_OSL_apu;
-                    end
-                    if options.AD && options.MBSREM
-                        im_vectors.AD_MBSREM(:, iter_n) = im_vectors.AD_MBSREM_apu;
-                    end
-                    
-                    if options.AD && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = AD(im_vectors.AD_BSREM_apu, options.FluxType, Nx, Ny, Nz, options);
-                        im_vectors.AD_BSREM_apu = BSREM_iter(im_vectors.AD_BSREM_apu, options.lam, iter, options.beta_ad_bsrem, med, epps);
-                        im_vectors.AD_BSREM(:, iter_n) = im_vectors.AD_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM AD iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.AD && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = AD(im_vectors.AD_ROSEM_apu, options.FluxType, Nx, Ny, Nz, options);
-                        im_vectors.AD_ROSEM_apu = BSREM_iter(im_vectors.AD_ROSEM_apu, options.lam_rosem, iter, options.beta_ad_rosem, med, epps);
-                        im_vectors.AD_ROSEM(:, iter_n) = im_vectors.AD_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM AD iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM AD iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.AD && options.RBI_OSL
-                        im_vectors.AD_RBI(:, iter_n) = im_vectors.AD_RBI_apu;
-                    end
-                    if options.AD && any(options.COSEM_OSL)
-                        im_vectors.AD_COSEM(:, iter_n) = im_vectors.AD_COSEM_apu;
-                    end
-                    if options.APLS && options.OSL_OSEM
-                        im_vectors.APLS_OSL(:, iter_n) = im_vectors.APLS_OSL_apu;
-                    end
-                    if options.APLS && options.MBSREM
-                        im_vectors.APLS_MBSREM(:, iter_n) = im_vectors.APLS_MBSREM_apu;
-                    end
-                    if options.APLS && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TVpriorFinal(im_vectors.APLS_BSREM_apu, 0, Nx, Ny, Nz, true, options, 5);
-                        im_vectors.APLS_BSREM_apu = BSREM_iter(im_vectors.APLS_BSREM_apu, options.lam, iter, options.beta_APLS_bsrem, grad, epps);
-                        im_vectors.APLS_BSREM(:, iter_n) = im_vectors.APLS_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM APLS iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.APLS && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TVpriorFinal(im_vectors.APLS_ROSEM_apu, 0, Nx, Ny, Nz, true, options, 5);
-                        im_vectors.APLS_ROSEM_apu = BSREM_iter(im_vectors.APLS_ROSEM_apu, options.lam_rosem, iter, options.beta_APLS_rosem, grad, ...
-                            epps);
-                        im_vectors.APLS_ROSEM(:, iter_n) = im_vectors.APLS_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM APLS iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM APLS iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.APLS && options.RBI_OSL
-                        im_vectors.APLS_RBI(:, iter_n) = im_vectors.APLS_RBI_apu;
-                    end
-                    if options.APLS && any(options.COSEM_OSL)
-                        im_vectors.APLS_COSEM(:, iter_n) = im_vectors.APLS_COSEM_apu;
-                    end
-                    if options.TGV && options.OSL_OSEM
-                        im_vectors.TGV_OSL(:, iter_n) = im_vectors.TGV_OSL_apu;
-                    end
-                    if options.TGV && options.MBSREM
-                        im_vectors.TGV_MBSREM(:, iter_n) = im_vectors.TGV_MBSREM_apu;
-                    end
-                    if options.TGV && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TGV(im_vectors.TGV_BSREM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                        im_vectors.TGV_BSREM_apu = BSREM_iter(im_vectors.TGV_BSREM_apu, options.lam, iter, options.beta_TGV_bsrem, grad, epps);
-                        im_vectors.TGV_BSREM(:, iter_n) = im_vectors.TGV_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM TGV iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.TGV && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        grad = TGV(im_vectors.TGV_ROSEM_apu,options.NiterTGV,options.alphaTGV,options.betaTGV, Nx, Ny, Nz);
-                        im_vectors.TGV_ROSEM_apu = BSREM_iter(im_vectors.TGV_ROSEM_apu, options.lam_rosem, iter, options.beta_TGV_rosem, grad, epps);
-                        im_vectors.TGV_ROSEM(:, iter_n) = im_vectors.TGV_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM TGV iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM TGV iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.TGV && options.RBI_OSL
-                        im_vectors.TGV_RBI(:, iter_n) = im_vectors.TGV_RBI_apu;
-                    end
-                    if options.TGV && any(options.COSEM_OSL)
-                        im_vectors.TGV_COSEM(:, iter_n) = im_vectors.TGV_COSEM_apu;
-                    end
-                    if options.NLM && options.OSL_OSEM
-                        im_vectors.NLM_OSL(:, iter_n) = im_vectors.NLM_OSL_apu;
-                    end
-                    if options.NLM && options.MBSREM
-                        im_vectors.NLM_MBSREM(:, iter_n) = im_vectors.NLM_MBSREM_apu;
-                    end
-                    if options.NLM && options.BSREM
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = NLM(im_vectors.NLM_BSREM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                            options.sigma, epps, Nx, Ny, Nz, options);
-                        im_vectors.NLM_BSREM_apu = BSREM_iter(im_vectors.NLM_BSREM_apu, options.lam_rosem, iter, options.beta_NLM_bsrem, med, epps);
-                        im_vectors.NLM_BSREM(:, iter_n) = im_vectors.NLM_BSREM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['BSREM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['BSREM NLM iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.NLM && options.ROSEM_MAP
-                        if verbose
-                            tStart = tic;
-                        end
-                        med = NLM(im_vectors.NLM_ROSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
-                            options.sigma, epps, Nx, Ny, Nz, options);
-                        im_vectors.NLM_ROSEM_apu = BSREM_iter(im_vectors.NLM_ROSEM_apu, options.lam_rosem, iter, options.beta_NLM_rosem, med, epps);
-                        im_vectors.NLM_ROSEM(:, iter_n) = im_vectors.NLM_ROSEM_apu;
-                        if verbose
-                            tElapsed = toc(tStart);
-                            disp(['ROSEM NLM iteration ' num2str(iter) ' took ' num2str(tElapsed) ' seconds'])
-                        else
-                            disp(['ROSEM NLM iteration ' num2str(iter) ' finished'])
-                        end
-                    end
-                    if options.NLM && options.RBI_OSL
-                        im_vectors.NLM_RBI(:, iter_n) = im_vectors.NLM_RBI_apu;
-                    end
-                    if options.NLM && any(options.COSEM_OSL)
-                        im_vectors.NLM_COSEM(:, iter_n) = im_vectors.NLM_COSEM_apu;
-                    end
+                    im_vectors = init_next_iter(im_vectors, options, iter);
                     if options.use_psf && options.deblurring
                         im_vectors = computeDeblur(im_vectors, options, iter, gaussK, Nx, Ny, Nz);
                     end
-                    disp(['Iteration ' num2str(iter) ' finished'])
                 end
                 %% Implementation 5 (unsupported and untested)
             elseif options.implementation == 5

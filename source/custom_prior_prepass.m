@@ -525,7 +525,6 @@ if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isf
     options.det_per_ring = det_per_ring;
     options.pituus = floor(det_per_ring / subsets);
     options.pituus = int64([repmat(options.pituus,subsets - 1,1); det_per_ring - options.pituus*(subsets - 1)]);
-    list_mode_format = true;
     options.listmode = true;
 %     if options.implementation == 1
 %         error('List-mode reconstruction with custom detectors is currently not supported with implementation 1.')
@@ -587,7 +586,7 @@ FOVax=double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)
 FOVay=double(FOVay);
 % Axial FOV (mm)
-axial_fow = double(axial_fov);
+axial_fov = double(axial_fov);
 % Number of rings
 options.blocks=int32(rings + length(pseudot) - 1);
 % First ring
@@ -670,33 +669,12 @@ end
     form_subset_indices(options, options.pituus, subsets, indeksi, options.size_x, options.y, options.z_det, rings, false, TOF, options.SinM);
 if ~options.precompute_lor
     options.lor_a = uint16(0);
+    options.lor_orth = uint16(0);
 end
 
+[options.xx,options.yy,options.zz,options.dx,options.dy,options.dz,options.bx,options.by,options.bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, Nx, Ny, Nz, options.implementation);
 
-% Pixels
-etaisyys_x = (R - FOVax) / 2;
-etaisyys_y = (R - FOVay) / 2;
-etaisyys_z = (Z - axial_fow) / 2;
-if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-    options.zz = single(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    options.xx = single(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    options.yy = single(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
-else
-    options.zz = double(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    options.xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    options.yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
-end
 options.zz=options.zz(2*options.block1+1:2*options.blocks+2);
-
-% Distance of adjacent pixels
-options.dx=diff(options.xx(1:2));
-options.dy=diff(options.yy(1:2));
-options.dz=diff(options.zz(1:2));
-
-% Distance of image from the origin
-options.bx=options.xx(1);
-options.by=options.yy(1);
-options.bz=options.zz(1);
 
 % Number of pixels
 options.Ny=int32(Ny);
@@ -722,65 +700,9 @@ if options.zmax==0
         options.zmax = double(1);
     end
 end
-% Coordinates of the centers of the voxels
-if options.projector_type == 2
-    options.x_center = options.xx(1 : end - 1)' + options.dx/2;
-    options.y_center = options.yy(1 : end - 1)' + options.dy/2;
-    options.z_center = options.zz(1 : end - 1)' + options.dz/2;
-    temppi = min([options.FOVa_x / options.Nx, options.axial_fov / options.Nz]);
-    if options.tube_width_z > 0
-        temppi = max([1,round(options.tube_width_z / temppi)]);
-    else
-        temppi = max([1,round(options.tube_width_xy / temppi)]);
-    end
-    temppi = temppi * temppi * 3;
-    if options.apply_acceleration
-        if options.tube_width_z == 0
-            options.dec = uint32(sqrt(options.Nx^2 + options.Ny^2) * temppi);
-        else
-            options.dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * temppi);
-        end
-    else
-        options.dec = uint32(0);
-    end
-else
-    options.x_center = options.xx(1);
-    options.y_center = options.yy(1);
-    options.z_center = options.zz(1);
-    options.dec = uint32(0);
-end
+[options.x_center,options.y_center,options.z_center,options.dec] = computePixelCenters(options.xx,options.yy,options.zz,options.dx,options.dy,options.dz,TOF,options);
 
-
-if options.projector_type == 3
-    dp = max([options.dx,options.dy,options.dz]);
-    options.voxel_radius = sqrt(2) * options.voxel_radius * (dp / 2);
-    bmax = options.tube_radius + options.voxel_radius;
-    b = linspace(0, bmax, 10000)';
-    b(options.tube_radius > (b + options.voxel_radius)) = [];
-    b = unique(round(b*10^3)/10^3);
-    V = volumeIntersection(options.tube_radius, options.voxel_radius, b);
-    diffis = [diff(V);0];
-    b = b(diffis <= 0);
-    V = V(diffis <= 0);
-    Vmax = (4*pi)/3*options.voxel_radius^3;
-    bmin = min(b);
-else
-    V = 0;
-    Vmax = 0;
-    bmin = 0;
-    bmax = 0;
-end
-if options.implementation == 2 || options.implementation == 3
-    options.V = single(V);
-    options.Vmax = single(Vmax);
-    options.bmin = single(bmin);
-    options.bmax = single(bmax);
-else
-    options.V = (V);
-    options.Vmax = (Vmax);
-    options.bmin = (bmin);
-    options.bmax = (bmax);
-end
+[options.V,options.Vmax,options.bmin,options.bmax] = computeVoxelVolumes(options.dx,options.dy,options.dz,options);
 %%
 
 [options, options.D, options.C_co, options.C_aco, options.C_osl, options.Amin, options.E] = ...
