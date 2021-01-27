@@ -119,7 +119,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
         
         if verbose
-            disp('Prepass phase for MRAMLA, COSEM, ACOSEM and ECOSEM started')
+            disp('Prepass phase for MRAMLA, RBI, COSEM, ACOSEM and ECOSEM started')
         end
         if iscell(SinM)
             Sino = SinM{1};
