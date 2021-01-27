@@ -836,6 +836,9 @@ A = forwardBackwardProject(options);
 % A = forwardBackwardProject(Nx, Ny, Nz, FOV_tr, axial_fov, diameter, rings, cr_p, cr_pz, cryst_per_block, blocks_per_ring, ...
 % det_per_ring, Ndist, Nang,NSinos, span, ring_difference, subsets, implementation, use_device, projector_type, tube_width_z, ...
 % tube_radius, voxel_radius, use_psf, FWHM);
+% You can also create the class object by using your own detector
+% coordinates: 
+% A = forwardBackwardProject(x_det, y_det, z_det, Nx, Ny, Nz, FOV_tr, axial_fov, subsets, implementation, use_device);
 % Load the measurement data
 load('Cylindrical_PET_example_cylpet_example_sinograms_combined_static_200x168x703_span3.mat','raw_SinM')
 % Alternatively, if your measurement data is in other format, you can use
@@ -863,6 +866,9 @@ for iter = 1 : options.Niter
             % Computed ONLY if the second output is present
             [x, A] = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (y + options.epps), osa_iter);
         else
+            % NOTE: Implementations 3 and 4 include randoms/scatter
+            % correction to y automatically. With implementation 1
+            % randoms/scatter must be added manually.
             x = backwardProject(A, raw_SinM(A.nn(osa_iter) + 1:A.nn(osa_iter+1)) ./ (y + options.epps), osa_iter);
         end
         f = (f ./ (A.sens(:,osa_iter) + options.epps)) .* (x + options.epps);
