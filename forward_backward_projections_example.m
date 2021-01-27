@@ -870,7 +870,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.OProperties.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 f_osem = ff;
@@ -914,7 +914,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.OProperties.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
@@ -960,7 +960,7 @@ for iter = 1 : options.Niter
 end
 % PSF deblurring phase
 if options.use_psf && options.deblurring
-    f = deblur(f, A.OProperties, A.gaussK, options.Nx, options.Ny, options.Nz);
+    f = deblur(f, A.OProperties, A.OProperties.gaussK, options.Nx, options.Ny, options.Nz);
 end
 ff = reshape(f, options.Nx,options.Ny,options.Nz);
 
@@ -1025,17 +1025,17 @@ for iter = 1 : options.Niter
         sysMat = formMatrix(A, osa_iter);
         
         if options.use_psf
-            f = computeConvolution(f, options, options.Nx, options.Ny, options.Nz, gaussK);
+            f = computeConvolution(f, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
         end
         
         y = sysMat' * f;
         Summ = full(sum(sysMat,2));
         if options.use_psf
-            Summ = computeConvolution(Summ, options, options.Nx, options.Ny, options.Nz, gaussK);
+            Summ = computeConvolution(Summ, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
         end
         x = sysMat * (raw_SinM ./ y);
         if options.use_psf
-            x = computeConvolution(x, options, options.Nx, options.Ny, options.Nz, gaussK);
+            x = computeConvolution(x, options, options.Nx, options.Ny, options.Nz, A.OProperties.gaussK);
         end
         f = (f ./ (Summ + options.epps)) .* (x + options.epps);
     end
