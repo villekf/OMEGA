@@ -1043,7 +1043,7 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 			options[uu] = "-DN_RAYS2D";
 			uu++;
 		}
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
 		char buffer12[20];
 		std::snprintf(buffer12, sizeof(buffer12), "-DN_RAYS3D=%u", n_rays3D);
 		options[uu] = buffer12;
@@ -1070,7 +1070,11 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 				os_options[kk] = options[kk];
 			else {
 				char num_char[20];
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+				sprintf_s(num_char, 20, "-DN_REKOS=%d", n_rekos);
+#else
 				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos);
+#endif
 				os_options[kk] = num_char;
 			}
 		}
@@ -1099,7 +1103,7 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 			ll++;
 		}
 		if ((projector_type == 2U || projector_type == 3U || TOF) && dec > 0) {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
 			char buffer3[20];
 			std::snprintf(buffer3, sizeof(buffer3), "-DDEC=%d", dec);
 			os_options[ll] = buffer3;
@@ -1123,7 +1127,11 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 				ml_options[kk] = options[kk];
 			else {
 				char num_char[20];
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+				sprintf_s(num_char, 20, "-DN_REKOS=%d", n_rekos_mlem);
+#else
 				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos_mlem);
+#endif
 				ml_options[kk] = num_char;
 			}
 		}
