@@ -115,6 +115,8 @@
   
 - Fixed COSEM-OSL when using implementation 1
 
+- Fixed MLEM/OSL-MLEM with implementation 2 when using CUDA
+
 ## OMEGA v1.1.0
 
 ### New features
