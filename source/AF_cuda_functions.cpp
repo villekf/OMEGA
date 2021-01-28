@@ -970,7 +970,8 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 
 	nvrtcResult status = NVRTC_SUCCESS;
 
-	std::vector<const char*> options(50, 0);
+	//std::vector<const char*> options(50, 0);
+	const char* options[50];
 	int uu = 0;
 
 	options[uu] = header_directory;
@@ -1035,7 +1036,7 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		uu++;
 	}
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
-		std::string apu1 = ("-DN_RAYS=" + std::to_string(n_rays * n_rays3D));
+		const std::string apu1 = ("-DN_RAYS=" + std::to_string(n_rays * n_rays3D));
 		options[uu] = apu1.c_str();
 		uu++;
 		if (n_rays > 1) {
@@ -1052,22 +1053,35 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 #endif
 		uu++;
 	}
+	if (DEBUG) {
+		for (int gg = 0; gg < uu; gg++)
+			mexPrintf("%s", options[gg]);
+		mexPrintf("\n");
+		mexPrintf("uu = %d\n", uu);
+	}
 	if (osem_bool) {
 		int ll = uu;
-		std::vector<const char*> os_options(options.size(), 0);
+		//std::vector<const char*> os_options(options.size(), 0);
+		const char* os_options[50];
+		//const char* apu = options[ll - 1];
 		
-		for (int kk = 0; kk < ll; kk++) {
-			os_options[kk] = options[kk];
+		for (int kk = 0; kk <= ll; kk++) {
+			if (kk < ll)
+				os_options[kk] = options[kk];
+			else {
+				char num_char[20];
+				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos);
+				os_options[kk] = num_char;
+			}
 		}
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)
-		char buffer4[20];
-		std::snprintf(buffer4, sizeof(buffer4), "-DN_REKOS=%d", n_rekos);
-		os_options[ll] = buffer4;
-#else
-		const std::string buffer4 = ("-DN_REKOS=" + std::to_string(n_rekos));
-		os_options[ll] = buffer4.c_str();
-#endif
 		ll++;
+		if (DEBUG) {
+			//os_options[ll - 2] = apu;
+			for (int gg = 0; gg < ll; gg++)
+				mexPrintf("%s\n", os_options[gg]);
+			//mexPrintf("\n");
+			mexPrintf("uu = %d\n", ll);
+		}
 		if (n_rekos == 1) {
 			os_options[ll] = "-DNREKOS1";
 			ll++;
@@ -1100,9 +1114,19 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	}
 	if (mlem_bool) {
 		int rr = uu;
-		std::vector<const char*> ml_options = options;
-		std::string apu9 = ("-DN_REKOS=" + std::to_string(n_rekos));
-		ml_options[rr] = apu9.c_str();
+		//std::vector<const char*> ml_options = options;
+		const char* ml_options[50];
+		//std::string apu9 = ("-DN_REKOS=" + std::to_string(n_rekos));
+		//ml_options[rr] = apu9.c_str();
+		for (int kk = 0; kk <= rr; kk++) {
+			if (kk < rr)
+				ml_options[kk] = options[kk];
+			else {
+				char num_char[20];
+				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos_mlem);
+				ml_options[kk] = num_char;
+			}
+		}
 		rr++;
 		if (n_rekos_mlem == 1) {
 			ml_options[rr] = "-DNREKOS1";
@@ -1141,7 +1165,7 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	return status;
 }
 
-nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, std::vector<const char*>& options, int uu) {
+nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, const char** options, int uu) {
 	nvrtcResult status = NVRTC_SUCCESS;
 	size_t pituus;
 	if (atomic_64bit) {
@@ -1152,11 +1176,14 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 	else {
 		options[uu] = "-DCAST=float";
 	}
-	options.erase(options.end() - (options.size() - uu) + 1, options.end());
+	for (int ll = uu + 1; ll < 50; ll++)
+		options[ll] = "";
+	//options.erase(options.end() - (options.size() - uu) + 1, options.end());
 	if (DEBUG) {
-		for (int uu = 0; uu < options.size(); uu++)
-			mexPrintf("%s", options[uu]);
+		for (int ll = 0; ll <= uu; ll++)
+			mexPrintf("%s", options[ll]);
 		mexPrintf("\n");
+		mexPrintf("uu = %d\n", uu);
 	}
 	if (atomic_64bit) {
 		std::string kernel_path_atom;
@@ -1172,7 +1199,8 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 		status = nvrtcCreateProgram(&program, sourceCode_atom, "64bit_atom", 0, NULL, NULL);
 
 		// Build the program
-		status = nvrtcCompileProgram(program, options.size(), options.data());
+		//status = nvrtcCompileProgram(program, options.size(), options.data());
+		status = nvrtcCompileProgram(program, uu, options);
 		if (status != NVRTC_SUCCESS) {
 			mexPrintf("Failed to build 64-bit atomics program.\n");
 			if (DEBUG) {
@@ -1188,8 +1216,11 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 				nvrtcDestroyProgram(&program);
 				return status;
 			}
-			options.erase(options.end() - 2, options.end());
-			options.emplace_back("-DCAST=float");
+			options[uu] = "";
+			uu--;
+			options[uu] = "-DCAST=float";
+			//options.erase(options.end() - 2, options.end());
+			//options.emplace_back("-DCAST=float");
 		}
 		else if (verbose)
 			mexPrintf("CUDA program (64-bit atomics) built\n");
@@ -1216,7 +1247,8 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 		}
 
 		// Build the program
-		status = nvrtcCompileProgram(program, options.size(), options.data());
+		//status = nvrtcCompileProgram(program, options.size(), options.data());
+		status = nvrtcCompileProgram(program, uu + 1, options);
 		// Build log in case of failure
 		if (status != NVRTC_SUCCESS) {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;

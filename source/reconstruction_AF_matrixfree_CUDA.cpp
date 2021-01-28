@@ -771,11 +771,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				// Use previously computed normalization factor if available
 				if (compute_norm_matrix == 0u) {
 					if (osem_bool && no_norm == 1u && iter == 0u) {
-						for (int kk = 0; kk < subsets; kk++)
+						for (uint32_t kk = 0; kk < subsets; kk++)
 							Summ_mlem += Summ[kk];
 					}
 					if (no_norm_mlem == 1u) {
-						apu_sum_mlem = constant(0.f, 1, 1, f32);
+						if (atomic_64bit)
+							apu_sum_mlem = constant(0LL, 1, 1, s64);
+						else
+							apu_sum_mlem = constant(0.f, 1, 1, f32);
 						d_Summ_mlem = apu_sum_mlem.device<CUdeviceptr>();
 					}
 					else
@@ -783,18 +786,33 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				}
 				else {
 					if (no_norm_mlem == 1u) {
-						apu_sum_mlem = constant(0.f, 1, 1, f32);
+						if (atomic_64bit)
+							apu_sum_mlem = constant(0LL, 1, 1, s64);
+						else
+							apu_sum_mlem = constant(0.f, 1, 1, f32);
 						d_Summ_mlem = apu_sum_mlem.device<CUdeviceptr>();
 					}
 					else
 						d_Summ_mlem = Summ_mlem.device<CUdeviceptr>();
 				}
+				
+				size_t erotus = koko % local_size;
 
-				size_t global_size = koko + (local_size - koko % local_size);
+				if (erotus > 0)
+					erotus = (local_size - erotus);
 
-				global_size = global_size / local_size;
+				const size_t global_size = koko + erotus;
 
 				const uint64_t m_size = static_cast<uint64_t>(koko);
+
+				if (DEBUG) {
+					mexPrintf("global_size = %u\n", global_size);
+					mexPrintf("size_x = %u\n", size_x);
+					mexPrintf("n_rekos_mlem = %u\n", n_rekos_mlem);
+					for (int rr = 0; rr < n_rekos_mlem; rr++)
+						mexPrintf("reko_type_mlem = %u\n", reko_type_mlem[rr]);
+					mexEvalString("pause(.0001);");
+				}
 
 				if (use_psf) {
 					vec.im_mlem_blurred = computeConvolution(vec.im_mlem, g, Nx, Ny, Nz, w_vec, n_rekos_mlem);
