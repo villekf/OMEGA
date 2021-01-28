@@ -113,6 +113,9 @@
         <tocitem target="extracting_the_system_matrix.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Extracting the system matrix
         </tocitem>
+        <tocitem target="listmode_reconstruction.html.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Custom detector coordinates and/or list-mode reconstruction
+        </tocitem>
         <tocitem target="compute_forward_backwards_projections.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Computing the forward and/or backward projections
         </tocitem>

@@ -1,0 +1,27 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Custom detector coordinates and/or list-mode reconstruction</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Custom detector coordinates and/or list-mode reconstruction</span></h1><div  class = 'S1'><span>Rather than use the built-in functions for the creation of the detector coordinates and all the other necessary variables, the user can input their own coordinates. This can be also used to reconstruct list-mode data, i.e. a list of coincidence events. Custom detectors can be input to the options struct as variables x (</span><span style=' font-family: monospace;'>options.x</span><span>), y (</span><span style=' font-family: monospace;'>options.y</span><span>) and z (</span><span style=' font-family: monospace;'>options.z</span><span>), where the first two correspond to the transaxial coordinates and the last to the axial coordinates. If the coordinates correspond to sinogram data, the input measurement data should be a sinogram. If you use </span><span style=' font-family: monospace;'>reconstructions_main</span><span> function for image reconstruction, the measurement data should be input to </span><span style=' font-family: monospace;'>options.SinM</span><span> variable. You can use the custom detectors to also create the </span><span style=' font-family: monospace;'>forwardBackwardProject</span><span> class object. For more information on the use of the class object, see </span><a href = "compute_forward_backwards_projections.html#H_AA52FBA9"><span>List-mode reconstruction/custom detectors</span></a><span>.</span></div><div  class = 'S1'><span>An example of list-mode reconstruction and custom detectors for both </span><span style=' font-family: monospace;'>reconstructions_main</span><span> and </span><span style=' font-family: monospace;'>forwardBackwardProject</span><span> class is presented in the file </span><a href = "https://github.com/villekf/OMEGA/blob/master/Inveon_PET_main_listmode_example.m"><span style=' text-decoration: underline; font-family: monospace;'>Inveon_PET_main_listmode_example.m</span></a><span>. For custom sinogram data or list-mode reconstruction, you can also use </span><a href = "https://github.com/villekf/OMEGA/blob/master/main_PET.m"><span style=' text-decoration: underline; font-family: monospace;'>main_PET.m</span></a><span>.</span></div></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Custom detector coordinates and/or list-mode reconstruction
+% Rather than use the built-in functions for the creation of the detector coordinates 
+% and all the other necessary variables, the user can input their own coordinates. 
+% This can be also used to reconstruct list-mode data, i.e. a list of coincidence 
+% events. Custom detectors can be input to the options struct as variables x (|options.x|), 
+% y (|options.y|) and z (|options.z|), where the first two correspond to the transaxial 
+% coordinates and the last to the axial coordinates. If the coordinates correspond 
+% to sinogram data, the input measurement data should be a sinogram. If you use 
+% |reconstructions_main| function for image reconstruction, the measurement data 
+% should be input to |options.SinM| variable. You can use the custom detectors 
+% to also create the |forwardBackwardProject| class object. For more information 
+% on the use of the class object, see <compute_forward_backwards_projections.html#H_AA52FBA9 
+% List-mode reconstruction/custom detectors>.
+% 
+% An example of list-mode reconstruction and custom detectors for both |reconstructions_main| 
+% and |forwardBackwardProject| class is presented in the file <https://github.com/villekf/OMEGA/blob/master/Inveon_PET_main_listmode_example.m 
+% |Inveon_PET_main_listmode_example.m|>. For custom sinogram data or list-mode 
+% reconstruction, you can also use <https://github.com/villekf/OMEGA/blob/master/main_PET.m 
+% |main_PET.m|>.
+##### SOURCE END #####
+--></body></html>
