@@ -233,7 +233,7 @@ https://se.mathworks.com/matlabcentral/answers/329796-issue-with-libstdc-so-6
 
 Or see the solutions in [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1).
 
-If you are using ROOT data with ROOT 6.18.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1) for details.
+If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help#omega-1) for details.
 
 ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data).
 
