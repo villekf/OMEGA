@@ -275,7 +275,7 @@ If you wish to use this software in your work, at the moment cite the GitHub pag
 
 Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
-This work was supported by a grant from Jane and Aatos Erkko foundation.
+This work was supported by a grant from Jane and Aatos Erkko foundation. This work has been supported by [University of Eastern Finland](https://www.uef.fi/en) and Academy of Finland.
 
 
 ## References
