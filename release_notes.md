@@ -117,6 +117,9 @@
 
 - Fixed MLEM/OSL-MLEM with implementation 2 when using CUDA
 
+- MATLAB documentation now has a search database
+  - The MATLAB documentation search can now also search OMEGA documentation
+
 ## OMEGA v1.1.0
 
 ### New features
