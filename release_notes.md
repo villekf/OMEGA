@@ -1,5 +1,17 @@
 # Release notes
 
+## OMEGA v1.2.0
+
+### New features
+
+- Added support for transmission tomography data
+  - Examples of computed tomography (CT) are included
+  - Supports same implementations and algorithms as PET data
+  
+### Bug fixes and enhancements
+
+- Fix raw data sampling increase when using sampling larger than 2
+
 ## OMEGA v1.1.1
 
 ### New features
