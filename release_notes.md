@@ -10,7 +10,9 @@
   
 ### Bug fixes and enhancements
 
-- Fix raw data sampling increase when using sampling larger than 2
+- Fixed raw data sampling increase when using sampling larger than 2
+
+- Fixed custom normalization data load when the data was not in the current working directory
 
 ## OMEGA v1.1.1
 
