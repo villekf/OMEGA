@@ -122,17 +122,17 @@ end
 if options.scatter_correction && options.normalize_scatter
     if ~isfield(options,'normalization')
         if options.use_user_normalization
-            [file, ~] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
+            [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
             if isequal(file, 0)
                 error('No file was selected')
             end
             if any(strfind(file, '.nrm'))
-                fid = fopen(file);
+                fid = fopen(fullfile(fpath, file));
                 options.normalization = fread(fid, inf, 'single=>single',0,'l');
                 fclose(fid);
                 options.InveonNorm = true;
             else
-                data = load(file);
+                data = load(fullfile(fpath, file));
                 variables = fieldnames(data);
                 options.normalization = data.(variables{1});
                 clear data
@@ -700,7 +700,7 @@ if (options.normalization_correction && options.corrections_during_reconstructio
 elseif options.normalization_correction && options.use_user_normalization && options.corrections_during_reconstruction
     normalization_correction = true;
     if ~isfield(options,'normalization')
-        [file, ~] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
+        [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
         if isequal(file, 0)
             error('No file was selected')
         end
@@ -708,7 +708,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             if options.use_raw_data
                 error('Inveon normalization data cannot be used with raw list-mode data')
             end
-            fid = fopen(file);
+            fid = fopen(fullfile(fpath, file));
             options.normalization = fread(fid, inf, 'single=>single',0,'l');
             fclose(fid);
             if numel(options.normalization) ~= options.Ndist * options.Nang * options.TotSinos && ~options.use_raw_data
@@ -717,7 +717,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
             options.InveonNorm = true;
             %             options.normalization = 1 ./ options.normalization;
         else
-            data = load(file);
+            data = load(fullfile(fpath, file));
             variables = fieldnames(data);
             if any(strcmp(variables,'normalization'))
                 options.normalization = data.(variables{strcmp(variables,'normalization')});
@@ -750,17 +750,17 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
     normalization_correction = false;
     if ~isfield(options,'normalization')
         if options.use_user_normalization
-            [file, ~] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
+            [file, fpath] = uigetfile({'*.nrm;*.mat'},'Select normalization datafile');
             if isequal(file, 0)
                 error('No file was selected')
             end
             if any(strfind(file, '.nrm'))
-                fid = fopen(file);
+                fid = fopen(fullfile(fpath, file));
                 options.normalization = fread(fid, inf, 'single=>single',0,'l');
                 fclose(fid);
                 options.InveonNorm = true;
             else
-                data = load(file);
+                data = load(fullfile(fpath, file));
                 variables = fieldnames(data);
                 if any(strcmp(variables,'normalization'))
                     options.normalization = data.(variables{strcmp(variables,'normalization')});
