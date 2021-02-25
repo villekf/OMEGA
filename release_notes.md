@@ -7,12 +7,21 @@
 - Added support for transmission tomography data
   - Examples of computed tomography (CT) are included
   - Supports same implementations and algorithms as PET data
+  - Implementation 1 uses precomputation always in 3D cases
+  - Precomputation is turned off in all other implementations
+  - Multi-ray Siddon and orthogonal distance-based ray tracer are not available
   
 ### Bug fixes and enhancements
 
 - Fixed raw data sampling increase when using sampling larger than 2
 
 - Fixed custom normalization data load when the data was not in the current working directory
+
+- `ImageMed` now accepts color limits (similar to imagesc)
+
+- Fixed MLEM with precomputed system matrix
+  - PSF was not correctly applied before
+  - Not saving the intermediate iterations did not work before
 
 ## OMEGA v1.1.1
 
