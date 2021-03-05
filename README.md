@@ -268,7 +268,7 @@ For feature requests, post an issue on GitHub. I do not guarantee that a specifi
 
 ## Citations
 
-If you wish to use this software in your work, at the moment cite the GitHub page. An article has been sent to peer review so this is expected to change in the near future.
+If you wish to use this software in your work, cite this paper: V-V Wettenhovi et al 2021 Phys. Med. Biol. 66 065010. The peer reviewed (open access) paper on OMEGA can be found from https://doi.org/10.1088/1361-6560/abe65f.
 
 
 ## Acknowledgments
