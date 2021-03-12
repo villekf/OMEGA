@@ -11,6 +11,8 @@
   - Precomputation is turned off in all other implementations
   - Multi-ray Siddon and orthogonal distance-based ray tracer are not available
   
+- CUDA backend now supports listmode reconstruction as well as the more efficient median root prior
+  
 ### Bug fixes and enhancements
 
 - Fixed raw data sampling increase when using sampling larger than 2
