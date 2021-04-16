@@ -30,33 +30,48 @@ end
 
 algo_char = algorithms_char();
 
+% The below list can be generated (without line endings) with: algorithms_char(0)
 % 1 = MLEM, 2 = OSEM, 3 = MRAMLA, 4 = RAMLA, 5 = ROSEM, 6 = RBI, 7 = DRAMA, 
-% 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = MRP-OSL-OSEM, 12 = MRP-OSL-MLEM, 
-% 13 = MRP-BSREM, 14 = MRP-MBSREM, 15 = MRP-ROSEM, 16 = MRP-RBI, 17 = MRP-OSL-COSEM, 
-% 18 = QP (OSL-OSEM), 19 = QP (OSL-MLEM), 20 = QP (BSREM), 21 = QP (MBSREM), 
-% 22 = QP (ROSEM), 23 = QP (RBI), 24 =  QP (OSL-COSEM), % 25 = HP (OSL-OSEM), 
-% 26 = HP (OSL-MLEM), 27 = HP (BSREM), 28 = HP (MBSREM), 29 = HP (ROSEM), 
-% 30 = HP (RBI), 31 =  HP (OSL-COSEM), 32 = L-filter (OSL-OSEM), 
-% 33 = L-filter (OSL-MLEM), 34 =  L-filter (BSREM), 35 =  L-filter (MBSREM), 
-% 36 = L-filter (ROSEM), 37 = L-filter (RBI), 38 = L-filter (OSL-COSEM), 
-% 39 = FMH (OSL-OSEM), 40 = FMH (OSL-MLEM), 41 = FMH (BSREM), 42 = FMH (MBSREM), 
-% 43 = FMH (ROSEM), 44 = FMH (RBI), 45 = FMH (OSL-COSEM), 46 = Weighted mean (OSL-OSEM), 
-% 47 = Weighted mean (OSL-MLEM), 48 = Weighted mean (BSREM), 49 = Weighted mean (MBSREM), 
-% 50 = Weighted mean (ROSEM), 51 = Weighted mean (RBI), 52 = Weighted mean (OSL-COSEM), 
-% 53 = Total variation (OSL-OSEM), 54 = Total variation (OSL-MLEM), 55 = Total variation (BSREM), 
-% 56 = Total variation (MBSREM), 57 = Total variation (ROSEM), 58 = Total variation (RBI), 
-% 59 = Total variation (OSL-COSEM), 60 = Anisotropic Diffusion (OSL-OSEM), 
-% 61 = Anisotropic Diffusion (OSL-MLEM), 62 = Anisotropic Diffusion (BSREM), 
-% 63 = Anisotropic Diffusion (MBSREM), 64 = Anisotropic Diffusion (ROSEM), 
-% 65 = Anisotropic Diffusion (RBI), 66 = Anisotropic Diffusion (OSL-COSEM), 
-% 67 = APLS (OSL-OSEM), 68 = APLS (OSL-MLEM), 69 = APLS (BSREM), 70 = APLS (MBSREM), 
-% 71 = APLS (ROSEM), 72 = APLS (RBI), 73 = APLS (OSL-COSEM), 74 = TGV (OSL-OSEM), 
-% 75 = TGV (OSL-MLEM), 76 = TGV (BSREM), 77 = TGV (MBSREM), 78 = TGV (ROSEM), 
-% 79 = TGV (RBI), 80 = TGV (OSL-COSEM), 81 = NLM (OSL-OSEM), 82 =  NLM (OSL-MLEM), 
-% 83 = NLM (BSREM), 84 = NLM (MBSREM), 85 = NLM (ROSEM), 86 = NLM (RBI), 87 = NLM (OSL-COSEM), 
-% 88 = Custom prior (OSL-OSEM), 89 =  Custom prior (OSL-MLEM), 90 = Custom prior (BSREM), 
-% 91 = Custom prior (MBSREM), 92 = Custom prior (ROSEM), 93 = Custom prior (RBI), 
-% 94 = Custom prior (OSL-COSEM)
+% 8 = COSEM, 9 = ECOSEM, 10 = ACOSEM, 11 = Median Root (OSL-MLEM), 
+% 12 = Median Root (OSL-OSEM), 13 = Median Root (BSREM), 14 = Median Root (MBSREM), 
+% 15 = Median Root (ROSEM-MAP), 16 = Median Root (OSL-RBI), 17 = Median Root (OSL-COSEM), 
+% 18 = Median Root (PKMA), 19 = Quadratic (OSL-MLEM), 20 = Quadratic (OSL-OSEM), 
+% 21 = Quadratic (BSREM), 22 = Quadratic (MBSREM), 23 = Quadratic (ROSEM-MAP), 
+% 24 = Quadratic (OSL-RBI), 25 = Quadratic (OSL-COSEM), 26 = Quadratic (PKMA), 
+% 27 = Huber (OSL-MLEM), 28 = Huber (OSL-OSEM), 29 = Huber (BSREM), 30 = Huber (MBSREM), 
+% 31 = Huber (ROSEM-MAP), 32 = Huber (OSL-RBI), 33 = Huber (OSL-COSEM), 
+% 34 = Huber (PKMA), 35 = L-filter (OSL-MLEM), 36 = L-filter (OSL-OSEM), 
+% 37 = L-filter (BSREM), 38 = L-filter (MBSREM), 39 = L-filter (ROSEM-MAP), 
+% 40 = L-filter (OSL-RBI), 41 = L-filter (OSL-COSEM), 42 = L-filter (PKMA), 
+% 43 = FIR Median Hybrid (OSL-MLEM), 44 = FIR Median Hybrid (OSL-OSEM), 
+% 45 = FIR Median Hybrid (BSREM), 46 = FIR Median Hybrid (MBSREM), 
+% 47 = FIR Median Hybrid (ROSEM-MAP), 48 = FIR Median Hybrid (OSL-RBI), 
+% 49 = FIR Median Hybrid (OSL-COSEM), 50 = FIR Median Hybrid (PKMA), 
+% 51 = Weighted mean (OSL-MLEM), 52 = Weighted mean (OSL-OSEM), 53 = Weighted mean (BSREM), 
+% 54 = Weighted mean (MBSREM), 55 = Weighted mean (ROSEM-MAP), 56 = Weighted mean (OSL-RBI), 
+% 57 = Weighted mean (OSL-COSEM), 58 = Weighted mean (PKMA), 
+% 59 = Total Variation (OSL-MLEM), 60 = Total Variation (OSL-OSEM), 
+% 61 = Total Variation (BSREM), 62 = Total Variation (MBSREM), 
+% 63 = Total Variation (ROSEM-MAP), 64 = Total Variation (OSL-RBI), 
+% 65 = Total Variation (OSL-COSEM), 66 = Total Variation (PKMA), 
+% 67 = Anisotropic Diffusion (OSL-MLEM), 68 = Anisotropic Diffusion (OSL-OSEM), 
+% 69 = Anisotropic Diffusion (BSREM), 70 = Anisotropic Diffusion (MBSREM), 
+% 71 = Anisotropic Diffusion (ROSEM-MAP), 72 = Anisotropic Diffusion (OSL-RBI), 
+% 73 = Anisotropic Diffusion (OSL-COSEM), 74 = Anisotropic Diffusion (PKMA), 
+% 75 = Asymmetric Parallel Level Sets (OSL-MLEM), 76 = Asymmetric Parallel Level Sets (OSL-OSEM), 
+% 77 = Asymmetric Parallel Level Sets (BSREM), 78 = Asymmetric Parallel Level Sets (MBSREM), 
+% 79 = Asymmetric Parallel Level Sets (ROSEM-MAP), 80 = Asymmetric Parallel Level Sets (OSL-RBI), 
+% 81 = Asymmetric Parallel Level Sets (OSL-COSEM), 82 = Asymmetric Parallel Level Sets (PKMA), 
+% 83 = Total Generalized Variation (OSL-MLEM), 84 = Total Generalized Variation (OSL-OSEM), 
+% 85 = Total Generalized Variation (BSREM), 86 = Total Generalized Variation (MBSREM), 
+% 87 = Total Generalized Variation (ROSEM-MAP), 88 = Total Generalized Variation (OSL-RBI), 
+% 89 = Total Generalized Variation (OSL-COSEM), 90 = Total Generalized Variation (PKMA), 
+% 91 = Non-Local Means (OSL-MLEM), 92 = Non-Local Means (OSL-OSEM), 93 = Non-Local Means (BSREM), 
+% 94 = Non-Local Means (MBSREM), 95 = Non-Local Means (ROSEM-MAP), 96 = Non-Local Means (OSL-RBI), 
+% 97 = Non-Local Means (OSL-COSEM), 98 = Non-Local Means (PKMA), 99 = Custom (OSL-MLEM), 
+% 100 = Custom (OSL-OSEM), 101 = Custom (BSREM), 102 = Custom (MBSREM), 103 = Custom (ROSEM-MAP), 
+% 104 = Custom (OSL-RBI), 105 = Custom (OSL-COSEM), 106 = Custom (PKMA)
+
 % Inputing algorithm number that does not exist in the cell array shows all
 % the available algorithms present in the cell array
 algorithms = [2];
@@ -86,13 +101,15 @@ if isempty(img)
 end
 
 
-if length(algorithms) > 3
+if length(algorithms) >= 4
     hh = 2;
 else
     hh = 1;
 end
 if length(algorithms) < 4
     jj = min(3, length(algorithms));
+elseif length(algorithms) == 4
+    jj = 2;
 else
     jj = 3;
 end
@@ -352,7 +369,7 @@ algorithms = 2;
 % The scale value for the pixel alpha values. Higher values will make the
 % pixels more transparent, allowing areas of higher activity to be seen
 % through background noise
-alpha_scale = 10;
+alpha_scale = 1;
 
 if exist('f_osem','var') && ~exist('pz','var')
     pz = cell(95,1);
@@ -370,8 +387,8 @@ alpha(alpha > 1) = 1;
 
 figure;vol3d('CData', permute(img(:,:,:,end), [3 2 1 4]), 'Alpha', alpha);
 set(gca, 'View', [45 30]);
-set(gca, 'XLim', [60 200]);
-set(gca, 'ZLim', [80 200]);
+set(gca, 'XLim', [0 128]);
+set(gca, 'ZLim', [0 128]);
 set(gcf, 'Color', 'w');
 
 %% Visualize simultanously all the views for n algorithms
