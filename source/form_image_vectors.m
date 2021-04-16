@@ -28,9 +28,9 @@ end
 if options.implementation ~= 2
     
     
-    MLEM_bool = options.OSL_MLEM || options.mlem;
-    OS_bool = options.osem || options.rosem || options.ramla || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP || options.rbi || options.drama ...
-    || options.cosem || options.ecosem || options.acosem || options.RBI_OSL || any(options.COSEM_OSL);
+    MLEM_bool = options.OSL_MLEM || options.MLEM;
+    OS_bool = options.OSEM || options.ROSEM || options.RAMLA || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP || options.RBI || options.DRAMA ...
+    || options.COSEM || options.ECOSEM || options.ACOSEM || options.OSL_RBI || any(options.OSL_COSEM);
     
     if options.implementation == 4 && OS_bool
         im_vectors.OSEM_apu = ones(N, 1);
@@ -38,62 +38,62 @@ if options.implementation ~= 2
     if options.implementation == 4 && MLEM_bool
         im_vectors.MLEM_apu = ones(N, 1);
     end
-    if options.osem
+    if options.OSEM
         im_vectors.OSEM = ones(N,Niter + 1);
         im_vectors.OSEM(:,1) = options.x0(:);
         im_vectors.OSEM_apu = im_vectors.OSEM(:,1);
     end
-    if options.mlem
+    if options.MLEM
         im_vectors.MLEM = ones(N,Niter + 1);
         im_vectors.MLEM(:,1) = options.x0(:);
         im_vectors.MLEM_apu = im_vectors.MLEM(:,1);
     end
-    if options.mramla
+    if options.MRAMLA
         im_vectors.MRAMLA = ones(N,Niter + 1);
         im_vectors.MRAMLA(:,1) = options.x0(:);
         im_vectors.MRAMLA_apu = im_vectors.MRAMLA(:,1);
     end
-    if options.ramla
+    if options.RAMLA
         im_vectors.RAMLA = ones(N,Niter + 1);
         im_vectors.RAMLA(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.RAMLA_apu = im_vectors.RAMLA(:,1);
         end
     end
-    if options.rosem
+    if options.ROSEM
         im_vectors.ROSEM = ones(N,Niter + 1);
         im_vectors.ROSEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.ROSEM_apu = im_vectors.ROSEM(:,1);
         end
     end
-    if options.rbi
+    if options.RBI
         im_vectors.RBI = ones(N,Niter + 1);
         im_vectors.RBI(:,1) = options.x0(:);
         im_vectors.RBI_apu = im_vectors.RBI(:,1);
     end
-    if options.drama
+    if options.DRAMA
         im_vectors.DRAMA = ones(N,Niter + 1);
         im_vectors.DRAMA(:,1) = options.x0(:);
         im_vectors.DRAMA_apu = im_vectors.DRAMA(:,1);
     end
-    if options.cosem
+    if options.COSEM
         im_vectors.COSEM = ones(N,Niter + 1);
         im_vectors.COSEM(:,1) = options.x0(:);
         im_vectors.COSEM_apu = im_vectors.COSEM(:,1);
     end
-    if options.ecosem
+    if options.ECOSEM
         im_vectors.ECOSEM = ones(N,Niter + 1);
         im_vectors.ECOSEM(:,1) = options.x0(:);
         im_vectors.ECOSEM_apu = im_vectors.ECOSEM(:,1);
-        if ~options.osem
+        if ~options.OSEM
             im_vectors.OSEM_apu = options.x0(:);
         end
-        if ~options.cosem
+        if ~options.COSEM
             im_vectors.COSEM_apu = options.x0(:);
         end
     end
-    if options.acosem
+    if options.ACOSEM
         im_vectors.ACOSEM = ones(N,Niter + 1);
         im_vectors.ACOSEM(:,1) = options.x0(:);
         im_vectors.ACOSEM_apu = im_vectors.ACOSEM(:,1);
@@ -107,7 +107,7 @@ if options.implementation ~= 2
         end
     end
     if options.MRP && options.OSL_MLEM
-        im_vectors.MRP_MLEM = ones(N,Niter + 1);
+        im_vectors.MRP_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.MRP_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.MRP_MLEM_apu = im_vectors.MRP_MLEM(:,1);
@@ -132,12 +132,12 @@ if options.implementation ~= 2
             im_vectors.MRP_ROSEM_apu = im_vectors.MRP_ROSEM(:,1);
         end
     end
-    if options.MRP && options.RBI_OSL
+    if options.MRP && options.OSL_RBI
         im_vectors.MRP_RBI = ones(N,Niter + 1);
         im_vectors.MRP_RBI(:,1) = options.x0(:);
         im_vectors.MRP_RBI_apu = im_vectors.MRP_RBI(:,1);
     end
-    if options.MRP && any(options.COSEM_OSL)
+    if options.MRP && any(options.OSL_COSEM)
         im_vectors.MRP_COSEM = ones(N,Niter + 1);
         im_vectors.MRP_COSEM(:,1) = options.x0(:);
         im_vectors.MRP_COSEM_apu = im_vectors.MRP_COSEM(:,1);
@@ -151,7 +151,7 @@ if options.implementation ~= 2
         end
     end
     if options.quad && options.OSL_MLEM
-        im_vectors.Quad_MLEM = ones(N,Niter + 1);
+        im_vectors.Quad_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.Quad_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.Quad_MLEM_apu = im_vectors.Quad_MLEM(:,1);
@@ -176,12 +176,12 @@ if options.implementation ~= 2
             im_vectors.Quad_ROSEM_apu = im_vectors.Quad_ROSEM(:,1);
         end
     end
-    if options.quad && options.RBI_OSL
+    if options.quad && options.OSL_RBI
         im_vectors.Quad_RBI = ones(N,Niter + 1);
         im_vectors.Quad_RBI(:,1) = options.x0(:);
         im_vectors.Quad_RBI_apu = im_vectors.Quad_RBI(:,1);
     end
-    if options.quad && any(options.COSEM_OSL)
+    if options.quad && any(options.OSL_COSEM)
         im_vectors.Quad_COSEM = ones(N,Niter + 1);
         im_vectors.Quad_COSEM(:,1) = options.x0(:);
         im_vectors.Quad_COSEM_apu = im_vectors.Quad_COSEM(:,1);
@@ -195,7 +195,7 @@ if options.implementation ~= 2
         end
     end
     if options.Huber && options.OSL_MLEM
-        im_vectors.Huber_MLEM = ones(N,Niter + 1);
+        im_vectors.Huber_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.Huber_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.Huber_MLEM_apu = im_vectors.Huber_MLEM(:,1);
@@ -220,12 +220,12 @@ if options.implementation ~= 2
             im_vectors.Huber_ROSEM_apu = im_vectors.Huber_ROSEM(:,1);
         end
     end
-    if options.Huber && options.RBI_OSL
+    if options.Huber && options.OSL_RBI
         im_vectors.Huber_RBI = ones(N,Niter + 1);
         im_vectors.Huber_RBI(:,1) = options.x0(:);
         im_vectors.Huber_RBI_apu = im_vectors.Huber_RBI(:,1);
     end
-    if options.Huber && any(options.COSEM_OSL)
+    if options.Huber && any(options.OSL_COSEM)
         im_vectors.Huber_COSEM = ones(N,Niter + 1);
         im_vectors.Huber_COSEM(:,1) = options.x0(:);
         im_vectors.Huber_COSEM_apu = im_vectors.Huber_COSEM(:,1);
@@ -239,7 +239,7 @@ if options.implementation ~= 2
         end
     end
     if options.L && options.OSL_MLEM
-        im_vectors.L_MLEM = ones(N,Niter + 1);
+        im_vectors.L_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.L_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.L_MLEM_apu = im_vectors.L_MLEM(:,1);
@@ -264,12 +264,12 @@ if options.implementation ~= 2
             im_vectors.L_ROSEM_apu = im_vectors.L_ROSEM(:,1);
         end
     end
-    if options.L && options.RBI_OSL
+    if options.L && options.OSL_RBI
         im_vectors.L_RBI = ones(N,Niter + 1);
         im_vectors.L_RBI(:,1) = options.x0(:);
         im_vectors.L_RBI_apu = im_vectors.L_RBI(:,1);
     end
-    if options.L && any(options.COSEM_OSL)
+    if options.L && any(options.OSL_COSEM)
         im_vectors.L_COSEM = ones(N,Niter + 1);
         im_vectors.L_COSEM(:,1) = options.x0(:);
         im_vectors.L_COSEM_apu = im_vectors.L_COSEM(:,1);
@@ -283,7 +283,7 @@ if options.implementation ~= 2
         end
     end
     if options.FMH && options.OSL_MLEM
-        im_vectors.FMH_MLEM = ones(N,Niter + 1);
+        im_vectors.FMH_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.FMH_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.FMH_MLEM_apu = im_vectors.FMH_MLEM(:,1);
@@ -308,12 +308,12 @@ if options.implementation ~= 2
             im_vectors.FMH_ROSEM_apu = im_vectors.FMH_ROSEM(:,1);
         end
     end
-    if options.FMH && options.RBI_OSL
+    if options.FMH && options.OSL_RBI
         im_vectors.FMH_RBI = ones(N,Niter + 1);
         im_vectors.FMH_RBI(:,1) = options.x0(:);
         im_vectors.FMH_RBI_apu = im_vectors.FMH_RBI(:,1);
     end
-    if options.FMH && any(options.COSEM_OSL)
+    if options.FMH && any(options.OSL_COSEM)
         im_vectors.FMH_COSEM = ones(N,Niter + 1);
         im_vectors.FMH_COSEM(:,1) = options.x0(:);
         im_vectors.FMH_COSEM_apu = im_vectors.FMH_COSEM(:,1);
@@ -327,7 +327,7 @@ if options.implementation ~= 2
         end
     end
     if options.weighted_mean && options.OSL_MLEM
-        im_vectors.Weighted_MLEM = ones(N,Niter + 1);
+        im_vectors.Weighted_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.Weighted_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.Weighted_MLEM_apu = im_vectors.Weighted_MLEM(:,1);
@@ -352,12 +352,12 @@ if options.implementation ~= 2
             im_vectors.Weighted_ROSEM_apu = im_vectors.Weighted_ROSEM(:,1);
         end
     end
-    if options.weighted_mean && options.RBI_OSL
+    if options.weighted_mean && options.OSL_RBI
         im_vectors.Weighted_RBI = ones(N,Niter + 1);
         im_vectors.Weighted_RBI(:,1) = options.x0(:);
         im_vectors.Weighted_RBI_apu = im_vectors.Weighted_RBI(:,1);
     end
-    if options.weighted_mean && any(options.COSEM_OSL)
+    if options.weighted_mean && any(options.OSL_COSEM)
         im_vectors.Weighted_COSEM = ones(N,Niter + 1);
         im_vectors.Weighted_COSEM(:,1) = options.x0(:);
         im_vectors.Weighted_COSEM_apu = im_vectors.Weighted_COSEM(:,1);
@@ -371,7 +371,7 @@ if options.implementation ~= 2
         end
     end
     if options.TV && options.OSL_MLEM
-        im_vectors.TV_MLEM = ones(N,Niter + 1);
+        im_vectors.TV_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.TV_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.TV_MLEM_apu = im_vectors.TV_MLEM(:,1);
@@ -396,12 +396,12 @@ if options.implementation ~= 2
             im_vectors.TV_ROSEM_apu = im_vectors.TV_ROSEM(:,1);
         end
     end
-    if options.TV && options.RBI_OSL
+    if options.TV && options.OSL_RBI
         im_vectors.TV_RBI = ones(N,Niter + 1);
         im_vectors.TV_RBI(:,1) = options.x0(:);
         im_vectors.TV_RBI_apu = im_vectors.TV_RBI(:,1);
     end
-    if options.TV && any(options.COSEM_OSL)
+    if options.TV && any(options.OSL_COSEM)
         im_vectors.TV_COSEM = ones(N,Niter + 1);
         im_vectors.TV_COSEM(:,1) = options.x0(:);
         im_vectors.TV_COSEM_apu = im_vectors.TV_COSEM(:,1);
@@ -415,7 +415,7 @@ if options.implementation ~= 2
         end
     end
     if options.AD && options.OSL_MLEM
-        im_vectors.AD_MLEM = ones(N,Niter + 1);
+        im_vectors.AD_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.AD_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.AD_MLEM_apu = im_vectors.AD_MLEM(:,1);
@@ -440,12 +440,12 @@ if options.implementation ~= 2
             im_vectors.AD_ROSEM_apu = im_vectors.AD_ROSEM(:,1);
         end
     end
-    if options.AD && options.RBI_OSL
+    if options.AD && options.OSL_RBI
         im_vectors.AD_RBI = ones(N,Niter + 1);
         im_vectors.AD_RBI(:,1) = options.x0(:);
         im_vectors.AD_RBI_apu = im_vectors.AD_RBI(:,1);
     end
-    if options.AD && any(options.COSEM_OSL)
+    if options.AD && any(options.OSL_COSEM)
         im_vectors.AD_COSEM = ones(N,Niter + 1);
         im_vectors.AD_COSEM(:,1) = options.x0(:);
         im_vectors.AD_COSEM_apu = im_vectors.AD_COSEM(:,1);
@@ -459,7 +459,7 @@ if options.implementation ~= 2
         end
     end
     if options.APLS && options.OSL_MLEM
-        im_vectors.APLS_MLEM = ones(N,Niter + 1);
+        im_vectors.APLS_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.APLS_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.APLS_MLEM_apu = im_vectors.APLS_MLEM(:,1);
@@ -484,12 +484,12 @@ if options.implementation ~= 2
             im_vectors.APLS_ROSEM_apu = im_vectors.APLS_ROSEM(:,1);
         end
     end
-    if options.APLS && options.RBI_OSL
+    if options.APLS && options.OSL_RBI
         im_vectors.APLS_RBI = ones(N,Niter + 1);
         im_vectors.APLS_RBI(:,1) = options.x0(:);
         im_vectors.APLS_RBI_apu = im_vectors.APLS_RBI(:,1);
     end
-    if options.APLS && any(options.COSEM_OSL)
+    if options.APLS && any(options.OSL_COSEM)
         im_vectors.APLS_COSEM = ones(N,Niter + 1);
         im_vectors.APLS_COSEM(:,1) = options.x0(:);
         im_vectors.APLS_COSEM_apu = im_vectors.APLS_COSEM(:,1);
@@ -503,7 +503,7 @@ if options.implementation ~= 2
         end
     end
     if options.TGV && options.OSL_MLEM
-        im_vectors.TGV_MLEM = ones(N,Niter + 1);
+        im_vectors.TGV_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.TGV_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.TGV_MLEM_apu = im_vectors.TGV_MLEM(:,1);
@@ -528,12 +528,12 @@ if options.implementation ~= 2
             im_vectors.TGV_ROSEM_apu = im_vectors.TGV_ROSEM(:,1);
         end
     end
-    if options.TGV && options.RBI_OSL
+    if options.TGV && options.OSL_RBI
         im_vectors.TGV_RBI = ones(N,Niter + 1);
         im_vectors.TGV_RBI(:,1) = options.x0(:);
         im_vectors.TGV_RBI_apu = im_vectors.TGV_RBI(:,1);
     end
-    if options.TGV && any(options.COSEM_OSL)
+    if options.TGV && any(options.OSL_COSEM)
         im_vectors.TGV_COSEM = ones(N,Niter + 1);
         im_vectors.TGV_COSEM(:,1) = options.x0(:);
         im_vectors.TGV_COSEM_apu = im_vectors.TGV_COSEM(:,1);
@@ -547,7 +547,7 @@ if options.implementation ~= 2
         end
     end
     if options.NLM && options.OSL_MLEM
-        im_vectors.NLM_MLEM = ones(N,Niter + 1);
+        im_vectors.NLM_OSL_MLEM = ones(N,Niter + 1);
         im_vectors.NLM_MLEM(:,1) = options.x0(:);
         if ~(options.implementation == 4)
             im_vectors.NLM_MLEM_apu = im_vectors.NLM_MLEM(:,1);
@@ -572,12 +572,12 @@ if options.implementation ~= 2
             im_vectors.NLM_ROSEM_apu = im_vectors.NLM_ROSEM(:,1);
         end
     end
-    if options.NLM && options.RBI_OSL
+    if options.NLM && options.OSL_RBI
         im_vectors.NLM_RBI = ones(N,Niter + 1);
         im_vectors.NLM_RBI(:,1) = options.x0(:);
         im_vectors.NLM_RBI_apu = im_vectors.NLM_RBI(:,1);
     end
-    if options.NLM && any(options.COSEM_OSL)
+    if options.NLM && any(options.OSL_COSEM)
         im_vectors.NLM_COSEM = ones(N,Niter + 1);
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
@@ -588,7 +588,7 @@ if options.implementation ~= 2
         im_vectors.custom_OSL_apu = im_vectors.custom_OSL(:,1);
     end
     if options.custom && options.OSL_MLEM
-        im_vectors.custom_MLEM = ones(N,Niter + 1,'double');
+        im_vectors.custom_OSL_MLEM = ones(N,Niter + 1,'double');
         im_vectors.custom_MLEM(:,1) = options.x0(:);
         im_vectors.custom_MLEM_apu = im_vectors.custom_MLEM(:,1);
     end
@@ -607,70 +607,70 @@ if options.implementation ~= 2
         im_vectors.custom_ROSEM(:,1) = options.x0(:);
         im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
     end
-    if options.custom && options.RBI_OSL
+    if options.custom && options.OSL_RBI
         im_vectors.custom_RBI = ones(N,Niter + 1,'double');
         im_vectors.custom_RBI(:,1) = options.x0(:);
         im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
     end
-    if options.custom && any(options.COSEM_OSL)
+    if options.custom && any(options.OSL_COSEM)
         im_vectors.custom_COSEM = ones(N,Niter + 1,'double');
         im_vectors.custom_COSEM(:,1) = options.x0(:);
         im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);
     end
     
 else
-    if options.osem
+    if options.OSEM
         im_vectors.OSEM = ones(N,Niter + 1,'single');
         im_vectors.OSEM(:,1) = options.x0(:);
         im_vectors.OSEM_apu = im_vectors.OSEM(:,1);
     end
-    if options.mlem
+    if options.MLEM
         im_vectors.MLEM = ones(N,Niter + 1,'single');
         im_vectors.MLEM(:,1) = options.x0(:);
         im_vectors.MLEM_apu = im_vectors.MLEM(:,1);
     end
-    if options.mramla
+    if options.MRAMLA
         im_vectors.MRAMLA = ones(N,Niter + 1,'single');
         im_vectors.MRAMLA(:,1) = options.x0(:);
         im_vectors.MRAMLA_apu = im_vectors.MRAMLA(:,1);
     end
-    if options.ramla
+    if options.RAMLA
         im_vectors.RAMLA = ones(N,Niter + 1,'single');
         im_vectors.RAMLA(:,1) = options.x0(:);
         im_vectors.RAMLA_apu = im_vectors.RAMLA(:,1);
     end
-    if options.rosem
+    if options.ROSEM
         im_vectors.ROSEM = ones(N,Niter + 1,'single');
         im_vectors.ROSEM(:,1) = options.x0(:);
         im_vectors.ROSEM_apu = im_vectors.ROSEM(:,1);
     end
-    if options.rbi
+    if options.RBI
         im_vectors.RBI = ones(N,Niter + 1,'single');
         im_vectors.RBI(:,1) = options.x0(:);
         im_vectors.RBI_apu = im_vectors.RBI(:,1);
     end
-    if options.drama
+    if options.DRAMA
         im_vectors.DRAMA = ones(N,Niter + 1,'single');
         im_vectors.DRAMA(:,1) = options.x0(:);
         im_vectors.DRAMA_apu = im_vectors.DRAMA(:,1);
     end
-    if options.cosem
+    if options.COSEM
         im_vectors.COSEM = ones(N,Niter + 1,'single');
         im_vectors.COSEM(:,1) = options.x0(:);
         im_vectors.COSEM_apu = im_vectors.COSEM(:,1);
     end
-    if options.ecosem
+    if options.ECOSEM
         im_vectors.ECOSEM = ones(N,Niter + 1,'single');
         im_vectors.ECOSEM(:,1) = options.x0(:);
         im_vectors.ECOSEM_apu = im_vectors.ECOSEM(:,1);
-        if ~options.osem
+        if ~options.OSEM
             im_vectors.OSEM_apu = options.x0(:);
         end
-        if ~options.cosem
+        if ~options.COSEM
             im_vectors.COSEM_apu = options.x0(:);
         end
     end
-    if options.acosem
+    if options.ACOSEM
         im_vectors.ACOSEM = ones(N,Niter + 1,'single');
         im_vectors.ACOSEM(:,1) = options.x0(:);
         im_vectors.ACOSEM_apu = im_vectors.ACOSEM(:,1);
@@ -682,7 +682,7 @@ else
         im_vectors.MRP_OSL_apu = im_vectors.MRP_OSL(:,1);
     end
     if options.MRP && options.OSL_MLEM
-        im_vectors.MRP_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.MRP_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.MRP_MLEM(:,1) = options.x0(:);
         im_vectors.MRP_MLEM_apu = im_vectors.MRP_MLEM(:,1);
     end
@@ -701,12 +701,12 @@ else
         im_vectors.MRP_ROSEM(:,1) = options.x0(:);
         im_vectors.MRP_ROSEM_apu = im_vectors.MRP_ROSEM(:,1);
     end
-    if options.MRP && options.RBI_OSL
+    if options.MRP && options.OSL_RBI
         im_vectors.MRP_RBI = ones(N,Niter + 1,'single');
         im_vectors.MRP_RBI(:,1) = options.x0(:);
         im_vectors.MRP_RBI_apu = im_vectors.MRP_RBI(:,1);
     end
-    if options.MRP && any(options.COSEM_OSL)
+    if options.MRP && any(options.OSL_COSEM)
         im_vectors.MRP_COSEM = ones(N,Niter + 1,'single');
         im_vectors.MRP_COSEM(:,1) = options.x0(:);
         im_vectors.MRP_COSEM_apu = im_vectors.MRP_COSEM(:,1);
@@ -718,7 +718,7 @@ else
         im_vectors.Quad_OSL_apu = im_vectors.Quad_OSL(:,1);
     end
     if options.quad && options.OSL_MLEM
-        im_vectors.Quad_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.Quad_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.Quad_MLEM(:,1) = options.x0(:);
         im_vectors.Quad_MLEM_apu = im_vectors.Quad_MLEM(:,1);
     end
@@ -737,12 +737,12 @@ else
         im_vectors.Quad_ROSEM(:,1) = options.x0(:);
         im_vectors.Quad_ROSEM_apu = im_vectors.Quad_ROSEM(:,1);
     end
-    if options.quad && options.RBI_OSL
+    if options.quad && options.OSL_RBI
         im_vectors.Quad_RBI = ones(N,Niter + 1,'single');
         im_vectors.Quad_RBI(:,1) = options.x0(:);
         im_vectors.Quad_RBI_apu = im_vectors.Quad_RBI(:,1);
     end
-    if options.quad && any(options.COSEM_OSL)
+    if options.quad && any(options.OSL_COSEM)
         im_vectors.Quad_COSEM = ones(N,Niter + 1,'single');
         im_vectors.Quad_COSEM(:,1) = options.x0(:);
         im_vectors.Quad_COSEM_apu = im_vectors.Quad_COSEM(:,1);
@@ -754,7 +754,7 @@ else
         im_vectors.L_OSL_apu = im_vectors.L_OSL(:,1);
     end
     if options.L && options.OSL_MLEM
-        im_vectors.L_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.L_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.L_MLEM(:,1) = options.x0(:);
         im_vectors.L_MLEM_apu = im_vectors.L_MLEM(:,1);
     end
@@ -773,12 +773,12 @@ else
         im_vectors.L_ROSEM(:,1) = options.x0(:);
         im_vectors.L_ROSEM_apu = im_vectors.L_ROSEM(:,1);
     end
-    if options.L && options.RBI_OSL
+    if options.L && options.OSL_RBI
         im_vectors.L_RBI = ones(N,Niter + 1,'single');
         im_vectors.L_RBI(:,1) = options.x0(:);
         im_vectors.L_RBI_apu = im_vectors.L_RBI(:,1);
     end
-    if options.L && any(options.COSEM_OSL)
+    if options.L && any(options.OSL_COSEM)
         im_vectors.L_COSEM = ones(N,Niter + 1,'single');
         im_vectors.L_COSEM(:,1) = options.x0(:);
         im_vectors.L_COSEM_apu = im_vectors.L_COSEM(:,1);
@@ -790,7 +790,7 @@ else
         im_vectors.FMH_OSL_apu = im_vectors.FMH_OSL(:,1);
     end
     if options.FMH && options.OSL_MLEM
-        im_vectors.FMH_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.FMH_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.FMH_MLEM(:,1) = options.x0(:);
         im_vectors.FMH_MLEM_apu = im_vectors.FMH_MLEM(:,1);
     end
@@ -809,12 +809,12 @@ else
         im_vectors.FMH_ROSEM(:,1) = options.x0(:);
         im_vectors.FMH_ROSEM_apu = im_vectors.FMH_ROSEM(:,1);
     end
-    if options.FMH && options.RBI_OSL
+    if options.FMH && options.OSL_RBI
         im_vectors.FMH_RBI = ones(N,Niter + 1,'single');
         im_vectors.FMH_RBI(:,1) = options.x0(:);
         im_vectors.FMH_RBI_apu = im_vectors.FMH_RBI(:,1);
     end
-    if options.FMH && any(options.COSEM_OSL)
+    if options.FMH && any(options.OSL_COSEM)
         im_vectors.FMH_COSEM = ones(N,Niter + 1,'single');
         im_vectors.FMH_COSEM(:,1) = options.x0(:);
         im_vectors.FMH_COSEM_apu = im_vectors.FMH_COSEM(:,1);
@@ -826,7 +826,7 @@ else
         im_vectors.Weighted_OSL_apu = im_vectors.Weighted_OSL(:,1);
     end
     if options.weighted_mean && options.OSL_MLEM
-        im_vectors.Weighted_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.Weighted_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.Weighted_MLEM(:,1) = options.x0(:);
         im_vectors.Weighted_MLEM_apu = im_vectors.Weighted_MLEM(:,1);
     end
@@ -845,12 +845,12 @@ else
         im_vectors.Weighted_ROSEM(:,1) = options.x0(:);
         im_vectors.Weighted_ROSEM_apu = im_vectors.Weighted_ROSEM(:,1);
     end
-    if options.weighted_mean && options.RBI_OSL
+    if options.weighted_mean && options.OSL_RBI
         im_vectors.Weighted_RBI = ones(N,Niter + 1,'single');
         im_vectors.Weighted_RBI(:,1) = options.x0(:);
         im_vectors.Weighted_RBI_apu = im_vectors.Weighted_RBI(:,1);
     end
-    if options.weighted_mean && any(options.COSEM_OSL)
+    if options.weighted_mean && any(options.OSL_COSEM)
         im_vectors.Weighted_COSEM = ones(N,Niter + 1,'single');
         im_vectors.Weighted_COSEM(:,1) = options.x0(:);
         im_vectors.Weighted_COSEM_apu = im_vectors.Weighted_COSEM(:,1);
@@ -862,7 +862,7 @@ else
         im_vectors.TV_OSL_apu = im_vectors.TV_OSL(:,1);
     end
     if options.TV && options.OSL_MLEM
-        im_vectors.TV_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.TV_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.TV_MLEM(:,1) = options.x0(:);
         im_vectors.TV_MLEM_apu = im_vectors.TV_MLEM(:,1);
     end
@@ -881,12 +881,12 @@ else
         im_vectors.TV_ROSEM(:,1) = options.x0(:);
         im_vectors.TV_ROSEM_apu = im_vectors.TV_ROSEM(:,1);
     end
-    if options.TV && options.RBI_OSL
+    if options.TV && options.OSL_RBI
         im_vectors.TV_RBI = ones(N,Niter + 1,'single');
         im_vectors.TV_RBI(:,1) = options.x0(:);
         im_vectors.TV_RBI_apu = im_vectors.TV_RBI(:,1);
     end
-    if options.TV && any(options.COSEM_OSL)
+    if options.TV && any(options.OSL_COSEM)
         im_vectors.TV_COSEM = ones(N,Niter + 1,'single');
         im_vectors.TV_COSEM(:,1) = options.x0(:);
         im_vectors.TV_COSEM_apu = im_vectors.TV_COSEM(:,1);
@@ -898,7 +898,7 @@ else
         im_vectors.AD_OSL_apu = im_vectors.AD_OSL(:,1);
     end
     if options.AD && options.OSL_MLEM
-        im_vectors.AD_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.AD_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.AD_MLEM(:,1) = options.x0(:);
         im_vectors.AD_MLEM_apu = im_vectors.AD_MLEM(:,1);
     end
@@ -917,12 +917,12 @@ else
         im_vectors.AD_ROSEM(:,1) = options.x0(:);
         im_vectors.AD_ROSEM_apu = im_vectors.AD_ROSEM(:,1);
     end
-    if options.AD && options.RBI_OSL
+    if options.AD && options.OSL_RBI
         im_vectors.AD_RBI = ones(N,Niter + 1,'single');
         im_vectors.AD_RBI(:,1) = options.x0(:);
         im_vectors.AD_RBI_apu = im_vectors.AD_RBI(:,1);
     end
-    if options.AD && any(options.COSEM_OSL)
+    if options.AD && any(options.OSL_COSEM)
         im_vectors.AD_COSEM = ones(N,Niter + 1,'single');
         im_vectors.AD_COSEM(:,1) = options.x0(:);
         im_vectors.AD_COSEM_apu = im_vectors.AD_COSEM(:,1);
@@ -934,7 +934,7 @@ else
         im_vectors.APLS_OSL_apu = im_vectors.APLS_OSL(:,1);
     end
     if options.APLS && options.OSL_MLEM
-        im_vectors.APLS_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.APLS_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.APLS_MLEM(:,1) = options.x0(:);
         im_vectors.APLS_MLEM_apu = im_vectors.APLS_MLEM(:,1);
     end
@@ -953,12 +953,12 @@ else
         im_vectors.APLS_ROSEM(:,1) = options.x0(:);
         im_vectors.APLS_ROSEM_apu = im_vectors.APLS_ROSEM(:,1);
     end
-    if options.APLS && options.RBI_OSL
+    if options.APLS && options.OSL_RBI
         im_vectors.APLS_RBI = ones(N,Niter + 1,'single');
         im_vectors.APLS_RBI(:,1) = options.x0(:);
         im_vectors.APLS_RBI_apu = im_vectors.APLS_RBI(:,1);
     end
-    if options.APLS && any(options.COSEM_OSL)
+    if options.APLS && any(options.OSL_COSEM)
         im_vectors.APLS_COSEM = ones(N,Niter + 1,'single');
         im_vectors.APLS_COSEM(:,1) = options.x0(:);
         im_vectors.APLS_COSEM_apu = im_vectors.APLS_COSEM(:,1);
@@ -970,7 +970,7 @@ else
         im_vectors.TGV_OSL_apu = im_vectors.TGV_OSL(:,1);
     end
     if options.TGV && options.OSL_MLEM
-        im_vectors.TGV_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.TGV_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.TGV_MLEM(:,1) = options.x0(:);
         im_vectors.TGV_MLEM_apu = im_vectors.TGV_MLEM(:,1);
     end
@@ -989,12 +989,12 @@ else
         im_vectors.TGV_ROSEM(:,1) = options.x0(:);
         im_vectors.TGV_ROSEM_apu = im_vectors.TGV_ROSEM(:,1);
     end
-    if options.TGV && options.RBI_OSL
+    if options.TGV && options.OSL_RBI
         im_vectors.TGV_RBI = ones(N,Niter + 1,'single');
         im_vectors.TGV_RBI(:,1) = options.x0(:);
         im_vectors.TGV_RBI_apu = im_vectors.TGV_RBI(:,1);
     end
-    if options.TGV && any(options.COSEM_OSL)
+    if options.TGV && any(options.OSL_COSEM)
         im_vectors.TGV_COSEM = ones(N,Niter + 1,'single');
         im_vectors.TGV_COSEM(:,1) = options.x0(:);
         im_vectors.TGV_COSEM_apu = im_vectors.TGV_COSEM(:,1);
@@ -1006,7 +1006,7 @@ else
         im_vectors.NLM_OSL_apu = im_vectors.NLM_OSL(:,1);
     end
     if options.NLM && options.OSL_MLEM
-        im_vectors.NLM_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.NLM_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.NLM_MLEM(:,1) = options.x0(:);
         im_vectors.NLM_MLEM_apu = im_vectors.NLM_MLEM(:,1);
     end
@@ -1025,12 +1025,12 @@ else
         im_vectors.NLM_ROSEM(:,1) = options.x0(:);
         im_vectors.NLM_ROSEM_apu = im_vectors.NLM_ROSEM(:,1);
     end
-    if options.NLM && options.RBI_OSL
+    if options.NLM && options.OSL_RBI
         im_vectors.NLM_RBI = ones(N,Niter + 1,'single');
         im_vectors.NLM_RBI(:,1) = options.x0(:);
         im_vectors.NLM_RBI_apu = im_vectors.NLM_RBI(:,1);
     end
-    if options.NLM && any(options.COSEM_OSL)
+    if options.NLM && any(options.OSL_COSEM)
         im_vectors.NLM_COSEM = ones(N,Niter + 1,'single');
         im_vectors.NLM_COSEM(:,1) = options.x0(:);
         im_vectors.NLM_COSEM_apu = im_vectors.NLM_COSEM(:,1);
@@ -1042,7 +1042,7 @@ else
         im_vectors.custom_OSL_apu = im_vectors.custom_OSL(:,1);
     end
     if options.custom && options.OSL_MLEM
-        im_vectors.custom_MLEM = ones(N,Niter + 1,'single');
+        im_vectors.custom_OSL_MLEM = ones(N,Niter + 1,'single');
         im_vectors.custom_MLEM(:,1) = options.x0(:);
         im_vectors.custom_MLEM_apu = im_vectors.custom_MLEM(:,1);
     end
@@ -1061,12 +1061,12 @@ else
         im_vectors.custom_ROSEM(:,1) = options.x0(:);
         im_vectors.custom_ROSEM_apu = im_vectors.custom_ROSEM(:,1);
     end
-    if options.custom && options.RBI_OSL
+    if options.custom && options.OSL_RBI
         im_vectors.custom_RBI = ones(N,Niter + 1,'single');
         im_vectors.custom_RBI(:,1) = options.x0(:);
         im_vectors.custom_RBI_apu = im_vectors.custom_RBI(:,1);
     end
-    if options.custom && any(options.COSEM_OSL)
+    if options.custom && any(options.OSL_COSEM)
         im_vectors.custom_COSEM = ones(N,Niter + 1,'single');
         im_vectors.custom_COSEM(:,1) = options.x0(:);
         im_vectors.custom_COSEM_apu = im_vectors.custom_COSEM(:,1);

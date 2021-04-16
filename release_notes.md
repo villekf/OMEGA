@@ -7,11 +7,24 @@
 - Added support for transmission tomography data
   - Examples of computed tomography (CT) are included
   - Supports same implementations and algorithms as PET data
-  - Implementation 1 uses precomputation always in 3D cases
+  - Implementation 1 always uses precomputation (this is done automatically)
   - Precomputation is turned off in all other implementations
   - Multi-ray Siddon and orthogonal distance-based ray tracer are not available
   
 - CUDA backend now supports listmode reconstruction as well as the more efficient median root prior
+
+- Added PKMA as a built-in algorithm for implementations 1, 2 and 4
+
+- Implemented a total overhaul of the built-in algorithms on implementations 1, 2 and 4
+  - Adding new built-in algorithms or priors is much easier now
+  - This resulted in naming change for all non-MAP algorithms, regularization parameters and on some relaxation parameters
+  - Backwards compatibility is, however, maintained on all main-files except (possibly) custom prior
+  - This has little to no effect on the normal user
+  
+- CUDA backend should work more reliably now
+  - CUDA may not work on Octave
+
+- Fixed the use of corrections when using the forward/backward projection class
   
 ### Bug fixes and enhancements
 
@@ -21,9 +34,31 @@
 
 - `ImageMed` now accepts color limits (similar to imagesc)
 
-- Fixed MLEM with precomputed system matrix
+- Fixed MLEM with precomputed system matrix (implementation 1)
   - PSF was not correctly applied before
   - Not saving the intermediate iterations did not work before
+  
+- Fixed possible warnings when using quadratic prior
+
+- Fixed a bug with quadratic prior when using implementations 1 or 4
+
+- Fixed PSF with custom gradient-based priors when using implementation 2
+
+- Fixed automatic image resize when using reference images with TV or APLS
+
+- Fixed FMH weights when using 2D data
+
+- Fixed TV prior when using 2D data
+
+- Implementations 1 and 4 should now be faster
+
+- Compilation of ROOT support in Linux and MacOS environments can now specify the ROOT installation directory
+  - Previously this was possible only on Windows despite the warning messages suggesting the contrary
+
+- Octave fixes
+  - Fixed multi-ray Siddon
+  - Implementations 1 and 4 should be much faster now
+  - Forward/backward projection class was not always functioning before
 
 ## OMEGA v1.1.1
 

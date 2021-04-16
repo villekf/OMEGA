@@ -130,53 +130,53 @@ else
     else
         options.x0 = updateInitialValue(options.im_vectors, options);
     end
-    if (options.rbi || options.MBSREM || options.RBI_OSL || options.COSEM_OSL > 0) && t == 1 && iter == 1 && osa_iter == 1
+    if (options.RBI || options.MBSREM || options.OSL_RBI || options.OSL_COSEM > 0) && t == 1 && iter == 1 && osa_iter == 1
         options.D = zeros(options.N,1,'single');
     end
     
     if isfield(options, 'grad_OSEM') && options.OSL_OSEM
-        options.grad_OSEM = single(options.grad_OSEM);
-        options.beta_custom_osem = single(options.beta_custom_osem);
+        options.grad_OSL_OSEM = single(options.grad_OSL_OSEM);
+        options.beta_custom_OSL_OSEM = single(options.beta_custom_OSL_OSEM);
         options.custom_osl_apu = options.im_vectors.custom_OSL_apu;
     end
     if isfield(options, 'grad_MLEM') && options.OSL_MLEM
-        options.grad_MLEM = single(options.grad_MLEM);
-        options.beta_custom_mlem = single(options.beta_custom_mlem);
+        options.grad_OSL_MLEM = single(options.grad_OSL_MLEM);
+        options.beta_custom_OSL_MLEM = single(options.beta_custom_OSL_MLEM);
         options.custom_mlem_apu = options.im_vectors.custom_MLEM_apu;
     end
     if isfield(options, 'grad_BSREM') && options.BSREM
         options.grad_BSREM = single(options.grad_BSREM);
-        options.beta_custom_bsrem = single(options.beta_custom_bsrem);
+        options.beta_custom_BSREM = single(options.beta_custom_BSREM);
         options.custom_bsrem_apu = options.im_vectors.custom_BSREM_apu;
     end
     if isfield(options, 'grad_MBSREM') && options.MBSREM
         options.grad_MBSREM = single(options.grad_MBSREM);
-        options.beta_custom_mbsrem = single(options.beta_custom_mbsrem);
+        options.beta_custom_MBSREM = single(options.beta_custom_MBSREM);
         options.custom_mbsrem_apu = options.im_vectors.custom_MBSREM_apu;
     end
     if isfield(options, 'grad_ROSEM') && options.ROSEM
         options.grad_ROSEM = single(options.grad_ROSEM);
-        options.beta_custom_rosem = single(options.beta_custom_rosem);
+        options.beta_custom_ROSEM_MAP = single(options.beta_custom_ROSEM_MAP);
         options.custom_rosem_apu = options.im_vectors.custom_ROSEM_apu;
     end
-    if isfield(options, 'grad_RBI') && options.RBI_OSL
+    if isfield(options, 'grad_RBI') && options.OSL_RBI
         options.grad_RBI = single(options.grad_RBI);
-        options.beta_custom_rbi = single(options.beta_custom_rbi);
+        options.beta_custom_OSL_RBI = single(options.beta_custom_OSL_RBI);
         options.custom_rbi_apu = options.im_vectors.custom_RBI_apu;
     end
-    if isfield(options, 'grad_COSEM') && any(options.COSEM_OSL)
+    if isfield(options, 'grad_COSEM') && any(options.OSL_COSEM)
         options.grad_COSEM = single(options.grad_COSEM);
-        options.beta_custom_cosem = single(options.beta_custom_cosem);
+        options.beta_custom_OSL_COSEM = single(options.beta_custom_OSL_COSEM);
         options.custom_cosem_apu = options.im_vectors.custom_COSEM_apu;
     end
     
-    %     if (options.cosem || options.ecosem) && t == 1 && osa_iter == 1 && iter == 1
+    %     if (options.COSEM || options.ECOSEM) && t == 1 && osa_iter == 1 && iter == 1
     %         options.C_co = zeros(options.N, options.subsets, 'single');
     %     end
-    %     if options.acosem && t == 1 && osa_iter == 1 && iter == 1
+    %     if options.ACOSEM && t == 1 && osa_iter == 1 && iter == 1
     %         options.C_aco = zeros(options.N, options.subsets, 'single');
     %     end
-    if any(options.COSEM_OSL) && t == 1 && osa_iter == 1 && iter == 1
+    if any(options.OSL_COSEM) && t == 1 && osa_iter == 1 && iter == 1
         options.C_osl = zeros(options.N, options.subsets, 'single');
     end
     
@@ -266,28 +266,28 @@ else
     joku = algorithms_char();
     %         n_rekos = uint32(sum(rekot(~contains(joku,'MLEM'))));
     n_rekos = uint32(sum(rekot(cellfun('isempty',strfind(joku,'MLEM')))));
-    n_rekos_mlem = uint32(sum(rekot(~cellfun('isempty',strfind(joku,'MLEM')))));
+    n_rekos_OSL_MLEM = uint32(sum(rekot(~cellfun('isempty',strfind(joku,'MLEM')))));
     reko_type = zeros(length(rekot),1,'uint8');
     reko_type(~cellfun('isempty',strfind(joku,'MBSREM'))) = 1;
     reko_type(~cellfun('isempty',strfind(joku,'MRAMLA'))) = 1;
     reko_type(~cellfun('isempty',strfind(joku,'COSEM'))) = 2;
     reko_type(~cellfun('isempty',strfind(joku,'ACOSEM'))) = 3;
-    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.COSEM_OSL == 1) = 2;
-    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.COSEM_OSL == 2) = 3;
+    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.OSL_COSEM == 1) = 2;
+    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.OSL_COSEM == 2) = 3;
     ind = cellfun('isempty',strfind(joku,'MLEM'));
     reko_type = reko_type(rekot & ind);
     joku = joku(rekot & ind);
-    if options.ecosem
-        if options.cosem && options.osem
+    if options.ECOSEM
+        if options.COSEM && options.OSEM
             reko_type(~cellfun('isempty',strfind(joku,'ECOSEM'))) = [];
-        elseif options.cosem && ~options.osem
+        elseif options.COSEM && ~options.OSEM
             reko_type(~cellfun('isempty',strfind(joku,'ECOSEM'))) = [];
             reko_type = [0;reko_type];
-        elseif ~options.cosem && ~options.osem
+        elseif ~options.COSEM && ~options.OSEM
             reko_type = [0;reko_type];
         end
     end
-    reko_type_mlem = zeros(n_rekos_mlem,1,'uint8');
+    reko_type_OSL_MLEM = zeros(n_rekos_mlem,1,'uint8');
     options.tt = uint32(t - 1);
     options.iter = uint32(iter - 1);
     options.osa_iter = uint32(osa_iter - 1);
@@ -317,17 +317,17 @@ else
     toc
     
     options.im_vectors = transfer_im_vectors(options.im_vectors, pz, options, iter);
-    %     if (options.cosem || options.ecosem)
+    %     if (options.COSEM || options.ECOSEM)
     %         options.C_co = pz{end-3};
     %     end
-    %     if options.acosem
+    %     if options.ACOSEM
     %         options.C_aco = pz{end-2};
     %     end
-    if any(options.COSEM_OSL) && osa_iter == 1 && iter == 1 && t == 1
+    if any(options.OSL_COSEM) && osa_iter == 1 && iter == 1 && t == 1
         options.C_osl = pz{end-5};
     end
-    if (options.mramla || options.MBSREM || options.RBI_OSL || options.rbi || options.cosem || options.ecosem...
-            || options.acosem || any(options.COSEM_OSL)) && options.MBSREM_prepass && osa_iter == 1 && iter == 1 && t == 1
+    if (options.MRAMLA || options.MBSREM || options.OSL_RBI || options.RBI || options.COSEM || options.ECOSEM...
+            || options.ACOSEM || any(options.OSL_COSEM)) && options.MBSREM_prepass && osa_iter == 1 && iter == 1 && t == 1
         options.D = pz{end-4}(:);
     end
     if options.MBSREM && osa_iter == 1 && iter == 1 && t == 1

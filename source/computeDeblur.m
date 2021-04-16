@@ -8,23 +8,23 @@ else
     iter_n = 1;
 end
 if options.implementation == 4
-    if options.osem
+    if options.OSEM
         im_vectors.OSEM(:, iter_n + 1) = deblur(im_vectors.OSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.mramla
+    elseif options.MRAMLA
         im_vectors.MRAMLA(:, iter_n + 1) = deblur(im_vectors.MRAMLA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.ramla
+    elseif options.RAMLA
         im_vectors.RAMLA(:, iter_n + 1) = deblur(im_vectors.RAMLA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.rosem
+    elseif options.ROSEM
         im_vectors.ROSEM(:, iter_n + 1) = deblur(im_vectors.ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.rbi
+    elseif options.RBI
         im_vectors.RBI(:, iter_n + 1) = deblur(im_vectors.RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.drama
+    elseif options.DRAMA
         im_vectors.DRAMA(:, iter_n + 1) = deblur(im_vectors.DRAMA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.cosem
+    elseif options.COSEM
         im_vectors.COSEM(:, iter_n + 1) = deblur(im_vectors.COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.ecosem
+    elseif options.ECOSEM
         im_vectors.ECOSEM(:, iter_n + 1) = deblur(im_vectors.ECOSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.acosem
+    elseif options.ACOSEM
         im_vectors.ACOSEM(:, iter_n + 1) = deblur(im_vectors.ACOSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.MRP && options.OSL_OSEM
         im_vectors.MRP_OSL(:, iter_n + 1) = deblur(im_vectors.MRP_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -34,9 +34,9 @@ if options.implementation == 4
         im_vectors.MRP_BSREM(:, iter_n + 1) = deblur(im_vectors.MRP_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.MRP && options.ROSEM_MAP
         im_vectors.MRP_ROSEM(:, iter_n + 1) = deblur(im_vectors.MRP_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.MRP && options.RBI_OSL
+    elseif options.MRP && options.OSL_RBI
         im_vectors.MRP_RBI(:, iter_n + 1) = deblur(im_vectors.MRP_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.MRP && any(options.COSEM_OSL)
+    elseif options.MRP && any(options.OSL_COSEM)
         im_vectors.MRP_COSEM(:, iter_n + 1) = deblur(im_vectors.MRP_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.quad && options.OSL_OSEM
         im_vectors.Quad_OSL(:, iter_n + 1) = deblur(im_vectors.Quad_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -46,9 +46,9 @@ if options.implementation == 4
         im_vectors.Quad_BSREM(:, iter_n + 1) = deblur(im_vectors.Quad_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.quad && options.ROSEM_MAP
         im_vectors.Quad_ROSEM(:, iter_n + 1) = deblur(im_vectors.Quad_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.quad && options.RBI_OSL
+    elseif options.quad && options.OSL_RBI
         im_vectors.Quad_RBI(:, iter_n + 1) = deblur(im_vectors.Quad_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.quad && any(options.COSEM_OSL)
+    elseif options.quad && any(options.OSL_COSEM)
         im_vectors.Quad_COSEM(:, iter_n + 1) = deblur(im_vectors.Quad_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.Huber && options.OSL_OSEM
         im_vectors.Huber_OSL(:, iter_n + 1) = deblur(im_vectors.Huber_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -58,9 +58,9 @@ if options.implementation == 4
         im_vectors.Huber_BSREM(:, iter_n + 1) = deblur(im_vectors.Huber_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.Huber && options.ROSEM_MAP
         im_vectors.Huber_ROSEM(:, iter_n + 1) = deblur(im_vectors.Huber_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.Huber && options.RBI_OSL
+    elseif options.Huber && options.OSL_RBI
         im_vectors.Huber_RBI(:, iter_n + 1) = deblur(im_vectors.Huber_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.Huber && any(options.COSEM_OSL)
+    elseif options.Huber && any(options.OSL_COSEM)
         im_vectors.Huber_COSEM(:, iter_n + 1) = deblur(im_vectors.Huber_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.L && options.OSL_OSEM
         im_vectors.L_OSL(:, iter_n + 1) = deblur(im_vectors.L_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -70,9 +70,9 @@ if options.implementation == 4
         im_vectors.L_BSREM(:, iter_n + 1) = deblur(im_vectors.L_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.L && options.ROSEM_MAP
         im_vectors.L_ROSEM(:, iter_n + 1) = deblur(im_vectors.L_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.L && options.RBI_OSL
+    elseif options.L && options.OSL_RBI
         im_vectors.L_RBI(:, iter_n + 1) = deblur(im_vectors.L_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.L && any(options.COSEM_OSL)
+    elseif options.L && any(options.OSL_COSEM)
         im_vectors.L_COSEM(:, iter_n + 1) = deblur(im_vectors.L_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.FMH && options.OSL_OSEM
         im_vectors.FMH_OSL(:, iter_n + 1) = deblur(im_vectors.FMH_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -82,9 +82,9 @@ if options.implementation == 4
         im_vectors.FMH_BSREM(:, iter_n + 1) = deblur(im_vectors.FMH_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.FMH && options.ROSEM_MAP
         im_vectors.FMH_ROSEM(:, iter_n + 1) = deblur(im_vectors.FMH_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.FMH && options.RBI_OSL
+    elseif options.FMH && options.OSL_RBI
         im_vectors.FMH_RBI(:, iter_n + 1) = deblur(im_vectors.FMH_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.FMH && any(options.COSEM_OSL)
+    elseif options.FMH && any(options.OSL_COSEM)
         im_vectors.FMH_COSEM(:, iter_n + 1) = deblur(im_vectors.FMH_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.weighted_mean && options.OSL_OSEM
         im_vectors.Weighted_OSL(:, iter_n + 1) = deblur(im_vectors.Weighted_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -94,9 +94,9 @@ if options.implementation == 4
         im_vectors.Weighted_BSREM(:, iter_n + 1) = deblur(im_vectors.Weighted_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.weighted_mean && options.ROSEM_MAP
         im_vectors.Weighted_ROSEM(:, iter_n + 1) = deblur(im_vectors.Weighted_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.weighted_mean && options.RBI_OSL
+    elseif options.weighted_mean && options.OSL_RBI
         im_vectors.Weighted_RBI(:, iter_n + 1) = deblur(im_vectors.Weighted_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.weighted_mean && any(options.COSEM_OSL)
+    elseif options.weighted_mean && any(options.OSL_COSEM)
         im_vectors.Weighted_COSEM(:, iter_n + 1) = deblur(im_vectors.Weighted_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.TV && options.OSL_OSEM
         im_vectors.TV_OSL(:, iter_n + 1) = deblur(im_vectors.TV_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -106,9 +106,9 @@ if options.implementation == 4
         im_vectors.TV_BSREM(:, iter_n + 1) = deblur(im_vectors.TV_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.TV && options.ROSEM_MAP
         im_vectors.TV_ROSEM(:, iter_n + 1) = deblur(im_vectors.TV_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.TV && options.RBI_OSL
+    elseif options.TV && options.OSL_RBI
         im_vectors.TV_RBI(:, iter_n + 1) = deblur(im_vectors.TV_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.TV && any(options.COSEM_OSL)
+    elseif options.TV && any(options.OSL_COSEM)
         im_vectors.TV_COSEM(:, iter_n + 1) = deblur(im_vectors.TV_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.AD && options.OSL_OSEM
         im_vectors.AD_OSL(:, iter_n + 1) = deblur(im_vectors.AD_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -118,9 +118,9 @@ if options.implementation == 4
         im_vectors.AD_BSREM(:, iter_n + 1) = deblur(im_vectors.AD_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.AD && options.ROSEM_MAP
         im_vectors.AD_ROSEM(:, iter_n + 1) = deblur(im_vectors.AD_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.AD && options.RBI_OSL
+    elseif options.AD && options.OSL_RBI
         im_vectors.AD_RBI(:, iter_n + 1) = deblur(im_vectors.AD_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.AD && any(options.COSEM_OSL)
+    elseif options.AD && any(options.OSL_COSEM)
         im_vectors.AD_COSEM(:, iter_n + 1) = deblur(im_vectors.AD_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.APLS && options.OSL_OSEM
         im_vectors.APLS_OSL(:, iter_n + 1) = deblur(im_vectors.APLS_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -130,9 +130,9 @@ if options.implementation == 4
         im_vectors.APLS_BSREM(:, iter_n + 1) = deblur(im_vectors.APLS_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.APLS && options.ROSEM_MAP
         im_vectors.APLS_ROSEM(:, iter_n + 1) = deblur(im_vectors.APLS_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.APLS && options.RBI_OSL
+    elseif options.APLS && options.OSL_RBI
         im_vectors.APLS_RBI(:, iter_n + 1) = deblur(im_vectors.APLS_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.APLS && any(options.COSEM_OSL)
+    elseif options.APLS && any(options.OSL_COSEM)
         im_vectors.APLS_COSEM(:, iter_n + 1) = deblur(im_vectors.APLS_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.TGV && options.OSL_OSEM
         im_vectors.TGV_OSL(:, iter_n + 1) = deblur(im_vectors.TGV_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -142,9 +142,9 @@ if options.implementation == 4
         im_vectors.TGV_BSREM(:, iter_n + 1) = deblur(im_vectors.TGV_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.TGV && options.ROSEM_MAP
         im_vectors.TGV_ROSEM(:, iter_n + 1) = deblur(im_vectors.TGV_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.TGV && options.RBI_OSL
+    elseif options.TGV && options.OSL_RBI
         im_vectors.TGV_RBI(:, iter_n + 1) = deblur(im_vectors.TGV_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.TGV && any(options.COSEM_OSL)
+    elseif options.TGV && any(options.OSL_COSEM)
         im_vectors.TGV_COSEM(:, iter_n + 1) = deblur(im_vectors.TGV_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.NLM && options.OSL_OSEM
         im_vectors.NLM_OSL(:, iter_n + 1) = deblur(im_vectors.NLM_OSL(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
@@ -154,38 +154,38 @@ if options.implementation == 4
         im_vectors.NLM_BSREM(:, iter_n + 1) = deblur(im_vectors.NLM_BSREM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     elseif options.NLM && options.ROSEM_MAP
         im_vectors.NLM_ROSEM(:, iter_n + 1) = deblur(im_vectors.NLM_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.NLM && options.RBI_OSL
+    elseif options.NLM && options.OSL_RBI
         im_vectors.NLM_RBI(:, iter_n + 1) = deblur(im_vectors.NLM_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
-    elseif options.NLM && any(options.COSEM_OSL)
+    elseif options.NLM && any(options.OSL_COSEM)
         im_vectors.NLM_COSEM(:, iter_n + 1) = deblur(im_vectors.NLM_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
 elseif options.implementation == 1
     
-    if options.osem
+    if options.OSEM
         im_vectors.OSEM(:, iter_n + 1) = deblur(im_vectors.OSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.mramla
+    if options.MRAMLA
         im_vectors.MRAMLA(:, iter_n + 1) = deblur(im_vectors.MRAMLA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.ramla
+    if options.RAMLA
         im_vectors.RAMLA(:, iter_n + 1) = deblur(im_vectors.RAMLA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.rosem
+    if options.ROSEM
         im_vectors.ROSEM(:, iter_n + 1) = deblur(im_vectors.ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.rbi
+    if options.RBI
         im_vectors.RBI(:, iter_n + 1) = deblur(im_vectors.RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.drama
+    if options.DRAMA
         im_vectors.DRAMA(:, iter_n + 1) = deblur(im_vectors.DRAMA(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.cosem
+    if options.COSEM
         im_vectors.COSEM(:, iter_n + 1) = deblur(im_vectors.COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.ecosem
+    if options.ECOSEM
         im_vectors.ECOSEM(:, iter_n + 1) = deblur(im_vectors.ECOSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.acosem
+    if options.ACOSEM
         im_vectors.ACOSEM(:, iter_n + 1) = deblur(im_vectors.ACOSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.MRP && options.OSL_OSEM
@@ -200,10 +200,10 @@ elseif options.implementation == 1
     if options.MRP && options.ROSEM_MAP
         im_vectors.MRP_ROSEM(:, iter_n + 1) = deblur(im_vectors.MRP_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.MRP && options.RBI_OSL
+    if options.MRP && options.OSL_RBI
         im_vectors.MRP_RBI(:, iter_n + 1) = deblur(im_vectors.MRP_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.MRP && any(options.COSEM_OSL)
+    if options.MRP && any(options.OSL_COSEM)
         im_vectors.MRP_COSEM(:, iter_n + 1) = deblur(im_vectors.MRP_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.quad && options.OSL_OSEM
@@ -218,10 +218,10 @@ elseif options.implementation == 1
     if options.quad && options.ROSEM_MAP
         im_vectors.Quad_ROSEM(:, iter_n + 1) = deblur(im_vectors.Quad_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.quad && options.RBI_OSL
+    if options.quad && options.OSL_RBI
         im_vectors.Quad_RBI(:, iter_n + 1) = deblur(im_vectors.Quad_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.quad && any(options.COSEM_OSL)
+    if options.quad && any(options.OSL_COSEM)
         im_vectors.Quad_COSEM(:, iter_n + 1) = deblur(im_vectors.Quad_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.Huber && options.OSL_OSEM
@@ -236,10 +236,10 @@ elseif options.implementation == 1
     if options.Huber && options.ROSEM_MAP
         im_vectors.Huber_ROSEM(:, iter_n + 1) = deblur(im_vectors.Huber_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.Huber && options.RBI_OSL
+    if options.Huber && options.OSL_RBI
         im_vectors.Huber_RBI(:, iter_n + 1) = deblur(im_vectors.Huber_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.Huber && any(options.COSEM_OSL)
+    if options.Huber && any(options.OSL_COSEM)
         im_vectors.Huber_COSEM(:, iter_n + 1) = deblur(im_vectors.Huber_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.L && options.OSL_OSEM
@@ -254,10 +254,10 @@ elseif options.implementation == 1
     if options.L && options.ROSEM_MAP
         im_vectors.L_ROSEM(:, iter_n + 1) = deblur(im_vectors.L_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.L && options.RBI_OSL
+    if options.L && options.OSL_RBI
         im_vectors.L_RBI(:, iter_n + 1) = deblur(im_vectors.L_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.L && any(options.COSEM_OSL)
+    if options.L && any(options.OSL_COSEM)
         im_vectors.L_COSEM(:, iter_n + 1) = deblur(im_vectors.L_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.FMH && options.OSL_OSEM
@@ -272,10 +272,10 @@ elseif options.implementation == 1
     if options.FMH && options.ROSEM_MAP
         im_vectors.FMH_ROSEM(:, iter_n + 1) = deblur(im_vectors.FMH_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.FMH && options.RBI_OSL
+    if options.FMH && options.OSL_RBI
         im_vectors.FMH_RBI(:, iter_n + 1) = deblur(im_vectors.FMH_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.FMH && any(options.COSEM_OSL)
+    if options.FMH && any(options.OSL_COSEM)
         im_vectors.FMH_COSEM(:, iter_n + 1) = deblur(im_vectors.FMH_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.weighted_mean && options.OSL_OSEM
@@ -290,10 +290,10 @@ elseif options.implementation == 1
     if options.weighted_mean && options.ROSEM_MAP
         im_vectors.Weighted_ROSEM(:, iter_n + 1) = deblur(im_vectors.Weighted_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.weighted_mean && options.RBI_OSL
+    if options.weighted_mean && options.OSL_RBI
         im_vectors.Weighted_RBI(:, iter_n + 1) = deblur(im_vectors.Weighted_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.weighted_mean && any(options.COSEM_OSL)
+    if options.weighted_mean && any(options.OSL_COSEM)
         im_vectors.Weighted_COSEM(:, iter_n + 1) = deblur(im_vectors.Weighted_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.TV && options.OSL_OSEM
@@ -308,10 +308,10 @@ elseif options.implementation == 1
     if options.TV && options.ROSEM_MAP
         im_vectors.TV_ROSEM(:, iter_n + 1) = deblur(im_vectors.TV_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.TV && options.RBI_OSL
+    if options.TV && options.OSL_RBI
         im_vectors.TV_RBI(:, iter_n + 1) = deblur(im_vectors.TV_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.TV && any(options.COSEM_OSL)
+    if options.TV && any(options.OSL_COSEM)
         im_vectors.TV_COSEM(:, iter_n + 1) = deblur(im_vectors.TV_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.AD && options.OSL_OSEM
@@ -326,10 +326,10 @@ elseif options.implementation == 1
     if options.AD && options.ROSEM_MAP
         im_vectors.AD_ROSEM(:, iter_n + 1) = deblur(im_vectors.AD_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.AD && options.RBI_OSL
+    if options.AD && options.OSL_RBI
         im_vectors.AD_RBI(:, iter_n + 1) = deblur(im_vectors.AD_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.AD && any(options.COSEM_OSL)
+    if options.AD && any(options.OSL_COSEM)
         im_vectors.AD_COSEM(:, iter_n + 1) = deblur(im_vectors.AD_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.APLS && options.OSL_OSEM
@@ -344,10 +344,10 @@ elseif options.implementation == 1
     if options.APLS && options.ROSEM_MAP
         im_vectors.APLS_ROSEM(:, iter_n + 1) = deblur(im_vectors.APLS_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.APLS && options.RBI_OSL
+    if options.APLS && options.OSL_RBI
         im_vectors.APLS_RBI(:, iter_n + 1) = deblur(im_vectors.APLS_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.APLS && any(options.COSEM_OSL)
+    if options.APLS && any(options.OSL_COSEM)
         im_vectors.APLS_COSEM(:, iter_n + 1) = deblur(im_vectors.APLS_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.TGV && options.OSL_OSEM
@@ -362,10 +362,10 @@ elseif options.implementation == 1
     if options.TGV && options.ROSEM_MAP
         im_vectors.TGV_ROSEM(:, iter_n + 1) = deblur(im_vectors.TGV_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.TGV && options.RBI_OSL
+    if options.TGV && options.OSL_RBI
         im_vectors.TGV_RBI(:, iter_n + 1) = deblur(im_vectors.TGV_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.TGV && any(options.COSEM_OSL)
+    if options.TGV && any(options.OSL_COSEM)
         im_vectors.TGV_COSEM(:, iter_n + 1) = deblur(im_vectors.TGV_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.NLM && options.OSL_OSEM
@@ -380,10 +380,10 @@ elseif options.implementation == 1
     if options.NLM && options.ROSEM_MAP
         im_vectors.NLM_ROSEM(:, iter_n + 1) = deblur(im_vectors.NLM_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.NLM && options.RBI_OSL
+    if options.NLM && options.OSL_RBI
         im_vectors.NLM_RBI(:, iter_n + 1) = deblur(im_vectors.NLM_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.NLM && any(options.COSEM_OSL)
+    if options.NLM && any(options.OSL_COSEM)
         im_vectors.NLM_COSEM(:, iter_n + 1) = deblur(im_vectors.NLM_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
     if options.custom && options.OSL_OSEM
@@ -398,10 +398,10 @@ elseif options.implementation == 1
     if options.custom && options.ROSEM_MAP
         im_vectors.custom_ROSEM(:, iter_n + 1) = deblur(im_vectors.custom_ROSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.custom && options.RBI_OSL
+    if options.custom && options.OSL_RBI
         im_vectors.custom_RBI(:, iter_n + 1) = deblur(im_vectors.custom_RBI(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
-    if options.custom && any(options.COSEM_OSL)
+    if options.custom && any(options.OSL_COSEM)
         im_vectors.custom_COSEM(:, iter_n + 1) = deblur(im_vectors.custom_COSEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
     end
 end

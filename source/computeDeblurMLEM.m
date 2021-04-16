@@ -7,7 +7,7 @@ if options.save_iter
 else
     iter_n = 0;
 end
-if options.mlem
+if options.MLEM
     im_vectors.MLEM(:, iter_n + 1) = deblur(im_vectors.MLEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);
 elseif options.MRP && options.OSL_MLEM
     im_vectors.MRP_MLEM(:, iter_n + 1) = deblur(im_vectors.MRP_MLEM(:, iter_n + 1), options, gaussK, Nx, Ny, Nz);

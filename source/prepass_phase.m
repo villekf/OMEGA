@@ -39,8 +39,8 @@ if ~isfield(options,'listmode')
 end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
-        || options.ramla || options.MBSREM || options.mramla || options.rosem || options.drama || options.ROSEM_MAP || options.ecosem ...
-        || options.cosem || options.acosem || options.AD || any(options.COSEM_OSL) || options.NLM || options.RBI_OSL || options.rbi)
+        || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM ...
+        || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI)
     
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -62,29 +62,29 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     % COSEM algorithms
     % E.g. for COSEM compute the complete data matrix, for RBI-OSL compute
     % the sum of all the rows of the system matrix
-    if ((options.mramla || options.MBSREM || options.RBI_OSL || options.rbi) && options.MBSREM_prepass || options.ecosem || options.cosem ...
-            || options.acosem || any(options.COSEM_OSL))  && options.implementation == 1
+    if ((options.MRAMLA || options.MBSREM || options.OSL_RBI || options.RBI) && options.MBSREM_prepass || options.ECOSEM || options.COSEM ...
+            || options.ACOSEM || any(options.OSL_COSEM))  && options.implementation == 1
         
-        if options.acosem
+        if options.ACOSEM
             C_aco = zeros(double(N), options.subsets);
         end
-        if options.cosem || options.ecosem
+        if options.COSEM || options.ECOSEM
             C_co = zeros(double(N), options.subsets);
         end
-        if any(options.COSEM_OSL)
+        if any(options.OSL_COSEM)
             C_osl = zeros(double(N), options.subsets);
         end
-        if options.acosem || options.cosem || options.ecosem || any(options.COSEM_OSL)
+        if options.ACOSEM || options.COSEM || options.ECOSEM || any(options.OSL_COSEM)
             if options.use_psf
                 im_apu = computeConvolution(options.x0(:), options, Nx, Ny, Nz, gaussK);
             else
                 im_apu = options.x0(:);
             end
-            if options.acosem || options.COSEM_OSL == 1
+            if options.ACOSEM || options.OSL_COSEM == 1
                 im = power(options.x0(:), 1/options.h);
             end
         end
-        if options.mramla || options.MBSREM
+        if options.MRAMLA || options.MBSREM
             if options.precompute_lor == false
                 Amin = zeros(options.Nang*options.Ndist*options.NSinos,1);
             else
@@ -290,16 +290,16 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 % Sensitivity image
                 D = D + A * ones(size(A,2),1,'double');
                 % Required for MRAMLA/MBSREM epsilon value
-                if (normalization_correction || options.attenuation_correction) && (options.mramla || options.MBSREM)
+                if (normalization_correction || options.attenuation_correction) && (options.MRAMLA || options.MBSREM)
                     E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,1))';
                 end
             else
                 D = D + full(sum(A,1))';
-                if normalization_correction || options.attenuation_correction && (options.mramla || options.MBSREM)
+                if normalization_correction || options.attenuation_correction && (options.MRAMLA || options.MBSREM)
                     E(pituus(osa_iter)+1:pituus(osa_iter + 1)) = full(sum(A,2))';
                 end
             end
-            if options.ecosem || options.cosem || options.acosem || any(options.COSEM_OSL)
+            if options.ECOSEM || options.COSEM || options.ACOSEM || any(options.OSL_COSEM)
                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                 if is_transposed
                     FP = A' * im_apu + epps + SinD;
@@ -312,7 +312,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     RHS = computeConvolution(RHS, options, Nx, Ny, Nz, gaussK);
                 end
             end
-            if options.cosem || options.ecosem
+            if options.COSEM || options.ECOSEM
                 if osa_iter > 1
                     if options.verbose
                         tic
@@ -323,7 +323,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     end
                 end
             end
-            if options.acosem
+            if options.ACOSEM
                 if osa_iter > 1
                     if options.verbose
                         tic
@@ -334,8 +334,8 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                     end
                 end
             end
-            if any(options.COSEM_OSL)
-                if options.COSEM_OSL == 2
+            if any(options.OSL_COSEM)
+                if options.OSL_COSEM == 2
                     if osa_iter > 1
                         C_osl(:,osa_iter) = options.x0(:) .* RHS;
                     end
@@ -346,7 +346,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 end
             end
             % Required for upper bound of MRAMLA/MBSREM
-            if options.MBSREM_prepass && options.U == 0 && (options.MBSREM || options.mramla)
+            if options.MBSREM_prepass && options.U == 0 && (options.MBSREM || options.MRAMLA)
                 %%%% This particular piece of code was taken from:
                 %%%% https://se.mathworks.com/matlabcentral/answers/35309-max-min-of-sparse-matrices
                 if is_transposed
@@ -389,7 +389,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     end
     
     % Lambda values (relaxation parameters)
-    if (options.BSREM || options.ramla) && length(options.lambda0) == 1
+    if (options.BSREM || options.RAMLA) && length(options.lambda0) == 1
         lam = zeros(options.Niter,1);
         lam(1) = options.lambda0;
         %             orig_lam = lam;
@@ -406,7 +406,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lam = lam;
         end
-    elseif (options.BSREM || options.ramla)
+    elseif (options.BSREM || options.RAMLA)
         if numel(options.lambda0) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations')
         end
@@ -416,49 +416,49 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.lam = double(options.lambda0);
         end
     end
-    if (options.MBSREM || options.mramla) && length(options.lambda0_mbsrem) == 1
-        lam_mbsrem = zeros(options.Niter,1);
+    if (options.MBSREM || options.MRAMLA) && length(options.lambda0_mbsrem) == 1
+        lam_MBSREM = zeros(options.Niter,1);
         lam_mbsrem(1) = options.lambda0_mbsrem;
         for i=2:options.Niter
             lam_mbsrem(i) = lam_mbsrem(1)/(i);
         end
         if options.implementation == 2
-            options.lam_mbsrem = single(lam_mbsrem);
+            options.lam_MBSREM = single(lam_MBSREM);
         else
-            options.lam_mbsrem = lam_mbsrem;
+            options.lam_MBSREM = lam_mbsrem;
         end
-    elseif (options.MBSREM || options.mramla)
+    elseif (options.MBSREM || options.MRAMLA)
         if numel(options.lambda0_mbsrem) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations')
         end
         if options.implementation == 2
-            options.lam_mbsrem = single(options.lambda0_mbsrem);
+            options.lam_MBSREM = single(options.lambda0_MBSREM);
         else
-            options.lam_mbsrem = double(options.lambda0_mbsrem);
+            options.lam_MBSREM = double(options.lambda0_MBSREM);
         end
     end
-    if (options.ROSEM_MAP || options.rosem) && length(options.lambda0_rosem) == 1
-        lam_rosem = zeros(options.Niter,1);
+    if (options.ROSEM_MAP || options.ROSEM) && length(options.lambda0_rosem) == 1
+        lam_ROSEM_MAP = zeros(options.Niter,1);
         lam_rosem(1) = options.lambda0_rosem;
         for i=2:options.Niter
             lam_rosem(i) = lam_rosem(1)/i;
         end
         if options.implementation == 2
-            options.lam_rosem = single(lam_rosem);
+            options.lam_ROSEM_MAP = single(lam_ROSEM_MAP);
         else
-            options.lam_rosem = lam_rosem;
+            options.lam_ROSEM_MAP = lam_rosem;
         end
-    elseif (options.ROSEM_MAP || options.rosem)
+    elseif (options.ROSEM_MAP || options.ROSEM)
         if numel(options.lambda0_rosem) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations')
         end
         if options.implementation == 2
-            options.lam_rosem = single(options.lambda0_rosem);
+            options.lam_ROSEM_MAP = single(options.lambda0_ROSEM_MAP);
         else
-            options.lam_rosem = double(options.lambda0_rosem);
+            options.lam_ROSEM_MAP = double(options.lambda0_ROSEM_MAP);
         end
     end
-    if options.drama
+    if options.DRAMA
         lam_drama = zeros(options.Niter,options.subsets);
         lam_drama(1,1) = options.beta_drama/(options.alpha_drama*options.beta0_drama);
         r = 1;
@@ -475,7 +475,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
     end
     % Sensitivity image for MRAMLA/MBSREM
-    if (options.MBSREM || options.mramla) && options.implementation == 1
+    if (options.MBSREM || options.MRAMLA) && options.implementation == 1
         options.pj3 = D/options.subsets;
     end
     % Compute the weights

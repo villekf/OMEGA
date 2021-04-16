@@ -989,43 +989,43 @@ options.med_no_norm = false;
 %%% Maximum-Likelihood Expectation Maximization (MLEM)
 % Supported by all implementations
 % For implementation 1 requires the precomputed observation/system matrix
-options.mlem = false;
+options.MLEM = false;
 
 %%% Ordered Subsets Expectation Maximization (OSEM)
 % Supported by all implementations
-options.osem = true;
+options.OSEM = true;
 
 %%% Modified Row-Action Maximum Likelihood Algorithm (MRAMLA)
 % Supported by implementations 1 and 2
-options.mramla = false;
+options.MRAMLA = false;
 
 %%% Row-Action Maximum Likelihood Algorithm (RAMLA)
 % Supported by implementations 1, 2 and 4
-options.ramla = false;
+options.RAMLA = false;
 
 %%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
 % Supported by implementations 1, 2 and 4
-options.rosem = false;
+options.ROSEM = false;
 
 %%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
 % Supported by implementations 1, 2 and 4
-options.rbi = false;
+options.RBI = false;
 
 %%% Dynamic RAMLA (DRAMA)
 % Supported by implementations 1, 2 and 4
-options.drama = false;
+options.DRAMA = false;
 
 %%% Complete data OSEM (COSEM)
 % Supported by implementations 1, 2 and 4
-options.cosem = false;
+options.COSEM = false;
 
 %%% Enhanced COSEM (ECOSEM)
 % Supported by implementations 1, 2 and 4
-options.ecosem = false;
+options.ECOSEM = false;
 
 %%% Accelerated COSEM (ACOSEM)
 % Supported by implementations 1, 2 and 4
-options.acosem = false;
+options.ACOSEM = false;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1055,12 +1055,16 @@ options.ROSEM_MAP = false;
 
 %%% RBI-OSL
 % Supported by implementations 1, 2 and 4
-options.RBI_OSL = false;
+options.OSL_RBI = false;
 
 %%% (A)COSEM-OSL
 % 0/false = No COSEM-OSL, 1/true = ACOSEM-OSL, 2 = COSEM-OSL
 % Supported by implementations 1, 2 and 4
-options.COSEM_OSL = false;
+options.OSL_COSEM = false;
+
+%%% PKMA
+% Supported by implementations 1, 2 and 4
+options.PKMA = false;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1108,7 +1112,7 @@ options.h = 2;
 % Use scalar if you want it to decrease as
 % lambda0_mbsrem/current_iteration_number. Use vector (length = Niter) if
 % you want your own relaxation parameters.
-options.lambda0_mbsrem = 0.2;
+options.lambda0_MBSREM = 0.2;
 
 %%% Upper bound for MRAMLA/MBSREM (use 0 for default (computed) value)
 options.U = 0;
@@ -1127,7 +1131,7 @@ options.lambda0 = 0.2;
 % Use scalar if you want it to decrease as
 % lambda0_rosem/current_iteration_number. Use vector (length = Niter) if
 % you want your own relaxation parameters.
-options.lambda0_rosem = 1;
+options.lambda0_ROSEM = 1;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% DRAMA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1137,6 +1141,49 @@ options.beta0_drama = 0.1;
 options.beta_drama = 1;
 %%% Alpha value
 options.alpha_drama = 0.1;
+ 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PKMA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Relaxation parameter for PKMA
+% If a scalar (or an empty) value is used, then the relaxation parameter is
+% computed automatically as lambda(i) = 1 / ((i - 1)/12 + 1), where i is
+% the iteration number. The input number thus has no effect.
+% If, on the other hand, a vector is input then the input lambda values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations).
+options.lambda0_PKMA = 0;
+
+%%% Step size (alpha) parameter for PKMA
+% If a scalar (or an empty) value is used, then the alpha parameter is
+% computed automatically as alpha_PKMA(oo) = 1 + (options.rho_PKMA *((i -
+% 1) * options.subsets + ll)) / ((i - 1) * options.subsets + ll +
+% options.delta_PKMA), where i is the iteration number and ll the subset
+% number. The input number thus has no effect. options.rho_PKMA and
+% options.delta_PKMA are defined below.
+% If, on the other hand, a vector is input then the input alpha values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations * number of subsets).
+options.alpha_PKMA = 0;
+
+%%% rho_PKMA
+% This value is ignored if a vector input is used with alpha_PKMA
+options.rho_PKMA = 0.95;
+
+%%% delta_PKMA
+% This value is ignored if a vector input is used with alpha_PKMA
+options.delta_PKMA = 1;
+
+%%% Additional step size (sigma) parameter for PKMA
+% If a non-zero value is used, then the sigma parameter is
+% computed automatically as sigma_PKMA = 1 - options.alpha_PKMA. If the
+% input value is empty or zero, then this value is set as 1 for each subset
+% and iteration, i.e. it has no effect on the reconstruction. 
+% If, on the other hand, a vector is input then the input sigma values are
+% used as is without any modifications (the length has to be at least the
+% number of iterations * number of subsets).
+% This value is based on the lambda value in
+% https://doi.org/10.3846/1392-6292.2010.15.265-274
+options.sigma_PKMA = 0;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1154,36 +1201,40 @@ options.Ndz = 2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% MRP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for MRP with OSL-OSEM
-options.beta_mrp_osem = 0.1;
+options.beta_MRP_OSL_OSEM = 0.1;
 %%% Regularization parameter for MRP with OSL-MLEM
-options.beta_mrp_mlem = 1.5;
+options.beta_MRP_OSL_MLEM = 1.5;
 %%% Regularization parameter for MRP with MBSREM
-options.beta_mrp_mbsrem = 0.3;
+options.beta_MRP_MBSREM = 0.3;
 %%% Regularization parameter for MRP with BSREM
-options.beta_mrp_bsrem = 0.1;
+options.beta_MRP_BSREM = 0.1;
 %%% Regularization parameter for MRP with ROSEM
-options.beta_mrp_rosem = 2;
+options.beta_MRP_ROSEM_MAP = 2;
 %%% Regularization parameter for MRP with RBI
-options.beta_mrp_rbi = 0.1;
+options.beta_MRP_OSL_RBI = 0.1;
 %%% Regularization parameter for MRP with OSL-(A)COSEM
-options.beta_mrp_cosem = 1;
+options.beta_MRP_OSL_COSEM = 1;
+%%% Regularization parameter for MRP with PKMA
+options.beta_MRP_PKMA =  0.1;
  
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% QP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for quadratic prior with OSL-OSEM
-options.beta_quad_osem = 0.001;
+options.beta_quad_OSL_OSEM = 0.001;
 %%% Regularization parameter for quadratic prior with OSL-MLEM
-options.beta_quad_mlem = 0.1;
+options.beta_quad_OSL_MLEM = 0.1;
 %%% Regularization parameter for quadratic prior with MBSREM
-options.beta_quad_mbsrem = 0.05;
+options.beta_quad_MBSREM = 0.05;
 %%% Regularization parameter for quadratic prior with BSREM
-options.beta_quad_bsrem = 0.03;
+options.beta_quad_BSREM = 0.03;
 %%% Regularization parameter for quadratic prior with ROSEM
-options.beta_quad_rosem = 0.1;
+options.beta_quad_ROSEM_MAP = 0.1;
 %%% Regularization parameter for quadratic prior with RBI
-options.beta_quad_rbi = 0.05;
+options.beta_quad_OSL_RBI = 0.05;
 %%% Regularization parameter for quadratic prior (OSL-(A)COSEM)
-options.beta_quad_cosem = 0.01;
+options.beta_quad_OSL_COSEM = 0.01;
+%%% Regularization parameter for quadratic prior with PKMA
+options.beta_quad_PKMA =  0.1;
 
 %%% Pixel weights for quadratic prior
 % The number of pixels need to be the amount of neighboring pixels,
@@ -1197,19 +1248,21 @@ options.weights = [];
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% HP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for Huber prior with OSL-OSEM
-options.beta_huber_osem = 0.01;
+options.beta_Huber_OSL_OSEM = 0.01;
 %%% Regularization parameter for Huber prior with OSL-MLEM
-options.beta_huber_mlem = 0.1;
+options.beta_Huber_OSL_MLEM = 0.1;
 %%% Regularization parameter for Huber prior with MBSREM
-options.beta_huber_mbsrem = 0.05;
+options.beta_Huber_MBSREM = 0.05;
 %%% Regularization parameter for Huber prior with BSREM
-options.beta_huber_bsrem = 0.03;
+options.beta_Huber_BSREM = 0.03;
 %%% Regularization parameter for Huber prior with ROSEM
-options.beta_huber_rosem = 0.1;
+options.beta_Huber_ROSEM_MAP = 0.1;
 %%% Regularization parameter for Huber prior with RBI
-options.beta_huber_rbi = 0.05;
+options.beta_Huber_OSL_RBI = 0.05;
 %%% Regularization parameter for Huber prior (OSL-(A)COSEM)
-options.beta_huber_cosem = 0.01;
+options.beta_Huber_OSL_COSEM = 0.01;
+%%% Regularization parameter for Huber prior with PKMA
+options.beta_Huber_PKMA = 0.1;
 
 %%% Delta parameter for Huber prior
 % Upper and lower bounds for the prior
@@ -1224,19 +1277,21 @@ options.weights_huber = [];
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%% L-FILTER PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for L-filter with OSL-OSEM
-options.beta_L_osem = 0.1;
+options.beta_L_OSL_OSEM = 0.1;
 %%% Regularization parameter for L-filter with OSL-MLEM
-options.beta_L_mlem = 0.1;
+options.beta_L_OSL_MLEM = 0.1;
 %%% Regularization parameter for L-filter with MBSREM
-options.beta_L_mbsrem = 0.1;
+options.beta_L_MBSREM = 0.1;
 %%% Regularization parameter for L-filter with BSREM
-options.beta_L_bsrem = 0.03;
+options.beta_L_BSREM = 0.03;
 %%% Regularization parameter for L-filter with ROSEM
-options.beta_L_rosem = 3;
+options.beta_L_ROSEM_MAP = 3;
 %%% Regularization parameter for L-filter with RBI
-options.beta_L_rbi = 0.09;
+options.beta_L_OSL_RBI = 0.09;
 %%% Regularization parameter for L-filter (OSL-(A)COSEM)
-options.beta_L_cosem = 0.1;
+options.beta_L_OSL_COSEM = 0.1;
+%%% Regularization parameter for L-filter with PKMA
+options.beta_L_PKMA = 0.1;
 
 %%% Weighting factors for the L-filter pixels
 % Otherwise the same as in quadratic prior, but center pixel is not Inf.
@@ -1254,19 +1309,21 @@ options.oneD_weights = false;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FMH PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for FMH with OSL-OSEM
-options.beta_fmh_osem = 0.1;
+options.beta_FMH_OSL_OSEM = 0.1;
 %%% Regularization parameter for FMH with OSL-MLEM
-options.beta_fmh_mlem = 0.1;
+options.beta_FMH_OSL_MLEM = 0.1;
 %%% Regularization parameter for FMH with MBSREM
-options.beta_fmh_mbsrem = 0.6;
+options.beta_FMH_MBSREM = 0.6;
 %%% Regularization parameter for FMH with BSREM
-options.beta_fmh_bsrem = 5;
+options.beta_FMH_BSREM = 5;
 %%% Regularization parameter for FMH with ROSEM
-options.beta_fmh_rosem = 8;
+options.beta_FMH_ROSEM_MAP = 8;
 %%% Regularization parameter for FMH with RBI
-options.beta_fmh_rbi = 0.5;
+options.beta_FMH_OSL_RBI = 0.5;
 %%% Regularization parameter for FMH (OSL-(A)COSEM)
-options.beta_fmh_cosem = 0.1;
+options.beta_FMH_OSL_COSEM = 0.1;
+%%% Regularization parameter for FMH with PKMA
+options.beta_FMH_PKMA = 0.1;
 
 %%% Pixel weights for FMH
 % The matrix size needs to be [Ndx*2+1, 4] if Nz = 1 or Ndz = 0, or
@@ -1290,19 +1347,21 @@ options.fmh_center_weight = 4;
 options.mean_type = 5;
 
 %%% Regularization parameter for weighted mean with OSL-OSEM
-options.beta_weighted_osem = 0.2;
+options.beta_weighted_mean_OSL_OSEM = 0.2;
 %%% Regularization parameter for weighted mean with OSL-MLEM
-options.beta_weighted_mlem = 0.1;
+options.beta_weighted_mean_OSL_MLEM = 0.1;
 %%% Regularization parameter for weighted mean with MBSREM
-options.beta_weighted_mbsrem = 0.1;
+options.beta_weighted_mean_MBSREM = 0.1;
 %%% Regularization parameter for weighted mean with BSREM
-options.beta_weighted_bsrem = 5;
+options.beta_weighted_mean_BSREM = 5;
 %%% Regularization parameter for weighted mean with ROSEM
-options.beta_weighted_rosem = 3;
+options.beta_weighted_mean_ROSEM_MAP = 3;
 %%% Regularization parameter for weighted mean with RBI
-options.beta_weighted_rbi = 0.04;
+options.beta_weighted_mean_OSL_RBI = 0.04;
 %%% Regularization parameter for weighted mean (OSL-(A)COSEM)
-options.beta_weighted_cosem = 0.2;
+options.beta_weighted_mean_OSL_COSEM = 0.2;
+%%% Regularization parameter for weighted mean with PKMA
+options.beta_weighted_mean_PKMA = 0.1;
 
 %%% Pixel weights for weighted mean
 % The number of pixels needs to be the amount of neighboring pixels,
@@ -1320,19 +1379,21 @@ options.weighted_center_weight = 0;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for TV OSL-OSEM
-options.beta_TV_osem = 0.005;
+options.beta_TV_OSL_OSEM = 0.005;
 %%% Regularization parameter for TV with OSL-MLEM
-options.beta_TV_mlem = 0.1;
+options.beta_TV_OSL_MLEM = 0.1;
 %%% Regularization parameter for TV with MBSREM
-options.beta_TV_mbsrem = 0.01;
+options.beta_TV_MBSREM = 0.01;
 %%% Regularization parameter for TV with BSREM
-options.beta_TV_bsrem = 0.05;
+options.beta_TV_BSREM = 0.05;
 %%% Regularization parameter for TV with ROSEM
-options.beta_TV_rosem = 0.07;
+options.beta_TV_ROSEM_MAP = 0.07;
 %%% Regularization parameter for TV with RBI
-options.beta_TV_rbi = 0.002;
+options.beta_TV_OSL_RBI = 0.002;
 %%% Regularization parameter for TV (OSL-(A)COSEM)
-options.beta_TV_cosem = 0.003;
+options.beta_TV_OSL_COSEM = 0.003;
+%%% Regularization parameter for TV with PKMA
+options.beta_TV_PKMA = 0.1;
 
 %%% "Smoothing" parameter
 % Also used to prevent zero values in square root.
@@ -1378,19 +1439,21 @@ options.SATVPhi = 0.2;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% ADMRP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for AD with OSL-OSEM
-options.beta_ad_osem = 0.1;
+options.beta_AD_OSL_OSEM = 0.1;
 %%% Regularization parameter for AD with OSL-MLEM
-options.beta_ad_mlem = 0.1;
+options.beta_AD_OSL_MLEM = 0.1;
 %%% Regularization parameter for AD with MBSREM
-options.beta_ad_mbsrem = 0.3;
+options.beta_AD_MBSREM = 0.3;
 %%% Regularization parameter for AD with BSREM
-options.beta_ad_bsrem = 0.2;
+options.beta_AD_BSREM = 0.2;
 %%% Regularization parameter for AD with ROSEM
-options.beta_ad_rosem = 0.0003;
+options.beta_AD_ROSEM_MAP = 0.0003;
 %%% Regularization parameter for AD with RBI
-options.beta_ad_rbi = 0.05;
+options.beta_AD_OSL_RBI = 0.05;
 %%% Regularization parameter for AD with (OSL-(A)COSEM)
-options.beta_ad_cosem = 0.1;
+options.beta_AD_OSL_COSEM = 0.1;
+%%% Regularization parameter for AD with PKMA
+options.beta_AD_PKMA = 0.1;
 
 %%% Time step variable for AD (implementation 2 only)
 options.TimeStepAD = 0.0625;
@@ -1416,19 +1479,21 @@ options.DiffusionType = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% APLS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for APLS with OSL-OSEM
-options.beta_APLS_osem = 0.01;
+options.beta_APLS_OSL_OSEM = 0.01;
 %%% Regularization parameter for APLS with OSL-MLEM
-options.beta_APLS_mlem = 0.1;
+options.beta_APLS_OSL_MLEM = 0.1;
 %%% Regularization parameter for APLS with MBSREM
-options.beta_APLS_mbsrem = 0.1;
+options.beta_APLS_MBSREM = 0.1;
 %%% Regularization parameter for APLS with BSREM
-options.beta_APLS_bsrem = 0.005;
+options.beta_APLS_BSREM = 0.005;
 %%% Regularization parameter for APLS with ROSEM
-options.beta_APLS_rosem = 0.1;
+options.beta_APLS_ROSEM_MAP = 0.1;
 %%% Regularization parameter for APLS with RBI
-options.beta_APLS_rbi = 0.1;
+options.beta_APLS_OSL_RBI = 0.1;
 %%% Regularization parameter for APLS (OSL-(A)COSEM)
-options.beta_APLS_cosem = 0.01;
+options.beta_APLS_OSL_COSEM = 0.01;
+%%% Regularization parameter for APLS with PKMA
+options.beta_APLS_PKMA = 0.1;
 
 %%% Scaling parameter (eta)
 % See the wiki for details:
@@ -1447,19 +1512,21 @@ options.APLS_reference_image = 'reference_image.mat';
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TGV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for TGV with OSL-OSEM
-options.beta_TGV_osem = 0.1;
+options.beta_TGV_OSL_OSEM = 0.1;
 %%% Regularization parameter for TGV with OSL-MLEM
-options.beta_TGV_mlem = 0.1;
+options.beta_TGV_OSL_MLEM = 0.1;
 %%% Regularization parameter for TGV with MBSREM
-options.beta_TGV_mbsrem = 0.1;
+options.beta_TGV_MBSREM = 0.1;
 %%% Regularization parameter for TGV with BSREM
-options.beta_TGV_bsrem = 1;
+options.beta_TGV_BSREM = 1;
 %%% Regularization parameter for TGV with ROSEM
-options.beta_TGV_rosem = 0.25;
+options.beta_TGV_ROSEM_MAP = 0.25;
 %%% Regularization parameter for TGV with RBI
-options.beta_TGV_rbi = 0.1;
+options.beta_TGV_OSL_RBI = 0.1;
 %%% Regularization parameter for TGV (OSL-(A)COSEM)
-options.beta_TGV_cosem = 0.05;
+options.beta_TGV_OSL_COSEM = 0.05;
+%%% Regularization parameter for TGV with PKMA
+options.beta_TGV_PKMA = 0.1;
 
 %%% TGV weights
 % First part
@@ -1473,19 +1540,21 @@ options.NiterTGV = 30;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Regularization parameter for NLM with OSL-OSEM
-options.beta_NLM_osem = 0.01;
+options.beta_NLM_OSL_OSEM = 0.01;
 %%% Regularization parameter for NLM with OSL-OSEM
-options.beta_NLM_mlem = 0.01;
+options.beta_NLM_OSL_MLEM = 0.01;
 %%% Regularization parameter for NLM with MBSREM
-options.beta_NLM_mbsrem = 0.05;
+options.beta_NLM_MBSREM = 0.05;
 %%% Regularization parameter for NLM with BSREM
-options.beta_NLM_bsrem = 0.01;
+options.beta_NLM_BSREM = 0.01;
 %%% Regularization parameter for NLM with ROSEM
-options.beta_NLM_rosem = 0.1;
+options.beta_NLM_ROSEM_MAP = 0.1;
 %%% Regularization parameter for NLM with RBI
-options.beta_NLM_rbi = 0.01;
+options.beta_NLM_OSL_RBI = 0.01;
 %%% Regularization parameter for NLM (OSL-(A)COSEM)
-options.beta_NLM_cosem = 0.01;
+options.beta_NLM_OSL_COSEM = 0.01;
+%%% Regularization parameter for NLM with PKMA
+options.beta_NLM_PKMA = 0.1;
 
 %%% Filter parameter
 options.sigma = 10;

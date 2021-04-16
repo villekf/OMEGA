@@ -71,22 +71,22 @@ end
 
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
-MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
-MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
+MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
+MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
 PRIOR = (options.MRP || options.quad || options.Huber || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS ...
     || options.TGV || options.NLM || options.custom);
 PRIOR_summa = sum([options.MRP, options.quad, options.Huber, options.L, options.FMH, options.weighted_mean, options.TV, options.AD, options.APLS, ...
     options.TGV, options.NLM, options.custom]);
-OS = (options.osem || options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
-MLOS = (options.mlem || options.osem);
-OS_I3 = (options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
-NMLOS = (options.ramla || options.mramla || options.cosem || options.rosem || options.rbi || options.ecosem || options.acosem || options.drama || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL) || options.OSL_MLEM);
-% OS_I4 = (options.mramla || options.cosem || options.rbi || options.ecosem || options.acosem || options.MBSREM || options.RBI_OSL || any(options.COSEM_OSL));
-OS_I4_summa = sum([options.osem, options.ramla, options.rosem, options.drama, options.rbi, options.cosem, options.ecosem, options.acosem, ...
-    options.OSL_OSEM, options.BSREM, options.ROSEM_MAP, options.RBI_OSL, any(options.COSEM_OSL)]);
+OS = (options.OSEM || options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
+    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
+MLOS = (options.MLEM || options.OSEM);
+OS_I3 = (options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
+    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
+NMLOS = (options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
+    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM) || options.OSL_MLEM);
+% OS_I4 = (options.MRAMLA || options.COSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.MBSREM || options.OSL_RBI || any(options.OSL_COSEM));
+OS_I4_summa = sum([options.OSEM, options.RAMLA, options.ROSEM, options.DRAMA, options.RBI, options.COSEM, options.ECOSEM, options.ACOSEM, ...
+    options.OSL_OSEM, options.BSREM, options.ROSEM_MAP, options.OSL_RBI, any(options.OSL_COSEM)]);
 N_PRIORS = (options.MRP + options.quad + options.Huber + options.L + options.FMH + options.weighted_mean + options.TV + options.AD + options.APLS ...
     + options.TGV + options.NLM + options.custom);
 
@@ -237,17 +237,17 @@ if options.implementation == 1 && ~options.precompute_lor && (options.n_rays_tra
     error('Multiray Siddon is not supported with implementation 1')
 end
 if options.implementation == 3
-    if options.osem && options.mlem
+    if options.OSEM && options.MLEM
         warning('Both OSEM and MLEM selected with implementation 3, using only MLEM');
-        options.osem = false;
+        options.OSEM = false;
     end
-    if options.mlem && options.subsets > 1 && (options.implementation == 3 || options.implementation == 1)
+    if options.MLEM && options.subsets > 1 && (options.implementation == 3 || options.implementation == 1)
         options.subsets = 1;
     end
-    if options.osem && options.subsets == 1
+    if options.OSEM && options.subsets == 1
         warning('OSEM selected with only 1 subset. Switching to MLEM instead')
-        options.osem = false;
-        options.mlem = true;
+        options.OSEM = false;
+        options.MLEM = true;
     end
 end
 if options.use_machine == 2 && options.use_raw_data
@@ -306,43 +306,43 @@ end
 if options.implementation == 3 && OS_I3
     warning(['Implementation ' num2str(options.implementation) ' supports only MLEM and OSEM, any other algorithms will be ignored.'])
 end
-if options.implementation == 4 && (options.mramla || options.MBSREM)
+if options.implementation == 4 && (options.MRAMLA || options.MBSREM)
     error(['Implementation ' num2str(options.implementation) ' selected with unsupported algorithm. MRAMLA or MBSREM are not supported!'])
 end
 if options.implementation == 4 && PRIOR_summa > 1 && MAP
     error(['Implementation ' num2str(options.implementation) ' supports only one prior at a time.'])
 end
-if options.implementation == 4 && (PRIOR_summa == 1 && ((options.mlem && options.OSL_MLEM)) || OS_I4_summa > 1)
+if options.implementation == 4 && (PRIOR_summa == 1 && ((options.MLEM && options.OSL_MLEM)) || OS_I4_summa > 1)
     
     reko = {};
-    if options.mlem
+    if options.MLEM
         reko = [reko;{'MLEM'}];
     end
-    if options.osem
+    if options.OSEM
         reko = [reko;{'OSEM'}];
     end
-    if options.ramla
+    if options.RAMLA
         reko = [reko;{'RAMLA'}];
     end
-    if options.mramla
+    if options.MRAMLA
         reko = [reko;{'MRAMLA'}];
     end
-    if options.rosem
+    if options.ROSEM
         reko = [reko;{'ROSEM'}];
     end
-    if options.rbi
+    if options.RBI
         reko = [reko;{'RBI'}];
     end
-    if options.drama
+    if options.DRAMA
         reko = [reko;{'DRAMA'}];
     end
-    if options.cosem
+    if options.COSEM
         reko = [reko;{'COSEM'}];
     end
-    if options.acosem
+    if options.ACOSEM
         reko = [reko;{'ACOSEM'}];
     end
-    if options.ecosem
+    if options.ECOSEM
         reko = [reko;{'ECOSEM'}];
     end
     if options.OSL_MLEM && PRIOR
@@ -360,13 +360,13 @@ if options.implementation == 4 && (PRIOR_summa == 1 && ((options.mlem && options
     if options.ROSEM_MAP && PRIOR
         reko = [reko;{'ROSEM-MAP'}];
     end
-    if options.RBI_OSL && PRIOR
+    if options.OSL_RBI && PRIOR
         reko = [reko;{'RBI-OSL'}];
     end
-    if any(options.COSEM_OSL) && PRIOR
-        if options.COSEM_OSL == 1 && PRIOR
+    if any(options.OSL_COSEM) && PRIOR
+        if options.OSL_COSEM == 1 && PRIOR
             reko = [reko;{'ACOSEM-OSL'}];
-        elseif options.COSEM_OSL == 2 && PRIOR
+        elseif options.OSL_COSEM == 2 && PRIOR
             reko = [reko;{'COSEM-OSL'}];
         end
     end
@@ -514,10 +514,10 @@ if options.verbose
         end
         disp(dispaus);
         reko = {};
-        if options.mlem
+        if options.MLEM
             if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
                 warning('MLEM is not supported with implementation 1 or with implementation 5 without precomputed observation matrix.')
-                options.mlem = false;
+                options.MLEM = false;
                 if ~OS && ~MAPOS
                     error('No other reconstruction algorithms selected. Select an ordered subsets algorithm.')
                 end
@@ -528,31 +528,31 @@ if options.verbose
                 reko = [reko;{'MLEM'}];
             end
         end
-        if options.osem
+        if options.OSEM
             reko = [reko;{'OSEM'}];
         end
-        if options.ramla
+        if options.RAMLA
             reko = [reko;{'RAMLA'}];
         end
-        if options.mramla
+        if options.MRAMLA
             reko = [reko;{'MRAMLA'}];
         end
-        if options.rosem
+        if options.ROSEM
             reko = [reko;{'ROSEM'}];
         end
-        if options.rbi
+        if options.RBI
             reko = [reko;{'RBI'}];
         end
-        if options.drama
+        if options.DRAMA
             reko = [reko;{'DRAMA'}];
         end
-        if options.cosem
+        if options.COSEM
             reko = [reko;{'COSEM'}];
         end
-        if options.acosem
+        if options.ACOSEM
             reko = [reko;{'ACOSEM'}];
         end
-        if options.ecosem
+        if options.ECOSEM
             reko = [reko;{'ECOSEM'}];
         end
         if options.OSL_MLEM && PRIOR
@@ -590,24 +590,24 @@ if options.verbose
             warning('ROSEM_MAP selected, but no prior has been selected. No MAP reconstruction will be performed.')
             options.ROSEM_MAP = false;
         end
-        if options.RBI_OSL && PRIOR
+        if options.OSL_RBI && PRIOR
             reko = [reko;{'RBI-OSL'}];
-        elseif options.RBI_OSL && ~PRIOR
+        elseif options.OSL_RBI && ~PRIOR
             warning('RBI_OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.RBI_OSL = false;
+            options.OSL_RBI = false;
         end
-        if any(options.COSEM_OSL) && PRIOR
-            if options.COSEM_OSL == 1 && PRIOR
+        if any(options.OSL_COSEM) && PRIOR
+            if options.OSL_COSEM == 1 && PRIOR
                 reko = [reko;{'ACOSEM-OSL'}];
-            elseif options.COSEM_OSL == 1 && ~PRIOR
+            elseif options.OSL_COSEM == 1 && ~PRIOR
                 warning('ACOSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-                options.COSEM_OSL = 0;
-            elseif options.COSEM_OSL == 2 && PRIOR
+                options.OSL_COSEM = 0;
+            elseif options.OSL_COSEM == 2 && PRIOR
                 reko = [reko;{'COSEM-OSL'}];
-            elseif options.COSEM_OSL == 2 && ~PRIOR
+            elseif options.OSL_COSEM == 2 && ~PRIOR
                 warning('COSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-                options.COSEM_OSL = 0;
-            elseif options.COSEM_OSL > 2 || options.COSEM_OSL < 0
+                options.OSL_COSEM = 0;
+            elseif options.OSL_COSEM > 2 || options.OSL_COSEM < 0
                 error('Unsupported COSEM-OSL method selected!')
             end
             if N_PRIORS > 1
@@ -752,7 +752,7 @@ if options.verbose
         if ~isempty(priori)
             disp(dispi2)
         end
-        if ~OS && ~MAP && ~options.mlem && ~(options.only_sinos || options.compute_normalization)
+        if ~OS && ~MAP && ~options.MLEM && ~(options.only_sinos || options.compute_normalization)
             error('No reconstruction algorithm selected.')
         end
         if options.precompute_lor

@@ -87,9 +87,9 @@ options.N = Nx * Ny * Nz;
 % options.weighted_weights = [];
 % options.weights_quad = [];
 
-options.MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.RBI_OSL || any(options.COSEM_OSL));
+options.MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
 options.empty_weight = false;
-if options.MBSREM || options.mramla || options.rbi || options.RBI_OSL || options.cosem || options.ecosem || options.acosem || any(options.COSEM_OSL)
+if options.MBSREM || options.MRAMLA || options.RBI || options.OSL_RBI || options.COSEM || options.ECOSEM || options.ACOSEM || any(options.OSL_COSEM)
     options.MBSREM_prepass = true;
 else
     options.MBSREM_prepass = false;
@@ -712,7 +712,7 @@ end
     gaussK, options.bmin, options.bmax, options.Vmax, options.V);
 
 
-if (options.MBSREM || options.mramla) && (options.implementation == 1 || options.implementation == 4)
+if (options.MBSREM || options.MRAMLA) && (options.implementation == 1 || options.implementation == 4)
     if iscell(options.SinDelayed)
         if iscell(options.SinM)
             options.epsilon_mramla = MBSREM_epsilon(options.SinM{1}, options.epps, options.randoms_correction, options.SinDelayed{1}, options.E);

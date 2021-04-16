@@ -1,43 +1,43 @@
 function x0 = updateInitialValue(im_vectors, options)
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
-if options.osem
+if options.OSEM
     x0 = im_vectors.OSEM_apu;
 end
 
-if options.mlem
+if options.MLEM
     x0 = im_vectors.MLEM_apu;
 end
 
-if options.mramla
+if options.MRAMLA
     x0 = im_vectors.MRAMLA_apu;
 end
 
-if options.ramla
+if options.RAMLA
     x0 = im_vectors.RAMLA_apu;
 end
 
-if options.rosem
+if options.ROSEM
     x0 = im_vectors.ROSEM_apu;
 end
 
-if options.rbi
+if options.RBI
     x0 = im_vectors.RBI_apu;
 end
 
-if options.drama
+if options.DRAMA
     x0 = im_vectors.DRAMA_apu;
 end
 
-if options.cosem
+if options.COSEM
     x0 = im_vectors.COSEM_apu;
 end
 
-if options.ecosem
+if options.ECOSEM
     x0 = im_vectors.ECOSEM_apu;
 end
 
-if options.acosem
+if options.ACOSEM
     x0 = im_vectors.ACOSEM_apu;
 end
 
@@ -59,11 +59,11 @@ if options.MRP && options.ROSEM_MAP
     x0 = im_vectors.MRP_ROSEM_apu;
 end
 
-if options.MRP && options.RBI_OSL
+if options.MRP && options.OSL_RBI
     x0 = im_vectors.MRP_RBI_apu;
 end
 
-if options.MRP && any(options.COSEM_OSL)
+if options.MRP && any(options.OSL_COSEM)
     x0 = im_vectors.MRP_COSEM_apu;
 end
 
@@ -85,11 +85,11 @@ if options.quad && options.ROSEM_MAP
     x0 = im_vectors.Quad_ROSEM_apu;
 end
 
-if options.quad && options.RBI_OSL
+if options.quad && options.OSL_RBI
     x0 = im_vectors.Quad_RBI_apu;
 end
 
-if options.quad && any(options.COSEM_OSL)
+if options.quad && any(options.OSL_COSEM)
     x0 = im_vectors.Quad_COSEM_apu;
 end
 
@@ -111,11 +111,11 @@ if options.L && options.ROSEM_MAP
     x0 = im_vectors.L_ROSEM_apu;
 end
 
-if options.L && options.RBI_OSL
+if options.L && options.OSL_RBI
     x0 = im_vectors.L_RBI_apu;
 end
 
-if options.L && any(options.COSEM_OSL)
+if options.L && any(options.OSL_COSEM)
     x0 = im_vectors.L_COSEM_apu;
 end
 
@@ -137,11 +137,11 @@ if options.FMH && options.ROSEM_MAP
     x0 = im_vectors.FMH_ROSEM_apu;
 end
 
-if options.FMH && options.RBI_OSL
+if options.FMH && options.OSL_RBI
     x0 = im_vectors.FMH_RBI_apu;
 end
 
-if options.FMH && any(options.COSEM_OSL)
+if options.FMH && any(options.OSL_COSEM)
     x0 = im_vectors.FMH_COSEM_apu;
 end
 
@@ -163,11 +163,11 @@ if options.weighted_mean && options.ROSEM_MAP
     x0 = im_vectors.Weighted_ROSEM_apu;
 end
 
-if options.weighted_mean && options.RBI_OSL
+if options.weighted_mean && options.OSL_RBI
     x0 = im_vectors.Weighted_RBI_apu;
 end
 
-if options.weighted_mean && any(options.COSEM_OSL)
+if options.weighted_mean && any(options.OSL_COSEM)
     x0 = im_vectors.Weighted_COSEM_apu;
 end
 
@@ -189,11 +189,11 @@ if options.TV && options.ROSEM_MAP
     x0 = im_vectors.TV_ROSEM_apu;
 end
 
-if options.TV && options.RBI_OSL
+if options.TV && options.OSL_RBI
     x0 = im_vectors.TV_RBI_apu;
 end
 
-if options.TV && any(options.COSEM_OSL)
+if options.TV && any(options.OSL_COSEM)
     x0 = im_vectors.TV_COSEM_apu;
 end
 
@@ -213,10 +213,10 @@ end
 if options.AD && options.ROSEM_MAP
     x0 = im_vectors.AD_ROSEM_apu;
 end
-if options.AD && options.RBI_OSL
+if options.AD && options.OSL_RBI
     x0 = im_vectors.AD_RBI_apu;
 end
-if options.AD && any(options.COSEM_OSL)
+if options.AD && any(options.OSL_COSEM)
     x0 = im_vectors.AD_COSEM_apu;
 end
 
@@ -235,10 +235,10 @@ end
 if options.APLS && options.ROSEM_MAP
     x0 = im_vectors.APLS_ROSEM_apu;
 end
-if options.APLS && options.RBI_OSL
+if options.APLS && options.OSL_RBI
     x0 = im_vectors.APLS_RBI_apu;
 end
-if options.APLS && any(options.COSEM_OSL)
+if options.APLS && any(options.OSL_COSEM)
     x0 = im_vectors.APLS_COSEM_apu;
 end
 
@@ -257,10 +257,10 @@ end
 if options.TGV && options.ROSEM_MAP
     x0 = im_vectors.TGV_ROSEM_apu;
 end
-if options.TGV && options.RBI_OSL
+if options.TGV && options.OSL_RBI
     x0 = im_vectors.TGV_RBI_apu;
 end
-if options.TGV && any(options.COSEM_OSL)
+if options.TGV && any(options.OSL_COSEM)
     x0 = im_vectors.TGV_COSEM_apu;
 end
 if options.NLM && options.OSL_OSEM
@@ -275,10 +275,10 @@ end
 if options.NLM && options.ROSEM_MAP
     x0 = im_vectors.NLM_ROSEM_apu;
 end
-if options.NLM && options.RBI_OSL
+if options.NLM && options.OSL_RBI
     x0 = im_vectors.NLM_RBI_apu;
 end
-if options.NLM && any(options.COSEM_OSL)
+if options.NLM && any(options.OSL_COSEM)
     x0 = im_vectors.NLM_COSEM_apu;
 end
 end

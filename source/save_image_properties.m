@@ -115,118 +115,118 @@ end
 % if isfield(options,'rekot')
 %     image_properties.implementations = options.rekot;
 % end
-if options.acosem || options.COSEM_OSL == 1
+if options.ACOSEM || options.OSL_COSEM == 1
     image_properties.h = options.h;
 end
-if options.ramla || options.BSREM
-    image_properties.lambda_bsrem = options.lambda0;
+if options.RAMLA || options.BSREM
+    image_properties.lambda_BSREM = options.lambda0;
 end
-if options.mramla || options.MBSREM
-    image_properties.lambda_mbsrem = options.lam_mbsrem;
+if options.MRAMLA || options.MBSREM
+    image_properties.lambda_MBSREM = options.lam_mbsrem;
 end
-if options.rosem || options.ROSEM_MAP
-    image_properties.lambda_rosem = options.lam_rosem;
+if options.ROSEM || options.ROSEM_MAP
+    image_properties.lambda_ROSEM_MAP = options.lam_rosem;
 end
-if options.drama
+if options.DRAMA
     image_properties.lambda_drama = options.lam_drama;
 end
-if options.mramla || options.MBSREM
+if options.MRAMLA || options.MBSREM
     image_properties.U = options.U;
 end
 if options.MRP
     if options.OSL_OSEM
-        image_properties.beta_mrp_osem = options.beta_mrp_osem;
+        image_properties.beta_MRP_OSL_OSEM = options.beta_MRP_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_mrp_mlem = options.beta_mrp_mlem;
+        image_properties.beta_MRP_OSL_MLEM = options.beta_MRP_mlem;
     end
     if options.BSREM
-        image_properties.beta_mrp_bsrem = options.beta_mrp_bsrem;
+        image_properties.beta_MRP_BSREM = options.beta_MRP_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_mrp_mbsrem = options.beta_mrp_mbsrem;
+        image_properties.beta_MRP_MBSREM = options.beta_MRP_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_mrp_rosem = options.beta_mrp_rosem;
+        image_properties.beta_MRP_ROSEM_MAP = options.beta_MRP_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_mrp_rbi = options.beta_mrp_rbi;
+    if options.OSL_RBI
+        image_properties.beta_MRP_OSL_RBI = options.beta_MRP_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_mrp_cosem = options.beta_mrp_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_MRP_OSL_COSEM = options.beta_MRP_cosem;
     end
 end
 if options.quad
     if options.OSL_OSEM
-        image_properties.beta_quad_osem = options.beta_quad_osem;
+        image_properties.beta_quad_OSL_OSEM = options.beta_quad_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_quad_mlem = options.beta_quad_mlem;
+        image_properties.beta_quad_OSL_MLEM = options.beta_quad_mlem;
     end
     if options.BSREM
-        image_properties.beta_quad_bsrem = options.beta_quad_bsrem;
+        image_properties.beta_quad_BSREM = options.beta_quad_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_quad_mbsrem = options.beta_quad_mbsrem;
+        image_properties.beta_quad_MBSREM = options.beta_quad_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_quad_rosem = options.beta_quad_rosem;
+        image_properties.beta_quad_ROSEM_MAP = options.beta_quad_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_quad_rbi = options.beta_quad_rbi;
+    if options.OSL_RBI
+        image_properties.beta_quad_OSL_RBI = options.beta_quad_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_quad_cosem = options.beta_quad_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_quad_OSL_COSEM = options.beta_quad_cosem;
     end
     image_properties.weights = options.weights;
     image_properties.quadratic_prior_weights = options.weights_quad;
 end
 if options.Huber
     if options.OSL_OSEM
-        image_properties.beta_huber_osem = options.beta_huber_osem;
+        image_properties.beta_Huber_OSL_OSEM = options.beta_Huber_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_huber_mlem = options.beta_huber_mlem;
+        image_properties.beta_Huber_OSL_MLEM = options.beta_Huber_mlem;
     end
     if options.BSREM
-        image_properties.beta_huber_bsrem = options.beta_huber_bsrem;
+        image_properties.beta_Huber_BSREM = options.beta_Huber_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_huber_mbsrem = options.beta_huber_mbsrem;
+        image_properties.beta_Huber_MBSREM = options.beta_Huber_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_huber_rosem = options.beta_huber_rosem;
+        image_properties.beta_Huber_ROSEM_MAP = options.beta_Huber_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_huber_rbi = options.beta_huber_rbi;
+    if options.OSL_RBI
+        image_properties.beta_Huber_OSL_RBI = options.beta_Huber_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_huber_cosem = options.beta_huber_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_Huber_OSL_COSEM = options.beta_Huber_cosem;
     end
     image_properties.weights_huber = options.weights_huber;
     image_properties.huber_delta = options.huber_delta;
 end
 if options.L
     if options.OSL_OSEM
-        image_properties.beta_L_osem = options.beta_L_osem;
+        image_properties.beta_L_OSL_OSEM = options.beta_L_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_L_mlem = options.beta_L_mlem;
+        image_properties.beta_L_OSL_MLEM = options.beta_L_mlem;
     end
     if options.BSREM
-        image_properties.beta_L_bsrem = options.beta_L_bsrem;
+        image_properties.beta_L_BSREM = options.beta_L_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_L_mbsrem = options.beta_L_mbsrem;
+        image_properties.beta_L_MBSREM = options.beta_L_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_L_rosem = options.beta_L_rosem;
+        image_properties.beta_L_ROSEM_MAP = options.beta_L_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_L_rbi = options.beta_L_rbi;
+    if options.OSL_RBI
+        image_properties.beta_L_OSL_RBI = options.beta_L_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_L_cosem = options.beta_L_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_L_OSL_COSEM = options.beta_L_cosem;
     end
     image_properties.L_weights = options.a_L;
 end
@@ -239,49 +239,49 @@ if options.FMH
     image_properties.fmh_center_weight = options.fmh_center_weight;
     image_properties.fmh_weights = options.fmh_weights;
     if options.OSL_OSEM
-        image_properties.beta_fmh_osem = options.beta_fmh_osem;
+        image_properties.beta_FMH_OSL_OSEM = options.beta_FMH_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_fmh_mlem = options.beta_fmh_mlem;
+        image_properties.beta_FMH_OSL_MLEM = options.beta_FMH_mlem;
     end
     if options.BSREM
-        image_properties.beta_fmh_bsrem = options.beta_fmh_bsrem;
+        image_properties.beta_FMH_BSREM = options.beta_FMH_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_fmh_mbsrem = options.beta_fmh_mbsrem;
+        image_properties.beta_FMH_MBSREM = options.beta_FMH_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_fmh_rosem = options.beta_fmh_rosem;
+        image_properties.beta_FMH_ROSEM_MAP = options.beta_FMH_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_fmh_rbi = options.beta_fmh_rbi;
+    if options.OSL_RBI
+        image_properties.beta_FMH_OSL_RBI = options.beta_FMH_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_fmh_cosem = options.beta_fmh_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_FMH_OSL_COSEM = options.beta_FMH_cosem;
     end
 end
 if options.weighted_mean
     image_properties.weighted_mean_center_weight = options.weighted_center_weight;
     if options.OSL_OSEM
-        image_properties.beta_weighted_osem = options.beta_weighted_osem;
+        image_properties.beta_weighted_mean_OSL_OSEM = options.beta_weighted_mean_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_weighted_mlem = options.beta_weighted_mlem;
+        image_properties.beta_weighted_mean_OSL_MLEM = options.beta_weighted_mean_mlem;
     end
     if options.BSREM
-        image_properties.beta_weighted_bsrem = options.beta_weighted_bsrem;
+        image_properties.beta_weighted_mean_BSREM = options.beta_weighted_mean_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_weighted_mbsrem = options.beta_weighted_mbsrem;
+        image_properties.beta_weighted_mean_MBSREM = options.beta_weighted_mean_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_weighted_rosem = options.beta_weighted_rosem;
+        image_properties.beta_weighted_mean_ROSEM_MAP = options.beta_weighted_mean_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_weighted_rbi = options.beta_weighted_rbi;
+    if options.OSL_RBI
+        image_properties.beta_weighted_mean_OSL_RBI = options.beta_weighted_mean_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_weighted_cosem = options.beta_weighted_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_weighted_mean_OSL_COSEM = options.beta_weighted_mean_cosem;
     end
     image_properties.weighted_mean_weights = options.weighted_weights;
     image_properties.mean_type = options.mean_type;
@@ -299,25 +299,25 @@ if options.TV
         image_properties.tau = options.tau;
     end
     if options.OSL_OSEM
-        image_properties.beta_TV_osem = options.beta_TV_osem;
+        image_properties.beta_TV_OSL_OSEM = options.beta_TV_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_TV_mlem = options.beta_TV_mlem;
+        image_properties.beta_TV_OSL_MLEM = options.beta_TV_mlem;
     end
     if options.BSREM
-        image_properties.beta_TV_bsrem = options.beta_TV_bsrem;
+        image_properties.beta_TV_BSREM = options.beta_TV_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_TV_mbsrem = options.beta_TV_mbsrem;
+        image_properties.beta_TV_MBSREM = options.beta_TV_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_TV_rosem = options.beta_TV_rosem;
+        image_properties.beta_TV_ROSEM_MAP = options.beta_TV_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_TV_rbi = options.beta_TV_rbi;
+    if options.OSL_RBI
+        image_properties.beta_TV_OSL_RBI = options.beta_TV_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_TV_cosem = options.beta_TV_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_TV_OSL_COSEM = options.beta_TV_cosem;
     end
 end
 if options.AD
@@ -331,25 +331,25 @@ if options.AD
     end
     image_properties.DiffusionTypeAD = options.DiffusionType;
     if options.OSL_OSEM
-        image_properties.beta_ad_osem = options.beta_ad_osem;
+        image_properties.beta_AD_OSL_OSEM = options.beta_AD_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_ad_mlem = options.beta_ad_mlem;
+        image_properties.beta_AD_OSL_MLEM = options.beta_AD_mlem;
     end
     if options.BSREM
-        image_properties.beta_ad_bsrem = options.beta_ad_bsrem;
+        image_properties.beta_AD_BSREM = options.beta_AD_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_ad_mbsrem = options.beta_ad_mbsrem;
+        image_properties.beta_AD_MBSREM = options.beta_AD_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_ad_rosem = options.beta_ad_rosem;
+        image_properties.beta_AD_ROSEM_MAP = options.beta_AD_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_ad_rbi = options.beta_ad_rbi;
+    if options.OSL_RBI
+        image_properties.beta_AD_OSL_RBI = options.beta_AD_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_ad_cosem = options.beta_ad_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_AD_OSL_COSEM = options.beta_AD_cosem;
     end
 end
 if options.APLS
@@ -357,25 +357,25 @@ if options.APLS
     image_properties.APLS_reference_image = options.APLS_reference_image;
     image_properties.eta = options.eta;
     if options.OSL_OSEM
-        image_properties.beta_APLS_osem = options.beta_APLS_osem;
+        image_properties.beta_APLS_OSL_OSEM = options.beta_APLS_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_APLS_mlem = options.beta_APLS_mlem;
+        image_properties.beta_APLS_OSL_MLEM = options.beta_APLS_mlem;
     end
     if options.BSREM
-        image_properties.beta_APLS_bsrem = options.beta_APLS_bsrem;
+        image_properties.beta_APLS_BSREM = options.beta_APLS_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_APLS_mbsrem = options.beta_APLS_mbsrem;
+        image_properties.beta_APLS_MBSREM = options.beta_APLS_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_APLS_rosem = options.beta_APLS_rosem;
+        image_properties.beta_APLS_ROSEM_MAP = options.beta_APLS_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_APLS_rbi = options.beta_APLS_rbi;
+    if options.OSL_RBI
+        image_properties.beta_APLS_OSL_RBI = options.beta_APLS_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_APLS_cosem = options.beta_APLS_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_APLS_OSL_COSEM = options.beta_APLS_cosem;
     end
 end
 if options.TGV
@@ -383,25 +383,25 @@ if options.TGV
     image_properties.betaTGV = options.betaTGV;
     image_properties.NiterTGV = options.NiterTGV;
     if options.OSL_OSEM
-        image_properties.beta_TGV_osem = options.beta_TGV_osem;
+        image_properties.beta_TGV_OSL_OSEM = options.beta_TGV_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_TGV_mlem = options.beta_TGV_mlem;
+        image_properties.beta_TGV_OSL_MLEM = options.beta_TGV_mlem;
     end
     if options.BSREM
-        image_properties.beta_TGV_bsrem = options.beta_TGV_bsrem;
+        image_properties.beta_TGV_BSREM = options.beta_TGV_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_TGV_mbsrem = options.beta_TGV_mbsrem;
+        image_properties.beta_TGV_MBSREM = options.beta_TGV_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_TGV_rosem = options.beta_TGV_rosem;
+        image_properties.beta_TGV_ROSEM_MAP = options.beta_TGV_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_TGV_rbi = options.beta_TGV_rbi;
+    if options.OSL_RBI
+        image_properties.beta_TGV_OSL_RBI = options.beta_TGV_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_TGV_cosem = options.beta_TGV_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_TGV_OSL_COSEM = options.beta_TGV_cosem;
     end
 end
 if options.NLM
@@ -412,25 +412,25 @@ if options.NLM
     image_properties.NLM_use_anatomical = options.NLM_use_anatomical;
     image_properties.NLM_MRP = options.NLM_MRP;
     if options.OSL_OSEM
-        image_properties.beta_NLM_osem = options.beta_NLM_osem;
+        image_properties.beta_NLM_OSL_OSEM = options.beta_NLM_osem;
     end
     if options.OSL_MLEM
-        image_properties.beta_NLM_mlem = options.beta_NLM_mlem;
+        image_properties.beta_NLM_OSL_MLEM = options.beta_NLM_mlem;
     end
     if options.BSREM
-        image_properties.beta_NLM_bsrem = options.beta_NLM_bsrem;
+        image_properties.beta_NLM_BSREM = options.beta_NLM_bsrem;
     end
     if options.MBSREM
-        image_properties.beta_NLM_mbsrem = options.beta_NLM_mbsrem;
+        image_properties.beta_NLM_MBSREM = options.beta_NLM_mbsrem;
     end
     if options.ROSEM_MAP
-        image_properties.beta_NLM_rosem = options.beta_NLM_rosem;
+        image_properties.beta_NLM_ROSEM_MAP = options.beta_NLM_rosem;
     end
-    if options.RBI_OSL
-        image_properties.beta_NLM_rbi = options.beta_NLM_rbi;
+    if options.OSL_RBI
+        image_properties.beta_NLM_OSL_RBI = options.beta_NLM_rbi;
     end
-    if any(options.COSEM_OSL)
-        image_properties.beta_NLM_cosem = options.beta_NLM_cosem;
+    if any(options.OSL_COSEM)
+        image_properties.beta_NLM_OSL_COSEM = options.beta_NLM_cosem;
     end
 end
 

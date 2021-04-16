@@ -23,43 +23,43 @@ if options.save_iter
 else
     Niter = 0;
 end
-if options.mlem
+if options.MLEM
     im_vectors.MLEM = reshape(im_vectors.MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.osem
+if options.OSEM
     im_vectors.OSEM = reshape(im_vectors.OSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.mramla
+if options.MRAMLA
     im_vectors.MRAMLA = reshape(im_vectors.MRAMLA,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.ramla
+if options.RAMLA
     im_vectors.RAMLA = reshape(im_vectors.RAMLA,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.rosem
+if options.ROSEM
     im_vectors.ROSEM = reshape(im_vectors.ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.rbi
+if options.RBI
     im_vectors.RBI = reshape(im_vectors.RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.drama
+if options.DRAMA
     im_vectors.DRAMA = reshape(im_vectors.DRAMA,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.cosem
+if options.COSEM
     im_vectors.COSEM = reshape(im_vectors.COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.ecosem
+if options.ECOSEM
     im_vectors.ECOSEM = reshape(im_vectors.ECOSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
-if options.acosem
+if options.ACOSEM
     im_vectors.ACOSEM = reshape(im_vectors.ACOSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -67,7 +67,7 @@ if options.MRP && options.OSL_OSEM
     im_vectors.MRP_OSL = reshape(im_vectors.MRP_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.MRP && options.OSL_MLEM
-    im_vectors.MRP_MLEM = reshape(im_vectors.MRP_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.MRP_OSL_MLEM = reshape(im_vectors.MRP_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.MRP && options.MBSREM
     im_vectors.MRP_MBSREM = reshape(im_vectors.MRP_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -78,10 +78,10 @@ end
 if options.MRP && options.ROSEM_MAP
     im_vectors.MRP_ROSEM = reshape(im_vectors.MRP_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.MRP && options.RBI_OSL
+if options.MRP && options.OSL_RBI
     im_vectors.MRP_RBI = reshape(im_vectors.MRP_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.MRP && any(options.COSEM_OSL)
+if options.MRP && any(options.OSL_COSEM)
     im_vectors.MRP_COSEM = reshape(im_vectors.MRP_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -89,7 +89,7 @@ if options.quad && options.OSL_OSEM
     im_vectors.Quad_OSL = reshape(im_vectors.Quad_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.quad && options.OSL_MLEM
-    im_vectors.Quad_MLEM = reshape(im_vectors.Quad_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.Quad_OSL_MLEM = reshape(im_vectors.Quad_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.quad && options.MBSREM
     im_vectors.Quad_MBSREM = reshape(im_vectors.Quad_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -100,10 +100,10 @@ end
 if options.quad && options.ROSEM_MAP
     im_vectors.Quad_ROSEM = reshape(im_vectors.Quad_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.quad && options.RBI_OSL
+if options.quad && options.OSL_RBI
     im_vectors.Quad_RBI = reshape(im_vectors.Quad_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.quad && any(options.COSEM_OSL)
+if options.quad && any(options.OSL_COSEM)
     im_vectors.Quad_COSEM = reshape(im_vectors.Quad_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -111,7 +111,7 @@ if options.Huber && options.OSL_OSEM
     im_vectors.Huber_OSL = reshape(im_vectors.Huber_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.Huber && options.OSL_MLEM
-    im_vectors.Huber_MLEM = reshape(im_vectors.Huber_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.Huber_OSL_MLEM = reshape(im_vectors.Huber_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.Huber && options.MBSREM
     im_vectors.Huber_MBSREM = reshape(im_vectors.Huber_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -122,10 +122,10 @@ end
 if options.Huber && options.ROSEM_MAP
     im_vectors.Huber_ROSEM = reshape(im_vectors.Huber_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.Huber && options.RBI_OSL
+if options.Huber && options.OSL_RBI
     im_vectors.Huber_RBI = reshape(im_vectors.Huber_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.Huber && any(options.COSEM_OSL)
+if options.Huber && any(options.OSL_COSEM)
     im_vectors.Huber_COSEM = reshape(im_vectors.Huber_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -133,7 +133,7 @@ if options.L && options.OSL_OSEM
     im_vectors.L_OSL = reshape(im_vectors.L_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.L && options.OSL_MLEM
-    im_vectors.L_MLEM = reshape(im_vectors.L_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.L_OSL_MLEM = reshape(im_vectors.L_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.L && options.MBSREM
     im_vectors.L_MBSREM = reshape(im_vectors.L_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -144,10 +144,10 @@ end
 if options.L && options.ROSEM_MAP
     im_vectors.L_ROSEM = reshape(im_vectors.L_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.L && options.RBI_OSL
+if options.L && options.OSL_RBI
     im_vectors.L_RBI = reshape(im_vectors.L_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.L && any(options.COSEM_OSL)
+if options.L && any(options.OSL_COSEM)
     im_vectors.L_COSEM = reshape(im_vectors.L_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -155,7 +155,7 @@ if options.FMH && options.OSL_OSEM
     im_vectors.FMH_OSL = reshape(im_vectors.FMH_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.FMH && options.OSL_MLEM
-    im_vectors.FMH_MLEM = reshape(im_vectors.FMH_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.FMH_OSL_MLEM = reshape(im_vectors.FMH_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.FMH && options.MBSREM
     im_vectors.FMH_MBSREM = reshape(im_vectors.FMH_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -166,10 +166,10 @@ end
 if options.FMH && options.ROSEM_MAP
     im_vectors.FMH_ROSEM = reshape(im_vectors.FMH_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.FMH && options.RBI_OSL
+if options.FMH && options.OSL_RBI
     im_vectors.FMH_RBI = reshape(im_vectors.FMH_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.FMH && any(options.COSEM_OSL)
+if options.FMH && any(options.OSL_COSEM)
     im_vectors.FMH_COSEM = reshape(im_vectors.FMH_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -177,7 +177,7 @@ if options.weighted_mean && options.OSL_OSEM
     im_vectors.Weighted_OSL = reshape(im_vectors.Weighted_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.weighted_mean && options.OSL_MLEM
-    im_vectors.Weighted_MLEM = reshape(im_vectors.Weighted_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.Weighted_OSL_MLEM = reshape(im_vectors.Weighted_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.weighted_mean && options.MBSREM
     im_vectors.Weighted_MBSREM = reshape(im_vectors.Weighted_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -188,10 +188,10 @@ end
 if options.weighted_mean && options.ROSEM_MAP
     im_vectors.Weighted_ROSEM = reshape(im_vectors.Weighted_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.weighted_mean && options.RBI_OSL
+if options.weighted_mean && options.OSL_RBI
     im_vectors.Weighted_RBI = reshape(im_vectors.Weighted_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.weighted_mean && any(options.COSEM_OSL)
+if options.weighted_mean && any(options.OSL_COSEM)
     im_vectors.Weighted_COSEM = reshape(im_vectors.Weighted_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -199,7 +199,7 @@ if options.TV && options.OSL_OSEM
     im_vectors.TV_OSL = reshape(im_vectors.TV_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.TV && options.OSL_MLEM
-    im_vectors.TV_MLEM = reshape(im_vectors.TV_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.TV_OSL_MLEM = reshape(im_vectors.TV_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.TV && options.MBSREM
     im_vectors.TV_MBSREM = reshape(im_vectors.TV_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -210,10 +210,10 @@ end
 if options.TV && options.ROSEM_MAP
     im_vectors.TV_ROSEM = reshape(im_vectors.TV_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.TV && options.RBI_OSL
+if options.TV && options.OSL_RBI
     im_vectors.TV_RBI = reshape(im_vectors.TV_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.TV && any(options.COSEM_OSL)
+if options.TV && any(options.OSL_COSEM)
     im_vectors.TV_COSEM = reshape(im_vectors.TV_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -221,7 +221,7 @@ if options.AD && options.OSL_OSEM
     im_vectors.AD_OSL = reshape(im_vectors.AD_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.AD && options.OSL_MLEM
-    im_vectors.AD_MLEM = reshape(im_vectors.AD_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.AD_OSL_MLEM = reshape(im_vectors.AD_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.AD && options.MBSREM
     im_vectors.AD_MBSREM = reshape(im_vectors.AD_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -232,10 +232,10 @@ end
 if options.AD && options.ROSEM_MAP
     im_vectors.AD_ROSEM = reshape(im_vectors.AD_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.AD && options.RBI_OSL
+if options.AD && options.OSL_RBI
     im_vectors.AD_RBI = reshape(im_vectors.AD_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.AD && any(options.COSEM_OSL)
+if options.AD && any(options.OSL_COSEM)
     im_vectors.AD_COSEM = reshape(im_vectors.AD_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -243,7 +243,7 @@ if options.APLS && options.OSL_OSEM
     im_vectors.APLS_OSL = reshape(im_vectors.APLS_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.APLS && options.OSL_MLEM
-    im_vectors.APLS_MLEM = reshape(im_vectors.APLS_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.APLS_OSL_MLEM = reshape(im_vectors.APLS_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.APLS && options.MBSREM
     im_vectors.APLS_MBSREM = reshape(im_vectors.APLS_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -254,10 +254,10 @@ end
 if options.APLS && options.ROSEM_MAP
     im_vectors.APLS_ROSEM = reshape(im_vectors.APLS_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.APLS && options.RBI_OSL
+if options.APLS && options.OSL_RBI
     im_vectors.APLS_RBI = reshape(im_vectors.APLS_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.APLS && any(options.COSEM_OSL)
+if options.APLS && any(options.OSL_COSEM)
     im_vectors.APLS_COSEM = reshape(im_vectors.APLS_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -265,7 +265,7 @@ if options.TGV && options.OSL_OSEM
     im_vectors.TGV_OSL = reshape(im_vectors.TGV_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.TGV && options.OSL_MLEM
-    im_vectors.TGV_MLEM = reshape(im_vectors.TGV_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.TGV_OSL_MLEM = reshape(im_vectors.TGV_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.TGV && options.MBSREM
     im_vectors.TGV_MBSREM = reshape(im_vectors.TGV_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -276,10 +276,10 @@ end
 if options.TGV && options.ROSEM_MAP
     im_vectors.TGV_ROSEM = reshape(im_vectors.TGV_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.TGV && options.RBI_OSL
+if options.TGV && options.OSL_RBI
     im_vectors.TGV_RBI = reshape(im_vectors.TGV_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.TGV && any(options.COSEM_OSL)
+if options.TGV && any(options.OSL_COSEM)
     im_vectors.TGV_COSEM = reshape(im_vectors.TGV_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 
@@ -287,7 +287,7 @@ if options.NLM && options.OSL_OSEM
     im_vectors.NLM_OSL = reshape(im_vectors.NLM_OSL,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.NLM && options.OSL_MLEM
-    im_vectors.NLM_MLEM = reshape(im_vectors.NLM_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
+    im_vectors.NLM_OSL_MLEM = reshape(im_vectors.NLM_MLEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
 if options.NLM && options.MBSREM
     im_vectors.NLM_MBSREM = reshape(im_vectors.NLM_MBSREM,options.Nx,options.Ny,options.Nz,Niter+1);
@@ -298,9 +298,9 @@ end
 if options.NLM && options.ROSEM_MAP
     im_vectors.NLM_ROSEM = reshape(im_vectors.NLM_ROSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.NLM && options.RBI_OSL
+if options.NLM && options.OSL_RBI
     im_vectors.NLM_RBI = reshape(im_vectors.NLM_RBI,options.Nx,options.Ny,options.Nz,Niter+1);
 end
-if options.NLM && any(options.COSEM_OSL)
+if options.NLM && any(options.OSL_COSEM)
     im_vectors.NLM_COSEM = reshape(im_vectors.NLM_COSEM,options.Nx,options.Ny,options.Nz,Niter+1);
 end
