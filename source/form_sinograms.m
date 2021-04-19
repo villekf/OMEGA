@@ -102,7 +102,7 @@ else
 end
 
 folder = fileparts(which('form_sinograms.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
 % Variables that specify which corrections are applied
