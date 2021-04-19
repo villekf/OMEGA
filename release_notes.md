@@ -15,9 +15,9 @@
 
 - Added PKMA as a built-in algorithm for implementations 1, 2 and 4
 
-- Implemented a total overhaul of the built-in algorithms on implementations 1, 2 and 4
+- Implemented a total overhaul of the built-in algorithms with implementations 1, 2 and 4
   - Adding new built-in algorithms or priors is much easier now
-  - This resulted in naming change for all non-MAP algorithms, regularization parameters and on some relaxation parameters
+  - This resulted in naming change for all non-MAP algorithms, regularization parameters and some relaxation parameters
   - Backwards compatibility is, however, maintained on all main-files except (possibly) custom prior
   - This has little to no effect on the normal user
   
@@ -30,7 +30,7 @@
 
 - Orthogonal and volume-based ray tracers should be a little faster
 
-- Added support for 32-bit integer atomics
+- Added support for 32-bit integer atomics (OpenCL only)
   - Should give about 20-30% faster computations at the expense of accuracy
   - Can cause integer overflow when the number of counts is high
   - Numerical accuracy WILL be negatively affected
@@ -61,16 +61,31 @@
 - Fixed TV prior when using 2D data
 
 - Implementations 1 and 4 should now be faster
+  - This should be especially visible when using Octave
 
 - Fixed errors when using precomputed data with the MATLAB toolbox version
 
 - Compilation of ROOT support in Linux and MacOS environments can now specify the ROOT installation directory
   - Previously this was possible only on Windows despite the warning messages suggesting the contrary
+  
+- ROOT supports now scanners with more than 65535 crystals when using R2019a or later
+
+- R2019a and newer can now use the (unstable) ROOT data load
+  - When loading large ROOT files (about 2 GB), the data load might hang when using R2019a and newer
+  - Using "legacy" ROOT data load (set with `options.legacyROOT = true`) fixes this, but causes the same instability as with earlier MATLAB versions
+  - Use the "legacy" ROOT data load with `-nojvm` MATLAB option to prevent crashes
+  - Octave is unaffected
 
 - Octave fixes
   - Fixed multi-ray Siddon
   - Implementations 1 and 4 should be much faster now
   - Forward/backward projection class was not always functioning before
+  
+- Implementation 1 is faster when using R2021a or newer (not actually OMEGA related)
+
+- Many MEX-files now use, when available, the new interleaved complex API
+  - Has no effect on the user
+  - Uses type-safe data access
 
 ## OMEGA v1.1.1
 
