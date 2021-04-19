@@ -51,7 +51,7 @@ classdef forwardBackwardProject
             %   Two different cases are possible, a simplified one that
             %   requires the detector coordinates, image size and FOV
             %   sizes and a more complex one that requires several
-            %   different parameters (see below).
+            %   different parameters (see below). 
             %
             %   The simplified case will always use improved Siddon. The
             %   number of subsets can be optionally specified, with the
@@ -69,44 +69,45 @@ classdef forwardBackwardProject
             %           tube_radius, voxel_radius, use_psf, FWHM);
             %   INPUTS:
             %       x_det = Detector coordinates in the x-direction
-            %       (transaxial)
+            %       (transaxial) (mm).
             %       y_det = Detector coordinates in the y-direction
-            %       (transaxial)
+            %       (transaxial) (mm).
             %       z_det = Detector coordinates in the z-direction (axial)
-            %       Nx = Image size in x-direction
-            %       Ny = Image size in y-direction
-            %       Nz = Image size in z-direction
-            %       FOV_tr = FOV size in transaxial direction
-            %       axial_fov = FOV size in axial direction
-            %       diameter = Diameter of the scanner bore/distance
-            %       between opposite detectors
-            %       rings = Number of scanner rings
-            %       cr_p = Crystal pitch/size in transaxial direction
-            %       cr_pz = Crystal pitch/size in axial direction
+            %       (mm).
+            %       Nx = Image size (in voxels) in x-direction.
+            %       Ny = Image size (in voxels) in y-direction.
+            %       Nz = Image size (in voxels) in z-direction.
+            %       FOV_tr = FOV size in transaxial direction (mm).
+            %       axial_fov = FOV size in axial direction (mm).
+            %       diameter = Diameter of the scanner bore/distance (mm)
+            %       between opposite detectors.
+            %       rings = Number of scanner rings.
+            %       cr_p = Crystal pitch/size in transaxial direction (mm).
+            %       cr_pz = Crystal pitch/size in axial direction (mm).
             %       cryst_per_block = Number of crystals per block in the
-            %       transaxial direction
-            %       blocks_per_ring = Number of blocks per ring
-            %       det_per_ring = Number of detectors per ring
+            %       transaxial direction.
+            %       blocks_per_ring = Number of blocks per ring.
+            %       det_per_ring = Number of detectors per ring.
             %       Nang = Number of angles (tangential positions) in
-            %       sinogram
-            %       Ndist = Number of radial positions (views) in sinogram
-            %       NSinos = Total number of sinograms
-            %       span = Span/axial compression
-            %       ring_difference = Maximum ring difference
-            %       subsets = Number of subsets
-            %       implementation = Implementation to use
+            %       sinogram.
+            %       Ndist = Number of radial positions (views) in sinogram.
+            %       NSinos = Total number of sinograms.
+            %       span = Span/axial compression.
+            %       ring_difference = Maximum ring difference.
+            %       subsets = Number of subsets.
+            %       implementation = Implementation to use.
             %       use_device = (Implementation 3 only) the OpenCL
-            %       platform used
-            %       projector_type = The projector type to use
+            %       platform used.
+            %       projector_type = The projector type to use.
             %       tube_width_z = (projector_type = 2 only) the size of
-            %       the tube width with orthogonal ray tracer
+            %       the tube width with orthogonal ray tracer (mm).
             %       tube_radius = (projector_type = 3 only) the size of
-            %       the cylindrical tube with volume ray tracer
+            %       the cylindrical tube with volume ray tracer (mm).
             %       voxel_radius = (projector_type = 3 only) the size of
-            %       the spherical voxel with volume ray tracer
-            %       use_psf = Whether PSF is used
+            %       the spherical voxel with volume ray tracer (mm).
+            %       use_psf = Whether PSF is used.
             %       FWHM = (PSF only) The size of the FWHM of the Gaussian
-            %       PSF (3 dimensions)
+            %       PSF (3 dimensions).
             if nargin > 1 && isscalar(options)
                 obj.OProperties.Nx = options;
                 obj.OProperties.Ny = varargin{1};
@@ -142,7 +143,7 @@ classdef forwardBackwardProject
                 obj.OProperties.precompute_lor = false;
                 obj.OProperties.tube_width_xy = 0;
                 obj.OProperties.det_w_pseudo = obj.OProperties.det_per_ring;
-                obj.OProperties.corrections_during_reconstruction = false;
+                obj.OProperties.corrections_during_reconstruction = true;
                 obj.OProperties.randoms_correction = false;
                 obj.OProperties.normalization_correction = false;
                 obj.OProperties.attenuation_correction = false;
@@ -182,12 +183,12 @@ classdef forwardBackwardProject
                 obj.OProperties.FOVa_y = obj.OProperties.FOVa_x;
                 obj.OProperties.axial_fov = varargin{7};
                 obj.OProperties.diameter = 0;
-                if nargin >= 10 && ~isempty(varargin{8})
+                if nargin >= 9 && ~isempty(varargin{8})
                     obj.OProperties.subsets = varargin{8};
                 else
                     obj.OProperties.subsets = 1;
                 end
-                if nargin >= 11 && ~isempty(varargin{9})
+                if nargin >= 10 && ~isempty(varargin{9})
                     obj.OProperties.implementation = varargin{9};
                 else
                     obj.OProperties.implementation = 4;
@@ -203,7 +204,7 @@ classdef forwardBackwardProject
                 obj.OProperties.NSinos = 0;
                 obj.OProperties.span = 0;
                 obj.OProperties.ring_difference = 0;
-                if nargin >= 12 && ~isempty(varargin{10})
+                if nargin >= 11 && ~isempty(varargin{10})
                     obj.OProperties.use_device = varargin{10};
                 else
                     obj.OProperties.use_device = 0;
@@ -221,7 +222,7 @@ classdef forwardBackwardProject
                 obj.OProperties.precompute_lor = false;
                 obj.OProperties.tube_width_xy = 0;
                 obj.OProperties.det_w_pseudo = obj.OProperties.det_per_ring;
-                obj.OProperties.corrections_during_reconstruction = false;
+                obj.OProperties.corrections_during_reconstruction = true;
                 obj.OProperties.randoms_correction = false;
                 obj.OProperties.normalization_correction = false;
                 obj.OProperties.attenuation_correction = false;
@@ -250,6 +251,9 @@ classdef forwardBackwardProject
                 obj.OProperties.simple = false;
             end
             obj.OProperties.listmode = false;
+            if obj.OProperties.implementation == 1
+                obj.OProperties.precompute_lor = true;
+            end
             if (isfield(obj.OProperties,'x') && isfield(obj.OProperties,'y') && (isfield(obj.OProperties,'z') || isfield(obj.OProperties,'z_det')))
                 obj.index = uint32(1:numel(obj.OProperties.x)/2)';
                 det_per_ring = numel(obj.OProperties.x) / 2;
@@ -266,7 +270,7 @@ classdef forwardBackwardProject
                     obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos);
             end
             obj.nn = [int64(0);int64(cumsum(obj.n_meas))];
-            if iscell(obj.index)
+            if ~isempty(obj.index) && iscell(obj.index)
                 obj.index = cell2mat(obj.index);
             end
             obj.n_meas_subs = obj.n_meas;
@@ -286,6 +290,11 @@ classdef forwardBackwardProject
             end
             if ~isfield(obj.OProperties,'TOF_width') || obj.OProperties.TOF_bins == 0
                 obj.OProperties.TOF_width = 0;
+            end
+            if obj.OProperties.corrections_during_reconstruction == false && (obj.OProperties.normalization_correction ...
+                    || obj.OProperties.randoms_correction || obj.OProperties.scatter_correction)
+                error(['Corrections can only be applied during reconstruction phase. If you want to use precorrected data, '...
+                'you will need to precorrect it manually.'])
             end
             
             obj.TOF = obj.OProperties.TOF_bins > 1;
@@ -439,9 +448,11 @@ classdef forwardBackwardProject
             
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};
+                obj.OProperties.useSubsets = true;
             elseif obj.OProperties.subsets > 1 && nargin == 2
 %                 error('When using subsets you must specify the current subset number (e.g. y = forwardProject(A, input, subset_number))')
             else
+                obj.OProperties.useSubsets = false;
                 obj.subset = 1;
             end
             
@@ -472,8 +483,12 @@ classdef forwardBackwardProject
             
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};
+                obj.OProperties.useSubsets = true;
             elseif obj.OProperties.subsets == 1 || isempty(obj.OProperties.subsets)
                 obj.subset = 1;
+                obj.OProperties.useSubsets = false;
+            else
+                obj.OProperties.useSubsets = true;
             end
             if nargout >= 2
                 iter = 1;
@@ -484,7 +499,11 @@ classdef forwardBackwardProject
                 [f, norm] = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
                     [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
                 
-                obj.sens(:,obj.subset) = norm;
+                if obj.OProperties.useSubsets
+                    obj.sens(:,obj.subset) = norm;
+                else
+                    obj.sens = norm;
+                end
                 if obj.OProperties.use_psf
                     obj.sens(:,obj.subset) = computeConvolution(obj.sens(:,obj.subset), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
                 end
@@ -547,6 +566,9 @@ classdef forwardBackwardProject
                 obj.subset, true, true);
         end
         function obj = transpose(obj)
+            obj.trans = true;
+        end
+        function obj = ctranspose(obj)
             obj.trans = true;
         end
     end

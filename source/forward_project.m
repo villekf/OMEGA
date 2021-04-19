@@ -25,7 +25,7 @@ function varargout = forward_project(options, index, n_meas, f, nn, iternn, vara
 % See also index_maker, backproject
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2021 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -77,6 +77,12 @@ end
 if ~isfield(options,'compute_sensitivity_image')
     options.compute_sensitivity_image = false;
 end
+if ~isfield(options,'CT')
+    options.CT = false;
+end
+if ~store_matrix && options.implementation == 1 && options.CT
+    error('Implementation 1 is not supported for forward/backward projection. Use B = formMatrix(A,subset) instead.')
+end
 
 f = f(:);
 
@@ -84,7 +90,7 @@ rings = options.rings;
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
-if Nz > options.NSinos && ~options.simple
+if Nz > options.NSinos && ~options.simple && ~options.CT
     Nz = options.NSinos;
     rings = ceil(Nz / 2 + 0.25);
 end
@@ -124,7 +130,7 @@ else
     else
         Z = 0;
     end
-    if options.implementation == 4 || options.implementation == 1
+    if (options.implementation == 4 || options.implementation == 1) && ~options.CT
         use_raw_data = true;
         options.use_raw_data = use_raw_data;
     end
@@ -327,6 +333,20 @@ else
         size_x = size_x * options.sampling;
     end
 end
+if options.CT
+    size_x = uint32(options.ySize);
+    options.size_y = uint32(options.xSize);
+    if options.listmode
+        % size_x = size_x * uint32(options.xSize * options.nProjections);
+        size_x = uint32(numel(x) / 2);
+    end
+    if options.implementation == 2 || options.implementation == 3
+        options.angles = single(options.angles);
+        options.dPitch = single(options.dPitch);
+        options.nProjections = int64(options.nProjections);
+        options.xSize = uint32(options.xSize);
+    end
+end
 
 if (options.precompute_lor || options.implementation == 5 || options.implementation == 2 || options.implementation == 3)
     n_meas = [int64(0);int64(cumsum(n_meas))];
@@ -350,36 +370,34 @@ if ~luokka
         lor_orth = uint16(0);
     end
     if normalization_correction
-        if options.implementation == 1 || options.implementation == 4
-            normalization = double(options.normalization);
-        else
-            normalization = single(options.normalization);
-        end
+        normalization = single(options.normalization);
     else
-        if options.implementation == 1 || options.implementation == 4
-            normalization = 0;
-        else
-            normalization = single(0);
-        end
+        normalization = single(0);
     end
     
     if randoms_correction
         if iscell(options.SinDelayed)
-            if options.implementation == 1 || options.implementation == 4
+            if options.implementation == 1
                 SinDelayed = double(options.SinDelayed{1});
+            elseif options.implementation == 4
+                SinDelayed = single(options.SinDelayed{1});
             else
                 SinDelayed{1} = single(options.SinDelayed{1});
             end
         else
-            if options.implementation == 1 || options.implementation == 4
+            if options.implementation == 1
                 SinDelayed = double(options.SinDelayed);
+            elseif options.implementation == 4
+                SinDelayed = single(options.SinDelayed);
             else
                 SinDelayed{1} = single(options.SinDelayed);
             end
         end
     else
-        if options.implementation == 1 || options.implementation == 4
+        if options.implementation == 1
             SinDelayed = 0;
+        elseif options.implementation == 4
+            SinDelayed = single(0);
         else
             SinDelayed{1} = single(0);
         end
@@ -404,36 +422,34 @@ if ~luokka
     end
 else
     if normalization_correction
-        if options.implementation == 1 || options.implementation == 4
-            normalization = double(options.normalization(nn(1) : nn(2)));
-        else
-            normalization = single(options.normalization(nn(1) : nn(2)));
-        end
+        normalization = single(options.normalization(nn(1) : nn(2)));
     else
-        if options.implementation == 1 || options.implementation == 4
-            normalization = 0;
-        else
-            normalization = single(0);
-        end
+        normalization = single(0);
     end
     
     if randoms_correction
         if iscell(options.SinDelayed)
-            if options.implementation == 1 || options.implementation == 4
+            if options.implementation == 1
                 SinDelayed = double(options.SinDelayed{1}(nn(1) : nn(2)));
+            elseif options.implementation == 4
+                SinDelayed = single(options.SinDelayed{1}(nn(1) : nn(2)));
             else
                 SinDelayed{1} = single(options.SinDelayed{1}(nn(1) : nn(2)));
             end
         else
-            if options.implementation == 1 || options.implementation == 4
+            if options.implementation == 1
                 SinDelayed = double(options.SinDelayed(nn(1) : nn(2)));
+            elseif options.implementation == 4
+                SinDelayed = single(options.SinDelayed(nn(1) : nn(2)));
             else
                 SinDelayed{1} = single(options.SinDelayed(nn(1) : nn(2)));
             end
         end
     else
-        if options.implementation == 1 || options.implementation == 4
+        if options.implementation == 1
             SinDelayed = 0;
+        elseif options.implementation == 4
+            SinDelayed = single(0);
         else
             SinDelayed{1} = single(0);
         end
@@ -441,7 +457,11 @@ else
     
     if options.scatter_correction && ~options.subtract_scatter
         if options.implementation == 1 || options.implementation == 4
-            scatter_input = options.ScatterC(nn(1) : nn(2));
+            if iscell(options.ScatterFB)
+                scatter_input = double(options.ScatterC{1}(nn(1) : nn(2)));
+            else
+                scatter_input = double(options.ScatterC(nn(1) : nn(2)));
+            end
         else
             if iscell(options.ScatterFB)
                 options.ScatterFB{1} = {single(options.ScatterC{1}(nn(1) : nn(2)))};
@@ -458,7 +478,7 @@ else
     end
     if options.use_raw_data && ~options.listmode
         LL = options.LL(nn(1) : nn(2));
-    elseif ~options.listmode
+    elseif ~options.listmode && (~options.CT || numel(options.xy_index) > 1)
         xy_index = options.xy_index(nn(1) : nn(2));
         z_index = options.z_index(nn(1) : nn(2));
         LL = uint16(0);
@@ -473,12 +493,16 @@ else
         summa = options.summa;
     end
     if options.precompute_lor
-        if options.projector_type == 2 || options.projector_type == 3
+        if (options.projector_type == 2 || options.projector_type == 3) && ~options.listmode
             lor_orth = options.lor_orth(nn(1) : nn(2));
         else
             lor_orth = uint16(0);
         end
-        lor_a = options.lor_a(nn(1) : nn(2));
+        if options.listmode
+            lor_a = uint16(0);
+        else
+            lor_a = options.lor_a(nn(1) : nn(2));
+        end
     else
         lor_a = uint16(0);
         lor_orth = uint16(0);
@@ -509,6 +533,13 @@ if zmax==0
         zmax = single(1);
     else
         zmax = double(1);
+    end
+end
+if options.CT
+    if options.listmode
+        zmax = max(z_det(1:numel(z_det)/2));
+    else
+        zmax = z_det(options.nProjections) + options.dPitch * (double(options.xSize) - 1);
     end
 end
 if ~luokka
@@ -551,8 +582,11 @@ if options.implementation == 1
         options.x = x;
         options.y = y;
         options.z_det = z_det;
-        options.Z = Z;
+        if ~isfield(options,'Z')
+            options.Z = Z;
+        end
         options.precompute_all = false;
+        options.zmax = max(temp_z(:));
         lor_a = lor_pixel_count_prepass(options, false);
         options.x = temp_x;
         options.y = temp_y;
@@ -590,8 +624,7 @@ elseif options.implementation == 4
     no_norm = uint8(1);
     
     epps = 1e-8;
-    list_mode_format = options.listmode;
-    if options.rings > 1
+    if options.rings > 1 && ~options.CT
         dc_z = z_det(2,1) - z_det(1,1);
     else
         dc_z = options.cr_pz;
@@ -604,59 +637,12 @@ elseif options.implementation == 4
         LL = uint16(0);
         TOFSize = int64(numel(xy_index));
     end
-    uu = ones(n_meas(end) * options.TOF_bins,1);
+    uu = ones(n_meas(end) * options.TOF_bins,1,'single');
     
-    if options.projector_type == 1
-        if exist('OCTAVE_VERSION','builtin') == 0
-            [~, rhs] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                options.n_rays_transaxial, options.n_rays_axial, dc_z);
-        elseif exist('OCTAVE_VERSION','builtin') == 5
-            [~, rhs] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                options.n_rays_transaxial, options.n_rays_axial, dc_z);
-        end
-    elseif options.projector_type == 2
-        if exist('OCTAVE_VERSION','builtin') == 0
-            [~, rhs] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z);
-        elseif exist('OCTAVE_VERSION','builtin') == 5
-            [~, rhs] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z);
-        end
-    elseif options.projector_type == 3
-        if exist('OCTAVE_VERSION','builtin') == 0
-            [~, rhs] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                x_center, y_center, z_center, bmin, bmax, Vmax, V);
-        elseif exist('OCTAVE_VERSION','builtin') == 5
-            [~, rhs] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, zmax, options.vaimennus, ...
-                normalization, SinDelayed, n_meas(end), attenuation_correction, normalization_correction, randoms_correction,...
-                options.scatter, scatter_input, options.global_correction_factor, lor_a, xy_index, z_index, NSinos, LL, pseudot, det_per_ring, ...
-                TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), dec, options.verbose, nCores, ...
-                (use_raw_data), uint32(1), list_mode_format, epps, uu, f, uint32(options.projector_type), no_norm, options.precompute_lor, uint8(1), ...
-                x_center, y_center, z_center, bmin, bmax, Vmax, V);
-        end
-    else
-        error('Unsupported projector')
-    end
+    [~,rhs] = computeImplementation4(options,use_raw_data,randoms_correction, n_meas(end),0, normalization_correction,...
+        Nx, Ny, Nz, dx, dy, dz, bx, by, bz, x, y, z_det, xx, yy, size_x, NSinos, NSlices, zmax, attenuation_correction, pseudot, det_per_ring, ...
+        TOF, TOFSize, sigma_x, TOFCenter, dec, nCores, LL, lor_a, xy_index, z_index, epps, uu, f, no_norm, ...
+        x_center, y_center, z_center, bmin, bmax, Vmax, V, scatter_input, normalization, SinDelayed, dc_z, true);
     
     varargout{1} = rhs;
     if nargout >= 2
@@ -665,66 +651,13 @@ elseif options.implementation == 4
 elseif options.implementation == 3 || options.implementation == 2
     %     options = double_to_single(options);
     
+    options.implementation = 3;
     f = single(f);
-    if use_raw_data
-        xy_index = uint32(0);
-        z_index = uint32(0);
-        TOFSize = int64(size(LL,1));
-    else
-        if isempty(pseudot)
-            pseudot = int32(100000);
-        end
-        LL = uint16(0);
-        TOFSize = int64(size(xy_index,1));
-    end
-    %     if ~iscell(SinM)
-    %         SinM = {single(SinM)};
-    %     end
     SinM = {ones(n_meas(end) * options.TOF_bins,1,'single')};
-    tube_width_xy = single(options.tube_width_xy);
-    crystal_size_z = single(options.tube_width_z);
-    n_rays = uint16(options.n_rays_transaxial);
-    n_rays3D = uint16(options.n_rays_axial);
-    dc_z = single(z_det(2,1) - z_det(1,1));
-    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction
-        randoms = uint32(1);
-    else
-        randoms = uint32(0);
-    end
-    if (options.projector_type == 1 && (options.precompute_lor || (n_rays + n_rays3D) <= 2)) || options.projector_type == 2 || options.projector_type == 3
-        kernel_file = 'multidevice_kernel.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_kernel','');
-    elseif options.projector_type == 1 && ~options.precompute_lor
-        kernel_file = 'multidevice_siddon_no_precomp.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_siddon_no_precomp','');
-    else
-        error('Invalid projector for OpenCL')
-    end
-    
-    filename = [header_directory, filename];
-%     header_directory = strcat('-I "', header_directory);
-%     header_directory = strcat(header_directory,'"');
-    
-    if options.verbose
-        tStart = tic;
-    end
-    [output] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ... 15
-        single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), int32(dec), uint32(options.use_device), filename, uint8(use_raw_data), ...25
-        single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, normalization, n_meas(end), uint32(attenuation_correction), ...32
-        uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...43
-        uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), f, uint8(true), ...53
-        options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf, options);
-    if options.verbose
-        toc(tStart)
-    end
+    [output] = computeImplementation23(options, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, NSinos, NSlices, size_x, zmax, ...
+    LL, pseudot, det_per_ring, TOF, sigma_x, TOFCenter, dec, options.use_device, use_raw_data, normalization, n_meas, attenuation_correction, ...
+    normalization_correction, 1, 1, 1e-8, lor_a, xy_index, z_index, x_center, y_center, z_center, SinDelayed, ...
+    SinM, bmin, bmax, Vmax, V, 0, 1, f, true);
     if isa(output{1},'int64')
         varargout{1} = single(output{1}) / single(100000000000);
     else
@@ -734,7 +667,7 @@ elseif options.implementation == 3 || options.implementation == 2
         varargout{2} = options;
     end
 else
-    error('Only implementations 1 and 3 are available in forward/backward projection')
+    error('Only implementations 1, 3 and 4 are available in forward/backward projection')
 end
 if options.verbose
     disp('Forward projection done')
