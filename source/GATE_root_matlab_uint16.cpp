@@ -81,13 +81,13 @@ public:
 		size_t Nentries = Coincidences->GetEntries();
 
 		// Output data
-		matlab::data::TypedArray<uint32_t> LL1 = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> LL2 = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> Ltrues = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> Lrandoms = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> Lscatter = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> Ldelay1 = factory.createArray<uint32_t>({ 1, 1 });
-		matlab::data::TypedArray<uint32_t> Ldelay2 = factory.createArray<uint32_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> LL1 = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> LL2 = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> Ltrues = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> Lrandoms = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> Lscatter = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> Ldelay1 = factory.createArray<uint16_t>({ 1, 1 });
+		matlab::data::TypedArray<uint16_t> Ldelay2 = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<float> x1 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> x2 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> y1 = factory.createArray<float>({ 1, 1 });
@@ -97,48 +97,48 @@ public:
 
 		if (outsize2 == 1ULL && !large_case) {
 			if (obtain_trues) {
-				Ltrues = factory.createArray<uint32_t>({ detectors, detectors });
+				Ltrues = factory.createArray<uint16_t>({ detectors, detectors });
 				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
 			if (store_randoms) {
-				Lrandoms = factory.createArray<uint32_t>({ detectors, detectors });
+				Lrandoms = factory.createArray<uint16_t>({ detectors, detectors });
 				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
 			}
 			if (store_scatter) {
-				Lscatter = factory.createArray<uint32_t>({ detectors, detectors });
+				Lscatter = factory.createArray<uint16_t>({ detectors, detectors });
 				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
 			}
 			if (randoms_correction) {
-				Ldelay1 = factory.createArray<uint32_t>({ detectors, detectors });
-				Ldelay2 = factory.createArray<uint32_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
+				Ldelay1 = factory.createArray<uint16_t>({ detectors, detectors });
+				Ldelay2 = factory.createArray<uint16_t>({ 1, 1 }, { static_cast<uint16_t>(0) });
 				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
 			}
-			LL1 = factory.createArray<uint32_t>({ detectors, detectors });
+			LL1 = factory.createArray<uint16_t>({ detectors, detectors });
 			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
 		}
 		else {
-			LL1 = factory.createArray<uint32_t>({ Nentries, 1 });
-			LL2 = factory.createArray<uint32_t>({ Nentries, 1 });
-			std::fill(LL1.begin(), LL1.end(), static_cast<uint32_t>(0));
-			std::fill(LL2.begin(), LL2.end(), static_cast<uint32_t>(0));
+			LL1 = factory.createArray<uint16_t>({ Nentries, 1 });
+			LL2 = factory.createArray<uint16_t>({ Nentries, 1 });
+			std::fill(LL1.begin(), LL1.end(), static_cast<uint16_t>(0));
+			std::fill(LL2.begin(), LL2.end(), static_cast<uint16_t>(0));
 
 			if (obtain_trues) {
-				Ltrues = factory.createArray<uint32_t>({ Nentries, 1 });
-				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint32_t>(0));
+				Ltrues = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Ltrues.begin(), Ltrues.end(), static_cast<uint16_t>(0));
 			}
 			if (store_randoms) {
-				Lrandoms = factory.createArray<uint32_t>({ Nentries, 1 });
-				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint32_t>(0));
+				Lrandoms = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lrandoms.begin(), Lrandoms.end(), static_cast<uint16_t>(0));
 			}
 			if (store_scatter) {
-				Lscatter = factory.createArray<uint32_t>({ Nentries, 1 });
-				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint32_t>(0));
+				Lscatter = factory.createArray<uint16_t>({ Nentries, 1 });
+				std::fill(Lscatter.begin(), Lscatter.end(), static_cast<uint16_t>(0));
 			}
 			if (randoms_correction) {
-				Ldelay1 = factory.createArray<uint32_t>({ Ndelays, 1 });
-				Ldelay2 = factory.createArray<uint32_t>({ Ndelays, 1 });
-				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint32_t>(0));
-				std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint32_t>(0));
+				Ldelay1 = factory.createArray<uint16_t>({ Ndelays, 1 });
+				Ldelay2 = factory.createArray<uint16_t>({ Ndelays, 1 });
+				std::fill(Ldelay1.begin(), Ldelay1.end(), static_cast<uint16_t>(0));
+				std::fill(Ldelay2.begin(), Ldelay2.end(), static_cast<uint16_t>(0));
 			}
 		}
 		if (store_coordinates) {
@@ -254,12 +254,12 @@ public:
 		}
 	}
 
-	void histogram(matlab::data::TypedArray<uint32_t>& LL1, matlab::data::TypedArray<uint32_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu,
+	void histogram(matlab::data::TypedArray<uint16_t>& LL1, matlab::data::TypedArray<uint16_t>& LL2, matlab::data::TypedArray<uint32_t>& tpoints, double vali, const double alku, const double loppu, 
 		const size_t outsize2, const uint32_t detectors, bool source, const uint32_t linear_multip, const uint32_t cryst_per_block, const uint32_t blocks_per_ring,	const uint32_t det_per_ring, 
 		matlab::data::TypedArray<float>& S, TTree* Coincidences, const size_t Nentries, const matlab::data::TypedArray<double>& time_intervals, matlab::data::TypedArray<int32_t>& int_loc,
-		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<uint8_t> scatter_components, matlab::data::TypedArray<uint32_t>& Ltrues,
-		matlab::data::TypedArray<uint32_t>& Lscatter, matlab::data::TypedArray<uint32_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction,
-		TTree* delay, matlab::data::TypedArray<uint32_t>& Ldelay1, matlab::data::TypedArray<uint32_t>& Ldelay2, matlab::data::TypedArray<int32_t>& int_loc_delay,
+		bool obtain_trues, bool store_scatter, bool store_randoms, const matlab::data::TypedArray<uint8_t> scatter_components, matlab::data::TypedArray<uint16_t>& Ltrues, 
+		matlab::data::TypedArray<uint16_t>& Lscatter, matlab::data::TypedArray<uint16_t>& Lrandoms, matlab::data::TypedArray<bool>& trues_loc, const size_t Ndelays, bool randoms_correction, 
+		TTree* delay, matlab::data::TypedArray<uint16_t>& Ldelay1, matlab::data::TypedArray<uint16_t>& Ldelay2, matlab::data::TypedArray<int32_t>& int_loc_delay, 
 		matlab::data::TypedArray<uint32_t>& tpoints_delay, matlab::data::TypedArray<bool>& randoms_loc, matlab::data::TypedArray<bool>& scatter_loc,
 		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
 		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case, const uint32_t rings, 
@@ -673,10 +673,10 @@ public:
 				}
 			}
 			// Detector numbers
-			uint64_t L1 = static_cast<uint64_t>(ring_number1) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos1);
-			uint64_t L2 = static_cast<uint64_t>(ring_number2) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos2);
+			uint32_t L1 = static_cast<uint32_t>(ring_number1) * det_per_ring + static_cast<uint32_t>(ring_pos1);
+			uint32_t L2 = static_cast<uint32_t>(ring_number2) * det_per_ring + static_cast<uint32_t>(ring_pos2);
 			if (L2 > L1 && !large_case) {
-				const uint64_t L3 = L1;
+				const uint32_t L3 = L1;
 				L1 = L2;
 				L2 = L3;
 			}
@@ -716,15 +716,15 @@ public:
 			}
 			if (outsize2 == 1) {
 				if (large_case) {
-					LL1[kk] = static_cast<uint32_t>(L1 + 1);
-					LL2[kk] = static_cast<uint32_t>(L2 + 1);
+					LL1[kk] = static_cast<uint16_t>(L1 + 1);
+					LL2[kk] = static_cast<uint16_t>(L2 + 1);
 				}
 				else
 					LL1[L1][L2]++;
 			}
 			else {
-				LL1[kk] = static_cast<uint32_t>(L1 + 1);
-				LL2[kk] = static_cast<uint32_t>(L2 + 1);
+				LL1[kk] = static_cast<uint16_t>(L1 + 1);
+				LL2[kk] = static_cast<uint16_t>(L2 + 1);
 			}
 			if (outsize2 > 1ULL && time2 >= aika) {
 				tpoints[ll++] = static_cast<uint32_t>(jj);
@@ -813,8 +813,8 @@ public:
 				uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
 				detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
 					submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block, cryst_per_block_z, transaxial_multip, rings);
-				uint64_t L1 = static_cast<uint64_t>(ring_number1) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos1);
-				uint64_t L2 = static_cast<uint64_t>(ring_number2) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos2);
+				uint32_t L1 = ring_number1 * det_per_ring + ring_pos1;
+				uint32_t L2 = ring_number2 * det_per_ring + ring_pos2;
 				if (begin) {
 					while (time2 >= time_intervals[pa])
 						pa++;
@@ -826,12 +826,12 @@ public:
 				}
 				if (outsize2 == 1) {
 					if (large_case) {
-						Ldelay1[kk] = static_cast<uint32_t>(L1 + 1);
-						Ldelay2[kk] = static_cast<uint32_t>(L2 + 1);
+						Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
+						Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
 					}
 					else {
 						if (L2 > L1) {
-							const uint64_t L3 = L1;
+							const uint32_t L3 = L1;
 							L1 = L2;
 							L2 = L3;
 						}
@@ -839,8 +839,8 @@ public:
 					}
 				}
 				else {
-					Ldelay1[kk] = static_cast<uint32_t>(L1 + 1);
-					Ldelay2[kk] = static_cast<uint32_t>(L2 + 1);
+					Ldelay1[kk] = static_cast<uint16_t>(L1 + 1);
+					Ldelay2[kk] = static_cast<uint16_t>(L2 + 1);
 				}
 				if (time2 >= aika && outsize2 > 1ULL) {
 					tpoints_delay[ll++] = jj;

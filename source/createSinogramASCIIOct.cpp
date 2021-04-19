@@ -22,9 +22,6 @@
 #endif
 #include <octave/oct.h>
 #include "saveSinogram.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include <thread>
 
 
@@ -49,7 +46,13 @@ void openMPSino(const octave_uint16* ringPos1, const octave_uint16* ringPos2, co
 		gapSize = rings / (nPseudos + 1);
 	}
 
-#pragma omp parallel for ordered schedule(dynamic)
+#ifdef _OPENMP
+#if _OPENMP >= 210805
+#pragma omp parallel for schedule(auto)
+#else
+#pragma omp parallel for schedule(dynamic, nChunks)
+#endif
+#endif
 	for (int64_t kk = 0; kk < koko; kk++) {
 		double aika = 0.;
 		if (NT > 1)

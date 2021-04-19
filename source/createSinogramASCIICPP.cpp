@@ -21,9 +21,6 @@
 #include "mex.hpp"
 #include "mexAdapter.hpp"
 #include "saveSinogram.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include <thread>
 
 class MexFunction : public matlab::mex::Function {
@@ -130,7 +127,13 @@ public:
 		for (int ll = 0; ll < pituus; ll++)
 			seg_p[ll] = static_cast<uint32_t>(seg[ll]);
 
-#pragma omp parallel for ordered schedule(dynamic)
+#ifdef _OPENMP
+#if _OPENMP >= 201511
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
+#else
+#pragma omp parallel for schedule(dynamic, nChunks)
+#endif
+#endif
 		for (int64_t kk = 0; kk < koko; kk++) {
 			double aika = 0.;
 			if (NT > 1)
