@@ -26,7 +26,7 @@ if isempty(options.fmh_weights)
                     if iii == 0
                         apu(hhh) = options.fmh_center_weight;
                     else
-                        apu(hhh) = kerroin/sqrt((distX*iii)^2+(distY*iii)^2);
+                        apu(hhh) = kerroin/sqrt((distX*double(iii))^2+(distY*double(iii))^2);
                     end
                 end
             elseif jjj == 2
@@ -35,7 +35,7 @@ if isempty(options.fmh_weights)
                     if iii == 0
                         apu(hhh) = options.fmh_center_weight;
                     else
-                        apu(hhh) = kerroin/abs(distX*iii);
+                        apu(hhh) = kerroin/abs(distX*double(iii));
                     end
                 end
             elseif jjj == 4
@@ -44,7 +44,7 @@ if isempty(options.fmh_weights)
                     if iii == 0
                         apu(hhh) = options.fmh_center_weight;
                     else
-                        apu(hhh) = kerroin/abs(distY*iii);
+                        apu(hhh) = kerroin/abs(distY*double(iii));
                     end
                 end
             end

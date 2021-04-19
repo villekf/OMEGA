@@ -10,13 +10,35 @@ if size(alkuarvo,2) == 1
         error('Reference image has to be square')
     else
         alkuarvo = reshape(alkuarvo, koko_apu,koko_apu,options.Nz);
-        if koko_apu ~= options.Nx
-            alkuarvo = imresize(alkuarvo, options.Nx, options.Ny, options.Nz);
+        if koko_apu ~= options.Nx || size(alkuarvo,3) ~= options.Nz
+            if (license('test', 'image_toolbox') || exist('imresize3','file') == 2) && options.Nz > 1
+                alkuarvo = imresize3(alkuarvo, [options.Nx, options.Ny, options.Nz]);
+            elseif options.Nz > 1 && options.Nz ~= size(alkuarvo,3) && ~license('test', 'image_toolbox') && exist('imresize3','file') ~= 2
+                error(['The reference image has different number of slices and no imresize3 was found. Resize the reference image manually ' ...
+                    'to the same size as the reconstructed image.'])
+            elseif options.Nz == 1 || options.Nz == size(alkuarvo,3) && ~license('test', 'image_toolbox') && exist('imresize3','file') ~= 2
+                alkuarvo_new = zeros([options.Nx, options.Ny]);
+                for kk = 1 : options.Nz
+                    alkuarvo_new(:,:,kk) = imresize(alkuarvo(:,:,kk), [options.Nx, options.Ny]);
+                end
+                alkuarvo = alkuarvo_new;
+            end
         end
     end
 else
-    if size(alkuarvo,2) ~= options.Nx
-        alkuarvo = imresize(alkuarvo, options.Nx, options.Ny, options.Nz);
+    if size(alkuarvo,2) ~= options.Ny || size(alkuarvo,3) ~= options.Nz
+        if (license('test', 'image_toolbox') || exist('imresize3','file') == 2) && options.Nz > 1
+            alkuarvo = imresize3(alkuarvo, [options.Nx, options.Ny, options.Nz]);
+        elseif options.Nz > 1 && options.Nz ~= size(alkuarvo,3) && ~license('test', 'image_toolbox') && exist('imresize3','file') ~= 2
+            error(['The reference image has different number of slices and no imresize3 was found. Resize the reference image manually ' ...
+                'to the same size as the reconstructed image.'])
+        elseif options.Nz == 1 || options.Nz == size(alkuarvo,3) && ~license('test', 'image_toolbox') && exist('imresize3','file') ~= 2
+            alkuarvo_new = zeros([options.Nx, options.Ny]);
+            for kk = 1 : options.Nz
+                alkuarvo_new(:,:,kk) = imresize(alkuarvo(:,:,kk), [options.Nx, options.Ny]);
+            end
+            alkuarvo = alkuarvo_new;
+        end
     end
 end
 % alkuarvo = alkuarvo - min(min(min(alkuarvo)));
