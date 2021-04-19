@@ -25,6 +25,16 @@
   - CUDA may not work on Octave
 
 - Fixed the use of corrections when using the forward/backward projection class
+
+- Improved Siddon should be about 10-20% faster with Nvidia GPUs
+
+- Orthogonal and volume-based ray tracers should be a little faster
+
+- Added support for 32-bit integer atomics
+  - Should give about 20-30% faster computations at the expense of accuracy
+  - Can cause integer overflow when the number of counts is high
+  - Numerical accuracy WILL be negatively affected
+  - Should be used only when speed is of utmost importance
   
 ### Bug fixes and enhancements
 
@@ -51,6 +61,8 @@
 - Fixed TV prior when using 2D data
 
 - Implementations 1 and 4 should now be faster
+
+- Fixed errors when using precomputed data with the MATLAB toolbox version
 
 - Compilation of ROOT support in Linux and MacOS environments can now specify the ROOT installation directory
   - Previously this was possible only on Windows despite the warning messages suggesting the contrary
