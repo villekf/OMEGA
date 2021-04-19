@@ -69,6 +69,7 @@ for uu = 1 : options.n_rays_transaxial
     
     % Form the detector vector pair
     L = zeros(sum(1:det_w_pseudo),2,'int32');
+    L = reshape(L, numel(L)/2, 2);
     jh = int32(1);
     for kk = int32(1) : (det_w_pseudo)
 %         if kk == ll && (det_w_pseudo-det_per_ring) > 0
@@ -77,7 +78,7 @@ for uu = 1 : options.n_rays_transaxial
 %                 ii = ii + 1;
 %             end
 %         else
-            L(jh:(jh + (det_w_pseudo) - kk),:) = [repelem((kk), det_w_pseudo-(kk-1))', ((kk):det_w_pseudo)'];
+            L(jh:(jh + (det_w_pseudo) - kk),:) = [reshape(repelem((kk), det_w_pseudo-(kk-1)), [], 1), ((kk):det_w_pseudo)'];
 %         end
         jh = jh + (det_w_pseudo) -kk + 1;
     end
