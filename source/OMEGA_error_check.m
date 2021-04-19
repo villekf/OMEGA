@@ -1,7 +1,7 @@
 function options = OMEGA_error_check(options)
 %% Error checking file
 % This function is used to check that all the input values are allowed. It
-% also prints several variables that were chosen to inform the user of the 
+% also prints several variables that were chosen to inform the user of the
 %
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -68,91 +68,85 @@ end
 if ~isfield(options, 'only_reconstructions')
     options.only_reconstructions = false;
 end
+if ~isfield(options, 'CT')
+    options.CT = false;
+end
+options = convertOptions(options);
 
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
-MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
-MAPOS = (options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
-PRIOR = (options.MRP || options.quad || options.Huber || options.L || options.FMH || options.weighted_mean || options.TV || options.AD || options.APLS ...
-    || options.TGV || options.NLM || options.custom);
-PRIOR_summa = sum([options.MRP, options.quad, options.Huber, options.L, options.FMH, options.weighted_mean, options.TV, options.AD, options.APLS, ...
-    options.TGV, options.NLM, options.custom]);
-OS = (options.OSEM || options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
+MAP = checkAlgorithmsPriors(options, 2);
+MAPOS = checkAlgorithmsPriors(options, 8);
+PRIOR = checkAlgorithmsPriors(options, 1);
+PRIOR_summa = checkAlgorithmsPriors(options, 1, 0);
+OS = checkAlgorithmsPriors(options, 6);
 MLOS = (options.MLEM || options.OSEM);
-OS_I3 = (options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM));
-NMLOS = (options.RAMLA || options.MRAMLA || options.COSEM || options.ROSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.DRAMA || ...
-    options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI || any(options.OSL_COSEM) || options.OSL_MLEM);
-% OS_I4 = (options.MRAMLA || options.COSEM || options.RBI || options.ECOSEM || options.ACOSEM || options.MBSREM || options.OSL_RBI || any(options.OSL_COSEM));
-OS_I4_summa = sum([options.OSEM, options.RAMLA, options.ROSEM, options.DRAMA, options.RBI, options.COSEM, options.ECOSEM, options.ACOSEM, ...
-    options.OSL_OSEM, options.BSREM, options.ROSEM_MAP, options.OSL_RBI, any(options.OSL_COSEM)]);
-N_PRIORS = (options.MRP + options.quad + options.Huber + options.L + options.FMH + options.weighted_mean + options.TV + options.AD + options.APLS ...
-    + options.TGV + options.NLM + options.custom);
+NMLOS = checkAlgorithmsPriors(options, 9);
+OS_I4_summa = checkAlgorithmsPriors(options, 8,0) + checkAlgorithmsPriors(options, 6, 0);
 
 if options.only_sinos && options.only_reconstructions
     error('options.only_sinos and options.only_reconstructions cannot be both set to true')
 end
 % Check for various illegal values
-if options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter
+if (options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter) && ~options.CT
     error(['Transaxial FOV is larger than the machine diameter (' num2str(options.diameter) ')'])
 end
-if (options.axial_fov) < (options.rings * options.cr_pz - options.cr_pz)
+if (options.axial_fov) < (options.rings * options.cr_pz - options.cr_pz) && ~options.CT
     error('Axial FOV is too small, crystal ring(s) on the boundary have no slices')
 end
 % if (options.axial_fov) > (options.linear_multip * options.cryst_per_block * options.cr_pz + options.axial_fov/options.Nz*2 + options.cr_pz*sum(options.pseudot))
 %     error('Axial FOV is too large, not all the slices have LORs going through them')
 % end
-if options.use_LMF && options.data_bytes < 10
+if options.use_LMF && options.data_bytes < 10 && ~options.CT
     error('Too little data bytes in LMF format, minimum allowed is 10 bytes (time + detector indices)')
 end
-if options.use_LMF && options.data_bytes > 21
+if options.use_LMF && options.data_bytes > 21 && ~options.CT
     warning(['LMF format uses more bytes than the supported 21 bytes (time + detector indices + source coordinates + event indices + Compton scattering in phantom). '...
         'If these extra bytes are before the bytes that are used, output data will be incorrect.'])
 end
-if options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16
+if options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16 && ~options.CT
     error('Number of bits used in LMF is more than 16 bits. OMEGA supports only 16 bit detector indices')
 end
-if options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data
+if options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data && ~options.CT
     error(['Span value cannot be larger than ring difference (' num2str(options.ring_difference) ')'])
 end
-if options.span == 1 && ~options.use_raw_data
+if options.span == 1 && ~options.use_raw_data && ~options.CT
     warning('Span value of 1 is not recommended. Use raw data if you want uncompressed reconstruction!')
 end
-if (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data
+if (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data && ~options.CT
     error('Span value has to be odd and positive.')
 end
-if options.ring_difference >= options.rings && ~options.use_raw_data
+if options.ring_difference >= options.rings && ~options.use_raw_data && ~options.CT
     error(['Ring difference can be at most ' num2str(options.rings-1)])
 end
-if options.ring_difference < 0 && ~options.use_raw_data
+if options.ring_difference < 0 && ~options.use_raw_data && ~options.CT
     error('Ring difference has to be at least 0.')
 end
-if options.Nang > options.det_w_pseudo/2 && ~options.use_raw_data
+if options.Nang > options.det_w_pseudo/2 && ~options.use_raw_data && ~options.CT
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo/2) ')'])
 end
-if options.TotSinos < options.NSinos && ~options.use_raw_data
+if options.TotSinos < options.NSinos && ~options.use_raw_data && ~options.CT
     error(['The numnber of sinograms used (' num2str(options.NSinos) ') is larger than the total number of sinograms (' num2str(options.TotSinos) ')'])
 end
-if (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data
+if (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data && ~options.CT
     error('ndist_side can be either 1 or -1')
 end
-if options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data
+if options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data && ~options.CT
     error('ndist_side cannot be 0 when Ndist is even')
 end
-if ((mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0) && ~options.use_raw_data
+if ((mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0) && ~options.use_raw_data && ~options.CT
     error('Sampling rate has to be divisible by two and positive or one')
 end
-if ((mod(options.sampling_raw, 2) > 0 && options.sampling_raw ~= 1) || options.sampling_raw < 0) && options.use_raw_data
+if ((mod(options.sampling_raw, 2) > 0 && options.sampling_raw ~= 1) || options.sampling_raw < 0) && options.use_raw_data && ~options.CT
     error('Sampling rate has to be divisible by two and positive or one')
 end
-if ((options.sampling > 1 && ~options.use_raw_data) || (options.sampling_raw > 1 && options.use_raw_data)) && options.precompute_lor
+if ((options.sampling > 1 && ~options.use_raw_data) || (options.sampling_raw > 1 && options.use_raw_data)) && options.precompute_lor && ~options.CT
     warning('Increased sampling rate is not supported for precomputed data')
 end
-if options.arc_correction && options.use_raw_data
+if options.arc_correction && options.use_raw_data && ~options.CT
     warning('Arc correction is not supported for raw data')
 end
-if options.arc_correction && options.precompute_lor
+if options.arc_correction && options.precompute_lor && ~options.CT
     warning('Arc correction is not supported with precomputed data')
     options.arc_correction = false;
 end
@@ -160,10 +154,10 @@ if options.partitions < 1
     warning('Number of partitions is less than one. Using one partition.')
     options.partitions = 1;
 end
-if options.start > options.end
+if options.start > options.end && ~options.CT
     error('Start time is later than end time')
 end
-if options.start > options.tot_time
+if options.start > options.tot_time && ~options.CT
     error('Start time is larger than the total time of the measurement')
 end
 if options.Niter < 1
@@ -173,7 +167,7 @@ end
 %     warning('Number of subsets is less than two. Subset has to be at least 2 when using OS-methods. Using 2 subsets.')
 %     options.subsets = 2;
 % end
-if options.det_per_ring == options.det_w_pseudo && options.fill_sinogram_gaps
+if options.det_per_ring == options.det_w_pseudo && options.fill_sinogram_gaps && ~options.CT
     error('Gap filling is only supported with pseudo detectors!')
 end
 if size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz
@@ -201,7 +195,7 @@ else
         options.fpath = [options.fpath '/'];
     end
 end
-if options.use_LMF && options.randoms_correction
+if options.use_LMF && options.randoms_correction && ~options.CT
     warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
     options.randoms_correction = false;
 end
@@ -230,8 +224,11 @@ if numel(options.epps) > 1
     warning('Epsilon has to be a scalar value! Using the default value (1e-8).')
     options.epps = 1e-8;
 end
-if options.store_scatter && sum(options.scatter_components) <= 0
+if options.store_scatter && sum(options.scatter_components) <= 0 && ~options.CT
     error('Store scatter selected, but no scatter components have been selected')
+end
+if options.CT && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1)
+    error('Multiray Siddon is not supported CT data')
 end
 if options.implementation == 1 && ~options.precompute_lor && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1)
     error('Multiray Siddon is not supported with implementation 1')
@@ -250,7 +247,7 @@ if options.implementation == 3
         options.MLEM = true;
     end
 end
-if options.use_machine == 2 && options.use_raw_data
+if options.use_machine == 2 && options.use_raw_data && ~options.CT
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
@@ -260,31 +257,44 @@ end
 % if options.source && options.use_ASCII && (options.source_index1 == 0 || isempty(options.source_index1) || options.source_index2 == 0 || isempty(options.source_index2))
 %     error('Source image selected with ASCII data, but no source index column numbers are provided.')
 % end
-if options.reconstruct_trues && options.reconstruct_scatter
+if options.reconstruct_trues && options.reconstruct_scatter && ~options.CT
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor && ~options.CT
     warning('MEX-file for implementation 1 not found. It is recommended to run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_oct','file') ~= 3 && options.precompute_lor
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_oct','file') ~= 3 && options.precompute_lor && ~options.CT
     warning('OCT-file for implementation 1 not found. It is recommended to run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mex','file') ~= 3
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mex','file') ~= 3 && ~options.CT
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3 && ~options.CT
     error('OCT-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) || (exist('GATE_root_matlab_C','file') ~= 3 && verLessThan('matlab', '9.6'))) && options.use_machine == 0
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mexCT','file') ~= 3 && options.precompute_lor && options.CT
+    error('MEX-file for implementation 1 not found. Run install_mex first.')
+end
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_octCT','file') ~= 3 && options.precompute_lor && options.CT
+    error('OCT-file for implementation 1 not found. Run install_mex first.')
+end
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mexCT','file') ~= 3 && options.CT
+    error('MEX-file for implementation 4 not found. Run install_mex first.')
+end
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_octCT','file') ~= 3 && options.CT
+    error('OCT-file for implementation 4 not found. Run install_mex first.')
+end
+if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) ...
+        || (exist('GATE_root_matlab_C','file') ~= 3 && verLessThan('matlab', '9.6'))) && options.use_machine == 0 && ~options.CT
     warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
         'simply loading a mat-file containing measurement data from ROOT files.'])
 end
-if options.use_root && exist('GATE_root_matlab_oct','file') ~= 3 && options.use_machine == 0 && exist('OCTAVE_VERSION','builtin') == 5
+if options.use_root && exist('GATE_root_matlab_oct','file') ~= 3 && options.use_machine == 0 && exist('OCTAVE_VERSION','builtin') == 5 && ~options.CT
     warning(['ROOT selected, but no OCT-file for ROOT data load found. Run install_mex to build ROOT OCT-file. Ignore this warning if you are ' ...
         'simply loading a mat-file containing measurement data from ROOT files.'])
 end
-if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0
+if options.use_LMF && exist('gate_lmf_matlab','file') ~= 3 && options.use_machine == 0 && ~options.CT
     error('LMF selected, but no MEX-file for LMF data load found. Run install_mex to build LMF MEX-file.')
 end
 if options.implementation == 2 && exist('OpenCL_matrixfree','file') ~= 3
@@ -302,9 +312,6 @@ if options.implementation == 3 && NMLOS
 end
 if options.implementation == 3 && ~MLOS
     error(['Implementation ' num2str(options.implementation) ' selected, but neither MLEM nor OSEM algorithm has been selected.'])
-end
-if options.implementation == 3 && OS_I3
-    warning(['Implementation ' num2str(options.implementation) ' supports only MLEM and OSEM, any other algorithms will be ignored.'])
 end
 if options.implementation == 4 && (options.MRAMLA || options.MBSREM)
     error(['Implementation ' num2str(options.implementation) ' selected with unsupported algorithm. MRAMLA or MBSREM are not supported!'])
@@ -384,29 +391,32 @@ if options.implementation == 4 && (PRIOR_summa == 1 && ((options.MLEM && options
     end
     error(['Implementation ' num2str(options.implementation) ' supports only one OS and one MLEM algorithm at a time. ' dispi])
 end
-if options.implementation == 1 && ~options.precompute_lor
+if options.implementation == 1 && ~options.precompute_lor && ~options.CT
     if options.projector_type == 2 || options.projector_type == 3
         error('Orthogonal distance-based/volume-based projector is NOT supported when using implementation 1 without precomputation!')
     end
     warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
         'precompute_lor to true or use another implementation.'])
 end
-if options.TOF_bins_used > 1 && options.implementation == 1
+if options.projector_type == 2 && options.CT
+    error('Orthogonal distance-based projector is NOT supported when using CT data!')
+end
+if options.TOF_bins_used > 1 && options.implementation == 1 && ~options.CT
     error('TOF is currently not supported with implementation 1!')
 end
-if options.TOF_bins_used > 1 && (options.projector_type > 1 || options.projector_type < 1)
+if options.TOF_bins_used > 1 && (options.projector_type > 1 || options.projector_type < 1) && ~options.CT
     error('TOF is currently only supported with improved Siddon (projector_type = 1)')
 end
-if options.TOF_bins > 1 && options.TOF_width <= 0
+if options.TOF_bins > 1 && options.TOF_width <= 0 && ~options.CT
     error('TOF width (options.TOF_width) must be greater than zero.')
 end
-if options.TOF_bins > 1 && options.TOF_bins_used == 1
+if options.TOF_bins > 1 && options.TOF_bins_used == 1 && ~options.CT
     disp('Summing TOF bins.')
 end
-if options.TOF_bins_used > 1 && options.TOF_FWHM == 0
+if options.TOF_bins_used > 1 && options.TOF_FWHM == 0 && ~options.CT
     error('TOF enabled, but the TOF FWHM (options.TOF_FWHM) is zero. FWHM must be nonzero.')
 end
-if options.TOF_bins > 1 && options.use_raw_data
+if options.TOF_bins > 1 && options.use_raw_data && ~options.CT
     error('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = false).')
 end
 % Print various options that were selected if verbosity has been enabled
@@ -431,7 +441,9 @@ if options.verbose
     else
         dispi = [dispi '.'];
     end
-    disp(dispi);
+    if ~strcmp(dispi,'.')
+        disp(dispi);
+    end
     if options.only_sinos
         disp('Loading only data.')
     end
@@ -514,104 +526,60 @@ if options.verbose
         end
         disp(dispaus);
         reko = {};
-        if options.MLEM
-            if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
-                warning('MLEM is not supported with implementation 1 or with implementation 5 without precomputed observation matrix.')
-                options.MLEM = false;
-                if ~OS && ~MAPOS
-                    error('No other reconstruction algorithms selected. Select an ordered subsets algorithm.')
+        varNonMAP = [recNames(5);recNames(6)];
+        for kk = 1 : numel(varNonMAP)
+            if options.(varNonMAP{kk}) && strcmp(options.(varNonMAP{kk}),'MLEM')
+                if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
+                    warning('MLEM is not supported with implementation 1 or with implementation 5 without precomputed observation matrix.')
+                    options.MLEM = false;
+                    if ~OS && ~MAPOS
+                        error('No other reconstruction algorithms selected. Select a subset algorithm.')
+                    end
+                else
+                    if ~OS || (options.implementation ~= 2 && options.implementation ~= 4)
+                        options.subsets = 1;
+                    end
+                    reko = [reko;{'MLEM'}];
                 end
-            else
-                if ~OS || (options.implementation ~= 2 && options.implementation ~= 4)
-                    options.subsets = 1;
+            elseif options.(varNonMAP{kk})
+                ch = strrep(varNonMAP{kk},'_','-');
+                reko = [reko;ch];
+            end
+        end
+        
+        varMAP = recNames(2);
+        for kk = 1 : numel(varMAP)
+            if options.(varMAP{kk}) && PRIOR && strcmp(options.(varMAP{kk}),'OSL_MLEM')
+                if options.implementation ~= 2
+                    warning('MLEM-OSL is not supported with implementations 1 and 3.')
+                    options.OSL_MLEM = false;
+                else
+                    reko = [reko;{'MLEM-OSL'}];
                 end
-                reko = [reko;{'MLEM'}];
-            end
-        end
-        if options.OSEM
-            reko = [reko;{'OSEM'}];
-        end
-        if options.RAMLA
-            reko = [reko;{'RAMLA'}];
-        end
-        if options.MRAMLA
-            reko = [reko;{'MRAMLA'}];
-        end
-        if options.ROSEM
-            reko = [reko;{'ROSEM'}];
-        end
-        if options.RBI
-            reko = [reko;{'RBI'}];
-        end
-        if options.DRAMA
-            reko = [reko;{'DRAMA'}];
-        end
-        if options.COSEM
-            reko = [reko;{'COSEM'}];
-        end
-        if options.ACOSEM
-            reko = [reko;{'ACOSEM'}];
-        end
-        if options.ECOSEM
-            reko = [reko;{'ECOSEM'}];
-        end
-        if options.OSL_MLEM && PRIOR
-            if options.implementation ~= 2
-                warning('MLEM-OSL is not supported with implementations 1 and 3.')
-                options.OSL_MLEM = false;
-            else
-                reko = [reko;{'MLEM-OSL'}];
-            end
-        elseif options.OSL_MLEM && ~PRIOR
-            warning('MLEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.OSL_MLEM = false;
-        end
-        if options.OSL_OSEM && PRIOR
-            reko = [reko;{'OSEM-OSL'}];
-        elseif options.OSL_OSEM && ~PRIOR
-            warning('OSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.OSL_OSEM = false;
-        end
-        if options.BSREM && PRIOR
-            reko = [reko;{'BSREM'}];
-        elseif options.BSREM && ~PRIOR
-            warning('BSREM selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.BSREM = false;
-        end
-        if options.MBSREM && PRIOR
-            reko = [reko;{'MBSREM'}];
-        elseif options.MBSREM && ~PRIOR
-            warning('MBSREM selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.MBSREM = false;
-        end
-        if options.ROSEM_MAP && PRIOR
-            reko = [reko;{'ROSEM-MAP'}];
-        elseif options.ROSEM_MAP && ~PRIOR
-            warning('ROSEM_MAP selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.ROSEM_MAP = false;
-        end
-        if options.OSL_RBI && PRIOR
-            reko = [reko;{'RBI-OSL'}];
-        elseif options.OSL_RBI && ~PRIOR
-            warning('RBI_OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-            options.OSL_RBI = false;
-        end
-        if any(options.OSL_COSEM) && PRIOR
-            if options.OSL_COSEM == 1 && PRIOR
-                reko = [reko;{'ACOSEM-OSL'}];
-            elseif options.OSL_COSEM == 1 && ~PRIOR
-                warning('ACOSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-                options.OSL_COSEM = 0;
-            elseif options.OSL_COSEM == 2 && PRIOR
-                reko = [reko;{'COSEM-OSL'}];
-            elseif options.OSL_COSEM == 2 && ~PRIOR
-                warning('COSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
-                options.OSL_COSEM = 0;
-            elseif options.OSL_COSEM > 2 || options.OSL_COSEM < 0
-                error('Unsupported COSEM-OSL method selected!')
-            end
-            if N_PRIORS > 1
-                error('Only one prior can be used at a time with COSEM-OSL')
+            elseif options.(varMAP{kk}) && strcmp(options.(varMAP{kk}),'OSL_COSEM')
+                if options.OSL_COSEM == 1 && PRIOR
+                    reko = [reko;{'ACOSEM-OSL'}];
+                elseif options.OSL_COSEM == 1 && ~PRIOR
+                    warning('ACOSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
+                    options.OSL_COSEM = 0;
+                elseif options.OSL_COSEM == 2 && PRIOR
+                    reko = [reko;{'COSEM-OSL'}];
+                elseif options.OSL_COSEM == 2 && ~PRIOR
+                    warning('COSEM-OSL selected, but no prior has been selected. No MAP reconstruction will be performed.')
+                    options.OSL_COSEM = 0;
+                elseif options.OSL_COSEM > 2 || options.OSL_COSEM < 0
+                    error('Unsupported COSEM-OSL method selected!')
+                end
+                if PRIOR_summa > 1
+                    error('Only one prior can be used at a time with COSEM-OSL')
+                end
+            elseif options.(varMAP{kk}) && PRIOR
+                ch = strrep(varMAP{kk},'_','-');
+                reko = [reko;ch];
+            elseif options.(varMAP{kk}) && ~PRIOR
+                ch = strrep(varMAP{kk},'_','-');
+                warning([ch ' selected, but no prior has been selected. No MAP reconstruction will be performed.'])
+                options.(varMAP{kk}) = false;
             end
         end
         for kk = 1 : length(reko)
@@ -632,110 +600,60 @@ if options.verbose
             error('No reconstruction method selected')
         end
         priori = {};
-        if options.MRP && MAP
-            priori = [priori;{'MRP'}];
-        elseif options.MRP && ~MAP
-            warning('MRP selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.MRP = false;
-        end
-        if options.quad && MAP
-            priori = [priori;{'Quadratic'}];
-        elseif options.quad && ~MAP
-            warning('Quadratic prior selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.quad = false;
-        end
-        if options.Huber && MAP
-            priori = [priori;{'Huber'}];
-        elseif options.Huber && ~MAP
-            warning('Huber prior selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.Huber = false;
-        end
-        if options.L && MAP
-            priori = [priori;{'L-filter'}];
-        elseif options.L && ~MAP
-            warning('L-filter selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.L = false;
-        end
-        if options.FMH && MAP
-            priori = [priori;{'FMH'}];
-        elseif options.FMH && ~MAP
-            warning('FMH selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.FMH = false;
-        end
-        if options.weighted_mean && MAP
-            if options.mean_type == 1 || options.mean_type == 4
-                priori = [priori;{'Weighted (arithmetic) mean'}];
-            elseif options.mean_type == 2 || options.mean_type == 5
-                priori = [priori;{'Weighted (harmonic) mean'}];
-            elseif options.mean_type == 3 || options.mean_type == 6
-                priori = [priori;{'Weighted (geometric) mean'}];
-            else
-                error('Unsupported mean type selected.')
-            end
-        elseif options.weighted_mean && ~MAP
-            warning('Weighted mean selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.weighted_mean = false;
-        end
-        if options.TV && MAP
-            if options.TV_use_anatomical
-                if options.TVtype == 1
-                    priori = [priori;{'Anatomically weighted TV'}];
-                elseif options.TVtype == 2
-                    priori = [priori;{'Joint TV'}];
-                elseif options.TVtype == 3
-                    priori = [priori;{'Weighted joint TV'}];
+        
+        varPrior = recNames(1);
+        varPriorName = recNames(10);
+        for kk = 1 : numel(varPrior)
+            if options.(varPrior{kk}) && MAP
+                if strcmp(options.(varPrior{kk}),'TV')
+                    if options.TV_use_anatomical
+                        if options.TVtype == 1
+                            priori = [priori;{'Anatomically weighted TV'}];
+                        elseif options.TVtype == 2
+                            priori = [priori;{'Joint TV'}];
+                        elseif options.TVtype == 3
+                            priori = [priori;{'Weighted joint TV'}];
+                        else
+                            error('Unsupported TV type selected.')
+                        end
+                    else
+                        if options.TVtype == 1 || options.TVtype == 2
+                            priori = [priori;{'TV'}];
+                        elseif options.TVtype == 3
+                            priori = [priori;{'Weighted TV'}];
+                        elseif options.TVtype == 4
+                            priori = [priori;{'SATV'}];
+                        else
+                            error('Unsupported TV type selected.')
+                        end
+                    end
+                elseif strcmp(options.(varPrior{kk}),'weighted_mean')
+                    if options.mean_type == 1 || options.mean_type == 4
+                        priori = [priori;{'Weighted (arithmetic) mean'}];
+                    elseif options.mean_type == 2 || options.mean_type == 5
+                        priori = [priori;{'Weighted (harmonic) mean'}];
+                    elseif options.mean_type == 3 || options.mean_type == 6
+                        priori = [priori;{'Weighted (geometric) mean'}];
+                    else
+                        error('Unsupported mean type selected.')
+                    end
+                elseif strcmp(options.(varPrior{kk}),'AD')
+                    if options.FluxType > 2 || options.FluxType < 1
+                        error('FluxType has to be either 1 or 2.')
+                    end
+                    if (options.DiffusionType > 2 || options.DiffusionType < 1) && options.implementation == 2
+                        error('DiffusionType has to be either 1 or 2.')
+                    end
+                    priori = [priori;{'AD-MRP'}];
                 else
-                    error('Unsupported TV type selected.')
+                    ch = strrep(varPriorName{kk},'_','-');
+                    priori = [priori;ch];
                 end
-            else
-                if options.TVtype == 1 || options.TVtype == 2
-                    priori = [priori;{'TV'}];
-                elseif options.TVtype == 3
-                    priori = [priori;{'Weighted TV'}];
-                elseif options.TVtype == 4
-                    priori = [priori;{'SATV'}];
-                else
-                    error('Unsupported TV type selected.')
-                end
+            elseif options.(varPrior{kk}) && ~MAP
+                ch = strrep(varPriorName{kk},'_','-');
+                warning([ch ' selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.'])
+                options.(varPrior{kk}) = false;
             end
-        elseif options.TV && ~MAP
-            warning('TV selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.TV = false;
-        end
-        if options.AD && MAP
-            if options.FluxType > 2 || options.FluxType < 1
-                error('FluxType has to be either 1 or 2.')
-            end
-            if (options.DiffusionType > 2 || options.DiffusionType < 1) && options.implementation == 2
-                error('DiffusionType has to be either 1 or 2.')
-            end
-            priori = [priori;{'AD-MRP'}];
-        elseif options.AD && ~MAP
-            warning('AD-MRP selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.AD = false;
-        end
-        if options.APLS && MAP
-            priori = [priori;{'APLS'}];
-        elseif options.APLS && ~MAP
-            warning('APLS selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.APLS = false;
-        end
-        if options.TGV && MAP
-            priori = [priori;{'TGV'}];
-        elseif options.TGV && ~MAP
-            warning('TGV selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.TGV = false;
-        end
-        if options.NLM && MAP
-            priori = [priori;{'NLM'}];
-        elseif options.NLM && ~MAP
-            warning('NLM selected, but no MAP algorithm has been selected. No MAP reconstruction will be performed.')
-            options.NLM = false;
-        end
-        if isfield(options, 'custom') && options.custom && MAP
-            priori = [priori;{'Custom'}];
-        elseif ~MAP && isfield(options, 'custom') && options.custom
-            error('Custom prior selected, but no MAP-method selected!')
         end
         for kk = 1 : length(priori)
             if kk == 1
@@ -798,10 +716,10 @@ if options.verbose
             end
             
         end
-        if options.attenuation_correction
+        if options.attenuation_correction && ~options.CT
             disp('Attenuation correction ON.')
         end
-        if options.randoms_correction
+        if options.randoms_correction && ~options.CT
             dispi = 'Randoms correction ON';
             if options.variance_reduction
                 dispi = [dispi, ' with variance reduction'];
@@ -822,22 +740,22 @@ if options.verbose
             dispi = [dispi, '.'];
             disp(dispi)
         end
-        if options.fill_sinogram_gaps
+        if options.fill_sinogram_gaps && ~options.CT
             disp('Sinogram gap filling ON.')
         end
     end
-    if options.normalization_correction && ~(options.compute_normalization || options.only_sinos)
+    if options.normalization_correction && ~(options.compute_normalization || options.only_sinos) && ~options.CT
         disp('Normalization correction ON.')
-    elseif options.normalization_correction && options.compute_normalization
+    elseif options.normalization_correction && options.compute_normalization && ~options.CT
         warning('Normalization correction cannot be applied when computing normalization coefficients. Disabling normalization correction.')
         options.normalization_correction = false;
-    elseif options.compute_normalization
+    elseif options.compute_normalization && ~options.CT
         disp('Computing normalization coefficients.')
     end
-    if options.compute_normalization && sum(options.normalization_options) == 0
+    if options.compute_normalization && sum(options.normalization_options) == 0 && ~options.CT
         error('Normalization computation selected, but no normalization components selected.')
     end
-    if ~(options.compute_normalization || options.only_sinos)
+    if ~(options.compute_normalization || options.only_sinos) && ~options.CT
         if options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
             disp('Corrections applied during reconstruction (ordinary Poisson).')
         elseif ~options.corrections_during_reconstruction && (options.normalization_correction || options.randoms_correction || options.scatter_correction)
@@ -897,6 +815,26 @@ if options.verbose
             dispi = strcat(dispi, '.');
             disp(dispi)
         end
+        if options.subsets > 1
+            if options.subset_type == 1
+                disp(['Every ' num2str(options.subsets) 'th column measurement is taken per subset.'])
+            elseif options.subset_type == 2
+                disp(['Every ' num2str(options.subsets) 'th row measurement is taken per subset.'])
+            elseif options.subset_type == 3
+                disp(['Using random subset sampling.'])
+            elseif options.subset_type == 4
+                disp(['Every ' num2str(options.subsets) 'th sinogram column is taken per subset.'])
+            elseif options.subset_type == 5
+                disp(['Every ' num2str(options.subsets) 'th sinogram row is taken per subset.'])
+            elseif options.subset_type == 6
+                disp(['Using angle-based subset sampling with ' num2str(options.n_angles) ' angles combined per subset.'])
+            elseif options.subset_type == 5
+                disp('Using golden angle-based subset sampling.')
+            end
+        end
+        disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
+            ' iterations and ' num2str(options.subsets) ' subsets.'])
+    elseif options.CT
         disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
             ' iterations and ' num2str(options.subsets) ' subsets.'])
         if options.use_CUDA && options.projector_type > 1
