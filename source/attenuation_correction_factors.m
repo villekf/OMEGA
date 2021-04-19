@@ -40,7 +40,20 @@ if options.CT_attenuation
     end
     nimi = [options.fpath options.file];
     fid = fopen(nimi);
-    attenuation_factors = fread(fid, options.Nx*options.Ny*options.Nz, 'single',0,'l');
+    attenuation_factors = fread(fid, inf, 'single',0,'l');
+    if numel(attenuation_factors) < options.Nx*options.Ny*options.Nz
+        val = sqrt(numel(attenuation_factors) / options.Nz);
+        attenuation_factors = reshape(attenuation_factors, val, val, options.Nz);
+        if license('test', 'image_toolbox') || exist('imresize3','file') == 2
+            attenuation_factors = imresize3(attenuation_factors, [options.Nx, options.Ny, options.Nz]);
+        else
+            apu = zeros(options.Nx, options.Ny, options.Nz);
+            for kk = 1 : options.Nz
+                apu(:,:,kk) = imresize(attenuation_factors(:,:,kk), [options.Nx, options.Ny]);
+            end
+            attenuation_factors = apu;
+        end
+    end
     attenuation_factors = rot90(reshape(attenuation_factors, options.Nx, options.Ny, options.Nz),-1);
     fclose(fid);
 else
