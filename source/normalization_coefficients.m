@@ -58,7 +58,7 @@ function [varargout] = normalization_coefficients(options)
 
 
 folder = fileparts(which('normalization_coefficients.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
