@@ -110,7 +110,9 @@ void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, const uint32_t local_ind, const uint64_t N22) {
 	// Compute the total probability for both backprojection and sensitivity image
 	if (RHS) {
+#ifndef CT
 		local_ele *= temp;
+#endif
 #pragma omp atomic
 		rhs[local_ind] += (local_ele * ax);
 		if (no_norm == false) {
@@ -120,7 +122,9 @@ void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool
 	}
 	// Compute the total probability for sensitivity image only (no measurements)
 	else if (SUMMA) {
+#ifndef CT
 		local_ele *= temp;
+#endif
 #pragma omp atomic
 		Summ[local_ind] += local_ele;
 	}
@@ -147,10 +151,13 @@ void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool
 			v_indices.emplace_back(local_ind);
 			idx++;
 		}
+#ifndef CT
 		temp += local_ele;
+#endif
 	}
 }
 
+#ifndef CT
 // Get the detector coordinates for the current raw list-mode measurement
 void get_detector_coordinates_raw(const uint32_t det_per_ring, const double* x, const double* y, const double* z, Det& detectors,
 	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const uint8_t list_mode_format) {
@@ -349,6 +356,44 @@ void get_detector_coordinates_mr(const double* x, const double* y, const double*
 		}
 	}
 }
+#else
+void get_detector_coordinates_CT(const double* x, const double* y, const double* z, const uint32_t size_x, Det& detectors, const int64_t lo, const uint32_t subsets, 
+	const double* angles, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_z, const double dPitch, const int64_t nProjections, 
+	const uint8_t list_mode_format) {
+	if (list_mode_format > 0) {
+		detectors.xs = x[lo];
+		detectors.xd = x[lo + size_x];
+		detectors.ys = y[lo];
+		detectors.yd = y[lo + size_x];
+		detectors.zs = z[lo];
+		detectors.zd = z[lo + size_x];
+	}
+	else {
+		if (subsets > 1U) {
+			const int64_t lu = xy_index[lo];
+			//mexPrintf("lo = %d\n", lo);
+			//mexPrintf("lu = %d\n", lu);
+			//mexPrintf("z_index[lo] = %d\n", z_index[lo]);
+			detectors.xs = x[z_index[lo] + nProjections];
+			detectors.xd = x[z_index[lo]] - dPitch * static_cast<double>(lu % size_x) * std::cos(angles[z_index[lo]]);
+			detectors.ys = y[z_index[lo] + nProjections];
+			detectors.yd = y[z_index[lo]] - dPitch * static_cast<double>(lu % size_x) * std::sin(angles[z_index[lo]]);
+			detectors.zs = z[z_index[lo] + nProjections];
+			detectors.zd = z[z_index[lo]] + dPitch * static_cast<double>(lu / size_x);
+		}
+		else {
+			const int64_t ll = lo / (static_cast<int64_t>(size_x) * static_cast<int64_t>(size_z));
+			const int64_t lu = lo % (static_cast<int64_t>(size_x) * static_cast<int64_t>(size_z));
+				detectors.xs = x[ll + nProjections];
+				detectors.xd = x[ll] - dPitch * static_cast<double>(lu % size_x) * std::cos(angles[ll]);
+				detectors.ys = y[ll + nProjections];
+				detectors.yd = y[ll] - dPitch * static_cast<double>(lu % size_x) * std::sin(angles[ll]);
+				detectors.zs = z[ll + nProjections];
+				detectors.zd = z[ll] + dPitch * static_cast<double>(lu / size_x);
+		}
+	}
+}
+#endif
 
 // Get the current ring in axial direction
 uint32_t z_ring(const double zmax, const double zs, const double NSlices) {
@@ -529,7 +574,7 @@ void att_corr_scalar_orth(uint32_t tempk, const double* atten, double& temp, con
 
 // Compute the probability for one emission in perpendicular detector case
 double perpendicular_elements(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring, 
-	const uint32_t N1, const uint32_t N2, const double* atten, const double* norm_coef, const bool attenuation_correction, const bool normalization, 
+	const uint32_t N1, const uint32_t N2, const double* atten, const double norm_coef, const bool attenuation_correction, const bool normalization, 
 	uint32_t& tempk, const uint32_t NN, const size_t lo, const double global_factor, const bool scatter, const double* scatter_coef) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
@@ -541,6 +586,7 @@ double perpendicular_elements(const uint32_t N, const double dd, const std::vect
 		}
 	}
 	tempk = apu * N + z_ring * N1 * N2;
+#ifndef CT
 	double temp = d * static_cast<double>(N2);
 	// Probability
 	temp = 1. / temp;
@@ -549,13 +595,16 @@ double perpendicular_elements(const uint32_t N, const double dd, const std::vect
 	if (attenuation_correction)
 		att_corr_scalar(d, tempk, atten, temp, N2, NN);
 	if (normalization)
-		temp *= norm_coef[lo];
+		temp *= norm_coef;
 	if (scatter)
 		temp *= scatter_coef[lo];
 	temp *= global_factor;
 
 
 	return d * temp;
+#else
+	return d;
+#endif
 }
 
 // Compute the probability for one emission in perpendicular detector case (multi-ray)
@@ -1650,15 +1699,19 @@ void orth_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz, 
 
 
 // Compute the nominator (backprojection)
-void nominator_mfree(double& ax, const double Sino, const double epps, const double temp, const bool randoms_correction, const double* randoms, 
+void nominator_mfree(double& ax, const double Sino, const double epps, const double temp, const bool randoms_correction, const double randoms, 
 	const size_t lo) {
+#ifndef CT
 	if (ax == 0.)
 		ax = epps;
 	else
 		ax *= temp;
 	if (randoms_correction)
-		ax += randoms[lo];
+		ax += randoms;
 	ax = Sino / ax;
+#else
+	ax = (std::exp(-ax) / Sino);
+#endif
 }
 
 // Denominator (forward projection) for the type 4
@@ -1683,7 +1736,7 @@ uint32_t perpendicular_start(const double d_b, const double d, const double d_d,
 // Calculate the denominator (forward projection) in the perpendicular case in orthogonal ray tracer (2D case)
 void orth_distance_denominator_perpendicular_mfree(const double* center1, const double center2, const double* z_center, const double kerroin,
 	double& temp, const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1,
-	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
+	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, const Det detectors, const double xl, const double yl, const double zl, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, 
 	const uint32_t tid, uint32_t& ind, double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, 
 	const double* scatter_coef, const uint64_t N2) {
@@ -1733,7 +1786,7 @@ void orth_distance_denominator_perpendicular_mfree(const double* center1, const 
 	if (d_attenuation_correction)
 		temp *= exp(jelppi);
 	if (normalization)
-		temp *= norm_coef[lo];
+		temp *= norm_coef;
 	if (scatter)
 		temp *= scatter_coef[lo];
 	temp *= global_factor;
@@ -1782,7 +1835,9 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 	for (int32_t uu = 0; uu < ind; uu++) {
 		double local_ele = store_elements[tid + uu];
 		uint32_t local_ind = store_indices[tid + uu];
+#ifndef CT
 		local_ele *= temp;
+#endif
 		if (RHS) {
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
 #pragma omp atomic
@@ -1816,7 +1871,7 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 // Calculate the denominator (forward projection) in the perpendicular case in orthogonal ray tracer (3D case)
 void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, double& temp, 
 	const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1,
-	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
+	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
 	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
@@ -1831,7 +1886,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 			double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele <= THR)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -1839,8 +1896,10 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 				ind++;
 			}
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
+#ifndef CT
 				if (d_attenuation_correction && uu == static_cast<int32_t>(apu) && zz == static_cast<int32_t>(z_loop))
 					jelppi += (d_d1 * -d_atten[local_ind]);
+#endif
 				if (local_sino > 0.) {
 					denominator_mfree(local_ele, ax, d_OSEM[local_ind]);
 				}
@@ -1851,7 +1910,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 			double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele <= THR)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -1871,7 +1932,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 			double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele <= THR)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -1889,7 +1952,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 			double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele <= THR)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -1904,21 +1969,25 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 			}
 		}
 	}
+#ifndef CT
 	temp = 1. / temp;
 	if (d_attenuation_correction)
 		temp *= exp(jelppi);
 	if (normalization)
-		temp *= norm_coef[lo];
+		temp *= norm_coef;
 	if (scatter)
 		temp *= scatter_coef[lo];
 	temp *= global_factor;
+#endif
 	if (PRECOMPUTE) {
 		for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {
 			for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
 				double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele <= THR)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -1931,7 +2000,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 				double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele <= THR)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -1946,7 +2017,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 				double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele <= THR)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -1959,7 +2032,9 @@ void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, con
 				double local_ele = compute_element_orth_3D(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele <= THR)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
