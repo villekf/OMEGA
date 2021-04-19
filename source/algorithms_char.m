@@ -1,4 +1,4 @@
-function [algo_char] = algorithms_char()
+function [algo_char] = algorithms_char(varargin)
 %ALGORITHMS_CHAR Returns the available reconstruction algorithms as a char
 %array
 
@@ -19,24 +19,58 @@ function [algo_char] = algorithms_char()
 % along with this program. If not; see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-algo_char = {'MLEM';'OSEM';'MRAMLA';'RAMLA';'ROSEM'; ... % 1 - 5
-    'RBI'; 'DRAMA'; 'COSEM';'ECOSEM';'ACOSEM';... % 6 - 10
-    'MRP-OSL-OSEM';'MRP-OSL-MLEM';'MRP-BSREM';'MRP-MBSREM';'MRP-ROSEM';... % 11 - 15
-    'MRP-RBI';'MRP-OSL-COSEM';'QP (OSL-OSEM)';'QP (OSL-MLEM)';'QP (BSREM)';... % 16 - 20
-    'QP (MBSREM)';'QP (ROSEM)';'QP (OSL-RBI)'; 'QP (OSL-COSEM)';'HP (OSL-OSEM)';... % 21 - 25
-    'HP (OSL-MLEM)';'HP (BSREM)';'HP (MBSREM)';'HP (ROSEM)';'HP (OSL-RBI)'; ... % 26 - 30
-    'HP (OSL-COSEM)';'L-filter (OSL-OSEM)'; 'L-filter (OSL-MLEM)'; 'L-filter (BSREM)'; 'L-filter (MBSREM)'; ... % 31 - 35
-    'L-filter (ROSEM)';'L-filter (OSL-RBI)'; 'L-filter (OSL-COSEM)'; 'FMH (OSL-OSEM)'; 'FMH (OSL-MLEM)';... % 36 - 40
-    'FMH (BSREM)'; 'FMH (MBSREM)'; 'FMH (ROSEM)'; 'FMH (OSL-RBI)';'FMH (OSL-COSEM)';... % 41 - 45
-    'Weighted mean (OSL-OSEM)'; 'Weighted mean (OSL-MLEM)'; 'Weighted mean (BSREM)'; 'Weighted mean (MBSREM)'; 'Weighted mean (ROSEM)';... % 46 - 50
-    'Weighted mean (OSL-RBI)'; 'Weighted mean (OSL-COSEM)'; 'Total variation (OSL-OSEM)';'Total variation (OSL-MLEM)';'Total variation (BSREM)';... % 51 - 55
-    'Total variation (MBSREM)';'Total variation (ROSEM)';'Total variation (OSL-RBI)';'Total variation (OSL-COSEM)';'Anisotropic Diffusion (OSL-OSEM)';... % 56 - 60
-    'Anisotropic Diffusion (OSL-MLEM)'; 'Anisotropic Diffusion (BSREM)';'Anisotropic Diffusion (MBSREM)';'Anisotropic Diffusion (ROSEM)';'Anisotropic Diffusion (OSL-RBI)';... % 61 - 65
-    'Anisotropic Diffusion (OSL-COSEM)';'APLS (OSL-OSEM)'; 'APLS (OSL-MLEM)';'APLS (BSREM)';'APLS (MBSREM)';... % 66 - 70
-    'APLS (ROSEM)';'APLS (OSL-RBI)';'APLS (OSL-COSEM)';'TGV (OSL-OSEM)'; 'TGV (OSL-MLEM)';... % 71 - 75
-    'TGV (BSREM)';'TGV (MBSREM)';'TGV (ROSEM)';'TGV (OSL-RBI)';'TGV (OSL-COSEM)';... % 76 - 80
-    'NLM (OSL-OSEM)'; 'NLM (OSL-MLEM)';'NLM (BSREM)';'NLM (MBSREM)';'NLM (ROSEM)';... % 81 - 85
-    'NLM (OSL-RBI)';'NLM (OSL-COSEM)';'Custom prior (OSL-OSEM)'; 'Custom prior (OSL-MLEM)';'Custom prior (BSREM)';...% 86 - 90
-    'Custom prior (MBSREM)';'Custom prior (ROSEM)';'Custom prior (OSL-RBI)';'Custom prior (OSL-COSEM)';'Image properties'}; % 91 - 95
+varNonMAP = [recNames(5);recNames(6)];
+varMAP = recNames(2);
+varMAP = strrep(varMAP,'_','-');
+varPriorNames = recNames(10);
+
+algo_char = cell(numel(varNonMAP) + numel(varMAP) * numel(varPriorNames) + 1,1);
+uu = 1;
+ii = 1;
+for kk = 1 : numel(algo_char) - 1
+    if kk <= numel(varNonMAP)
+        algo_char{kk} = varNonMAP{kk};
+    else
+        algo_char{kk} = [varPriorNames{uu} ' (' varMAP{ii} ')'];
+        if ii == numel(varMAP)
+            uu = uu + 1;
+            ii = 1;
+        else
+            ii = ii + 1;
+        end
+    end
+end
+algo_char{end} = 'Image properties';
+dispi = [];
+if nargin >= 1
+    for kk = 1 : numel(algo_char) - 1
+        dispi = [dispi, [num2str(kk) ' = ' algo_char{kk}]];
+        if kk < numel(algo_char) - 1
+            dispi = [dispi, ', '];
+        end
+    end
+    disp(dispi)
+end
+% 
+% algo_char = {'MLEM';'OSEM';'MRAMLA';'RAMLA';'ROSEM'; ... % 1 - 5
+%     'RBI'; 'DRAMA'; 'COSEM';'ECOSEM';'ACOSEM';... % 6 - 10
+%     'MRP-OSL-MLEM';'MRP-OSL-OSEM';'MRP-BSREM';'MRP-MBSREM';'MRP-ROSEM';... % 11 - 15
+%     'MRP-RBI';'MRP-OSL-COSEM';'QP (OSL-MLEM)';'QP (OSL-OSEM)';'QP (BSREM)';... % 16 - 20
+%     'QP (MBSREM)';'QP (ROSEM)';'QP (OSL-RBI)'; 'QP (OSL-COSEM)';'HP (OSL-MLEM)';'HP (OSL-OSEM)';... % 21 - 25
+%     'HP (BSREM)';'HP (MBSREM)';'HP (ROSEM)';'HP (OSL-RBI)'; ... % 26 - 30
+%     'HP (OSL-COSEM)'; 'L-filter (OSL-MLEM)';'L-filter (OSL-OSEM)'; 'L-filter (BSREM)'; 'L-filter (MBSREM)'; ... % 31 - 35
+%     'L-filter (ROSEM)';'L-filter (OSL-RBI)'; 'L-filter (OSL-COSEM)'; 'FMH (OSL-MLEM)'; 'FMH (OSL-OSEM)';... % 36 - 40
+%     'FMH (BSREM)'; 'FMH (MBSREM)'; 'FMH (ROSEM)'; 'FMH (OSL-RBI)';'FMH (OSL-COSEM)';... % 41 - 45
+%     'Weighted mean (OSL-MLEM)'; 'Weighted mean (OSL-OSEM)'; 'Weighted mean (BSREM)'; 'Weighted mean (MBSREM)'; 'Weighted mean (ROSEM)';... % 46 - 50
+%     'Weighted mean (OSL-RBI)'; 'Weighted mean (OSL-COSEM)';'Total variation (OSL-MLEM)'; 'Total variation (OSL-OSEM)';'Total variation (BSREM)';... % 51 - 55
+%     'Total variation (MBSREM)';'Total variation (ROSEM)';'Total variation (OSL-RBI)';'Total variation (OSL-COSEM)';... % 56 - 60
+%     'Anisotropic Diffusion (OSL-MLEM)'; 'Anisotropic Diffusion (OSL-OSEM)';'Anisotropic Diffusion (BSREM)';'Anisotropic Diffusion (MBSREM)';'Anisotropic Diffusion (ROSEM)';'Anisotropic Diffusion (OSL-RBI)';... % 61 - 65
+%     'Anisotropic Diffusion (OSL-COSEM)'; 'APLS (OSL-MLEM)';'APLS (OSL-OSEM)';'APLS (BSREM)';'APLS (MBSREM)';... % 66 - 70
+%     'APLS (ROSEM)';'APLS (OSL-RBI)';'APLS (OSL-COSEM)'; 'TGV (OSL-MLEM)';'TGV (OSL-OSEM)';... % 71 - 75
+%     'TGV (BSREM)';'TGV (MBSREM)';'TGV (ROSEM)';'TGV (OSL-RBI)';'TGV (OSL-COSEM)';... % 76 - 80
+%     'NLM (OSL-MLEM)';'NLM (OSL-OSEM)'; 'NLM (BSREM)';'NLM (MBSREM)';'NLM (ROSEM)';... % 81 - 85
+%     'NLM (OSL-RBI)';'NLM (OSL-COSEM)'; 'Custom prior (OSL-MLEM)';'Custom prior (OSL-OSEM)';'Custom prior (BSREM)';...% 86 - 90
+%     'Custom prior (MBSREM)';'Custom prior (ROSEM)';'Custom prior (OSL-RBI)';'Custom prior (OSL-COSEM)';'Image properties'}; % 91 - 95
+% %'';'';'';'';'';'';'';'';'';'';'';'';
 end
 
