@@ -1,5 +1,5 @@
 # OMEGA
-Open-source MATLAB/GNU Octave Emission/Transmission Tomography Software
+Open-source MATLAB/GNU Octave Emission and Transmission Tomography Software
 
 ## Purpose
 
