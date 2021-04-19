@@ -625,6 +625,19 @@ options.use_device = 0;
 % floating point rounding. Recommended for GPUs.
 options.use_64bit_atomics = true;
 
+% Applies to implementations 2 and 3 ONLY
+%%% Use 32-bit integer atomic functions
+% If true, then 32-bit integer atomic functions (atomic add) will be used.
+% This is even faster than the above 64-bit atomics version, but will also
+% have significantly higher reduction in numerical/floating point accuracy.
+% This should be about 20-30% faster than the above 64-bit version, but
+% might lead to integer overflow if you have a high count measurement
+% (thousands of coincidences per sinogram bin). Use this only if speed is
+% of utmost importance. 64-bit atomics take precedence over 32-bit ones,
+% i.e. if options.use_64bit_atomics = true then this will be always set as
+% false.
+options.use_32bit_atomics = false;
+
 % Implementation 2 ONLY
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
@@ -636,7 +649,8 @@ options.use_CUDA = false;
 %%% How many times more measurements/LORs are in the GPU part (applicable if
 % heterogeneous computing (CPU + GPU) is used).
 % Alternatively, set this to 0 to use only a single device on the specific
-% platform (the one with the highest memory count will be used).
+% platform in the multi-GPU or heterogenous case (the one with the highest
+% memory count will be used). 
 options.cpu_to_gpu_factor = 1;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
