@@ -163,7 +163,7 @@ else
     end
     if exist(cuda_path,'dir') == 0
         breikki = false;
-        for kk = 20 : -1 : 7
+        for kk = 25 : -1 : 7
             for ll = 5 : -1 : 0
                 cuda_path = ['/usr/local/cuda-' num2str(kk) '.' num2str(ll)];
                 if exist(cuda_path,'dir') == 7
@@ -177,30 +177,30 @@ else
         end
     end
     if exist('/opt/intel/opencl/include/','dir') == 7
-        optargs = {false, '/opt/intel/opencl/include/','/opt/intel/opencl/lib/x64/',af_path, '/opt/root/', true, cuda_path};
+        optargs = {false, '/opt/intel/opencl/include/','/opt/intel/opencl/lib/x64/',af_path, '', true, cuda_path};
     elseif exist('/usr/local/cuda/targets/x86_64-linux/include/','dir') == 7
-        optargs = {false, '/usr/local/cuda/targets/x86_64-linux/include/','/usr/local/cuda/lib64/',af_path, '/opt/root/', true, cuda_path};
+        optargs = {false, '/usr/local/cuda/targets/x86_64-linux/include/','/usr/local/cuda/lib64/',af_path, '', true, cuda_path};
     else
         if ismac
             if exist('/System/Library/Frameworks/OpenCL.framework/','dir') == 7
                 if exist('/System/Library/Frameworks/OpenCL.framework/Headers','dir') == 7
-                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Headers','/System/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Headers','/System/Library/Frameworks/OpenCL.framework',af_path, '', true, cuda_path};
                 else
-                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/System/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                    optargs = {false, '/System/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/System/Library/Frameworks/OpenCL.framework',af_path, '', true, cuda_path};
                 end
             elseif exist('/Library/Frameworks/OpenCL.framework/','dir') == 7
                 if exist('/Library/Frameworks/OpenCL.framework/Headers/','dir') == 7
-                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Headers','/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Headers','/Library/Frameworks/OpenCL.framework',af_path, '', true, cuda_path};
                 else
-                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/Library/Frameworks/OpenCL.framework',af_path, '/opt/root/', true, cuda_path};
+                    optargs = {false, '/Library/Frameworks/OpenCL.framework/Versions/A/Headers/','/Library/Frameworks/OpenCL.framework',af_path, '', true, cuda_path};
                 end
             else
                 warning(['OpenCL not found! If you want to use implementations 2 or 3, insert the paths manually by using '...
                 'install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIBRARY'')']);
-                optargs = {false, '','',af_path, '/opt/root/', true, cuda_path};
+                optargs = {false, '','',af_path, '', true, cuda_path};
             end
         else
-            optargs = {false, '/usr/local/include/','/usr/lib/x86_64-linux-gnu/',af_path, '/opt/root/', true, cuda_path};
+            optargs = {false, '/usr/local/include/','/usr/lib/x86_64-linux-gnu/',af_path, '', true, cuda_path};
         end
     end
 end
@@ -246,6 +246,15 @@ opencl_include_path = strrep(opencl_include_path, '\','/');
 opencl_lib_path = strrep(opencl_lib_path, '\','/');
 af_path = strrep(af_path, '\','/');
 root_path = strrep(root_path, '\','/');
+if ~isempty(root_path) && strcmp(root_path(end),'/')
+    root_path = [root_path 'bin/root-config'];
+else
+    if isempty(root_path)
+        root_path = [root_path 'root-config'];
+    else
+        root_path = [root_path '/bin/root-config'];
+    end
+end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MATLAB %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -316,6 +325,12 @@ if exist('OCTAVE_VERSION','builtin') == 0
             compiler = '';
         end
     end
+    if ~verLessThan('matlab','9.4')
+        complexFlag = '-R2018a';
+%         complexFlag = '-R2017b';
+    else
+        complexFlag = '-largeArrayDims';
+    end
     
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%% Implementations 1 & 4 %%%%%%%%%%%%%%%%%%%%%%%%%%%%
     OMPh = '';
@@ -339,18 +354,28 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     try
-        mex(compiler, '-largeArrayDims', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPh, OMPLib, LPLib, compflags, cxxflags, '-DMATLAB',...
+        mex(compiler, complexFlag, '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPh, OMPLib, LPLib, compflags, cxxflags, '-DMATLAB',...
             ldflags, [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
             [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
             [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
-            [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'])
+            [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'], [folder '/mexFunktio.cpp'])
+        mex(compiler, complexFlag, '-output', 'projector_mexCT', '-outdir', folder, ['-L' OMPPath], ['-I ' folder], OMPh, OMPLib, LPLib, compflags, cxxflags, '-DMATLAB','-DCT',...
+            ldflags, [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
+            [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
+            [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
+            [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp'], [folder '/mexFunktio.cpp'])
         disp('Implementations 1 & 4 built with OpenMP (parallel) support')
     catch ME
         mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], 'COMPFLAGS="$COMPFLAGS -std=c++11"', '-DMATLAB', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
             [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
             [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
             [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
-            [folder '/vol_siddon_precomputed.cpp'])
+            [folder '/vol_siddon_precomputed.cpp'], [folder '/mexFunktio.cpp'])
+        mex(compiler, '-largeArrayDims', '-output', 'projector_mexCT', '-outdir', folder, ['-I ' folder], 'COMPFLAGS="$COMPFLAGS -std=c++11"', '-DMATLAB','-DCT', [folder '/projector_mex.cpp'], [folder '/projector_functions.cpp'], ...
+            [folder '/improved_siddon_precomputed.cpp'], [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], ...
+            [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], [folder '/improved_siddon_no_precompute.cpp'], ...
+            [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], [folder '/volume_projector_functions.cpp'], ...
+            [folder '/vol_siddon_precomputed.cpp'], [folder '/mexFunktio.cpp'])
         if verbose
             warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
@@ -359,9 +384,10 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
     end
     try
-        mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPh, OMPLib, LPLib, ldflags, [folder '/NLM_func.cpp'])
+        mex(compiler, complexFlag, '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-L' OMPPath], OMPh, OMPLib, LPLib, ldflags, ...
+            [folder '/NLM_func.cpp'], [folder '/mexFunktio.cpp'])
     catch ME
-        mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/NLM_func.cpp'])
+        mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/NLM_func.cpp'], [folder '/mexFunktio.cpp'])
         if verbose
             warning('NLM support for implementations 1 and 4 built WITHOUT OpenMP (parallel) support. Compiler error: ')
             disp(ME.message);
@@ -371,13 +397,15 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
     try
         if verLessThan('matlab','9.4')
-            mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCII.cpp'])
+            mex(compiler, complexFlag, '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, ...
+                [folder '/createSinogramASCII.cpp'], [folder '/mexFunktio.cpp'])
         else
-            mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, [folder '/createSinogramASCIICPP.cpp'])
+            mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, ['-L' OMPPath], OMPh, OMPLib, LPLib, ['-I ' folder], ldflags, ...
+                [folder '/createSinogramASCIICPP.cpp'])
         end
     catch ME
         if verLessThan('matlab','9.4')
-            mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCII.cpp'])
+            mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCII.cpp'], [folder '/mexFunktio.cpp'])
         else
             mex(compiler, '-largeArrayDims', '-outdir', folder, ['-I ' folder], [folder '/createSinogramASCIICPP.cpp'])
         end
@@ -417,12 +445,22 @@ if exist('OCTAVE_VERSION','builtin') == 0
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ROOT support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if ispc
         try
-            if verLessThan('matlab','9.6')
-                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' root_path '/lib"'],...
-                    ['-I"' root_path '/include"'], [folder '/GATE_root_matlab_C.cpp'])
+            r_path = root_path;
+            if strcmp(r_path,'root-config')
+                r_path = 'C:\root\';
             else
-                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' root_path '/lib"'],...
-                    ['-I"' root_path '/include"'], [folder '/GATE_root_matlab.cpp'])
+                r_path = root_path(1:end-15);
+            end
+            if verLessThan('matlab','9.6')
+                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' r_path '/lib"'],...
+                    ['-I"' r_path '/include"'], [folder '/GATE_root_matlab_C.cpp'])
+            else
+                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' r_path '/lib"'],...
+                    ['-I"' r_path '/include"'], [folder '/GATE_root_matlab.cpp'])
+                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' r_path '/lib"'],...
+                    ['-I"' r_path '/include"'], [folder '/GATE_root_matlab_uint16.cpp'])
+                mex(compiler, '-largeArrayDims', '-outdir', folder, 'COMPFLAGS="$COMPFLAGS -MD -EHsc -GR"', '-lCore', '-lTree', ['-L"' r_path '/lib"'],...
+                    ['-I"' r_path '/include"'], [folder '/GATE_root_matlab_C.cpp'])
             end
             disp('ROOT support enabled')
         catch ME
@@ -438,24 +476,30 @@ if exist('OCTAVE_VERSION','builtin') == 0
     else
         try
             if verLessThan('matlab','9.6')
-                mex(compiler, '-largeArrayDims', '-outdir', folder, 'CXXFLAGS="$CXXFLAGS $(root-config --cflags)"', '-lCore', '-lTree', '-ldl', 'LDFLAGS="$LDFLAGS $(root-config --libs)"', ...
+                mex(compiler, '-largeArrayDims', '-outdir', folder, ['CXXFLAGS="$CXXFLAGS $(' root_path ' --cflags)"'], '-lCore', '-lTree', '-ldl', ['LDFLAGS="$LDFLAGS $(' root_path ' --libs)"'], ...
                     [folder '/GATE_root_matlab_C.cpp'])
                 warning('Importing ROOT files will cause MATLAB to crash if you are not using R2019a or newer. Use MATLAB with `matlab -nojvm` to circumvent this.')
             else
-                mex(compiler, '-largeArrayDims', '-outdir', folder, 'CXXFLAGS="$CXXFLAGS $(root-config --cflags)"', '-lCore', '-lTree', '-ldl', '-lpthread', ...
-                    'LDFLAGS="$LDFLAGS $(root-config --libs)"', ['-L' matlabroot '/sys/os/glnxa64'], ...
+                mex(compiler, '-largeArrayDims', '-outdir', folder, ['CXXFLAGS="$CXXFLAGS $(' root_path ' --cflags)"'], '-lCore', '-lTree', '-ldl', '-lpthread', ...
+                    ['LDFLAGS="$LDFLAGS $(' root_path ' --libs)"'], ['-L' matlabroot '/sys/os/glnxa64'], ...
                     [folder '/GATE_root_matlab.cpp'])
+                mex(compiler, '-largeArrayDims', '-outdir', folder, ['CXXFLAGS="$CXXFLAGS $(' root_path ' --cflags)"'], '-lCore', '-lTree', '-ldl', '-lpthread', ...
+                    ['LDFLAGS="$LDFLAGS $(' root_path ' --libs)"'], ['-L' matlabroot '/sys/os/glnxa64'], ...
+                    [folder '/GATE_root_matlab_uint16.cpp'])
+                mex(compiler, '-largeArrayDims', '-outdir', folder, ['CXXFLAGS="$CXXFLAGS $(' root_path ' --cflags)"'], '-lCore', '-lTree', '-ldl', ['LDFLAGS="$LDFLAGS $(' root_path ' --libs)"'], ...
+                    [folder '/GATE_root_matlab_C.cpp'])
             end
             disp('ROOT support enabled')
         catch ME
             if verbose
-                warning(['Unable to build ROOT support! Make sure that ROOT was compiled with the same compiler you are using to compile this mex-file and provide the path '...
-                    'to ROOT install folder with install_mex(1, [], [], [], ''/path/to/ROOT''). Compiler error: '])
+                warning(['Unable to build ROOT support! Make sure that ROOT was compiled with the same compiler you are using to compile this mex-file and that root-config '...
+                    'is working properly, i.e. you have sourced the ROOT binaries with thisroot.*. You can manually input the ROOT installation folder with ' ...
+                    'install_mex(0, [], [], [], ''C:/path/to/ROOT''). Compiler error: '])
                 disp(ME.message);
             else
                 warning(['Unable to build ROOT support! If you do not need ROOT support ignore this warning. Otherwise make sure that ROOT was compiled with '...
-                    'the same compiler you are using to compile this mex-file and provide the path to ROOT install folder with install_mex(0, [], [], [], ''/path/to/ROOT''). '...
-                    'Compiler error is shown with install_mex(1)']);
+                    'the same compiler you are using to compile this mex-file and that root-config is working properly, i.e. you have sourced the ROOT binaries with thisroot.*. '...
+                    'You can manually input the ROOT installation folder with install_mex(0, [], [], [], ''C:/path/to/ROOT''). Compiler error is shown with install_mex(1)']);
             end
         end
     end
@@ -482,10 +526,11 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     end
                     try
                         disp('Attemping to build CUDA code.')
-                        mex(compiler, '-largeArrayDims','-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
+                        mex(compiler, complexFlag, '-outdir', folder, compflags, cxxflags, ['-I ' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                             '-lnvrtc', ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path '/include"'], [folder '/CUDA_matrixfree.cpp'],...
                             [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
-                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
+                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'], ...
+                            [folder '/mexFunktio.cpp'])
                         
                         disp('CUDA support enabled')
                     catch
@@ -500,11 +545,11 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
                     cxxflags = 'CXXFLAGS="$CXXFLAGS"';
                 elseif strcmp(cc.Manufacturer, 'Intel')
-                    if ispc
+%                     if ispc
                         compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
-                    else
-                        compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
-                    end
+%                     else
+%                         compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
+%                     end
                     cxxflags = 'CXXFLAGS="$CXXFLAGS"';
                 else
                     compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
@@ -515,15 +560,15 @@ if exist('OCTAVE_VERSION','builtin') == 0
                     %%%%%%%%%%%%%%%%%%%%%% Implementation 5 %%%%%%%%%%%%%%%%%%%%%%%
                     mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],['-L"' opencl_lib_path '"'], ...
                         ['-I ' folder], ['-I"' opencl_include_path '"'], ['-I"' af_path '/include"'], [folder '/improved_Siddon_openCL.cpp'], ...
-                        [folder '/functions.cpp'], [folder '/AF_opencl_functions.cpp'],[folder '/opencl_error.cpp'])
+                        [folder '/functions.cpp'], [folder '/AF_opencl_functions.cpp'],[folder '/opencl_error.cpp'], [folder '/mexFunktio.cpp'])
                 end
                 try
                     %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
-                    mex(compiler, '-largeArrayDims','-outdir', folder, ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
+                    mex(compiler, complexFlag, '-outdir', folder, ['-I ' folder], ['-I"' opencl_include_path '"'], compflags, cxxflags, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],...
                         ['-L"' opencl_lib_path '"'], ['-I"' af_path '/include"'], [folder '/OpenCL_matrixfree.cpp'],...
                         [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'], [folder '/AF_opencl_functions.cpp'], ...
                         [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], ...
-                        [folder '/find_lors.cpp'], [folder '/compute_OS_estimates_subiter.cpp'])
+                        [folder '/find_lors.cpp'], [folder '/compute_OS_estimates_subiter.cpp'], [folder '/mexFunktio.cpp'])
                     
                     mex(compiler, '-largeArrayDims', '-outdir', folder, '-lafopencl', '-lOpenCL', ['-L"' af_path '/lib"'],['-L"' opencl_lib_path '"'], ...
                         ['-I ' folder], ['-I"' opencl_include_path '"'], ['-I"' af_path '/include"'], [folder '/ArrayFire_OpenCL_device_info.cpp'])
@@ -549,12 +594,12 @@ if exist('OCTAVE_VERSION','builtin') == 0
             try
                 %%%%%%%%%%%%%%%%%%%%%%%%% Implementation 3 %%%%%%%%%%%%%%%%%%%%%%%%
                 mex(compiler, '-largeArrayDims', '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I ' folder], ...
-                    ['-I"' opencl_include_path '"'], [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
+                    ['-I"' opencl_include_path '"'], [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'], [folder '/mexFunktio.cpp'])
                 
-                mex(compiler, '-largeArrayDims', '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I ' folder], ...
+                mex(compiler, complexFlag, '-outdir', folder, cxxflags, '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I ' folder], ...
                     ['-I"' opencl_include_path '"'], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
                     [folder '/functions_multigpu.cpp'],[folder '/opencl_error.cpp'],[folder '/precomp.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                    [folder '/multigpu_OSEM.cpp'])
+                    [folder '/multigpu_OSEM.cpp'], [folder '/mexFunktio.cpp'])
                 
                 
                 disp('Implementation 3 built')
@@ -576,11 +621,11 @@ if exist('OCTAVE_VERSION','builtin') == 0
         if use_CUDA
             try
                 disp('Attempting to build CUDA code.')
-                mex(compiler, '-largeArrayDims','-outdir', folder, 'CXXFLAGS="$CXXFLAGS -w"', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
+                mex(compiler, complexFlag, '-outdir', folder, 'CXXFLAGS="$CXXFLAGS -w"', ['-I' folder], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', '-lnvrtc', ...
                     ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
                     [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
                     [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], ...
-                    [folder '/compute_OS_estimates_subiter_CUDA.cpp']);
+                    [folder '/compute_OS_estimates_subiter_CUDA.cpp'], [folder '/mexFunktio.cpp']);
                 
                 disp('CUDA support enabled')
             catch
@@ -591,11 +636,11 @@ if exist('OCTAVE_VERSION','builtin') == 0
             compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
             cxxflags = 'CXXFLAGS="$CXXFLAGS"';
         elseif strcmp(cc.Manufacturer, 'Intel')
-            if ispc
+%             if ispc
                 compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
-            else
-                compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
-            end
+%             else
+%                 compflags = 'COMPFLAGS="$COMPFLAGS -DOPENCL"';
+%             end
             cxxflags = 'CXXFLAGS="$CXXFLAGS"';
         else
             compflags = 'COMPFLAGS="$COMPFLAGS -std=c++11"';
@@ -610,19 +655,20 @@ if exist('OCTAVE_VERSION','builtin') == 0
             mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                 ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64' , '-L/opt/amdgpu-pro/lib64',['-I ' folder], ...
                 ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
-                [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'], [folder '/AF_opencl_functions.cpp'])
+                [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'], [folder '/AF_opencl_functions.cpp'], ...
+                [folder '/mexFunktio.cpp'])
         end
         try
             mex(compiler, '-largeArrayDims', '-outdir', folder, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ...
                 ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
             
-            mex(compiler, '-largeArrayDims', '-outdir', folder, compflags, cxxflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
+            mex(compiler, complexFlag, '-outdir', folder, compflags, cxxflags, '-lafopencl', cxxlib, ['-L' af_path '/lib64'], ['-L"' af_path '/lib"'], ...
                 ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ...
                 ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', ...
                 [folder '/OpenCL_matrixfree.cpp'], [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], ...
                 [folder '/opencl_error.cpp'], [folder '/find_lors.cpp'], [folder '/AF_opencl_functions.cpp'], [folder '/compute_ML_estimates.cpp'], ...
-                [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter.cpp'])
+                [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter.cpp'], [folder '/mexFunktio.cpp'])
             disp('Implementation 2 built')
         catch ME
             if verbose
@@ -638,12 +684,13 @@ if exist('OCTAVE_VERSION','builtin') == 0
         end
         try
             mex(compiler, '-largeArrayDims', '-outdir', folder, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
+                ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'],...
+                [folder '/mexFunktio.cpp'])
             
-            mex(compiler, '-largeArrayDims', '-outdir', folder, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
+            mex(compiler, complexFlag, '-outdir', folder, cxxflags, cxxlib, ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
                 [folder '/functions_multigpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                [folder '/multigpu_OSEM.cpp'])
+                [folder '/multigpu_OSEM.cpp'], [folder '/mexFunktio.cpp'])
             disp('Implementation 3 built')
         catch ME
             if verbose
@@ -669,7 +716,7 @@ else
         cxxflags = '-std=c++11 -fopenmp -fPIC';
         OMPlib = '-lgomp';
     end
-    if any(strfind(joku,'-fopenmp')) == 0
+    if ~any(strfind(joku,'-fopenmp'))
         cxxflags = [cxxflags ' ', joku];
         setenv('CXXFLAGS',cxxflags);
     end
@@ -681,10 +728,19 @@ else
         [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
         [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'], ...
         [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp']);
+    if sys == 0
+        movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
+    end
+    [~, sys] = mkoctfile('-DOCTAVE', '-DCT', ['-I ' folder], OMPlib,...
+        [folder '/projector_oct.cpp'], [folder '/projector_functions.cpp'], [folder '/improved_siddon_precomputed.cpp'], ...
+        [folder '/orth_siddon_precomputed.cpp'], [folder '/sequential_improved_siddon_openmp.cpp'], [folder '/sequential_improved_siddon_no_precompute_openmp.cpp'], ...
+        [folder '/improved_siddon_no_precompute.cpp'], [folder '/original_siddon_function.cpp'], [folder '/improved_Siddon_algorithm_discard.cpp'],...
+        [folder '/volume_projector_functions.cpp'], [folder '/vol_siddon_precomputed.cpp']);
     setenv('CXXFLAGS',joku);
     setenv('LDFLAGS',jokuL);
     if sys == 0
-        movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
+%         movefile('projector_oct.oct', [folder '/projector_oct.oct'],'f');
+        movefile('projector_oct.oct', [folder '/projector_octCT.oct'],'f');
         disp('Implementations 1 & 4 built with OpenMP (parallel) support')
     else
         if verbose
@@ -705,7 +761,7 @@ else
             warning('Implementations 1 & 4 built WITHOUT OpenMP (parallel) support, Use install_mex(1) to see compiler error')
         end
     end
-    if any(strfind(joku,'-fopenmp')) == 0
+    if ~any(strfind(joku,'-fopenmp'))
         cxxflags = [cxxflags ' ', joku];
         setenv('CXXFLAGS',cxxflags);
     end
@@ -728,7 +784,7 @@ else
             end
         end
     end
-    if any(strfind(joku,'-fopenmp')) == 0
+    if ~any(strfind(joku,'-fopenmp'))
         cxxflags = [cxxflags ' ', joku];
         setenv('CXXFLAGS',cxxflags);
     end
@@ -764,8 +820,14 @@ else
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ROOT support %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     if ispc
         try
-            mkoctfile('--mex', '-v', '-MD -EHsc -GR', '-lCore', '-lTree', ['-L ' root_path '/lib'],...
-                ['-I ' root_path '/include'], [folder '/GATE_root_matlab_oct.cpp'])
+            r_path = root_path;
+            if strcmp(r_path,'root-config')
+                r_path = 'C:\root\';
+            else
+                r_path = root_path(1:end-15);
+            end
+            mkoctfile('--mex', '-v', '-MD -EHsc -GR', '-lCore', '-lTree', ['-L ' r_path '/lib'],...
+                ['-I ' r_path '/include'], [folder '/GATE_root_matlab_oct.cpp'])
             movefile('GATE_root_matlab_oct.mex', [folder '/GATE_root_matlab_oct.mex'],'f');
             disp('ROOT support enabled')
         catch ME
@@ -780,19 +842,20 @@ else
         end
     else
         try
-            mkoctfile('"$(root-config --cflags)"', '"-Wl,-lCore -lTree -ldl $(root-config --libs)"', ...
+            mkoctfile(['"$(' root_path '  --cflags)"'], ['"-Wl,-lCore -lTree -ldl $(' root_path ' --libs)"'], ...
                 [folder '/GATE_root_matlab_oct.cpp'])
             movefile('GATE_root_matlab_oct.oct', [folder '/GATE_root_matlab_oct.oct'],'f');
             disp('ROOT support enabled')
         catch ME
             if verbose
-                warning(['Unable to build ROOT support! Make sure that ROOT was compiled with the same compiler you are using to compile this mex-file and provide the path '...
-                    'to ROOT install folder with install_mex(1, [], [], [] ''/path/to/ROOT''). Compiler error: '])
+                warning(['Unable to build ROOT support! Make sure that ROOT was compiled with the same compiler you are using to compile this mex-file and that root-config '...
+                    'is working properly, i.e. you have sourced the ROOT binaries with thisroot.*. You can manually input the ROOT installation folder with ' ...
+                    'install_mex(0, [], [], [], ''C:/path/to/ROOT''). Compiler error: '])
                 disp(ME.message);
             else
                 warning(['Unable to build ROOT support! If you do not need ROOT support ignore this warning. Otherwise make sure that ROOT was compiled with '...
-                    'the same compiler you are using to compile this mex-file and provide the path to ROOT install folder with install_mex(0, [], [], [] ''/path/to/ROOT''). '...
-                    'Compiler error is shown with install_mex(1)']);
+                    'the same compiler you are using to compile this mex-file and that root-config is working properly, i.e. you have sourced the ROOT binaries with thisroot.*. '...
+                    'You can manually input the ROOT installation folder with install_mex(0, [], [], [], ''C:/path/to/ROOT''). Compiler error is shown with install_mex(1)']);
             end
         end
     end
@@ -818,13 +881,13 @@ else
                     [~, sys] = mkoctfile('--mex', '-w', ['-I"' folder '"'], ['-I"' cuda_path '/include"'], '-lafcuda', '-lcuda', ...
                         '-lnvrtc', ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib/x64"'], ['-I"' af_path_include '"'], [folder '/CUDA_matrixfree.cpp'],...
                         [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
-                        [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp']);
+                        [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'], [folder '/mexFunktio.cpp']);
                     syst = 0;
                     if sys ~= 0
                         charArray = mkoctfile('--mex', '-v', '-w', ['-I' folder], ['-I' cuda_path '/include'], '-lafcuda', '-lcuda', ...
                             '-lnvrtc', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib/x64'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
                             [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
-                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp']);
+                            [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter_CUDA.cpp'], [folder '/mexFunktio.cpp']);
                         sys = makeOCT(charArray);
                     end
                     syst = syst + sys;
@@ -846,12 +909,14 @@ else
                 %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
                 [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', ['-I"' folder '"'], ['-I"' opencl_include_path '"'], ['-I"' af_path_include '"'], ...
                     '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L"' af_path '\lib64"'], ['-L"' af_path '\lib"'],['-L"' opencl_lib_path '"'], ...
-                    [folder '/OpenCL_matrixfree.cpp'],[folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp']);
+                    [folder '/OpenCL_matrixfree.cpp'],[folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], ...
+                    [folder '/precomp.cpp'], [folder '/find_lors.cpp'], [folder '/mexFunktio.cpp']);
                 syst = 0;
                 if sys ~= 0
                     charArray = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path], ...
                         ['-I' folder], ['-I' opencl_include_path], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp'],...
-                        [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], [folder '/find_lors.cpp']);
+                        [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], [folder '/precomp.cpp'], ...
+                        [folder '/find_lors.cpp'], [folder '/mexFunktio.cpp']);
                     sys = makeOCT(charArray);
                 end
                 syst = syst + sys;
@@ -888,12 +953,12 @@ else
             [~, sys] = mkoctfile('--mex', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I' folder], ...
                 ['-I' opencl_include_path], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
                 [folder '/functions_multigpu.cpp'],[folder '/opencl_error.cpp'],[folder '/precomp.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                [folder '/multigpu_OSEM.cpp']);
+                [folder '/multigpu_OSEM.cpp'], [folder '/mexFunktio.cpp']);
             if sys ~= 0
                 [charArray, ~] = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L' opencl_lib_path], ['-I' folder], ...
                     ['-I' opencl_include_path], [folder '/OpenCL_matrixfree_multi_gpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], ...
                     [folder '/functions_multigpu.cpp'],[folder '/opencl_error.cpp'],[folder '/precomp.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                    [folder '/multigpu_OSEM.cpp']);
+                    [folder '/multigpu_OSEM.cpp'], [folder '/mexFunktio.cpp']);
                 sys = makeOCT(charArray);
             end
             syst = syst + sys;
@@ -918,7 +983,7 @@ else
                     ['-L' cuda_path '/lib64'], ['-I ' folder], ['-I' cuda_path '/include'], ['-I' af_path_include], [folder '/CUDA_matrixfree.cpp'],...
                     [folder '/functions.cpp'], [folder '/reconstruction_AF_matrixfree_CUDA.cpp'], [folder '/AF_cuda_functions.cpp'], ...
                     [folder '/compute_ML_estimates.cpp'], [folder '/compute_OS_estimates_iter.cpp'], ...
-                    [folder '/compute_OS_estimates_subiter_CUDA.cpp'])
+                    [folder '/compute_OS_estimates_subiter_CUDA.cpp'], [folder '/mexFunktio.cpp'])
                 movefile('CUDA_matrixfree.mex', [folder '/CUDA_matrixfree.mex'],'f');
                 disp('CUDA support enabled.')
             catch
@@ -942,7 +1007,7 @@ else
                 '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
                 '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp'], [folder '/functions.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'], ...
                 [folder '/find_lors.cpp'], [folder '/AF_opencl_functions.cpp'], [folder '/compute_ML_estimates.cpp'], [folder '/reconstruction_AF_matrixfree.cpp'], ...
-                [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter.cpp'])
+                [folder '/compute_OS_estimates_iter.cpp'], [folder '/compute_OS_estimates_subiter.cpp'], [folder '/mexFunktio.cpp'])
             
             movefile('ArrayFire_OpenCL_device_info.mex', [folder '/ArrayFire_OpenCL_device_info.mex'],'f');
             movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree.mex'],'f');
@@ -965,7 +1030,7 @@ else
             mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I' cuda_path '/include'], ['-I' opencl_include_path], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...
                 [folder '/functions_multigpu.cpp'], [folder '/multi_gpu_reconstruction.cpp'], [folder '/precomp.cpp'], [folder '/opencl_error.cpp'],[folder '/forward_backward_projections.cpp'], ...
-                [folder '/multigpu_OSEM.cpp'])
+                [folder '/multigpu_OSEM.cpp'], [folder '/mexFunktio.cpp'])
             movefile('OpenCL_device_info.mex', [folder '/OpenCL_device_info.mex'],'f');
             movefile('OpenCL_matrixfree_multi_gpu.mex', [folder '/OpenCL_matrixfree_multi_gpu.mex'],'f');
             disp('Implementation 3 built')
