@@ -43,7 +43,7 @@ if nargout > 2
 end
 
 folder = fileparts(which('load_data_mCT.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 %
 % Nx = uint32(options.Nx);
