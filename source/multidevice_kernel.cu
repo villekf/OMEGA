@@ -125,29 +125,37 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 	const float tube_width_xy, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, const float d_epsilon_mramla,
 	const float* TOFCenter, const float* d_atten, const unsigned int * d_pseudos, const float* d_x, const float* d_y, const float* d_zdet,
 	const float* x_center, const float* y_center, const float* z_center, const float* V, const unsigned char * MethodList,
+#ifdef CT
+	const unsigned int d_subsets, const float* d_angles, const unsigned int d_sizey, const float d_dPitch, const long long int d_nProjections,
+#endif
 	const float* d_norm, const float* d_scat, CAST * d_Summ, const unsigned short * d_lor, const unsigned int * d_xyindex, const unsigned short * d_zindex,
 	const unsigned short * d_L, const float* d_Sino, const float* d_sc_ra, const float* d_OSEM,
 #ifndef MBSREM
-	 CAST * d_rhs_OSEM, const unsigned char no_norm, const unsigned long long int m_size
+	 CAST * d_rhs_OSEM, const unsigned char no_norm, const unsigned long long int m_size, const unsigned long long int cumsum
 #else
 	const unsigned int d_alku, const unsigned char MBSREM_prepass, float* d_ACOSEM_lhs, float* d_Amin, CAST * d_co,
-	 CAST * d_aco, float* d_E, const unsigned long long int m_size, const RecMethodsOpenCL MethodListOpenCL
+	 CAST * d_aco, float* d_E, const unsigned long long int m_size, const RecMethodsOpenCL MethodListOpenCL, const unsigned long long int cumsum
 #endif
 	//void kernel_multi(float * d_Summ) {
 ) {
-//	// Get the current global index
-	///*
-	unsigned int idx = threadIdx.x + blockIdx.x * blockDim.x;
+	// Get the current global index
+	size_t idx = threadIdx.x + blockIdx.x * blockDim.x;
 	if (idx >= m_size)
 		return;
 
 #ifdef TOF
 	float local_sino = 0.f;
+#ifndef LISTMODE2
 #pragma unroll NBINS
 	for (long long int to = 0LL; to < NBINS; to++)
 		local_sino += d_Sino[idx + m_size * to];
+#endif
+#else
+#ifdef LISTMODE2
+	const float local_sino = 0.f;
 #else
 	const float local_sino = (d_Sino[idx]);
+#endif
 #endif
 #ifndef MBSREM
 	if (no_norm == 1u && local_sino == 0.f)
@@ -158,13 +166,23 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 
 	float xs, xd, ys, yd, zs, zd;
 	// Load the next detector index
-#ifdef RAW // raw list-mode data
+#ifdef CT
+	get_detector_coordinates_CT(d_x, d_y, d_zdet, d_size_x, idx, d_subsets, d_angles, d_xyindex, d_zindex, d_sizey, d_dPitch, d_nProjections,
+		&xs, &xd, &ys, &yd, &zs, &zd);
+#else
 
+#ifdef RAW // raw data
+#ifdef LISTMODE
+	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
+#else
 	get_detector_coordinates_raw(d_x, d_y, d_zdet, d_L, d_det_per_ring, idx, d_pseudos, d_pRows, &xs, &xd, &ys, &yd, &zs, &zd);
+#endif
 
 #else // Sinogram data
 
-	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet);
+	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
+
+#endif
 
 #endif
 
@@ -223,6 +241,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 
 	int tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
 
+#ifdef AF
 #ifdef MBSREM
 #ifdef TOF
 	float axACOSEM[NBINS];
@@ -249,6 +268,30 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #pragma unroll
 	for (unsigned int kk = 0; kk < NROLLS; kk++)
 		ax[kk] = 0.f;
+#endif
+#else
+#ifdef TOF
+	float ax[NBINS];
+#pragma unroll NBINS
+	for (uint to = 0; to < NBINS; to++)
+		ax[to] = 0.f;
+#else
+	float axOSEM = 0.f;
+#endif
+#endif
+
+#ifndef AF
+#ifndef LISTMODE2
+	if (fp == 2) {
+#ifdef TOF
+#pragma unroll NBINS
+		for (uint to = 0; to < NBINS; to++)
+			ax[to] = d_OSEM[idx + to * m_size + cumsum];
+#else
+		axOSEM = d_OSEM[idx + cumsum];
+#endif
+	}
+#endif
 #endif
 
 #ifdef ORTH // Orthogonal or volume-based ray tracer
@@ -417,12 +460,18 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
 				d_Amin[idx] = minimi;
 			if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) {
+#ifndef CT
 				if (axCOSEM < d_epps)
 					axCOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 					axCOSEM += d_sc_ra[idx];
 #endif
-				axCOSEM = local_sino / axCOSEM;
+#ifdef CT
+					axCOSEM = expf(-axCOSEM) / local_sino;
+#else
+					axCOSEM = local_sino / axCOSEM;
+#endif
 			}
 			local_ele = templ_ijk;
 			local_ind = z_loop;
@@ -471,7 +520,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #ifdef RANDOMS
 				axACOSEM += d_sc_ra[idx];
 #endif
-			d_ACOSEM_lhs[idx] = axACOSEM;
+#ifdef CT
+				d_ACOSEM_lhs[idx] = expf(-axACOSEM);
+#else
+				d_ACOSEM_lhs[idx] = axACOSEM;
+#endif
 		}
 #else
 		// Calculate the next index and store it as weL as the probability of emission
@@ -846,6 +899,7 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #endif
 #endif
 #elif defined(SIDDON)
+//#if !defined(CT) || (defined(FP) && defined(CT))
 		for (unsigned int ii = 0u; ii < Np; ii++) {
 			local_ind = compute_ind(tempj, tempi, tempk, d_N0, d_N1, d_N, d_N3, d_Nxy);
 			if (tz0 < ty0 && tz0 < tx0) {
@@ -887,7 +941,12 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 			}
 #endif
 		}
+//#else
+//		Np_n = Np;
+//#endif
 #endif
+
+#ifndef CT
 		temp = 1.f / temp;
 #ifdef ATN
 		temp *= expf(jelppi);
@@ -895,7 +954,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #ifdef NORM
 		temp *= local_norm;
 #endif
+#ifdef SCATTER
+		temp *= d_scat[idx];
+#endif
 		temp *= global_factor;
+#endif
 #if defined(SIDDON) || !defined(DEC)
 		tx0 = tx0_a, ty0 = ty0_a, tz0 = tz0_a;
 		tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
@@ -927,13 +990,19 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 				ax[to] = d_Sino[idx + to * m_size] / ax[to];
 			}
 #else
+#ifndef CT
 			axCOSEM *= temp;
 			if (axCOSEM < d_epps)
 				axCOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 			axCOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+			axCOSEM = expf(-axCOSEM) / local_sino;
+#else
 			axCOSEM = local_sino / axCOSEM;
+#endif
 #endif
 		}
 		RHS = true;
@@ -953,7 +1022,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #ifdef ORTH
 #ifdef DEC
 		for (unsigned int ii = 0u; ii < ind; ii++) {
+#ifdef CT
+			const float local_ele = store_elements[ii];
+#else
 			const float local_ele = store_elements[ii] * temp;
+#endif
 			const unsigned int local_ind = store_indices[ii];
 			if (RHS) {
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_rhs_OSEM);
@@ -1123,6 +1196,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 
 #endif
 #endif
+#if defined(CT) && !defined(FP)
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= d_N0 || tempj >= d_N1 || tempk >= d_Nz) {
+					break;
+				}
+#endif
 			}
 		}
 		else {
@@ -1174,6 +1252,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #endif
 #endif
 #endif
+#if defined(CT) && !defined(FP)
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= d_N0 || tempj >= d_N1 || tempk >= d_Nz) {
+					break;
+				}
+#endif
 			}
 		}
 #ifdef MBSREM
@@ -1196,7 +1279,11 @@ void kernel_multi(const float global_factor, const float d_epps, const unsigned 
 #ifdef RANDOMS
 			axACOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+			d_ACOSEM_lhs[idx] = expf(-axACOSEM);
+#else
 			d_ACOSEM_lhs[idx] = axACOSEM;
+#endif
 		}
 #endif
 #endif
@@ -1271,5 +1358,42 @@ void NLM(float* grad, const float* u, const float* u_ref, const float* gaussian,
 
 	grad[n] = output;
 
+}
+#endif
+
+#ifdef MEDIAN
+extern "C" __global__
+void medianFilter3D(const float* grad, float* output, const unsigned int Nx, const unsigned int Ny, const unsigned int Nz) {
+	int xid = threadIdx.x + blockIdx.x * blockDim.x;
+	int yid = threadIdx.y + blockIdx.y * blockDim.y;
+	int zid = threadIdx.z + blockIdx.z * blockDim.z;
+	unsigned int get_global_size[] = { gridDim.x * blockDim.x, gridDim.y * blockDim.y };
+	if (xid < SEARCH_WINDOW_X || xid >= Nx + SEARCH_WINDOW_X || yid < SEARCH_WINDOW_Y || yid >= Ny + SEARCH_WINDOW_Y || zid < SEARCH_WINDOW_Z || zid >= Nz + SEARCH_WINDOW_Z)
+		return;
+	int koko = (SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1);
+	float median[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	float medianF[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	int uu = 0;
+	for (int x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
+		for (int y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
+			for (int z = -SEARCH_WINDOW_Z; z <= SEARCH_WINDOW_Z; z++) {
+				unsigned int pikseli = (xid + x) + (yid + y) * get_global_size[0] + (zid + z) * get_global_size[0] * get_global_size[1];
+				median[uu] = grad[pikseli];
+				uu++;
+			}
+		}
+	}
+	for (int hh = 0; hh < koko; hh++) {
+		int ind = 0;
+		for (int ll = 0; ll < koko; ll++) {
+			if (median[hh] > median[ll] || (median[hh] == median[ll] && hh < ll))
+				ind++;
+		}
+		medianF[ind] = median[hh];
+		if (ind == koko / 2)
+			break;
+	}
+	output[xid + yid * get_global_size[0] + zid * get_global_size[0] * get_global_size[1]] = medianF[koko / 2];
+	//output[xid + yid * get_global_size[0] + zid * get_global_size[0] * get_global_size[1]] = grad[xid + yid * get_global_size[0] + zid * get_global_size[0] * get_global_size[1]];
 }
 #endif
