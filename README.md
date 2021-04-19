@@ -1,13 +1,13 @@
 # OMEGA
-Open-source MATLAB/GNU Octave Emission Tomography Software
+Open-source MATLAB/GNU Octave Emission/Transmission Tomography Software
 
 ## Purpose
 
-The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any positron emission tomography (PET) data, including simulated [GATE](http://www.opengatecollaboration.org/) data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
+The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any positron emission tomography (PET) and computed tomography (CT) data, including simulated [GATE](http://www.opengatecollaboration.org/) data. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A' * y`) projections.
 
 ## Introduction
 
-OMEGA is a software for [MATLAB](https://www.mathworks.com/) and [GNU Octave](https://www.gnu.org/software/octave/) to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from GATE simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
+OMEGA is a software for [MATLAB](https://www.mathworks.com/) and [GNU Octave](https://www.gnu.org/software/octave/) to reconstruct data obtained with a positron emission tomography or CT scanner. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from GATE PET simulations and imageCT projections for CT. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
 The algorithms implemented so far are:
 - Improved Siddon's ray tracer algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
@@ -25,6 +25,7 @@ The algorithms implemented so far are:
 - Modified RAMLA (MRAMLA), aka modified BSREM-2 [13] 
 - Block Sequential Regularized Expectation Maximization (BSREM) [14]
 - One-step-late algorithm (OSL) [15]
+- Preconditioned Krasnoselskii-Mann algorithm (PKMA) [29]
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Median Root Prior (MRP) [16]
 - L-filter (MRP-L) prior [17]
@@ -110,14 +111,18 @@ For additional install help, see [installation help](https://github.com/villekf/
 
 First you should build the required mex-files by running `install_mex`. In case you have trouble compiling the mex-files, you can also try using the precompiled files available on the [releases](https://github.com/villekf/OMEGA/releases) (MATLAB only) page.
 
-[GATE](http://www.opengatecollaboration.org/) users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
+[GATE](http://www.opengatecollaboration.org/) PET users should use the `gate_main.m` file to reconstruct GATE data. For any PET data, the file you should start with is `main_PET.m`. For computing the forward and/or backward projections use `forward_backward_projections_example.m`. For custom (gradient-based) priors, use `custom_prior_test_main.m`. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in `gate_main_simple.m`. Inveon PET data should be used with `Inveon_PET_main.m` while Biograph mCT data can be used with `Biograph_mCT_main.m` and Biograph Vision with `Biograph_Vision_main.m`.
 
-A GATE example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then input correct path for the GATE output data in `gate_main.m` (`options.fpath`). After this simply run `gate_main.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
+A GATE PET example with GATE macros is available in exampleGATE-folder. Simply run the GATE macros as a GATE simulation (the GATE material database needs to be in the same folder as the macros) and then input correct path for the GATE output data in `gate_main.m` (`options.fpath`). After this simply run `gate_main.m` to load and reconstruct the data. By default, ASCII data is used for compatibility.
 
-Example MAT-files for non-GATE situation can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522199.svg)](https://doi.org/10.5281/zenodo.3522199).
- These files are based on the above GATE-example. The original simulated GATE data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3526859.svg)](https://doi.org/10.5281/zenodo.3526859).
+Example PET MAT-files for non-GATE situation can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3522199.svg)](https://doi.org/10.5281/zenodo.3522199).
+ These files are based on the above GATE-example. The original simulated GATE PET data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3526859.svg)](https://doi.org/10.5281/zenodo.3526859).
 
-Open preclinical PET data measured with Siemens Inveon PET can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056).
+Open preclinical PET data measured with Siemens Inveon PET can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.3528056.svg)](https://doi.org/10.5281/zenodo.3528056) and [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4646897.svg)](https://doi.org/10.5281/zenodo.4646897).
+
+For CT data, GATE data example is shown with `gate_CT_main.m`. µCT example (along with a link to open data) is provided with `walnut_CT_main.m` (2D case is shown in `walnut2D_CT_main.m`. Inveon CT data can be read and reconstructed with `Inveon_CT_main.m`.
+
+Preclinical phantom CT data can be found from [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4646835.svg)](https://doi.org/10.5281/zenodo.4646835).
 
 For more information see the [wiki](https://github.com/villekf/OMEGA/wiki).
 
@@ -129,6 +134,7 @@ The following features are currently present:
 
 - Supports both MATLAB and Octave
 - Reconstruct any PET sinogram/list-mode data
+- Reconstruct any CT projection data
 - Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in MATLAB/Octave NLM algorithms in  MATLAB/Octave (OpenCL support in addition to traditional C++)
 - Import [GATE](http://www.opengatecollaboration.org/) LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their list-mode format, in the OMEGA specific raw data format, or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
 - Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
@@ -153,6 +159,7 @@ The following features are currently present:
 - Several different subset selection methods, including random sampling, golden angle sampling, every nth measurement, etc.
 - Support for Siemens Inveon PET list-mode, attenuation and scatter data
 - Support for Siemens Biograph mCT and Vision list-mode data
+- Support for Siemens Inveon CT projection data and any (µ)CT using tiff, bmp or binary projection images
 - (Preliminary) Support for TOF data, both simulated and measured
 
 ### Additional features
@@ -211,13 +218,17 @@ LMF output currently has to contain the time stamp (cannot be removed in GATE) a
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version.
 
-Only machines with a total number of detectors of up to 65536 are supported. I.e. if you have a machine with more detectors than 65536 then nothing will work. This can be easily fixed though, if necessary, since it is simply caused by using 16-bit unsigned integers. Put up an issue on the GitHub page or send me an e-mail if you need a version with support for higher number of detectors.
+Scanners with more detectors than 65536 will not work with the raw data format of OMEGA.
 
-Due to the same reason as above, maximum number of counts per sinogram pixel is 65535 (applies only to GATE data).
+Due to the same reason as above, maximum number of counts per sinogram pixel is 65535 (applies only to GATE PET data).
 
 Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases).
 
-Only cylindrical symmetric devices are supported inherently, for other types of machines the user has to input the detector coordinates.
+Only cylindrical symmetric scanners are supported inherently, for other types of scanners the user has to input the detector coordinates.
+
+For CT, only cone beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates.
+
+ROOT or ASCII data is not yet supported with GATE CT data.
 
 Attenuation correction can be applied only with attenuation images (e.g. CT images scaled to 511 keV).
 
@@ -253,8 +264,8 @@ MAT-files that are over 2 GB are not supported by Octave and such large data set
 
 Here is a list of features that should appear in future releases:
 
-- Support for transmission tomography (e.g. CT) data
 - Support for SPECT data
+- Support for "list-mode" GATE CT data (ROOT and ASCII)
 - Fourier rebinning
 - New projectors
 
@@ -335,3 +346,5 @@ This work was supported by a grant from Jane and Aatos Erkko foundation. This wo
 27. Zhang, Hao et al. “Applications of nonlocal means algorithm in low-dose X-ray CT image processing and reconstruction: A review.” Medical physics vol. 44,3 (2017): 1168-1185. doi:10.1002/mp.12097
 
 28. A Lougovski et al. "A volume of intersection approach for on-the-fly system matrix calculation in 3D PET image reconstruction," 2014 Phys. Med. Biol. 59 561
+
+29. Y. Lin, C. R. Schmidtlein, Q. Li, S. Li and Y. Xu, "A Krasnoselskii-Mann Algorithm With an Improved EM Preconditioner for PET Image Reconstruction," in IEEE Transactions on Medical Imaging, vol. 38, no. 9, pp. 2114-2126, Sept. 2019, doi: 10.1109/TMI.2019.2898271.
