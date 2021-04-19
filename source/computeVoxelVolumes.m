@@ -3,7 +3,7 @@ function [V,Vmax,bmin,bmax] = computeVoxelVolumes(dx,dy,dz,options)
 %THOR algorithm
 %   Utility function
 % Compute the various volumes available for the spherical voxels in
-% volume-based ray tracer
+% volume-based ray tracer. Basically establishes a look-up-table.
 if options.projector_type == 3
     dp = max([dx,dy,dz]);
     options.voxel_radius = sqrt(2) * options.voxel_radius * (dp / 2);
@@ -14,7 +14,7 @@ if options.projector_type == 3
     V = volumeIntersection(options.tube_radius, options.voxel_radius, b);
     diffis = [diff(V);0];
     b = b(diffis <= 0);
-    V = V(diffis <= 0);
+    V = abs(V(diffis <= 0));
     Vmax = (4*pi)/3*options.voxel_radius^3;
     bmin = min(b);
 else
