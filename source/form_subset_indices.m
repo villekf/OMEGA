@@ -62,7 +62,7 @@ function [options, lor_a, xy_index, z_index, LL, summa, pituus, varargout] = for
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 folder = fileparts(which('form_subset_indices.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
 if ~isempty(varargin) && ~isempty(varargin{1})
@@ -74,6 +74,17 @@ if nargout > 7
     if nargin > 10 && ~isempty(varargin{2})
         varargout{1} = varargin{2};
     end
+end
+if nargin >= 12 && ~isempty(varargin{3}) && options.precompute_lor
+    lor = varargin{3};
+    if options.projector_type == 3 && ~isempty(varargin{4})
+        lor_orth = varargin{4};
+    end
+end
+if nargin >= 14 && ~isempty(varargin{5}) && options.precompute_lor
+    storeMatrix = varargin{5};
+else
+    storeMatrix = false;
 end
 if nargout > 8
     varargout{2} = [];
@@ -87,13 +98,16 @@ end
 if ~isfield(options,'sampling_raw')
     options.sampling_raw = 1;
 end
+if ~isfield(options,'CT')
+    options.CT = false;
+end
 % for the precomputed version, index vectors are needed
 if options.use_raw_data == false && options.precompute_lor
     
     lor_file = [folder options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' ...
         num2str(options.Nang) 'x' num2str(options.TotSinos) '.mat'];
     
-    if exist(lor_file, 'file') == 2
+    if exist(lor_file, 'file') == 2 && exist('lor','var') ~= 1 && ~options.CT
         if options.implementation == 1 || options.implementation == 4
             variableInfo = who('-file', lor_file);
             if any(ismember('lor', variableInfo))
@@ -154,7 +168,7 @@ if options.use_raw_data == false && options.precompute_lor
             lor = lor_opencl;
             clear lor_opencl
         end
-    else
+    elseif exist('lor','var') ~= 1 && ~options.CT
         lor_pixel_count_prepass(options);
         if options.implementation == 1 || options.implementation == 4
             load(lor_file,'lor')
@@ -183,6 +197,9 @@ if options.use_raw_data == false && options.precompute_lor
             lor = lor_opencl;
             clear lor_opencl
         end
+    end
+    if (exist('lor','var') ~= 1 || isempty(lor)) && options.CT
+        [lor, ~, ~, lor_orth] = lor_pixel_count_prepass(options, false);
     end
     if (subsets > 1 || fpbp)
         lor_a = (lor(index));
@@ -263,7 +280,11 @@ if options.use_raw_data == false && options.precompute_lor
         end
         clear lor
     else
-        discard = lor > 0;
+        if storeMatrix
+            discard = true(size(lor));
+        else
+            discard = lor > 0;
+        end
         if length(discard) ~= options.TotSinos*options.Ndist*options.Nang
             error('Error: Size mismatch between sinogram and LORs to be removed')
         end
@@ -357,30 +378,45 @@ if options.use_raw_data == false && options.precompute_lor
         end
         clear lor
     end
-    xy_index = uint32(1:size_x)';
-    if options.span > 1
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
-        xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    if options.CT
+        if (subsets > 1 || fpbp) || options.precompute_lor
+            xy_index = repmat(uint32(1:size_x * options.xSize)', options.nProjections, 1);
+            z_index = uint16(1:options.nProjections)';
+            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                z_index = repeat_elem(z_index, options.xSize * size_x);
+            else
+                z_index = repelem(z_index, options.xSize * size_x);
+            end
+        else
+            xy_index = uint32(1);
+            z_index = uint16(1);
+        end
     else
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
-        xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
-    end
-    z_index = uint16(1:size(z_det,1))';
-    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-        z_index = repeat_elem(z_index, size_x);
-    else
-        z_index = repelem(z_index, size_x);
+        xy_index = uint32(1:size_x)';
+        if options.span > 1
+            xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
+            xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+        else
+            xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
+            xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
+        end
+        z_index = uint16(1:size(z_det,1))';
+        if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+            z_index = repeat_elem(z_index, size_x);
+        else
+            z_index = repelem(z_index, size_x);
+        end
     end
     if (subsets > 1 || fpbp)
         z_index = z_index(index);
-    else
+    elseif ~options.CT || (options.precompute_lor && options.CT)
         z_index = (z_index(discard));
     end
     z_index = z_index - 1;
     
     if (subsets > 1 || fpbp)
         xy_index = xy_index(index);
-    else
+    elseif ~options.CT || (options.precompute_lor && options.CT)
         xy_index = (xy_index(discard));
     end
     xy_index = xy_index - 1;
@@ -396,39 +432,39 @@ if options.use_raw_data == false && options.precompute_lor
             end
         end
     else
-%         if TOF
-%             pituus = int64([0;pituus]);
-%             koko = int64(size_x * options.NSinos);
-%             for kk = 1 : subsets
-%                 alku = pituus(kk) + 1;
-%                 loppu = pituus(kk + 1);
-%                 bin = floor(alku / koko);
-%                 if alku - loppu > koko || bin < floor(loppu / koko)
-%                     alku = alku - koko * bin;
-%                     loppu = loppu - koko * floor(loppu / koko);
-%                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-%                         summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
-%                     else
-%                         summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
-%                     end
-%                 else
-%                     alku = alku - koko * bin;
-%                     loppu = loppu - koko * floor(loppu / koko);
-%                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-%                         summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
-%                     else
-%                         summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
-%                     end
-%                 end
-%             end
-%         else
-            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-                summa = uint64(sum(int64(lor_orth)));
-            else
-                summa = uint64(sum(int64(lor_a)));
-            end
-            pituus = uint32([0;length(lor_a)]);
-%         end
+        %         if TOF
+        %             pituus = int64([0;pituus]);
+        %             koko = int64(size_x * options.NSinos);
+        %             for kk = 1 : subsets
+        %                 alku = pituus(kk) + 1;
+        %                 loppu = pituus(kk + 1);
+        %                 bin = floor(alku / koko);
+        %                 if alku - loppu > koko || bin < floor(loppu / koko)
+        %                     alku = alku - koko * bin;
+        %                     loppu = loppu - koko * floor(loppu / koko);
+        %                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+        %                         summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
+        %                     else
+        %                         summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
+        %                     end
+        %                 else
+        %                     alku = alku - koko * bin;
+        %                     loppu = loppu - koko * floor(loppu / koko);
+        %                     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+        %                         summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
+        %                     else
+        %                         summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
+        %                     end
+        %                 end
+        %             end
+        %         else
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+            summa = uint64(sum(int64(lor_orth)));
+        else
+            summa = uint64(sum(int64(lor_a)));
+        end
+        pituus = int64([0;length(lor_a)]);
+        %         end
     end
     if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
         varargout{2} = lor_orth;
@@ -624,8 +660,8 @@ elseif options.use_raw_data && options.precompute_lor
                     end
                     varargout{1}{1} = temp(:);
                     clear temp
-%                     varargout{1}{1} = varargin{2}{1}(discard);
-%                     varargout{1}{1} = varargout{1}{1}(index);
+                    %                     varargout{1}{1} = varargin{2}{1}(discard);
+                    %                     varargout{1}{1} = varargout{1}{1}(index);
                 else
                     temp = single(full(varargin{2}));
                     if TOF
@@ -638,8 +674,8 @@ elseif options.use_raw_data && options.precompute_lor
                     end
                     varargout{1} = temp(:);
                     clear temp
-%                     varargout{1} = varargin{2}(discard);
-%                     varargout{1} = varargout{1}(index);
+                    %                     varargout{1} = varargin{2}(discard);
+                    %                     varargout{1} = varargout{1}(index);
                 end
             end
         end
@@ -707,13 +743,13 @@ elseif options.use_raw_data && options.precompute_lor
                 clear temp
             else
                 if iscell(options.SinDelayed)
-%                     options.SinDelayed{1} = options.SinDelayed{1}(discard);
+                    %                     options.SinDelayed{1} = options.SinDelayed{1}(discard);
                     temp = single(full(options.SinDelayed{1}));
                     temp = temp(discard);
                     options.SinDelayed{1} = temp;
                     clear temp
                 else
-%                     options.SinDelayed = options.SinDelayed(discard);
+                    %                     options.SinDelayed = options.SinDelayed(discard);
                     temp = single(full(options.SinDelayed));
                     temp = temp(discard);
                     options.SinDelayed = temp;
@@ -732,13 +768,13 @@ elseif options.use_raw_data && options.precompute_lor
                 clear temp
             else
                 if iscell(options.ScatterC)
-%                     options.ScatterC = options.ScatterC{1}(discard);
+                    %                     options.ScatterC = options.ScatterC{1}(discard);
                     temp = single(full(options.ScatterC{1}));
                     temp = temp(discard);
                     options.ScatterC{1} = temp;
                     clear temp
                 else
-%                     options.ScatterC = options.ScatterC(discard);
+                    %                     options.ScatterC = options.ScatterC(discard);
                     temp = single(full(options.ScatterC));
                     temp = temp(discard);
                     options.ScatterC = temp;
@@ -754,60 +790,60 @@ elseif options.use_raw_data && options.precompute_lor
     end
     summa = zeros(subsets, 1, 'uint64');
     
-%     if ~TOF
-        for kk = 1 : subsets
-            apu = LL(pituus(kk) + 1 : pituus(kk + 1),:) - 1;
-            apu2 = idivide(apu, uint16(options.det_per_ring));
-            idx = apu2(:,1) == apu2(:,2);
-            apu2 = apu(idx,:);
-            ind = mod(apu2, uint16(options.det_per_ring)) + 1;
-            yt = y(ind);
-            y_i = yt(:,1) > yt(:,2);
-            apu2(y_i,:) = fliplr(apu2(y_i,:));
-            apu(idx,:) = apu2;
-            LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
-            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-                summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
-            else
-                summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
-            end
+    %     if ~TOF
+    for kk = 1 : subsets
+        apu = LL(pituus(kk) + 1 : pituus(kk + 1),:) - 1;
+        apu2 = idivide(apu, uint16(options.det_per_ring));
+        idx = apu2(:,1) == apu2(:,2);
+        apu2 = apu(idx,:);
+        ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+        yt = y(ind);
+        y_i = yt(:,1) > yt(:,2);
+        apu2(y_i,:) = fliplr(apu2(y_i,:));
+        apu(idx,:) = apu2;
+        LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
+        if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+            summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
+        else
+            summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
         end
-%     else
-%         apu = LL - 1;
-%         apu2 = idivide(apu, uint16(options.det_per_ring));
-%         idx = apu2(:,1) == apu2(:,2);
-%         apu2 = apu(idx,:);
-%         ind = mod(apu2, uint16(options.det_per_ring)) + 1;
-%         yt = y(ind);
-%         y_i = yt(:,1) > yt(:,2);
-%         apu2(y_i,:) = fliplr(apu2(y_i,:));
-%         apu(idx,:) = apu2;
-%         LL = apu + 1;
-%         
-%         koko = length(lor_a);
-%         for kk = 1 : subsets
-%             alku = pituus(kk) + 1;
-%             loppu = pituus(kk + 1);
-%             bin = floor(alku / koko);
-%             if alku - loppu > koko || bin < floor(loppu / koko)
-%                 alku = alku - koko * bin;
-%                 loppu = loppu - koko * floor(loppu / koko);
-%                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-%                     summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
-%                 else
-%                     summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
-%                 end
-%             else
-%                 alku = alku - koko * bin;
-%                 loppu = loppu - koko * floor(loppu / koko);
-%                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-%                     summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
-%                 else
-%                     summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
-%                 end
-%             end
-%         end
-%     end
+    end
+    %     else
+    %         apu = LL - 1;
+    %         apu2 = idivide(apu, uint16(options.det_per_ring));
+    %         idx = apu2(:,1) == apu2(:,2);
+    %         apu2 = apu(idx,:);
+    %         ind = mod(apu2, uint16(options.det_per_ring)) + 1;
+    %         yt = y(ind);
+    %         y_i = yt(:,1) > yt(:,2);
+    %         apu2(y_i,:) = fliplr(apu2(y_i,:));
+    %         apu(idx,:) = apu2;
+    %         LL = apu + 1;
+    %
+    %         koko = length(lor_a);
+    %         for kk = 1 : subsets
+    %             alku = pituus(kk) + 1;
+    %             loppu = pituus(kk + 1);
+    %             bin = floor(alku / koko);
+    %             if alku - loppu > koko || bin < floor(loppu / koko)
+    %                 alku = alku - koko * bin;
+    %                 loppu = loppu - koko * floor(loppu / koko);
+    %                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+    %                     summa(kk) = uint64(sum(uint64(lor_orth(alku:end))) + sum(uint64(lor_orth(1:loppu))));
+    %                 else
+    %                     summa(kk) = uint64(sum(uint64(lor_a(alku:end))) + sum(uint64(lor_a(1:loppu))));
+    %                 end
+    %             else
+    %                 alku = alku - koko * bin;
+    %                 loppu = loppu - koko * floor(loppu / koko);
+    %                 if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+    %                     summa(kk) = uint64(sum(uint64(lor_orth(alku:loppu))));
+    %                 else
+    %                     summa(kk) = uint64(sum(uint64(lor_a(alku:loppu))));
+    %                 end
+    %             end
+    %         end
+    %     end
     
     clear apu apu2 idx ind yt y_i index discard
     
@@ -865,9 +901,9 @@ elseif options.use_raw_data == false && ~options.precompute_lor
                 clear temp
             else
                 if iscell(options.ScatterC)
-                        options.ScatterC = options.ScatterC{1}(index);
+                    options.ScatterC = options.ScatterC{1}(index);
                 else
-                        options.ScatterC = options.ScatterC(index);
+                    options.ScatterC = options.ScatterC(index);
                 end
             end
         end
@@ -986,19 +1022,34 @@ elseif options.use_raw_data == false && ~options.precompute_lor
             end
         end
     end
-    xy_index = uint32(1:size_x)';
-    if options.span > 1
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
-        xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+    if options.CT
+        if (subsets > 1 || fpbp)
+            xy_index = repmat(uint32(1:size_x * options.xSize)', options.nProjections, 1);
+            z_index = uint16(1:options.nProjections)';
+            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                z_index = repeat_elem(z_index, options.xSize * size_x);
+            else
+                z_index = repelem(z_index, options.xSize * size_x);
+            end
+        else
+            xy_index = uint32(1);
+            z_index = uint16(1);
+        end
     else
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
-        xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
-    end
-    z_index = uint16(1:size(z_det,1))';
-    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-        z_index = repeat_elem(z_index, size_x);
-    else
-        z_index = repelem(z_index, size_x);
+        xy_index = uint32(1:size_x)';
+        if options.span > 1
+            xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
+            xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+        else
+            xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
+            xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
+        end
+        z_index = uint16(1:size(z_det,1))';
+        if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+            z_index = repeat_elem(z_index, size_x);
+        else
+            z_index = repelem(z_index, size_x);
+        end
     end
     if (subsets > 1 || fpbp)
         z_index = z_index(index);
@@ -1041,13 +1092,13 @@ elseif options.use_raw_data && ~options.precompute_lor
                 clear temp
             else
                 if iscell(options.SinDelayed)
-%                     options.SinDelayed{1} = options.SinDelayed{1}(index);
+                    %                     options.SinDelayed{1} = options.SinDelayed{1}(index);
                     temp = single(full(options.SinDelayed{1}));
                     temp = temp(index);
                     options.SinDelayed{1} = temp;
                     clear temp
                 else
-%                     options.SinDelayed = options.SinDelayed(index);
+                    %                     options.SinDelayed = options.SinDelayed(index);
                     temp = single(full(options.SinDelayed));
                     temp = temp(index);
                     options.SinDelayed = temp;
@@ -1066,13 +1117,13 @@ elseif options.use_raw_data && ~options.precompute_lor
                 clear temp
             else
                 if iscell(options.SinDelayed)
-%                     options.ScatterC = options.ScatterC{1}(index);
+                    %                     options.ScatterC = options.ScatterC{1}(index);
                     temp = single(full(options.ScatterC{1}));
                     temp = temp(index);
                     options.ScatterC{1} = temp;
                     clear temp
                 else
-%                     options.ScatterC = options.ScatterC(index);
+                    %                     options.ScatterC = options.ScatterC(index);
                     temp = single(full(options.ScatterC));
                     temp = temp(index);
                     options.ScatterC = temp;
