@@ -26,7 +26,7 @@
 
 - Fixed the use of corrections when using the forward/backward projection class
 
-- Improved Siddon should be about 10-20% faster with Nvidia GPUs
+- Improved Siddon should be about 10-20% faster with Nvidia GPUs (affects both OpenCL and CUDA)
 
 - Orthogonal and volume-based ray tracers should be a little faster
 
