@@ -622,7 +622,7 @@ void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz
 // Calculate the denominator (forward projection) in the perpendicular case in orthogonal ray tracer (3D case)
 void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, double& temp,
 	const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1,
-	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
+	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN, 
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx, 
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
 	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const double bmax, const double bmin, const double Vmax, 
@@ -641,7 +641,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				local_ele = Vmax;
 			else
 				local_ele = V[(std::llround((local_ele - bmin) * CC))];
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -649,8 +651,10 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				ind++;
 			}
 			for (uint32_t kk = 0u; kk < d_N2; kk++) {
+#ifndef CT
 				if (d_attenuation_correction && uu == static_cast<int32_t>(apu) && zz == static_cast<int32_t>(z_loop))
 					jelppi += (d_d1 * -d_atten[local_ind]);
+#endif
 				if (local_sino > 0.) {
 					denominator_mfree(local_ele, ax, d_OSEM[local_ind]);
 				}
@@ -665,7 +669,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				local_ele = Vmax;
 			else
 				local_ele = V[(std::llround((local_ele - bmin) * CC))];
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -685,7 +691,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -703,7 +711,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 			double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 			if (local_ele >= bmax)
 				break;
+#ifndef CT
 			temp += (local_ele * d_N2);
+#endif
 			uint32_t local_ind = uu * d_N + zz * Nyx;
 			if (!PRECOMPUTE) {
 				store_indices[tid + ind] = local_ind;
@@ -718,21 +728,25 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 			}
 		}
 	}
+#ifndef CT
 	temp = 1. / temp;
 	if (d_attenuation_correction)
 		temp *= exp(jelppi);
 	if (normalization)
-		temp *= norm_coef[lo];
+		temp *= norm_coef;
 	if (scatter)
 		temp *= scatter_coef[lo];
 	temp *= global_factor;
+#endif
 	if (PRECOMPUTE) {
 		for (int32_t zz = static_cast<int32_t>(z_loop); zz >= 0; zz--) {
 			for (int32_t uu = static_cast<int32_t>(apu); uu >= 0; uu--) {
 				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -745,7 +759,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -760,7 +776,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;
@@ -773,7 +791,9 @@ void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, c
 				double local_ele = compute_element_volume_3D_per(detectors, xl, yl, zl, crystal_size_z, center1[uu], center2, z_center[zz]);
 				if (local_ele >= bmax)
 					break;
+#ifndef CT
 				local_ele *= temp;
+#endif
 				uint32_t local_ind = uu * d_N + zz * Nyx;
 				for (uint32_t kk = 0u; kk < d_N2; kk++) {
 					indices[hpk] = local_ind;

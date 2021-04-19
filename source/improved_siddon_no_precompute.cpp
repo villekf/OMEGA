@@ -30,10 +30,12 @@ using namespace std;
 
 int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, vector<uint32_t>& indices,
 	vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const vector<double>& xx_vec, const double dy,
-	const vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
+	const vector<double>& yy_vec, const double* atten, const float* norm_coef, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
 	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, 
 	const uint32_t *index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, const uint32_t blocks, 
-	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows, const double global_factor, const bool scatter, const double* scatter_coef) {
+	const uint32_t block1, const uint16_t *L, const uint32_t *pseudos, const uint32_t pRows, const double global_factor, const bool scatter, const double* scatter_coef, 
+	const uint32_t subsets, const double* angles, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_y,	const double dPitch, const int64_t nProjections, 
+	const uint8_t list_mode) {
 
 	int ll;
 	if (raw)
@@ -57,10 +59,14 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
+#ifndef CT
 		if (raw)
-			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows);
+			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode);
 		else
 			get_detector_coordinates_noalloc(x, y, z_det, size_x, detectors, ll, index, lz, TotSinos, lo);
+#else
+		get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode);
+#endif
 
 		// Calculate the x, y and z distances of the detector pair, i.e. the distance between them in the corresponding dimension
 		const double y_diff = (detectors.yd - detectors.ys);
@@ -70,6 +76,9 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 		if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.)) {
 			continue;
 		}
+		double local_norm = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
 
 		// If the measurement is on the same ring
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
@@ -84,7 +93,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction,
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, local_norm, attenuation_correction,
 						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
@@ -105,7 +114,7 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction,
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, local_norm, attenuation_correction,
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint32_t ii = 0u; ii < Ny_max; ii += Ny) {
@@ -147,6 +156,25 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 			}
 
+			//if (lo == 651) {
+			//	mexPrintf("tx0 = %.10f\n", tx0);
+			//	mexPrintf("ty0 = %.10f\n", ty0);
+			//	mexPrintf("tz0 = %.10f\n", tz0);
+			//	mexPrintf("tzu = %.10f\n", tzu);
+			//	mexPrintf("tyu = %.10f\n", tyu);
+			//	mexPrintf("txu = %.10f\n", txu);
+			//	mexPrintf("tc = %.10f\n", tc);
+			//	mexPrintf("tempk = %d\n", tempk);
+			//	mexPrintf("tempi = %d\n", tempi);
+			//	mexPrintf("tempj = %d\n", tempj);
+			//	mexPrintf("detectors.xs = %f\n", detectors.xs);
+			//	mexPrintf("detectors.xd = %f\n", detectors.xd);
+			//	mexPrintf("detectors.ys = %f\n", detectors.ys);
+			//	mexPrintf("detectors.yd = %f\n", detectors.yd);
+			//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+			//	mexPrintf("detectors.zd = %f\n", detectors.zd);
+			//	mexEvalString("pause(.001);");
+			//}
 			if (skip)
 				continue;
 
@@ -155,7 +183,9 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 
 			// \alpha_c
 
+#ifndef CT
 			double temp = 0.;
+#endif
 
 			vector<double> templ_ijk;
 			vector<uint32_t> temp_koko;
@@ -185,7 +215,9 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					// (34)
 					tx0 += txu;
 
+#ifndef CT
 					temp += templ_ijk[ii];
+#endif
 
 				}
 				else if (ty0 < tz0) {
@@ -204,7 +236,9 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					// (39)
 					ty0 += tyu;
 
+#ifndef CT
 					temp += templ_ijk[ii];
+#endif
 				}
 				else {
 					templ_ijk.emplace_back(pixel_value(tz0, tc, LL));
@@ -217,23 +251,31 @@ int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t siz
 					tc = tz0;
 					tz0 += tzu;
 
+#ifndef CT
 					temp += templ_ijk[ii];
+#endif
 				}
 				// If the ray/LOR has reached the end of the pixel space
 				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
 					break;
 			}
 
+#ifndef CT
 			temp = 1. / temp;
 
 			if (attenuation_correction)
 				att_corr_vec(templ_ijk, temp_koko, atten, temp, templ_ijk.size());
 			if (normalization)
-				temp *= norm_coef[lo];
+				temp *= local_norm;
 			temp *= global_factor;
+#endif
 
 			for (uint32_t ii = 0u; ii < templ_ijk.size(); ii++) {
+#ifndef CT
 				elements.emplace_back((fabs(templ_ijk[ii]) * temp));
+#else
+				elements.emplace_back(fabs(templ_ijk[ii]));
+#endif
 				indices.emplace_back(temp_koko[ii]);
 			}
 
