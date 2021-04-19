@@ -37,10 +37,16 @@ end
 if ~isfield(options,'listmode')
     options.listmode = false;
 end
+if ~isfield(options,'PKMA')
+    options.PKMA = false;
+end
+if ~isfield(options,'CT')
+    options.CT = false;
+end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM ...
-        || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI)
+        || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA)
     
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -63,7 +69,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     % E.g. for COSEM compute the complete data matrix, for RBI-OSL compute
     % the sum of all the rows of the system matrix
     if ((options.MRAMLA || options.MBSREM || options.OSL_RBI || options.RBI) && options.MBSREM_prepass || options.ECOSEM || options.COSEM ...
-            || options.ACOSEM || any(options.OSL_COSEM))  && options.implementation == 1
+            || options.ACOSEM || any(options.OSL_COSEM) || options.PKMA)  && options.implementation == 1
         
         if options.ACOSEM
             C_aco = zeros(double(N), options.subsets);
@@ -116,10 +122,14 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             iij = double(0:Nx);
             jji = double(0:Ny);
             kkj = double(0:Nz);
+        else
+            iij = 0;
+            jji = 0;
+            kkj = 0;
         end
         
         if verbose
-            disp('Prepass phase for MRAMLA, RBI, COSEM, ACOSEM and ECOSEM started')
+            disp('Prepass phase for MRAMLA, RBI, PKMA, COSEM, ACOSEM and ECOSEM started')
         end
         if iscell(SinM)
             Sino = SinM{1};
@@ -156,136 +166,11 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             else
                 scatter_input = 0;
             end
-            if options.precompute_lor == false && ~options.listmode
-                if use_raw_data == false
-                    if options.projector_type == 1 || options.projector_type == 0
-                        if exist('OCTAVE_VERSION','builtin') == 0 && exist('projector_mex','file') == 3
-                            [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                                randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
-                                false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
-                                uint32(options.projector_type), iij, jji, kkj);
-                        elseif exist('OCTAVE_VERSION','builtin') == 5 && exist('projector_oct','file') == 3
-                            [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                zmax, options.vaimennus, options.normalization, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction, ...
-                                randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, uint16(0), pseudot, det_per_ring, ...
-                                false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), ...
-                                uint32(options.projector_type), iij, jji, kkj);
-                        else
-                            % The below lines allow for pure MATLAB
-                            % implemention, i.e. no MEX-files will be
-                            % used. Currently the below function
-                            % uses parfor-loops (requires parallel
-                            % computing toolbox).
-                            % NOTE: The below method is not
-                            % recommended since it is much slower
-                            % method.
-                            [ lor, indices, alkiot, discard] = improved_siddon_atten( int32(Ny), int32(Nx), int32(Nz), dx, dz, by, bx, bz, z_det, x, y, yy, xx, ...
-                                NSinos, NSlices, options.vaimennus, index(pituus(osa_iter) + 1 : pituus(osa_iter + 1)), pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction);
-                            alkiot = cell2mat(alkiot);
-                            indices = indices(discard);
-                            indices = cell2mat(indices) - 1;
-                            lor = lor(:,2);
-                        end
-                    else
-                        error('Unsupported projector type')
-                    end
-                else
-                    L = LL(pituus(osa_iter) * 2 + 1 : pituus(osa_iter + 1) * 2);
-                    if options.projector_type == 1
-                        if exist('OCTAVE_VERSION','builtin') == 0
-                            [ lor, indices, alkiot] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                                randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, ...
-                                L, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
-                        elseif exist('OCTAVE_VERSION','builtin') == 5
-                            [ lor, indices, alkiot] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , NSinos, NSlices, size_x, ...
-                                zmax, options.vaimennus, options.normalization, SinD, uint32(0), attenuation_correction, normalization_correction, ...
-                                randoms_correction, options.scatter, scatter_input, options.global_correction_factor, uint16(0), uint32(0), uint32(0), NSinos, ...
-                                L, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                                use_raw_data, uint32(2), options.listmode, ind_size, block1, blocks, uint32(0), uint32(options.projector_type), iij, jji, kkj);
-                        end
-                    elseif options.projector_type == 2
-                        error('Unsupported projector type')
-                    else
-                        error('Unsupported projector type')
-                    end
-                end
-                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                    lor = repeat_elem(int32(1:length(lor))',int32(lor));
-                elseif exist('OCTAVE_VERSION','builtin') == 5
-                    lor = repelem(int32(1:length(lor)),int32(lor));
-                else
-                    lor = repelem(int32(1:length(lor)),int32(lor))';
-                end
-                uu = double(Sino(index(pituus(osa_iter) + 1 : pituus(osa_iter + 1))));
-                
-                A_length = length(uu);
-                indices=indices + 1;
-                if verbose
-                    tStart = tic;
-                end
-                if options.use_fsparse == false
-                    A = sparse(double(lor),double(indices),double(alkiot), A_length, double(N));
-                else
-                    A = fsparse(lor,int32(indices),double(alkiot),[A_length double(N) length(alkiot)]);
-                end
-                clear indices alkiot lor
-                if verbose
-                    tElapsed = toc(tStart);
-                    disp(['Sparse matrix formation took ' num2str(tElapsed) ' seconds'])
-                end
-            else
-                if options.listmode
-                    if osa_iter == 1
-                        lor_a = lor_pixel_count_prepass(options, false);
-                    end
-                end
-                if use_raw_data
-                    L_input = LL(pituus(osa_iter) * 2 + 1 : pituus(osa_iter + 1) * 2);
-                    xy_index_input = uint32(0);
-                    z_index_input = uint16(0);
-                else
-                    L_input = uint16(0);
-                    xy_index_input = xy_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
-                    z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
-                end
-                if options.projector_type == 2 || options.projector_type == 3
-                    if exist('OCTAVE_VERSION','builtin') == 0
-                        lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
-                    else
-                        lor2 = [uint64(0);cumsum(uint64(lor_orth(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
-                    end
-                else
-                    if exist('OCTAVE_VERSION','builtin') == 0
-                        lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))))];
-                    else
-                        lor2 = [uint64(0);cumsum(uint64(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))),'native')];
-                    end
-                end
-                if exist('OCTAVE_VERSION','builtin') == 0
-                    [A, ~] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
-                        norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
-                        z_index_input, uint32(NSinos), L_input, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                        use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
-                        false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
-                        options.tube_width_z, bmin, bmax, Vmax, V);
-                elseif exist('OCTAVE_VERSION','builtin') == 5
-                    [A, ~] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx , uint32(NSinos), NSlices, size_x, zmax, options.vaimennus, ...
-                        norm_input, SinD, pituus(osa_iter + 1) - pituus(osa_iter), attenuation_correction, normalization_correction,...
-                        randoms_correction, options.scatter, scatter_input, options.global_correction_factor, lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1)), xy_index_input, ...
-                        z_index_input, uint32(NSinos), L_input, pseudot, det_per_ring, false, int64(0), 0, 0, int64(options.TOF_bins), uint32(0), options.verbose, nCores, ...
-                        use_raw_data, uint32(0), options.listmode, lor2, summa(osa_iter), ...
-                        false, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, ...
-                        options.tube_width_z, bmin, bmax, Vmax, V);
-                end
-%                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
-                clear lor2
-            end
+            koko = pituus(osa_iter + 1) - pituus(osa_iter);
+            [A] = computeImplementation1(options,use_raw_data,randoms_correction, pituus,osa_iter, normalization_correction,...
+                Nx, Ny, Nz, dx, dy, dz, bx, by, bz, x, y, z_det, xx, yy, size_x, NSinos, NSlices, zmax, attenuation_correction, pseudot, det_per_ring, ...
+                false, 0, 0, uint32(0), nCores, ind_size, block1, blocks, index, iij, jji, kkj, LL, N, summa, lor_a, xy_index, z_index, ...
+                x_center, y_center, z_center, bmin, bmax, Vmax, V, lor_orth, gaussK, is_transposed, scatter_input, norm_input, SinD, koko);
             if is_transposed
                 % Sensitivity image
                 D = D + A * ones(size(A,2),1,'double');
@@ -303,9 +188,15 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 uu = double(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1)));
                 if is_transposed
                     FP = A' * im_apu + epps + SinD;
+                    if options.CT
+                        FP = exp(FP);
+                    end
                     RHS = A * (uu ./ FP);
                 else
                     FP = A * im_apu + epps + SinD;
+                    if options.CT
+                        FP = exp(FP);
+                    end
                     RHS = A' * (uu ./ FP);
                 end
                 if options.use_psf
@@ -416,19 +307,19 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.lam = double(options.lambda0);
         end
     end
-    if (options.MBSREM || options.MRAMLA) && length(options.lambda0_mbsrem) == 1
+    if (options.MBSREM || options.MRAMLA) && length(options.lambda0_MBSREM) == 1
         lam_MBSREM = zeros(options.Niter,1);
-        lam_mbsrem(1) = options.lambda0_mbsrem;
+        lam_MBSREM(1) = options.lambda0_MBSREM;
         for i=2:options.Niter
-            lam_mbsrem(i) = lam_mbsrem(1)/(i);
+            lam_MBSREM(i) = lam_MBSREM(1)/(i);
         end
         if options.implementation == 2
             options.lam_MBSREM = single(lam_MBSREM);
         else
-            options.lam_MBSREM = lam_mbsrem;
+            options.lam_MBSREM = lam_MBSREM;
         end
     elseif (options.MBSREM || options.MRAMLA)
-        if numel(options.lambda0_mbsrem) < options.Niter
+        if numel(options.lambda0_MBSREM) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations')
         end
         if options.implementation == 2
@@ -437,25 +328,46 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.lam_MBSREM = double(options.lambda0_MBSREM);
         end
     end
-    if (options.ROSEM_MAP || options.ROSEM) && length(options.lambda0_rosem) == 1
-        lam_ROSEM_MAP = zeros(options.Niter,1);
-        lam_rosem(1) = options.lambda0_rosem;
+    if (options.ROSEM_MAP || options.ROSEM) && length(options.lambda0_ROSEM) == 1
+        lam_ROSEM = zeros(options.Niter,1);
+        lam_ROSEM(1) = options.lambda0_ROSEM;
         for i=2:options.Niter
-            lam_rosem(i) = lam_rosem(1)/i;
+            lam_ROSEM(i) = lam_ROSEM(1)/i;
         end
         if options.implementation == 2
-            options.lam_ROSEM_MAP = single(lam_ROSEM_MAP);
+            options.lam_ROSEM = single(lam_ROSEM);
         else
-            options.lam_ROSEM_MAP = lam_rosem;
+            options.lam_ROSEM = lam_ROSEM;
         end
     elseif (options.ROSEM_MAP || options.ROSEM)
-        if numel(options.lambda0_rosem) < options.Niter
+        if numel(options.lambda0_ROSEM) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations')
         end
         if options.implementation == 2
-            options.lam_ROSEM_MAP = single(options.lambda0_ROSEM_MAP);
+            options.lam_ROSEM = single(options.lambda0_ROSEM);
         else
-            options.lam_ROSEM_MAP = double(options.lambda0_ROSEM_MAP);
+            options.lam_ROSEM = double(options.lambda0_ROSEM);
+        end
+    end
+    if (options.PKMA) && length(options.lambda0_PKMA) == 1
+%         warning('PKMA requires the relaxation parameter to be a vector, using the default values')
+        lam_PKMA = zeros(options.Niter,1);
+        for i = 1 : options.Niter
+            lam_PKMA(i) = 1 / ((i - 1)/12 + 1);
+        end
+        if options.implementation == 2
+            options.lam_PKMA = single(lam_PKMA);
+        else
+            options.lam_PKMA = lam_PKMA;
+        end
+    elseif (options.PKMA)
+        if numel(options.lambda0_PKMA) < options.Niter
+            error('The number of PKMA relaxation values needs to be at least equal to the number of iterations')
+        end
+        if options.implementation == 2
+            options.lam_PKMA = single(options.lambda0_PKMA);
+        else
+            options.lam_PKMA = double(options.lambda0_PKMA);
         end
     end
     if options.DRAMA
@@ -474,9 +386,50 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
             options.lam_drama = lam_drama;
         end
     end
-    % Sensitivity image for MRAMLA/MBSREM
-    if (options.MBSREM || options.MRAMLA) && options.implementation == 1
-        options.pj3 = D/options.subsets;
+    if (options.PKMA) && (~isfield(options,'alpha_PKMA') || numel(options.alpha_PKMA) < options.Niter * options.subsets)
+        options.alpha_PKMA = zeros(options.Niter * options.subsets,1);
+        oo = 1;
+        for kk = 1 : options.Niter
+            for ll = 0 : options.subsets - 1
+                options.alpha_PKMA(oo) = 1 + (options.rho_PKMA *((kk - 1) * options.subsets + ll)) / ((kk - 1) * options.subsets + ll + options.delta_PKMA);
+                oo = oo + 1;
+            end
+        end
+        if options.implementation == 2
+            options.alpha_PKMA = single(options.alpha_PKMA);
+        end
+    elseif (options.PKMA)
+        if numel(options.alpha_PKMA) < options.Niter
+            error('The number of PKMA alpha values must be at least the number of iterations!')
+        end
+        if options.implementation == 2
+            options.alpha_PKMA = single(options.alpha_PKMA);
+        end
+    end
+    if (options.PKMA) && (~isfield(options,'sigma_PKMA') || numel(options.sigma_PKMA) < options.Niter * options.subsets)
+        options.alpha_PKMA = zeros(options.Niter * options.subsets,1);
+        oo = 1;
+        for kk = 1 : options.Niter
+            for ll = 0 : options.subsets - 1
+                options.alpha_PKMA(oo) = sqrt(((kk - 1) * options.subsets + ll)) / ((kk - 1) * options.subsets + ll + options.delta_PKMA);
+                oo = oo + 1;
+            end
+        end
+        if options.implementation == 2
+            options.alpha_PKMA = single(options.alpha_PKMA);
+        end
+        if ~isfield(options,'sigma_PKMA') || sum(options.sigma_PKMA) == 0
+            options.sigma_PKMA = ones(size(options.alpha_PKMA),class(options.alpha_PKMA));
+        else
+            options.sigma_PKMA = 1 - options.alpha_PKMA;
+        end
+    elseif (options.PKMA)
+        if numel(options.sigma_PKMA) < options.Niter
+            error('The number of PKMA sigma values must be at least the number of iterations!')
+        end
+        if options.implementation == 2
+            options.sigma_PKMA = single(options.sigma_PKMA);
+        end
     end
     % Compute the weights
     if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3) || options.Huber) && options.MAP
