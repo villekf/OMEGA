@@ -4,7 +4,7 @@ function im = BSREM_subiter(im, lambda, epps, iter, varargin)
 %estimates)
 %
 % Examples:
-%   im = BSREM_subiter(im, lambda, epps, iter, A, uu, SinDelayed, is_transposed)
+%   im = BSREM_subiter(im, lambda, epps, iter, A, uu, SinDelayed, is_transposed, options, gaussK, Nx, Ny, Nz)
 %   im = BSREM_subiter(im, lambda, epps, iter, Summ, RHS)
 % INPUTS:
 %   im = The current estimate
@@ -48,12 +48,18 @@ if nargin >= 9
     else
         im_apu = im;
     end
-    if varargin{4}
-        FP = varargin{1}' * im_apu;
-        BP = varargin{1} * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+    if ~isempty(varargin{4}) && varargin{4}
+        FP = varargin{1}' * im_apu + epps + varargin{3};
+        if length(varargin) > 4 && ~isempty(varargin{5}) && isfield(varargin{5},'CT') && varargin{5}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1} * (varargin{2} ./ FP - 1);
     else
-        FP = varargin{1} * im_apu;
-        BP = varargin{1}' * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+        FP = varargin{1} * im_apu + epps + varargin{3};
+        if length(varargin) > 4 && ~isempty(varargin{5}) && isfield(varargin{5},'CT') && varargin{5}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1}' * (varargin{2} ./ FP - 1);
     end
     if ~isempty(varargin{5}) && varargin{5}.use_psf
         BP = computeConvolution(BP, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});

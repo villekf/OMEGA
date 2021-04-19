@@ -74,9 +74,15 @@ else
     end
     if is_transposed
         FP = A' * im_apu + epps + SinDelayed;
+        if ~isempty(varargin{1}) && isfield(varargin{1},'CT') && varargin{1}.CT
+            FP = exp(FP);
+        end
         RHS = A * (uu ./ FP);
     else
         FP = A * im_apu + epps + SinDelayed;
+        if ~isempty(varargin{1}) && isfield(varargin{1},'CT') && varargin{1}.CT
+            FP = exp(FP);
+        end
         RHS = A' * (uu ./ FP);
     end
     if ~isempty(varargin) && ~isempty(varargin{1}) && varargin{1}.use_psf
@@ -92,9 +98,17 @@ else
             im_apu = im;
         end
         if is_transposed
-            im = (im)*(sum(uu)/(sum(A'*im_apu)));
+            if ~isempty(varargin) && ~isempty(varargin{1}) && isfield(varargin{1}, 'CT') && varargin{1}.CT
+                im = (im)*(sum(uu)/(sum(exp(A'*im_apu))));
+            else
+                im = (im)*(sum(uu)/(sum(A'*im_apu)));
+            end
         else
-            im = (im)*(sum(uu)/(sum(A*im_apu)));
+            if ~isempty(varargin) && ~isempty(varargin{1}) && isfield(varargin{1}, 'CT') && varargin{1}.CT
+                im = (im)*(sum(uu)/(sum(exp(A*im_apu))));
+            else
+                im = (im)*(sum(uu)/(sum(A*im_apu)));
+            end
         end
     else
         % COSEM-OSL

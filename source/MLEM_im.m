@@ -47,9 +47,17 @@ if nargin >= 6
         im_apu = im;
     end
     if varargin{3}
-        RHS = (varargin{1} * (varargin{2} ./ (varargin{1}' * im_apu + epps)));
+        if length(varargin) > 3 && ~isempty(varargin{4}) && isfield(varargin{4},'CT') && varargin{4}.CT
+            RHS = (varargin{1} * (varargin{2} ./ (exp(varargin{1}' * im_apu))));
+        else
+            RHS = (varargin{1} * (varargin{2} ./ (varargin{1}' * im_apu + epps)));
+        end
     else
-        RHS = (varargin{1}' * (varargin{2} ./ (varargin{1} * im_apu + epps)));
+        if length(varargin) > 3 && ~isempty(varargin{4}) && isfield(varargin{4},'CT') && varargin{4}.CT
+            RHS = (varargin{1}' * (varargin{2} ./ (exp(varargin{1} * im_apu))));
+        else
+            RHS = (varargin{1}' * (varargin{2} ./ (varargin{1} * im_apu + epps)));
+        end
     end
     if ~isempty(varargin) && length(varargin) > 3 && ~isempty(varargin{4}) && varargin{4}.use_psf
         RHS = computeConvolution(im, varargin{4}, varargin{5}, varargin{6}, varargin{7}, varargin{8});

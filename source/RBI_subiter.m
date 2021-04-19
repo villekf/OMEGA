@@ -77,9 +77,15 @@ else
     end
     if is_transposed
         FP = A' * im_apu;
+        if length(varargin) > 2 && ~isempty(varargin{3}) && isfield(varargin{3},'CT') && varargin{3}.CT
+            FP = exp(FP);
+        end
         BP = A * (uu ./ (FP + epps + SinDelayed) - 1);
     else
         FP = A * im_apu;
+        if length(varargin) > 2 && ~isempty(varargin{3}) && isfield(varargin{3},'CT') && varargin{3}.CT
+            FP = exp(FP);
+        end
         BP = A' * (uu ./ (FP + epps + SinDelayed) - 1);
     end
     if length(varargin) > 2 && ~isempty(varargin{3}) && varargin{3}.use_psf

@@ -53,11 +53,17 @@ if nargin >= 10
         im_apu = im;
     end
     if varargin{4}
-        FP = varargin{1}' * im_apu;
-        BP = varargin{1} * (varargin{2} ./ ( FP + epps + varargin{3}) - 1);
+        FP = varargin{1}' * im_apu + epps + varargin{3};
+        if length(varargin) > 4 && ~isempty(varargin{5}) && isfield(varargin{5},'CT') && varargin{5}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1} * (varargin{2} ./ FP - 1);
     else
-        FP = varargin{1} * im_apu;
-        BP = varargin{1}' * (varargin{2} ./ (FP + epps + varargin{3}) - 1);
+        FP = varargin{1} * im_apu + epps + varargin{3};
+        if length(varargin) > 4 && ~isempty(varargin{5}) && isfield(varargin{5},'CT') && varargin{5}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1}' * (varargin{2} ./ FP - 1);
     end
     if length(varargin) > 4 && ~isempty(varargin{5}) && varargin{5}.use_psf
         BP = computeConvolution(BP, varargin{5}, varargin{6}, varargin{7}, varargin{8}, varargin{9});
