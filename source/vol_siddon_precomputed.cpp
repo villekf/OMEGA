@@ -39,18 +39,21 @@ const static bool DISCARD = false;
 using namespace std;
 
 void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* rhs, const double maxyy,
-	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef,
+	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef,
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx,
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1,
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos,
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size,
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const double bmin, 
-	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t nCores, const uint8_t list_mode) {
+	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t subsets, const double* angles, 
+	const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores, const uint8_t list_mode) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
 
 	// Precompute
 	const double bzb = bz + static_cast<double>(Nz) * dz;
@@ -63,13 +66,20 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 #endif
 
 
-#pragma omp parallel for ordered schedule(dynamic)
+#ifdef _OPENMP
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
+#else
+#pragma omp parallel for schedule(dynamic, nChunks)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		Det detectors;
 		double kerroin, jelppi = 0., LL;
 
-		// Raw list-mode data
+#ifndef CT
+		// Raw data
 		if (raw) {
 			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode);
 		}
@@ -77,6 +87,9 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 		else {
 			get_detector_coordinates(x, y, z_det, size_x, detectors, xy_index, z_index, TotSinos, lo);
 		}
+#else
+		get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode);
+#endif
 
 		// Calculate the x, y and z distances of the detector pair
 		double x_diff = (detectors.xd - detectors.xs);
@@ -121,6 +134,9 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 
 		// Precompute constants
 		kerroin = norm(x_diff, y_diff, z_diff);
+		double local_norm = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
 
 		// If the measurement is on a same ring
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
@@ -136,7 +152,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 					detectors.ys = temppi;
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
-						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+						by, detectors.yd, dy, Ny, Nx, tempk, atten, local_norm, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef, N2);
 				}
 			}
@@ -145,7 +161,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
-						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+						bx, detectors.xd, dx, Nx, Ny, tempk, atten, local_norm, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indices, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef, N2);
 				}
 			}
@@ -218,24 +234,30 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 			for (uint32_t ii = 0u; ii < Np; ii++) {
 				// Ray goes along the x-axis
 				if (tx0 < ty0 && tx0 < tz0) {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempi += iu;
 					tx0 += txu;
 					xyz = 1U;
 				}
 				// Ray goes along the y-axis
 				else if (ty0 < tz0) {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempj += ju;
 					ty0 += tyu;
 					xyz = 2U;
 				}
 				// Ray goes along the z-axis
 				else {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempk += ku;
 					tz0 += tzu;
 					xyz = 3U;
@@ -269,6 +291,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 						idx, N1, N3, alku, iu, ju, loppu, store_elements, store_indices, tid, ind, bmax, bmin, Vmax, V, N12, N22);
 				}
 			}
+#ifndef CT
 			if (attenuation_phase)
 				length[lo] = temp;
 
@@ -276,13 +299,14 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 			if (attenuation_correction)
 				temp *= exp(jelppi);
 			if (normalization)
-				temp *= norm_coef[lo];
+				temp *= local_norm;
 			if (scatter)
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 			for (size_t ii = 0u; ii < idx; ii++) {
 				rhs[N12 + ii] *= temp;
 			}
+#endif
 		}
 	}
 }

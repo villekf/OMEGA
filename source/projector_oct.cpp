@@ -39,7 +39,7 @@
 using namespace std;
 
 
-DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
+DEFUN_DLD(projector_octCT, prhs, nargout, "projector_octCT") {
 
 	int ind = 0;
 	// Load the input arguments
@@ -138,16 +138,16 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 	const double* atten = atten_.fortran_vec();
 
 	// Normalization coefficients
-	const NDArray norm_coef_ = prhs(ind).array_value();
+	const FloatNDArray norm_coef_ = prhs(ind).float_array_value();
 	ind++;
 
-	const double* norm_coef = norm_coef_.fortran_vec();
+	const float* norm_coef = norm_coef_.fortran_vec();
 
 	// Randoms
-	const NDArray randoms_ = prhs(ind).array_value();
+	const FloatNDArray randoms_ = prhs(ind).float_array_value();
 	ind++;
 
-	const double* randoms = randoms_.fortran_vec();
+	const float* randoms = randoms_.fortran_vec();
 
 	// Number of measurements/LORs
 	const int64_t pituus = prhs(ind).int64_scalar_value();
@@ -355,11 +355,13 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double crystal_size_z = prhs(ind).scalar_value();
 			ind++;
 
+#ifndef CT
 			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
 			orth_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
 				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, scatter, 
 				scatter_coef, nCores, list_mode_format);
+#endif
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -372,11 +374,75 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			}
 		}
 		else if (projector_type == 1u) {
+#ifdef CT
+			const double crystal_size = prhs(ind).scalar_value();
+			ind++;
+
+			// Coordinates of the pixel centers in y-direction
+			NDArray x_center_ = prhs(ind).array_value();
+			ind++;
+
+			double* x_center = x_center_.fortran_vec();
+
+			// Coordinates of the pixel centers in x-direction
+			NDArray y_center_ = prhs(ind).array_value();
+			ind++;
+
+			double* y_center = y_center_.fortran_vec();
+
+			// Coordinates of the pixel centers in z-direction
+			const NDArray z_center_ = prhs(ind).array_value();
+			ind++;
+
+			const double* z_center = z_center_.fortran_vec();
+
+			const double crystal_size_z = prhs(ind).scalar_value();
+			ind++;
+
+			const double bmin = prhs(ind).scalar_value();
+			ind++;
+
+			const double bmax = prhs(ind).scalar_value();
+			ind++;
+
+			const double Vmax = prhs(ind).scalar_value();
+			ind++;
+
+			const NDArray V_ = prhs(ind).array_value();
+
+			const double* V = V_.fortran_vec();
+			ind++;
+
+			const uint32_t subsets = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const NDArray angles_ = prhs(ind).array_value();
+
+			const double* angles = angles_.fortran_vec();
+			ind++;
+
+			const uint32_t size_y = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const double dPitch = prhs(ind).scalar_value();
+			ind++;
+
+			const int64_t nProjections = prhs(ind).int64_scalar_value();
+			ind++;
+
+#else
+			const uint32_t subsets = 1U;
+			const double* angles = nullptr;
+			const uint32_t size_y = 1U;
+			const double dPitch = 0.;
+			const int64_t nProjections = 0LL;
+#endif
 
 			// run the Improved Siddon's algorithm, precomputed_lor = true
 			improved_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, nCores, list_mode_format);
+				pRows, det_per_ring, raw, attenuation_phase, ll, global_factor, scatter, scatter_coef, subsets, angles, size_y, dPitch, nProjections,
+				nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -432,11 +498,37 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 
 			const double* V = V_.fortran_vec();
 
+#ifdef CT
+			const uint32_t subsets = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const NDArray angles_ = prhs(ind).array_value();
+
+			const double* angles = angles_.fortran_vec();
+			ind++;
+
+			const uint32_t size_y = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const double dPitch = prhs(ind).scalar_value();
+			ind++;
+
+			const int64_t nProjections = prhs(ind).int64_scalar_value();
+			ind++;
+
+#else
+			const uint32_t subsets = 1U;
+			const double* angles = nullptr;
+			const uint32_t size_y = 1U;
+			const double dPitch = 0.;
+			const int64_t nProjections = 0LL;
+#endif
+
 			// run the Orthogonal distance based ray tracer algorithm, precomputed_lor = true
 			vol_siddon_precomputed(loop_var_par, size_x, zmax, indices, elements, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, x, y, z_det,
 				NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, lor1, lor2, xy_index, z_index, TotSinos, L, pseudos,
-				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin, 
-				bmax, Vmax, V, scatter, scatter_coef, nCores, list_mode_format);
+				pRows, det_per_ring, raw, attenuation_phase, ll, crystal_size, crystal_size_z, y_center, x_center, z_center, global_factor, bmin,
+				bmax, Vmax, V, scatter, scatter_coef, subsets, angles, size_y, dPitch, nProjections, nCores, list_mode_format);
 
 			std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
@@ -471,10 +563,10 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		ind++;
 
 		// Measurement data
-		const NDArray Sino_ = prhs(ind).array_value();
+		const FloatNDArray Sino_ = prhs(ind).float_array_value();
 		ind++;
 
-		const double* Sino = Sino_.fortran_vec();
+		const float* Sino = Sino_.fortran_vec();
 
 		// Current estimates
 		NDArray osem_apu_ = prhs(ind).array_value();
@@ -570,6 +662,7 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double crystal_size_z = prhs(ind).scalar_value();
 			ind++;
 
+#ifndef CT
 			if (precompute) {
 				sequential_orth_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det, 
 					NSlices, Nx, Ny, Nz, d, dz,	bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
@@ -578,10 +671,11 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			}
 			else {
 				sequential_orth_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
-					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, 
-					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z, 
+					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index,
+					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, crystal_size, x_center, y_center, z_center, crystal_size_z,
 					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef, nCores);
 			}
+#endif
 		}
 		// Improved Siddon
 		else if (projector_type == 1u) {
@@ -601,20 +695,44 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			const double cr_pz = prhs(ind).scalar_value();
 			ind++;
 
+#ifdef CT
+			const uint32_t subsets = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const NDArray angles_ = prhs(ind).array_value();
+
+			const double* angles = angles_.fortran_vec();
+			ind++;
+
+			const uint32_t size_y = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const double dPitch = prhs(ind).scalar_value();
+			ind++;
+
+			const int64_t nProjections = prhs(ind).int64_scalar_value();
+			ind++;
+
+#else
+			const uint32_t subsets = 1U;
+			const double* angles = nullptr;
+			const uint32_t size_y = 1U;
+			const double dPitch = 0.;
+			const int64_t nProjections = 0LL;
+#endif
+
 			if (precompute) {
 				sequential_improved_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
-					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index, 
+					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index,
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, no_norm, global_factor, fp, scatter, scatter_coef, TOF, TOFSize,
-					sigma_x, TOFCenter, nBins, dec_v, nCores);
+					sigma_x, TOFCenter, nBins, dec_v, subsets, angles, size_y, dPitch, nProjections, nCores);
 			}
 			else {
 				sequential_improved_siddon_no_precompute(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y,
 					z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index, TotSinos,
-					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays, n_rays3D, global_factor, fp, list_mode_format, 
-					scatter, scatter_coef, TOF, TOFSize, sigma_x, TOFCenter, nBins, dec_v, nCores);
+					epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, cr_pz, no_norm, n_rays, n_rays3D, global_factor, fp, list_mode_format,
+					scatter, scatter_coef, TOF, TOFSize, sigma_x, TOFCenter, nBins, dec_v, subsets, angles, size_y, dPitch, nProjections, nCores);
 			}
-
-
 		}
 		else if ((projector_type == 3u)) {
 			//if (nrhs < 54)
@@ -656,17 +774,43 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 
 			const double* V = V_.fortran_vec();
 
+#ifdef CT
+			const uint32_t subsets = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const NDArray angles_ = prhs(ind).array_value();
+
+			const double* angles = angles_.fortran_vec();
+			ind++;
+
+			const uint32_t size_y = prhs(ind).uint32_scalar_value();
+			ind++;
+
+			const double dPitch = prhs(ind).scalar_value();
+			ind++;
+
+			const int64_t nProjections = prhs(ind).int64_scalar_value();
+			ind++;
+
+#else
+			const uint32_t subsets = 1U;
+			const double* angles = nullptr;
+			const uint32_t size_y = 1U;
+			const double dPitch = 0.;
+			const int64_t nProjections = 0LL;
+#endif
+
 			if (precompute) {
 				sequential_volume_siddon(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms, x, y, z_det,
 					NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, lor1, xy_index, z_index,
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
-					no_norm, dec_v, global_factor, fp, scatter, scatter_coef, nCores);
+					no_norm, dec_v, global_factor, fp, scatter, scatter_coef, subsets, angles, size_y, dPitch, nProjections, nCores);
 			}
 			else {
 				sequential_volume_siddon_no_precomp(loop_var_par, size_x, zmax, Summ, rhs, maxyy, maxxx, xx_vec, dy, yy_vec, atten, norm_coef, randoms,
 					x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, attenuation_correction, normalization, randoms_correction, xy_index, z_index,
 					TotSinos, epps, Sino, osem_apu, L, pseudos, pRows, det_per_ring, raw, Vmax, x_center, y_center, z_center, bmin, bmax, V,
-					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef, nCores);
+					no_norm, dec_v, global_factor, fp, list_mode_format, scatter, scatter_coef, subsets, angles, size_y, dPitch, nProjections, nCores);
 			}
 		}
 
@@ -708,11 +852,58 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		const uint32_t projector_type = prhs(ind).uint32_scalar_value();
 		ind++;
 
+		// Voxel numbers in x-direction
+		const NDArray iij = prhs(ind).array_value();
+		ind++;
+
+		// Voxel numbers in y-direction
+		const NDArray jji = prhs(ind).array_value();
+		ind++;
+
+		// Voxel numbers in z-direction
+		const NDArray kkj = prhs(ind).array_value();
+		ind++;
+
+		vector<double> iij_vec(iij.numel(), 0.);
+		std::copy_n(iij.data(), iij.numel(), iij_vec.begin());
+
+		vector<double> jjk_vec(jji.numel(), 0.);
+		std::copy_n(jji.data(), jji.numel(), jjk_vec.begin());
+
+		vector<double> kkj_vec(kkj.numel(), 0.);
+		std::copy_n(kkj.data(), kkj.numel(), kkj_vec.begin());
+
+#ifdef CT
+		const uint32_t subsets = prhs(ind).uint32_scalar_value();
+		ind++;
+
+		const NDArray angles_ = prhs(ind).array_value();
+
+		const double* angles = angles_.fortran_vec();
+		ind++;
+
+		const uint32_t size_y = prhs(ind).uint32_scalar_value();
+		ind++;
+
+		const double dPitch = prhs(ind).scalar_value();
+		ind++;
+
+		const int64_t nProjections = prhs(ind).int64_scalar_value();
+		ind++;
+
+#else
+		const uint32_t subsets = 1U;
+		const double* angles = nullptr;
+		const uint32_t size_y = 1U;
+		const double dPitch = 0.;
+		const int64_t nProjections = 0LL;
+#endif
+
 		// Number of LORs
-		if (index_size > 1ULL && !raw) {
+		if (index_size > 1ULL && !raw && !list_mode_format) {
 			loop_var_par = index_size;
 		}
-		else if (!raw) {
+		else if (!raw || list_mode_format) {
 			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(size_x);
 		}
 		else {
@@ -744,8 +935,9 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 
 			// run the Improved Siddon's algorithm
 			lj = improved_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
-				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw, 
-				det_per_ring, blocks, block1, L, pseudos, pRows, global_factor, scatter, scatter_coef);
+				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw,
+				det_per_ring, blocks, block1, L, pseudos, pRows, global_factor, scatter, scatter_coef, subsets, angles, xy_index, z_index, size_y,
+				dPitch, nProjections, list_mode_format);
 		}
 		else if (projector_type == 2u) {
 
@@ -785,31 +977,12 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 			//if (nrhs < 46)
 			//	mexErrMsgTxt("Too few input arguments.  There must be at least 46.");
 
-			// Voxel numbers in x-direction
-			const NDArray iij = prhs(ind).array_value();
-			ind++;
-
-			// Voxel numbers in y-direction
-			const NDArray jji = prhs(ind).array_value();
-			ind++;
-
-			// Voxel numbers in z-direction
-			const NDArray kkj = prhs(ind).array_value();
-			ind++;
-
-			vector<double> iij_vec(iij.numel(), 0.);
-			std::copy_n(iij.data(), iij.numel(), iij_vec.begin());
-
-			vector<double> jji_vec(jji.numel(), 0.);
-			std::copy_n(jji.data(), jji.numel(), jji_vec.begin());
-
-			vector<double> kkj_vec(kkj.numel(), 0.);
-			std::copy_n(kkj.data(), kkj.numel(), kkj_vec.begin());
 
 			// run the original Siddon's algorithm
 			lj = original_siddon_no_precompute(loop_var_par, size_x, zmax, TotSinos, indices, elements, lor, maxyy, maxxx, xx_vec, dy,
 				yy_vec, atten, norm_coef, x, y, z_det, NSlices, Nx, Ny, Nz, d, dz, bx, by, bz, index, attenuation_correction, normalization, raw,
-				det_per_ring, blocks, block1, L, pseudos, pRows, iij_vec, jji_vec, kkj_vec, global_factor, scatter, scatter_coef);
+				det_per_ring, blocks, block1, L, pseudos, pRows, iij_vec, jjk_vec, kkj_vec, global_factor, scatter, scatter_coef, subsets, angles, xy_index, z_index, size_y,
+				dPitch, nProjections, list_mode_format);
 		}
 
 		const size_t outSize1 = static_cast<size_t>(lj) * 2ULL;
@@ -914,6 +1087,32 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		const uint32_t tyyppi = prhs(ind).uint32_scalar_value();
 		ind++;
 
+#ifdef CT
+		const uint32_t subsets = prhs(ind).uint32_scalar_value();
+		ind++;
+
+		const NDArray angles_ = prhs(ind).array_value();
+
+		const double* angles = angles_.fortran_vec();
+		ind++;
+
+		const uint32_t size_y = prhs(ind).uint32_scalar_value();
+		ind++;
+
+		const double dPitch = prhs(ind).scalar_value();
+		ind++;
+
+		const int64_t nProjections = prhs(ind).int64_scalar_value();
+		ind++;
+
+#else
+		const uint32_t subsets = 1U;
+		const double* angles = nullptr;
+		const uint32_t size_y = 1U;
+		const double dPitch = 0.;
+		const int64_t nProjections = 0LL;
+#endif
+
 		if (raw)
 			loop_var_par = numRows / 2ULL;
 		else
@@ -946,8 +1145,8 @@ DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
 		uint16_t* lor_vol = reinterpret_cast<uint16_t*>(lor_vol_.fortran_vec());
 
 		improved_siddon_precomputation_phase(loop_var_par, size_x, zmax, TotSinos, lor, maxyy, maxxx, xx_vec, z_det_vec, dy, yy_vec, x, y, z_det, NSlices, Nx, Ny, Nz,
-			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center, 
-			bmin, bmax, Vmax, V, nCores, list_mode_format);
+			d, dz, bx, by, bz, block1, blocks, L, pseudos, raw, pRows, det_per_ring, tyyppi, lor_orth, lor_vol, crystal_size, crystal_size_z, x_center, y_center, z_center,
+			bmin, bmax, Vmax, V, angles, size_y, dPitch, nProjections, nCores, list_mode_format);
 
 
 		retval(0) = octave_value(lor_);

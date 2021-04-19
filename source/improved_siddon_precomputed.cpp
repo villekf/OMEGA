@@ -32,17 +32,20 @@ using namespace std;
 
 
 void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* elements, const double maxyy,
-	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef, 
+	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef, 
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor, 
-	const bool scatter, const double* scatter_coef, const uint32_t nCores, const uint8_t list_mode) {
+	const bool scatter, const double* scatter_coef, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, 
+	const int64_t nProjections,	const uint32_t nCores, const uint8_t list_mode) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -51,17 +54,18 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 
 	// Parallel for-loop
 #ifdef _OPENMP
-#if _OPENMP >= 201511
-#pragma omp parallel for ordered schedule(dynamic)
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic, nChunks)
 #endif
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		Det detectors;
 
-		// Raw list-mode data
+#ifndef CT
+		// Raw data
 		if (raw) {
 			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode);
 		}
@@ -69,6 +73,10 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 		else {
 			get_detector_coordinates(x, y, z_det, size_x, detectors, xy_index, z_index, TotSinos, lo);
 		}
+#else
+		// CT data
+		get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode);
+#endif
 
 		// Calculate the x, y and z distances of the detector pair
 		const double y_diff = (detectors.yd - detectors.ys);
@@ -83,6 +91,10 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 		const uint64_t N2 = lor2[lo];
 		const uint64_t N22 = lor2[lo + 1];
 
+		double local_norm = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
+
 		// If the measurement is on a same ring
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
@@ -95,7 +107,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 				if (detectors.yd <= maxyy && detectors.yd >= by) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, norm_coef, attenuation_correction,
+					const double element = perpendicular_elements(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, local_norm, attenuation_correction,
 						normalization, temp_ijk, 1u, lo, global_factor, scatter, scatter_coef);
 
 					// Calculate the next index and store it as well as the probability of emission
@@ -111,7 +123,7 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					uint32_t temp_ijk = 0u;
 
-					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, norm_coef, attenuation_correction,
+					const double element = perpendicular_elements(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, local_norm, attenuation_correction,
 						normalization, temp_ijk, Nx, lo, global_factor, scatter, scatter_coef);
 
 					for (uint64_t ii = 0u; ii < static_cast<uint64_t>(Ny); ii++) {
@@ -153,9 +165,28 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 			double temp = 0., apu = 0.;
 
 			uint32_t tempijk = static_cast<uint32_t>(tempk) * Nyx + static_cast<uint32_t>(tempj) * Nx + static_cast<uint32_t>(tempi);
+			//if (lo == 2347812) {
+			//	mexPrintf("tx0 = %.10f\n", tx0);
+			//	mexPrintf("ty0 = %.10f\n", ty0);
+			//	mexPrintf("tz0 = %.10f\n", tz0);
+			//	mexPrintf("tzu = %.10f\n", tzu);
+			//	mexPrintf("tyu = %.10f\n", tyu);
+			//	mexPrintf("txu = %.10f\n", txu);
+			//	mexPrintf("tc = %.10f\n", tc);
+			//	mexPrintf("tempk = %d\n", tempk);
+			//	mexPrintf("tempi = %d\n", tempi);
+			//	mexPrintf("tempj = %d\n", tempj);
+			//	mexPrintf("detectors.xs = %f\n", detectors.xs);
+			//	mexPrintf("detectors.xd = %f\n", detectors.xd);
+			//	mexPrintf("detectors.ys = %f\n", detectors.ys);
+			//	mexPrintf("detectors.yd = %f\n", detectors.yd);
+			//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+			//	mexPrintf("detectors.zd = %f\n", detectors.zd);
+			//	mexEvalString("pause(.001);");
+			//}
 
 			// Compute the indices and matrix elements
-			for (uint32_t ii = 0u; ii < Np; ii++) {
+			for (uint64_t ii = 0ULL; ii < Np; ii++) {
 
 				indices[N2 + ii] = static_cast<size_t>(tempijk);
 				if (tx0 < ty0 && tx0 < tz0) {
@@ -189,10 +220,41 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 					tz0 += tzu;
 				}
 
+#ifndef CT
 				temp += apu;
+#endif
 				elements[N2 + ii] = (apu);
+				//if (lo == 2347812) {
+				////if (tempijk >= Nx * Ny * Nz) {
+				//	mexPrintf("detectors.xs = %f\n", detectors.xs);
+				//	mexPrintf("detectors.xd = %f\n", detectors.xd);
+				//	mexPrintf("detectors.ys = %f\n", detectors.ys);
+				//	mexPrintf("detectors.yd = %f\n", detectors.yd);
+				//	mexPrintf("tempijk = %d\n", tempijk);
+					//mexPrintf("tempk = %d\n", tempk);
+				////	//mexPrintf("nProjections = %d\n", nProjections);
+				////	mexPrintf("tx0 = %.10f\n", tx0);
+				////	mexPrintf("ty0 = %.10f\n", ty0);
+				////	mexPrintf("tz0 = %.10f\n", tz0);
+				////	//mexPrintf("z_diff = %f\n", z_diff);
+				////	//mexPrintf("x_diff = %f\n", x_diff);
+				////	//mexPrintf("y_diff = %f\n", y_diff);
+				//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+				//	mexPrintf("detectors.zd = %f\n", detectors.zd);
+				////	//mexPrintf("bz = %f\n", bz);
+				////	//mexPrintf("bzb = %f\n", bzb);
+				//	//mexPrintf("lo = %d\n", lo);
+				////	//mexPrintf("tempijk = %d\n", tempijk);
+				////	//mexPrintf("N2 + ii = %u\n", N2 + ii);
+				//	//mexPrintf("Np = %u\n", Np);
+				//	mexPrintf("ii = %u\n", ii);
+				////	//mexPrintf("elements[N2 + ii] = %f\n", elements[N2 + ii]);
+				////	mexPrintf("indices[N2 + ii] = %u\n", indices[N2 + ii]);
+				////	mexEvalString("pause(.001);");
+				//}
 			}
 
+#ifndef CT
 			// If computing the attenuation image (Inveon)
 			if (attenuation_phase)
 				length[lo] = temp;
@@ -203,15 +265,15 @@ void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size
 			if (attenuation_correction)
 				att_corr_vec_precomp(elements, atten, indices, Np, N2, temp);
 			if (normalization)
-				temp *= norm_coef[lo];
+				temp *= local_norm;
 			if (scatter)
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
 
-
 			for (uint32_t ii = 0u; ii < Np; ii++) {
 				elements[N2 + ii] = fabs(elements[N2 + ii]) * (temp);
 			}
+#endif
 		}
 	}
 }

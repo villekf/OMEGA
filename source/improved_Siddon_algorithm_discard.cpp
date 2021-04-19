@@ -44,13 +44,20 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz,
 	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
 	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, const double crystal_size_z,
-	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V, const uint32_t nCores, 
-	const uint8_t list_mode_format) {
+	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, const double* V, const double* angles, 
+	const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores, const uint8_t list_mode_format) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
+
+#ifdef CT
+	const uint32_t* xy_index = nullptr;
+	const uint16_t* z_index = nullptr;
+#endif
 
 	const double bzb = bz + static_cast<double>(Nz) * dz;
 
@@ -68,11 +75,18 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const uint32_t tid = 0U;
 	size_t* indi = 0;
 
-#pragma omp parallel for ordered schedule(dynamic)
+#ifdef _OPENMP
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
+#else
+#pragma omp parallel for schedule(dynamic, nChunks)
+#endif
+#endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 		Det detectors;
 		uint32_t ind = 0U;
 
+#ifndef CT
 		if (raw) {
 			if (list_mode_format) {
 				detectors.zs = z_det[lo];
@@ -122,6 +136,9 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 			detectors.zs = z_det[idz];
 			detectors.zd = z_det[idz + TotSinos];
 		}
+#else
+		get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, 1U, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode_format);
+#endif
 
 
 		const double x_diff = (detectors.xd - detectors.xs);
@@ -163,6 +180,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 					// The number of voxels the LOR/ray traverses
 
 					if (type == 1u || type == 2u) {
+#ifndef CT
 						double temppi = detectors.xs;
 						detectors.xs = detectors.ys;
 						detectors.ys = temppi;
@@ -174,6 +192,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								detectors, y_diff, x_diff, z_diff, tempk);
 							lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
 						}
+#endif
 					}
 					else if (type == 3u) {
 						double temppi = detectors.xs;
@@ -192,6 +211,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					// The number of voxels the LOR/ray traverses
 					if (type == 1u || type == 2u) {
+#ifndef CT
 						orth_perpendicular_precompute(Ny, Nx, detectors.xd, xx_vec, x_center, y_center[0], z_center, kerroin, temp_koko_orth, detectors,
 							x_diff, y_diff, z_diff, tempk);
 						lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
@@ -200,6 +220,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 								detectors, x_diff, y_diff, z_diff, tempk);
 							lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
 						}
+#endif
 					}
 					else if (type == 3u) {
 						volume_perpendicular_precompute(Ny, Nx, Nz, detectors.xd, xx_vec, x_center, y_center[0], z_center, kerroin, temp_koko_vol,
@@ -240,6 +261,25 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				skip = siddon_pre_loop_3D(bx, by, bz, x_diff, y_diff, z_diff, maxxx, maxyy, bzb, dx, dy, dz, Nx, Ny, Nz, tempi, tempj, tempk, tyu, txu, tzu,
 					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0);
 			}
+			//if (lo == 651) {
+			//	mexPrintf("tx0 = %.10f\n", tx0);
+			//	mexPrintf("ty0 = %.10f\n", ty0);
+			//	mexPrintf("tz0 = %.10f\n", tz0);
+			//	mexPrintf("tzu = %.10f\n", tzu);
+			//	mexPrintf("tyu = %.10f\n", tyu);
+			//	mexPrintf("txu = %.10f\n", txu);
+			//	mexPrintf("tc = %.10f\n", tc);
+			//	mexPrintf("tempk = %d\n", tempk);
+			//	mexPrintf("tempi = %d\n", tempi);
+			//	mexPrintf("tempj = %d\n", tempj);
+			//	mexPrintf("detectors.xs = %f\n", detectors.xs);
+			//	mexPrintf("detectors.xd = %f\n", detectors.xd);
+			//	mexPrintf("detectors.ys = %f\n", detectors.ys);
+			//	mexPrintf("detectors.yd = %f\n", detectors.yd);
+			//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+			//	mexPrintf("detectors.zd = %f\n", detectors.zd);
+			//	mexEvalString("pause(.001);");
+			//}
 
 			if (!skip) {
 
@@ -248,9 +288,11 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 					if (type == 1u || type == 2u) {
 						alku = tempk + 1;
 						loppu = tempk;
+#ifndef CT
 						orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 							tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
 							PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
+#endif
 					}
 					if (type > 1u) {
 						alku = Nz;
@@ -261,11 +303,13 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 						else if (ku < 0) {
 							loppu = tempk;
 						}
+#ifndef CT
 						if (type == 2u) {
 							orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
 								PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 						}
+#endif
 						if (type == 3u) {
 							volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 								tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
@@ -293,6 +337,7 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 						tz0 += tzu;
 						xyz = 3u;
 						if (type == 1u || type == 2u) {
+#ifndef CT
 							if (tempk < Nz && tempk >= 0) {
 								alku = tempk + 1;
 								loppu = tempk;
@@ -300,16 +345,19 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
 									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 							}
+#endif
 						}
 						if (type > 1u) {
 							if (tempk < Nz && tempk >= 0) {
 								alku = tempk + 1;
 								loppu = tempk;
+#ifndef CT
 								if (type == 2u) {
 									orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
 										PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 								}
+#endif
 								if (type == 3u) {
 									volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 										tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
@@ -318,6 +366,20 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							}
 						}
 					}
+					//if (lo == 47229200) {
+					//	//mexPrintf("detectors.xs = %f\n", detectors.xs);
+					//	//mexPrintf("detectors.xd = %f\n", detectors.xd);
+					//	//mexPrintf("detectors.ys = %f\n", detectors.ys);
+					//	//mexPrintf("detectors.yd = %f\n", detectors.yd);
+					//	//mexPrintf("detectors.zs = %f\n", detectors.zs);
+					//	//mexPrintf("detectors.zd = %f\n", detectors.zd);
+					//	//mexPrintf("tx0 = %.10f\n", tx0);
+					//	//mexPrintf("ty0 = %.10f\n", ty0);
+					//	//mexPrintf("tz0 = %.10f\n", tz0);
+						//mexPrintf("tempk = %d\n", tempk);
+					//	mexPrintf("temp_koko = %d\n", temp_koko);
+					//	mexEvalString("pause(.001);");
+					//}
 					if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz)) {
 						if (xyz < 3 && type > 1u) {
 							if (xyz == 1)
@@ -336,11 +398,13 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 							else if (ku < 0) {
 								alku = tempk + 1;
 							}
+#ifndef CT
 							if (type == 2u) {
 								orth_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroinz, no_norm, RHS, SUMMA, OMP,
 									PRECOMPUTE, DISCARD, rhs, Summ, indi, elements, v_indices, temp_koko_orth_3D, Ny, Nx, alku, iu, ju, loppu, store_elements, store_indices, tid, ind);
 							}
+#endif
 							if (type == 3u) {
 								volume_distance_3D_full(tempi, Nx, Nz, y_diff, x_diff, z_diff, y_center, x_center, z_center, temp, 1u,
 									tempj, tempk, local_sino, ax, osem_apu, detectors, Nyx, kerroin, no_norm, RHS, SUMMA, OMP,
@@ -352,13 +416,19 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 				}
 				// The number of voxels the LOR/ray traverses
 				if (type == 1u || type == 2u) {
+#ifndef CT
 					lor_orth[lo] = static_cast<uint16_t>(temp_koko_orth);
 					if (type == 2u)
 						lor_orth[lo + loop_var_par] = static_cast<uint16_t>(temp_koko_orth_3D);
+#endif
 				}
 				else if (type == 3u)
 					lor_vol[lo] = static_cast<uint16_t>(temp_koko_vol);
 				lor[lo] = temp_koko;
+
+				//if (lo == 47229200) {
+				//	break;
+				//}
 			}
 		}
 	}

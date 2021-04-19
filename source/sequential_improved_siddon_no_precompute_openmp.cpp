@@ -40,19 +40,22 @@ using namespace std;
 
 // Improved multi-ray Siddon
 void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx,	const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef, 
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
+	const double maxxx,	const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef, 
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, 
 	const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
-	const int64_t nBins, const uint32_t dec_v, const uint32_t nCores) {
+	const int64_t nBins, const uint32_t dec_v, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
+	const uint32_t nCores) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
 
 	// Size of single 2D image
 	const uint32_t Nyx = Ny * Nx;
@@ -76,10 +79,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	vector<double> TOFVal(nRays * nBins * dec_v * threads, 0.);
 
 #ifdef _OPENMP
-#if _OPENMP >= 201511
-#pragma omp parallel for ordered schedule(dynamic)
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic, nChunks)
 #endif
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
@@ -87,10 +90,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 		double local_sino = 0.;
 		if (TOF) {
 			for (int64_t to = 0LL; to < nBins; to++)
-				local_sino += Sino[lo + TOFSize * to];
+				local_sino += static_cast<double>(Sino[lo + TOFSize * to]);
 		}
 		else if (list_mode_format <= 1) {
-			local_sino = Sino[lo];
+			local_sino = static_cast<double>(Sino[lo]);
 		}
 		if (no_norm && local_sino == 0.)
 			continue;
@@ -128,10 +131,21 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 		vector<bool> pass(nRays, false);
 
+#ifndef CT
 		if (fp == 2 && list_mode_format <= 1) {
 			for (int64_t to = 0LL; to < nBins; to++)
 				yax[to] = osem_apu[lo + to * loop_var_par];
 		}
+#else
+		if (fp == 2 && list_mode_format <= 1)
+			yax[0] = osem_apu[lo];
+#endif
+		double local_norm = 0.;
+		double local_rand = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
+		if (randoms_correction)
+			local_rand = static_cast<double>(randoms[lo]);
 
 		// Loop through the rays
 		for (uint16_t lor = 0u; lor < nRays; lor++) {
@@ -144,7 +158,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 			Det detectors;
 
-			// Raw list-mode data
+#ifndef CT
+			// Raw data
 			if (raw) {
 				// Pure list-mode format (e.g. event-by-event)
 				if (list_mode_format > 0)
@@ -157,6 +172,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			else {
 				get_detector_coordinates_mr(x, y, z_det, size_x, detectors, xy_index, z_index, TotSinos, lo, lor + 1u, dc_z, n_rays, n_rays3D);
 			}
+#else
+			// CT data
+			get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode_format);
+#endif
 
 			// Calculate the x, y and z distances of the detector pair
 			y_diff[lor] = (detectors.yd - detectors.ys);
@@ -203,8 +222,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 								}
 							}
 						}
+#ifndef CT
 						// Total length
 						temp += element;
+#endif
 						tempk_a[lor] = apu;
 						pass[lor] = true;
 					}
@@ -233,8 +254,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 								}
 							}
 						}
+#ifndef CT
 						// Total length
 						temp += element;
+#endif
 						tempk_a[lor] = apu;
 						pass[lor] = true;
 					}
@@ -294,27 +317,34 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					D_a[lor] = D;
 					DD = D;
 				}
-
-				 //Compute the total distance traveled by this ray in the FOV
-				for (uint32_t ii = 0; ii < Np; ii++) {
-					if (tx0 < ty0 && tx0 < tz0) {
-						ForwardProject(tx0, tc, txu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii, fp, list_mode_format);
+#ifdef CT
+				if (fp != 2) {
+#endif
+					//Compute the total distance traveled by this ray in the FOV
+					for (uint32_t ii = 0; ii < Np; ii++) {
+						if (tx0 < ty0 && tx0 < tz0) {
+							ForwardProject(tx0, tc, txu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+								sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii, fp, list_mode_format);
+						}
+						else if (ty0 < tz0) {
+							ForwardProject(ty0, tc, tyu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+								sigma_x, D, osem_apu, ax, epps, temp, tempj, ju, Nx, tid, ii, fp, list_mode_format);
+						}
+						else {
+							ForwardProject(tz0, tc, tzu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
+								sigma_x, D, osem_apu, ax, epps, temp, tempk, ku, Nyx, tid, ii, fp, list_mode_format);
+						}
+						// Number of voxels traversed
+						Np_n[lor]++;
+						// Check if ray has left the FOV
+						if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
+							break;
 					}
-					else if (ty0 < tz0) {
-						ForwardProject(ty0, tc, tyu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempj, ju, Nx, tid, ii, fp, list_mode_format);
-					}
-					else {
-						ForwardProject(tz0, tc, tzu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
-							sigma_x, D, osem_apu, ax, epps, temp, tempk, ku, Nyx, tid, ii, fp, list_mode_format);
-					}
-					// Number of voxels traversed
-					Np_n[lor]++;
-					// Check if ray has left the FOV
-					if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
-						break;
+#ifdef CT
 				}
+				else
+					Np_n[lor] = Np;
+#endif
 				// This ray passed the FOV
 				pass[lor] = true;
 			}
@@ -329,6 +359,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 			if (pass[lor]) {
 
+#ifndef CT
 				// Compute only before the first ray
 				if (alku) {
 					// To compute probability of each voxel interaction
@@ -342,7 +373,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					}
 					// Include normalization
 					if (normalization)
-						temp *= norm_coef[lo];
+						temp *= local_norm;
 					if (scatter)
 						temp *= scatter_coef[lo];
 					// Global correction factor
@@ -356,7 +387,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 								else
 									ax[to] *= temp;
 								if (randoms_correction)
-									ax[to] += randoms[lo];
+									ax[to] += local_rand;
 								rhs[lo + to * loop_var_par] = ax[to];
 							}
 						}
@@ -366,7 +397,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 							else
 								ax[0] *= temp;
 							if (randoms_correction)
-								ax[0] += randoms[lo];
+								ax[0] += local_rand;
 							rhs[lo] = ax[0];
 						}
 						break;
@@ -383,7 +414,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 										ax[to] *= temp;
 									}
 									if (randoms_correction)
-										ax[to] += randoms[lo];
+										ax[to] += local_rand;
 									yax[to] = Sino[lo + to * TOFSize] / ax[to];
 								}
 							}
@@ -395,13 +426,26 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									ax[0] *= temp;
 								}
 								if (randoms_correction)
-									ax[0] += randoms[lo];
+									ax[0] += local_rand;
 								yax[0] = local_sino / ax[0];
 							}
 						}
 					}
 					alku = false;
 				}
+#else
+				if (fp == 1 && list_mode_format <= 1) {
+					if (randoms_correction)
+						ax[0] += local_rand;
+					rhs[lo] = ax[0];
+					break;
+				}
+				else if (fp != 2) {
+					if (randoms_correction)
+						ax[0] += local_rand;
+					yax[0] = (std::exp(-ax[0]) / local_sino);
+				}
+#endif
 #ifdef _OPENMP
 				const int64_t tid = omp_get_thread_num() * dec_v * nRays * nBins + static_cast<int64_t>(lor) * nBins * static_cast<int64_t>(dec_v);
 #else
@@ -411,13 +455,15 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 				if (fabs(z_diff[lor]) < 1e-8 && (fabs(y_diff[lor]) < 1e-8 || fabs(x_diff[lor]) < 1e-8)) {
 
 					if (fabs(y_diff[lor]) < 1e-8) {
-
+#ifndef CT
 						if (local_sino != 0. && list_mode_format <= 1) {
+#endif
 							for (uint32_t k = 0; k < Nx; k++) {
 								// "Right-hand side", backprojection
 								double val = dx;
 								double val_rhs = 0.;
 
+#ifndef CT
 								if (TOF) {
 									if (k == 0) {
 										xI = (dx * Nx - x_diff[lor]) / 2.;
@@ -429,6 +475,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									val *= temp;
 									val_rhs = val * yax[0];
 								}
+#else
+								val_rhs = val * yax[0];
+								//val *= (local_sino);
+#endif
 #pragma omp atomic
 								rhs[tempk_a[lor] + k] += (val_rhs);
 								if (no_norm == 0 && val > 0.) {
@@ -436,6 +486,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									Summ[tempk_a[lor] + k] += val;
 								}
 							}
+#ifndef CT
 						}
 						else {
 							for (uint32_t k = 0; k < Nx; k++) {
@@ -457,13 +508,17 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 								}
 							}
 						}
+#endif
 					}
 					else if (fabs(x_diff[lor]) < 1e-8) {
+#ifndef CT
 						if (local_sino != 0. && list_mode_format <= 1) {
+#endif
 							for (uint32_t k = 0; k < Ny; k++) {
 								double val = dy;
 								double val_rhs = 0.;
 
+#ifndef CT
 								if (TOF) {
 									if (k == 0) {
 										yI = (dy * Ny - y_diff[lor]) / 2.;
@@ -475,6 +530,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									val *= temp;
 									val_rhs = val * yax[0];
 								}
+#else
+								val_rhs = val * yax[0];
+								//val *= (local_sino);
+#endif
 #pragma omp atomic
 								rhs[tempk_a[lor] + k * Nx] += (val_rhs);
 								if (no_norm == 0 && val > 0.) {
@@ -482,6 +541,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									Summ[tempk_a[lor] + k * Nx] += val;
 								}
 							}
+#ifndef CT
 						}
 						else {
 							for (uint32_t k = 0; k < Ny; k++) {
@@ -503,6 +563,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 								}
 							}
 						}
+#endif
 					}
 				}
 				else {
@@ -512,9 +573,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					const double txu = txu_a[lor];
 					const double tyu = tyu_a[lor];
 					const double tzu = tzu_a[lor];
-					const int32_t tempi = tempi_a[lor];
-					const int32_t tempj = tempj_a[lor];
-					const int32_t tempk = tempk_a[lor];
+					int32_t tempi = tempi_a[lor];
+					int32_t tempj = tempj_a[lor];
+					int32_t tempk = tempk_a[lor];
 					const int32_t iu = iu_a[lor];
 					const int32_t ju = ju_a[lor];
 					const int32_t ku = ku_a[lor];
@@ -523,21 +584,28 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					D = D_a[lor];
 					DD = D;
 
+#ifndef CT
 					if (local_sino != 0. && list_mode_format <= 1) {
+#endif
 						for (uint32_t ii = 0; ii < Np_n[lor]; ii++) {
 							if (tx0 < ty0 && tx0 < tz0) {
 								backwardProjection(tx0, tc, txu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
-									iu, 1U, no_norm, rhs, Summ, tid, ii);
+									iu, 1U, no_norm, rhs, Summ, tid, ii, tempi, local_sino);
 							}
 							else if (ty0 < tz0) {
 								backwardProjection(ty0, tc, tyu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
-									ju, Nx, no_norm, rhs, Summ, tid, ii);
+									ju, Nx, no_norm, rhs, Summ, tid, ii, tempj, local_sino);
 							}
 							else {
 								backwardProjection(tz0, tc, tzu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
-									ku, Nyx, no_norm, rhs, Summ, tid, ii);
+									ku, Nyx, no_norm, rhs, Summ, tid, ii, tempk, local_sino);
 							}
+#ifdef CT
+							if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= static_cast<int32_t>(Nx) || tempj >= static_cast<int32_t>(Ny) || tempk >= static_cast<int32_t>(Nz))
+								break;
+#endif
 						}
+#ifndef CT
 					}
 					else {
 						for (uint32_t ii = 0; ii < Np_n[lor]; ii++) {
@@ -555,27 +623,31 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 							}
 						}
 					}
+#endif
 				}
 			}
 		}
 	}
 }
 
+#ifndef CT
 // Orthogonal ray tracer
 void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef,
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
+	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z,
 	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, 
 	const uint32_t nCores) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -595,17 +667,17 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
 #ifdef _OPENMP
-#if _OPENMP >= 201511
-#pragma omp parallel for ordered schedule(dynamic)
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic, nChunks)
 #endif
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
 		if (list_mode_format <= 1)
-			local_sino = Sino[lo];
+			local_sino = static_cast<double>(Sino[lo]);
 		if (no_norm && local_sino == 0.)
 			continue;
 
@@ -659,6 +731,12 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 		else {
 			kerroin = norm(x_diff, y_diff, z_diff) * crystal_size_z;
 		}
+		double local_norm = 0.;
+		double local_rand = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
+		if (randoms_correction)
+			local_rand = static_cast<double>(randoms[lo]);
 
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
@@ -672,7 +750,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					if (crystal_size_z == 0.) {
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
-							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
+							by, detectors.yd, dy, Ny, Nx, tempk, atten, local_norm, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
@@ -680,13 +758,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							else
 								ax *= temp;
 							if (randoms_correction)
-								ax += randoms[lo];
+								ax += local_rand;
 							rhs[lo] = ax;
 							continue;
 						}
 						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
-								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 							}
 							orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 								1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -699,7 +777,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					else {
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
-							by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+							by, detectors.yd, dy, Ny, Nx, tempk, atten, local_norm, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
@@ -707,13 +785,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							else
 								ax *= temp;
 							if (randoms_correction)
-								ax += randoms[lo];
+								ax += local_rand;
 							rhs[lo] = ax;
 							continue;
 						}
 						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
-								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 							}
 							orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 								1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -730,7 +808,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					if (crystal_size_z == 0.) {
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, attenuation_correction, normalization, ax,
-							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
+							bx, detectors.xd, dx, Nx, Ny, tempk, atten, local_norm, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
@@ -738,13 +816,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							else
 								ax *= temp;
 							if (randoms_correction)
-								ax += randoms[lo];
+								ax += local_rand;
 							rhs[lo] = ax;
 							continue;
 						}
 						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
-								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 							}
 							orth_distance_rhs_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, ax, bx, detectors.xd, dx, Nx, Ny, tempk,
 								1u, Nx, no_norm, rhs, Summ, true, false, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -757,7 +835,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 					else {
 						double temp = 0.;
 						orth_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
-							bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+							bx, detectors.xd, dx, Nx, Ny, tempk, atten, local_norm, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 							ind, rhs, indi, lo, PRECOMPUTE, global_factor, scatter, scatter_coef);
 						if (fp == 1 && list_mode_format <= 1) {
 							if (ax == 0.)
@@ -765,13 +843,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 							else
 								ax *= temp;
 							if (randoms_correction)
-								ax += randoms[lo];
+								ax += local_rand;
 							rhs[lo] = ax;
 							continue;
 						}
 						if (local_sino > 0. && list_mode_format <= 1) {
 							if (fp != 2) {
-								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+								nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 							}
 							orth_distance_rhs_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, ax, bx, detectors.xd, dx, Nx, Ny, tempk,
 								1u, Nx, no_norm, rhs, Summ, true, false, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -916,7 +994,7 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 			if (attenuation_correction)
 				temp *= exp(jelppi);
 			if (normalization)
-				temp *= norm_coef[lo];
+				temp *= local_norm;
 			if (scatter)
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
@@ -927,13 +1005,13 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 				else
 					ax *= temp;
 				if (randoms_correction)
-					ax += randoms[lo];
+					ax += local_rand;
 				rhs[lo] = ax;
 				continue;
 			}
 			if (local_sino != 0. && list_mode_format <= 1) {
 				if (fp != 2) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 				}
 				RHS = true;
 			}
@@ -945,20 +1023,25 @@ void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_
 		}
 	}
 }
+#endif
 
 void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const double* norm_coef,
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
+	const double maxxx, const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, const uint32_t nCores) {
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, 
+	const double* scatter_coef, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
+	const uint32_t nCores) {
 
+#ifdef _OPENMP
 	if (nCores == 1U)
 		setThreads();
 	else
 		omp_set_num_threads(nCores);
+#endif
 
 	const uint32_t Nyx = Ny * Nx;
 
@@ -978,17 +1061,17 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 	std::vector<uint32_t> store_indices(threads * dec_v, 0u);
 
 #ifdef _OPENMP
-#if _OPENMP >= 201511
-#pragma omp parallel for ordered schedule(dynamic)
+#if _OPENMP >= 201511 && defined(MATLAB)
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
 #else
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for schedule(dynamic, nChunks)
 #endif
 #endif
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
 		if (list_mode_format <= 1)
-			local_sino = Sino[lo];
+			local_sino = static_cast<double>(Sino[lo]);
 		if (no_norm && local_sino == 0.)
 			continue;
 
@@ -1000,7 +1083,8 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 		Det detectors;
 		double kerroin;
 
-		// Raw list-mode data
+#ifndef CT
+		// Raw data
 		if (raw) {
 			get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode_format);
 		}
@@ -1008,6 +1092,10 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 		else {
 			get_detector_coordinates(x, y, z_det, size_x, detectors, xy_index, z_index, TotSinos, lo);
 		}
+#else
+		// CT data
+		get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode_format);
+#endif
 
 		// Calculate the x, y and z distances of the detector pair
 		double x_diff = (detectors.xd - detectors.xs);
@@ -1037,6 +1125,12 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 		}
 
 		kerroin = norm(x_diff, y_diff, z_diff);
+		double local_norm = 0.;
+		double local_rand = 0.;
+		if (normalization)
+			local_norm = static_cast<double>(norm_coef[lo]);
+		if (randoms_correction)
+			local_rand = static_cast<double>(randoms[lo]);
 
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
@@ -1049,21 +1143,23 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 					detectors.ys = temppi;
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(y_center, x_center[0], z_center, temp, attenuation_correction, normalization, ax,
-						by, detectors.yd, dy, Ny, Nx, tempk, atten, norm_coef, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+						by, detectors.yd, dy, Ny, Nx, tempk, atten, local_norm, local_sino, Ny, 1u, osem_apu, detectors, y_diff, x_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
 					if (fp == 1 && list_mode_format <= 1) {
+#ifndef CT
 						if (ax == 0.)
 							ax = epps;
 						else
 							ax *= temp;
+#endif
 						if (randoms_correction)
-							ax += randoms[lo];
+							ax += local_rand;
 						rhs[lo] = ax;
 						continue;
 					}
 					if (local_sino != 0. && list_mode_format <= 1) {
 						if (fp != 2) {
-							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 						}
 						orth_distance_rhs_perpendicular_mfree(y_center, x_center[0], z_center, kerroin, temp, ax, by, detectors.yd, dy, Ny, Nx, tempk, Ny,
 							1u, no_norm, rhs, Summ, true, false, detectors, y_diff, x_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -1078,21 +1174,23 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 				if (detectors.xd <= maxxx && detectors.xd >= bx) {
 					double temp = 0.;
 					volume_distance_denominator_perpendicular_mfree_3D(x_center, y_center[0], z_center, temp, attenuation_correction, normalization, ax,
-						bx, detectors.xd, dx, Nx, Ny, tempk, atten, norm_coef, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
+						bx, detectors.xd, dx, Nx, Ny, tempk, atten, local_norm, local_sino, 1u, Nx, osem_apu, detectors, x_diff, y_diff, z_diff, kerroin, Nyx, Nz, store_elements, store_indices, tid,
 						ind, rhs, indi, lo, PRECOMPUTE, global_factor, bmax, bmin, Vmax, V, scatter, scatter_coef);
 					if (fp == 1 && list_mode_format <= 1) {
+#ifndef CT
 						if (ax == 0.)
 							ax = epps;
 						else
 							ax *= temp;
+#endif
 						if (randoms_correction)
-							ax += randoms[lo];
+							ax += local_rand;
 						rhs[lo] = ax;
 						continue;
 					}
 					if (local_sino != 0. && list_mode_format <= 1) {
 						if (fp != 2) {
-							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+							nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 						}
 						orth_distance_rhs_perpendicular_mfree(x_center, y_center[0], z_center, kerroin, temp, ax, bx, detectors.xd, dx, Nx, Ny, tempk,
 							1u, Nx, no_norm, rhs, Summ, true, false, detectors, x_diff, y_diff, z_diff, store_elements, store_indices, tid, ind, 0, indi);
@@ -1175,22 +1273,28 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 
 			for (uint32_t ii = 0u; ii < Np; ii++) {
 				if (tx0 < ty0 && tx0 < tz0) {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, tx0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempi += iu;
 					tx0 += txu;
 					xyz = 1U;
 				}
 				else if (ty0 < tz0) {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempj += ju;
 					ty0 += tyu;
 					xyz = 2U;
 				}
 				else {
+#ifndef CT
 					if (attenuation_correction)
 						compute_attenuation(tc, jelppi, LL, ty0, tempi, tempj, tempk, Nx, Nyx, atten);
+#endif
 					tempk += ku;
 					tz0 += tzu;
 					xyz = 3U;
@@ -1229,28 +1333,32 @@ void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint3
 				}
 			}
 
+#ifndef CT
 			temp = 1. / temp;
 			if (attenuation_correction)
 				temp *= exp(jelppi);
 			if (normalization)
-				temp *= norm_coef[lo];
+				temp *= local_norm;
 			if (scatter)
 				temp *= scatter_coef[lo];
 			temp *= global_factor;
+#endif
 
 			if (fp == 1 && list_mode_format <= 1) {
+#ifndef CT
 				if (ax == 0.)
 					ax = epps;
 				else
 					ax *= temp;
+#endif
 				if (randoms_correction)
-					ax += randoms[lo];
+					ax += local_rand;
 				rhs[lo] = ax;
 				continue;
 			}
 			if (local_sino != 0. && list_mode_format <= 1) {
 				if (fp != 2) {
-					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, randoms, lo);
+					nominator_mfree(ax, local_sino, epps, temp, randoms_correction, local_rand, lo);
 				}
 				RHS = true;
 			}
