@@ -93,10 +93,10 @@ void siddon_multi(const float global_factor, const float d_epps, const unsigned 
 	const unsigned char* MethodList, const float* d_norm, const float* d_scat, CAST* d_Summ, const unsigned short* d_lor,
 	const unsigned int* d_xyindex, const unsigned short* d_zindex, const unsigned short* d_L, const float* d_Sino, const float* d_sc_ra, const float* d_OSEM,
 #ifndef MBSREM
-	CAST* d_rhs_OSEM, const unsigned char no_norm, const unsigned long long int m_size
+	CAST* d_rhs_OSEM, const unsigned char no_norm, const unsigned long long int m_size, const unsigned long long int cumsum
 #else
 	const unsigned int d_alku, const unsigned char MBSREM_prepass, float* d_ACOSEM_lhs, float* d_Amin, CAST* d_co,
-	CAST* d_aco, float* d_E, const unsigned long long int m_size, const RecMethodsOpenCL MethodListOpenCL
+	CAST* d_aco, float* d_E, const unsigned long long int m_size, const RecMethodsOpenCL MethodListOpenCL, const unsigned long long int cumsum
 #endif
 ) {
 	// Get the current global index
@@ -804,5 +804,41 @@ void NLM(float* grad, const float* u, const float* u_ref, const float* gaussian,
 
 	grad[n] = output;
 
+}
+#endif
+
+#ifdef MEDIAN
+extern "C" __global__
+void medianFilter3D(const float* grad, float* output, const unsigned int Nx, const unsigned int Ny, const unsigned int Nz) {
+	int xid = threadIdx.x + blockIdx.x * blockDim.x;
+	int yid = threadIdx.y + blockIdx.y * blockDim.y;
+	int zid = threadIdx.z + blockIdx.z * blockDim.z;
+	unsigned int get_global_size[] = { gridDim.x * blockDim.x, gridDim.y * blockDim.y };
+	if (xid < SEARCH_WINDOW_X || xid >= Nx + SEARCH_WINDOW_X || yid < SEARCH_WINDOW_Y || yid >= Ny + SEARCH_WINDOW_Y || zid < SEARCH_WINDOW_Z || zid >= Nz + SEARCH_WINDOW_Z)
+		return;
+	int koko = (SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1);
+	float median[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	float medianF[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	int uu = 0;
+	for (int x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
+		for (int y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
+			for (int z = -SEARCH_WINDOW_Z; z <= SEARCH_WINDOW_Z; z++) {
+				unsigned int pikseli = (xid + x) + (yid + y) * get_global_size[0] + (zid + z) * get_global_size[0] * get_global_size[1];
+				median[uu] = grad[pikseli];
+				uu++;
+			}
+		}
+	}
+	for (int hh = 0; hh < koko; hh++) {
+		int ind = 0;
+		for (int ll = 0; ll < koko; ll++) {
+			if (median[hh] > median[ll] || (median[hh] == median[ll] && hh < ll))
+				ind++;
+		}
+		medianF[ind] = median[hh];
+		if (ind == koko / 2)
+			break;
+	}
+	output[xid + yid * get_global_size[0] + zid * get_global_size[0] * get_global_size[1]] = medianF[koko / 2];
 }
 #endif
