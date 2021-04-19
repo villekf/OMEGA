@@ -21,6 +21,10 @@ function options = custom_prior_reconstruction(options, t, iter, osa_iter)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+if options.OS_bool && options.MLEM_bool
+    error('Custom prior reconstruction is not supported when BOTH an OS-type algorithm and a non-OS algorithm are selected')
+end
+
 if iscell(options.SinM)
     Sino = options.SinM{t};
 else
@@ -58,13 +62,13 @@ if exist('feature','builtin') == 5
 else
     nCores = uint32(1);
 end
+    
+Nx = uint32(options.Nx);
+Ny = uint32(options.Ny);
+Nz = uint32(options.Nz);
 
 %%
 if options.implementation == 1
-    
-    Nx = options.Nx;
-    Ny = options.Ny;
-    Nz = options.Nz;
     
     iij = double(0:options.Nx);
     jji = double(0:options.Ny);
@@ -119,56 +123,41 @@ if options.implementation == 1
     clear A
 else
     %%
+    if options.implementation == 3
+        error('Implementation 3 is not supported with custom priors!')
+    end
     options = double_to_single(options);
     rekot = reko_maker(options);
     
     if t == 1 && iter == 1 && osa_iter == 1
         options.im_vectors = initialize_im_vectors(options.im_vectors, iter, options);
     end
-    if t > 1 && osa_iter == 1 && iter == 1
+%     if t > 1 && osa_iter == 1 && iter == 1
         options.x0 = options.x00;
-    else
-        options.x0 = updateInitialValue(options.im_vectors, options);
-    end
+%     else
+%         options.x0 = updateInitialValue(options.im_vectors, options);
+%     end
     if (options.RBI || options.MBSREM || options.OSL_RBI || options.OSL_COSEM > 0) && t == 1 && iter == 1 && osa_iter == 1
         options.D = zeros(options.N,1,'single');
     end
+    varMAP = recNames(2);
     
-    if isfield(options, 'grad_OSEM') && options.OSL_OSEM
-        options.grad_OSL_OSEM = single(options.grad_OSL_OSEM);
-        options.beta_custom_OSL_OSEM = single(options.beta_custom_OSL_OSEM);
-        options.custom_osl_apu = options.im_vectors.custom_OSL_apu;
+    oo = 1;
+    for kk = 1 : numel(varMAP)
+        if isfield(options, ['grad_' varMAP{kk}]) && options.(varMAP{kk})
+            options.(['grad_' varMAP{kk}]) = single(options.(['grad_' varMAP{kk}])(:));
+            options.(['beta_custom_' varMAP{kk}]) = single(options.(['beta_custom_' varMAP{kk}]));
+            options.(['custom_' varMAP{kk} '_apu']) = options.im_vectors.(['custom_' varMAP{kk} '_apu']);
+            options.varApu{oo} = ['custom_' varMAP{kk} '_apu'];
+            options.varGrad{oo} = ['grad_' varMAP{kk}];
+            options.varBeta{oo} = ['beta_custom_' varMAP{kk}];
+            oo = oo + 1;
+        end
     end
-    if isfield(options, 'grad_MLEM') && options.OSL_MLEM
-        options.grad_OSL_MLEM = single(options.grad_OSL_MLEM);
-        options.beta_custom_OSL_MLEM = single(options.beta_custom_OSL_MLEM);
-        options.custom_mlem_apu = options.im_vectors.custom_MLEM_apu;
-    end
-    if isfield(options, 'grad_BSREM') && options.BSREM
-        options.grad_BSREM = single(options.grad_BSREM);
-        options.beta_custom_BSREM = single(options.beta_custom_BSREM);
-        options.custom_bsrem_apu = options.im_vectors.custom_BSREM_apu;
-    end
-    if isfield(options, 'grad_MBSREM') && options.MBSREM
-        options.grad_MBSREM = single(options.grad_MBSREM);
-        options.beta_custom_MBSREM = single(options.beta_custom_MBSREM);
-        options.custom_mbsrem_apu = options.im_vectors.custom_MBSREM_apu;
-    end
-    if isfield(options, 'grad_ROSEM') && options.ROSEM
-        options.grad_ROSEM = single(options.grad_ROSEM);
-        options.beta_custom_ROSEM_MAP = single(options.beta_custom_ROSEM_MAP);
-        options.custom_rosem_apu = options.im_vectors.custom_ROSEM_apu;
-    end
-    if isfield(options, 'grad_RBI') && options.OSL_RBI
-        options.grad_RBI = single(options.grad_RBI);
-        options.beta_custom_OSL_RBI = single(options.beta_custom_OSL_RBI);
-        options.custom_rbi_apu = options.im_vectors.custom_RBI_apu;
-    end
-    if isfield(options, 'grad_COSEM') && any(options.OSL_COSEM)
-        options.grad_COSEM = single(options.grad_COSEM);
-        options.beta_custom_OSL_COSEM = single(options.beta_custom_OSL_COSEM);
-        options.custom_cosem_apu = options.im_vectors.custom_COSEM_apu;
-    end
+    
+    fn = fieldnames(options.im_vectors);
+    options.varTot = fn(~cellfun('isempty',strfind(fn,'apu')));
+    
     
     %     if (options.COSEM || options.ECOSEM) && t == 1 && osa_iter == 1 && iter == 1
     %         options.C_co = zeros(options.N, options.subsets, 'single');
@@ -212,109 +201,15 @@ else
     else
         options.randSize = uint64(1);
     end
-    if options.use_raw_data
-        options.xy_index = uint32(0);
-        options.z_index = uint16(0);
-        TOFSize = int64(size(options.LL,1));
-    else
-        if isempty(options.pseudot)
-            options.pseudot = uint32(100000);
-        end
-        options.LL = uint16(0);
-        TOFSize = int64(size(options.xy_index,1));
-    end
-    if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
-            && ~options.reconstruct_trues && ~options.reconstruct_scatter
-        randoms = uint32(1);
-    else
-        randoms = uint32(0);
-    end
-    n_rays = uint16(options.n_rays_transaxial);
-    n_rays3D = uint16(options.n_rays_axial);
-    if n_rays * n_rays3D > 1 && ~options.precompute_lor && options.projector_type == 1
-        [x,y] = getMultirayCoordinates(options);
-        options.x = single(x(:));
-        options.y = single(y(:));
-    end
-    dc_z = single(options.z_det(2,1) - options.z_det(1,1));
-    
-    
-    tube_width_xy = single(options.tube_width_xy);
-    crystal_size_z = single(options.tube_width_z);
-    if (options.projector_type == 1 && (options.precompute_lor || (n_rays + n_rays3D) <= 2)) || options.projector_type == 2 || options.projector_type == 3
-        kernel_file = 'multidevice_kernel.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_kernel','');
-    elseif options.projector_type == 1 && ~options.precompute_lor
-        kernel_file = 'multidevice_siddon_no_precomp.cl';
-        kernel_path = which(kernel_file);
-        kernel_path = strrep(kernel_path, '\', '/');
-        kernel_path = strrep(kernel_path, '.cl', '');
-        filename = 'OMEGA_matrix_free_OpenCL_binary_device';
-        header_directory = strrep(kernel_path,'multidevice_siddon_no_precomp','');
-    else
-        error('Invalid projector for OpenCL')
-    end
-    filename = [header_directory, filename];
-    if options.use_CUDA
-        header_directory = strcat('-I "', header_directory);
-        header_directory = strcat(header_directory,'"');
-    end
-    joku = algorithms_char();
-    %         n_rekos = uint32(sum(rekot(~contains(joku,'MLEM'))));
-    n_rekos = uint32(sum(rekot(cellfun('isempty',strfind(joku,'MLEM')))));
-    n_rekos_OSL_MLEM = uint32(sum(rekot(~cellfun('isempty',strfind(joku,'MLEM')))));
-    reko_type = zeros(length(rekot),1,'uint8');
-    reko_type(~cellfun('isempty',strfind(joku,'MBSREM'))) = 1;
-    reko_type(~cellfun('isempty',strfind(joku,'MRAMLA'))) = 1;
-    reko_type(~cellfun('isempty',strfind(joku,'COSEM'))) = 2;
-    reko_type(~cellfun('isempty',strfind(joku,'ACOSEM'))) = 3;
-    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.OSL_COSEM == 1) = 2;
-    reko_type(~cellfun('isempty',strfind(joku,'OSL-COSEM')) & options.OSL_COSEM == 2) = 3;
-    ind = cellfun('isempty',strfind(joku,'MLEM'));
-    reko_type = reko_type(rekot & ind);
-    joku = joku(rekot & ind);
-    if options.ECOSEM
-        if options.COSEM && options.OSEM
-            reko_type(~cellfun('isempty',strfind(joku,'ECOSEM'))) = [];
-        elseif options.COSEM && ~options.OSEM
-            reko_type(~cellfun('isempty',strfind(joku,'ECOSEM'))) = [];
-            reko_type = [0;reko_type];
-        elseif ~options.COSEM && ~options.OSEM
-            reko_type = [0;reko_type];
-        end
-    end
-    reko_type_OSL_MLEM = zeros(n_rekos_mlem,1,'uint8');
     options.tt = uint32(t - 1);
     options.iter = uint32(iter - 1);
     options.osa_iter = uint32(osa_iter - 1);
-    %         filename = [kernel_path(1:end-length(kernel_file) + 3), filename];
-    rekot = [options.rekot; false; false; false; false];
-    tic
-    if ~options.use_CUDA
-        [pz] = OpenCL_matrixfree( kernel_path, options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, ...
-            options.y, options.dy, options.yy(end), options.xx(end) , options.NSinos, single(options.NSlices), options.size_x, options.zmax, options.NSinos, ...
-            options.verbose, options.LL, options.pseudot, options.det_per_ring, TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), int32(options.dec), uint32(options.use_device), uint8(options.use_raw_data), filename, uint32(0), options.use_psf, ...
-            header_directory, options.vaimennus, options.normalization, options.pituus, uint32(options.attenuation_correction), uint32(options.normalization_correction), ...
-            uint32(options.Niter), uint32(options.subsets), uint8(rekot), single(options.epps), options.lor_a, options.xy_index, options.z_index, any(n_rekos), tube_width_xy, ...
-            crystal_size_z, options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            n_rays, n_rays3D, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
-            reko_type_mlem, options.global_correction_factor, options.bmin, options.bmax, options.Vmax, options.V, gaussK);
-    else
-        header_directory = strrep(header_directory,'"','');
-        [pz] = CUDA_matrixfree( kernel_path, options.Ny, options.Nx, options.Nz, options.dx, options.dz, options.by, options.bx,options. bz, options.z_det, options.x, ...
-            options.y, options.dy, options.yy(end), options.xx(end) , options.NSinos, single(options.NSlices), options.size_x, options.zmax, options.NSinos, ...
-            options.verbose, options.LL, options.pseudot, options.det_per_ring, TOF, TOFSize, options.sigma_x, options.TOFCenter, int64(options.TOF_bins), int32(options.dec), uint32(options.use_device), uint8(options.use_raw_data), filename, uint32(0), options.use_psf, ...
-            header_directory, options.vaimennus, options.normalization, options.pituus, uint32(options.attenuation_correction), uint32(options.normalization_correction), ...
-            uint32(options.Niter), uint32(options.subsets), uint8(rekot), single(options.epps), options.lor_a, options.xy_index, options.z_index, any(n_rekos), tube_width_xy, ...
-            crystal_size_z, options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
-            n_rays, n_rays3D, dc_z, options, options.SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, ...
-            reko_type_mlem, options.global_correction_factor, options.bmin, options.bmax, options.Vmax, options.V, gaussK);
-    end
-    toc
+%     rekot = [rekot; false; false; false; false];
+    
+    [pz] = computeImplementation23(options, Ny, Nx, Nz, options.dx, options.dz, options.by, options.bx, options.bz, options.z_det, options.x, options.y, options.dy, options.yy, options.xx, uint32(options.NSinos), options.NSlices, options.size_x, options.zmax, ...
+        options.LL, options.pseudot, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, options.dec, uint32(options.use_device), options.use_raw_data, options.normalization, options.pituus, options.attenuation_correction, ...
+        options.normalization_correction, uint32(iter), options.subsets, options.epps, options.lor_a, options.xy_index, options.z_index, options.x_center, options.y_center, options.z_center, options.SinDelayed, ...
+        options.SinM, options.bmin, options.bmax, options.Vmax, options.V, gaussK, -1, rekot);
     
     options.im_vectors = transfer_im_vectors(options.im_vectors, pz, options, iter);
     %     if (options.COSEM || options.ECOSEM)
