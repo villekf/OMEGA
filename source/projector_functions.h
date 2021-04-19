@@ -29,11 +29,12 @@
 #include <algorithm>
 #include <numeric>
 #include <time.h>
-#include <cstdint>
+#include "mexFunktio.h"
 #include <thread>
 #include <chrono>
 #ifdef _OPENMP
 #include <omp.h>
+#define nChunks 1000
 #endif
 
 // Normalized distances below this are discarded in orthogonal ray tracer
@@ -41,7 +42,7 @@
 #define H_THR 0.99
 #define TOF_THR 0.0001
 #define _2PI 0.3989422804014327
-#define TRAPZ_BINS 6.
+#define TRAPZ_BINS 5.
 
 struct Det {
 	double xd, xs, yd, ys, zd, zs;
@@ -56,8 +57,10 @@ void computeIndices(const bool RHS, const bool SUMMA, const bool OMP, const bool
 	const bool no_norm, double* Summ, double* rhs, const double local_sino, const double* osem_apu, const uint64_t N2, size_t* indices,
 	std::vector<double>& elements, std::vector<uint32_t>& v_indices, size_t& idx, const uint32_t local_ind, const uint64_t N22);
 
+#ifndef CT
+
 void get_detector_coordinates_raw(const uint32_t det_per_ring, const double* x, const double* y, const double* z, Det& detectors,
-	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const uint8_t list_mode_format = false);
+	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const uint8_t list_mode_format = 0);
 
 void get_detector_coordinates_raw_N(const uint32_t det_per_ring, const double* x, const double* y, const double* z, Det& detectors,
 	const uint16_t* L, const size_t ll, const uint32_t* pseudos, const uint32_t pRows, const uint16_t lor, const double cr_pz, 
@@ -71,6 +74,14 @@ void get_detector_coordinates(const double* x, const double* y, const double* z,
 
 void get_detector_coordinates_mr(const double* x, const double* y, const double* z, const uint32_t size_x, Det& detectors, const uint32_t* xy_index,
 	const uint16_t* z_index, const uint32_t TotSinos, const size_t oo, const uint16_t lor, const double cr_pz, const uint16_t n_rays, const uint16_t n_rays3D);
+
+#else
+
+void get_detector_coordinates_CT(const double* x, const double* y, const double* z, const uint32_t size_x, Det& detectors, const int64_t lo, const uint32_t subsets,
+	const double* angles, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
+	const uint8_t list_mode_format = 0);
+
+#endif
 
 uint32_t z_ring(const double zmax, const double zs, const double NSlices);
 
@@ -88,7 +99,9 @@ void d_g_s_precomp(const double tmin, const double t_min, const double tmax, con
 
 double pixel_value(const double t, const double tc, const double L);
 
-void compute_attenuation(double& tc, double& jelppi, const double LL, const double t0, const int tempi, const int tempj, const int tempk, const uint32_t Nx, 
+#ifndef CT
+
+void compute_attenuation(double& tc, double& jelppi, const double LL, const double t0, const int tempi, const int tempj, const int tempk, const uint32_t Nx,
 	const uint32_t Nyx, const double* atten);
 
 void att_corr_vec(const std::vector<double> templ_ijk, const std::vector<uint32_t> temp_koko, const double* atten, double& temp, const size_t Np);
@@ -99,8 +112,10 @@ double att_corr_scalar(double templ_ijk, uint32_t tempk, const double* atten, do
 
 void att_corr_scalar_orth(uint32_t tempk, const double* atten, double& temp, const uint32_t N1, const uint32_t N2, const double d);
 
+#endif
+
 double perpendicular_elements(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring, const uint32_t N1, 
-	const uint32_t N2, const double* atten, const double* norm_coef, const bool attenuation_correction, const bool normalization, uint32_t& tempk, 
+	const uint32_t N2, const double* atten, const double norm_coef, const bool attenuation_correction, const bool normalization, uint32_t& tempk, 
 	const uint32_t NN, const size_t lo, const double global_factor, const bool scatter, const double* scatter_coef);
 
 double perpendicular_elements_multiray(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring,
@@ -122,6 +137,8 @@ inline std::vector<size_t> sort_indexes(const std::vector<T>& v)
 }
 
 int32_t voxel_index(const double pt, const double diff, const double d, const double apu);
+
+#ifndef CT
 
 void orth_perpendicular(const uint32_t N, const double dd, const std::vector<double> vec, const double d, const uint32_t z_ring, const uint32_t N1, 
 	const uint32_t N2, const double diff2, const double* center1, const double crystal_size, const double length, std::vector<double>& vec1, 
@@ -167,6 +184,8 @@ void orth_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz, 
 	const int32_t iu, const int32_t ju, const int loppu, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices,
 	const uint32_t dec_v, uint32_t& ind, uint64_t N2 = 0ULL, uint64_t N22 = 0ULL);
 
+#endif
+
 void volume_distance_3D_full(int32_t tempi, const uint32_t Nx, const uint32_t Nz, const double y_diff, const double x_diff, const double z_diff,
 	const double* y_center, const double* x_center, const double* z_center, double& temp, const uint32_t NN, int32_t tempj, int32_t tempk,
 	const double local_sino, double& ax, const double* osem_apu, const Det detectors, const uint32_t Nyx, const double kerroin,
@@ -180,7 +199,7 @@ void volume_perpendicular_precompute(const uint32_t N1, const uint32_t N2, const
 	const double xl, const double yl, const double zl, const uint32_t z_loop, const double bmax, const double bmin, const double Vmax,
 	const double* V);
 
-void nominator_mfree(double& ax, const double Sino, const double epps, const double temp, const bool randoms_correction, const double* randoms, 
+void nominator_mfree(double& ax, const double Sino, const double epps, const double temp, const bool randoms_correction, const double randoms, 
 	const size_t lo);
 
 double compute_element_orth_mfree(const double x_diff, const double y_diff, const double x_center, const double length_);
@@ -193,16 +212,20 @@ void denominator_mfree(const double local_ele, double& axOSEM, const double d_OS
 
 uint32_t perpendicular_start(const double d_b, const double d, const double d_d, const uint32_t d_N);
 
+#ifndef CT
+
 void orth_distance_denominator_perpendicular_mfree(const double* center1, const double center2, const double* z_center, const double kerroin,
 	double& temp, const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1,
-	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
+	const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, const Det detectors, const double xl, const double yl, const double zl, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices,
 	const uint32_t dec_v, uint32_t& ind, double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, 
 	const bool scatter, const double* scatter_coef, const uint64_t N2 = 0ULL);
 
+#endif
+
 void volume_distance_denominator_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, double& temp,
 	const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1,
-	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
+	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx,
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind,
 	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const double bmax, const double bmin, const double Vmax,
@@ -226,8 +249,10 @@ void orth_distance_rhs_perpendicular_mfree(const double* center1, const double c
 //	const uint32_t blocks, const uint32_t block1, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const double crystal_size, 
 //	const double crystal_size_z, const double* y_center, const double* x_center, const double* z_center, const uint32_t dec_v);
 
+#ifndef CT
+
 void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* elements, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
@@ -235,77 +260,89 @@ void orth_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, 
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const bool scatter, 
 	const double* scatter_coef, const uint32_t nCores = 1U, const uint8_t list_mode = 0);
 
+#endif
+
 void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx,
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1,
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos,
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double crystal_size,
 	const double crystal_size_z, double* y_center, double* x_center, const double* z_center, const double global_factor, const double bmin,
-	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U, 
-	const uint8_t list_mode = 0);
+	const double bmax, const double Vmax, const double* V, const bool scatter, const double* scatter_coef, const uint32_t subsets, const double* angles,
+	const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores = 1U,	const uint8_t list_mode = 0);
 
 int improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, std::vector<uint32_t>& indices,
 	std::vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const std::vector<double>& xx_vec, const double dy,
-	const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, 
+	const std::vector<double>& yy_vec, const double* atten, const float* norm_coef, const double* x, const double* y, const double* z_det,
 	const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, 
 	const double bz, const uint32_t* index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, 
 	const uint32_t blocks, const uint32_t block1, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const double global_factor, 
-	const bool scatter, const double* scatter_coef);
+	const bool scatter, const double* scatter_coef, const uint32_t subsets, const double* angles, const uint32_t* xy_index, const uint16_t* z_index, 
+	const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint8_t list_mode = 0);
 
 int original_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, const uint32_t TotSinos, std::vector<uint32_t>& indices,
 	std::vector<double>& elements, uint16_t* lor, const double maxyy, const double maxxx, const std::vector<double>& xx_vec, const double dy,
-	const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, const double* x, const double* y, const double* z_det, 
+	const std::vector<double>& yy_vec, const double* atten, const float* norm_coef, const double* x, const double* y, const double* z_det,
 	const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, 
 	const double bz, const uint32_t* index, const bool attenuation_correction, const bool normalization, const bool raw, const uint32_t det_per_ring, 
 	const uint32_t blocks, const uint32_t block1, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const std::vector<double>& iij_vec, 
-	const std::vector<double>& jjk_vec, const std::vector<double>& kkj_vec, const double global_factor, const bool scatter, const double* scatter_coef);
+	const std::vector<double>& jjk_vec, const std::vector<double>& kkj_vec, const double global_factor, const bool scatter, const double* scatter_coef, 
+	const uint32_t subsets, const double* angles, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_y, const double dPitch, 
+	const int64_t nProjections,	const uint8_t list_mode = 0);
 
 extern void improved_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, const double zmax, size_t* indices, double* elements, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
 	const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, 
 	const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, const uint16_t* lor1, 
 	const uint64_t* lor2, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const uint16_t* L, const uint32_t* pseudos, 
 	const uint32_t pRows, const uint32_t det_per_ring, const bool raw, const bool attenuation_phase, double* length, const double global_factor, 
-	const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U, const uint8_t list_mode = 0);
+	const bool scatter, const double* scatter_coef, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, 
+	const int64_t nProjections, const uint32_t nCores = 1U, const uint8_t list_mode = 0);
 
 void sequential_improved_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz,	const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const bool no_norm, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const bool TOF,
-	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v, const uint32_t nCores = 1U);
+	const int64_t TOFSize, const double sigma_x, const double* TOFCenter, const int64_t nBins, const uint32_t dec_v, const uint32_t subsets,
+	const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores = 1U);
 
 void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
-	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring, const bool raw, 
+	const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring, const bool raw,
 	const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, const uint8_t list_mode_format,
 	const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
-	const int64_t nBins, const uint32_t dec_v, const uint32_t nCores = 1U);
+	const int64_t nBins, const uint32_t dec_v, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
+	const uint32_t nCores = 1U);
+
+#ifndef CT
 
 void sequential_orth_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx,	const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
+	const double maxxx,	const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz,
 	const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, const bool normalization, 
 	const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
-	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
+	const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw,
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
 	const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
 
 void sequential_orth_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef, 
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const double epps, 
-	const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
+	const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring, const bool raw, 
 	const double crystal_size_xy, double* x_center, double* y_center, const double* z_center, const double crystal_size_z, const bool no_norm, 
 	const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, 
 	const uint32_t nCores = 1U);
+
+#endif
 
 
 // Source: http://www.alecjacobson.com/weblog/?p=4544 & https://ideone.com/Z7zldb
@@ -375,7 +412,7 @@ bool siddon_pre_loop_3D(const double bx, const double by, const double bz, const
 
 void orth_distance_denominator_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, double& temp,
 	const bool d_attenuation_correction, const bool normalization, double& ax, const double d_b, const double d, const double d_d1, const uint32_t d_N1,
-	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double* norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
+	const uint32_t d_N2, const uint32_t z_loop, const double* d_atten, const double norm_coef, const double local_sino, const uint32_t d_N, const uint32_t d_NN,
 	const double* d_OSEM, Det detectors, const double xl, const double yl, const double zl, const double crystal_size_z, const uint32_t Nyx,
 	const uint32_t Nz, std::vector<double>& store_elements, std::vector<uint32_t>& store_indices, const uint32_t tid, uint32_t& ind, 
 	double* elements, size_t* indices, const size_t lo, const bool PRECOMPUTE, const double global_factor, const bool scatter, const double* scatter_coef, 
@@ -387,26 +424,28 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 	const double dz,	const double bx, const double by, const double bz, const uint32_t block1, const uint32_t blocks, const uint16_t* L, const uint32_t* pseudos,
 	const bool raw, const uint32_t pRows, const uint32_t det_per_ring, const uint32_t type, uint16_t* lor_orth, uint16_t* lor_vol, const double crystal_size, 
 	const double crystal_size_z,	const double* x_center, const double* y_center, const double* z_center, const double bmin, const double bmax, const double Vmax, 
-	const double* V, const uint32_t nCores = 1U, const uint8_t list_mode_format = false);
+	const double* V, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores = 1U, 
+	const uint8_t list_mode_format = false);
 
 void sequential_volume_siddon_no_precomp(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
 	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, 
-	const uint32_t nCores = 1U);
+	const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores = 1U);
 
 void sequential_volume_siddon(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const double* norm_coef,
-	const double* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
+	const double maxxx, const std::vector<double>& xx_vec, const double dy, const std::vector<double>& yy_vec, const double* atten, const float* norm_coef,
+	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny,
 	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction,
 	const bool normalization, const bool randoms_correction, const uint16_t* lor1, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const double* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
+	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const uint32_t pRows, const uint32_t det_per_ring,
 	const bool raw, const double Vmax, double* x_center, double* y_center, const double* z_center, const double bmin, const double bmax, const double* V,
-	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t nCores = 1U);
+	const bool no_norm, const uint32_t dec_v, const double global_factor, const uint8_t fp, const bool scatter, const double* scatter_coef, const uint32_t subsets, 
+	const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, const uint32_t nCores = 1U);
 
 //void orth_distance_rhs_perpendicular_mfree_3D(const double* center1, const double center2, const double* z_center, const double temp, double& ax,
 //	const double d_b, const double d, const double d_d1, const uint32_t d_N1, const uint32_t d_N2, const uint32_t z_loop, const uint32_t d_N,
@@ -482,18 +521,24 @@ void ForwardProject(T& t0, T& tc, const T tu, const T LL, const bool attenuation
 
 	T element = (t0 - tc) * LL;
 
+#ifndef CT
 	if (attenuation_correction)
 		jelppi += (element * -atten[tempijk]);
+#endif
 
 	if (fp != 2 && list_mode_format <= 1) {
+#ifndef CT
 		if (TOF) {
 			TOFWeightsFP(DD, nBins, element, TOFVal, TOFCenter, sigma_x, D, osem_apu, tempijk, ax, epps, tid + ind * nBins);
 		}
 		else
+#endif
 			ax[0] += (element * osem_apu[tempijk]);
 	}
 
+#ifndef CT
 	temp += element;
+#endif
 
 	tempInd += u;
 	if (u > 0)
@@ -538,11 +583,13 @@ T TOFWeightsBP(const T DD, const int64_t nBins, T element, std::vector<T>& TOFVa
 template <typename T>
 void backwardProjection(T& t0, T& tc, const T tu, const T LL, uint32_t& tempijk, const bool TOF, const T DD, const int64_t nBins, 
 	std::vector<T>& TOFVal, const T* TOFCenter, const T sigma_x, T& D, std::vector<T>& yax, const T epps, T& temp, 
-	const int32_t u, const uint32_t incr, const bool no_norm, T* rhs, T* Summ, const int64_t tid, const uint32_t ind) {
+	const int32_t u, const uint32_t incr, const bool no_norm, T* rhs, T* Summ, const int64_t tid, const uint32_t ind, int32_t& tempInd, 
+	const T local_sino = 0.) {
 	T element = (t0 - tc) * LL;
 	T val = element;
 	T val_rhs = 0.;
 
+#ifndef CT
 	if (TOF) {
 		val_rhs = TOFWeightsBP(DD, nBins, element, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp, val, rhs, tid + ind * nBins);
 	}
@@ -550,6 +597,11 @@ void backwardProjection(T& t0, T& tc, const T tu, const T LL, uint32_t& tempijk,
 		val *= temp;
 		val_rhs = val * yax[0];
 	}
+#else
+	val_rhs = val * yax[0];
+	//val *= (local_sino);
+	tempInd += u;
+#endif
 #pragma omp atomic
 	rhs[tempijk] += (val_rhs);
 	if (no_norm == 0 && val > 0.) {
@@ -573,11 +625,13 @@ void sensImage(T& t0, T& tc, const T tu, const T LL, uint32_t& tempijk, const bo
 	T element = (t0 - tc) * LL;
 	T val = element;
 
+#ifndef CT
 	if (TOF) {
 		TOFWeightsSumm(DD, nBins, element, TOFVal, TOFCenter, sigma_x, D, epps, temp, val, tid + ind * nBins);
 	}
 	else
 		val *= temp;
+#endif
 
 	if (no_norm == 0 && val > 0.) {
 #pragma omp atomic
