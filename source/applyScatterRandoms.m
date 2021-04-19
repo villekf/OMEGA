@@ -1,6 +1,6 @@
 function [options,Prop, input] = applyScatterRandoms(options,Prop, input, type)
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
+%APPLYSCATTERRANDOMS Applies the selected corrections to randoms/scatter
+%data and precorrects the measurement data if applicable
 if type == 0
     ichar = 'SinDelayed';
     corr = 'randoms';
@@ -10,7 +10,7 @@ elseif type == 1
 end
 if isfield(options,ichar)
     if iscell(input)
-        if iscell(options.SinM)
+        if isfield(options,'SinM') && iscell(options.SinM)
             for kk = 1 : length(options.SinM)
                 if numel(input{kk}) ~= numel(options.SinM{kk}) && numel(input{kk}) * options.TOF_bins ~= numel(options.SinM{kk})
                     error(['Size mismatch between ' corr ' correction data and measurement data'])
@@ -45,7 +45,7 @@ if isfield(options,ichar)
                 end
             end
         else
-            if numel(input{1}) ~= numel(options.SinM) && numel(input{1}) * options.TOF_bins ~= numel(options.SinM)
+            if isfield(options,'SinM') && numel(input{1}) ~= numel(options.SinM) && numel(input{1}) * options.TOF_bins ~= numel(options.SinM)
                 error(['Size mismatch between ' corr ' correction data and measurement data'])
             end
             if options.variance_reduction && ~Prop.variance_reduction
@@ -56,7 +56,7 @@ if isfield(options,ichar)
                 input{1} = randoms_smoothing(double(input{1}), options);
                 Prop.smoothing = true;
             end
-            if ~options.corrections_during_reconstruction
+            if isfield(options,'SinM') && ~options.corrections_during_reconstruction
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;
@@ -78,7 +78,7 @@ if isfield(options,ichar)
             end
         end
     else
-        if iscell(options.SinM)
+        if isfield(options,'SinM') && iscell(options.SinM)
             if options.variance_reduction && ~Prop.variance_reduction
                 input = Randoms_variance_reduction(single(input), options);
                 Prop.variance_reduction = true;
@@ -113,7 +113,7 @@ if isfield(options,ichar)
                 end
             end
         else
-            if numel(input) ~= numel(options.SinM) && numel(input) * options.TOF_bins ~= numel(options.SinM)
+            if isfield(options,'SinM') && numel(input) ~= numel(options.SinM) && numel(input) * options.TOF_bins ~= numel(options.SinM)
                 error(['Size mismatch between ' corr ' correction data and measurement data'])
             end
             if options.variance_reduction && ~Prop.variance_reduction
@@ -124,7 +124,7 @@ if isfield(options,ichar)
                 input = randoms_smoothing(input, options);
                 Prop.smoothing = true;
             end
-            if ~options.corrections_during_reconstruction
+            if isfield(options,'SinM') && ~options.corrections_during_reconstruction
                 if type == 0
                     if options.TOF_bins > 1
                         NN = options.Ndist * options.Nang * options.NSinos;
