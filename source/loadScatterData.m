@@ -24,7 +24,7 @@ function options = loadScatterData(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-[scatter_file, s_fpath] = uigetfile('*.mat; *.scn','Select scatter correction data');
+[scatter_file, s_fpath] = uigetfile({'*.mat; *.scn'},'Select scatter correction data');
 if isequal(scatter_file, 0)
     error('No file was selected')
 end
