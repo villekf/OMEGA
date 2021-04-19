@@ -58,9 +58,9 @@ if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfi
     else
         z = zeros(numel(x),1);
     end
-%     x = x + max(abs(x(:)));
-%     y = y + max(abs(y(:)));
-%     z = z + max(abs(z(:)));
+    %     x = x + max(abs(x(:)));
+    %     y = y + max(abs(y(:)));
+    %     z = z + max(abs(z(:)));
 else
     if options.use_raw_data == false
         [~, ~, xp, yp] = detector_coordinates(options);
@@ -99,7 +99,7 @@ else
     
     if options.use_raw_data
         
-%         z = z + options.cr_pz/2;
+        %         z = z + options.cr_pz/2;
         z(end) = [];
     end
 end
