@@ -1,4 +1,4 @@
-function [index, pituus, subsets] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, varargin)
+function [index, pituus, subsets, varargout] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, varargin)
 % INDEX_MAKER Form the subset indices for any of the subset types
 %
 % Example:
@@ -58,12 +58,20 @@ if nargin - 7 >= 4 && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(va
         Ndist = Ndist * options.sampling;
     end
 end
+if nargin >= 12 && ~isempty(varargin) && ~isempty(varargin{5})
+    storeMatrix = varargin{5};
+else
+    storeMatrix = false;
+end
 
 if ~isfield(options,'sampling_raw')
     options.sampling_raw = 1;
 end
+if ~isfield(options,'CT')
+    options.CT = false;
+end
 folder = fileparts(which('index_maker.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 % lor_a = 0;
 if options.use_raw_data
@@ -72,6 +80,8 @@ else
     pituus = int64(Ndist * Nang * NSinos);
 end
 index = 0;
+lor = [];
+lor_orth = [];
 % Sinogram data
 if use_raw_data == false && subsets > 1
     index = cell(subsets,1);
@@ -80,11 +90,20 @@ if use_raw_data == false && subsets > 1
     if options.subset_type == 4
         for i=1:subsets
             osa = length(i:subsets:Nang);
-            index1 = repmat(uint32((i-1)*Ndist+1:i*Ndist)', osa*NSinos,1);
-            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                index1 = index1 + uint32(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+            if options.CT
+                index1 = repmat(uint64((i-1)*Ndist+1:i*Ndist)', osa*NSinos,1);
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                    index1 = index1 + uint64(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+                else
+                    index1 = index1 + uint64(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+                end
             else
-                index1 = index1 + uint32(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+                index1 = repmat(uint32((i-1)*Ndist+1:i*Ndist)', osa*NSinos,1);
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                    index1 = index1 + uint32(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+                else
+                    index1 = index1 + uint32(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist));
+                end
             end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
@@ -94,10 +113,18 @@ if use_raw_data == false && subsets > 1
         for i=1:subsets
             osa = length(i:subsets:Ndist);
             index1 = repmat(uint32((i-1)+1:Ndist:Nang*Ndist)', osa*NSinos,1);
-            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                index1 = index1 + repmat(uint32(repeat_elem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repeat_elem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+            if options.CT
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                    index1 = index1 + repmat(uint64(repeat_elem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repeat_elem(uint64(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+                else
+                    index1 = index1 + repmat(uint64(repelem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repelem(uint64(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+                end
             else
-                index1 = index1 + repmat(uint32(repelem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repelem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+                if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
+                    index1 = index1 + repmat(uint32(repeat_elem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repeat_elem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+                else
+                    index1 = index1 + repmat(uint32(repelem((0:subsets:Ndist-1)',Nang)), NSinos,1) + repelem(uint32(0:Ndist*Nang:Ndist*Nang*NSinos-1)',Nang*osa);
+                end
             end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
@@ -105,33 +132,60 @@ if use_raw_data == false && subsets > 1
         % Take every nth (column) measurement
     elseif options.subset_type == 1
         for i=1:subsets
-            index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
-            [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
-            index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
+            if options.CT
+                index1 = uint64(i:subsets:Ndist*Nang*NSinos)';
+                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+                index1 = uint64(sub2ind([Ndist Nang NSinos], J, I,K));
+            else
+                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
+                [I,J,K] = ind2sub([Nang Ndist NSinos], index1);
+                index1 = uint32(sub2ind([Ndist Nang NSinos], J, I,K));
+            end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
         end
         % Take every nth (row) measurement
     elseif options.subset_type == 2
         for i=1:subsets
-            index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
+            if options.CT
+                index1 = uint64(i:subsets:Ndist*Nang*NSinos)';
+            else
+                index1 = uint32(i:subsets:Ndist*Nang*NSinos)';
+            end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
         end
         % Pick the measurements randomly
     elseif options.subset_type == 3
-        indices = uint32(Ndist*Nang*NSinos);
-        port = uint32(floor(Ndist*Nang*NSinos/subsets));
+        if options.CT
+            indices = uint64(Ndist*Nang*NSinos);
+            port = uint64(floor(Ndist*Nang*NSinos/subsets));
+        else
+            indices = uint32(Ndist*Nang*NSinos);
+            port = uint32(floor(Ndist*Nang*NSinos/subsets));
+        end
         if options.use_Shuffle
             apu = Shuffle(indices(end), 'index')';
         else
-            apu = uint32(randperm(indices(end)))';
+            if options.CT
+                apu = uint64(randperm(indices(end)))';
+            else
+                apu = uint32(randperm(indices(end)))';
+            end
         end
         for i = 1 : subsets
-            if i == subsets
-                index1 = uint32(apu(port*(i-1)+1:end));
+            if options.CT
+                if i == subsets
+                    index1 = uint64(apu(port*(i-1)+1:end));
+                else
+                    index1 = uint64(apu(port*(i-1)+1:(port*(i))));
+                end
             else
-                index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                if i == subsets
+                    index1 = uint32(apu(port*(i-1)+1:end));
+                else
+                    index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                end
             end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
@@ -152,64 +206,87 @@ if use_raw_data == false && subsets > 1
         [index, pituus] = goldenAngleSubsets(options);
     end
     if options.precompute_lor
-        lor_file = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(Ndist) 'x' ...
-            num2str(Nang) 'x' num2str(TotSinos) '.mat'];
-        if exist(lor_file, 'file') == 2
-            if options.implementation == 1 || options.implementation == 4
-                variableInfo = who('-file', lor_file);
-                if ismember('lor', variableInfo)
-                    load(lor_file,'lor')
+        if options.CT
+            [lor, ~, ~, lor_orth] = lor_pixel_count_prepass(options, false);
+        elseif ~options.CT
+            lor_file = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(Ndist) 'x' ...
+                num2str(Nang) 'x' num2str(TotSinos) '.mat'];
+            if exist(lor_file, 'file') == 2
+                if options.implementation == 1 || options.implementation == 4
+                    variableInfo = who('-file', lor_file);
+                    if ismember('lor', variableInfo)
+                        load(lor_file,'lor')
+                    else
+                        lor_pixel_count_prepass(options);
+                        load(lor_file,'lor')
+                    end
                 else
-                    lor_pixel_count_prepass(options);
-                    load(lor_file,'lor')
+                    variableInfo = who('-file', lor_file);
+                    if ismember('lor_opencl', variableInfo)
+                        load(lor_file,'lor_opencl')
+                    else
+                        lor_pixel_count_prepass(options);
+                        load(lor_file,'lor_opencl')
+                    end
+                    lor = lor_opencl;
+                    clear lor_opencl
                 end
             else
-                variableInfo = who('-file', lor_file);
-                if ismember('lor_opencl', variableInfo)
-                    load(lor_file,'lor_opencl')
+                lor_pixel_count_prepass(options);
+                if options.implementation == 1 || options.implementation == 4
+                    load(lor_file,'lor')
                 else
-                    lor_pixel_count_prepass(options);
                     load(lor_file,'lor_opencl')
+                    lor = lor_opencl;
+                    clear lor_opencl
                 end
-                lor = lor_opencl;
-                clear lor_opencl
-            end
-        else
-            lor_pixel_count_prepass(options);
-            if options.implementation == 1 || options.implementation == 4
-                load(lor_file,'lor')
-            else
-                load(lor_file,'lor_opencl')
-                lor = lor_opencl;
-                clear lor_opencl
             end
         end
         
-        discard = lor > 0;
-        if length(discard) ~= TotSinos*Ndist*Nang
-            error('Error: Size mismatch between sinogram and LORs to be removed')
-        end
-        if use_raw_data == false && NSinos ~= TotSinos
-            discard = discard(1:NSinos*Ndist*Nang);
-        end
         %         lor_a = lor;
-        clear lor
-        ind_apu = uint32(find(discard));
+        %         clear lor
         
         if iscell(index)
             index = cell2mat(index);
         end
-        % Remove indices that do not go through the FOV
-        joku = ismember(index, ind_apu);
-        pituus2 = cumsum(pituus);
-        for kk = 1 : length(pituus2)
-            if kk == 1
-                pituus(kk) = int64(sum(joku(1:pituus2(kk))));
+        if ~storeMatrix
+            discard = lor > 0;
+            if length(discard) ~= TotSinos*Ndist*Nang
+                error('Error: Size mismatch between sinogram and LORs to be removed')
+            end
+            if use_raw_data == false && NSinos ~= TotSinos
+                discard = discard(1:NSinos*Ndist*Nang);
+            end
+            if options.CT
+                ind_apu = uint64(find(discard));
             else
-                pituus(kk) = int64(sum(joku(1+pituus2(kk-1) : pituus2(kk))));
+                ind_apu = uint32(find(discard));
+                lor = [];
+            end
+            % Remove indices that do not go through the FOV
+            joku = ismember(index, ind_apu);
+            pituus2 = cumsum(pituus);
+            for kk = 1 : length(pituus2)
+                if kk == 1
+                    pituus(kk) = int64(sum(joku(1:pituus2(kk))));
+                else
+                    pituus(kk) = int64(sum(joku(1+pituus2(kk-1) : pituus2(kk))));
+                end
+            end
+            index = index(joku);
+        else
+            pituus2 = cumsum(pituus);
+            for kk = 1 : length(pituus2)
+                if kk == 1
+                    pituus(kk) = int64(sum((1:pituus2(kk))));
+                else
+                    pituus(kk) = int64(sum((1+pituus2(kk-1) : pituus2(kk))));
+                end
             end
         end
-        index = index(joku);
+        %         if options.CT
+        %             lor = lor(index);
+        %         end
     end
 elseif subsets > 1
     % For raw data
@@ -260,26 +337,45 @@ elseif subsets > 1
         % Use only LORs that go through the FOV
         LL = LL(lor > 0,:);
         %         lor_a = lor(lor > 0);
-        clear lor
+        %         clear lor
         index = cell(subsets, 1);
         pituus = zeros(subsets, 1, 'int64');
         % Pick the measurements randomly
         if options.subset_type == 3
-            indices = uint32(length(LL));
-            port = uint32(floor(length(LL)/subsets));
-            if options.use_Shuffle
-                apu = Shuffle(indices(end), 'index')';
-            else
-                apu = uint32(randperm(indices(end)))';
-            end
-            for i = 1 : subsets
-                if i == subsets
-                    index1 = uint32(apu(port*(i-1)+1:end));
+            if options.CT
+                indices = uint64(length(LL));
+                port = uint64(floor(length(LL)/subsets));
+                if options.use_Shuffle
+                    apu = Shuffle(indices(end), 'index')';
                 else
-                    index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                    apu = uint64(randperm(indices(end)))';
                 end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
+                for i = 1 : subsets
+                    if i == subsets
+                        index1 = uint64(apu(port*(i-1)+1:end));
+                    else
+                        index1 = uint64(apu(port*(i-1)+1:(port*(i))));
+                    end
+                    index{i} = index1;
+                    pituus(i) = int64(length(index{i}));
+                end
+            else
+                indices = uint32(length(LL));
+                port = uint32(floor(length(LL)/subsets));
+                if options.use_Shuffle
+                    apu = Shuffle(indices(end), 'index')';
+                else
+                    apu = uint32(randperm(indices(end)))';
+                end
+                for i = 1 : subsets
+                    if i == subsets
+                        index1 = uint32(apu(port*(i-1)+1:end));
+                    else
+                        index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                    end
+                    index{i} = index1;
+                    pituus(i) = int64(length(index{i}));
+                end
             end
             % Based on the angles of the LORs
         elseif options.subset_type == 6
@@ -288,7 +384,11 @@ elseif subsets > 1
         else
             % Every nth measurements
             for i=1:subsets
-                index1 = uint32(i:subsets:length(LL))';
+                if options.CT
+                    index1 = uint64(i:subsets:length(LL))';
+                else
+                    index1 = uint32(i:subsets:length(LL))';
+                end
                 index{i} = index1;
                 pituus(i) = int64(length(index{i}));
             end
@@ -303,38 +403,52 @@ elseif subsets > 1
             if options.sampling_raw > 1
                 error('Increasing sampling cannot be used with smaller ring difference than the number of rings!')
             end
-            testi = zeros(options.detectors,options.detectors,'uint32');
-            testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
-            for kk = options.rings : - 1 : options.ring_difference_raw + 1
-                for ll = 1 : kk - options.ring_difference_raw
-                    testi(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
-                        zeros(options.det_per_ring, options.det_per_ring, 'uint32');
+            if options.CT
+                testi = zeros(options.detectors,options.detectors,'uint64');
+                testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
+                for kk = options.rings : - 1 : options.ring_difference_raw + 1
+                    for ll = 1 : kk - options.ring_difference_raw
+                        testi(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
+                            zeros(options.det_per_ring, options.det_per_ring, 'uint64');
+                    end
+                end
+            else
+                testi = zeros(options.detectors,options.detectors,'uint32');
+                testi(tril(true(size(testi)), 0)) = uint32(1:length(LL));
+                for kk = options.rings : - 1 : options.ring_difference_raw + 1
+                    for ll = 1 : kk - options.ring_difference_raw
+                        testi(1 + (kk - 1) * options.det_per_ring : kk * options.det_per_ring, 1 + (ll - 1) * options.det_per_ring : ll * options.det_per_ring) = ...
+                            zeros(options.det_per_ring, options.det_per_ring, 'uint32');
+                    end
                 end
             end
             ind = testi(tril(true(size(testi)), 0));
         end
         if options.subset_type == 3
-            indices = uint32(length(LL));
-            port = uint32(floor(length(LL)/subsets));
-            if options.use_Shuffle && exist('Shuffle','file') == 3
-                apu = Shuffle(indices(end), 'index')';
-            elseif options.use_Shuffle && exist('Shuffle','file') == 0
-                warning('options.Shuffle was set to true, but no Shuffle mex-file found. Using randperm')
-                apu = uint32(randperm(indices(end)))';
+            if options.CT
             else
-                apu = uint32(randperm(indices(end)))';
-            end
-            for i = 1 : subsets
-                if i == subsets
-                    index1 = uint32(apu(port*(i-1)+1:end));
+                indices = uint32(length(LL));
+                port = uint32(floor(length(LL)/subsets));
+                if options.use_Shuffle && exist('Shuffle','file') == 3
+                    apu = Shuffle(indices(end), 'index')';
+                elseif options.use_Shuffle && exist('Shuffle','file') == 0
+                    warning('options.Shuffle was set to true, but no Shuffle mex-file found. Using randperm')
+                    apu = uint32(randperm(indices(end)))';
                 else
-                    index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                    apu = uint32(randperm(indices(end)))';
                 end
-                if options.ring_difference_raw < options.rings
-                    index1 = index1(ismember(index1,ind));
+                for i = 1 : subsets
+                    if i == subsets
+                        index1 = uint32(apu(port*(i-1)+1:end));
+                    else
+                        index1 = uint32(apu(port*(i-1)+1:(port*(i))));
+                    end
+                    if options.ring_difference_raw < options.rings
+                        index1 = index1(ismember(index1,ind));
+                    end
+                    index{i} = index1;
+                    pituus(i) = int64(length(index{i}));
                 end
-                index{i} = index1;
-                pituus(i) = int64(length(index{i}));
             end
         elseif options.subset_type == 6
             [index, pituus] = subset_angles(options, LL);
@@ -344,7 +458,10 @@ elseif subsets > 1
             subsets = length(pituus);
         else
             for i=1:subsets
-                index1 = uint32(i:subsets:length(LL))';
+                if options.CT
+                else
+                    index1 = uint32(i:subsets:length(LL))';
+                end
                 if options.ring_difference_raw < options.rings
                     index1 = index1(ismember(index1,ind));
                 end
@@ -353,7 +470,65 @@ elseif subsets > 1
             end
         end
     end
+elseif subsets == 1 && options.precompute_lor
+    if use_raw_data
+        lor_file = [folder machine_name '_detector_locations_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_raw.mat'];
+    else
+        lor_file = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(Ndist) 'x' ...
+            num2str(Nang) 'x' num2str(TotSinos) '.mat'];
+    end
+    if exist(lor_file, 'file') == 2
+        if options.implementation == 1 || options.implementation == 4
+            variableInfo = who('-file', lor_file);
+            if ismember('lor', variableInfo)
+                load(lor_file,'lor')
+            else
+                lor_pixel_count_prepass(options);
+                load(lor_file,'lor')
+            end
+        else
+            variableInfo = who('-file', lor_file);
+            if ismember('lor_opencl', variableInfo)
+                load(lor_file,'lor_opencl')
+            else
+                lor_pixel_count_prepass(options);
+                load(lor_file,'lor_opencl')
+            end
+            lor = lor_opencl;
+            clear lor_opencl
+        end
+    else
+        if options.CT
+            [lor, ~, ~, lor_orth] = lor_pixel_count_prepass(options, false);
+        else
+            lor_pixel_count_prepass(options);
+            if options.implementation == 1 || options.implementation == 4
+                load(lor_file,'lor')
+            else
+                load(lor_file,'lor_opencl')
+                lor = lor_opencl;
+                clear lor_opencl
+            end
+        end
+    end
+    if options.CT
+        index = uint64(1 : numel(lor))';
+    else
+        index = uint32(1 : pituus)';
+    end
+    index = index(lor > 0);
+    pituus = int64(numel(index));
 end
 if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
-    index = uint32(1 : pituus)';
+    if options.CT
+        index = uint64(1 : pituus)';
+    else
+        index = uint32(1 : pituus)';
+    end
+end
+if nargout >= 4
+    varargout{1} = lor;
+end
+if nargout >=5
+    varargout{2} = lor_orth;
 end
