@@ -58,7 +58,7 @@ function output = importData(type, varargin)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 if strcmp(type,'nifti')
-    [file, fpath] = uigetfile(('*.nii;*.img;*.hdr;*.gz'),'Select NIfTI data file');
+    [file, fpath] = uigetfile({'*.nii;*.img;*.hdr;*.gz'},'Select NIfTI data file');
     FileName = fullfile(fpath, file);
     if exist('niftiread','file') == 2
         output = niftiread(FileName);
@@ -78,7 +78,7 @@ elseif strcmp(type, 'dicom')
         error('No dicomread file found. Image processing toolbox is required for reading DICOM files on MATLAB')
     end
 elseif strcmp(type, 'analyze')
-    [file, fpath] = uigetfile(('*.img;*.hdr'),'Select Analyze data file');
+    [file, fpath] = uigetfile({'*.img;*.hdr'},'Select Analyze data file');
     FileName = fullfile(fpath, file);
     if exist('analyze75read','file') == 2
         output = analyze75read(FileName);
@@ -90,11 +90,11 @@ elseif strcmp(type, 'analyze')
     end
     
 elseif strcmp(type, 'interfile')
-    [file, fpath] = uigetfile(('*.img;*.hdr;*.i33;*.h33'),'Select Interfile data file');
+    [file, fpath] = uigetfile({'*.img;*.hdr;*.i33;*.h33'},'Select Interfile data file');
     FileName = fullfile(fpath, file);
     output = loadInterfile(FileName);
 elseif strcmp(type, 'metaimage')
-    [file, fpath] = uigetfile(('*.mhd;*.mha;*.raw'),'Select MetaImage header file');
+    [file, fpath] = uigetfile({'*.mhd;*.mha;*.raw'},'Select MetaImage header file');
     FileName = fullfile(fpath, file);
     output = loadMetaImage(FileName);
 elseif strcmp(type, 'raw')
