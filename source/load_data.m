@@ -68,6 +68,9 @@ end
 if ~isfield(options,'TOF_width') || options.TOF_bins == 0
     options.TOF_width = 0;
 end
+if ~isfield(options,'legacyROOT')
+    options.legacyROOT = false;
+end
 
 if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
     error('Number of TOF bins has to be odd')
@@ -1252,6 +1255,14 @@ elseif options.use_machine == 0
             end
         end
         
+        if options.detectors > 65535
+            outputUint32 = true;
+%             lisays = uint32(1);
+        else
+            outputUint32 = false;
+        end
+            
+        
         if options.verbose
             disp('Data load started')
         end
@@ -1263,7 +1274,7 @@ elseif options.use_machine == 0
             nimi = [fpath fnames(lk).name];
             
             % Use the new features of MATLAB if version is R2019a or newer
-            if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6')
+            if exist('OCTAVE_VERSION','builtin') == 0 && (verLessThan('matlab','9.6') || options.legacyROOT)
                 [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, ...
                     x1, x2, y1, y2, z1, z2, raw_SinM, SinTrues, SinScatter, SinRandoms, SinD] = GATE_root_matlab_C(nimi,vali,alku,loppu, uint32(detectors), blocks_per_ring, ...
                     cryst_per_block, det_per_ring, uint32(options.linear_multip), source, time_intervals, options.obtain_trues, options.store_scatter, options.store_randoms, ...
@@ -1287,7 +1298,8 @@ elseif options.use_machine == 0
                 end
                 [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, x1, x2, y1, ...
                     y2, z1, z2, time, timeD] = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, time_intervals, ...
-                    options, scatter_components, store_coordinates, uint32(transaxial_multip), uint32(cryst_per_block_z), uint32(options.rings), large_case, TOF, options.verbose);
+                    options, scatter_components, store_coordinates, uint32(transaxial_multip), uint32(cryst_per_block_z), uint32(options.rings), large_case, TOF, ...
+                    options.verbose, outputUint32);
             end
             
             
@@ -1316,7 +1328,7 @@ elseif options.use_machine == 0
             end
             zerosRemoved = false;
             if partitions == 1
-                if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.6')
+                if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
                     if ~options.use_raw_data
                         ind = L1 == 0;
                         L1(ind) = [];
@@ -1324,10 +1336,17 @@ elseif options.use_machine == 0
                             L2(L2 == 0) = [];
                         end
                         zerosRemoved = true;
-                        ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
-                        ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
-                        ringPos1 = mod(L1 - 1, uint16(det_per_ring));
-                        ringPos2 = mod(L2 - 1, uint16(det_per_ring));
+                        if outputUint32
+                            ringNumber1 = uint16(idivide(L1 - 1, uint32(det_per_ring)));
+                            ringNumber2 = uint16(idivide(L2 - 1, uint32(det_per_ring)));
+                            ringPos1 = uint16(mod(L1 - 1, uint32(det_per_ring)));
+                            ringPos2 = uint16(mod(L2 - 1, uint32(det_per_ring)));
+                        else
+                            ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
+                            ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
+                            ringPos1 = mod(L1 - 1, uint16(det_per_ring));
+                            ringPos2 = mod(L2 - 1, uint16(det_per_ring));
+                        end
                         if TOF
                             [bins, discard] = FormTOFBins(options, time(~ind,1));
                             ringNumber1(discard) = [];
@@ -1357,10 +1376,17 @@ elseif options.use_machine == 0
                             Ldelay1(Ldelay1 == 0) = [];
                             Ldelay2(Ldelay2 == 0) = [];
                             zerosRemoved = true;
-                            ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
-                            ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
-                            ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
-                            ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
+                            if outputUint32
+                                ringNumber1 = uint16(idivide(Ldelay1 - 1, uint32(det_per_ring)));
+                                ringNumber2 = uint16(idivide(Ldelay2 - 1, uint32(det_per_ring)));
+                                ringPos1 = uint16(mod(Ldelay1 - 1, uint32(det_per_ring)));
+                                ringPos2 = uint16(mod(Ldelay2 - 1, uint32(det_per_ring)));
+                            else
+                                ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
+                                ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
+                                ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
+                                ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
+                            end
                             [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ringPos1, ringPos2, ringNumber1, ringNumber2, logical([]), logical([]), ...
                                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize, time, uint64(options.partitions), ...
@@ -1441,12 +1467,19 @@ elseif options.use_machine == 0
             else
                 if int_loc(1) > 0
                     ll = 1;
-                    if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.6')
+                    if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
                         if ~options.use_raw_data
-                            ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
-                            ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
-                            ringPos1 = mod(L1 - 1, uint16(det_per_ring));
-                            ringPos2 = mod(L2 - 1, uint16(det_per_ring));
+                            if outputUint32
+                                ringNumber1 = uint16(idivide(L1 - 1, uint32(det_per_ring)));
+                                ringNumber2 = uint16(idivide(L2 - 1, uint32(det_per_ring)));
+                                ringPos1 = uint16(mod(L1 - 1, uint32(det_per_ring)));
+                                ringPos2 = uint16(mod(L2 - 1, uint32(det_per_ring)));
+                            else
+                                ringNumber1 = idivide(L1 - 1, uint16(det_per_ring));
+                                ringNumber2 = idivide(L2 - 1, uint16(det_per_ring));
+                                ringPos1 = mod(L1 - 1, uint16(det_per_ring));
+                                ringPos2 = mod(L2 - 1, uint16(det_per_ring));
+                            end
                             ind = time(:,1) <= 0;
                             ringNumber1(ind) = [];
                             ringNumber2(ind) = [];
@@ -1479,10 +1512,17 @@ elseif options.use_machine == 0
                                 alku, int32(options.det_w_pseudo), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
                                 int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
                             if options.randoms_correction
-                                ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
-                                ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
-                                ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
-                                ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
+                                if outputUint32
+                                    ringNumber1 = uint16(idivide(Ldelay1 - 1, uint32(det_per_ring)));
+                                    ringNumber2 = uint16(idivide(Ldelay2 - 1, uint32(det_per_ring)));
+                                    ringPos1 = uint16(mod(Ldelay1 - 1, uint32(det_per_ring)));
+                                    ringPos2 = uint16(mod(Ldelay2 - 1, uint32(det_per_ring)));
+                                else
+                                    ringNumber1 = idivide(Ldelay1 - 1, uint16(det_per_ring));
+                                    ringNumber2 = idivide(Ldelay2 - 1, uint16(det_per_ring));
+                                    ringPos1 = mod(Ldelay1 - 1, uint16(det_per_ring));
+                                    ringPos2 = mod(Ldelay2 - 1, uint16(det_per_ring));
+                                end
                                 ind = timeD <= 0;
                                 ringNumber1(ind) = [];
                                 ringNumber2(ind) = [];
@@ -1502,7 +1542,7 @@ elseif options.use_machine == 0
                             % Dynamic case
                             apu1 = L1(tpoints(ll) + 1:tpoints(ll+1));
                             apu2 = L2(tpoints(ll) + 1:tpoints(ll+1));
-                            if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.6')
+                            if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
                                 L3 = apu2;
                                 apu2(apu2 > apu1) = apu1(apu2 > apu1);
                                 apu1(L3 > apu1) = L3(L3 > apu1);
@@ -1560,7 +1600,7 @@ elseif options.use_machine == 0
                             for kk = int_loc_delay(1) : min(int_loc_delay(2),partitions)
                                 apu1 = Ldelay1(tpoints_delay(ll) + 1:tpoints_delay(ll+1));
                                 apu2 = Ldelay2(tpoints_delay(ll) + 1:tpoints_delay(ll+1));
-                                if exist('OCTAVE_VERSION','builtin') == 0 && ~verLessThan('matlab','9.6')
+                                if exist('OCTAVE_VERSION','builtin') == 0 && (~verLessThan('matlab','9.6') && ~options.legacyROOT)
                                     L3 = apu2;
                                     apu2(apu2 > apu1) = apu1(apu2 > apu1);
                                     apu1(L3 > apu1) = L3(L3 > apu1);
