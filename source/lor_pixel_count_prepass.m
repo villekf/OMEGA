@@ -67,6 +67,21 @@ if sum(temp) > 0
         pseudot(kk) = uint32(options.cryst_per_block + 1) * kk;
     end
 end
+if ~isfield(options,'angles')
+    options.angles = 0;
+end
+if ~isfield(options,'dPitch')
+    options.dPitch = 0;
+end
+if ~isfield(options,'size_y')
+    options.size_y = uint32(0);
+end
+if ~isfield(options,'nProjections')
+    options.nProjections = int64(0);
+end
+if ~isfield(options,'CT')
+    options.CT = false;
+end
 
 % Diameter of the device (mm)
 R=double(diameter);
@@ -94,10 +109,42 @@ Ny=uint32(Ny);
 Nx=uint32(Nx);
 Nz=uint32(Nz);
 
+if options.CT
+    if isfield(options,'x') && isfield(options,'y')
+        x = options.x;
+        y = options.y;
+        if isfield(options,'z')
+            z = options.z;
+        else
+            z = options.z_det;
+        end
+    else
+        [x,y,z] = CTDetectorCoordinates(options.angles,options.sourceToDetector,options.sourceToCRot,options.dPitch,options.xSize,...
+            options.ySize,options.horizontalOffset,options.verticalOffset,options.bedOffset);
+    end
+    if numel(z)/2 > numel(options.angles)
+        if size(options.angles,1) == 1
+            options.angles = reshape(options.angles, [],1);
+        end
+        options.angles = repmat(options.angles,numel(z)/2/numel(options.angles),1);
+    end
+end
+
+if options.CT
+    R = 0;
+    if options.listmode
+        Z = options.dPitch * double(options.xSize) + z(numel(z)/2);
+    else
+        Z = options.dPitch * double(options.xSize) + z(options.nProjections);
+    end
+    if isfield(options,'Z')
+        Z = options.Z;
+    end
+end
 [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, Nx, Ny, Nz, options.implementation);
 
 folder = fileparts(which('lor_pixel_count_prepass.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
 if exist('feature','builtin') == 5
@@ -105,6 +152,11 @@ if exist('feature','builtin') == 5
 else
     nCores = uint32(1);
 end
+
+lor = [];
+lor_orth = [];
+lor_vol = [];
+lor_opencl = [];
 
 %% Raw data and non-OpenCL methods
 if (options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
@@ -129,9 +181,13 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     
     size_x = uint32(numel(x)) / 2;
     
-    zmax = max(max(z_det));
-    if zmax==0
-        zmax = double(1);
+    if isfield(options,'zmax')
+        zmax = options.zmax;
+    else
+        zmax = max(max(z_det));
+        if zmax==0
+            zmax = double(1);
+        end
     end
     % Voxel center coordinates are needed for orthogonal/distance-based ray
     % tracer 
@@ -255,6 +311,9 @@ if (options.use_raw_data && (options.implementation == 1 || options.implementati
     if nargout >= 1
         varargout{1} = lor;
     end
+    if nargout >= 2
+        varargout{2} = [];
+    end
     if nargout >= 3
         varargout{3} = lor_orth;
     end
@@ -339,20 +398,40 @@ if (options.use_raw_data && (options.implementation == 2 || options.implementati
 end
 %% Sinogram data, non-OpenCL
 if (~options.use_raw_data && (options.implementation == 1 || options.implementation == 4)) || options.precompute_all
-    [x, y, z] = get_coordinates(options, options.rings - 1, [], false);
+    if ~options.CT
+        [x, y, z] = get_coordinates(options, options.rings - 1, [], false);
+    end
     
     x = double(x(:));
     y = double(y(:));
     z_det = double(z(:));
     
-    size_x = uint32(numel(x)) / 2;
+    if options.CT
+        if options.listmode
+            size_x = uint32(numel(x)) / 2;
+        else
+            size_x = uint32(options.ySize);
+        end
+    else
+        size_x = uint32(numel(x)) / 2;
+    end
     if ~save_file
         TotSinos = uint32(1);
     end
+    if options.CT && ~options.listmode
+        TotSinos = uint32(options.nProjections * options.xSize);
+    end
     
-    zmax = max(max(z_det));
-    if zmax==0
-        zmax = double(1);
+    if isfield(options,'zmax')
+        zmax = options.zmax;
+    else
+        zmax = max(max(z_det));
+        if zmax==0
+            zmax = double(1);
+        end
+        if options.CT
+            zmax = z_det(options.nProjections) + options.dPitch * (options.xSize - 1);
+        end
     end
     if options.projector_type == 1
         type = uint32(0);
@@ -400,18 +479,36 @@ if (~options.use_raw_data && (options.implementation == 1 || options.implementat
     
     % Determine which LORs go through the FOV
     
-    if exist('OCTAVE_VERSION','builtin') == 0
-        [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
-            zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
-            false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
-            bmin, bmax, Vmax, V, type);
-    elseif exist('OCTAVE_VERSION','builtin') == 5
-        [ lor, lor_orth, lor_vol] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
-            zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
-            false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
-            options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
-            bmin, bmax, Vmax, V, type);
+    if options.CT
+        if exist('OCTAVE_VERSION','builtin') == 0
+            [ lor, lor_orth, lor_vol] = projector_mexCT( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+                zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
+                false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
+                options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+                bmin, bmax, Vmax, V, type, uint32(1), options.angles, uint32(options.xSize), options.dPitch, ...
+                int64(numel(options.angles)));
+        elseif exist('OCTAVE_VERSION','builtin') == 5
+            [ lor, lor_orth, lor_vol] = projector_octCT( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+                zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
+                false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
+                options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+                bmin, bmax, Vmax, V, type, uint32(1), options.angles, uint32(options.xSize), options.dPitch, ...
+                int64(numel(options.angles)));
+        end
+    else
+        if exist('OCTAVE_VERSION','builtin') == 0
+            [ lor, lor_orth, lor_vol] = projector_mex( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+                zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
+                false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
+                options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+                bmin, bmax, Vmax, V, type);
+        elseif exist('OCTAVE_VERSION','builtin') == 5
+            [ lor, lor_orth, lor_vol] = projector_oct( Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy, xx, TotSinos, NSlices, size_x, ...
+                zmax, 0, 0, 0, uint32(0), false, false, false, false, 0, 0, uint16(0), uint32(0), uint16(0), TotSinos, uint16(0), pseudot, uint32(det_per_ring), ...
+                false, int64(0), 0, 0, int64(0), uint32(0), options.verbose, nCores, ...
+                options.use_raw_data, uint32(3), options.listmode, block1, blocks, uint32(options.projector_type), options.tube_width_xy, x_center, y_center, z_center, options.tube_width_z, ...
+                bmin, bmax, Vmax, V, type);
+        end
     end
     
     file_string = [folder machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(options.Ndist) 'x' ...
