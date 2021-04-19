@@ -20,7 +20,7 @@ if options.implementation == 2
     options.weights_quad = single(options.weights_quad);
     clear weights_quad
 else
-    options.weights_quad = [options.weights_quad(1 : end/2); abs(sum(options.weights_quad)); options.weights_quad(end/2 + 1: end)];
+    options.weights_quad = [options.weights_quad(1 : floor(end/2)); abs(sum(options.weights_quad(~isinf(options.weights)))); options.weights_quad(ceil(end/2) + 1: end)];
     options.weights_quad = reshape(options.weights_quad, options.Ndx * 2 + 1, options.Ndy * 2 + 1, options.Ndz * 2 + 1);
 end
 end
