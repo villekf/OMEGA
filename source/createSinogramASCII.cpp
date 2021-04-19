@@ -18,11 +18,8 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 
-#include "mex.h"
+#include "mexFunktio.h"
 #include "saveSinogram.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 #include <thread>
 extern "C" mxArray * mxCreateSharedDataCopy(const mxArray * pr);
 
@@ -47,8 +44,13 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 	if (pseudoR) {
 		gapSize = rings / (nPseudos + 1);
 	}
-
-#pragma omp parallel for ordered schedule(dynamic)
+#ifdef _OPENMP
+#if _OPENMP >= 201511
+#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
+#else
+#pragma omp parallel for schedule(dynamic, nChunks)
+#endif
+#endif
 	for (int64_t kk = 0; kk < koko; kk++) {
 		double aika = 0.;
 		if (NT > 1)
@@ -113,32 +115,98 @@ void mexFunction(int nlhs, mxArray *plhs[],
 			"Too many output arguments.");
 	}
 
-	const double vali = (double)mxGetScalar(prhs[0]);
-	const uint16_t* ringPos1 = (uint16_t*)mxGetData(prhs[1]);
-	const uint16_t* ringPos2 = (uint16_t*)mxGetData(prhs[2]);
-	const uint16_t* ringNumber1 = (uint16_t*)mxGetData(prhs[3]);
-	const uint16_t* ringNumber2 = (uint16_t*)mxGetData(prhs[4]);
-	const bool* truesIndex = (bool*)mxGetData(prhs[5]);
-	const bool* scatterIndex = (bool*)mxGetData(prhs[6]);
-	const bool* randomsIndex = (bool*)mxGetData(prhs[7]);
-	const uint64_t sinoSize = (uint64_t)mxGetScalar(prhs[8]);
-	const uint32_t Ndist = (uint32_t)mxGetScalar(prhs[9]);
-	const uint32_t Nang = (uint32_t)mxGetScalar(prhs[10]);
-	const uint32_t ringDifference = (uint32_t)mxGetScalar(prhs[11]);
-	const uint32_t span = (uint32_t)mxGetScalar(prhs[12]);
-	const uint32_t* seg = (uint32_t*)mxGetData(prhs[13]);
-	const size_t pituus = mxGetNumberOfElements(prhs[13]);
-	const uint64_t TOFSize = (uint64_t)mxGetScalar(prhs[14]);
-	const double* time = (double*)mxGetData(prhs[15]);
-	const uint64_t NT = (uint64_t)mxGetScalar(prhs[16]);
-	const double alku = (double)mxGetScalar(prhs[17]);
-	const int32_t detPerRing = (int32_t)mxGetScalar(prhs[18]);
-	const int32_t rings = (int32_t)mxGetScalar(prhs[19]);
-	const uint16_t* bins = (uint16_t*)mxGetData(prhs[20]);
-	const int32_t nDistSide = (int32_t)mxGetScalar(prhs[25]);
-	const int32_t detWPseudo = (int32_t)mxGetScalar(prhs[26]);
-	const int32_t nPseudos = (int32_t)mxGetScalar(prhs[27]);
-	const int32_t crystPerBlock = (int32_t)mxGetScalar(prhs[28]);
+	int ind = 0;
+	const double vali = getScalarDouble(prhs[ind], ind);
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint16_t* ringPos1 = (uint16_t*)mxGetUint16s(prhs[ind]);
+#else
+	const uint16_t* ringPos1 = (uint16_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint16_t* ringPos2 = (uint16_t*)mxGetUint16s(prhs[ind]);
+#else
+	const uint16_t* ringPos2 = (uint16_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint16_t* ringNumber1 = (uint16_t*)mxGetUint16s(prhs[ind]);
+#else
+	const uint16_t* ringNumber1 = (uint16_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint16_t* ringNumber2 = (uint16_t*)mxGetUint16s(prhs[ind]);
+#else
+	const uint16_t* ringNumber2 = (uint16_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const bool* truesIndex = (bool*)mxGetLogicals(prhs[ind]);
+#else
+	const bool* truesIndex = (bool*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const bool* scatterIndex = (bool*)mxGetLogicals(prhs[ind]);
+#else
+	const bool* scatterIndex = (bool*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const bool* randomsIndex = (bool*)mxGetLogicals(prhs[ind]);
+#else
+	const bool* randomsIndex = (bool*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+	const uint64_t sinoSize = getScalarUInt64(prhs[ind], ind);
+	ind++;
+	const uint32_t Ndist = getScalarUInt32(prhs[ind], ind);
+	ind++;
+	const uint32_t Nang = getScalarUInt32(prhs[ind], ind);
+	ind++;
+	const uint32_t ringDifference = getScalarUInt32(prhs[ind], ind);
+	ind++;
+	const uint32_t span = getScalarUInt32(prhs[ind], ind);
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint32_t* seg = (uint32_t*)mxGetUint32s(prhs[ind]);
+#else
+	const uint32_t* seg = (uint32_t*)mxGetData(prhs[ind]);
+#endif
+	const size_t pituus = mxGetNumberOfElements(prhs[ind]);
+	ind++;
+	const uint64_t TOFSize = getScalarUInt64(prhs[ind], ind);
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const double* time = (double*)mxGetDoubles(prhs[ind]);
+#else
+	const double* time = (double*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+	const uint64_t NT = getScalarUInt64(prhs[ind], ind);
+	ind++;
+	const double alku = getScalarDouble(prhs[ind], ind);
+	ind++;
+	const int32_t detPerRing = getScalarInt32(prhs[ind], ind);
+	ind++;
+	const int32_t rings = getScalarInt32(prhs[ind], ind);
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint16_t* bins = (uint16_t*)mxGetUint16s(prhs[ind]);
+#else
+	const uint16_t* bins = (uint16_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+	const int32_t nDistSide = getScalarInt32(prhs[ind], ind);
+	ind++;
+	const int32_t detWPseudo = getScalarInt32(prhs[ind], ind);
+	ind++;
+	const int32_t nPseudos = getScalarInt32(prhs[ind], ind);
+	ind++;
+	const int32_t crystPerBlock = getScalarInt32(prhs[ind], ind);
+	ind++;
 
 	bool storeTrues = false;
 	bool storeScatter = false;
@@ -160,10 +228,17 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	plhs[1] = mxCreateSharedDataCopy(prhs[22]);
 	plhs[2] = mxCreateSharedDataCopy(prhs[23]);
 	plhs[3] = mxCreateSharedDataCopy(prhs[24]);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	uint16_t* Sino = (uint16_t*)mxGetUint16s(plhs[0]);
+	uint16_t* SinoT = (uint16_t*)mxGetUint16s(plhs[1]);
+	uint16_t* SinoC = (uint16_t*)mxGetUint16s(plhs[2]);
+	uint16_t* SinoR = (uint16_t*)mxGetUint16s(plhs[3]);
+#else
 	uint16_t* Sino = (uint16_t*)mxGetData(plhs[0]);
 	uint16_t* SinoT = (uint16_t*)mxGetData(plhs[1]);
 	uint16_t* SinoC = (uint16_t*)mxGetData(plhs[2]);
 	uint16_t* SinoR = (uint16_t*)mxGetData(plhs[3]);
+#endif
 
 	openMPSino(ringPos1, ringPos2, ringNumber1, ringNumber2, truesIndex, scatterIndex, randomsIndex, sinoSize, Ndist, Nang, ringDifference,
 		span, seg, time, NT, TOFSize, vali, alku, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko, 
