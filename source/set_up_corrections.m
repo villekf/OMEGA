@@ -25,7 +25,7 @@ function [normalization_correction, randoms_correction, options] = set_up_correc
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 folder = fileparts(which('set_up_corrections.m'));
-folder = strrep(folder, 'source','mat-files/');
+folder = [folder(1:end-6), 'mat-files/'];
 folder = strrep(folder, '\','/');
 
 if ~isfield(options,'reconstruct_trues')
@@ -233,10 +233,10 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                 % SinM{kk} = SinM{kk} + SinDelayed{kk};
                 % SinDelayed{kk} = 2 * SinDelayed{kk};
                 if options.variance_reduction && ~RandProp.variance_reduction
-                    options.SinDelayed{kk} = Randoms_variance_reduction(double(options.SinDelayed{kk}), options);
+                    options.SinDelayed{kk} = Randoms_variance_reduction(single(options.SinDelayed{kk}), options);
                 end
                 if options.randoms_smoothing && ~RandProp.smoothing
-                    options.SinDelayed{kk} = randoms_smoothing(double(options.SinDelayed{kk}), options);
+                    options.SinDelayed{kk} = randoms_smoothing(single(options.SinDelayed{kk}), options);
                 end
                 options.SinDelayed{kk} = options.SinDelayed{kk}(:);
                 if options.use_raw_data == false && options.NSinos ~= options.TotSinos
@@ -281,14 +281,14 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         end
                     end
                     if options.subtract_scatter
-                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed{kk} = single(options.SinDelayed{kk}) / options.TOF_bins + single(options.ScatterC{kk}(:));
                         else
                             options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins + double(options.ScatterC{kk}(:));
                         end
                     end
                 elseif ~options.scatter_correction && options.TOF_bins > 1
-                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                         options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins);
                     else
                         options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins);
@@ -335,7 +335,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         options.ScatterC = options.ScatterC(1:options.NSinos*options.Ndist*options.Nang);
                     end
                     if options.subtract_scatter
-                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
                         else
                             options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
@@ -365,7 +365,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             options.ScatterC{kk} = options.ScatterC{kk}(1:options.NSinos*options.Ndist*options.Nang);
                         end
                         if options.subtract_scatter
-                            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                                 options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
                             else
                                 options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
@@ -374,7 +374,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                 end
             elseif ~options.scatter_correction && options.TOF_bins > 1
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                     options.SinDelayed = single(options.SinDelayed / options.TOF_bins);
                 else
                     options.SinDelayed = double(options.SinDelayed / options.TOF_bins);
@@ -435,14 +435,14 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         end
                     end
                     if options.subtract_scatter
-                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed{kk} = single(options.SinDelayed{kk} / options.TOF_bins) + single(options.ScatterC{kk}(:));
                         else
                             options.SinDelayed{kk} = double(options.SinDelayed{kk} / options.TOF_bins) + double(options.ScatterC{kk}(:));
                         end
                     end
                 elseif ~options.scatter_correction && options.TOF_bins > 1
-                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                         options.SinDelayed{kk} = single(options.SinDelayed{kk}) / single(options.TOF_bins);
                     else
                         options.SinDelayed{kk} = double(options.SinDelayed{kk}) / options.TOF_bins;
@@ -487,7 +487,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         options.ScatterC = options.ScatterC(1:options.NSinos*options.Ndist*options.Nang);
                     end
                     if options.subtract_scatter
-                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC(:));
                         else
                             options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC(:));
@@ -517,7 +517,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                             options.ScatterC{kk} = options.ScatterC{kk}(1:options.NSinos*options.Ndist*options.Nang);
                         end
                         if options.subtract_scatter
-                            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                            if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                                 options.SinDelayed = single(options.SinDelayed / options.TOF_bins) + single(options.ScatterC{kk}(:));
                             else
                                 options.SinDelayed = double(options.SinDelayed / options.TOF_bins) + double(options.ScatterC{kk}(:));
@@ -526,7 +526,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     end
                 end
             elseif ~options.scatter_correction && options.TOF_bins > 1
-                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                     options.SinDelayed = single(options.SinDelayed) / single(options.TOF_bins);
                 else
                     options.SinDelayed = double(options.SinDelayed) / options.TOF_bins;
@@ -551,7 +551,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     options.ScatterC = randoms_smoothing(single(options.ScatterC), options);
                 end
                 if options.subtract_scatter
-                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                         options.SinDelayed = single(options.ScatterC(:));
                     else
                         options.SinDelayed = double(options.ScatterC(:));
@@ -579,7 +579,7 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                         options.ScatterC{kk} = randoms_smoothing(single(options.ScatterC{kk}), options);
                     end
                     if options.subtract_scatter
-                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+                        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.implementation == 4
                             options.SinDelayed{kk} = single(options.ScatterC{kk}(:));
                         else
                             options.SinDelayed{kk} = double(options.ScatterC{kk}(:));
@@ -683,11 +683,7 @@ if (options.normalization_correction && options.corrections_during_reconstructio
         end
         options.normalization(options.normalization <= 0) = 1;
         options.normalization = 1./options.normalization(:);
-        if (options.implementation == 1 || options.implementation == 4)
-            options.normalization = double(options.normalization);
-        else
-            options.normalization = single(options.normalization);
-        end
+        options.normalization = single(options.normalization);
         if ~options.use_raw_data && options.NSinos ~= options.TotSinos
             options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
         end
@@ -731,11 +727,7 @@ elseif options.normalization_correction && options.use_user_normalization && opt
                 error('Size mismatch between the current data and the normalization data file')
             end
         end
-        if (options.implementation == 1 || options.implementation == 4)
-            options.normalization = double(options.normalization);
-        else
-            options.normalization = single(options.normalization);
-        end
+        options.normalization = single(options.normalization);
         options.normalization = 1./options.normalization(:);
         if ~options.use_raw_data && options.NSinos ~= options.TotSinos
             options.normalization = options.normalization(1 : options.Ndist * options.Nang *options.NSinos);
@@ -823,18 +815,10 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
             options.SinM = single(full(options.SinM)) .* single(options.normalization);
         end
     end
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        options.normalization = single(0);
-    else
-        options.normalization = 0;
-    end
+    options.normalization = single(0);
 else
     normalization_correction = false;
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        options.normalization = single(0);
-    else
-        options.normalization = 0;
-    end
+    options.normalization = single(0);
 end
 
 if ~isfield(options,'global_correction_factor') || isempty(options.global_correction_factor) || options.global_correction_factor <= 0
