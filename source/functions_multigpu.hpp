@@ -35,10 +35,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl::Kernel& kernel, const cl::Kernel& kernel_sum,
 	const cl::Kernel& kernel_mlem, const cl::Kernel& kernel_convolution, const cl::Kernel& kernel_convolution_f, const cl::Kernel& kernel_vectorMult,
 	const cl::Kernel& kernel_vectorDiv, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center,
-	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit,
+	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit, const bool atomic_32bit,
 	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D,
 	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V,
-	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter, const bool TOF, 
+	const size_t size_V, size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter, const bool TOF, 
 	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins, const cl::vector<cl::Device> devices);
 
 void f_b_project(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue> & commandQueues,
@@ -51,8 +51,8 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	const cl::Kernel& kernel_sum, const cl::Kernel& kernel, mxArray* output, const size_t size_rhs, const cl_uchar no_norm, const size_t numel_x,
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
-	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
-	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter, const bool TOF,
+	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const bool atomic_32bit, const float global_factor, const float bmin, const float bmax,
+	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, size_t local_size, const mxArray* options, const uint32_t scatter, const bool TOF,
 	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins);
 
 cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Context& context, size_t& size, int& cpu_device,
@@ -62,10 +62,11 @@ cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Con
 cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, cl_uint& num_devices_context, cl::vector<cl::Device> & devices);
 
 cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
-	const cl::vector<cl::Device> & devices, const bool verbose, std::vector<cl::CommandQueue> & commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
-	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction, 
-	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float dc_z, 
-	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const uint8_t listmode = 0);
+	const cl::vector<cl::Device> & devices, const bool verbose, std::vector<cl::CommandQueue> & commandQueues, bool& atomic_64bit, const bool atomic_32bit, 
+	const uint32_t projector_type, const char* header_directory, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, 
+	const uint32_t normalization_correction, const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, 
+	const float dc_z, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const uint8_t listmode = 0, 
+	const bool CT = false);
 
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin,
 	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx,

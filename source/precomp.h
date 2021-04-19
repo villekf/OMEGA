@@ -1,6 +1,4 @@
 #pragma once
-#include <cstdint>
-#include <stdio.h>
 #include "opencl_error.hpp"
 
 void precomp_siddon(const cl_uint& num_devices_context, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues, uint16_t* lor1, const float* z_det,

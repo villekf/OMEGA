@@ -35,7 +35,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, 
 	const char* header_directory, const bool precompute, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, 
 	const bool use_64bit_atomics, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, 
-	const size_t local_size, const float* gaussian, const size_t size_gauss, const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, 
+	size_t local_size, const float* gaussian, const size_t size_gauss, const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, 
 	const int64_t nBins) {
 
 	// Total number of voxels
@@ -71,6 +71,11 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		return;
 	}
 
+	std::string deviceName = devices[0].getInfo<CL_DEVICE_VENDOR>(&status);
+	std::string NV("NVIDIA Corporation");
+	if (NV.compare(deviceName) == 0 && projector_type == 1)
+		local_size = 32ULL;
+
 	// Create the same number of command queues as there are devices
 	cl::Program program;
 	std::vector<cl::CommandQueue> commandQueues;
@@ -80,14 +85,16 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
 	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
+	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+	const bool atomic_32bit = (bool)mxGetScalar(mxGetField(options, 0, "use_32bit_atomics"));
 
 	if (listmode == 1 && computeSensImag)
 		compute_norm_matrix = 0u;
 
 	// Build the program and get the command queues
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 
+	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit,
 		projector_type, header_directory, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, 
-		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode);
+		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode, CT);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
@@ -158,9 +165,10 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	OSEM_MLEM(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, options, dx, dy, dz, bx, 
 		by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
 		normalization, atten, size_atten, norm, size_norm, subsets, epps, Nt, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel, kernel_sum, 
-		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, atomic_64bit,
-		compute_norm_matrix, precompute, dec, projector_type, n_rays, n_rays3D, cr_pz, cell, osem_bool, global_factor, bmin, bmax, Vmax, V, size_V, local_size, 
-		use_psf, gaussian, size_gauss, scatter, TOF, TOFSize, sigma_x, TOFCenter, nBins, devices);
+		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, tube_width, crystal_size_z, x_center, y_center, 
+		z_center, size_center_x, size_center_y, size_center_z, atomic_64bit, atomic_32bit, compute_norm_matrix, precompute, dec, projector_type, n_rays, n_rays3D, 
+		cr_pz, cell, osem_bool, global_factor, bmin, bmax, Vmax, V, size_V, local_size, use_psf, gaussian, size_gauss, scatter, TOF, TOFSize, sigma_x, TOFCenter, 
+		nBins, devices);
 
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
@@ -180,7 +188,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute, 
 	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, 
-	const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, const size_t local_size, const bool use_psf, const mxArray* options, 
+	const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, size_t local_size, const bool use_psf, const mxArray* options, 
 	const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins) {
 	// This functions very similarly to the above function
 
@@ -207,22 +215,28 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	cl::vector<cl::Device> devices;
 
 	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
+	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+	const bool atomic_32bit = (bool)mxGetScalar(mxGetField(options, 0, "use_32bit_atomics"));
 
 	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, 1u,
 		raw);
 
+	std::string deviceName = devices[0].getInfo<CL_DEVICE_VENDOR>(&status);
+	std::string NV("NVIDIA Corporation");
+	if (NV.compare(deviceName) == 0 && projector_type == 1)
+		local_size = 32ULL;
+
 	if (status != CL_SUCCESS) {
 		return;
 	}
-
 
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 
 	cl::Program program;
 	std::vector<cl::CommandQueue> commandQueues;
 
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, projector_type, header_directory, crystal_size_z, 
-		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode);
+	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit, projector_type, header_directory, crystal_size_z,
+		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode, CT);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
@@ -265,7 +279,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
 		normalization, atten, size_atten, norm, size_norm, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel_sum, kernel, output,  
 		size_rhs, no_norm, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, precompute, dec, 
-		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter, TOF, 
+		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, atomic_32bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter, TOF,
 		TOFSize, sigma_x, TOFCenter, nBins);
 
 
@@ -312,7 +326,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	cl::Program program;
 	std::vector<cl::CommandQueue> commandQueues;
 
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, 50u, header_directory, 0.f, false, raw, 
+	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, false, 50u, header_directory, 0.f, false, raw, 
 		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0, false, 1LL);
 
 	if (status != CL_SUCCESS) {

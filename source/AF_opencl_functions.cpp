@@ -22,41 +22,10 @@
 // Update the OpenCL kernel inputs for the current iteration/subset
 // If a method is not used, do nothing
 // Otherwise create an OpenCL buffer pointer from the ArrayFire image estimate and initialize the right-hand side vector
-void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, const bool mlem, const uint32_t im_dim, const uint32_t n_rekos, 
-	const uint32_t n_rekos_mlem, const RecMethods MethodList, const bool atomic_64bit, const bool use_psf)
+void update_opencl_inputs(AF_im_vectors& vec, OpenCL_im_vectors& vec_opencl, const bool mlem, const uint32_t im_dim, const uint32_t n_rekos,
+	const uint32_t n_rekos_mlem, const RecMethods MethodList, const bool atomic_64bit, const bool atomic_32bit, const bool use_psf, const uint32_t nMAPOS)
 {
-	if (MethodList.CUSTOM) {
-		if (mlem) {
-			vec.im_mlem(af::seq(n_rekos * im_dim - im_dim, n_rekos * im_dim - 1u)) = vec.custom_MLEM;
-		}
-		else {
-			uint32_t yy = n_rekos * im_dim;
-			if (MethodList.OSLCOSEM > 0u) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_COSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.RBIOSL) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_RBI;
-				yy -= im_dim;
-			}
-			if (MethodList.ROSEMMAP) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_ROSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.MBSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_MBSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.BSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_BSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.OSLOSEM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_OSEM;
-				yy -= im_dim;
-			}
-		}
-	}
+
 	if (mlem) {
 		if (use_psf)
 			vec_opencl.d_im_mlem = cl::Buffer(*vec.im_mlem_blurred.device<cl_mem>(), true);
@@ -64,6 +33,8 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 			vec_opencl.d_im_mlem = cl::Buffer(*vec.im_mlem.device<cl_mem>(), true);
 		if (atomic_64bit)
 			vec.rhs_mlem = af::constant(0LL, static_cast<size_t>(im_dim) * n_rekos_mlem, 1, s64);
+		else if (atomic_32bit)
+			vec.rhs_mlem = af::constant(0, static_cast<size_t>(im_dim) * n_rekos_mlem, 1, s32);
 		else
 			vec.rhs_mlem = af::constant(0.f, static_cast<size_t>(im_dim) * n_rekos_mlem, 1);
 		vec_opencl.d_rhs_mlem = cl::Buffer(*vec.rhs_mlem.device<cl_mem>(), true);
@@ -75,6 +46,8 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 			vec_opencl.d_im_os = cl::Buffer(*vec.im_os.device<cl_mem>(), true);
 		if (atomic_64bit)
 			vec.rhs_os = af::constant(0LL, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1, s64);
+		else if (atomic_32bit)
+			vec.rhs_os = af::constant(0, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1, s32);
 		else
 			vec.rhs_os = af::constant(0.f, static_cast<size_t>(im_dim) * static_cast<size_t>(n_rekos), 1);
 		vec_opencl.d_rhs_os = cl::Buffer(*vec.rhs_os.device<cl_mem>(), true);
@@ -84,6 +57,7 @@ void update_opencl_inputs(AF_im_vectors & vec, OpenCL_im_vectors &vec_opencl, co
 // Reconsruction methods as cl_chars
 void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodListOpenCL)
 {
+	// Non-MAP/prior algorithms
 	MethodListOpenCL.MLEM = static_cast<cl_char>(MethodList.MLEM);
 	MethodListOpenCL.OSEM = static_cast<cl_char>(MethodList.OSEM);
 	MethodListOpenCL.RAMLA = static_cast<cl_char>(MethodList.RAMLA);
@@ -95,6 +69,7 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 	MethodListOpenCL.ECOSEM = static_cast<cl_char>(MethodList.ECOSEM);
 	MethodListOpenCL.ACOSEM = static_cast<cl_char>(MethodList.ACOSEM);
 
+	// Priors
 	MethodListOpenCL.MRP = static_cast<cl_char>(MethodList.MRP);
 	MethodListOpenCL.Quad = static_cast<cl_char>(MethodList.Quad);
 	MethodListOpenCL.Huber = static_cast<cl_char>(MethodList.Huber);
@@ -107,6 +82,7 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 	MethodListOpenCL.TGV = static_cast<cl_char>(MethodList.TGV);
 	MethodListOpenCL.NLM = static_cast<cl_char>(MethodList.NLM);
 
+	// MAP/prior-based algorithms
 	MethodListOpenCL.OSLMLEM = static_cast<cl_char>(MethodList.OSLMLEM);
 	MethodListOpenCL.OSLOSEM = static_cast<cl_char>(MethodList.OSLOSEM);
 	MethodListOpenCL.BSREM = static_cast<cl_char>(MethodList.BSREM);
@@ -114,6 +90,7 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 	MethodListOpenCL.ROSEMMAP = static_cast<cl_char>(MethodList.ROSEMMAP);
 	MethodListOpenCL.RBIOSL = static_cast<cl_char>(MethodList.RBIOSL);
 	MethodListOpenCL.OSLCOSEM = static_cast<cl_char>(MethodList.OSLCOSEM);
+	MethodListOpenCL.PKMA = static_cast<cl_char>(MethodList.PKMA);
 }
 
 cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& kernel_mramla, cl::Kernel& kernelNLM, cl::Kernel& kernelMed, const bool osem_bool, const cl::Program &program_os, const cl::Program& program_ml,
@@ -162,7 +139,7 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 	}
 
 	// Kernel for the prepass phase needed for MRAMLA, MBSREM, RBI, COSEM, ACOSEM and ECOSEM
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 
 		// Create the prepass kernel
@@ -216,18 +193,18 @@ cl_int createKernels(cl::Kernel& kernel_ml, cl::Kernel & kernel, cl::Kernel& ker
 	return status;
 }
 
-cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, std::vector<cl::Buffer>& d_lor, std::vector<cl::Buffer>& d_L, std::vector<cl::Buffer>& d_zindex,
+cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, cl::Buffer& d_angles, std::vector<cl::Buffer>& d_lor, std::vector<cl::Buffer>& d_L, std::vector<cl::Buffer>& d_zindex,
 	std::vector<cl::Buffer>& d_xyindex, std::vector<cl::Buffer>& d_Sino, std::vector<cl::Buffer>& d_sc_ra, const uint32_t size_x, const size_t size_z,
 	const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows, std::vector<size_t>& length, const float* x, const float* y,
 	const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw,
 	cl::Context& af_context, const uint32_t subsets, const int64_t* pituus, const float* atten, const float* norm, const float* scat, const uint32_t* pseudos, const float* V,
 	cl::CommandQueue& af_queue, cl::Buffer& d_atten, std::vector<cl::Buffer>& d_norm, std::vector<cl::Buffer>& d_scat, cl::Buffer& d_pseudos, cl::Buffer& d_V, cl::Buffer& d_xcenter, 
 	cl::Buffer& d_ycenter, cl::Buffer& d_zcenter, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, const size_t size_center_y, 
-	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
+	const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool atomic_64bit, const bool atomic_32bit, const bool randoms_correction, const mxArray* sc_ra, const bool precompute,
 	cl::Buffer& d_lor_mlem, cl::Buffer& d_L_mlem, cl::Buffer& d_zindex_mlem, cl::Buffer& d_xyindex_mlem, cl::Buffer& d_Sino_mlem, cl::Buffer& d_sc_ra_mlem, cl::Buffer& d_reko_type, 
 	cl::Buffer& d_reko_type_mlem, const bool osem_bool,	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, 
-	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
-	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const uint8_t listmode)
+	const uint32_t n_rekos_mlem, cl::Buffer& d_norm_mlem, cl::Buffer& d_scat_mlem, const float* angles, const bool TOF, const int64_t nBins, const bool loadTOF, cl::Buffer& d_TOFCenter, 
+	const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const uint8_t listmode, const bool CT)
 {
 	cl_int status = CL_SUCCESS;
 	// Create the necessary buffers
@@ -251,6 +228,13 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
+	}
+	if (CT) {
+		d_angles = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * TotSinos, NULL, &status);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return status;
+		}
 	}
 	d_xcenter = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);;
 	if (status != CL_SUCCESS) {
@@ -363,7 +347,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					return status;
 				}
 			}
-			else if (listmode != 1) {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				d_xyindex[kk] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -460,7 +444,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				return status;
 			}
 		}
-		else if (listmode != 1) {
+		else if (listmode != 1 && !CT) {
 			d_xyindex_mlem = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * koko, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -529,6 +513,13 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		getErrorString(status);
 		return status;
 	}
+	if (CT) {
+		status = af_queue.enqueueWriteBuffer(d_angles, CL_FALSE, 0, sizeof(float) * TotSinos, angles);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return status;
+		}
+	}
 	status = af_queue.enqueueWriteBuffer(d_xcenter, CL_FALSE, 0, sizeof(float) * size_center_x, x_center);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
@@ -555,6 +546,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 		return status;
 	}
 	status = af_queue.enqueueWriteBuffer(d_pseudos, CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos);
+	status = af_queue.finish();
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		return status;
@@ -583,7 +575,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 					return status;
 				}
 			}
-			else if (listmode != 1) {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				status = af_queue.enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -621,6 +613,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				status = af_queue.enqueueWriteBuffer(d_lor[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &lor1[pituus[kk]]);
 			else
 				status = af_queue.enqueueWriteBuffer(d_lor[kk], CL_FALSE, 0, sizeof(uint16_t), lor1);
+			status = af_queue.finish();
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return status;
@@ -645,6 +638,13 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
+			if (DEBUG) {
+				mexPrintf("length[kk] = %d\n", length[kk]);
+				mexPrintf("pituus[kk] = %d\n", pituus[kk]);
+				mexPrintf("erotus = %d\n", pituus[kk + 1] - pituus[kk]);
+				mexPrintf("kk = %d\n", kk);
+				mexEvalString("pause(.0001);");
+			}
 			if (TOF) {
 				if (loadTOF) {
 					for (int64_t to = 0LL; to < nBins; to++)
@@ -663,7 +663,11 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
+#else
 			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
+#endif
 			if (randoms_correction)
 				status = af_queue.enqueueWriteBuffer(d_sc_ra[kk], CL_FALSE, 0, sizeof(float) * length[kk], &apu[pituus[kk]]);
 			else
@@ -716,7 +720,11 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
+#else
 		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
+#endif
 		if (randoms_correction)
 			status = af_queue.enqueueWriteBuffer(d_sc_ra_mlem, CL_FALSE, 0, sizeof(float) * koko, apu);
 		else
@@ -742,7 +750,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				return status;
 			}
 		}
-		else if (listmode != 1) {
+		else if (listmode != 1 && !CT) {
 			status = af_queue.enqueueWriteBuffer(d_xyindex_mlem, CL_FALSE, 0, sizeof(uint32_t) * koko, xy_index);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -795,10 +803,10 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	const std::vector<cl::Buffer> &xindex, cl::Program program, const cl::CommandQueue &af_queue, const cl::Context af_context, Weighting& w_vec,
 	std::vector<af::array>& Summ, std::vector<cl::Buffer> &d_Sino, const size_t koko_l, af::array& cosem, af::array& C_co,
 	af::array& C_aco, af::array& C_osl, const uint32_t alku, cl::Kernel &kernel_mramla, const std::vector<cl::Buffer> &L, const uint8_t raw,
-	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const cl_uchar compute_norm_matrix, 
+	const RecMethodsOpenCL MethodListOpenCL, const std::vector<size_t> length, const bool atomic_64bit, const bool atomic_32bit, const cl_uchar compute_norm_matrix, 
 	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
 	const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, 
-	const size_t koko, const bool randoms_correction, const uint64_t* randSize, const uint32_t Nt) {
+	const size_t koko, const bool randoms_correction, const size_t local_size, const uint64_t* randSize, const uint32_t Nt, const bool CT) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -831,7 +839,6 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	}
 	cl::Buffer d_ACOSEM_lhs = cl::Buffer(*apu.device<cl_mem>(), true);
 
-	const size_t local_size = 64ULL;
 	cl_ulong st = 0ULL;
 
 	for (uint32_t osa_iter = eka; osa_iter < subsets; osa_iter++) {
@@ -868,6 +875,9 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				if (atomic_64bit) {
 					apu_summa = af::constant(0LL, im_dim, 1, s64);
 				}
+				else if (atomic_32bit) {
+					apu_summa = af::constant(0, im_dim, 1, s32);
+				}
 				else {
 					apu_summa = af::constant(0.f, im_dim, 1);
 				}
@@ -876,6 +886,9 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				if (atomic_64bit) {
 					apu_summa = af::constant(0LL, 1, 1, s64);
 				}
+				else if (atomic_32bit) {
+					apu_summa = af::constant(0, 1, 1, s32);
+				}
 				else {
 					apu_summa = af::constant(0.f, 1, 1);
 				}
@@ -883,13 +896,17 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
 				if (atomic_64bit)
-					apu_co = af::constant(0ULL, im_dim, 1, s64);
+					apu_co = af::constant(0LL, im_dim, 1, s64);
+				else if (atomic_32bit)
+					apu_co = af::constant(0, im_dim, 1, s32);
 				else
 					apu_co = af::constant(0.f, im_dim, 1);
 			}
 			else {
 				if (atomic_64bit)
 					apu_co = af::constant(0LL, 1, 1, s64);
+				else if (atomic_32bit)
+					apu_co = af::constant(0, 1, 1, s32);
 				else
 					apu_co = af::constant(0.f, 1, 1);
 			}
@@ -897,17 +914,25 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0u) {
 				if (atomic_64bit)
 					apu_aco = af::constant(0LL, im_dim, 1, s64);
+				else if (atomic_32bit)
+					apu_aco = af::constant(0, im_dim, 1, s32);
 				else
 					apu_aco = af::constant(0.f, im_dim, 1);
 			}
 			else {
 				if (atomic_64bit)
 					apu_aco = af::constant(0LL, 1, 1, s64);
+				else if (atomic_32bit)
+					apu_aco = af::constant(0, 1, 1, s32);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
 			}
 			if (TOF && !loadTOF && osa_iter > 0) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				float* apuS = (float*)mxGetSingles(mxGetCell(Sin, 0));
+#else
 				float* apuS = (float*)mxGetData(mxGetCell(Sin, 0));
+#endif
 				d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * nBins, NULL, &status);
 				for (int64_t to = 0LL; to < nBins; to++)
 					status = af_queue.enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[osa_iter] * to, sizeof(float) * length[osa_iter], &apuS[pituus[osa_iter] + koko * to]);
@@ -919,6 +944,9 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				if (atomic_64bit) {
 					apu_summa = af::constant(0LL, im_dim, 1, s64);
 				}
+				else if (atomic_32bit) {
+					apu_summa = af::constant(0, im_dim, 1, s32);
+				}
 				else {
 					apu_summa = Summ[0];
 				}
@@ -926,6 +954,9 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			else {
 				if (atomic_64bit) {
 					apu_summa = af::constant(0LL, 1, 1, s64);
+				}
+				else if (atomic_32bit) {
+					apu_summa = af::constant(0, 1, 1, s32);
 				}
 				else {
 					apu_summa = af::constant(0.f, 1, 1);
@@ -936,6 +967,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM || MethodListOpenCL.OSLCOSEM == 2) && alku == 0u) {
 				if (atomic_64bit)
 					apu_co = (C_co * TH).as(s64);
+				else if (atomic_32bit)
+					apu_co = (C_co * TH32).as(s32);
 				else
 					apu_co = C_co;
 			}
@@ -949,12 +982,16 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if ((MethodListOpenCL.ACOSEM || MethodListOpenCL.OSLCOSEM == 1) && alku == 0) {
 				if (atomic_64bit)
 					apu_aco = (C_aco * TH).as(s64);
+				else if (atomic_32bit)
+					apu_aco = (C_aco * TH32).as(s32);
 				else
 					apu_aco = C_aco;
 			}
 			else {
 				if (atomic_64bit)
 					apu_aco = af::constant(0LL, 1, 1, s64);
+				else if (atomic_32bit)
+					apu_aco = af::constant(0, 1, 1, s32);
 				else
 					apu_aco = af::constant(0.f, 1, 1);
 			}
@@ -1029,6 +1066,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if ((MethodListOpenCL.COSEM || MethodListOpenCL.ECOSEM)) {
 				if (atomic_64bit)
 					C_co(af::span, osa_iter) = apu_co.as(f32) / TH;
+				else if (atomic_32bit)
+					C_co(af::span, osa_iter) = apu_co.as(f32) / TH32;
 				else
 					C_co(af::span, osa_iter) = apu_co;
 				if (use_psf)
@@ -1039,6 +1078,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if (MethodListOpenCL.ACOSEM) {
 				if (atomic_64bit)
 					C_aco(af::span, osa_iter) = apu_aco.as(f32) / TH;
+				else if (atomic_32bit)
+					C_aco(af::span, osa_iter) = apu_aco.as(f32) / TH32;
 				else
 					C_aco(af::span, osa_iter) = apu_aco;
 				if (use_psf)
@@ -1049,6 +1090,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			if (MethodListOpenCL.OSLCOSEM == 2u) {
 				if (atomic_64bit)
 					C_osl(af::span, osa_iter) = apu_co.as(f32) / TH;
+				else if (atomic_32bit)
+					C_osl(af::span, osa_iter) = apu_co.as(f32) / TH32;
 				else
 					C_osl(af::span, osa_iter) = apu_co;
 				if (use_psf)
@@ -1059,6 +1102,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 			else if (MethodListOpenCL.OSLCOSEM == 1) {
 				if (atomic_64bit)
 					C_osl(af::span, osa_iter) = apu_aco.as(f32) / TH;
+				else if (atomic_32bit)
+					C_osl(af::span, osa_iter) = apu_aco.as(f32) / TH32;
 				else
 					C_osl(af::span, osa_iter) = apu_aco;
 				if (use_psf)
@@ -1088,6 +1133,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				if (compute_norm_matrix == 0u) {
 					if (atomic_64bit)
 						Summ[osa_iter] = (apu_summa).as(f32) / TH;
+					else if (atomic_32bit)
+						Summ[osa_iter] = (apu_summa).as(f32) / TH32;
 					else
 						Summ[osa_iter] = apu_summa;
 					af::sync();
@@ -1103,6 +1150,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 				else {
 					if (atomic_64bit)
 						Summ[0] = (apu_summa).as(f32) / TH;
+					else if (atomic_32bit)
+						Summ[0] = (apu_summa).as(f32) / TH32;
 					else
 						Summ[0] = apu_summa;
 					w_vec.D += Summ[0];
@@ -1143,7 +1192,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					w_vec.U = UU;
 			}
 			float eps_mramla = w_vec.epsilon_mramla;
-			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins);
+			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins, CT);
 			if (eps_mramla < w_vec.epsilon_mramla)
 				w_vec.epsilon_mramla = eps_mramla;
 			if (DEBUG) {
@@ -1154,7 +1203,11 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 		af::deviceGC();
 	}
 	if (TOF && !loadTOF) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
+#else
 		float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
+#endif
 		d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[0] * nBins, NULL, &status);
 		for (int64_t to = 0LL; to < nBins; to++)
 			status = af_queue.enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[0] * to, sizeof(float) * length[0], &apu[pituus[0] + koko * to]);
@@ -1162,6 +1215,8 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 	if (use_psf && alku == 0 && w_vec.MBSREM_prepass) {
 		w_vec.D = computeConvolution(w_vec.D, g, Nx, Ny, Nz, w_vec, 1u);
 	}
+	if (w_vec.MBSREM_prepass)
+		w_vec.D(w_vec.D <= 0.f) = 1.f;
 	return;
 }
 
@@ -1305,13 +1360,14 @@ void precomp_siddon(const cl_context &context, const cl_command_queue &commandQu
 	return;
 }
 
+// This function creates the OpenCL problems for the MBSREM/COSEM/etc. prepass, for OSEM program and for MLEM program
 cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_context, cl::Device& af_device_id, const char* fileName, 
-	cl::Program& program_os, cl::Program& program_ml, cl::Program& program_mbsrem, bool& atomic_64bit, const uint32_t device, const char* header_directory,
+	cl::Program& program_os, cl::Program& program_ml, cl::Program& program_mbsrem, bool& atomic_64bit, const bool atomic_32bit, const uint32_t device, const char* header_directory,
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, 
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
 	const bool find_lors, const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem, 
 	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, 
-	const bool TOF, const int64_t nBins, const uint8_t listmode) {
+	const bool TOF, const int64_t nBins, const uint8_t listmode, const bool CT) {
 
 	cl_int status = CL_SUCCESS;
 
@@ -1331,8 +1387,9 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
 	std::string content;
 	//content = content + contentHeader;
-	//options += " -cl-single-precision-constant";
 	std::string options = "-cl-single-precision-constant";
+	//options += " -cl-fast-relaxed-math";
+	// Load correct header files
 	if (crystal_size_z == 0.f && projector_type == 2u) {
 		options += " -DCRYST";
 		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
@@ -1355,6 +1412,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	}
 	else
 		content = contentHeader + contentF;
+	// Set all preprocessor definitions
 	if (projector_type == 3u)
 		options += " -DVOL";
 	if (precompute)
@@ -1376,6 +1434,8 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	if (TOF && projector_type == 1u) {
 		options += " -DTOF";
 	}
+	if (CT)
+		options += " -DCT";
 	options += (" -DNBINS=" + std::to_string(nBins));
 	if (listmode == 1)
 		options += " -DLISTMODE";
@@ -1407,6 +1467,7 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 	if (MethodList.NLM) {
 		options += " -DNLM_";
 	}
+	// Build subset-based program
 	if (osem_bool) {
 		std::string os_options = options;
 		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0)
@@ -1423,8 +1484,9 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 			os_options += " -DCOSEM";
 
 		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_os, atomic_64bit, os_options);
-		status = buildProgram(verbose, content, af_context, af_device_id, program_os, atomic_64bit, os_options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_os, atomic_64bit, atomic_32bit, os_options);
 	}
+	// Build MLEM (non subset) program
 	if (mlem_bool) {
 		std::string ml_options = options;
 		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0)
@@ -1437,9 +1499,10 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 			ml_options += " -DNREKOS2";
 
 		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
-		status = buildProgram(verbose, content, af_context, af_device_id, program_ml, atomic_64bit, ml_options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_ml, atomic_64bit, atomic_32bit, ml_options);
 	}
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) && w_vec.MBSREM_prepass ||
+	// Build the prepass phase program
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 		options += " -DAF";
 		options += " -DMBSREM";
@@ -1450,13 +1513,13 @@ cl_int createProgram(const bool verbose, const char* k_path, cl::Context& af_con
 		if (MethodList.MRAMLA || MethodList.MBSREM)
 			options += " -DMRAMLA";
 		//status = buildProgram(verbose, k_path, af_context, af_device_id, program_mbsrem, atomic_64bit, options);
-		status = buildProgram(verbose, content, af_context, af_device_id, program_mbsrem, atomic_64bit, options);
+		status = buildProgram(verbose, content, af_context, af_device_id, program_mbsrem, atomic_64bit, atomic_32bit, options);
 	}
 	return status;
 }
 
 cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_context, cl::Device& af_device_id, cl::Program& program,
-	bool& atomic_64bit, std::string options) {
+	bool& atomic_64bit, const bool atomic_32bit, std::string options) {
 	cl_int status = CL_SUCCESS;
 	size_t pituus;
 	if (atomic_64bit) {
@@ -1465,30 +1528,44 @@ cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_con
 		options += " -DATOMIC";
 		options += (" -DTH=" + std::to_string(TH));
 	}
+	else if (atomic_32bit) {
+		options += " -DCAST=int";
+		options += " -DATOMIC32";
+		options += (" -DTH=" + std::to_string(TH32));
+	}
 	else
 		options += " -DCAST=float";
 	if (DEBUG)
 		mexPrintf("%s\n", options.c_str());
 	if (atomic_64bit) {
-		//std::string kernel_path_atom;
+		cl::string apu = af_device_id.getInfo<CL_DEVICE_EXTENSIONS>();
+		cl::string apu2 = "cl_khr_int64_base_atomics";
+		int32_t var = apu.find(apu2);
+		if (var < 0) {
+			options.erase(pituus, options.size() + 1);
+			options += " -DCAST=float";
+			status = -1;
+		}
+		else {
+			//std::string kernel_path_atom;
 
-		//kernel_path_atom = k_path;
-		//kernel_path_atom += ".cl";
-		//// Load the source text file
-		//std::ifstream sourceFile_atom(kernel_path_atom.c_str());
-		//std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
-		std::vector<std::string> testi;
-		testi.push_back(content);
-		cl::Program::Sources source(testi);
-		program = cl::Program(af_context, source);
-		//try {
+			//kernel_path_atom = k_path;
+			//kernel_path_atom += ".cl";
+			//// Load the source text file
+			//std::ifstream sourceFile_atom(kernel_path_atom.c_str());
+			//std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
+			std::vector<std::string> testi;
+			testi.push_back(content);
+			cl::Program::Sources source(testi);
+			program = cl::Program(af_context, source);
+			//try {
 			status = program.build(options.c_str());
 			if (status == CL_SUCCESS) {
 				mexPrintf("OpenCL program (64-bit atomics) built\n");
 			}
-		//}
-		//catch (cl::Error& e) {
-			//mexPrintf("%s\n", e.what());
+			//}
+			//catch (cl::Error& e) {
+				//mexPrintf("%s\n", e.what());
 			else {
 				mexPrintf("Failed to build 64-bit atomics program.\n");
 				if (DEBUG) {
@@ -1508,7 +1585,8 @@ cl_int buildProgram(const bool verbose, std::string content, cl::Context& af_con
 				options += " -DCAST=float";
 				//status = -1;
 			}
-		//}
+			//}
+		}
 	}
 	else
 		status = -1;

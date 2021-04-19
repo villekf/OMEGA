@@ -29,7 +29,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	const cl::Kernel& kernel_sum, const cl::Kernel& kernel, mxArray* output, const size_t size_rhs, const cl_uchar no_norm, const size_t numel_x,
 	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
 	const size_t size_center_y, const size_t size_center_z, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, 
-	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const float global_factor, const float bmin, const float bmax, 
+	const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool atomic_64bit, const bool atomic_32bit, const float global_factor, const float bmin, const float bmax,
 	const float Vmax, const float* V, const size_t size_V, const uint8_t fp, const size_t local_size, const mxArray* options, const uint32_t scatter, const bool TOF,
 	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins) {
 
@@ -38,10 +38,30 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	cl_float zero = 0.f;
 	cl_short zeroL = 0;
 	cl_ulong zeroULL = 0ULL;
+	cl_uint zero32 = 0;
 	const float epps = 1e-8f;
 
 	// Distance between rays in multi-ray Siddon
 	const float dc_z = cr_pz / static_cast<float>(n_rays3D);
+	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+
+	int64_t nProjections = 0LL;
+	float dPitch = 0.f;
+	float* angles = nullptr;
+	uint32_t size_y = 0U;
+	uint32_t subsets = 0U;
+	if (CT) {
+		dPitch = (float)mxGetScalar(mxGetField(options, 0, "dPitch"));
+		nProjections = (int64_t)mxGetScalar(mxGetField(options, 0, "nProjections"));
+		size_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "xSize"));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
+#else
+		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
+#endif
+		if ((bool)mxGetScalar(mxGetField(options, 0, "useSubsets")))
+			subsets = 2U;
+	}
 
 	size_t size_output;
 
@@ -54,19 +74,51 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	mxArray* output_m, * normalizer_m;
 	float* output_f, * normalizer_f;
-	int64_t* output_u, * normalizer_u;
+	int64_t* output_64, * normalizer_64;
+	int32_t* output_32, * normalizer_32;
 	if (atomic_64bit) {
 		// Output matrix
 		output_m = mxCreateNumericMatrix(size_output, 1, mxINT64_CLASS, mxREAL);
-		output_u = (int64_t*)mxGetData(output_m);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		output_64 = (int64_t*)mxGetInt64s(output_m);
+#else
+		output_64 = (int64_t*)mxGetData(output_m);
+#endif
 		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxINT64_CLASS, mxREAL);
-		normalizer_u = (int64_t*)mxGetData(normalizer_m);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		normalizer_64 = (int64_t*)mxGetInt64s(normalizer_m);
+#else
+		normalizer_64 = (int64_t*)mxGetData(normalizer_m);
+#endif
+	}
+	else if (atomic_32bit) {
+		// Output matrix
+		output_m = mxCreateNumericMatrix(size_output, 1, mxINT32_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		output_32 = (int32_t*)mxGetInt64s(output_m);
+#else
+		output_32 = (int32_t*)mxGetData(output_m);
+#endif
+		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxINT32_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		normalizer_32 = (int32_t*)mxGetInt64s(normalizer_m);
+#else
+		normalizer_32 = (int32_t*)mxGetData(normalizer_m);
+#endif
 	}
 	else {
 		output_m = mxCreateNumericMatrix(size_output, 1, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		output_f = (float*)mxGetSingles(output_m);
+#else
 		output_f = (float*)mxGetData(output_m);
+#endif
 		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		normalizer_f = (float*)mxGetSingles(normalizer_m);
+#else
 		normalizer_f = (float*)mxGetData(normalizer_m);
+#endif
 	}
 
 	// Essentially the same as above, but without subsets
@@ -118,6 +170,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<cl::Buffer> d_z(num_devices_context);
 	std::vector<cl::Buffer> d_x(num_devices_context);
 	std::vector<cl::Buffer> d_y(num_devices_context);
+	std::vector<cl::Buffer> d_angles(num_devices_context);
 	std::vector<cl::Buffer> d_xcenter(num_devices_context);
 	std::vector<cl::Buffer> d_ycenter(num_devices_context);
 	std::vector<cl::Buffer> d_zcenter(num_devices_context);
@@ -163,6 +216,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
+		}
+		if (CT) {
+			d_angles[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * nProjections, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
 		}
 		d_xcenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 		if (status != CL_SUCCESS) {
@@ -222,6 +282,30 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 					return;
 				}
 				d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+			}
+		}		
+		else if (atomic_32bit) {
+			d_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * size_output, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+			d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_uint) * im_dim, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+			if (i < num_devices_context - 1) {
+				d0_output[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * size_output, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_int) * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -319,7 +403,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		else if (listmode != 1) {
+		else if (listmode != 1 && (!CT || subsets > 1)) {
 			d_xyindex[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[i], NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -366,7 +450,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	cl::Kernel kernel_ = kernel;
 	cl::Kernel kernel_sum_ = kernel_sum;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const float* Sino = (float*)mxGetSingles(mxGetCell(Sin, static_cast<mwIndex>(0)));
+#else
 	const float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(0)));
+#endif
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(cl_uchar), &fp);
@@ -383,6 +471,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
+		}
+		if (CT) {
+			status = commandQueues[i].enqueueWriteBuffer(d_angles[i], CL_FALSE, 0, sizeof(float) * nProjections, angles);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
 		}
 		status = commandQueues[i].enqueueWriteBuffer(d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center);
 		if (status != CL_SUCCESS) {
@@ -453,7 +548,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		else if (listmode != 1){
+		else if (listmode != 1 && (!CT || subsets > 1)){
 			status = commandQueues[i].enqueueWriteBuffer(d_xyindex[i], CL_FALSE, 0, sizeof(uint32_t) * length[i], &xy_index[cumsum[i]]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -524,10 +619,16 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<std::vector<float>> testi_rhs;
 	std::vector<std::vector<int64_t>> testi_summ_u;
 	std::vector<std::vector<int64_t>> testi_rhs_u;
+	std::vector<std::vector<int32_t>> testi_summ_32;
+	std::vector<std::vector<int32_t>> testi_rhs_32;
 	if (num_devices_context > 1u) {
 		if (atomic_64bit) {
 			testi_summ_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
 			testi_rhs_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
+		}
+		else if (atomic_32bit) {
+			testi_summ_32.resize(num_devices_context - 1u, std::vector<int32_t>(im_dim));
+			testi_rhs_32.resize(num_devices_context - 1u, std::vector<int32_t>(im_dim));
 		}
 		else {
 			testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));
@@ -616,6 +717,18 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
+		else if (atomic_32bit) {
+			status = commandQueues[i].enqueueFillBuffer(d_output[i], zero32, 0, sizeof(cl_uint) * size_output);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+			status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zero32, 0, sizeof(cl_uint) * im_dim);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
+		}
 		else {
 			status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zero, 0, sizeof(cl_float) * im_dim);
 			if (status != CL_SUCCESS) {
@@ -629,7 +742,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		if (randoms_correction == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* S_R = (float*)mxGetSingles(mxGetCell(sc_ra, static_cast<mwIndex>(0)));
+#else
 			float* S_R = (float*)mxGetData(mxGetCell(sc_ra, 0));
+#endif
 			status = commandQueues[i].enqueueWriteBuffer(d_sc_ra[i], CL_FALSE, 0, sizeof(float) * length[i], S_R);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -644,7 +761,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		if (scatter == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterFB"), static_cast<mwIndex>(0)));
+#else
 			float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));
+#endif
 			status = commandQueues[i].enqueueWriteBuffer(d_scat[i], CL_FALSE, 0, sizeof(float) * length[i], scat);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -716,6 +837,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			kernel_.setArg(kernelIndSubIter++, d_V[i]);
 		}
 		kernel_.setArg(kernelIndSubIter++, d_reko_type[i]);
+		if (CT) {
+			kernel_.setArg(kernelIndSubIter++, subsets);
+			kernel_.setArg(kernelIndSubIter++, d_angles[i]);
+			kernel_.setArg(kernelIndSubIter++, size_y);
+			kernel_.setArg(kernelIndSubIter++, dPitch);
+			kernel_.setArg(kernelIndSubIter++, nProjections);
+		}
 		kernel_.setArg(kernelIndSubIter++, d_norm[i]);
 		kernel_.setArg(kernelIndSubIter++, d_scat[i]);
 		kernel_.setArg(kernelIndSubIter++, d_Summ[i]);
@@ -760,6 +888,28 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 					return;
 				}
 				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(int64_t) * size_output, testi_rhs_u[i - 1u].data());
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+			}
+			else if (atomic_32bit) {
+				status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(int32_t) * im_dim, testi_summ_32[i - 1u].data(), &events[i]);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				status = commandQueues[i].enqueueReadBuffer(d_output[i], CL_TRUE, 0, sizeof(int32_t) * size_output, testi_rhs_32[i - 1u].data(), &events[i]);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(int32_t) * im_dim, testi_summ_32[i - 1u].data());
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				status = commandQueues[i].enqueueWriteBuffer(d0_output[i - 1u], CL_FALSE, 0, sizeof(int32_t) * size_output, testi_rhs_32[i - 1u].data());
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -828,12 +978,24 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 
 	if (atomic_64bit) {
-		status = commandQueues[0].enqueueReadBuffer(d_output[0], CL_FALSE, 0, sizeof(cl_ulong) * size_output, output_u);
+		status = commandQueues[0].enqueueReadBuffer(d_output[0], CL_FALSE, 0, sizeof(cl_ulong) * size_output, output_64);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
-		status = commandQueues[0].enqueueReadBuffer(d_Summ[0], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, normalizer_u);
+		status = commandQueues[0].enqueueReadBuffer(d_Summ[0], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, normalizer_64);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
+	}
+	else if (atomic_32bit) {
+		status = commandQueues[0].enqueueReadBuffer(d_output[0], CL_FALSE, 0, sizeof(cl_uint) * size_output, output_32);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
+		status = commandQueues[0].enqueueReadBuffer(d_Summ[0], CL_FALSE, 0, sizeof(cl_uint) * im_dim, normalizer_32);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;

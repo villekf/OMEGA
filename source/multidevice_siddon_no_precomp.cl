@@ -98,7 +98,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 ) {
 	// Get the current global index
-	uint idx = get_global_id(0);
+	size_t idx = get_global_id(0);
 	if (idx >= m_size)
 		return;
 #ifdef TOF
@@ -501,6 +501,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 								if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 									atom_add(&d_Summ[tempk + k], convert_long(d_dx * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_Summ[tempk + k], convert_int(d_dx * temp * TH));
 #else
 									atomicAdd_g_f(&d_Summ[tempk + k], (d_dx * temp));
 #endif
@@ -511,12 +513,16 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 								if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 									atom_add(&d_co[tempk + k], convert_long(axCOSEM * d_dx * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_co[tempk + k], convert_int(axCOSEM* d_dx * temp * TH));
 #else
 									atomicAdd_g_f(&d_co[tempk + k], axCOSEM * d_dx * temp);
 #endif
 								if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 									atom_add(&d_aco[tempk + k], convert_long(axCOSEM * d_dx * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_aco[tempk + k], convert_int(axCOSEM * d_dx* temp * TH));
 #else
 									atomicAdd_g_f(&d_aco[tempk + k], axCOSEM * d_dx * temp);
 #endif
@@ -527,6 +533,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 							if (no_norm == 0u)
 #ifdef ATOMIC
 								atom_add(&d_Summ[tempk + k], convert_long(d_dx * temp * TH));
+#elif defined(ATOMIC32)
+								atomic_add(&d_Summ[tempk + k], convert_int(d_dx* temp* TH));
 #else
 								atomicAdd_g_f(&d_Summ[tempk + k], (d_dx * temp));
 #endif
@@ -535,6 +543,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #ifdef ATOMIC
 							atom_add(&d_rhs_OSEM[tempk + k], convert_long(d_dx * temp * axOSEM * TH));
+#elif defined(ATOMIC32)
+							atomic_add(&d_rhs_OSEM[tempk + k], convert_int(axOSEM * d_dx * temp * TH));
 #else
 							atomicAdd_g_f(&d_rhs_OSEM[tempk + k], ((d_dx * temp) * axOSEM));
 #endif
@@ -566,6 +576,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #ifdef ATOMIC
 							atom_add(&d_Summ[tempk + k], convert_long(d_dx * temp * TH));
+#elif defined(ATOMIC32)
+							atomic_add(&d_Summ[tempk + k], convert_int(d_dx * temp * TH));
 #else
 							atomicAdd_g_f(&d_Summ[tempk + k], (d_dx * temp));
 #endif
@@ -596,6 +608,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 								if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 									atom_add(&d_Summ[tempk + k * d_N0], convert_long(d_dy * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_Summ[tempk + k * d_N0], convert_int(d_dy* temp* TH));
 #else
 									atomicAdd_g_f(&d_Summ[tempk + k * d_N0], (d_dy * temp));
 #endif
@@ -606,12 +620,16 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 								if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 									atom_add(&d_co[tempk + k * d_N0], convert_long(axCOSEM * d_dy * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_co[tempk + k * d_N0], convert_int(axCOSEM * d_dy * temp * TH));
 #else
 									atomicAdd_g_f(&d_co[tempk + k * d_N0], axCOSEM * d_dy * temp);
 #endif
 								if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 									atom_add(&d_aco[tempk + k * d_N0], convert_long(axCOSEM * d_dy * temp * TH));
+#elif defined(ATOMIC32)
+									atomic_add(&d_aco[tempk + k * d_N0], convert_int(axCOSEM* d_dy* temp* TH));
 #else
 									atomicAdd_g_f(&d_aco[tempk + k * d_N0], axCOSEM * d_dy * temp);
 #endif
@@ -624,6 +642,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #ifdef ATOMIC
 							atom_add(&d_rhs_OSEM[tempk + k * d_N0], convert_long(d_dy * temp * axOSEM * TH));
+#elif defined(ATOMIC32)
+							atomic_add(&d_rhs_OSEM[tempk + k * d_N0], convert_int(axOSEM* d_dy* temp* TH));
 #else
 							atomicAdd_g_f(&d_rhs_OSEM[tempk + k * d_N0], ((d_dy * temp) * axOSEM));
 #endif
@@ -631,6 +651,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 							if (no_norm == 0u)
 #ifdef ATOMIC
 								atom_add(&d_Summ[tempk + k * d_N0], convert_long(d_dy * temp * TH));
+#elif defined(ATOMIC32)
+								atomic_add(&d_Summ[tempk + k * d_N0], convert_int(d_dy* temp* TH));
 #else
 								atomicAdd_g_f(&d_Summ[tempk + k * d_N0], (d_dy * temp));
 #endif
@@ -661,6 +683,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #ifdef ATOMIC
 							atom_add(&d_Summ[tempk + k * d_N0], convert_long(d_dy * temp * TH));
+#elif defined(ATOMIC32)
+							atomic_add(&d_Summ[tempk + k * d_N0], convert_int(d_dy* temp* TH));
 #else
 							atomicAdd_g_f(&d_Summ[tempk + k * d_N0], (d_dy * temp));
 #endif
@@ -715,6 +739,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 							if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 								atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+								atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 								atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -726,12 +752,16 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 							if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 								atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+								atomic_add(&d_co[local_ind], convert_int(axCOSEM* local_ele* TH));
 #else
 								atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
 							if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 								atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+								atomic_add(&d_aco[local_ind], convert_int(axCOSEM* local_ele* TH));
 #else
 								atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -742,6 +772,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 						if (no_norm == 0u)
 #ifdef ATOMIC
 							atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+							atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 							atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -750,6 +782,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #ifdef ATOMIC
 						atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_rhs_OSEM[local_ind], convert_int(axOSEM* local_ele* TH));
 #else
 						atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
@@ -796,6 +830,8 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #ifdef ATOMIC
 						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -852,7 +888,7 @@ __kernel void mlem(const __global CAST* d_Summ, const __global CAST* d_rhs, __gl
 	uint gid = get_global_id(0);
 
 	for (uint i = gid; i < im_dim; i += get_global_size(0)) {
-#ifdef ATOMIC
+#if defined(ATOMIC) || defined(ATOMIC32)
 		float rhs = convert_float(d_rhs[i]);
 		float Summ = convert_float(d_Summ[i]);
 		if (rhs != 0.f) {
@@ -911,7 +947,7 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 				else if (ind_uus.z < 0)
 					ind_uus.z = ind.z - (k + 1);
 				uint indeksi = ind_uus.x + ind_uus.y * get_global_size(0) + ind_uus.z * Nyx;
-#ifdef ATOMIC
+#if defined(ATOMIC) || defined(ATOMIC32)
 				float p = convert_float(input[indeksi]) / TH;
 #else
 				float p = input[indeksi];
@@ -924,6 +960,8 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 	}
 #ifdef ATOMIC
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_long(result * TH);
+#elif defined(ATOMIC32)
+	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_int(result * TH);
 #else
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = result;
 #endif

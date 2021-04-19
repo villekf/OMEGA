@@ -63,7 +63,9 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	uint32_t osa_iter0 = 0u;
 
 	// Hard-coded local size
-	const uint64_t local_size = 64ULL;
+	uint64_t local_size = 32ULL;
+	if (projector_type > 1)
+		local_size = 128ULL;
 
 	bool atomic_64bit = use_64bit_atomics;
 	uint8_t compute_norm_matrix = 1u;
@@ -79,7 +81,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	float zerof = 0.f;
 
 	// Create output structs
-	matlabArrays ArrayList;
+	//matlabArrays ArrayList;
 	// Create a struct containing the reconstruction methods used
 	RecMethods MethodList;
 	RecMethodsOpenCL MethodListOpenCL;
@@ -88,6 +90,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 	// Obtain the reconstruction methods used
 	get_rec_methods(options, MethodList);
+
+	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
+	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
+	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+
+	if (listmode == 2)
+		MethodList.MLEM = true;
 	OpenCLRecMethods(MethodList, MethodListOpenCL);
 
 	int af_id = af::getDevice();
@@ -101,13 +110,18 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	nvrtcProgram program_mbsrem = NULL;
 
 	// Create the MATLAB output arrays
-	create_matlab_output(ArrayList, dimmi, MethodList, 4);
+	//create_matlab_output(ArrayList, dimmi, MethodList, 4);
 
 	CUDAStruct.af_cuda_stream = &af_cuda_stream;
 
 	// Initial value
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	array x00(Nx * Ny * Nz, (float*)mxGetSingles(mxGetField(options, 0, "x0")), afHost);
+#else
 	array x00(Nx * Ny * Nz, (float*)mxGetData(mxGetField(options, 0, "x0")), afHost);
+#endif
 
+	uint32_t subsetsUsed = subsets;
 	// For custom prior
 	if (MethodList.CUSTOM) {
 		osa_iter0 = (uint32_t)mxGetScalar(mxGetField(options, 0, "osa_iter"));
@@ -134,7 +148,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Struct containing ArrayFire arrays containing the image estimates and other necessary vectors/matrices
 	AF_im_vectors vec;
 	// Struct containing beta-values for the MAP-methods
-	Beta beta;
+	//Beta beta;
+	std::vector<float> beta;
 	// Struct containing the necessary variables for the priors
 	Weighting w_vec;
 	// Struct for TV data
@@ -143,10 +158,17 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	CUDA_im_vectors vec_cuda;
 
 	// Load the necessary data from the MATLAB input and form the necessary variables
-	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter, Nt);
+	form_data_variables(vec, beta, w_vec, options, Nx, Ny, Nz, Niter, x00, im_dim, koko, MethodList, data, subsets, osa_iter0, use_psf, saveIter, Nt, iter0, CT);
 
 	// Power factor for ACOSEM
 	w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
+	if (MethodList.CUSTOM) {
+		if (w_vec.MBSREM_prepass && osa_iter0 == 0U) {
+			subsetsUsed = subsets;
+		}
+		else
+			subsetsUsed = osa_iter0 + 1U;
+	}
 
 
 	// Adjust the number of reconstruction methods and create the output vector containing all the estimates
@@ -179,7 +201,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	float* scat = nullptr;
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 	size_t size_scat = 1ULL;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+#else
 	scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+#endif
 	if (scatter == 1U) {
 		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
 	}
@@ -190,14 +216,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	size_t free, total;
 
 	cuMemGetInfo(&free, &total);
-	if ((static_cast<float>(free)) > image_bytes * 1.25f && !MethodList.CUSTOM)
+	if (((static_cast<float>(free)) > image_bytes * 1.25f && !MethodList.CUSTOM) || (listmode == 1 && computeSensImag))
 		compute_norm_matrix = 0u;
 
 	nvrtcResult status1 = NVRTC_SUCCESS;
 
 	status1 = createProgramCUDA(verbose, k_path, fileName, program_os, program_ml, program_mbsrem, atomic_64bit, header_directory,
 		projector_type, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, local_size, n_rays, n_rays3D, MethodList, osem_bool,
-		mlem_bool, n_rekos, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins);
+		mlem_bool, n_rekos, n_rekos_mlem, w_vec, osa_iter0, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode, CT);
 	if (status1 != NVRTC_SUCCESS) {
 		std::cerr << "Error while creating program" << std::endl;
 		return;
@@ -213,7 +239,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	CUfunction kernel_mbsrem = NULL;
 	CUmodule moduleOS, moduleML, moduleMB;
 
-	status1 = createKernelsCUDA(verbose, program_os, program_ml, program_mbsrem, kernel_os, kernel_ml, kernel_mbsrem, CUDAStruct.kernelNLM, osem_bool, mlem_bool, MethodList, w_vec,
+	status1 = createKernelsCUDA(verbose, program_os, program_ml, program_mbsrem, kernel_os, kernel_ml, kernel_mbsrem, CUDAStruct.kernelNLM, CUDAStruct.kernelMed, osem_bool, mlem_bool, MethodList, w_vec,
 		precompute, projector_type, n_rays, n_rays3D, moduleOS, moduleML, moduleMB);
 	if (status1 != NVRTC_SUCCESS) {
 		mexPrintf("Failed to create the kernels\n");
@@ -252,9 +278,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	// Create and write buffers
 	CUdeviceptr d_x, d_y, d_z, d_atten, d_xcenter, d_ycenter, d_zcenter, d_norm_mlem, d_Sino_mlem, d_sc_ra_mlem, d_V, d_scat_mlem, d_TOFCenter;
 	CUdeviceptr* d_Summ, * d_Summ_mlem;
+	//CUdeviceptr d_Summ2;
 	CUdeviceptr d_lor_mlem, d_L_mlem, d_zindex_mlem;
 	CUdeviceptr d_xyindex_mlem, d_pseudos;
 	CUdeviceptr d_reko_type, d_reko_type_mlem;
+	CUdeviceptr d_angles;
 
 	std::vector<CUdeviceptr> d_lor(subsets);
 	std::vector<CUdeviceptr> d_L(subsets);
@@ -264,14 +292,25 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	std::vector<CUdeviceptr> d_sc_ra(subsets);
 	std::vector<CUdeviceptr> d_norm(subsets);
 	std::vector<CUdeviceptr> d_scat(subsets);
-
+	
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
+#else
 	float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
+#endif
+	float* angles = nullptr;
+	if (CT)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
+#else
+		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
+#endif
 
-	status = createAndWriteBuffers(d_x, d_y, d_z, d_lor, d_L, d_zindex, d_xyindex, d_Sino, d_sc_ra, size_x, size_z, TotSinos, size_atten,
-		size_norm, size_scat, prows, length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, subsets, pituus, atten, norm, scat, pseudos, V, d_atten, d_norm, d_scat, d_pseudos, d_V,
-		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, randoms_correction,
-		sc_ra, precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem,
-		d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko, reko_type, reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter);
+	status = createAndWriteBuffers(d_x, d_y, d_z, d_angles, d_lor, d_L, d_zindex, d_xyindex, d_Sino, d_sc_ra, size_x, size_z, TotSinos, size_atten, size_norm, size_scat, 
+		prows, length, x, y, z_det, xy_index, z_index, lor1, L, apu, raw, subsets, pituus, atten, norm, scat, pseudos, V, d_atten, d_norm, d_scat, d_pseudos, d_V,
+		d_xcenter, d_ycenter, d_zcenter, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, size_of_x, size_V, randoms_correction, sc_ra, 
+		precompute, d_lor_mlem, d_L_mlem, d_zindex_mlem, d_xyindex_mlem, d_Sino_mlem, d_sc_ra_mlem, d_reko_type, d_reko_type_mlem, osem_bool, mlem_bool, koko, reko_type, 
+		reko_type_mlem, n_rekos, n_rekos_mlem, d_norm_mlem, d_scat_mlem, angles, TOF, nBins, loadTOF, d_TOFCenter, TOFCenter, subsetsUsed, osa_iter0, listmode, CT);
 	if (status != CUDA_SUCCESS) {
 		mexPrintf("Failed to load buffers\n");
 		mexEvalString("pause(.0001);");
@@ -302,7 +341,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	for (uint32_t tt = t0; tt < Nt; tt++) {
 
 		// Compute the prepass phase for MRAMLA, MBSREM, RBI, COSEM, ACOSEM or ECOSEM if applicable
-		if (((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+		if (((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 			MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) && (!MethodList.CUSTOM || osa_iter0 == 0u)) {
 
 			uint32_t alku = 0u;
@@ -316,16 +355,20 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				prows, Nx, Ny, Nz, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, d_x, d_y, d_z, size_x, TotSinos,
 				d_atten, d_norm, d_scat, epps, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax,
 				d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, n_rays3D, precompute, projector_type, af_cuda_stream, global_factor, d_reko_type, kernel_mbsrem,
-				atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter, Nt);
+				atomic_64bit, use_psf, g, TOF, loadTOF, Sin, nBins, randoms_correction, sigma_x, d_TOFCenter, d_angles, Nt, CT);
 
+
+			if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.PKMA) && tt == 0) {
+				pj3 = w_vec.D / static_cast<float>(subsets);
+			}
 
 			if (verbose) {
 				mexPrintf("MRAMLA & COSEM prepass completed\n");
 				mexEvalString("pause(.0001);");
 			}
 		}
-
-		if ((MethodList.MRAMLA || MethodList.MBSREM) && tt == 0) {
+		// For custom prior only
+		if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.PKMA) && MethodList.CUSTOM && (iter0 > 0 || osa_iter0 > 0)) {
 			pj3 = w_vec.D / static_cast<float>(subsets);
 		}
 
@@ -346,12 +389,44 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				no_norm_mlem = 1u;
 		}
 
+		if (computeSensImag && listmode == 1) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apu = (float*)mxGetSingles(mxGetField(options, 0, "Summ"));
+#else
+			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
+#endif
+			if (mlem_bool) {
+				Summ_mlem = array(im_dim, 1, apu);
+				if (use_psf) {
+					Summ_mlem = computeConvolution(Summ_mlem, g, Nx, Ny, Nz, w_vec, 1u);
+					af::sync();
+				}
+				no_norm_mlem = 1u;
+			}
+			if (osem_bool) {
+				for (uint32_t osa_iter = 0; osa_iter < subsets; osa_iter++) {
+					Summ[osa_iter] = array(im_dim, 1, apu) / static_cast<float>(subsets);
+					if (use_psf) {
+						Summ[osa_iter] = computeConvolution(Summ[osa_iter], g, Nx, Ny, Nz, w_vec, 1u);
+						af::sync();
+					}
+				}
+				no_norm = 1u;
+			}
+		}
+
+		if (listmode == 2)
+			status = cuMemsetD32(d_Sino_mlem, zerof, sizeof(float) * koko);
 
 		// Load the measurement and randoms data from the cell arrays
 		if (tt > 0u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apu2 = (float*)mxGetSingles(mxGetCell(Sin, tt));
+#else
 			float* apu2 = (float*)mxGetData(mxGetCell(Sin, tt));
+#endif
 			if (osem_bool) {
-				for (uint32_t kk = 0u; kk < subsets; kk++) {
+				for (uint32_t kk = osa_iter0; kk < subsetsUsed; kk++) {
 					if (TOF) {
 						if (!loadTOF && kk == 0) {
 							status = cuMemAlloc(&d_Sino[kk], sizeof(float) * length[kk] * nBins);
@@ -377,7 +452,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						std::cerr << getErrorString(status) << std::endl;
 					}
 					if (randoms_correction) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+						float* ra_apu = (float*)mxGetSingles(mxGetCell(sc_ra, tt));
+#else
 						float* ra_apu = (float*)mxGetData(mxGetCell(sc_ra, tt));
+#endif
 						status = cuMemcpyHtoD(d_sc_ra[kk], &ra_apu[pituus[kk]], sizeof(float) * length[kk]);
 					}
 					else
@@ -386,7 +465,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						std::cerr << getErrorString(status) << std::endl;
 					}
 					if (scatter == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+						scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#else
 						scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#endif
 						status = cuMemcpyHtoD(d_scat[kk], &scat[pituus[kk]], sizeof(float) * length[kk]);
 						if (status != CUDA_SUCCESS) {
 							std::cerr << getErrorString(status) << std::endl;
@@ -404,7 +487,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					std::cerr << getErrorString(status) << std::endl;
 				}
 				if (randoms_correction) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+					float* ra_apu = (float*)mxGetSingles(mxGetCell(sc_ra, tt));
+#else
 					float* ra_apu = (float*)mxGetData(mxGetCell(sc_ra, tt));
+#endif
 					status = cuMemcpyHtoD(d_sc_ra_mlem, ra_apu, sizeof(float) * koko);
 				}
 				else
@@ -413,7 +500,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					std::cerr << getErrorString(status) << std::endl;
 				}
 				if (scatter == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+					scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#else
 					scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#endif
 					status = cuMemcpyHtoD(d_scat_mlem, scat, sizeof(float) * koko);
 					if (status != CUDA_SUCCESS) {
 						std::cerr << getErrorString(status) << std::endl;
@@ -428,13 +519,24 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		// Compute values needed for MBSREM and MRAMLA
 		if ((MethodList.MBSREM || MethodList.MRAMLA) && Nt > 1U) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			array Sino = array(koko, (float*)mxGetSingles(mxGetCell(Sin, tt)), afHost);
+#else
 			array Sino = array(koko, (float*)mxGetData(mxGetCell(Sin, tt)), afHost);
+#endif
 			array rand;
 			if (randoms_correction)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				rand = array(koko, (float*)mxGetSingles(mxGetCell(sc_ra, tt)), afHost);
+#else
 				rand = array(koko, (float*)mxGetData(mxGetCell(sc_ra, tt)), afHost);
+#endif
 			if (w_vec.U == 0.f) {
 				const array Aind = w_vec.Amin > 0.f;
-				w_vec.U = max<float>(Sino(Aind) / w_vec.Amin(Aind));
+				if (CT)
+					w_vec.U = max<float>(-af::log(Sino(Aind)) / w_vec.Amin(Aind));
+				else
+					w_vec.U = max<float>(Sino(Aind) / w_vec.Amin(Aind));
 			}
 			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, E, TOF, nBins);
 		}
@@ -445,6 +547,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 			gpuErrchk(cuMemFree(d_z));
 			gpuErrchk(cuMemFree(d_x));
 			gpuErrchk(cuMemFree(d_y));
+			gpuErrchk(cuMemFree(d_angles));
 			gpuErrchk(cuMemFree(d_atten));
 			gpuErrchk(cuMemFree(d_pseudos));
 			gpuErrchk(cuMemFree(d_xcenter));
@@ -479,16 +582,23 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				gpuErrchk(cuMemFree(d_sc_ra_mlem));
 				gpuErrchk(cuModuleUnload(moduleML));
 			}
-			if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+			if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 				MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
 				gpuErrchk(cuModuleUnload(moduleMB));
 			return;
+		}
+
+		//CUdeviceptr d_Summ;
+		//status = cuMemAlloc(&d_Summ2, sizeof(float) * im_dim);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
 		}
 
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < Niter; iter++) {
 
 
+			uint64_t st = 0ULL;
 			// Compute any of the other algorithms, if applicable
 			if (osem_bool) {
 
@@ -500,7 +610,11 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					if (osa_iter > osa_iter0 && TOF && !loadTOF) {
 						status = cuMemAlloc(&d_Sino[0], sizeof(float) * length[osa_iter] * nBins);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+						float* apu = (float*)mxGetSingles(mxGetCell(Sin, tt));
+#else
 						float* apu = (float*)mxGetData(mxGetCell(Sin, tt));
+#endif
 						for (int64_t to = 0LL; to < nBins; to++) {
 							CUdeviceptr dst = reinterpret_cast<CUdeviceptr> (reinterpret_cast<char*>(d_Sino[0]) + sizeof(float) * length[osa_iter] * to);
 							char* src = (char*)apu + sizeof(float) * (pituus[osa_iter] + koko * to);
@@ -523,6 +637,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						else
 							Summ[0] = constant(0.f, im_dim, 1);
 						af::eval(Summ[0]);
+						af::sync();
 						d_Summ = Summ[0].device<CUdeviceptr>();
 					}
 					else {
@@ -532,6 +647,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							else
 								Summ[osa_iter] = constant(0.f, im_dim, 1);
 							af::eval(Summ[osa_iter]);
+							af::sync();
 							d_Summ = Summ[osa_iter].device<CUdeviceptr>();
 						}
 						else if (no_norm == 1u) {
@@ -540,11 +656,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							else
 								apu_sum = constant(0.f, 1, 1, f32);
 							af::eval(apu_sum);
+							af::sync();
 							d_Summ = apu_sum.device<CUdeviceptr>();
 						}
 						else {
 							af::eval(Summ[osa_iter]);
+							af::sync();
 							d_Summ = Summ[osa_iter].device<CUdeviceptr>();
+							//cuMemcpyDtoD(d_Summ2, *Summ[osa_iter].device<CUdeviceptr>(), sizeof(float) * im_dim);
 						}
 					}
 
@@ -566,34 +685,74 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					const uint64_t m_size = static_cast<uint64_t>(length[osa_iter]);
 
-					af::sync();
+					if (DEBUG) {
+						mexPrintf("Summ[osa_iter].dims(0) = %u\n", Summ[osa_iter].dims(0));
+						mexPrintf("Summ[osa_iter] = %f\n", af::sum<float>(Summ[osa_iter]));
+						mexPrintf("global_size = %u\n", global_size);
+						mexPrintf("length[osa_iter] = %u\n", length[osa_iter]);
+						mexPrintf("erotus = %u\n", erotus);
+						mexPrintf("size_x = %u\n", size_x);
+						mexPrintf("st = %u\n", st);
+						mexEvalString("pause(.0001);");
+					}
 
 					// Set kernel arguments
 					// Compute the kernel
-					if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
+					if (CT) {
 						void* args[] = { (void*)&global_factor, (void*)&epps, &im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
-							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
-							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width,
-							(void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, (void*)&Vmax, &w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter,
-							&d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter],
-							&d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os), reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size };
+							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax,
+							(void*)&Vmax, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type,
+							(void*)&subsets, &d_angles, (void*)&w_vec.size_y, (void*)&w_vec.dPitch, (void*)&w_vec.nProjections, &d_norm[osa_iter], &d_scat[osa_iter],
+							reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter],
+							reinterpret_cast<void*>(&vec_cuda.d_im_os), reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size, (void*)&st };
+						af::sync();
+						status = cuCtxSynchronize();
+						if ((status != CUDA_SUCCESS)) {
+							std::cerr << getErrorString(status) << std::endl;
+						}
 						status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 					}
 					else {
-						void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
-							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
-							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&dc_z, (void*)&n_rays,
-							&w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter],
-							&d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os),
-							reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size };
-						status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+						if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
+							void* args[] = { (void*)&global_factor, (void*)&epps, &im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
+								(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+								(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, 
+								(void*)&Vmax, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, 
+								&d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter],
+								&d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os), reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, 
+								(void*)&m_size, (void*)&st };
+							af::sync();
+							status = cuCtxSynchronize();
+							if ((status != CUDA_SUCCESS)) {
+								std::cerr << getErrorString(status) << std::endl;
+							}
+							status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+						}
+						else {
+							void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
+								(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+								(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&dc_z, (void*)&n_rays, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, 
+								&d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter],
+								&d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&vec_cuda.d_im_os),
+								reinterpret_cast<void*>(&vec_cuda.d_rhs_os), &no_norm, (void*)&m_size, (void*)&st };
+							af::sync();
+							status = cuCtxSynchronize();
+							if ((status != CUDA_SUCCESS)) {
+								std::cerr << getErrorString(status) << std::endl;
+							}
+							status = cuLaunchKernel(kernel_os, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+						}
 					}
+
 
 					if ((status != CUDA_SUCCESS)) {
 						std::cerr << getErrorString(status) << std::endl;
 						gpuErrchk(cuMemFree(d_z));
 						gpuErrchk(cuMemFree(d_x));
 						gpuErrchk(cuMemFree(d_y));
+						if (CT)
+							gpuErrchk(cuMemFree(d_angles));
 						gpuErrchk(cuMemFree(d_atten));
 						gpuErrchk(cuMemFree(d_TOFCenter));
 						gpuErrchk(cuMemFree(d_pseudos));
@@ -626,6 +785,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_scat_mlem));
 							gpuErrchk(cuMemFree(d_Sino_mlem));
 							gpuErrchk(cuMemFree(d_sc_ra_mlem));
+							gpuErrchk(cuModuleUnload(moduleML));
 						}
 						mexPrintf("Failed to launch the OS kernel\n");
 						return;
@@ -636,6 +796,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_z));
 						gpuErrchk(cuMemFree(d_x));
 						gpuErrchk(cuMemFree(d_y));
+						if (CT)
+							gpuErrchk(cuMemFree(d_angles));
 						gpuErrchk(cuMemFree(d_atten));
 						gpuErrchk(cuMemFree(d_TOFCenter));
 						gpuErrchk(cuMemFree(d_pseudos));
@@ -644,6 +806,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_zcenter));
 						gpuErrchk(cuMemFree(d_V));
 						if (osem_bool) {
+							gpuErrchk(cuModuleUnload(moduleOS));
 							gpuErrchk(cuMemFree(d_reko_type));
 							for (uint32_t kk = 0u; kk < subsets; kk++) {
 								gpuErrchk(cuMemFree(d_lor[kk]));
@@ -670,9 +833,24 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 							gpuErrchk(cuMemFree(d_sc_ra_mlem));
 							gpuErrchk(cuModuleUnload(moduleML));
 						}
-						if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+						if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 							MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
 							gpuErrchk(cuModuleUnload(moduleMB));
+						if (compute_norm_matrix == 1u) {
+							Summ[0].unlock();
+						}
+						else {
+							if (no_norm == 0u) {
+								Summ[osa_iter].unlock();
+							}
+							else
+								apu_sum.unlock();
+						}
+						if (use_psf)
+							vec.im_os_blurred.unlock();
+						else
+							vec.im_os.unlock();
+						vec.rhs_os.unlock();
 						mexPrintf("Failed to synchronize\n");
 						return;
 					}
@@ -680,6 +858,13 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						mexPrintf("OS kernel launched successfully\n");
 						mexEvalString("pause(.0001);");
 					}
+					//float* hOut = new float[im_dim];
+					//cuMemcpyDtoH(hOut, d_Summ2, im_dim * sizeof(float));
+					//cuCtxSynchronize();
+					//Summ[osa_iter] = array(im_dim, hOut, afHost);
+					//af::eval(Summ[osa_iter]);
+					//af::sync();
+					//delete[] hOut;
 					array* testi;
 
 					// Transfer memory control back to ArrayFire (OS-methods)
@@ -727,12 +912,23 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						af::sync();
 					}
 
+
+					if (DEBUG) {
+						mexPrintf("Summ = %f\n", af::sum<float>(*testi));
+						if (MethodList.MRAMLA)
+							mexPrintf("pj3 = %f\n", af::sum<float>(pj3));
+						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
+						mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
+						mexEvalString("pause(.0001);");
+						//vec.im_os = vec.rhs_os;
+					}
+
 					computeOSEstimatesCUDA(vec, w_vec, MethodList, MethodListOpenCL, im_dim, testi, epps, iter, osa_iter, subsets, beta, Nx, Ny, Nz, data, length, 
 						d_Sino, break_iter, pj3, n_rekos2, pituus, d_lor, d_zindex, d_xyindex, af_cuda_stream, Summ, kernel_mbsrem, d_L, raw, koko, atomic_64bit,
 						compute_norm_matrix, d_sc_ra, E, d_norm, d_scat, det_per_ring, d_pseudos, prows, dz, dx, dy, bz, bx, by, bzb, maxxx, maxyy, zmax, NSlices, 
 						d_x, d_y, d_z, size_x, TotSinos, d_atten, Nxy, tube_width, crystal_size_z, bmin, bmax, Vmax, d_xcenter, d_ycenter, d_zcenter, d_V, dc_z, n_rays, 
 						n_rays3D, precompute, projector_type, global_factor, d_reko_type, kernel_mbsrem, use_psf, g, CUDAStruct, TOF, loadTOF, Sin, nBins, randoms_correction, 
-						sigma_x, d_TOFCenter);
+						sigma_x, d_TOFCenter, d_angles, CT);
 
 					vec.im_os(vec.im_os < epps) = epps;
 
@@ -745,6 +941,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					if ((status != CUDA_SUCCESS)) {
 						std::cerr << getErrorString(status) << std::endl;
 					}
+					st += length[osa_iter];
 
 					if (break_iter)
 						break;
@@ -753,9 +950,6 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 				computeOSEstimatesIter(vec, w_vec, MethodList, im_dim, epps, iter, osa_iter0, subsets, beta, Nx, Ny, Nz, data, n_rekos2, CUDAStruct, saveIter);
 
-				if (use_psf && w_vec.deconvolution && osem_bool && (saveIter || (!saveIter && iter == Niter - 1))) {
-					computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
-				}
 
 				if (osem_bool && compute_norm_matrix == 0u)
 					no_norm = 1u;
@@ -822,19 +1016,35 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 				// Update the CUDA inputs for this iteration (image estimates)
 				update_cuda_inputs(vec, vec_cuda, true, im_dim, n_rekos, n_rekos_mlem, MethodList, atomic_64bit, use_psf);
 
-				if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
-					void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
-						(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x,& d_TOFCenter, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax, (void*)&Vmax,
-						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type_mlem, &d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
-						&d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
+				if (CT) {
+					void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
+						(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+						(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x,&d_TOFCenter, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin,
+						(void*)&bmax, (void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type_mlem,
+						(void*)&subsets,& d_angles, (void*)&w_vec.size_y, (void*)&w_vec.dPitch, (void*)&w_vec.nProjections, &d_norm_mlem, &d_scat_mlem, 
+						reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem, &d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem,
+						reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
 					status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 				}
 				else {
-					void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
-						(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x,& d_TOFCenter, (void*)&dc_z, (void*)&n_rays,
-						&w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type_mlem, &d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem,
-						&d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
-					status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+					if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
+						void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, 
+							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x,&d_TOFCenter, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, 
+							(void*)&bmax, (void*)&Vmax, &w_vec.epsilon_mramla, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type_mlem, 
+							&d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem, &d_xyindex_mlem, &d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, 
+							reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), &no_norm_mlem, (void*)&m_size };
+						status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+					}
+					else {
+						void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, 
+							(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+							(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x,&d_TOFCenter, (void*)&dc_z, (void*)&n_rays, &w_vec.epsilon_mramla, &d_atten, 
+							&d_pseudos, &d_x, &d_y, &d_z, &d_reko_type_mlem, &d_norm_mlem, &d_scat_mlem, reinterpret_cast<void*>(&d_Summ_mlem), &d_lor_mlem, &d_xyindex_mlem, 
+							&d_zindex_mlem, &d_L_mlem, &d_Sino_mlem, &d_sc_ra_mlem, reinterpret_cast<void*>(&vec_cuda.d_im_mlem), reinterpret_cast<void*>(&vec_cuda.d_rhs_mlem), 
+							&no_norm_mlem, (void*)&m_size };
+						status = cuLaunchKernel(kernel_ml, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+					}
 				}
 
 				status = cuCtxSynchronize();
@@ -843,6 +1053,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					gpuErrchk(cuMemFree(d_z));
 					gpuErrchk(cuMemFree(d_x));
 					gpuErrchk(cuMemFree(d_y));
+					if (CT)
+						gpuErrchk(cuMemFree(d_angles));
 					gpuErrchk(cuMemFree(d_atten));
 					gpuErrchk(cuMemFree(d_TOFCenter));
 					gpuErrchk(cuMemFree(d_pseudos));
@@ -878,7 +1090,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						gpuErrchk(cuMemFree(d_sc_ra_mlem));
 						gpuErrchk(cuModuleUnload(moduleML));
 					}
-					if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+					if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 						MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
 						gpuErrchk(cuModuleUnload(moduleMB));
 					mexPrintf("Failed to launch the MLEM kernel\n");
@@ -917,27 +1129,36 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					af::sync();
 				}
 
+				if (listmode == 2) {
+					vec.imEstimates[0] = Summ_mlem;
+					break_iter = true;
+					break;
+				}
+
 				computeMLEstimates(vec, w_vec, MethodList, im_dim, epps, iter, subsets, beta, Nx, Ny, Nz, data, Summ_mlem, break_iter, CUDAStruct, saveIter);
 
 				if (no_norm_mlem == 0u)
 					no_norm_mlem = 1u;
 
-				if (use_psf && w_vec.deconvolution && (saveIter || (!saveIter && iter == Niter - 1))) {
-					computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
-				}
+				//if (use_psf && w_vec.deconvolution && (saveIter || (!saveIter && iter == Niter - 1))) {
+				//	computeDeblurMLEM(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
+				//}
 				if (verbose) {
 					mexPrintf("MLEM iteration %d complete\n", iter + 1u);
 					mexEvalString("pause(.0001);");
 				}
+			}
+			if (use_psf && w_vec.deconvolution && (saveIter || (!saveIter && iter == Niter - 1))) {
+				computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
 			}
 			if (break_iter)
 				break;
 		}
 
 		// Transfer the device data to host MATLAB cell array
-		device_to_host_cell(ArrayList, MethodList, vec, oo, cell, w_vec);
+		device_to_host_cell(MethodList, vec, oo, cell, w_vec, dimmi, 4);
 
-		if (verbose) {
+		if (verbose && listmode != 2) {
 			mexPrintf("Time step %d complete\n", tt + 1u);
 			mexEvalString("pause(.0001);");
 		}
@@ -953,6 +1174,8 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	gpuErrchk(cuMemFree(d_z));
 	gpuErrchk(cuMemFree(d_x));
 	gpuErrchk(cuMemFree(d_y));
+	if (CT)
+		gpuErrchk(cuMemFree(d_angles));
 	gpuErrchk(cuMemFree(d_atten));
 	gpuErrchk(cuMemFree(d_TOFCenter));
 	gpuErrchk(cuMemFree(d_pseudos));
@@ -989,7 +1212,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 		gpuErrchk(cuMemFree(d_sc_ra_mlem));
 		gpuErrchk(cuModuleUnload(moduleML));
 	}
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0)
 		gpuErrchk(cuModuleUnload(moduleMB));
 

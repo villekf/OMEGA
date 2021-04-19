@@ -123,25 +123,35 @@ void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_ele, fl
 	__global CAST* Summ, __global CAST* d_rhs_OSEM, const float local_sino, const __global float* d_OSEM, const uint local_ind,
 	const uint im_dim, __constant uchar* MethodList) {
 	if (RHS) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 		rhs(MethodList, local_ele, ax, local_ind, im_dim, d_rhs_OSEM);
 		if (no_norm == 0u)
 #ifdef ATOMIC
 			atom_add(&Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+			atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 			atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
 	}
 	else if (SUMMA) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 #ifdef ATOMIC
 		atom_add(&Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 		atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
 	}
 	else {
+#ifndef CT
 		*temp += local_ele;
+#endif
 		if (local_sino != 0.f) {
 			denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 		}
@@ -150,9 +160,11 @@ void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_ele, fl
 #else
 void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, float* axACOSEM, __global CAST* Summ, const float local_sino, 
 	const __global float* d_COSEM, const __global float* d_ACOSEM, const uint local_ind, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL,
-	__global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku, const uchar MBSREM_prepass, float* axCOSEM, const uint idx) {
+	__global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku, const uchar MBSREM_prepass, float* axCOSEM, const size_t idx) {
 	if (RHS) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 		if (d_alku == 0 && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
 			if (local_ele < *minimi && local_ele > 0.f)
 				* minimi = local_ele;
@@ -162,18 +174,24 @@ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, floa
 			if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 				atom_add(&d_co[local_ind], convert_long(*axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_co[local_ind], convert_int(local_ele * *axCOSEM * TH));
 #else
 				atomicAdd_g_f(&d_co[local_ind], (*axCOSEM * local_ele));
 #endif
 			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 				atom_add(&d_aco[local_ind], convert_long(*axCOSEM * TH * * local_ele)));
+#elif defined(ATOMIC32)
+				atomic_add(&d_aco[local_ind], convert_int(local_ele * *axCOSEM * TH));
 #else
 				atomicAdd_g_f(&d_aco[local_ind], *axCOSEM * (local_ele));
 #endif
 			if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 				atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -182,7 +200,9 @@ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, floa
 			*axACOSEM += (local_ele * d_COSEM[local_ind]);
 	}
 	else {
+#ifndef CT
 		*temp += local_ele;
+#endif
 		if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 			*axCOSEM += (local_ele * d_COSEM[local_ind]);
 		}
@@ -194,15 +214,21 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 	__global CAST* Summ, __global CAST* d_rhs_OSEM, const float local_sino, const __global float* d_OSEM, const uint local_ind) {
 #ifndef DEC
 	if (RHS) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 #ifdef ATOMIC
 		atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * *ax * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * *ax * TH));
 #else
 		atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * *ax));
 #endif
 		if (no_norm == 0u)
 #ifdef ATOMIC
 			atom_add(&Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+			atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 			atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
@@ -211,13 +237,17 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 		local_ele *= *temp;
 #ifdef ATOMIC
 		atom_add(&Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 		atomicAdd_g_f(&Summ[local_ind], local_ele);
 #endif
 	}
 	else {
 #endif
+#ifndef CT
 		*temp += local_ele;
+#endif
 #ifdef FP
 		if (local_sino != 0.f) {
 			denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -239,7 +269,7 @@ void computeOrthVoxelDecreasing(const float s1, const float s2, const float s3, 
 #ifdef AF
 #ifdef MBSREM
 	uint* indeksi, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku,
-	const uchar MBSREM_prepass, float* axCOSEM, const uint idx
+	const uchar MBSREM_prepass, float* axCOSEM, const size_t idx
 #else 
 	uint* indeksi, __global CAST* d_rhs_OSEM, const uint im_dim, __constant uchar* MethodList
 #endif
@@ -312,7 +342,7 @@ void computeOrthVoxelIncreasing(const float s1, const float s2, const float s3, 
 #ifdef AF
 #ifdef MBSREM
 	uint* indeksi, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku,
-	const uchar MBSREM_prepass, float* axCOSEM, const uint idx
+	const uchar MBSREM_prepass, float* axCOSEM, const size_t idx
 #else 
 	uint* indeksi, __global CAST* d_rhs_OSEM, const uint im_dim, __constant uchar* MethodList
 #endif
@@ -384,7 +414,7 @@ void computeOrthVoxelDecreasingPSF(float local_ele, const float* local_psf, floa
 #ifdef AF
 #ifdef MBSREM
 	uint* indeksi, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku,
-	const uchar MBSREM_prepass, float* axCOSEM, const uint idx
+	const uchar MBSREM_prepass, float* axCOSEM, const size_t idx
 #else 
 	uint* indeksi, __global CAST* d_rhs_OSEM, __constant uchar* MethodList
 #endif
@@ -423,7 +453,7 @@ void computeOrthVoxelIncreasingPSF(float local_ele, const float* local_psf, floa
 #ifdef AF
 #ifdef MBSREM
 	uint* indeksi, __global float* d_E, const RecMethodsOpenCL MethodListOpenCL, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uint d_alku,
-	const uchar MBSREM_prepass, float* axCOSEM, const uint idx
+	const uchar MBSREM_prepass, float* axCOSEM, const size_t idx
 #else 
 	uint* indeksi, __global CAST* d_rhs_OSEM, __constant uchar* MethodList
 #endif

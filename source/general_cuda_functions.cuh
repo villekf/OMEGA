@@ -17,17 +17,18 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
-#define TRAPZ_BINS 6.f
+#define TRAPZ_BINS 5.f
 
 #ifdef MBSREM
 // Struct for boolean operators indicating whether a certain method is selected (OpenCL)
 typedef struct _RecMethodsOpenCL {
 	char MLEM, OSEM, MRAMLA_, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
 	char MRP, Quad, Huber, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
-	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM;
+	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM, PKMA;
 } RecMethodsOpenCL;
 #endif
 
+//#ifdef AF
 #ifndef MBSREM
 // Denominator (forward projection)
 __device__ void denominator(float local_ele, float* ax, unsigned int local_ind, const unsigned int d_N, const float* d_OSEM) {
@@ -53,13 +54,25 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		local_rand = d_sc_ra[idx];
 #endif
 #ifdef NREKOS1
+#ifndef CT
 		ax[0] *= temp;
-	if (ax[0] <= 0.f)
+	if (ax[0] < d_epps)
 		ax[0] = d_epps;
+#endif
 #ifdef RANDOMS
 		ax[0] += local_rand;
 #endif
 #ifdef MRAMLA
+#ifdef CT
+	if (MethodList[0] != 1u)
+		ax[0] = expf(-ax[0]) / d_Sino;
+	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
+		if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+			ax[0] = expf(-d_epsilon_mramla) / d_Sino - (expf(-d_epsilon_mramla) / d_Sino) * (ax[0] - d_epsilon_mramla);
+		else
+			ax[0] = expf(-ax[0]) / d_Sino;
+	}
+#else
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
@@ -67,18 +80,35 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / powf(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
 		else
 			ax[0] = d_Sino / ax[0];
-	}
+		ax[0];
+#endif
+#else
+#ifdef CT
+	ax[0] = expf(-ax[0]) / d_Sino;
 #else
 	ax[0] = d_Sino / ax[0];
+#endif
 #endif
 #elif defined(NREKOS2)
+#ifndef CT
 		ax[0] *= temp;
-	if (ax[0] <= 0.f)
+	if (ax[0] < d_epps)
 		ax[0] = d_epps;
+#endif
 #ifdef RANDOMS
 		ax[0] += local_rand;
 #endif
 #ifdef MRAMLA
+#ifdef CT
+		if (MethodList[0] != 1u)
+			ax[0] = expf(-ax[0]) / d_Sino;
+		else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
+			if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+				ax[0] = expf(-d_epsilon_mramla) / d_Sino - (expf(-d_epsilon_mramla) / d_Sino) * (ax[0] - d_epsilon_mramla);
+			else
+				ax[0] = expf(-ax[0]) / d_Sino;
+		}
+#else
 	if (MethodList[0] != 1u)
 		ax[0] = d_Sino / ax[0];
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
@@ -87,16 +117,33 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		else
 			ax[0] = d_Sino / ax[0];
 	}
-#else
-	ax[0] = d_Sino / ax[0];
 #endif
+#else
+#ifdef CT
+		ax[0] = expf(-ax[0]) / d_Sino;
+#else
+		ax[0] = d_Sino / ax[0];
+#endif
+#endif
+#ifndef CT
 	ax[1] *= temp;
-	if (ax[1] <= 0.f)
+	if (ax[1] < d_epps)
 		ax[1] = d_epps;
+#endif
 #ifdef RANDOMS
 		ax[1] += local_rand;
 #endif
 #ifdef MRAMLA
+#ifdef CT
+		if (MethodList[1] != 1u)
+			ax[1] = expf(-ax[1]) / d_Sino;
+		else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
+			if (ax[1] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+				ax[1] = expf(-d_epsilon_mramla) / d_Sino - (expf(-d_epsilon_mramla) / d_Sino) * (ax[1] - d_epsilon_mramla);
+			else
+				ax[1] = expf(-ax[1]) / d_Sino;
+		}
+#else
 	if (MethodList[1] != 1u)
 		ax[1] = d_Sino / ax[1];
 	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
@@ -105,19 +152,36 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 		else
 			ax[1] = d_Sino / ax[1];
 	}
+#endif
 #else
-	ax[1] = d_Sino / ax[1];
+#ifdef CT
+		ax[1] = expf(-ax[1]) / d_Sino;
+#else
+		ax[1] = d_Sino / ax[1];
+#endif
 #endif
 #else
 #pragma unroll N_REKOS
 	for (unsigned int kk = 0; kk < N_REKOS; kk++) {
+#ifndef CT
 		ax[kk] *= temp;
-		if (ax[kk] <= 0.f)
+		if (ax[kk] < d_epps)
 			ax[kk] = d_epps;
+#endif
 #ifdef RANDOMS
 			ax[kk] += local_rand;
 #endif
 #ifdef MRAMLA
+#ifdef CT
+			if (MethodList[kk] != 1u)
+				ax[kk] = expf(-ax[kk]) / d_Sino;
+			else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
+				if (ax[kk] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
+					ax[kk] = expf(-d_epsilon_mramla) / d_Sino - (expf(-d_epsilon_mramla) / d_Sino) * (ax[kk] - d_epsilon_mramla);
+				else
+					ax[kk] = expf(-ax[kk]) / d_Sino;
+	}
+#else
 		if (MethodList[kk] != 1u)
 			ax[kk] = d_Sino / ax[kk];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
@@ -126,8 +190,13 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 			else
 				ax[kk] = d_Sino / ax[kk];
 		}
+#endif
+#else
+#ifdef CT
+		ax[kk] = expf(-ax[kk]) / d_Sino;
 #else
 		ax[kk] = d_Sino / ax[kk];
+#endif
 #endif
 	}
 #endif
@@ -137,13 +206,19 @@ __device__ void nominator(const unsigned char* MethodList, float* ax, const floa
 // Nominator (backprojection), COSEM
 __device__ void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const float* d_sc_ra,
 	const unsigned int idx) {
-	*axCOSEM *= temp;
-	if (*axCOSEM <= 0.f)
+#ifndef CT
+	* axCOSEM *= temp;
+	if (*axCOSEM < d_epps)
 		*axCOSEM = d_epps;
-#ifdef RANDOMS
-		*axCOSEM += d_sc_ra[idx];
 #endif
-	*axCOSEM = local_sino / *axCOSEM;
+#ifdef RANDOMS
+	* axCOSEM += d_sc_ra[idx];
+#endif
+#ifdef CT
+	* axCOSEM = expf(-*axCOSEM) / local_sino;
+#else
+	* axCOSEM = local_sino / *axCOSEM;
+#endif
 }
 #endif
 #ifndef MBSREM
@@ -177,7 +252,73 @@ __device__ void rhs(const unsigned char* MethodList, const float local_ele, cons
 #endif
 }
 #endif
+//#else
+//
+//// Nominator (backprojection), multi-GPU version
+//__device__ void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const float* d_sc_ra,
+//	const size_t idx) {
+//#ifndef CT
+//	* axOSEM *= temp;
+//#ifdef BP
+//	if (*axOSEM < d_epps)
+//		*axOSEM = d_epps;
+//#endif
+//#endif
+//#ifdef RANDOMS
+//	* axOSEM += d_sc_ra[idx];
+//#endif
+//#ifdef BP
+//#ifdef CT
+//	* axOSEM = expf(-*axOSEM) / d_Sino;
+//#else
+//	* axOSEM = d_Sino / *axOSEM;
+//#endif
+//#endif
+//}
+//#endif
+//
+//#if defined(MBSREM) || !defined(AF)
+//// Denominator (forward projection), multi-GPU version
+//__device__ void denominator_multi(const float local_ele, float* axOSEM, const float* d_OSEM) {
+//	*axOSEM += (local_ele * *d_OSEM);
+//}
+//#endif
 
+
+#ifdef CT
+__device__ void get_detector_coordinates_CT(const float* x, const float* y, const float* z, const unsigned int size_x, const size_t idx, const unsigned int subsets,
+	const float* angles, const unsigned int* d_xyindex, const unsigned short* d_zindex, const unsigned int size_z, const float dPitch, const long long int nProjections,
+	float* xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
+#ifdef LISTMODE
+	*xs = x[idx];
+	*xd = x[idx + size_x];
+	*ys = y[idx];
+	*yd = y[idx + size_x];
+	*zs = z[idx];
+	*zd = z[idx + size_x];
+#else
+	if (subsets > 1U) {
+		const unsigned int lu = d_xyindex[idx];
+		*xs = x[d_zindex[idx] + nProjections];
+		*xd = x[d_zindex[idx]] - dPitch * float(lu % size_x) * cosf(angles[d_zindex[idx]]);
+		*ys = y[d_zindex[idx] + nProjections];
+		*yd = y[d_zindex[idx]] - dPitch * float(lu % size_x) * sinf(angles[d_zindex[idx]]);
+		*zs = z[d_zindex[idx] + nProjections];
+		*zd = z[d_zindex[idx]] + dPitch * float(lu / size_x);
+	}
+	else {
+		const long long int ll = idx / ((size_x) * (size_z));
+		const long long int lu = idx % ((size_x) * (size_z));
+		*xs = x[ll + nProjections];
+		*xd = x[ll] - dPitch * float(lu % size_x) * cosf(angles[ll]);
+		*ys = y[ll + nProjections];
+		*yd = y[ll] - dPitch * float(lu % size_x) * sinf(angles[ll]);
+		*zs = z[ll + nProjections];
+		*zd = z[ll] + dPitch * float(lu / size_x);
+		}
+#endif
+}
+#else
 #if defined(RAW) && !defined(N_RAYS)
 // Get the detector coordinates for the current (raw) measurement
 __device__ void get_detector_coordinates_raw(const float* d_x, const float* d_y, const float* d_zdet, const unsigned short* d_L,
@@ -209,7 +350,7 @@ __device__ void get_detector_coordinates_raw(const float* d_x, const float* d_y,
 
 
 
-#if defined(N_RAYS) && defined(RAW)
+#if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
 // Get the detector coordinates for the current (raw) measurement
 __device__ void get_detector_coordinates_raw_multiray(const float* d_x, const float* d_y, const float* d_zdet, const unsigned short* d_L,
 	const unsigned int d_det_per_ring, const unsigned int idx, const unsigned int* d_pseudos, const unsigned int d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd,
@@ -263,12 +404,20 @@ __device__ void get_detector_coordinates_raw_multiray(const float* d_x, const fl
 }
 #endif
 
-#if !defined(N_RAYS) && !defined(RAW)
+#if !defined(N_RAYS) && (!defined(RAW) || defined(LISTMODE))
 // Get the detector coordinates for the current sinogram bin
 __device__ void get_detector_coordinates(const unsigned int* d_xyindex, const unsigned short* d_zindex, const unsigned int d_size_x, const unsigned int idx,
 	const unsigned short d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const float* d_x, const float* d_y,
-	const float* d_zdet) {
+	const float* d_zdet, const unsigned long long int cumsum) {
 
+#ifdef LISTMODE
+	* xs = d_x[idx + cumsum];
+	*xd = d_x[idx + d_size_x + cumsum];
+	*ys = d_y[idx + cumsum];
+	*yd = d_y[idx + d_size_x + cumsum];
+	*zs = d_zdet[idx + cumsum];
+	*zd = d_zdet[idx + d_size_x + cumsum];
+#else
 	if (d_xyindex[idx] >= d_size_x) {
 		*xs = d_x[d_xyindex[idx]];
 		*xd = d_x[d_xyindex[idx] - d_size_x];
@@ -289,6 +438,7 @@ __device__ void get_detector_coordinates(const unsigned int* d_xyindex, const un
 		*zs = d_zdet[d_zindex[idx]];
 		*zd = d_zdet[d_zindex[idx] + d_TotSinos];
 	}
+#endif
 }
 #endif
 
@@ -371,6 +521,7 @@ __device__ void get_detector_coordinates_precomp(const unsigned int d_size_x, co
 	*zd = d_zdet[idz + d_TotSinos];
 }
 #endif
+#endif
 
 // Compute the voxel index where the current perpendicular measurement starts
 __device__ int perpendicular_start(const float d_b, const float d, const float d_d, const unsigned int d_N) {
@@ -402,6 +553,9 @@ __device__ void perpendicular_elements(const float d_b, const float d_d1, const 
 	//}
 	//*templ_ijk = d_d2;
 	* tempk = (unsigned int)(apu) * d_N + z_loop * d_N1 * d_N2;
+#ifdef CT
+	* templ_ijk = d_d2;
+#else
 	float temp = d_d2 * (float)(d_N2);
 	// Probability
 	temp = 1.f / temp;
@@ -417,6 +571,7 @@ __device__ void perpendicular_elements(const float d_b, const float d_d1, const 
 #endif
 	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
+#endif
 }
 
 #ifdef N_RAYS
@@ -584,13 +739,19 @@ __device__ float compute_element(float* t0, float* tc, const float L, const floa
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;
-	*temp += local_ele;
+#ifndef CT
+	* temp += local_ele;
+#endif
 	return local_ele;
 }
 
 // compute the probability of emission in the current voxel
 __device__ float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
+#ifdef CT
+	float local_ele = (*t0 - *tc) * L;
+#else
 	float local_ele = (*t0 - *tc) * L * temp;
+#endif
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;

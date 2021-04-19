@@ -39,11 +39,11 @@
 #ifdef VOL
 #define CC 1e3f
 #endif
-#define TRAPZ_BINS 6.f
+#define TRAPZ_BINS 5.f
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
-#ifndef ATOMIC
+#if !defined(ATOMIC) && !defined(ATOMIC32)
 void atomicAdd_g_f(volatile __global float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -59,12 +59,41 @@ void atomicAdd_g_f(volatile __global float *addr, float val) {
 #endif
 
 #ifdef AF
+// Computes the forward projection
+void forwardProject(const float local_ele, float* ax, const uint kk, const uint local_ind, const __global float* d_OSEM) {
+	ax[kk] += (local_ele * d_OSEM[local_ind]);
+}
+
+// Computes y / (x + r), where x is the forward projection and r randoms and/or scatter
+void yDivFP(float* ax, const float d_Sino, const uint kk, const float local_rand) {
+#ifdef RANDOMS
+	ax[kk] += local_rand;
+#endif
+#ifdef CT
+	ax[kk] = native_exp(-ax[kk]) / d_Sino;
+#else
+	ax[kk] = d_Sino / ax[kk];
+#endif
+}
+
+#ifdef MRAMLA
+void yDivFPMBSREM(float* ax, const float d_Sino, const uint kk, const float local_rand, const float d_epsilon_mramla) {
+#ifdef RANDOMS
+	ax[kk] += local_rand;
+#endif
+#ifdef CT
+	ax[kk] = native_exp(-d_epsilon_mramla) / d_Sino - (native_exp(-d_epsilon_mramla) / d_Sino) * (ax[kk] - d_epsilon_mramla);
+#else
+	ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+#endif
+}
+#endif
 #ifdef MBSREM
 // Struct for boolean operators indicating whether a certain method is selected (OpenCL)
 typedef struct _RecMethodsOpenCL {
 	char MLEM, OSEM, MRAMLA_, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
 	char MRP, Quad, Huber, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
-	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM;
+	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM, PKMA;
 } RecMethodsOpenCL;
 #endif
 
@@ -72,14 +101,14 @@ typedef struct _RecMethodsOpenCL {
 // Denominator (forward projection)
 void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
 #ifdef NREKOS1
-	ax[0] += (local_ele * d_OSEM[local_ind]);
+	forwardProject(local_ele, ax, 0, local_ind, d_OSEM);
 #elif defined(NREKOS2)
-	ax[0] += (local_ele * d_OSEM[local_ind]);
-	ax[1] += (local_ele * d_OSEM[local_ind + d_N]);
+	forwardProject(local_ele, ax, 0, local_ind, d_OSEM);
+	forwardProject(local_ele, ax, 1, local_ind + d_N, d_OSEM);
 #else
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
-		ax[kk] += (local_ele * d_OSEM[local_ind]);
+		forwardProject(local_ele, ax, kk, local_ind, d_OSEM);
 		local_ind += d_N;
 	}
 #endif
@@ -87,111 +116,118 @@ void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, con
 
 // Nominator (backprojection) in MLEM
 void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
-	const float temp, const __global float* d_sc_ra, const uint idx) {
+	const float temp, const __global float* d_sc_ra, const size_t idx) {
 	float local_rand = 0.f;
 #ifdef RANDOMS
 	local_rand = d_sc_ra[idx];
 #endif
 #ifdef NREKOS1
+#ifndef CT
 	ax[0] *= temp;
 	if (ax[0] < d_epps)
 		ax[0] = d_epps;
-#ifdef RANDOMS
-		ax[0] += local_rand;
 #endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
-		ax[0] = d_Sino / ax[0];
+		yDivFP(ax, d_Sino, 0, local_rand);
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
 		if (ax[0] <= d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+			yDivFPMBSREM(ax, d_Sino, 0, local_rand, d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0];
+			yDivFP(ax, d_Sino, 0, local_rand);
 	}
 #else
-	ax[0] = d_Sino / ax[0];
+	yDivFP(ax, d_Sino, 0, local_rand);
 #endif
 #elif defined(NREKOS2)
+#ifndef CT
 	ax[0] *= temp;
 	if (ax[0] < d_epps)
 		ax[0] = d_epps;
-#ifdef RANDOMS
-		ax[0] += local_rand;
 #endif
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
-		ax[0] = d_Sino / ax[0];
+		yDivFP(ax, d_Sino, 0, local_rand);
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
 		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[0] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[0] - d_epsilon_mramla);
+			yDivFPMBSREM(ax, d_Sino, 0, local_rand, d_epsilon_mramla);
 		else
-			ax[0] = d_Sino / ax[0];
+			yDivFP(ax, d_Sino, 0, local_rand);
 	}
 #else
-	ax[0] = d_Sino / ax[0];
+	yDivFP(ax, d_Sino, 0, local_rand);
 #endif
+#ifndef CT
 	ax[1] *= temp;
 	if (ax[1] < d_epps)
 		ax[1] = d_epps;
-#ifdef RANDOMS
-		ax[1] += local_rand;
 #endif
 #ifdef MRAMLA
 	if (MethodList[1] != 1u)
-		ax[1] = d_Sino / ax[1];
+		yDivFP(ax, d_Sino, 1, local_rand);
 	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
 		if (ax[1] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			ax[1] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[1] - d_epsilon_mramla);
+			yDivFPMBSREM(ax, d_Sino, 1, local_rand, d_epsilon_mramla);
 		else
-			ax[1] = d_Sino / ax[1];
+			yDivFP(ax, d_Sino, 1, local_rand);
 	}
 #else
-	ax[1] = d_Sino / ax[1];
+	yDivFP(ax, d_Sino, 1, local_rand);
 #endif
 #else
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
+#ifndef CT
 		ax[kk] *= temp;
 		if (ax[kk] < d_epps)
 			ax[kk] = d_epps;
-#ifdef RANDOMS
-			ax[kk] += local_rand;
 #endif
 #ifdef MRAMLA
 		if (MethodList[kk] != 1u)
-			ax[kk] = d_Sino / ax[kk];
+			yDivFP(ax, d_Sino, kk, local_rand);
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[kk] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-				ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+				yDivFPMBSREM(ax, d_Sino, kk, local_rand, d_epsilon_mramla);
 			else
-				ax[kk] = d_Sino / ax[kk];
+				yDivFP(ax, d_Sino, kk, local_rand);
 		}
 #else
-		ax[kk] = d_Sino / ax[kk];
+		yDivFP(ax, d_Sino, kk, local_rand);
 #endif
 	}
 #endif
 }
 #endif
+
 #ifdef MBSREM
 // Nominator (backprojection), COSEM
 void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
-	const uint idx) {
-	*axCOSEM *= temp;
+	const size_t idx) {
+#ifndef CT
+	* axCOSEM *= temp;
 	if (*axCOSEM < d_epps)
-		* axCOSEM = d_epps;
+		*axCOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 	* axCOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+	* axCOSEM = native_exp(-*axCOSEM) / local_sino;
+#else
 	*axCOSEM = local_sino / *axCOSEM;
+#endif
 }
 #endif
+
 #ifndef MBSREM
+// Compute the backprojection
 void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
 	const uint d_N, __global CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * ax[0] * TH));
+#elif defined(ATOMIC32)
+	atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * ax[0] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 #endif
@@ -199,6 +235,9 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * ax[0] * TH));
 	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_long(local_ele * ax[1] * TH));
+#elif defined(ATOMIC32)
+	atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * ax[0] * TH));
+	atom_atomic_addadd(&d_rhs_OSEM[local_ind + d_N], convert_int(local_ele * ax[1] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
@@ -209,6 +248,8 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 	for (uint kk = 0; kk < N_REKOS; kk++) {
 #ifdef ATOMIC
 		atom_add(&d_rhs_OSEM[yy], convert_long(local_ele * ax[kk] * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_rhs_OSEM[yy], convert_int(local_ele * ax[kk] * TH));
 #else
 		atomicAdd_g_f(&d_rhs_OSEM[yy], (local_ele * ax[kk]));
 #endif
@@ -222,17 +263,23 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 
 // Nominator (backprojection), multi-GPU version
 void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
-	const uint idx) {
+	const size_t idx) {
+#ifndef CT
 	*axOSEM *= temp;
 #ifdef BP
 	if (*axOSEM < d_epps)
 		* axOSEM = d_epps;
 #endif
+#endif
 #ifdef RANDOMS
 		* axOSEM += d_sc_ra[idx];
 #endif
 #ifdef BP
+#ifdef CT
+	* axOSEM = native_exp(-*axOSEM) / d_Sino;
+#else
 	*axOSEM = d_Sino / *axOSEM;
+#endif
 #endif
 }
 #endif
@@ -244,10 +291,44 @@ void denominator_multi(const float local_ele, float* axOSEM, const __global floa
 }
 #endif
 
+#ifdef CT
+void get_detector_coordinates_CT(const __global float* x, const __global float* y, const __global float* z, const uint size_x, const size_t idx, const uint subsets,
+	__constant float* angles, const __global uint* d_xyindex, const __global ushort* d_zindex, const uint size_z, const float dPitch, const long nProjections,
+	float* xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
+#ifdef LISTMODE
+		*xs = x[idx];
+		*xd = x[idx + size_x];
+		*ys = y[idx];
+		*yd = y[idx + size_x];
+		*zs = z[idx];
+		*zd = z[idx + size_x];
+#else
+		if (subsets > 1U) {
+			const uint lu = d_xyindex[idx];
+			*xs = x[d_zindex[idx] + nProjections];
+			*xd = x[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_cos(angles[d_zindex[idx]]);
+			*ys = y[d_zindex[idx] + nProjections];
+			*yd = y[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_sin(angles[d_zindex[idx]]);
+			*zs = z[d_zindex[idx] + nProjections];
+			*zd = z[d_zindex[idx]] + dPitch * convert_float(lu / size_x);
+		}
+		else {
+			const long ll = idx / ((size_x) * (size_z));
+			const long lu = idx % ((size_x) * (size_z));
+			*xs = x[ll + nProjections];
+			*xd = x[ll] - dPitch * convert_float(lu % size_x) * native_cos(angles[ll]);
+			*ys = y[ll + nProjections];
+			*yd = y[ll] - dPitch * convert_float(lu % size_x) * native_sin(angles[ll]);
+			*zs = z[ll + nProjections];
+			*zd = z[ll] + dPitch * convert_float(lu / size_x);
+		}
+#endif
+}
+#else
 #if defined(RAW) && !defined(N_RAYS)
 // Get the detector coordinates for the current (raw) measurement
 void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
-	const uint d_det_per_ring, const uint idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
+	const uint d_det_per_ring, const size_t idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
 	float* zd) {
 	// Get the current detector numbers
 	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
@@ -277,7 +358,7 @@ void get_detector_coordinates_raw(const __global float *d_x, const __global floa
 #if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
 // Get the detector coordinates for the current (raw) measurement
 void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
-	const uint d_det_per_ring, const uint idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, 
+	const uint d_det_per_ring, const size_t idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd,
 	const ushort lor, const float cr_pz) {
 	uint ps = 0;
 	// Get the current detector numbers
@@ -331,7 +412,7 @@ void get_detector_coordinates_raw_multiray(const __global float* d_x, const __gl
 
 #if !defined(N_RAYS) && (!defined(RAW) || defined(LISTMODE))
 // Get the detector coordinates for the current sinogram bin
-void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const uint idx, 
+void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const size_t idx,
 	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
 	const __global float *d_zdet, const ulong cumsum) {
 
@@ -369,7 +450,7 @@ void get_detector_coordinates(const __global uint *d_xyindex, const __global ush
 
 #if defined(N_RAYS) && !defined(RAW)
 // Get the detector coordinates for the current sinogram bin
-void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x,	const uint idx, 
+void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x, const size_t idx,
 	const ushort d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float* d_x, const __global float* d_y,
 	const __global float* d_zdet, const ushort lor, const float cr_pz) {
 
@@ -434,7 +515,7 @@ void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __g
 
 #ifdef FIND_LORS
 // Get the detector coordinates for the current measurement (precomputation phase)
-void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
+void get_detector_coordinates_precomp(const uint d_size_x, const size_t idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
 	float* zd, const __global float *d_x, const __global float *d_y, const __global float *d_zdet) {
 
 	const uint id = idx % d_size_x;
@@ -446,6 +527,7 @@ void get_detector_coordinates_precomp(const uint d_size_x, const uint idx, const
 	*zs = d_zdet[idz];
 	*zd = d_zdet[idz + d_TotSinos];
 }
+#endif
 #endif
 
 // Compute the voxel index where the current perpendicular measurement starts
@@ -465,9 +547,12 @@ int perpendicular_start(const float d_b, const float d, const float d_d, const u
 // Compute the probability for the perpendicular elements
 void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, 
-	const __global float* d_norm, const uint idx, const float global_factor, const __global float* d_scat) {
+	const __global float* d_norm, const size_t idx, const float global_factor, const __global float* d_scat) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	*tempk = convert_uint_sat(apu) * d_N + z_loop * d_N1 * d_N2;
+#ifdef CT
+	* templ_ijk = d_d2;
+#else
 	float temp = d_d2 * convert_float(d_N2);
 	// Probability
 	temp = 1.f / temp;
@@ -486,6 +571,7 @@ void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, 
 #endif
 	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
+#endif
 }
 
 #ifdef N_RAYS
@@ -610,7 +696,7 @@ uint compute_ind(const int tempj, const int tempi, const int tempk, const uint d
 	return local_ind;
 }
 
-#ifdef ATN
+#if defined(ATN) && !defined(CT)
 float compute_matrix_element(const float t0, const float tc, const float L) {
 	return (t0 - tc) * L;
 }
@@ -629,13 +715,19 @@ float compute_element(float* t0, float* tc, const float L, const float tu, const
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;
+#ifndef CT
 	*temp += local_ele;
+#endif
 	return local_ele;
 }
 
 // compute the probability of emission in the current voxel
 float compute_element_2nd(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk, const float temp) {
+#ifdef CT
+	float local_ele = (*t0 - *tc) * L;
+#else
 	float local_ele = (*t0 - *tc) * L * temp;
+#endif
 	*temp_ijk += u;
 	*tc = *t0;
 	*t0 += tu;
@@ -911,7 +1003,7 @@ void denominatorTOF(float* ax, const float element, const __global float* d_OSEM
 
 // Nominator (y for backprojection)
 void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float* d_Sino, const float d_epsilon_mramla, const float d_epps,
-	const float temp, const __global float* d_sc_ra, const uint idx, const long TOFSize, const float local_sino) {
+	const float temp, const __global float* d_sc_ra, const size_t idx, const long TOFSize, const float local_sino) {
 	float local_rand = 0.f;
 #ifdef RANDOMS
 	local_rand = d_sc_ra[idx];
@@ -960,7 +1052,7 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 #endif
 #ifdef MBSREM
 	, const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM, 
-	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, const float local_sino, const uint idx, const long TOFSize
+	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, const float local_sino, const size_t idx, const long TOFSize
 #else
 	, __global CAST* d_rhs, const uchar no_norm, const uint d_N
 #endif
@@ -1008,18 +1100,24 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 		if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 			atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#elif defined(ATOMIC32)
+			atomic_add(&d_Summ[local_ind], convert_int(val * TH));
 #else
 			atomicAdd_g_f(&d_Summ[local_ind], val);
 #endif
 		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 			atom_add(&d_co[local_ind], convert_long(yaxTOF * TH));
+#elif defined(ATOMIC32)
+			atomic_add(&d_co[local_ind], convert_int(yaxTOF * TH));
 #else
 			atomicAdd_g_f(&d_co[local_ind], yaxTOF);
 #endif
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 			atom_add(&d_aco[local_ind], convert_long(yaxTOF * TH));
+#elif defined(ATOMIC32)
+			atomic_add(&d_aco[local_ind], convert_int(yaxTOF * TH));
 #else
 			atomicAdd_g_f(&d_aco[local_ind], yaxTOF);
 #endif
@@ -1028,11 +1126,15 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 	if (no_norm == 0u && ii == 0)
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_Summ[local_ind], convert_int(val * TH));
 #else
 		atomicAdd_g_f(&d_Summ[local_ind], val);
 #endif
 #ifdef ATOMIC
 	atom_add(&d_rhs[yy], convert_long(yaxTOF * TH));
+#elif defined(ATOMIC32)
+	atomic_add(&d_rhs[yy], convert_int(yaxTOF * TH));
 #else
 	atomicAdd_g_f(&d_rhs[yy], (yaxTOF));
 #endif
@@ -1055,7 +1157,7 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 #endif
 #ifdef MBSREM
 	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM,
-	__global float* d_E, const uint idx, const long TOFSize, 
+	__global float* d_E, const size_t idx, const long TOFSize,
 #endif
 	const uchar no_norm) {
 	float val = 0.f;
@@ -1085,6 +1187,8 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 	if (no_norm == 0u && d_alku == 0u)
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_Summ[local_ind], convert_int(val * TH));
 #else
 		atomicAdd_g_f(&d_Summ[local_ind], val);
 #endif
@@ -1092,6 +1196,8 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 	if (no_norm == 0u)
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
+#elif defined(ATOMIC32)
+		atomic_add(&d_Summ[local_ind], convert_int(val * TH));
 #else
 		atomicAdd_g_f(&d_Summ[local_ind], val);
 #endif

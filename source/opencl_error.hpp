@@ -31,9 +31,10 @@
 #include <string>
 #include <iostream>
 #include <fstream>
-#include "mex.h"
+#include "mexFunktio.h"
 
 #define TH 100000000000.f
+#define TH32 100000.f
 
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 

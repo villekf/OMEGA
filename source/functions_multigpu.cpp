@@ -273,10 +273,11 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 
 // Build the programs and get the command queues
 cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
-	const cl::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const uint32_t projector_type, const char* header_directory,
-	const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, const uint32_t normalization_correction,
-	const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, const bool find_lors, const float cr_pz,
-	const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const uint8_t listmode) {
+	const cl::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const bool atomic_32bit, 
+	const uint32_t projector_type, const char* header_directory, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, 
+	const uint32_t normalization_correction, const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
+	const bool find_lors, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, 
+	const int64_t nBins, const uint8_t listmode, const bool CT) {
 	cl_int status = CL_SUCCESS;
 
 
@@ -301,6 +302,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
 	std::string content;
 	std::string options = "-cl-single-precision-constant";
+	//options += " -cl-fast-relaxed-math";
 	if (crystal_size_z == 0.f && projector_type == 2u) {
 		options += " -DCRYST";
 		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
@@ -361,6 +363,8 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		options += (" -DTRAPZ_BINS=" + std::to_string(6.f));
 	}
 	options += (" -DNBINS=" + std::to_string(nBins));
+	if (CT)
+		options += " -DCT";
 	if (listmode == 1)
 		options += " -DLISTMODE";
 	else if (listmode == 2)
@@ -381,6 +385,11 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 		options += " -DATOMIC";
 		options += (" -DTH=" + std::to_string(TH));
 	}
+	else if (atomic_32bit) {
+		options += " -DCAST=int";
+		options += " -DATOMIC32";
+		options += (" -DTH=" + std::to_string(TH32));
+	}
 	else
 		options += " -DCAST=float";
 	if (DEBUG) {
@@ -389,22 +398,31 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	}
 	// If integer atomic 64-bit operations are enabled, check if they are supported by the device(s)
 	if (atomic_64bit) {
-		//std::string kernel_path_atom;
+		cl::string apu = devices[0].getInfo<CL_DEVICE_EXTENSIONS>();
+		cl::string apu2 = "cl_khr_int64_base_atomics";
+		int32_t var = apu.find(apu2);
+		if (var < 0) {
+			options.erase(pituus, options.size() + 1);
+			options += " -DCAST=float";
+			status = -1;
+		}
+		else {
+			//std::string kernel_path_atom;
 
-		//kernel_path_atom = k_path;
-		////kernel_path_atom += "_64atom.cl";
-		//kernel_path_atom += ".cl";
-		//// Load the source text file
-		//std::fstream sourceFile_atom(kernel_path_atom.c_str());
-		//std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
-		std::vector<std::string> testi;
-		testi.push_back(content);
-		cl::Program::Sources source(testi);
-		//cl::Program::Sources source(1, std::make_pair(content.c_str(), content.length() + 1));
-		// Create the program from the source
-		// Build the program
-		program = cl::Program(context, source);
-		//try {
+			//kernel_path_atom = k_path;
+			////kernel_path_atom += "_64atom.cl";
+			//kernel_path_atom += ".cl";
+			//// Load the source text file
+			//std::fstream sourceFile_atom(kernel_path_atom.c_str());
+			//std::string content_atom((std::istreambuf_iterator<char>(sourceFile_atom)), std::istreambuf_iterator<char>());
+			std::vector<std::string> testi;
+			testi.push_back(content);
+			cl::Program::Sources source(testi);
+			//cl::Program::Sources source(1, std::make_pair(content.c_str(), content.length() + 1));
+			// Create the program from the source
+			// Build the program
+			program = cl::Program(context, source);
+			//try {
 			status = program.build(options.c_str());
 			if (status != CL_SUCCESS) {
 				mexPrintf("Failed to build 64-bit atomics program.\n");
@@ -421,7 +439,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 						std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
 						mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
 					}
-					return status;
+					//return status;
 				}
 				options.erase(pituus, options.size() + 1);
 				options += " -DCAST=float";
@@ -430,12 +448,13 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 				if (verbose)
 					mexPrintf("OpenCL program (64-bit atomics) built\n");
 			}
-		//}
-		//catch (cl::Error& e) {
-		//	//mexPrintf("%s\n", e.what());
-		//	mexPrintf("Failed to build 64-bit atomics program.\n");
-		//	status = -1;
-		//}
+			//}
+			//catch (cl::Error& e) {
+			//	//mexPrintf("%s\n", e.what());
+			//	mexPrintf("Failed to build 64-bit atomics program.\n");
+			//	status = -1;
+			//}
+		}
 	}
 	else
 		status = -1;

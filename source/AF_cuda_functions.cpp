@@ -18,51 +18,44 @@
 ***************************************************************************/
 #include "AF_cuda_functions.hpp"
 
-const char* getErrorString(CUresult error)
-{
-	const char* errstr;
-	cuGetErrorString(error, &errstr);
-	return errstr;
-}
-
 // Update the OpenCL kernel inputs for the current iteration/subset
 // If a method is not used, do nothing
 // Otherwise create an OpenCL buffer pointer from the ArrayFire image estimate and initialize the right-hand side vector
 void update_cuda_inputs(AF_im_vectors & vec, CUDA_im_vectors &vec_cuda, const bool mlem, const uint32_t im_dim, const uint32_t n_rekos, 
 	const uint32_t n_rekos_mlem, const RecMethods MethodList, const bool atomic_64bit, const bool use_psf)
 {
-	if (MethodList.CUSTOM) {
-		if (mlem) {
-			vec.im_mlem(af::seq(n_rekos * im_dim - im_dim, n_rekos * im_dim - 1u)) = vec.custom_MLEM;
-		}
-		else {
-			uint32_t yy = n_rekos * im_dim;
-			if (MethodList.OSLCOSEM > 0u) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_COSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.RBIOSL) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_RBI;
-				yy -= im_dim;
-			}
-			if (MethodList.ROSEMMAP) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_ROSEM;
-				yy -= im_dim;
-			}
-			if (MethodList.MBSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_MBSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.BSREM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_BSREM;
-				yy -= im_dim;
-			}
-			if (MethodList.OSLOSEM) {
-				vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_OSEM;
-				yy -= im_dim;
-			}
-		}
-	}
+	//if (MethodList.CUSTOM) {
+	//	if (mlem) {
+	//		vec.im_mlem(af::seq(n_rekos * im_dim - im_dim, n_rekos * im_dim - 1u)) = vec.custom_MLEM;
+	//	}
+	//	else {
+	//		uint32_t yy = n_rekos * im_dim;
+	//		if (MethodList.OSLCOSEM > 0u) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_COSEM;
+	//			yy -= im_dim;
+	//		}
+	//		if (MethodList.RBIOSL) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_RBI;
+	//			yy -= im_dim;
+	//		}
+	//		if (MethodList.ROSEMMAP) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_ROSEM;
+	//			yy -= im_dim;
+	//		}
+	//		if (MethodList.MBSREM) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_MBSREM;
+	//			yy -= im_dim;
+	//		}
+	//		if (MethodList.BSREM) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_BSREM;
+	//			yy -= im_dim;
+	//		}
+	//		if (MethodList.OSLOSEM) {
+	//			vec.im_os(af::seq(yy - im_dim, yy - 1u)) = vec.custom_OSEM;
+	//			yy -= im_dim;
+	//		}
+	//	}
+	//}
 	if (mlem) {
 		if (use_psf)
 			vec_cuda.d_im_mlem = vec.im_mlem_blurred.device<CUdeviceptr>();
@@ -122,18 +115,18 @@ void OpenCLRecMethods(const RecMethods &MethodList, RecMethodsOpenCL &MethodList
 }
 
 
-CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_L,
-	std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, std::vector<CUdeviceptr>& d_Sino, std::vector<CUdeviceptr>& d_sc_ra,
+CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, CUdeviceptr& d_angles, std::vector<CUdeviceptr>& d_lor, std::vector<CUdeviceptr>& d_L,
+	std::vector<CUdeviceptr>& d_zindex, std::vector<CUdeviceptr>& d_xyindex, std::vector<CUdeviceptr>& d_Sino, std::vector<CUdeviceptr>& d_sc_ra, 
 	const uint32_t size_x, const size_t size_z, const uint32_t TotSinos, const size_t size_atten, const size_t size_norm, const size_t size_scat, const uint32_t prows,
-	std::vector<size_t>& length, const float* x, const float* y, const float* z_det, const uint32_t* xy_index, const uint16_t* z_index,
-	const uint16_t* lor1, const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const int64_t* pituus, const float* atten,
-	const float* norm, const float* scat, const uint32_t* pseudos, const float* V, CUdeviceptr& d_atten, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, CUdeviceptr& d_pseudos, CUdeviceptr& d_V,
-	CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, const float* x_center, const float* y_center, const float* z_center,
-	const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const size_t size_of_x, const size_t size_V,
-	const bool randoms_correction, const mxArray* sc_ra, const bool precompute, CUdeviceptr& d_lor_mlem, CUdeviceptr& d_L_mlem, CUdeviceptr& d_zindex_mlem,
-	CUdeviceptr& d_xyindex_mlem, CUdeviceptr& d_Sino_mlem, CUdeviceptr& d_sc_ra_mlem, CUdeviceptr& d_reko_type, CUdeviceptr& d_reko_type_mlem, const bool osem_bool,
-	const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	CUdeviceptr& d_norm_mlem, CUdeviceptr& d_scat_mlem, const bool TOF, const int64_t nBins, const bool loadTOF, CUdeviceptr& d_TOFCenter, const float* TOFCenter)
+	std::vector<size_t>& length, const float* x, const float* y, const float* z_det, const uint32_t* xy_index, const uint16_t* z_index, const uint16_t* lor1, 
+	const uint16_t* L, const float* Sin, const uint8_t raw, const uint32_t subsets, const int64_t* pituus, const float* atten, const float* norm, const float* scat, 
+	const uint32_t* pseudos, const float* V, CUdeviceptr& d_atten, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, CUdeviceptr& d_pseudos, CUdeviceptr& d_V,
+	CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x, 
+	const size_t size_center_y, const size_t size_center_z, const size_t size_of_x, const size_t size_V, const bool randoms_correction, const mxArray* sc_ra, const bool precompute, 
+	CUdeviceptr& d_lor_mlem, CUdeviceptr& d_L_mlem, CUdeviceptr& d_zindex_mlem, CUdeviceptr& d_xyindex_mlem, CUdeviceptr& d_Sino_mlem, CUdeviceptr& d_sc_ra_mlem, 
+	CUdeviceptr& d_reko_type, CUdeviceptr& d_reko_type_mlem, const bool osem_bool, const bool mlem_bool, const size_t koko, const uint8_t* reko_type, const uint8_t* reko_type_mlem, 
+	const uint32_t n_rekos, const uint32_t n_rekos_mlem, CUdeviceptr& d_norm_mlem, CUdeviceptr& d_scat_mlem, const float* angles, const bool TOF, const int64_t nBins, const bool loadTOF,
+	CUdeviceptr& d_TOFCenter, const float* TOFCenter, const uint32_t subsetsUsed, const uint32_t osa_iter0, const uint8_t listmode, const bool CT)
 {
 	// Create the necessary buffers
 	// Detector coordinates
@@ -157,6 +150,13 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 	if (status != CUDA_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
 		return status;
+	}
+	if (CT) {
+		status = cuMemAlloc(&d_angles, sizeof(float) * TotSinos);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
+			return status;
+		}
 	}
 	status = cuMemAlloc(&d_xcenter, sizeof(float) * size_center_x);
 	if (status != CUDA_SUCCESS) {
@@ -197,7 +197,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
+		for (uint32_t kk = osa_iter0; kk < subsets; kk++) {
 			// How many voxels does each LOR traverse
 			if (precompute)
 				status = cuMemAlloc(&d_lor[kk], sizeof(uint16_t) * length[kk]);
@@ -248,7 +248,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				return status;
 			}
 			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-			if (raw) {
+			if (raw && listmode != 1) {
 				status = cuMemAlloc(&d_xyindex[kk], sizeof(uint32_t));
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
@@ -265,13 +265,30 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 					return status;
 				}
 			}
-			else {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				status = cuMemAlloc(&d_xyindex[kk], sizeof(uint32_t) * length[kk]);
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return status;
 				}
 				status = cuMemAlloc(&d_zindex[kk], sizeof(uint16_t) * length[kk]);
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+				status = cuMemAlloc(&d_L[kk], sizeof(uint16_t));
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+			}
+			else {
+				status = cuMemAlloc(&d_xyindex[kk], sizeof(uint32_t));
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+				status = cuMemAlloc(&d_zindex[kk], sizeof(uint16_t));
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return status;
@@ -299,12 +316,21 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			return status;
 		}
 		// Measurement data
-		status = cuMemAlloc(&d_Sino_mlem, sizeof(float) * koko * nBins);
+		if (TOF && listmode != 2)
+			status = cuMemAlloc(&d_Sino_mlem, sizeof(float) * koko * nBins);
+		else if (listmode != 2)
+			status = cuMemAlloc(&d_Sino_mlem, sizeof(float) * koko);
+		else
+			status = cuMemAlloc(&d_Sino_mlem, sizeof(float));
 		if (status != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
 		status = cuMemAlloc(&d_norm_mlem, sizeof(float) * size_norm);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
+			return status;
+		}
 		if (randoms_correction == 1u)
 			status = cuMemAlloc(&d_sc_ra_mlem, sizeof(float) * koko);
 		else
@@ -314,8 +340,12 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			return status;
 		}
 		status = cuMemAlloc(&d_scat_mlem, sizeof(float) * size_scat);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
+			return status;
+		}
 		// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-		if (raw) {
+		if (raw && listmode != 1) {
 			status = cuMemAlloc(&d_xyindex_mlem, sizeof(uint32_t));
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
@@ -332,13 +362,30 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				return status;
 			}
 		}
-		else {
+		else if (listmode != 1 && !CT) {
 			status = cuMemAlloc(&d_xyindex_mlem, sizeof(uint32_t) * koko);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
 			}
 			status = cuMemAlloc(&d_zindex_mlem, sizeof(uint16_t) * koko);
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+			status = cuMemAlloc(&d_L_mlem, sizeof(uint16_t));
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+		}
+		else {
+			status = cuMemAlloc(&d_xyindex_mlem, sizeof(uint32_t));
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+			status = cuMemAlloc(&d_zindex_mlem, sizeof(uint16_t));
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
@@ -383,6 +430,13 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 		std::cerr << getErrorString(status) << std::endl;
 		return status;
 	}
+	if (CT) {
+		status = cuMemcpyHtoD(d_angles, angles, sizeof(float) * TotSinos);
+		if (status != CUDA_SUCCESS) {
+			std::cerr << getErrorString(status) << std::endl;
+			return status;
+		}
+	}
 	status = cuMemcpyHtoD(d_xcenter, x_center, sizeof(float) * size_center_x);
 	if (status != CUDA_SUCCESS) {
 		std::cerr << getErrorString(status) << std::endl;
@@ -419,8 +473,8 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
-		for (uint32_t kk = 0; kk < subsets; kk++) {
-			if (raw) {
+		for (uint32_t kk = osa_iter0; kk < subsets; kk++) {
+			if (raw && listmode != 1) {
 				status = cuMemcpyHtoD(d_xyindex[kk], xy_index, sizeof(uint32_t));
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
@@ -437,13 +491,30 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 					return status;
 				}
 			}
-			else {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				status = cuMemcpyHtoD(d_xyindex[kk], &xy_index[pituus[kk]], sizeof(uint32_t) * length[kk]);
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return status;
 				}
 				status = cuMemcpyHtoD(d_zindex[kk], &z_index[pituus[kk]], sizeof(uint16_t) * length[kk]);
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+				status = cuMemcpyHtoD(d_L[kk], L, sizeof(uint16_t));
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+			}
+			else {
+				status = cuMemcpyHtoD(d_xyindex[kk], xy_index, sizeof(uint32_t));
+				if (status != CUDA_SUCCESS) {
+					std::cerr << getErrorString(status) << std::endl;
+					return status;
+				}
+				status = cuMemcpyHtoD(d_zindex[kk], z_index, sizeof(uint16_t));
 				if (status != CUDA_SUCCESS) {
 					std::cerr << getErrorString(status) << std::endl;
 					return status;
@@ -489,7 +560,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 					}
 				}
 				else {
-					if (kk == 0) {
+					if (kk == osa_iter0) {
 						for (int64_t to = 0LL; to < nBins; to++) {
 							CUdeviceptr dst = reinterpret_cast<CUdeviceptr> (reinterpret_cast<char*>(d_Sino[kk]) + sizeof(float) * length[kk] * to);
 							char* src = (char*)Sin + sizeof(float) * (pituus[kk] + koko * to);
@@ -499,13 +570,17 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 					}
 				}
 			}
-			else
+			else if (listmode != 2)
 				status = cuMemcpyHtoD(d_Sino[kk], &Sin[pituus[kk]], sizeof(float) * length[kk]);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
 			}
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
+#else
 			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
+#endif
 			if (randoms_correction)
 				status = cuMemcpyHtoD(d_sc_ra[kk], &apu[pituus[kk]], sizeof(float) * length[kk]);
 			else
@@ -532,7 +607,10 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			return status;
 		}
 
-		status = cuMemcpyHtoD(d_Sino_mlem, Sin, sizeof(float) * koko * nBins);
+		if (TOF)
+			status = cuMemcpyHtoD(d_Sino_mlem, Sin, sizeof(float) * koko * nBins);
+		else if (listmode != 2)
+			status = cuMemcpyHtoD(d_Sino_mlem, Sin, sizeof(float) * koko);
 		if (status != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
@@ -547,7 +625,11 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
+#else
 		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
+#endif
 		if (randoms_correction)
 			status = cuMemcpyHtoD(d_sc_ra_mlem, apu, sizeof(float) * koko);
 		else
@@ -556,7 +638,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
-		if (raw) {
+		if (raw && listmode != 1) {
 			status = cuMemcpyHtoD(d_xyindex_mlem, xy_index, sizeof(uint32_t));
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
@@ -573,13 +655,30 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				return status;
 			}
 		}
-		else {
+		else if (listmode != 1 && !CT) {
 			status = cuMemcpyHtoD(d_zindex_mlem, z_index, sizeof(uint16_t) * koko);
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
 			}
 			status = cuMemcpyHtoD(d_xyindex_mlem, xy_index, sizeof(uint32_t) * koko);
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+			status = cuMemcpyHtoD(d_L_mlem, L, sizeof(uint16_t));
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+		}
+		else {
+			status = cuMemcpyHtoD(d_xyindex_mlem, xy_index, sizeof(uint32_t));
+			if (status != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status) << std::endl;
+				return status;
+			}
+			status = cuMemcpyHtoD(d_zindex_mlem, z_index, sizeof(uint16_t));
 			if (status != CUDA_SUCCESS) {
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
@@ -610,13 +709,13 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 	af::array& C_co, af::array& C_aco, af::array& C_osl, uint32_t alku, std::vector<CUdeviceptr>& d_L, uint8_t raw, RecMethodsOpenCL& MethodList,
 	std::vector<size_t> length, uint8_t compute_norm_matrix, std::vector<CUdeviceptr>& d_sc_ra, af::array& E, const uint32_t det_per_ring, CUdeviceptr& d_pseudos,
 	const uint32_t prows, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dz, const float dx, const float dy, const float bz, const float bx,
-	const float by, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, const uint32_t size_x,
-	const uint32_t TotSinos, CUdeviceptr& d_atten,
-	std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const float epps, const uint32_t Nxy, const float tube_width, const float crystal_size_z, const float bmin, const float bmax,
-	const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, 
-	const bool precompute, const uint32_t projector_type, const CUstream& af_cuda_stream, const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, 
-	const bool atomic_64bit, const bool use_psf, const af::array& g, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins,
-	const bool randoms_correction, const float sigma_x, CUdeviceptr& d_TOFCenter, const uint32_t Nt) {
+	const float by, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& d_z, 
+	const uint32_t size_x, const uint32_t TotSinos, CUdeviceptr& d_atten, std::vector<CUdeviceptr>& d_norm, std::vector<CUdeviceptr>& d_scat, const float epps, const uint32_t Nxy, 
+	const float tube_width, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, CUdeviceptr& d_xcenter, CUdeviceptr& d_ycenter, 
+	CUdeviceptr& d_zcenter, CUdeviceptr& d_V, const float dc_z, const uint16_t n_rays, const uint16_t n_rays3D, const bool precompute, const uint32_t projector_type, 
+	const CUstream& af_cuda_stream, const float global_factor, CUdeviceptr& d_reko_type, CUfunction& kernel_mbsrem, const bool atomic_64bit, const bool use_psf, 
+	const af::array& g, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, const bool randoms_correction, const float sigma_x, CUdeviceptr& d_TOFCenter, 
+	CUdeviceptr& d_angles, const uint32_t Nt, const bool CT) {
 
 	CUresult status = CUDA_SUCCESS;
 
@@ -652,6 +751,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 	CUdeviceptr* d_ACOSEM_lhs = apu.device<CUdeviceptr>();
 
 	const size_t local_size = 64ULL;
+	uint64_t st = 0ULL;
 
 	for (uint32_t osa_iter = eka; osa_iter < subsets; osa_iter++) {
 
@@ -722,7 +822,11 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 			}
 			if (TOF && !loadTOF && osa_iter > 0) {
 				gpuErrchk(cuMemFree(d_Sino[0]));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
+#else
 				float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
+#endif
 				status = cuCtxSynchronize();
 				status = cuMemAlloc(&d_Sino[0], sizeof(float) * length[osa_iter] * nBins);
 				for (int64_t to = 0LL; to < nBins; to++) {
@@ -797,25 +901,39 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 
 		af::sync();
 
-		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
-			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by, 
-				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+		if (CT) {
+			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz,
+				(void*)&bx, (void*)&by,	(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
 				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax,
-				(void*)&Vmax, &w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
-				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter], 
-				reinterpret_cast<void*>(&d_cosem), &alku, &MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co), 
-				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList};
+				(void*)&Vmax, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type,
+				(void*)&subsets, &d_angles, (void*)&w_vec.size_y, (void*)&w_vec.dPitch, (void*)&w_vec.nProjections, &d_norm[osa_iter], &d_scat[osa_iter],
+				reinterpret_cast<void*>(&d_Summ),&d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], &d_Sino[H], &d_sc_ra[osa_iter],
+				reinterpret_cast<void*>(&d_cosem), &alku, &MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin),
+				reinterpret_cast<void*>(&d_apu_co), reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList, (void*)&st };
 			status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
 		}
 		else {
-			void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, (void*)&bx, (void*)&by,
-				(void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
-				(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&dc_z, (void*)&n_rays,
-				&w_vec.epsilon_mramla,& d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter],
-				reinterpret_cast<void*>(&d_Summ),& d_lor[osa_iter],& d_xyindex[osa_iter],& d_zindex[osa_iter],& d_L[osa_iter],& d_Sino[H],& d_sc_ra[osa_iter],
-				reinterpret_cast<void*>(&d_cosem),& alku,& MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co),
-				reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, &MethodList };
-			status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+			if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
+				void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, 
+					(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos, 
+					(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&tube_width, (void*)&crystal_size_z, (void*)&bmin, (void*)&bmax,
+					(void*)&Vmax, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, &d_pseudos, &d_x, &d_y, &d_z, &d_xcenter, &d_ycenter, &d_zcenter, &d_V, &d_reko_type, 
+					&d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ),&d_lor[osa_iter], &d_xyindex[osa_iter], &d_zindex[osa_iter], &d_L[osa_iter], 
+					&d_Sino[H], &d_sc_ra[osa_iter], reinterpret_cast<void*>(&d_cosem), &alku, &MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), 
+					reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co), reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, 
+					&MethodList, (void*)&st };
+				status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+			}
+			else {
+				void* args[] = { (void*)&global_factor, (void*)&epps, (void*)&im_dim, (void*)&Nx, (void*)&Ny, (void*)&Nz, (void*)&dz, (void*)&dx, (void*)&dy, (void*)&bz, 
+					(void*)&bx, (void*)&by, (void*)&bzb, (void*)&maxxx, (void*)&maxyy, (void*)&zmax, (void*)&NSlices, (void*)&size_x, (void*)&TotSinos,
+					(void*)&det_per_ring, (void*)&prows, (void*)&Nxy, (void*)&fp, (void*)&sigma_x, (void*)&dc_z, (void*)&n_rays, &w_vec.epsilon_mramla,&d_TOFCenter, &d_atten, 
+					&d_pseudos, &d_x, &d_y, &d_z, &d_reko_type, &d_norm[osa_iter], &d_scat[osa_iter], reinterpret_cast<void*>(&d_Summ), &d_lor[osa_iter], &d_xyindex[osa_iter], 
+					&d_zindex[osa_iter],&d_L[osa_iter],&d_Sino[H],&d_sc_ra[osa_iter], reinterpret_cast<void*>(&d_cosem),&alku,&MBSREM_prepass, reinterpret_cast<void*>(&d_ACOSEM_lhs), 
+					reinterpret_cast<void*>(&d_Amin), reinterpret_cast<void*>(&d_apu_co), reinterpret_cast<void*>(&d_apu_aco), reinterpret_cast<void*>(&d_E), (void*)&m_size, 
+					&MethodList, (void*)&st };
+				status = cuLaunchKernel(kernel_mbsrem, global_size, 1, 1, local_size, 1, 1, 0, af_cuda_stream, &args[0], 0);
+			}
 		}
 		if ((status != CUDA_SUCCESS)) {
 			std::cerr << getErrorString(status) << std::endl;
@@ -841,6 +959,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 		apu.unlock();
 		apu_Amin.unlock();
 		cosem_psf.unlock();
+		st += length[osa_iter];
 
 		if (alku == 0u) {
 			if ((MethodList.COSEM || MethodList.ECOSEM)) {
@@ -918,8 +1037,11 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 			}
 			if (alku == 0U && (MethodList.MBSREM || MethodList.MRAMLA) && w_vec.MBSREM_prepass && Nt == 1U) {
 				uint32_t H = osa_iter;
+				uint32_t L = 0U;
 				if (TOF && !loadTOF)
 					H = 0;
+				if (randoms_correction)
+					L = osa_iter;
 				float* hOut = new float[length[osa_iter] * nBins];
 				cuMemcpyDtoH(hOut, d_Sino[H], length[osa_iter] * sizeof(float) * nBins);
 				cuCtxSynchronize();
@@ -928,7 +1050,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 				af::array rand;
 				if (randoms_correction) {
 					float* hOutR = new float[length[osa_iter]];
-					cuMemcpyDtoH(hOutR, d_sc_ra[osa_iter], length[osa_iter] * sizeof(float));
+					cuMemcpyDtoH(hOutR, d_sc_ra[L], length[osa_iter] * sizeof(float));
 					cuCtxSynchronize();
 					rand = af::array(length[osa_iter], hOutR, afHost);
 					af::eval(rand);
@@ -943,7 +1065,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 						w_vec.U = UU;
 				}
 				float eps_mramla = w_vec.epsilon_mramla;
-				w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins);
+				w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, randoms_correction, rand, apu_summa_m, TOF, nBins, CT);
 				if (eps_mramla < w_vec.epsilon_mramla)
 					w_vec.epsilon_mramla = eps_mramla;
 				delete[] hOut;
@@ -957,6 +1079,8 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 	if (use_psf && alku == 0 && w_vec.MBSREM_prepass) {
 		w_vec.D = computeConvolution(w_vec.D, g, Nx, Ny, Nz, w_vec, 1u);
 	}
+	if (w_vec.MBSREM_prepass)
+		w_vec.D(w_vec.D <= 0.f) = 1.f;
 	return;
 }
 
@@ -965,21 +1089,27 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	const uint32_t projector_type, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction,
 	const uint32_t normalization_correction, const int32_t dec, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D,
 	const RecMethods MethodList, const bool osem_bool, const bool mlem_bool, const uint32_t n_rekos, const uint32_t n_rekos_mlem,
-	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, 
-	const uint32_t randoms_correction, const bool TOF, const int64_t nBins) {
+	const Weighting& w_vec, const uint32_t osa_iter0, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter,
+	const uint32_t randoms_correction, const bool TOF, const int64_t nBins, const uint8_t listmode, const bool CT) {
 
 	nvrtcResult status = NVRTC_SUCCESS;
 
-	//std::vector<const char*> options(50, 0);
 	const char* options[50];
 	int uu = 0;
 
 	options[uu] = header_directory;
 	uu++;
 
-	//std::string options = header_directory;
-	//options += " --maxrregcount=";
 
+	char buffer1[30];
+	char buffer2[30];
+	char buffer3[30];
+	char buffer4[30];
+	char buffer5[30];
+	char buffer6[30];
+	char buffer7[30];
+	char buffer8[30];
+	char buffer9[30];
 	if (crystal_size_z == 0.f && projector_type == 2u) {
 		options[uu] = "-DCRYST";
 		uu++;
@@ -1024,9 +1154,29 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		options[uu] = "-DTOF";
 		uu++;
 	}
-	std::string apuB = ("-DNBINS=" + std::to_string(nBins));
-	options[uu] = apuB.c_str();
+	if (CT) {
+		options[uu] = "-DCT";
+		uu++;
+	}
+	if (listmode == 1) {
+		options[uu] = "-DLISTMODE";
+		uu++;
+	}
+	else if (listmode == 2) {
+		options[uu] = "-DLISTMODE2";
+		uu++;
+	}
+	options[uu] = "-DFP";
 	uu++;
+
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//	sprintf_s(buffer2, 30, "-DNBINS=%ll", nBins);
+//#else
+	std::snprintf(buffer2, 30,"-DNBINS=%d", static_cast<int32_t>(nBins));
+//#endif
+	options[uu] = buffer2;
+	uu++;
+
 	if (scatter == 1u) {
 		options[uu] = "-DSCATTER";
 		uu++;
@@ -1036,21 +1186,60 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		uu++;
 	}
 	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
-		const std::string apu1 = ("-DN_RAYS=" + std::to_string(n_rays * n_rays3D));
-		options[uu] = apu1.c_str();
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer3, 30, "-DN_RAYS=%u", n_rays* n_rays3D);
+//#else
+		std::snprintf(buffer3, 30, "-DN_RAYS=%u", n_rays* n_rays3D);
+//#endif
+		options[uu] = buffer3;
 		uu++;
 		if (n_rays > 1) {
 			options[uu] = "-DN_RAYS2D";
 			uu++;
 		}
-#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
-		char buffer12[20];
-		std::snprintf(buffer12, sizeof(buffer12), "-DN_RAYS3D=%u", n_rays3D);
-		options[uu] = buffer12;
-#else
-		std::string apu3 = ("-DN_RAYS3D=" + std::to_string(n_rays3D));
-		options[uu] = apu3.c_str();
-#endif
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer1, 30, "-DN_RAYS3D=%u", n_rays3D);
+//#else
+		std::snprintf(buffer1, 30, "-DN_RAYS3D=%u", n_rays3D);
+//#endif
+		options[uu] = buffer1;
+		uu++;
+	}
+	if (MethodList.MRP) {
+		options[uu] = "-DMEDIAN";
+		uu++;
+
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer4, 30, "-DSEARCH_WINDOW_X=%u", w_vec.Ndx);
+//#else
+		std::snprintf(buffer4, 30, "-DSEARCH_WINDOW_X=%u", w_vec.Ndx);
+//#endif
+		options[uu] = buffer4;
+		uu++;
+
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer5, 30, "-DSEARCH_WINDOW_Y=%u", w_vec.Ndy);
+//#else
+		std::snprintf(buffer5, 30, "-DSEARCH_WINDOW_Y=%u", w_vec.Ndy);
+//#endif
+		options[uu] = buffer5;
+		uu++;
+
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer6, 30, "-DSEARCH_WINDOW_Z=%u", w_vec.Ndz);
+//#else
+		std::snprintf(buffer6, 30, "-DSEARCH_WINDOW_Z=%u", w_vec.Ndz);
+//#endif
+		options[uu] = buffer6;
+		uu++;
+	}
+	if ((projector_type == 2U || projector_type == 3U || TOF) && dec > 0) {
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//		sprintf_s(buffer8, 30, "-DDEC=%u", dec);
+//#else
+		std::snprintf(buffer8, 30, "-DDEC=%u", dec);
+//#endif
+		options[uu] = buffer8;
 		uu++;
 	}
 	if (DEBUG) {
@@ -1061,31 +1250,24 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 	}
 	if (osem_bool) {
 		int ll = uu;
-		//std::vector<const char*> os_options(options.size(), 0);
 		const char* os_options[50];
-		//const char* apu = options[ll - 1];
 		
 		for (int kk = 0; kk <= ll; kk++) {
-			if (kk < ll)
+			if (kk < ll) {
 				os_options[kk] = options[kk];
+			}
 			else {
-				char num_char[20];
-#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
-				sprintf_s(num_char, 20, "-DN_REKOS=%d", n_rekos);
-#else
-				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos);
-#endif
-				os_options[kk] = num_char;
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//				sprintf_s(buffer7, 30, "-DN_REKOS=%u", n_rekos);
+//#else
+				std::snprintf(buffer7, 30, "-DN_REKOS=%u", n_rekos);
+//#endif
+				os_options[uu] = buffer7;
 			}
 		}
 		ll++;
-		if (DEBUG) {
-			//os_options[ll - 2] = apu;
-			for (int gg = 0; gg < ll; gg++)
-				mexPrintf("%s\n", os_options[gg]);
-			//mexPrintf("\n");
-			mexPrintf("uu = %d\n", ll);
-		}
+		os_options[ll] = "-DAF";
+		ll++;
 		if (n_rekos == 1) {
 			os_options[ll] = "-DNREKOS1";
 			ll++;
@@ -1102,39 +1284,31 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 			os_options[ll] = "-DCOSEM";
 			ll++;
 		}
-		if ((projector_type == 2U || projector_type == 3U || TOF) && dec > 0) {
-#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
-			char buffer3[20];
-			std::snprintf(buffer3, sizeof(buffer3), "-DDEC=%d", dec);
-			os_options[ll] = buffer3;
-#else
-			const std::string buffer3 = ("-DDEC=" + std::to_string(dec));
-			os_options[ll] = buffer3.c_str();
-#endif
-			ll++;
+		if (DEBUG) {
+			for (int gg = 0; gg < ll; gg++)
+				mexPrintf("%s\n", os_options[gg]);
+			mexPrintf("ll = %d\n", ll);
 		}
 
 		status = buildProgramCUDA(verbose, k_path, program_os, atomic_64bit, os_options, ll);
 	}
 	if (mlem_bool) {
 		int rr = uu;
-		//std::vector<const char*> ml_options = options;
 		const char* ml_options[50];
-		//std::string apu9 = ("-DN_REKOS=" + std::to_string(n_rekos));
-		//ml_options[rr] = apu9.c_str();
 		for (int kk = 0; kk <= rr; kk++) {
 			if (kk < rr)
 				ml_options[kk] = options[kk];
 			else {
-				char num_char[20];
-#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
-				sprintf_s(num_char, 20, "-DN_REKOS=%d", n_rekos_mlem);
-#else
-				std::sprintf(num_char, "-DN_REKOS=%d", n_rekos_mlem);
-#endif
-				ml_options[kk] = num_char;
+//#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32) && !defined(__CYGWIN__) || defined(_WIN64)) && defined(_MSC_VER)
+//				sprintf_s(buffer9, 30, "-DN_REKOS=%d", n_rekos_mlem);
+//#else
+				std::snprintf(buffer9, 30, "-DN_REKOS=%d", n_rekos_mlem);
+//#endif
+				ml_options[kk] = buffer9;
 			}
 		}
+		rr++;
+		ml_options[rr] = "-DAF";
 		rr++;
 		if (n_rekos_mlem == 1) {
 			ml_options[rr] = "-DNREKOS1";
@@ -1144,17 +1318,13 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 			ml_options[rr] = "-DNREKOS2";
 			rr++;
 		}
-		if ((projector_type == 2 || projector_type == 3u || TOF) && dec > 0) {
-			std::string apu8 = ("-DDEC=" + std::to_string(dec));
-			ml_options[rr] = apu8.c_str();
-			rr++;
-		}
-
 		status = buildProgramCUDA(verbose, k_path, program_ml, atomic_64bit, ml_options, rr);
 	}
-	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
+	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.PKMA) && w_vec.MBSREM_prepass ||
 		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
 		options[uu] = "-DMBSREM";
+		uu++;
+		options[uu] = "-DAF";
 		uu++;
 		if (n_rekos == 1) {
 			options[uu] = "-DNREKOS1";
@@ -1170,10 +1340,11 @@ nvrtcResult createProgramCUDA(const bool verbose, const char* k_path, const char
 		}
 		status = buildProgramCUDA(verbose, k_path, program_mbsrem, atomic_64bit, options, uu);
 	}
+	//delete[] buffer;
 	return status;
 }
 
-nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, const char** options, int uu) {
+nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgram& program, bool& atomic_64bit, const char* options[], int uu) {
 	nvrtcResult status = NVRTC_SUCCESS;
 	size_t pituus;
 	if (atomic_64bit) {
@@ -1184,14 +1355,15 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 	else {
 		options[uu] = "-DCAST=float";
 	}
-	for (int ll = uu + 1; ll < 50; ll++)
-		options[ll] = "";
+	//for (int ll = uu + 1; ll < 50; ll++)
+	//	options[ll] = "";
 	//options.erase(options.end() - (options.size() - uu) + 1, options.end());
 	if (DEBUG) {
 		for (int ll = 0; ll <= uu; ll++)
 			mexPrintf("%s", options[ll]);
 		mexPrintf("\n");
 		mexPrintf("uu = %d\n", uu);
+		//mexPrintf("options.size() = %d\n", options.size());
 	}
 	if (atomic_64bit) {
 		std::string kernel_path_atom;
@@ -1206,9 +1378,12 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 		// Create the program from the source
 		status = nvrtcCreateProgram(&program, sourceCode_atom, "64bit_atom", 0, NULL, NULL);
 
+		//const char* testi = options.c_str();
+		//const char* const* testi2 = reinterpret_cast<const char* const*>(testi);
+
 		// Build the program
-		//status = nvrtcCompileProgram(program, options.size(), options.data());
-		status = nvrtcCompileProgram(program, uu, options);
+		//status = nvrtcCompileProgram(program, uu, testi2);
+		status = nvrtcCompileProgram(program, uu + 1, options);
 		if (status != NVRTC_SUCCESS) {
 			mexPrintf("Failed to build 64-bit atomics program.\n");
 			if (DEBUG) {
@@ -1253,6 +1428,9 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
+		//const char* testi = options.c_str();
+		//const char* const* testi2 = reinterpret_cast<const char* const*>(testi);
+		//status = nvrtcCompileProgram(program, uu, testi2);
 
 		// Build the program
 		//status = nvrtcCompileProgram(program, options.size(), options.data());
@@ -1278,7 +1456,7 @@ nvrtcResult buildProgramCUDA(const bool verbose, const char* k_path, nvrtcProgra
 }
 
 nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrtcProgram& program_ml, nvrtcProgram& program_mbsrem, CUfunction& kernel_os, CUfunction& kernel_ml,
-	CUfunction& kernel_mbsrem, CUfunction& kernelNLM, const bool osem_bool, const bool mlem_bool, const RecMethods& MethodList, const Weighting& w_vec, const bool precompute, const uint32_t projector_type, 
+	CUfunction& kernel_mbsrem, CUfunction& kernelNLM, CUfunction& kernelMed, const bool osem_bool, const bool mlem_bool, const RecMethods& MethodList, const Weighting& w_vec, const bool precompute, const uint32_t projector_type,
 	const uint16_t n_rays, const uint16_t n_rays3D, CUmodule& moduleOS, CUmodule& moduleML, CUmodule& moduleMB) {
 
 	nvrtcResult status = NVRTC_SUCCESS;
@@ -1289,23 +1467,27 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 		status = nvrtcGetPTXSize(program_os, &ptxSize);
 		if (status != NVRTC_SUCCESS) {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
+			mexPrintf("Unable to get the PTX size\n");
 			return status;
 		}
 		char* ptx = new char[ptxSize];
 		status = nvrtcGetPTX(program_os, ptx);
 		if (status != NVRTC_SUCCESS) {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
+			mexPrintf("Unable to get the PTX\n");
 			return status;
 		}
 		// Destroy the program.
 		status = nvrtcDestroyProgram(&program_os);
 		if (status != NVRTC_SUCCESS) {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
+			mexPrintf("Unable to destroy the program\n");
 			return status;
 		}
 		status2 = cuModuleLoadData(&moduleOS, ptx);
 		if (status2 != CUDA_SUCCESS) {
 			std::cerr << getErrorString(status2) << std::endl;
+			mexPrintf("Unable to load the module data\n");
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
 		if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1))))
@@ -1325,6 +1507,15 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 				return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 			}
 		}
+		if (MethodList.MRP) {
+			status2 = cuModuleGetFunction(&kernelMed, moduleOS, "medianFilter3D");
+			if (status2 != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status2) << std::endl;
+				mexPrintf("Unable to find the median kernel function\n");
+				return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
+			}
+		}
+		delete[] ptx;
 	}
 
 	if (mlem_bool) {
@@ -1367,9 +1558,18 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 				return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 			}
 		}
+		if (MethodList.MRP && !osem_bool) {
+			status2 = cuModuleGetFunction(&kernelMed, moduleML, "medianFilter3D");
+			if (status2 != CUDA_SUCCESS) {
+				std::cerr << getErrorString(status2) << std::endl;
+				mexPrintf("Unable to find the median kernel function\n");
+				return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
+			}
+		}
+		delete[] ptx;
 	}
 	if ((MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL) && w_vec.MBSREM_prepass ||
-		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0) {
+		MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.PKMA || MethodList.OSLCOSEM > 0) {
 
 		size_t ptxSize;
 		status = nvrtcGetPTXSize(program_mbsrem, &ptxSize);
@@ -1402,6 +1602,7 @@ nvrtcResult createKernelsCUDA(const bool verbose, nvrtcProgram& program_os, nvrt
 			std::cerr << getErrorString(status2) << std::endl;
 			return NVRTC_ERROR_PROGRAM_CREATION_FAILURE;
 		}
+		delete[] ptx;
 	}
 
 	return status;

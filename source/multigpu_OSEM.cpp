@@ -29,7 +29,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl::Kernel& kernel, const cl::Kernel& kernel_sum,
 	const cl::Kernel& kernel_mlem, const cl::Kernel& kernel_convolution, const cl::Kernel& kernel_convolution_f, const cl::Kernel& kernel_vectorMult,
 	const cl::Kernel& kernel_vectorDiv, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center,
-	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit,
+	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit, const bool atomic_32bit, 
 	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D,
 	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V,
 	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter, const bool TOF, 
@@ -40,12 +40,22 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	cl_short zeroL = 0;
 	cl_ulong zerou = 0ULL;
 	cl_uint zeroU = 0u;
+	cl_int zero32 = 0;
 	const cl_ulong st = 0ULL;
 	const cl_uchar fp = 0u;
 	// Number of voxels in a single image
 	const uint32_t Nxy = Nx * Ny;
 	const bool deblur = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
 	const bool saveIter = (bool)mxGetScalar(mxGetField(options, 0, "save_iter"));
+	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+
+	size_t vSize = 0ULL;
+	if (atomic_64bit)
+		vSize = sizeof(cl_ulong);
+	else if (atomic_32bit)
+		vSize = sizeof(cl_uint);
+	else
+		vSize = sizeof(cl_float);
 
 	bool loadTOF = true;
 
@@ -56,7 +66,26 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 
 	// Output matrix
 	mxArray* mlem = mxCreateNumericArray(2, dimmi, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	float* ele_ml = (float*)mxGetSingles(mlem);
+#else
 	float* ele_ml = (float*)mxGetData(mlem);
+#endif
+
+	int64_t nProjections = 0LL;
+	float dPitch = 0.f;
+	float* angles = nullptr;
+	uint32_t size_y = 0U;
+	if (CT) {
+		dPitch = (float)mxGetScalar(mxGetField(options, 0, "dPitch"));
+		nProjections = (int64_t)mxGetScalar(mxGetField(options, 0, "nProjections"));
+		size_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "xSize"));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
+#else
+		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
+#endif
+	}
 
 	// Distance between rays in multi-ray Siddon
 	const float dc_z = cr_pz / static_cast<float>(n_rays3D + 1);
@@ -152,6 +181,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	std::vector<cl::Buffer> d_z(num_devices_context);
 	std::vector<cl::Buffer> d_x(num_devices_context);
 	std::vector<cl::Buffer> d_y(num_devices_context);
+	std::vector<cl::Buffer> d_angles(num_devices_context);
 	std::vector<cl::Buffer> d_xcenter(num_devices_context);
 	std::vector<cl::Buffer> d_ycenter(num_devices_context);
 	std::vector<cl::Buffer> d_zcenter(num_devices_context);
@@ -191,10 +221,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						return;
 					}
 				}
-				if (atomic_64bit)
-					apu_sum[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_ulong), NULL, &status);
-				else
-					apu_sum[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_float), NULL, &status);
+				apu_sum[i] = cl::Buffer(context, CL_MEM_READ_ONLY, vSize, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -218,6 +245,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
+				}
+				if (CT) {
+					d_angles[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * nProjections, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return;
+					}
 				}
 				d_xcenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_center_x, NULL, &status);
 				if (status != CL_SUCCESS) {
@@ -265,56 +299,28 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				if (atomic_64bit) {
-					d_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
+				d_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, vSize * im_dim, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return;
+				}
+				if (compute_norm_matrix == 1u) {
+					d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, vSize * im_dim, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
-					}
-					if (compute_norm_matrix == 1u) {
-						d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-					}
-					if (i < num_devices_context - 1) {
-						d0_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-						d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
 					}
 				}
-				else {
-					d_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
+				if (i < num_devices_context - 1) {
+					d0_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, vSize * im_dim, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
 					}
-					if (compute_norm_matrix == 1u) {
-						d_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-					}
-					if (i < num_devices_context - 1) {
-						d0_rhs[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-						d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(float) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+					d0_Summ[i] = cl::Buffer(context, CL_MEM_READ_WRITE, vSize * im_dim, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return;
 					}
 				}
 				const std::vector<cl::Memory> siirrettavat = { d_z[i] , d_x[i], d_y[i], d_xcenter[i], d_ycenter[i], d_zcenter[i], d_atten[i], d_pseudos[i], d_mlem[i],
@@ -388,12 +394,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				return;
 			}
 			if (compute_norm_matrix == 0u) {
-				if (atomic_64bit) {
-					d_Summ[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_ulong) * im_dim, NULL, &status);
-				}
-				else {
-					d_Summ[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_WRITE, sizeof(cl_float) * im_dim, NULL, &status);
-				}
+				d_Summ[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_WRITE, vSize * im_dim, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -416,7 +417,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else if (listmode != 1) {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -450,14 +451,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			const std::vector<cl::Memory> siirrettavat = { d_norm[kk * num_devices_context + i], d_sc_ra[kk * num_devices_context + i],
-				d_lor[kk * num_devices_context + i], d_xyindex[kk * num_devices_context + i], d_zindex[kk * num_devices_context + i],
-				d_L[kk * num_devices_context + i] };
-			status = commandQueues[i].enqueueMigrateMemObjects(siirrettavat, 0);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
+			//const std::vector<cl::Memory> siirrettavat = { d_norm[kk * num_devices_context + i], d_sc_ra[kk * num_devices_context + i],
+			//	d_lor[kk * num_devices_context + i], d_xyindex[kk * num_devices_context + i], d_zindex[kk * num_devices_context + i],
+			//	d_L[kk * num_devices_context + i] };
+			//status = commandQueues[i].enqueueMigrateMemObjects(siirrettavat, 0);
+			//if (status != CL_SUCCESS) {
+			//	getErrorString(status);
+			//	return;
+			//}
 		}
 	}
 
@@ -485,6 +486,8 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 				if (atomic_64bit)
 					status = commandQueues[i].enqueueFillBuffer(apu_sum[i], zerou, 0, sizeof(cl_ulong));
+				else if (atomic_32bit)
+					status = commandQueues[i].enqueueFillBuffer(apu_sum[i], zero32, 0, sizeof(cl_int));
 				else
 					status = commandQueues[i].enqueueFillBuffer(apu_sum[i], zero, 0, sizeof(cl_float));
 				if (status != CL_SUCCESS) {
@@ -505,6 +508,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
+				}
+				if (CT) {
+					status = commandQueues[i].enqueueWriteBuffer(d_angles[i], CL_FALSE, 0, sizeof(float) * nProjections, angles);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return;
+					}
 				}
 				status = commandQueues[i].enqueueWriteBuffer(d_xcenter[i], CL_FALSE, 0, sizeof(float) * size_center_x, x_center);
 				if (status != CL_SUCCESS) {
@@ -546,7 +556,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
+#else
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));
+#endif
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -595,7 +609,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else if (listmode != 1) {
+			else if (listmode != 1 && (!CT || subsets > 1)) {
 				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t) * length[kk * num_devices_context + i], 
 					&xy_index[cumsum[kk * num_devices_context + i]]);
 				if (status != CL_SUCCESS) {
@@ -657,9 +671,15 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	std::vector<std::vector<float>> testi_rhs;
 	std::vector<std::vector<int64_t>> testi_summ_u;
 	std::vector<std::vector<int64_t>> testi_rhs_u;
+	std::vector<std::vector<int32_t>> testi_summ_32;
+	std::vector<std::vector<int32_t>> testi_rhs_32;
 	if (atomic_64bit) {
 		testi_summ_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
 		testi_rhs_u.resize(num_devices_context - 1u, std::vector<int64_t>(im_dim));
+	}
+	else if (atomic_32bit) {
+		testi_summ_32.resize(num_devices_context - 1u, std::vector<int32_t>(im_dim));
+		testi_rhs_32.resize(num_devices_context - 1u, std::vector<int32_t>(im_dim));
 	}
 	else {
 		testi_summ.resize(num_devices_context - 1u, std::vector<float>(im_dim));
@@ -728,17 +748,31 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	// If the normalization constant is only computed during the first iteration, create a sufficiently large buffer and fill it with zeros
 	if (compute_norm_matrix == 0u || (listmode == 1 && computeSensImag)) {
 		if (listmode == 1 && computeSensImag) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apu = (float*)mxGetSingles(mxGetField(options, 0, "Summ"));
+#else
 			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
-			int64_t* summ_apu = new int64_t[im_dim];
+#endif
+			int64_t* summ_apu;
+			int32_t* summ_apu32;
 			if (atomic_64bit) {
+				summ_apu = new int64_t[im_dim];
 				for (int64_t aa = 0; aa < im_dim; aa++) {
 					summ_apu[aa] = static_cast<int64_t>(apu[aa] * TH);
+				}
+			}
+			else if (atomic_32bit) {
+				summ_apu32 = new int32_t[im_dim];
+				for (int64_t aa = 0; aa < im_dim; aa++) {
+					summ_apu32[aa] = static_cast<int32_t>(apu[aa] * TH32);
 				}
 			}
 			for (uint32_t osa_iter = 0u; osa_iter < subsets; osa_iter++) {
 				for (cl_uint i = 0u; i < num_devices_context; i++) {
 					if (atomic_64bit)
 						status = commandQueues[i].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_long) * im_dim, summ_apu);
+					else if (atomic_32bit)
+						status = commandQueues[i].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_int) * im_dim, summ_apu32);
 					else
 						status = commandQueues[i].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_float) * im_dim, apu);
 					if (status != CL_SUCCESS) {
@@ -755,7 +789,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			delete[] summ_apu; 
+			if (atomic_64bit)
+				delete[] summ_apu; 
+			else if (atomic_32bit)
+				delete[] summ_apu32;
 			if (DEBUG) {
 				mexPrintf("Summ write succeeded\n");
 				mexEvalString("pause(.0001);");
@@ -766,6 +803,8 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				for (cl_uint i = 0u; i < num_devices_context; i++) {
 					if (atomic_64bit)
 						status = commandQueues[i].enqueueFillBuffer(d_Summ[osa_iter * num_devices_context + i], zerou, 0, sizeof(cl_ulong) * im_dim);
+					else if (atomic_32bit)
+						status = commandQueues[i].enqueueFillBuffer(d_Summ[osa_iter * num_devices_context + i], zero32, 0, sizeof(cl_uint) * im_dim);
 					else
 						status = commandQueues[i].enqueueFillBuffer(d_Summ[osa_iter * num_devices_context + i], zero, 0, sizeof(cl_float) * im_dim);
 					if (status != CL_SUCCESS) {
@@ -786,7 +825,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			no_norm = 1u;
 
 		// Measurement data
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		float* Sino = (float*)mxGetSingles(mxGetCell(Sin, static_cast<mwIndex>(tt)));
+#else
 		float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(tt)));
+#endif
 
 		for (cl_uint i = 0u; i < num_devices_context; i++) {
 			status = commandQueues[i].finish();
@@ -826,7 +869,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 				// Randoms
 				if (randoms_correction == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+					float* S_R = (float*)mxGetSingles(mxGetCell(sc_ra, static_cast<mwIndex>(tt)));
+#else
 					float* S_R = (float*)mxGetData(mxGetCell(sc_ra, tt));
+#endif
 					status = commandQueues[i].enqueueWriteBuffer(d_sc_ra[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) * length[kk * num_devices_context + i],
 						&S_R[cumsum[kk * num_devices_context + i]]);
 					if (status != CL_SUCCESS) {
@@ -843,7 +890,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 				if (scatter == 1u) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#else
 					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+#endif
 					status = commandQueues[i].enqueueWriteBuffer(d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) * length[kk * num_devices_context + i],
 						&scat[cumsum[kk * num_devices_context + i]]);
 					if (status != CL_SUCCESS) {
@@ -852,7 +903,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 				else {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), static_cast<mwIndex>(0)));
+#else
 					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+#endif
 					//status = commandQueues[i].enqueueWriteBuffer(d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float), scat);
 					status = commandQueues[i].enqueueFillBuffer(d_scat[kk * num_devices_context + i], zero, 0, sizeof(cl_float));
 					if (status != CL_SUCCESS) {
@@ -872,7 +927,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		// Reset the estimate with the initial value in the next time step
 		if (tt > 0u) {
 			for (cl_uint i = 0u; i < num_devices_context; i++) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
+#else
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));
+#endif
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -924,11 +983,18 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						//if (compute_norm_matrix == 1u) {
 						//	status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zerou, 0, sizeof(cl_ulong) * im_dim);
 						//}
+						//if (status != CL_SUCCESS) {
+						//	getErrorString(status);
+						//	return;
+						//}
+						status = commandQueues[i].enqueueFillBuffer(d_rhs[i], zerou, 0, sizeof(cl_ulong) * im_dim);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
 						}
-						status = commandQueues[i].enqueueFillBuffer(d_rhs[i], zerou, 0, sizeof(cl_ulong) * im_dim);
+					}
+					else if (atomic_32bit) {
+						status = commandQueues[i].enqueueFillBuffer(d_rhs[i], zero32, 0, sizeof(cl_uint) * im_dim);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
@@ -938,10 +1004,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						//if (compute_norm_matrix == 1u) {
 						//	status = commandQueues[i].enqueueFillBuffer(d_Summ[i], zero, 0, sizeof(cl_float) * im_dim);
 						//}
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
+						//if (status != CL_SUCCESS) {
+						//	getErrorString(status);
+						//	return;
+						//}
 						status = commandQueues[i].enqueueFillBuffer(d_rhs[i], zero, 0, sizeof(cl_float) * im_dim);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
@@ -1021,6 +1087,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 
 					if (DEBUG) {
 						mexPrintf("global_size = %u\n", global_size);
+						mexPrintf("local_size = %u\n", local_size);
 						mexPrintf("st = %u\n", st);
 						mexEvalString("pause(.0001);");
 					}
@@ -1039,6 +1106,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						kernel_.setArg(kernelIndSubIter++, d_V[i]);
 					}
 					kernel_.setArg(kernelIndSubIter++, d_reko_type[i]);
+					if (CT) {
+						kernel_.setArg(kernelIndSubIter++, subsets);
+						kernel_.setArg(kernelIndSubIter++, d_angles[i]);
+						kernel_.setArg(kernelIndSubIter++, size_y);
+						kernel_.setArg(kernelIndSubIter++, dPitch);
+						kernel_.setArg(kernelIndSubIter++, nProjections);
+					}
 					kernel_.setArg(kernelIndSubIter++, d_norm[osa_iter * num_devices_context + i]);
 					kernel_.setArg(kernelIndSubIter++, d_scat[osa_iter * num_devices_context + i]);
 					if (compute_norm_matrix == 0u && no_norm == 0)
@@ -1100,6 +1174,34 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 								return;
 							}
 							status = commandQueues[i].enqueueWriteBuffer(d0_rhs[i - 1u], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_rhs_u[i - 1u].data());
+							if (status != CL_SUCCESS) {
+								getErrorString(status);
+								return;
+							}
+						}
+						else if (atomic_32bit) {
+							if (compute_norm_matrix == 1u)
+								status = commandQueues[i].enqueueReadBuffer(d_Summ[i], CL_TRUE, 0, sizeof(cl_uint) * im_dim, testi_summ_32[i - 1u].data(), &events[i]);
+							else if (compute_norm_matrix == 0u && no_norm == 0u)
+								status = commandQueues[i].enqueueReadBuffer(d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_uint) * im_dim, 
+									testi_summ_32[i - 1u].data(), &events[i]);
+							if (status != CL_SUCCESS) {
+								getErrorString(status);
+								return;
+							}
+							if ((compute_norm_matrix == 0u && no_norm == 0u) || compute_norm_matrix == 1u) {
+								status = commandQueues[i].enqueueWriteBuffer(d0_Summ[i - 1u], CL_FALSE, 0, sizeof(cl_uint) * im_dim, testi_summ_32[i - 1u].data());
+								if (status != CL_SUCCESS) {
+									getErrorString(status);
+									return;
+								}
+							}
+							status = commandQueues[i].enqueueReadBuffer(d_rhs[i], CL_TRUE, 0, sizeof(cl_uint) * im_dim, testi_rhs_32[i - 1u].data(), &events[i]);
+							if (status != CL_SUCCESS) {
+								getErrorString(status);
+								return;
+							}
+							status = commandQueues[i].enqueueWriteBuffer(d0_rhs[i - 1u], CL_FALSE, 0, sizeof(cl_uint) * im_dim, testi_rhs_32[i - 1u].data());
 							if (status != CL_SUCCESS) {
 								getErrorString(status);
 								return;
@@ -1180,22 +1282,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					cl::Kernel kernel_convolution_ = kernel_convolution;
 					cl::Buffer d_rhs_apu;
 					status = commandQueues[0].finish();
-					if (atomic_64bit) {
-						d_rhs_apu = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_ulong) * im_dim, NULL, &status);
+						d_rhs_apu = cl::Buffer(context, CL_MEM_READ_ONLY, vSize * im_dim, NULL, &status);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
 						}
-						status = commandQueues[0].enqueueCopyBuffer(d_rhs[0], d_rhs_apu, 0, 0, im_dim * sizeof(cl_ulong));
-					}
-					else {
-						d_rhs_apu = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * im_dim, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return;
-						}
-						status = commandQueues[0].enqueueCopyBuffer(d_rhs[0], d_rhs_apu, 0, 0, im_dim * sizeof(float));
-					}
+						status = commandQueues[0].enqueueCopyBuffer(d_rhs[0], d_rhs_apu, 0, 0, im_dim * vSize);
 					status = commandQueues[0].finish();
 					cl::NDRange convn_size(Nx, Ny, Nz);
 					kernel_convolution_.setArg(0, d_rhs_apu);
@@ -1216,28 +1308,15 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 					if (no_norm == 0) {
 						cl::Buffer d_Summ_apu;
-						if (atomic_64bit) {
-							d_Summ_apu = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(cl_ulong) * im_dim, NULL, &status);
+							d_Summ_apu = cl::Buffer(context, CL_MEM_READ_ONLY, vSize * im_dim, NULL, &status);
 							if (status != CL_SUCCESS) {
 								getErrorString(status);
 								return;
 							}
 							if (compute_norm_matrix == 1u)
-								status = commandQueues[0].enqueueCopyBuffer(d_Summ[0], d_Summ_apu, 0, 0, im_dim * sizeof(cl_ulong));
+								status = commandQueues[0].enqueueCopyBuffer(d_Summ[0], d_Summ_apu, 0, 0, im_dim * vSize);
 							else
-								status = commandQueues[0].enqueueCopyBuffer(d_Summ[osa_iter * num_devices_context], d_Summ_apu, 0, 0, im_dim * sizeof(cl_ulong));
-						}
-						else {
-							d_Summ_apu = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * im_dim, NULL, &status);
-							if (status != CL_SUCCESS) {
-								getErrorString(status);
-								return;
-							}
-							if (compute_norm_matrix == 1u)
-								status = commandQueues[0].enqueueCopyBuffer(d_Summ[0], d_Summ_apu, 0, 0, im_dim * sizeof(float));
-							else
-								status = commandQueues[0].enqueueCopyBuffer(d_Summ[osa_iter * num_devices_context], d_Summ_apu, 0, 0, im_dim * sizeof(float));
-						}
+								status = commandQueues[0].enqueueCopyBuffer(d_Summ[osa_iter * num_devices_context], d_Summ_apu, 0, 0, im_dim * vSize);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
@@ -1279,7 +1358,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				// Transfer primary device normalization constant to secondary devices
 				if (compute_norm_matrix == 0u && iter == 0u && num_devices_context > 1u) {
 					if (atomic_64bit) {
-						status = commandQueues[0].enqueueReadBuffer(d_Summ[osa_iter * num_devices_context], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ[0].data(), &events2, &summ_event[0]);
+						status = commandQueues[0].enqueueReadBuffer(d_Summ[osa_iter * num_devices_context], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ_u[0].data(), &events2, &summ_event[0]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
+					}
+					else if (atomic_32bit) {
+						status = commandQueues[0].enqueueReadBuffer(d_Summ[osa_iter * num_devices_context], CL_FALSE, 0, sizeof(cl_uint) * im_dim, testi_summ_32[0].data(), &events2, &summ_event[0]);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
@@ -1294,7 +1380,14 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 					for (cl_uint i = 1u; i < num_devices_context; i++) {
 						if (atomic_64bit) {
-							status = commandQueues[0].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ[0].data(), &summ_event);
+							status = commandQueues[0].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ_u[0].data(), &summ_event);
+							if (status != CL_SUCCESS) {
+								getErrorString(status);
+								return;
+							}
+						}
+						else if (atomic_32bit) {
+							status = commandQueues[0].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_FALSE, 0, sizeof(cl_ulong) * im_dim, testi_summ_32[0].data(), &summ_event);
 							if (status != CL_SUCCESS) {
 								getErrorString(status);
 								return;

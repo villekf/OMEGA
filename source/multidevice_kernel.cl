@@ -108,24 +108,27 @@
 // Matrix free orthogonal distance-based ray tracer, no precomputation step
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 #ifdef FIND_LORS
-void siddon_precomp(const uint d_Nxy, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz,
-	const float d_dz, const float d_dx, const float d_dy, const float d_bz, const float d_bx, const float d_by,
-	const float d_bzb, const float d_maxxx, const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x,
-	const ushort d_TotSinos, const uint d_det_per_ring, const uchar d_raw, const uint d_pRows,
-	__constant uint* restrict d_pseudos, const __global float* restrict d_x,
-	const __global float* restrict d_y, const __global float* restrict d_zdet, __global ushort* restrict d_lor, const __global ushort* restrict d_L, const ulong m_size) {
+void siddon_precomp(const uint d_Nxy, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dz, const float d_dx, 
+	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, const float d_maxyy, 
+	const float d_zmax, const float d_NSlices, const uint d_size_x, const ushort d_TotSinos, const uint d_det_per_ring, const uchar d_raw, 
+	const uint d_pRows, __constant uint* restrict d_pseudos, const __global float* restrict d_x, const __global float* restrict d_y, 
+	const __global float* restrict d_zdet, __global ushort* restrict d_lor, const __global ushort* restrict d_L, const ulong m_size) {
 
 #else
 
-void kernel_multi(const float global_factor, const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, 
-	const float d_dz, const float d_dx,	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, 
-	const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x, const uint d_TotSinos, 
-	const uint d_det_per_ring, const uint d_pRows, const uint d_Nxy, const uchar fp, const float sigma_x, 
-	const float tube_width_xy, const float crystal_size_z, const float bmin, const float bmax, const float Vmax, const float d_epsilon_mramla, 
-	__constant float* TOFCenter, const __global float* restrict d_atten, __constant uint* d_pseudos, const __global float* restrict d_x, const __global float* restrict d_y, const __global float* restrict d_zdet,
+void kernel_multi(const float global_factor, const float d_epps, const uint d_N, const uint d_Nx, const uint d_Ny, const uint d_Nz, const float d_dz, 
+	const float d_dx,	const float d_dy, const float d_bz, const float d_bx, const float d_by, const float d_bzb, const float d_maxxx, 
+	const float d_maxyy, const float d_zmax, const float d_NSlices, const uint d_size_x, const uint d_TotSinos, const uint d_det_per_ring, 
+	const uint d_pRows, const uint d_Nxy, const uchar fp, const float sigma_x, const float tube_width_xy, const float crystal_size_z, const float bmin, 
+	const float bmax, const float Vmax, const float d_epsilon_mramla, __constant float* TOFCenter, const __global float* restrict d_atten, 
+	__constant uint* d_pseudos, const __global float* restrict d_x, const __global float* restrict d_y, const __global float* restrict d_zdet,
 	__constant float* x_center, __constant float* y_center, __constant float* z_center, __constant float* V, __constant uchar * MethodList,
-	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ, const __global ushort* restrict d_lor, const __global uint* restrict d_xyindex,
-	const __global ushort* restrict d_zindex, const __global ushort* restrict d_L, const __global float* restrict d_Sino, const __global float* restrict d_sc_ra, const __global float* restrict d_OSEM,
+#ifdef CT
+	const uint d_subsets, __constant float* d_angles, const uint d_sizey, const float d_dPitch, const long d_nProjections, 
+#endif
+	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ, const __global ushort* restrict d_lor, 
+	const __global uint* restrict d_xyindex, const __global ushort* restrict d_zindex, const __global ushort* restrict d_L, 
+	const __global float* restrict d_Sino, const __global float* restrict d_sc_ra, const __global float* restrict d_OSEM,
 #ifndef MBSREM
 	__global CAST* restrict d_rhs_OSEM, const uchar no_norm, const ulong m_size, const ulong cumsum
 #else
@@ -135,7 +138,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 ) {
 #endif
 	// Get the current global index
-	uint idx = get_global_id(0);
+	size_t idx = get_global_id(0);
 	if (idx >= m_size)
 		return;
 
@@ -164,6 +167,10 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 	float xs, xd, ys, yd, zs, zd;
 	// Load the next detector index
+#ifdef CT
+	get_detector_coordinates_CT(d_x, d_y, d_zdet, d_size_x, idx, d_subsets, d_angles, d_xyindex, d_zindex, d_sizey, d_dPitch, d_nProjections, 
+		&xs, &xd, &ys, &yd, &zs, &zd);
+#else
 #ifdef RAW // raw data
 #ifdef LISTMODE
 	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
@@ -175,6 +182,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	get_detector_coordinates_precomp(d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet);
 #else // Not the precomputation phase
 	get_detector_coordinates(d_xyindex, d_zindex, d_size_x, idx, d_TotSinos, &xs, &xd, &ys, &yd, &zs, &zd, d_x, d_y, d_zdet, cumsum);
+#endif
 #endif
 #endif
 
@@ -222,6 +230,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	int tempi = 0, tempj = 0, tempk = 0, iu = 0, ju = 0, ku = 0;
 
 #ifndef FIND_LORS // Not the precomputation phase
+
 #ifdef AF
 #ifdef MBSREM
 #ifdef TOF
@@ -260,6 +269,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	float axOSEM = 0.f;
 #endif
 #endif
+
 #ifndef AF
 #ifndef LISTMODE2
 	if (fp == 2) {
@@ -273,6 +283,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	}
 #endif
 #endif
+
 #ifdef ORTH // Orthogonal or volume-based ray tracer
 	uchar xyz = 0u;
 	float kerroin = 0.f;
@@ -295,7 +306,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else // Precomputation phase
 	ushort temp_koko = 0u;
 #endif
-
+	
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 	if (fabs(z_diff) < 1e-6f && (fabs(y_diff) < 1e-6f || fabs(x_diff) < 1e-6f)) {
@@ -448,6 +459,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				if (MBSREM_prepass == 1)
 #ifdef ATOMIC // 64-bit atomics
 					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+					atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -461,12 +474,18 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
 				d_Amin[idx] = minimi;
 			if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) {
-				if (axCOSEM == 0.f)
+#ifndef CT
+				if (axCOSEM < d_epps)
 					axCOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 				axCOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+				axCOSEM = native_exp(-axCOSEM) / local_sino;
+#else
 				axCOSEM = local_sino / axCOSEM;
+#endif
 			}
 			local_ele = templ_ijk;
 			local_ind = z_loop;
@@ -474,12 +493,16 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2))
 #ifdef ATOMIC // 64-bit atomics
 					atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+					atomic_add(&d_co[local_ind], convert_int(axCOSEM * local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
 				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1))
 #ifdef ATOMIC // 64-bit atomics
 					atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+					atomic_add(&d_aco[local_ind], convert_int(axCOSEM * local_ele * TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -492,6 +515,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			for (uint ii = 0u; ii < Np; ii++) {
 #ifdef ATOMIC // 64-bit atomics
 				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -515,7 +540,11 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef RANDOMS
 				axACOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+			d_ACOSEM_lhs[idx] = native_exp(-axACOSEM);
+#else
 			d_ACOSEM_lhs[idx] = axACOSEM;
+#endif
 		}
 #else
 #ifndef AF
@@ -563,12 +592,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			local_ind = z_loop;
 
 #endif
+			
 			for (uint ii = 0u; ii < d_N1; ii++) {
+				if (local_ind >= 1032192)
+					continue;
 #ifdef AF
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_rhs_OSEM);
 #else
 #ifdef ATOMIC // 64-bit atomics
 				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele* axOSEM* TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
@@ -576,6 +610,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				if (no_norm == 0u)
 #ifdef ATOMIC // 64-bit atomics
 					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+					atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else // 32-bit float atomics
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -588,6 +624,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			for (uint ii = 0u; ii < d_N1; ii++) {
 #ifdef ATOMIC // 64-bit atomics
 				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -756,7 +794,6 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 
 #endif
-
 #endif
 
 	}
@@ -1021,6 +1058,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #endif
 #elif defined(SIDDON)
+#if !defined(CT) || (defined(FP) && defined(CT))
 		for (uint ii = 0U; ii < Np; ii++) {
 			local_ind = compute_ind(tempj, tempi, tempk, d_N0, d_N1, d_N, d_N3, d_Nxy);
 			if (tz0 < ty0 && tz0 < tx0) {
@@ -1078,7 +1116,12 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			}
 #endif
 		}
+#else
+		Np_n = Np;
 #endif
+#endif
+
+#ifndef CT
 		temp = 1.f / temp;
 #ifdef ATN
 		temp *= native_exp(jelppi);
@@ -1090,6 +1133,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		temp *= d_scat[idx];
 #endif
 		temp *= global_factor;
+#endif
+
 #if defined(SIDDON) || !defined(DEC)
 		tx0 = tx0_a, ty0 = ty0_a, tz0 = tz0_a;
 		tempi = tempi_a, tempj = tempj_a, tempk = tempk_a;
@@ -1118,13 +1163,19 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				ax[to] = d_Sino[idx + to * m_size] / ax[to];
 			}
 #else
+#ifndef CT
 			axCOSEM *= temp;
 			if (axCOSEM < d_epps)
 				axCOSEM = d_epps;
+#endif
 #ifdef RANDOMS
 			axCOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+			axCOSEM = native_exp(-axCOSEM) / local_sino;
+#else
 			axCOSEM = local_sino / axCOSEM;
+#endif
 #endif
 		}
 		RHS = true;
@@ -1163,10 +1214,15 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		else
 			SUMMA = true;
 #endif
+		/* Add additional computations before backprojection here */
 #ifdef ORTH
 #ifdef DEC
 		for (uint ii = 0u; ii < ind; ii++) {
+#ifdef CT
+			const float local_ele = store_elements[ii];
+#else
 			const float local_ele = store_elements[ii] * temp;
+#endif
 			const uint local_ind = store_indices[ii];
 			if (RHS) {
 #ifdef AF
@@ -1174,6 +1230,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #ifdef ATOMIC
 				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * axOSEM * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
@@ -1182,6 +1240,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			if (no_norm == 0u)
 #ifdef ATOMIC
 				atom_add(&d_Summ[local_ind], convert_long(local_ele* TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
 #else
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1321,6 +1381,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1332,12 +1394,16 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
 #ifdef ATOMIC
 						atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_co[local_ind], convert_int(axCOSEM* local_ele* TH));
 #else
 						atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
 #endif
 					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
 #ifdef ATOMIC
 						atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_aco[local_ind], convert_int(axCOSEM* local_ele* TH));
 #else
 						atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
 #endif
@@ -1348,6 +1414,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 				if (no_norm == 0u)
 #ifdef ATOMIC
 					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+					atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1358,11 +1426,18 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifdef ATOMIC
 				atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * axOSEM * TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * axOSEM * TH));
 #else
 				atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * axOSEM));
 #endif
 #endif
 #endif
+#endif
+#if defined(CT) && !defined(FP)
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= d_N0 || tempj >= d_N1 || tempk >= d_Nz) {
+					break;
+				}
 #endif
 			}
 		}
@@ -1396,6 +1471,8 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 					if (MBSREM_prepass == 1)
 #ifdef ATOMIC
 						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
+#elif defined(ATOMIC32)
+						atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
@@ -1410,10 +1487,17 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 #ifdef ATOMIC
 				atom_add(&d_Summ[local_ind], convert_long(local_ele* TH));
+#elif defined(ATOMIC32)
+				atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
 #endif
+#endif
+#if defined(CT) && !defined(FP)
+				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= d_N0 || tempj >= d_N1 || tempk >= d_Nz) {
+					break;
+				}
 #endif
 			}
 		}
@@ -1437,7 +1521,11 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifdef RANDOMS
 			axACOSEM += d_sc_ra[idx];
 #endif
+#ifdef CT
+			d_ACOSEM_lhs[idx] = native_exp(-axACOSEM);
+#else
 			d_ACOSEM_lhs[idx] = axACOSEM;
+#endif
 		}
 #endif
 #endif
@@ -1468,14 +1556,14 @@ __kernel void mlem(const __global CAST* d_Summ, const __global CAST* d_rhs, __gl
 
 	for (uint i = gid; i < im_dim; i += get_global_size(0)) {
 #ifdef LISTMODE2
-#ifdef ATOMIC
+#if defined(ATOMIC) || defined(ATOMIC32)
 		float Summ = convert_float(d_Summ[i]);
 		d_mlem[i] = Summ / TH;
 #else
 		d_mlem[i] = d_Summ[i];
 #endif
 #else
-#ifdef ATOMIC
+#if defined(ATOMIC) || defined(ATOMIC32)
 		float rhs = convert_float(d_rhs[i]);
 		float Summ = convert_float(d_Summ[i]);
 		if (rhs != 0.f) {
@@ -1570,7 +1658,7 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 				//	indx = abs(convert_int(ind.x)) - 1;
 				//int indeksi = indx + ind_uus.y + ind_uus.z;
 				int indeksi = ind_uus.x + ind_uus.y + ind_uus.z;
-#ifdef ATOMIC
+#if defined(ATOMIC) || defined(ATOMIC32)
 				float p = convert_float(input[indeksi]) / TH;
 #else
 				float p = input[indeksi];
@@ -1583,6 +1671,8 @@ __kernel void Convolution3D(const __global CAST* input, __global CAST* output,
 	}
 #ifdef ATOMIC
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_long(result * TH);
+#elif defined(ATOMIC32)
+	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = convert_int(result * TH);
 #else
 	output[ind.x + ind.y * get_global_size(0) + ind.z * Nyx] = result;
 #endif
@@ -1750,11 +1840,15 @@ __kernel void medianFilter3D(const __global float* grad, __global float* output,
 	int koko = (SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1);
 	float median[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
 	float medianF[(SEARCH_WINDOW_X * 2 + 1) * (SEARCH_WINDOW_Y * 2 + 1) * (SEARCH_WINDOW_Z * 2 + 1)];
+	for (int ll = 0; ll < koko; ll++) {
+		medianF[ll] = 0.f;
+		median[ll] = 0.f;
+	}
 	int uu = 0;
 	for (int x = -SEARCH_WINDOW_X; x <= SEARCH_WINDOW_X; x++) {
 		for (int y = -SEARCH_WINDOW_Y; y <= SEARCH_WINDOW_Y; y++) {
 			for (int z = -SEARCH_WINDOW_Z; z <= SEARCH_WINDOW_Z; z++) {
-				uint pikseli = (xid + x) + (yid + y) * get_global_size(0) + (zid + z) * get_global_size(0) * get_global_size(1);
+				int pikseli = (xid + x) + (yid + y) * get_global_size(0) + (zid + z) * get_global_size(0) * get_global_size(1);
 				median[uu] = grad[pikseli];
 				uu++;
 			}

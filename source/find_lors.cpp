@@ -42,7 +42,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 
 	const uint32_t im_dim = Nx * Ny * Nz;
 	bool atomic_64bit = false;
-	const uint64_t local_size = 64ULL;
+	uint64_t local_size = 64ULL;
 
 	cl_int status = CL_SUCCESS;
 	cl::Kernel kernel;
@@ -66,6 +66,11 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 		mexPrintf("Queue created\n");
 		mexEvalString("pause(.0001);");
 	}
+
+	std::string deviceName = af_device_id.getInfo<CL_DEVICE_VENDOR>(&status);
+	std::string NV("NVIDIA Corporation");
+	if (NV.compare(deviceName) == 0)
+		local_size = 32ULL;
 
 	cl::Program program;
 	std::vector<cl::CommandQueue> commandQueues;

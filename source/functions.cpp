@@ -18,69 +18,114 @@
 ***************************************************************************/
 #include "functions.hpp"
 
-// Loads the input data and forms device data variables
-void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
-	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
-	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt, const uint32_t iter0)
+#ifndef OPENCL
+const char* getErrorString(CUresult error)
 {
+	const char* errstr;
+	cuGetErrorString(error, &errstr);
+	return errstr;
+}
+#endif
+
+// Loads the input data and forms device data variables
+void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
+	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
+	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt, const uint32_t iter0, const bool CT)
+{
+	// Load the number of priors, all MAP-algorithms, non-OS MAP algorithms, non-OS non-MAP algorithms, non-MAP algorithms and total number of algorithms
+	w_vec.nPriors = getScalarUInt32(mxGetField(options, 0, "nPriors"), -2);
+	if (MethodList.CUSTOM)
+		w_vec.nPriorsTot = w_vec.nPriors + 1U;
+	else
+		w_vec.nPriorsTot = w_vec.nPriors;
+	w_vec.nMAP = getScalarUInt32(mxGetField(options, 0, "nMAP"), -2);
+	w_vec.nMAPML = getScalarUInt32(mxGetField(options, 0, "nMAPML"), -3);
+	w_vec.nMAPOS = w_vec.nMAP - w_vec.nMAPML;
+	w_vec.nMLEM = getScalarUInt32(mxGetField(options, 0, "nMLEM"), -4);
+	w_vec.nOS = getScalarUInt32(mxGetField(options, 0, "nOS"), -5);
+	w_vec.nTot = getScalarUInt32(mxGetField(options, 0, "nTot"), -6);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	w_vec.rekot = (uint32_t*)mxGetUint32s(mxGetField(options, 0, "rekoList"));
+#else
+	w_vec.rekot = (uint32_t*)mxGetData(mxGetField(options, 0, "rekoList"));
+#endif
+	w_vec.mIt.push_back(getScalarInt32(mxGetCell(mxGetField(options, 0, "mIt"), 0), -7));
+	w_vec.mIt.push_back(getScalarInt32(mxGetCell(mxGetField(options, 0, "mIt"), 1), -8));
+	if (DEBUG) {
+		mexPrintf("nPriors = %u\n", w_vec.nPriors);
+		mexPrintf("nMAP = %u\n", w_vec.nMAP);
+		mexPrintf("nMAPML = %u\n", w_vec.nMAPML);
+		mexPrintf("nTot = %u\n", w_vec.nTot);
+		mexPrintf("nMLEM = %u\n", w_vec.nMLEM);
+		mexEvalString("pause(.0001);");
+	}
 	uint32_t Ni = 1U;
 	if (saveIter)
 		Ni = Niter + 1U;
 	// Load the necessary variables if the corresponding reconstruction method is used and set the initial value
+	int yy = 0;
+	// First non-MAP/prior-based algorithms (e.g. MLEM)
 	if (MethodList.MLEM) {
-		vec.MLEM = af::constant(0.f, im_dim, Ni);
-		vec.MLEM(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.OSEM) {
-		vec.OSEM = af::constant(0.f, im_dim, Ni);
-		vec.OSEM(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.MRAMLA) {
-		vec.MRAMLA = af::constant(0.f, im_dim, Ni);
-		vec.MRAMLA(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.RAMLA) {
-		vec.RAMLA = af::constant(0.f, im_dim, Ni);
-		vec.RAMLA(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.ROSEM) {
-		vec.ROSEM = af::constant(0.f, im_dim, Ni);
-		vec.ROSEM(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.RBI) {
-		vec.RBI = af::constant(0.f, im_dim, Ni);
-		vec.RBI(af::span, 0) = x0;
-		
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 	}
 	
 	if (MethodList.DRAMA) {
-		vec.DRAMA = af::constant(0.f, im_dim, Ni);
-		vec.DRAMA(af::span, 0) = x0;
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 		
 		// Relaxation parameter
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.lambda_DRAMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_drama"));
+#else
 		w_vec.lambda_DRAMA = (float*)mxGetData(mxGetField(options, 0, "lam_drama"));
+#endif
 	}
 	
 	if (MethodList.COSEM) {
-		vec.COSEM = af::constant(0.f, im_dim, Ni);
-		vec.COSEM(af::span, 0) = x0;
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 		
 		// Complete data
 		vec.C_co = af::constant(0.f, im_dim, subsets);
 	}
 	if (MethodList.ECOSEM) {
-		vec.ECOSEM = af::constant(0.f, im_dim, Ni);
-		vec.ECOSEM(af::span, 0) = x0;
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 		
 		if (!MethodList.COSEM) {
 			
@@ -89,8 +134,9 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		}
 	}
 	if (MethodList.ACOSEM) {
-		vec.ACOSEM = af::constant(0.f, im_dim, Ni);
-		vec.ACOSEM(af::span, 0) = x0;
+		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+		vec.imEstimates[yy](af::span, 0) = x0;
+		yy++;
 		
 		// Complete data
 		vec.C_aco = af::constant(0.f, im_dim, subsets);
@@ -99,516 +145,55 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 	if (MethodList.OSLCOSEM > 0)
 		vec.C_osl = af::constant(0.f, im_dim, subsets);
 
-	// Load the regularization parameter as well if the prior is used
-	if (MethodList.MRP) {
-		if (MethodList.OSLOSEM) {
-			vec.MRP_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_OSEM(af::span, 0) = x0;
-			
-			beta.MRP_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.MRP_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_MLEM(af::span, 0) = x0;
-			
-			beta.MRP_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.MRP_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_MBSREM(af::span, 0) = x0;
-			
-			beta.MRP_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.MRP_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_BSREM(af::span, 0) = x0;
-			
-			beta.MRP_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.MRP_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_ROSEM(af::span, 0) = x0;
-			
-			beta.MRP_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.MRP_RBI = af::constant(0.f, im_dim, Ni);
-			vec.MRP_RBI(af::span, 0) = x0;
-			
-			beta.MRP_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.MRP_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.MRP_COSEM(af::span, 0) = x0;
-			
-			beta.MRP_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_mrp_cosem"));
-		}
-	}
-	
-	if (MethodList.Quad) {
-		if (MethodList.OSLOSEM) {
-			vec.Quad_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_OSEM(af::span, 0) = x0;
-			
-			beta.Quad_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.Quad_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_MLEM(af::span, 0) = x0;
-			
-			beta.Quad_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.Quad_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_MBSREM(af::span, 0) = x0;
-			
-			beta.Quad_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.Quad_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_BSREM(af::span, 0) = x0;
-			
-			beta.Quad_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.Quad_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_ROSEM(af::span, 0) = x0;
-			
-			beta.Quad_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.Quad_RBI = af::constant(0.f, im_dim, Ni);
-			vec.Quad_RBI(af::span, 0) = x0;
-			
-			beta.Quad_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.Quad_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.Quad_COSEM(af::span, 0) = x0;
-			
-			beta.Quad_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_quad_cosem"));
+	// Load the MAP/prior-based algorithms
+	int tt = 0;
+	for (uint32_t kk = 0; kk < w_vec.nPriors; kk++) {
+		for (uint32_t ll = 0; ll < w_vec.nMAP; ll++) {
+			const char* varChar = mxArrayToString(mxGetCell(mxGetField(options, 0, "varList"), tt));
+			vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
+			vec.imEstimates[yy](af::span, 0) = x0;
+			if (DEBUG) {
+				mexPrintf("%s\n", varChar);
+				mexEvalString("pause(.0001);");
+			}
+			// Load the regularization parameter as well if the prior is used
+			beta.push_back(getScalarFloat(mxGetField(options, 0, varChar), -9));
+			yy++;
+			tt++;
 		}
 	}
 
-	if (MethodList.Huber) {
-		if (MethodList.OSLOSEM) {
-			vec.Huber_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_OSEM(af::span, 0) = x0;
-
-			beta.Huber_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.Huber_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_MLEM(af::span, 0) = x0;
-
-			beta.Huber_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.Huber_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_MBSREM(af::span, 0) = x0;
-
-			beta.Huber_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.Huber_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_BSREM(af::span, 0) = x0;
-
-			beta.Huber_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.Huber_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_ROSEM(af::span, 0) = x0;
-
-			beta.Huber_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.Huber_RBI = af::constant(0.f, im_dim, Ni);
-			vec.Huber_RBI(af::span, 0) = x0;
-
-			beta.Huber_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.Huber_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.Huber_COSEM(af::span, 0) = x0;
-
-			beta.Huber_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_huber_cosem"));
-		}
+	// CT-related variables such as number of projection images
+	if (CT) {
+		w_vec.size_y = getScalarUInt32(mxGetField(options, 0, "xSize"), -10);
+		w_vec.nProjections = getScalarInt64(mxGetField(options, 0, "nProjections"), -11);
+		w_vec.dPitch = getScalarFloat(mxGetField(options, 0, "dPitch"), -12);
 	}
-	
-	if (MethodList.L) {
-		if (MethodList.OSLOSEM) {
-			vec.L_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.L_OSEM(af::span, 0) = x0;
-			
-			beta.L_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.L_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.L_MLEM(af::span, 0) = x0;
-			
-			beta.L_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.L_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.L_MBSREM(af::span, 0) = x0;
-			
-			beta.L_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.L_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.L_BSREM(af::span, 0) = x0;
-			
-			beta.L_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.L_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.L_ROSEM(af::span, 0) = x0;
-			
-			beta.L_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.L_RBI = af::constant(0.f, im_dim, Ni);
-			vec.L_RBI(af::span, 0) = x0;
-			
-			beta.L_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_L_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.L_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.L_COSEM(af::span, 0) = x0;
-			
-			beta.L_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_L_cosem"));
-		}
-	}
-	
-	if (MethodList.FMH) {
-		if (MethodList.OSLOSEM) {
-			vec.FMH_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_OSEM(af::span, 0) = x0;
-			
-			beta.FMH_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.FMH_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_MLEM(af::span, 0) = x0;
-			
-			beta.FMH_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.FMH_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_MBSREM(af::span, 0) = x0;
-			
-			beta.FMH_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.FMH_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_BSREM(af::span, 0) = x0;
-			
-			beta.FMH_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.FMH_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_ROSEM(af::span, 0) = x0;
-			
-			beta.FMH_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.FMH_RBI = af::constant(0.f, im_dim, Ni);
-			vec.FMH_RBI(af::span, 0) = x0;
-			
-			beta.FMH_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.FMH_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.FMH_COSEM(af::span, 0) = x0;
-			
-			beta.FMH_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_fmh_cosem"));
-		}
-	}
-	
-	if (MethodList.WeightedMean) {
-		if (MethodList.OSLOSEM) {
-			vec.Weighted_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_OSEM(af::span, 0) = x0;
-			
-			beta.Weighted_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.Weighted_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_MLEM(af::span, 0) = x0;
-			
-			beta.Weighted_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.Weighted_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_MBSREM(af::span, 0) = x0;
-			
-			beta.Weighted_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.Weighted_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_BSREM(af::span, 0) = x0;
-			
-			beta.Weighted_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.Weighted_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_ROSEM(af::span, 0) = x0;
-			
-			beta.Weighted_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.Weighted_RBI = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_RBI(af::span, 0) = x0;
-			
-			beta.Weighted_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.Weighted_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.Weighted_COSEM(af::span, 0) = x0;
-			
-			beta.Weighted_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_weighted_cosem"));
-		}
-	}
-	
-	if (MethodList.TV) {
-		if (MethodList.OSLOSEM) {
-			vec.TV_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.TV_OSEM(af::span, 0) = x0;
-			
-			beta.TV_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.TV_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.TV_MLEM(af::span, 0) = x0;
-			
-			beta.TV_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.TV_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.TV_MBSREM(af::span, 0) = x0;
-			
-			beta.TV_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.TV_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.TV_BSREM(af::span, 0) = x0;
-			
-			beta.TV_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.TV_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.TV_ROSEM(af::span, 0) = x0;
-			
-			beta.TV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.TV_RBI = af::constant(0.f, im_dim, Ni);
-			vec.TV_RBI(af::span, 0) = x0;
-			
-			beta.TV_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.TV_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.TV_COSEM(af::span, 0) = x0;
-			
-			beta.TV_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TV_cosem"));
-		}
-	}
-	
-	if (MethodList.AD) {
-		if (MethodList.OSLOSEM) {
-			vec.AD_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.AD_OSEM(af::span, 0) = x0;
-			
-			beta.AD_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.AD_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.AD_MLEM(af::span, 0) = x0;
-			
-			beta.AD_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.AD_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.AD_MBSREM(af::span, 0) = x0;
-			
-			beta.AD_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.AD_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.AD_BSREM(af::span, 0) = x0;
-			
-			beta.AD_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.AD_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.AD_ROSEM(af::span, 0) = x0;
-			
-			beta.AD_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.AD_RBI = af::constant(0.f, im_dim, Ni);
-			vec.AD_RBI(af::span, 0) = x0;
-			
-			beta.AD_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.AD_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.AD_COSEM(af::span, 0) = x0;
-			
-			beta.AD_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_ad_cosem"));
-		}
-	}
-	
-	if (MethodList.APLS) {
-		if (MethodList.OSLOSEM) {
-			vec.APLS_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_OSEM(af::span, 0) = x0;
-			
-			beta.APLS_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.APLS_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_MLEM(af::span, 0) = x0;
-			
-			beta.APLS_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.APLS_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_MBSREM(af::span, 0) = x0;
-			
-			beta.APLS_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.APLS_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_BSREM(af::span, 0) = x0;
-			
-			beta.APLS_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.APLS_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_ROSEM(af::span, 0) = x0;
-			
-			beta.APLS_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.APLS_RBI = af::constant(0.f, im_dim, Ni);
-			vec.APLS_RBI(af::span, 0) = x0;
-			
-			beta.APLS_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.APLS_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.APLS_COSEM(af::span, 0) = x0;
-			
-			beta.APLS_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_APLS_cosem"));
-		}
-	}
-
-	if (MethodList.TGV) {
-		if (MethodList.OSLOSEM) {
-			vec.TGV_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_OSEM(af::span, 0) = x0;
-			
-			beta.TGV_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.TGV_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_MLEM(af::span, 0) = x0;
-			
-			beta.TGV_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.TGV_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_MBSREM(af::span, 0) = x0;
-			
-			beta.TGV_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.TGV_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_BSREM(af::span, 0) = x0;
-			
-			beta.TGV_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.TGV_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_ROSEM(af::span, 0) = x0;
-			
-			beta.TGV_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.TGV_RBI = af::constant(0.f, im_dim, Ni);
-			vec.TGV_RBI(af::span, 0) = x0;
-			
-			beta.TGV_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.TGV_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.TGV_COSEM(af::span, 0) = x0;
-			
-			beta.TGV_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_TGV_cosem"));
-		}
-	}
-
-	if (MethodList.NLM) {
-		if (MethodList.OSLOSEM) {
-			vec.NLM_OSEM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_OSEM(af::span, 0) = x0;
-
-			beta.NLM_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.NLM_MLEM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_MLEM(af::span, 0) = x0;
-
-			beta.NLM_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.NLM_MBSREM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_MBSREM(af::span, 0) = x0;
-
-			beta.NLM_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_mbsrem"));
-		}
-		if (MethodList.BSREM) {
-			vec.NLM_BSREM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_BSREM(af::span, 0) = x0;
-
-			beta.NLM_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_bsrem"));
-		}
-		if (MethodList.ROSEMMAP) {
-			vec.NLM_ROSEM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_ROSEM(af::span, 0) = x0;
-
-			beta.NLM_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.NLM_RBI = af::constant(0.f, im_dim, Ni);
-			vec.NLM_RBI(af::span, 0) = x0;
-
-			beta.NLM_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_rbi"));
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			vec.NLM_COSEM = af::constant(0.f, im_dim, Ni);
-			vec.NLM_COSEM(af::span, 0) = x0;
-
-			beta.NLM_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_NLM_cosem"));
-		}
-	}
-
 	// Load TV related input data
 	if (MethodList.TV && MethodList.MAP) {
 		// Is anatomical reference image used
-		data.TV_use_anatomical = (bool)mxGetScalar(mxGetField(options, 0, "TV_use_anatomical"));
+		data.TV_use_anatomical = getScalarBool(mxGetField(options, 0, "TV_use_anatomical"), -13);
 		// Tau-value
-		data.tau = (float)mxGetScalar(mxGetField(options, 0, "tau"));
+		data.tau = getScalarFloat(mxGetField(options, 0, "tau"), -14);
 		// "Smoothing" parameter, prevents zero values in the square root
-		data.TVsmoothing = (float)mxGetScalar(mxGetField(options, 0, "TVsmoothing"));
+		data.TVsmoothing = getScalarFloat(mxGetField(options, 0, "TVsmoothing"), -15);
 		// The type of TV prior used
-		data.TVtype = (uint32_t)mxGetScalar(mxGetField(options, 0, "TVtype"));
+		data.TVtype = getScalarUInt32(mxGetField(options, 0, "TVtype"), -16);
 		// If anatomical prior is used, load the necessary coefficients
 		if (data.TV_use_anatomical) {
 			mxArray* TVdata_init = mxGetField(options, 0, "TVdata");
 			if (data.TVtype == 1) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				data.s1 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s1")), afHost);
+				data.s2 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s2")), afHost);
+				data.s3 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s3")), afHost);
+				data.s4 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s4")), afHost);
+				data.s5 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s5")), afHost);
+				data.s6 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s6")), afHost);
+				data.s7 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s7")), afHost);
+				data.s8 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s8")), afHost);
+				data.s9 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s9")), afHost);
+#else
 				data.s1 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s1")), afHost);
 				data.s2 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s2")), afHost);
 				data.s3 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s3")), afHost);
@@ -618,50 +203,66 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 				data.s7 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s7")), afHost);
 				data.s8 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s8")), afHost);
 				data.s9 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s9")), afHost);
+#endif
 			}
 			else {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				data.reference_image = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "reference_image")), afHost);
+#else
 				data.reference_image = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "reference_image")), afHost);
+#endif
 			}
-			data.T = (float)mxGetScalar(mxGetField(options, 0, "T"));
-			data.C = (float)mxGetScalar(mxGetField(options, 0, "C"));
+			data.T = getScalarFloat(mxGetField(options, 0, "T"), -17);
+			data.C = getScalarFloat(mxGetField(options, 0, "C"), -18);
 		}
 		// Additional weights for the TV type 3
 		if (data.TVtype == 3 && !MethodList.Quad) {
-			w_vec.Ndx = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndx"));
-			w_vec.Ndy = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndy"));
-			w_vec.Ndz = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndz"));
+			w_vec.Ndx = getScalarUInt32(mxGetField(options, 0, "Ndx"), -19);
+			w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -20);
+			w_vec.Ndz = getScalarUInt32(mxGetField(options, 0, "Ndz"), -21);
 			w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
+#else
 			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+#endif
 		}
 		if (data.TVtype == 3)
-			data.C = (float)mxGetScalar(mxGetField(options, 0, "C"));
+			data.C = getScalarFloat(mxGetField(options, 0, "C"), -22);
 		if (data.TVtype == 4)
-			data.SATVPhi = (float)mxGetScalar(mxGetField(options, 0, "SATVPhi"));
+			data.SATVPhi = getScalarFloat(mxGetField(options, 0, "SATVPhi"), -23);
 	}
 	// General variables for neighborhood-based methods
 	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
 		// Neighborhood size
-		w_vec.Ndx = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndx"));
-		w_vec.Ndy = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndy"));
-		w_vec.Ndz = (uint32_t)mxGetScalar(mxGetField(options, 0, "Ndz"));
+		w_vec.Ndx = getScalarUInt32(mxGetField(options, 0, "Ndx"), -24);
+		w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -25);
+		w_vec.Ndz = getScalarUInt32(mxGetField(options, 0, "Ndz"), -26);
 		// Is normalization used in MRP, FMH, L, weighted mean or AD
-		w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
+		w_vec.med_no_norm = getScalarBool(mxGetField(options, 0, "med_no_norm"), -27);
 		w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 	}
-	if ((MethodList.L || MethodList.FMH || MethodList.MRP || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
+	if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
 		// Index values for the neighborhood
-#ifdef OPENCL
-		if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP)
-			w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
+//#ifdef OPENCL
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetUint32s(mxGetField(options, 0, "tr_offsets")), afHost);
 #else
 		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
 #endif
+//#else
+//		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
+//#endif
 	}
 	if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
-		w_vec.inffi = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
+		w_vec.inffi = getScalarUInt32(mxGetField(options, 0, "inffi"), -28);
 	// Weights for the various priors
 	if (MethodList.Quad && MethodList.MAP) {
-		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);	
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
+#else
+		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+#endif
 		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 		af::array weight = w_vec.weights_quad * -1.f;
 		af::array w_quad = af::constant(0.f, pituus);
@@ -672,7 +273,11 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 
 	}
 	if (MethodList.Huber && MethodList.MAP) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_huber")), afHost);
+#else
 		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_huber")), afHost);
+#endif
 		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 		af::array weight = w_vec.weights_huber * -1.f;
 		af::array w_quad = af::constant(0.f, pituus);
@@ -680,35 +285,51 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		w_quad(af::seq(pituus / 2 + 1, af::end)) = weight(af::seq(pituus / 2, af::end));
 		w_quad(pituus / 2) = af::abs(af::sum(weight));
 		w_vec.weights_huber = af::moddims(w_quad, w_vec.Ndx * 2U + 1, w_vec.Ndy * 2U + 1, w_vec.Ndz * 2U + 1);
-		w_vec.huber_delta = (float)mxGetScalar(mxGetField(options, 0, "huber_delta"));
+		w_vec.huber_delta = getScalarFloat(mxGetField(options, 0, "huber_delta"), -29);
 	}
 	if (MethodList.L && MethodList.MAP)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "a_L")), afHost);
+#else
 		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "a_L")), afHost);
+#endif
 	if (MethodList.FMH && MethodList.MAP) {
 		if (Nz == 1 || w_vec.Ndz == 0)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
+#else
 			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
+#endif
 		else
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
+#else
 			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
-		w_vec.alku_fmh = (uint32_t)mxGetScalar(mxGetField(options, 0, "inffi"));
+#endif
+		w_vec.alku_fmh = getScalarUInt32(mxGetField(options, 0, "inffi"), -30);
 	}
 	if (MethodList.WeightedMean && MethodList.MAP) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
+#else
 		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
+#endif
 		// Type of mean used (arithmetic, harmonic or geometric)
-		w_vec.mean_type = (int)mxGetScalar(mxGetField(options, 0, "mean_type"));
+		w_vec.mean_type = getScalarInt32(mxGetField(options, 0, "mean_type"), -31);
 		// Sum of the weights
-		w_vec.w_sum = (float)mxGetScalar(mxGetField(options, 0, "w_sum"));
+		w_vec.w_sum = getScalarFloat(mxGetField(options, 0, "w_sum"), -31);
 	}
 	if (MethodList.AD && MethodList.MAP) {
 		// Time-step value
-		w_vec.TimeStepAD = (float)mxGetScalar(mxGetField(options, 0, "TimeStepAD"));
+		w_vec.TimeStepAD = getScalarFloat(mxGetField(options, 0, "TimeStepAD"), -32);
 		// Conductance (edge value)
-		w_vec.KAD = (float)mxGetScalar(mxGetField(options, 0, "KAD"));
+		w_vec.KAD = getScalarFloat(mxGetField(options, 0, "KAD"), -33);
 		// Number of AD iterations
-		w_vec.NiterAD = (uint32_t)mxGetScalar(mxGetField(options, 0, "NiterAD"));
+		w_vec.NiterAD = getScalarUInt32(mxGetField(options, 0, "NiterAD"), -34);
 		// Flux type
-		uint32_t Flux = (uint32_t)mxGetScalar(mxGetField(options, 0, "FluxType"));
+		uint32_t Flux = getScalarUInt32(mxGetField(options, 0, "FluxType"), -35);
 		// Diffusion type
-		uint32_t Diffusion = (uint32_t)mxGetScalar(mxGetField(options, 0, "DiffusionType"));
+		uint32_t Diffusion = getScalarUInt32(mxGetField(options, 0, "DiffusionType"), -36);
 		if (Flux == 2U)
 			w_vec.FluxType = AF_FLUX_QUADRATIC;
 		else
@@ -718,19 +339,25 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 		else
 			w_vec.DiffusionType = AF_DIFFUSION_GRAD;
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
-			w_vec.med_no_norm = (bool)mxGetScalar(mxGetField(options, 0, "med_no_norm"));
+			w_vec.med_no_norm = getScalarBool(mxGetField(options, 0, "med_no_norm"), -37);
+	}
+	if (MethodList.APLS && MethodList.MAP) {
+		// Eta value
+		data.eta = getScalarFloat(mxGetField(options, 0, "eta"), -38);
+		// Tau-value
+		if (!MethodList.TV)
+			data.tau = getScalarFloat(mxGetField(options, 0, "tau"), -39);
+		// Smoothing value
+		data.APLSsmoothing = getScalarFloat(mxGetField(options, 0, "APLSsmoothing"), -40);
+		// Anatomical reference image
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "APLS_ref_image")), afHost);
+#else
+		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
+#endif
 	}
 	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.COSEM
-		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0)
-		w_vec.MBSREM_prepass = (bool)mxGetScalar(mxGetField(options, 0, "MBSREM_prepass"));
-	if (MethodList.MRAMLA || MethodList.MBSREM) {
-		// Relaxation parameter
-		w_vec.lambda_MBSREM = (float*)mxGetData(mxGetField(options, 0, "lam_mbsrem"));
-		// Upper bound
-		w_vec.U = (float)mxGetScalar(mxGetField(options, 0, "U"));
-	}
-	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.COSEM
-		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0) {
+		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.PKMA || MethodList.OSLCOSEM > 0) {
 		// Sum of the rows (measurements) of the system matrix
 		//w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
 		w_vec.D = af::constant(0.f, im_dim, 1);
@@ -739,1347 +366,971 @@ void form_data_variables(AF_im_vectors & vec, Beta & beta, Weighting & w_vec, co
 			w_vec.Amin = af::constant(0.f, koko_l, 1);
 		else
 			w_vec.Amin = af::constant(0.f, 1, 1);
-			//w_vec.Amin = af::array(koko_l, (float*)mxGetData(mxGetField(options, 0, "Amin")), afHost);
+		//w_vec.Amin = af::array(koko_l, (float*)mxGetData(mxGetField(options, 0, "Amin")), afHost);
+		w_vec.MBSREM_prepass = getScalarBool(mxGetField(options, 0, "MBSREM_prepass"), -41);
 	}
-	if (MethodList.APLS && MethodList.MAP) {
-		// Eta value
-		data.eta = (float)mxGetScalar(mxGetField(options, 0, "eta"));
-		// Tau-value
-		if (!MethodList.TV)
-			data.tau = (float)mxGetScalar(mxGetField(options, 0, "tau"));
-		// Smoothing value
-		data.APLSsmoothing = (float)mxGetScalar(mxGetField(options, 0, "APLSsmoothing"));
-		// Anatomical reference image
-		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
+	if (MethodList.MRAMLA || MethodList.MBSREM) {
+		// Relaxation parameter
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.lambda_MBSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam_MBSREM"));
+#else
+		w_vec.lambda_MBSREM = (float*)mxGetData(mxGetField(options, 0, "lam_MBSREM"));
+#endif
+		// Upper bound
+		w_vec.U = getScalarFloat(mxGetField(options, 0, "U"), -42);
+	}
+	if (DEBUG) {
+		mexPrintf("w_vec.lambda_MBSREM = %f\n", w_vec.lambda_MBSREM);
+		mexEvalString("pause(.0001);");
 	}
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.lambda_BSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam"));
+#else
 		w_vec.lambda_BSREM = (float*)mxGetData(mxGetField(options, 0, "lam"));
+#endif
 	if (MethodList.ROSEM || MethodList.ROSEMMAP)
-		w_vec.lambda_ROSEM = (float*)mxGetData(mxGetField(options, 0, "lam_rosem"));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.lambda_ROSEM = (float*)mxGetSingles(mxGetField(options, 0, "lam_ROSEM"));
+#else
+		w_vec.lambda_ROSEM = (float*)mxGetData(mxGetField(options, 0, "lam_ROSEM"));
+#endif
+	if (MethodList.PKMA) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.lambda_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_PKMA"));
+		w_vec.alpha_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "alpha_PKMA"));
+		w_vec.sigma_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "sigma_PKMA"));
+#else
+		w_vec.lambda_PKMA = (float*)mxGetData(mxGetField(options, 0, "lam_PKMA"));
+		w_vec.alpha_PKMA = (float*)mxGetData(mxGetField(options, 0, "alpha_PKMA"));
+		w_vec.sigma_PKMA = (float*)mxGetData(mxGetField(options, 0, "sigma_PKMA"));
+#endif
+	}
 	// Power factor for ACOSEM
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM == 1)
-		w_vec.h_ACOSEM = (float)mxGetScalar(mxGetField(options, 0, "h"));
+		w_vec.h_ACOSEM = getScalarFloat(mxGetField(options, 0, "h"), -43);
 	if (MethodList.TGV && MethodList.MAP) {
-		data.TGVAlpha = (float)mxGetScalar(mxGetField(options, 0, "alphaTGV"));
-		data.TGVBeta = (float)mxGetScalar(mxGetField(options, 0, "betaTGV"));
-		data.NiterTGV = (uint32_t)mxGetScalar(mxGetField(options, 0, "NiterTGV"));
+		data.TGVAlpha = getScalarFloat(mxGetField(options, 0, "alphaTGV"), -44);
+		data.TGVBeta = getScalarFloat(mxGetField(options, 0, "betaTGV"), -45);
+		data.NiterTGV = getScalarUInt32(mxGetField(options, 0, "NiterTGV"), -46);
 	}
 	if (MethodList.NLM && MethodList.MAP) {
-		w_vec.NLM_anatomical = (bool)mxGetScalar(mxGetField(options, 0, "NLM_use_anatomical"));
-		w_vec.NLTV = (bool)mxGetScalar(mxGetField(options, 0, "NLTV"));
-		w_vec.NLM_MRP = (bool)mxGetScalar(mxGetField(options, 0, "NLM_MRP"));
+		w_vec.NLM_anatomical = getScalarBool(mxGetField(options, 0, "NLM_use_anatomical"), -47);
+		w_vec.NLTV = getScalarBool(mxGetField(options, 0, "NLTV"), -48);
+		w_vec.NLM_MRP = getScalarBool(mxGetField(options, 0, "NLM_MRP"), -49);
 		if (w_vec.NLM_anatomical)
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "NLM_ref")), afHost);
+#else
 			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "NLM_ref")), afHost);
-		w_vec.h2 = (float)mxGetScalar(mxGetField(options, 0, "sigma"));
+#endif
+		w_vec.h2 = getScalarFloat(mxGetField(options, 0, "sigma"), -50);
 		w_vec.h2 = w_vec.h2 * w_vec.h2;
-		w_vec.Nlx = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nlx"));
-		w_vec.Nly = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nly"));
-		w_vec.Nlz = (uint32_t)mxGetScalar(mxGetField(options, 0, "Nlz"));
+		w_vec.Nlx = getScalarUInt32(mxGetField(options, 0, "Nlx"), -51);
+		w_vec.Nly = getScalarUInt32(mxGetField(options, 0, "Nly"), -52);
+		w_vec.Nlz = getScalarUInt32(mxGetField(options, 0, "Nlz"), -53);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetSingles(mxGetField(options, 0, "gaussianNLM")), afHost);
+#else
 		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetData(mxGetField(options, 0, "gaussianNLM")), afHost);
+#endif
 	}
 	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM) {
-			vec.custom_OSEM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "custom_osl_apu")), afHost);
-			w_vec.dU_OSEM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_OSEM")), afHost);
-
-			beta.custom_OSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_osem"));
-		}
-		if (MethodList.OSLMLEM) {
-			vec.custom_MLEM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_mlem_apu")), afHost);
-			w_vec.dU_MLEM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_MLEM")), afHost);
-
-			beta.custom_MLEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_mlem"));
-		}
-		if (MethodList.MBSREM) {
-			vec.custom_MBSREM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_mbsrem_apu")), afHost);
-			w_vec.dU_MBSREM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_MBSREM")), afHost);
-
-			beta.custom_MBSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_mbsrem"));
-
-			if (iter0 > 0 || osa_iter0 > 0) {
-				w_vec.U = (float)mxGetScalar(mxGetField(options, 0, "U"));
-				w_vec.epsilon_mramla = (float)mxGetScalar(mxGetField(options, 0, "epsilon_mramla"));
+		for (uint32_t kk = 0; kk < vec.imEstimates.size(); kk++) {
+			const char* varTot = mxArrayToString(mxGetCell(mxGetField(options, 0, "varTot"), kk));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetSingles(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
+#else
+			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetData(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
+#endif
+			if (DEBUG) {
+				mexPrintf("%s\n", varTot);
+				mexPrintf("vec.imEstimates[kk](af::span, 0) = %f\n", af::sum<float>(vec.imEstimates[kk](af::span, 0)));
+				mexEvalString("pause(.0001);");
 			}
 		}
-		if (MethodList.BSREM) {
-			vec.custom_BSREM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_bsrem_apu")), afHost);
-			w_vec.dU_BSREM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_BSREM")), afHost);
-
-			beta.custom_BSREM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_bsrem"));
+		tt = 0;
+		for (uint32_t ll = 0; ll < w_vec.nMAP; ll++) {
+			const char* varApu = mxArrayToString(mxGetCell(mxGetField(options, 0, "varApu"), tt));
+			const char* varBeta = mxArrayToString(mxGetCell(mxGetField(options, 0, "varBeta"), tt));
+			const char* varGrad = mxArrayToString(mxGetCell(mxGetField(options, 0, "varGrad"), tt));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varApu)), afHost));
+			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varGrad)), afHost));
+#else
+			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, varApu)), afHost));
+			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, varGrad)), afHost));
+#endif
+			beta.push_back(getScalarFloat(mxGetField(options, 0, varBeta), -54));
+			tt++;
 		}
-		if (MethodList.ROSEMMAP) {
-			vec.custom_ROSEM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_rosem_apu")), afHost);
-			w_vec.dU_ROSEM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_ROSEM")), afHost);
-
-			beta.custom_ROSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_rosem"));
-		}
-		if (MethodList.RBIOSL) {
-			vec.custom_RBI = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_rbi_apu")), afHost);
-			w_vec.dU_RBI = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_RBI")), afHost);
-
-			beta.custom_RBI = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_rbi"));
+		if (MethodList.MBSREM) {
+			if (iter0 > 0 || osa_iter0 > 0) {
+				w_vec.U = getScalarFloat(mxGetField(options, 0, "U"), -55);
+				w_vec.epsilon_mramla = getScalarFloat(mxGetField(options, 0, "epsilon_mramla"), -56);
+			}
 		}
 		if (MethodList.OSLCOSEM > 0) {
-			vec.custom_COSEM = af::array(im_dim, 1, (float*)mxGetData(mxGetField(options, 0, "custom_cosem_apu")), afHost);
-			w_vec.dU_COSEM = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "grad_COSEM")), afHost);
-
-			beta.custom_COSEM = (float)mxGetScalar(mxGetField(options, 0, "beta_custom_cosem"));
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetSingles(mxGetField(options, 0, "C_osl")), afHost);
+#else
 			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(mxGetField(options, 0, "C_osl")), afHost);
+#endif
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI))
+		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA))
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			w_vec.D = af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, "D")), afHost);
+#else
 			w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
+#endif
+
+		//uint32_t dd = n_rekos_mlem + n_rekos - 1U - nMAPOS;
+		//vec.im_mlem(af::seq(n_rekos_mlem * im_dim - im_dim, n_rekos_mlem * im_dim - 1u)) = vec.imEstimates[dd];
+		uint32_t dd = 0U;
+		uint32_t yy = 0U;
+		for (int kk = 0; kk < (w_vec.nMLEM + w_vec.nMAPML * w_vec.nPriorsTot); kk++) {
+			vec.im_mlem(af::seq(yy, yy + im_dim - 1u)) = vec.imEstimates[dd];
+			yy += im_dim;
+			dd++;
+		}
+		//uint32_t dd = n_rekos_mlem + n_rekos - 1U;
+		//uint32_t yy = n_rekos * im_dim;
+		dd = 0U;
+		yy = 0U;
+		if (DEBUG) {
+			mexPrintf("vec.imEstimates.size() = %d\n", vec.imEstimates.size());
+			mexPrintf("[dd] = %u\n", dd);
+			mexPrintf("[yy] = %u\n", yy);
+			mexPrintf("vec.imEstimates[dd].dims(0) = %d\n", vec.imEstimates[dd].dims(0));
+			mexPrintf("vec.im_os.dims(0) = %d\n", vec.im_os.dims(0));
+			mexEvalString("pause(.0001);");
+		}
+		for (int kk = 0; kk < (w_vec.nPriorsTot * w_vec.nMAPOS + w_vec.nOS); kk++) {
+			vec.im_os(af::seq(yy, yy + im_dim - 1u)) = vec.imEstimates[dd];
+			yy += im_dim;
+			dd++;
+		}
 	}
 	if (use_psf) {
-		w_vec.g_dim_x = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_x"));
-		w_vec.g_dim_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_y"));
-		w_vec.g_dim_z = (uint32_t)mxGetScalar(mxGetField(options, 0, "g_dim_z"));
-		w_vec.deconvolution = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
+		w_vec.g_dim_x = getScalarUInt32(mxGetField(options, 0, "g_dim_x"), -57);
+		w_vec.g_dim_y = getScalarUInt32(mxGetField(options, 0, "g_dim_y"), -58);
+		w_vec.g_dim_z = getScalarUInt32(mxGetField(options, 0, "g_dim_z"), -59);
+		w_vec.deconvolution = getScalarBool(mxGetField(options, 0, "deblurring"), -60);
 	}
 }
 
 // Obtain the reconstruction methods used
 void get_rec_methods(const mxArray * options, RecMethods &MethodList)
 {
-	MethodList.MLEM = (bool)mxGetScalar(mxGetField(options, 0, "mlem"));
-	MethodList.OSEM = (bool)mxGetScalar(mxGetField(options, 0, "osem"));
-	MethodList.RAMLA = (bool)mxGetScalar(mxGetField(options, 0, "ramla"));
-	MethodList.MRAMLA = (bool)mxGetScalar(mxGetField(options, 0, "mramla"));
-	MethodList.ROSEM = (bool)mxGetScalar(mxGetField(options, 0, "rosem"));
-	MethodList.RBI = (bool)mxGetScalar(mxGetField(options, 0, "rbi"));
-	MethodList.DRAMA = (bool)mxGetScalar(mxGetField(options, 0, "drama"));
-	MethodList.COSEM = (bool)mxGetScalar(mxGetField(options, 0, "cosem"));
-	MethodList.ECOSEM = (bool)mxGetScalar(mxGetField(options, 0, "ecosem"));
-	MethodList.ACOSEM = (bool)mxGetScalar(mxGetField(options, 0, "acosem"));
+	// Non-MAP/prior algorithms
+	MethodList.MLEM = getScalarBool(mxGetField(options, 0, "MLEM"), -61);
+	MethodList.OSEM = getScalarBool(mxGetField(options, 0, "OSEM"), -61);
+	MethodList.RAMLA = getScalarBool(mxGetField(options, 0, "RAMLA"), -61);
+	MethodList.MRAMLA = getScalarBool(mxGetField(options, 0, "MRAMLA"), -61);
+	MethodList.ROSEM = getScalarBool(mxGetField(options, 0, "ROSEM"), -61);
+	MethodList.RBI = getScalarBool(mxGetField(options, 0, "RBI"), -61);
+	MethodList.DRAMA = getScalarBool(mxGetField(options, 0, "DRAMA"), -61);
+	MethodList.COSEM = getScalarBool(mxGetField(options, 0, "COSEM"), -61);
+	MethodList.ECOSEM = getScalarBool(mxGetField(options, 0, "ECOSEM"), -61);
+	MethodList.ACOSEM = getScalarBool(mxGetField(options, 0, "ACOSEM"), -61);
 
-	MethodList.MRP = (bool)mxGetScalar(mxGetField(options, 0, "MRP"));
-	MethodList.Quad = (bool)mxGetScalar(mxGetField(options, 0, "quad"));
-	MethodList.Huber = (bool)mxGetScalar(mxGetField(options, 0, "Huber"));
-	MethodList.L = (bool)mxGetScalar(mxGetField(options, 0, "L"));
-	MethodList.FMH = (bool)mxGetScalar(mxGetField(options, 0, "FMH"));
-	MethodList.WeightedMean = (bool)mxGetScalar(mxGetField(options, 0, "weighted_mean"));
-	MethodList.TV = (bool)mxGetScalar(mxGetField(options, 0, "TV"));
-	MethodList.AD = (bool)mxGetScalar(mxGetField(options, 0, "AD"));
-	MethodList.APLS = (bool)mxGetScalar(mxGetField(options, 0, "APLS"));
-	MethodList.TGV = (bool)mxGetScalar(mxGetField(options, 0, "TGV"));
-	MethodList.NLM = (bool)mxGetScalar(mxGetField(options, 0, "NLM"));
+	// Priors
+	MethodList.MRP = getScalarBool(mxGetField(options, 0, "MRP"), -61);
+	MethodList.Quad = getScalarBool(mxGetField(options, 0, "quad"), -61);
+	MethodList.Huber = getScalarBool(mxGetField(options, 0, "Huber"), -61);
+	MethodList.L = getScalarBool(mxGetField(options, 0, "L"), -61);
+	MethodList.FMH = getScalarBool(mxGetField(options, 0, "FMH"), -61);
+	MethodList.WeightedMean = getScalarBool(mxGetField(options, 0, "weighted_mean"), -61);
+	MethodList.TV = getScalarBool(mxGetField(options, 0, "TV"), -61);
+	MethodList.AD = getScalarBool(mxGetField(options, 0, "AD"), -61);
+	MethodList.APLS = getScalarBool(mxGetField(options, 0, "APLS"), -61);
+	MethodList.TGV = getScalarBool(mxGetField(options, 0, "TGV"), -61);
+	MethodList.NLM = getScalarBool(mxGetField(options, 0, "NLM"), -61);
 
-	MethodList.OSLMLEM = (bool)mxGetScalar(mxGetField(options, 0, "OSL_MLEM"));
-	MethodList.OSLOSEM = (bool)mxGetScalar(mxGetField(options, 0, "OSL_OSEM"));
-	MethodList.BSREM = (bool)mxGetScalar(mxGetField(options, 0, "BSREM"));
-	MethodList.MBSREM = (bool)mxGetScalar(mxGetField(options, 0, "MBSREM"));
-	MethodList.ROSEMMAP = (bool)mxGetScalar(mxGetField(options, 0, "ROSEM_MAP"));
-	MethodList.RBIOSL = (bool)mxGetScalar(mxGetField(options, 0, "RBI_OSL"));
-	MethodList.OSLCOSEM = (uint32_t)mxGetScalar(mxGetField(options, 0, "COSEM_OSL"));
+	// MAP/prior-based algorithms
+	MethodList.OSLMLEM = getScalarBool(mxGetField(options, 0, "OSL_MLEM"), -61);
+	MethodList.OSLOSEM = getScalarBool(mxGetField(options, 0, "OSL_OSEM"), -61);
+	MethodList.BSREM = getScalarBool(mxGetField(options, 0, "BSREM"), -61);
+	MethodList.MBSREM = getScalarBool(mxGetField(options, 0, "MBSREM"), -61);
+	MethodList.ROSEMMAP = getScalarBool(mxGetField(options, 0, "ROSEM_MAP"), -61);
+	MethodList.RBIOSL = getScalarBool(mxGetField(options, 0, "OSL_RBI"), -61);
+	MethodList.OSLCOSEM = getScalarUInt32(mxGetField(options, 0, "OSL_COSEM"), -61);
+	MethodList.PKMA = getScalarBool(mxGetField(options, 0, "PKMA"), -61);
 
-	MethodList.MAP = (bool)mxGetScalar(mxGetField(options, 0, "MAP"));
+	// Whether MAP/prior-based algorithms are used
+	MethodList.MAP = getScalarBool(mxGetField(options, 0, "MAP"), -61);
 
-	MethodList.CUSTOM = (bool)mxGetScalar(mxGetField(options, 0, "custom"));
+	// Custom prior
+	MethodList.CUSTOM = getScalarBool(mxGetField(options, 0, "custom"), -61);
 }
 
 // Create the MATLAB output
 // Creates the mxArrays that are later placed in the cell array
 // Creates the array pointers to the mxArrays
-void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const RecMethods &MethodList, const uint32_t dim_n)
-{
-	//mwSize dimu[2] = { 128 * 128 * 63, 9 };
-	// Output arrays for the MATLAB cell array
-	if (MethodList.MLEM)
-		ArrayList.mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.OSEM)
-		ArrayList.osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRAMLA)
-		ArrayList.ramlaM = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.ramlaM = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RAMLA)
-		ArrayList.ramla = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.ramla = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.ROSEM)
-		ArrayList.rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RBI)
-		ArrayList.rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.DRAMA)
-		ArrayList.drama = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.drama = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.COSEM)
-		ArrayList.cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.ECOSEM)
-		ArrayList.ecosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.ecosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.ACOSEM)
-		ArrayList.acosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.acosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.MRP && MethodList.OSLOSEM)
-		ArrayList.mrp_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.OSLMLEM)
-		ArrayList.mrp_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.BSREM)
-		ArrayList.mrp_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.MBSREM)
-		ArrayList.mrp_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.ROSEMMAP)
-		ArrayList.mrp_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.RBIOSL)
-		ArrayList.mrp_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
-		ArrayList.mrp_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.mrp_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.Quad && MethodList.OSLOSEM)
-		ArrayList.quad_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.OSLMLEM)
-		ArrayList.quad_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.BSREM)
-		ArrayList.quad_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.MBSREM)
-		ArrayList.quad_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.ROSEMMAP)
-		ArrayList.quad_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.RBIOSL)
-		ArrayList.quad_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
-		ArrayList.quad_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.quad_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.Huber && MethodList.OSLOSEM)
-		ArrayList.Huber_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.OSLMLEM)
-		ArrayList.Huber_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.BSREM)
-		ArrayList.Huber_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.MBSREM)
-		ArrayList.Huber_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.ROSEMMAP)
-		ArrayList.Huber_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.RBIOSL)
-		ArrayList.Huber_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
-		ArrayList.Huber_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.Huber_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.L && MethodList.OSLOSEM)
-		ArrayList.L_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.OSLMLEM)
-		ArrayList.L_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.BSREM)
-		ArrayList.L_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.MBSREM)
-		ArrayList.L_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.ROSEMMAP)
-		ArrayList.L_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.RBIOSL)
-		ArrayList.L_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.L && MethodList.OSLCOSEM > 0)
-		ArrayList.L_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.L_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.FMH && MethodList.OSLOSEM)
-		ArrayList.fmh_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.OSLMLEM)
-		ArrayList.fmh_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.BSREM)
-		ArrayList.fmh_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.MBSREM)
-		ArrayList.fmh_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.ROSEMMAP)
-		ArrayList.fmh_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.RBIOSL)
-		ArrayList.fmh_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
-		ArrayList.fmh_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.fmh_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.WeightedMean && MethodList.OSLOSEM)
-		ArrayList.weighted_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.OSLMLEM)
-		ArrayList.weighted_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.BSREM)
-		ArrayList.weighted_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.MBSREM)
-		ArrayList.weighted_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
-		ArrayList.weighted_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.RBIOSL)
-		ArrayList.weighted_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
-		ArrayList.weighted_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.weighted_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.TV && MethodList.OSLOSEM)
-		ArrayList.TV_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.OSLMLEM)
-		ArrayList.TV_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.BSREM)
-		ArrayList.TV_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.MBSREM)
-		ArrayList.TV_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.ROSEMMAP)
-		ArrayList.TV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.RBIOSL)
-		ArrayList.TV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.TV && MethodList.OSLCOSEM > 0)
-		ArrayList.TV_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TV_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.AD && MethodList.OSLOSEM)
-		ArrayList.AD_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.OSLMLEM)
-		ArrayList.AD_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.BSREM)
-		ArrayList.AD_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.MBSREM)
-		ArrayList.AD_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.ROSEMMAP)
-		ArrayList.AD_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.RBIOSL)
-		ArrayList.AD_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.AD && MethodList.OSLCOSEM > 0)
-		ArrayList.AD_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.AD_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.APLS && MethodList.OSLOSEM)
-		ArrayList.APLS_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.OSLMLEM)
-		ArrayList.APLS_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.BSREM)
-		ArrayList.APLS_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.MBSREM)
-		ArrayList.APLS_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.ROSEMMAP)
-		ArrayList.APLS_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.RBIOSL)
-		ArrayList.APLS_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
-		ArrayList.APLS_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.APLS_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.OSLOSEM)
-		ArrayList.TGV_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.OSLMLEM)
-		ArrayList.TGV_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.BSREM)
-		ArrayList.TGV_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MBSREM)
-		ArrayList.TGV_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.ROSEMMAP)
-		ArrayList.TGV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RBIOSL)
-		ArrayList.TGV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.OSLCOSEM > 0)
-		ArrayList.TGV_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.TGV_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-
-	if (MethodList.OSLOSEM)
-		ArrayList.NLM_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.OSLMLEM)
-		ArrayList.NLM_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.BSREM)
-		ArrayList.NLM_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.MBSREM)
-		ArrayList.NLM_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.ROSEMMAP)
-		ArrayList.NLM_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.RBIOSL)
-		ArrayList.NLM_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.OSLCOSEM > 0)
-		ArrayList.NLM_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-	else
-		ArrayList.NLM_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM) {
-			ArrayList.custom_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		}
-		else
-			ArrayList.custom_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.OSLMLEM)
-			ArrayList.custom_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
-			ArrayList.custom_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.BSREM)
-			ArrayList.custom_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
-			ArrayList.custom_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.MBSREM)
-			ArrayList.custom_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
-			ArrayList.custom_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.ROSEMMAP)
-			ArrayList.custom_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
-			ArrayList.custom_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.RBIOSL)
-			ArrayList.custom_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		else
-			ArrayList.custom_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		if (MethodList.OSLCOSEM > 0) {
-			ArrayList.custom_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-			ArrayList.c_osl_custom = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-		}
-		else {
-			ArrayList.custom_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-			ArrayList.c_osl_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		}
-		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
-			mwSize dimmiD[3] = { static_cast<mwSize>(0), static_cast<mwSize>(0), static_cast<mwSize>(0)};
-			for (int ii = 0; ii < 3; ii++)
-				dimmiD[ii] = dimmi[ii];
-			ArrayList.D_custom = mxCreateNumericArray(3, dimmiD, mxSINGLE_CLASS, mxREAL);
-		}
-		else
-			ArrayList.D_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-	}
-
-
-	if (MethodList.MLEM)
-		ArrayList.ele_ml = (float*)mxGetData(ArrayList.mlem);
-	if (MethodList.OSEM)
-		ArrayList.ele_os = (float*)mxGetData(ArrayList.osem);
-	if (MethodList.MRAMLA)
-		ArrayList.ele_ramlaM = (float*)mxGetData(ArrayList.ramlaM);
-	if (MethodList.RAMLA)
-		ArrayList.ele_ramla = (float*)mxGetData(ArrayList.ramla);
-	if (MethodList.ROSEM)
-		ArrayList.ele_rosem = (float*)mxGetData(ArrayList.rosem);
-	if (MethodList.RBI)
-		ArrayList.ele_rbi = (float*)mxGetData(ArrayList.rbi);
-	if (MethodList.DRAMA)
-		ArrayList.ele_drama = (float*)mxGetData(ArrayList.drama);
-	if (MethodList.COSEM)
-		ArrayList.ele_cosem = (float*)mxGetData(ArrayList.cosem);
-	if (MethodList.ECOSEM)
-		ArrayList.ele_ecosem = (float*)mxGetData(ArrayList.ecosem);
-	if (MethodList.ACOSEM)
-		ArrayList.ele_acosem = (float*)mxGetData(ArrayList.acosem);
-
-	if (MethodList.OSLOSEM && MethodList.MRP)
-		ArrayList.ele_mrp_osem = (float*)mxGetData(ArrayList.mrp_osem);
-	if (MethodList.OSLMLEM && MethodList.MRP)
-		ArrayList.ele_mrp_mlem = (float*)mxGetData(ArrayList.mrp_mlem);
-	if (MethodList.MRP && MethodList.BSREM)
-		ArrayList.ele_mrp_bsrem = (float*)mxGetData(ArrayList.mrp_bsrem);
-	if (MethodList.MRP && MethodList.MBSREM)
-		ArrayList.ele_mrp_mbsrem = (float*)mxGetData(ArrayList.mrp_mbsrem);
-	if (MethodList.MRP && MethodList.ROSEMMAP)
-		ArrayList.ele_mrp_rosem = (float*)mxGetData(ArrayList.mrp_rosem);
-	if (MethodList.MRP && MethodList.RBIOSL)
-		ArrayList.ele_mrp_rbi = (float*)mxGetData(ArrayList.mrp_rbi);
-	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_mrp_cosem = (float*)mxGetData(ArrayList.mrp_cosem);
-
-	if (MethodList.Quad && MethodList.OSLOSEM)
-		ArrayList.ele_quad_osem = (float*)mxGetData(ArrayList.quad_osem);
-	if (MethodList.OSLMLEM && MethodList.Quad)
-		ArrayList.ele_quad_mlem = (float*)mxGetData(ArrayList.quad_mlem);
-	if (MethodList.Quad && MethodList.BSREM)
-		ArrayList.ele_quad_bsrem = (float*)mxGetData(ArrayList.quad_bsrem);
-	if (MethodList.Quad && MethodList.MBSREM)
-		ArrayList.ele_quad_mbsrem = (float*)mxGetData(ArrayList.quad_mbsrem);
-	if (MethodList.Quad && MethodList.ROSEMMAP)
-		ArrayList.ele_quad_rosem = (float*)mxGetData(ArrayList.quad_rosem);
-	if (MethodList.Quad && MethodList.RBIOSL)
-		ArrayList.ele_quad_rbi = (float*)mxGetData(ArrayList.quad_rbi);
-	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_quad_cosem = (float*)mxGetData(ArrayList.quad_cosem);
-
-	if (MethodList.Huber && MethodList.OSLOSEM)
-		ArrayList.ele_Huber_osem = (float*)mxGetData(ArrayList.Huber_osem);
-	if (MethodList.OSLMLEM && MethodList.Huber)
-		ArrayList.ele_Huber_mlem = (float*)mxGetData(ArrayList.Huber_mlem);
-	if (MethodList.Huber && MethodList.BSREM)
-		ArrayList.ele_Huber_bsrem = (float*)mxGetData(ArrayList.Huber_bsrem);
-	if (MethodList.Huber && MethodList.MBSREM)
-		ArrayList.ele_Huber_mbsrem = (float*)mxGetData(ArrayList.Huber_mbsrem);
-	if (MethodList.Huber && MethodList.ROSEMMAP)
-		ArrayList.ele_Huber_rosem = (float*)mxGetData(ArrayList.Huber_rosem);
-	if (MethodList.Huber && MethodList.RBIOSL)
-		ArrayList.ele_Huber_rbi = (float*)mxGetData(ArrayList.Huber_rbi);
-	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_Huber_cosem = (float*)mxGetData(ArrayList.Huber_cosem);
-
-	if (MethodList.L && MethodList.OSLOSEM)
-		ArrayList.ele_L_osem = (float*)mxGetData(ArrayList.L_osem);
-	if (MethodList.OSLMLEM && MethodList.L)
-		ArrayList.ele_L_mlem = (float*)mxGetData(ArrayList.L_mlem);
-	if (MethodList.L && MethodList.BSREM)
-		ArrayList.ele_L_bsrem = (float*)mxGetData(ArrayList.L_bsrem);
-	if (MethodList.L && MethodList.MBSREM)
-		ArrayList.ele_L_mbsrem = (float*)mxGetData(ArrayList.L_mbsrem);
-	if (MethodList.L && MethodList.ROSEMMAP)
-		ArrayList.ele_L_rosem = (float*)mxGetData(ArrayList.L_rosem);
-	if (MethodList.L && MethodList.RBIOSL)
-		ArrayList.ele_L_rbi = (float*)mxGetData(ArrayList.L_rbi);
-	if (MethodList.L && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_L_cosem = (float*)mxGetData(ArrayList.L_cosem);
-
-	if (MethodList.FMH && MethodList.OSLOSEM)
-		ArrayList.ele_fmh_osem = (float*)mxGetData(ArrayList.fmh_osem);
-	if (MethodList.OSLMLEM && MethodList.FMH)
-		ArrayList.ele_fmh_mlem = (float*)mxGetData(ArrayList.fmh_mlem);
-	if (MethodList.FMH && MethodList.BSREM)
-		ArrayList.ele_fmh_bsrem = (float*)mxGetData(ArrayList.fmh_bsrem);
-	if (MethodList.FMH && MethodList.MBSREM)
-		ArrayList.ele_fmh_mbsrem = (float*)mxGetData(ArrayList.fmh_mbsrem);
-	if (MethodList.FMH && MethodList.ROSEMMAP)
-		ArrayList.ele_fmh_rosem = (float*)mxGetData(ArrayList.fmh_rosem);
-	if (MethodList.FMH && MethodList.RBIOSL)
-		ArrayList.ele_fmh_rbi = (float*)mxGetData(ArrayList.fmh_rbi);
-	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_fmh_cosem = (float*)mxGetData(ArrayList.fmh_cosem);
-
-	if (MethodList.WeightedMean && MethodList.OSLOSEM)
-		ArrayList.ele_weighted_osem = (float*)mxGetData(ArrayList.weighted_osem);
-	if (MethodList.OSLMLEM && MethodList.WeightedMean)
-		ArrayList.ele_weighted_mlem = (float*)mxGetData(ArrayList.weighted_mlem);
-	if (MethodList.WeightedMean && MethodList.BSREM)
-		ArrayList.ele_weighted_bsrem = (float*)mxGetData(ArrayList.weighted_bsrem);
-	if (MethodList.WeightedMean && MethodList.MBSREM)
-		ArrayList.ele_weighted_mbsrem = (float*)mxGetData(ArrayList.weighted_mbsrem);
-	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
-		ArrayList.ele_weighted_rosem = (float*)mxGetData(ArrayList.weighted_rosem);
-	if (MethodList.WeightedMean && MethodList.RBIOSL)
-		ArrayList.ele_weighted_rbi = (float*)mxGetData(ArrayList.weighted_rbi);
-	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_weighted_cosem = (float*)mxGetData(ArrayList.weighted_cosem);
-
-	if (MethodList.TV && MethodList.OSLOSEM)
-		ArrayList.ele_TV_osem = (float*)mxGetData(ArrayList.TV_osem);
-	if (MethodList.OSLMLEM && MethodList.TV)
-		ArrayList.ele_TV_mlem = (float*)mxGetData(ArrayList.TV_mlem);
-	if (MethodList.TV && MethodList.BSREM)
-		ArrayList.ele_TV_bsrem = (float*)mxGetData(ArrayList.TV_bsrem);
-	if (MethodList.TV && MethodList.MBSREM)
-		ArrayList.ele_TV_mbsrem = (float*)mxGetData(ArrayList.TV_mbsrem);
-	if (MethodList.TV && MethodList.ROSEMMAP)
-		ArrayList.ele_TV_rosem = (float*)mxGetData(ArrayList.TV_rosem);
-	if (MethodList.TV && MethodList.RBIOSL)
-		ArrayList.ele_TV_rbi = (float*)mxGetData(ArrayList.TV_rbi);
-	if (MethodList.TV && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_TV_cosem = (float*)mxGetData(ArrayList.TV_cosem);
-
-	if (MethodList.AD && MethodList.OSLOSEM)
-		ArrayList.ele_AD_osem = (float*)mxGetData(ArrayList.AD_osem);
-	if (MethodList.OSLMLEM && MethodList.AD)
-		ArrayList.ele_AD_mlem = (float*)mxGetData(ArrayList.AD_mlem);
-	if (MethodList.AD && MethodList.BSREM)
-		ArrayList.ele_AD_bsrem = (float*)mxGetData(ArrayList.AD_bsrem);
-	if (MethodList.AD && MethodList.MBSREM)
-		ArrayList.ele_AD_mbsrem = (float*)mxGetData(ArrayList.AD_mbsrem);
-	if (MethodList.AD && MethodList.ROSEMMAP)
-		ArrayList.ele_AD_rosem = (float*)mxGetData(ArrayList.AD_rosem);
-	if (MethodList.AD && MethodList.RBIOSL)
-		ArrayList.ele_AD_rbi = (float*)mxGetData(ArrayList.AD_rbi);
-	if (MethodList.AD && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_AD_cosem = (float*)mxGetData(ArrayList.AD_cosem);
-
-	if (MethodList.APLS && MethodList.OSLOSEM)
-		ArrayList.ele_APLS_osem = (float*)mxGetData(ArrayList.APLS_osem);
-	if (MethodList.OSLMLEM && MethodList.APLS)
-		ArrayList.ele_APLS_mlem = (float*)mxGetData(ArrayList.APLS_mlem);
-	if (MethodList.APLS && MethodList.BSREM)
-		ArrayList.ele_APLS_bsrem = (float*)mxGetData(ArrayList.APLS_bsrem);
-	if (MethodList.APLS && MethodList.MBSREM)
-		ArrayList.ele_APLS_mbsrem = (float*)mxGetData(ArrayList.APLS_mbsrem);
-	if (MethodList.APLS && MethodList.ROSEMMAP)
-		ArrayList.ele_APLS_rosem = (float*)mxGetData(ArrayList.APLS_rosem);
-	if (MethodList.APLS && MethodList.RBIOSL)
-		ArrayList.ele_APLS_rbi = (float*)mxGetData(ArrayList.APLS_rbi);
-	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
-		ArrayList.ele_APLS_cosem = (float*)mxGetData(ArrayList.APLS_cosem);
-
-	if (MethodList.OSLOSEM)
-		ArrayList.ele_TGV_osem = (float*)mxGetData(ArrayList.TGV_osem);
-	if (MethodList.OSLMLEM && MethodList.TGV)
-		ArrayList.ele_TGV_mlem = (float*)mxGetData(ArrayList.TGV_mlem);
-	if (MethodList.BSREM)
-		ArrayList.ele_TGV_bsrem = (float*)mxGetData(ArrayList.TGV_bsrem);
-	if (MethodList.MBSREM)
-		ArrayList.ele_TGV_mbsrem = (float*)mxGetData(ArrayList.TGV_mbsrem);
-	if (MethodList.ROSEMMAP)
-		ArrayList.ele_TGV_rosem = (float*)mxGetData(ArrayList.TGV_rosem);
-	if (MethodList.RBIOSL)
-		ArrayList.ele_TGV_rbi = (float*)mxGetData(ArrayList.TGV_rbi);
-	if (MethodList.OSLCOSEM > 0)
-		ArrayList.ele_TGV_cosem = (float*)mxGetData(ArrayList.TGV_cosem);
-
-	if (MethodList.OSLOSEM)
-		ArrayList.ele_NLM_osem = (float*)mxGetData(ArrayList.NLM_osem);
-	if (MethodList.OSLMLEM && MethodList.NLM)
-		ArrayList.ele_NLM_mlem = (float*)mxGetData(ArrayList.NLM_mlem);
-	if (MethodList.BSREM)
-		ArrayList.ele_NLM_bsrem = (float*)mxGetData(ArrayList.NLM_bsrem);
-	if (MethodList.MBSREM)
-		ArrayList.ele_NLM_mbsrem = (float*)mxGetData(ArrayList.NLM_mbsrem);
-	if (MethodList.ROSEMMAP)
-		ArrayList.ele_NLM_rosem = (float*)mxGetData(ArrayList.NLM_rosem);
-	if (MethodList.RBIOSL)
-		ArrayList.ele_NLM_rbi = (float*)mxGetData(ArrayList.NLM_rbi);
-	if (MethodList.OSLCOSEM > 0)
-		ArrayList.ele_NLM_cosem = (float*)mxGetData(ArrayList.NLM_cosem);
-
-	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM) {
-			ArrayList.ele_custom_osem = (float*)mxGetData(ArrayList.custom_osem);
-		}
-		if (MethodList.OSLMLEM)
-			ArrayList.ele_custom_mlem = (float*)mxGetData(ArrayList.custom_mlem);
-		if (MethodList.BSREM)
-			ArrayList.ele_custom_bsrem = (float*)mxGetData(ArrayList.custom_bsrem);
-		if (MethodList.MBSREM)
-			ArrayList.ele_custom_mbsrem = (float*)mxGetData(ArrayList.custom_mbsrem);
-		if (MethodList.ROSEMMAP)
-			ArrayList.ele_custom_rosem = (float*)mxGetData(ArrayList.custom_rosem);
-		if (MethodList.RBIOSL)
-			ArrayList.ele_custom_rbi = (float*)mxGetData(ArrayList.custom_rbi);
-		if (MethodList.OSLCOSEM > 0) {
-			ArrayList.ele_custom_cosem = (float*)mxGetData(ArrayList.custom_cosem);
-			ArrayList.ele_c_osl_custom = (float*)mxGetData(ArrayList.c_osl_custom);
-		}
-		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
-			ArrayList.ele_D_custom = (float*)mxGetData(ArrayList.D_custom);
-		}
-	}
-
-
-}
+//void create_matlab_output(matlabArrays &ArrayList, const mwSize *dimmi, const RecMethods &MethodList, const uint32_t dim_n)
+//{
+//	//mwSize dimu[2] = { 128 * 128 * 63, 9 };
+//	// Output arrays for the MATLAB cell array
+//	if (MethodList.MLEM)
+//		ArrayList.mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.OSEM)
+//		ArrayList.osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRAMLA)
+//		ArrayList.ramlaM = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.ramlaM = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.RAMLA)
+//		ArrayList.ramla = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.ramla = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.ROSEM)
+//		ArrayList.rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.RBI)
+//		ArrayList.rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.DRAMA)
+//		ArrayList.drama = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.drama = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.COSEM)
+//		ArrayList.cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.ECOSEM)
+//		ArrayList.ecosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.ecosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.ACOSEM)
+//		ArrayList.acosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.acosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.MRP && MethodList.OSLOSEM)
+//		ArrayList.mrp_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.OSLMLEM)
+//		ArrayList.mrp_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.BSREM)
+//		ArrayList.mrp_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.MBSREM)
+//		ArrayList.mrp_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.ROSEMMAP)
+//		ArrayList.mrp_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.RBIOSL)
+//		ArrayList.mrp_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
+//		ArrayList.mrp_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.mrp_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.Quad && MethodList.OSLOSEM)
+//		ArrayList.quad_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.OSLMLEM)
+//		ArrayList.quad_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.BSREM)
+//		ArrayList.quad_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.MBSREM)
+//		ArrayList.quad_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.ROSEMMAP)
+//		ArrayList.quad_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.RBIOSL)
+//		ArrayList.quad_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
+//		ArrayList.quad_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.quad_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.Huber && MethodList.OSLOSEM)
+//		ArrayList.Huber_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.OSLMLEM)
+//		ArrayList.Huber_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.BSREM)
+//		ArrayList.Huber_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.MBSREM)
+//		ArrayList.Huber_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.ROSEMMAP)
+//		ArrayList.Huber_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.RBIOSL)
+//		ArrayList.Huber_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+//		ArrayList.Huber_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.Huber_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.L && MethodList.OSLOSEM)
+//		ArrayList.L_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.OSLMLEM)
+//		ArrayList.L_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.BSREM)
+//		ArrayList.L_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.MBSREM)
+//		ArrayList.L_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.ROSEMMAP)
+//		ArrayList.L_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.RBIOSL)
+//		ArrayList.L_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.L && MethodList.OSLCOSEM > 0)
+//		ArrayList.L_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.L_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.FMH && MethodList.OSLOSEM)
+//		ArrayList.fmh_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.OSLMLEM)
+//		ArrayList.fmh_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.BSREM)
+//		ArrayList.fmh_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.MBSREM)
+//		ArrayList.fmh_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.ROSEMMAP)
+//		ArrayList.fmh_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.RBIOSL)
+//		ArrayList.fmh_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
+//		ArrayList.fmh_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.fmh_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.WeightedMean && MethodList.OSLOSEM)
+//		ArrayList.weighted_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.OSLMLEM)
+//		ArrayList.weighted_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.BSREM)
+//		ArrayList.weighted_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.MBSREM)
+//		ArrayList.weighted_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
+//		ArrayList.weighted_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.RBIOSL)
+//		ArrayList.weighted_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
+//		ArrayList.weighted_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.weighted_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.TV && MethodList.OSLOSEM)
+//		ArrayList.TV_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.OSLMLEM)
+//		ArrayList.TV_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.BSREM)
+//		ArrayList.TV_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.MBSREM)
+//		ArrayList.TV_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.ROSEMMAP)
+//		ArrayList.TV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.RBIOSL)
+//		ArrayList.TV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.TV && MethodList.OSLCOSEM > 0)
+//		ArrayList.TV_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TV_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.AD && MethodList.OSLOSEM)
+//		ArrayList.AD_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.OSLMLEM)
+//		ArrayList.AD_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.BSREM)
+//		ArrayList.AD_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.MBSREM)
+//		ArrayList.AD_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.ROSEMMAP)
+//		ArrayList.AD_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.RBIOSL)
+//		ArrayList.AD_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.AD && MethodList.OSLCOSEM > 0)
+//		ArrayList.AD_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.AD_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.APLS && MethodList.OSLOSEM)
+//		ArrayList.APLS_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.OSLMLEM)
+//		ArrayList.APLS_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.BSREM)
+//		ArrayList.APLS_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.MBSREM)
+//		ArrayList.APLS_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.ROSEMMAP)
+//		ArrayList.APLS_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.RBIOSL)
+//		ArrayList.APLS_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
+//		ArrayList.APLS_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.APLS_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.OSLOSEM)
+//		ArrayList.TGV_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.OSLMLEM)
+//		ArrayList.TGV_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.BSREM)
+//		ArrayList.TGV_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MBSREM)
+//		ArrayList.TGV_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.ROSEMMAP)
+//		ArrayList.TGV_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.RBIOSL)
+//		ArrayList.TGV_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.OSLCOSEM > 0)
+//		ArrayList.TGV_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.TGV_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//
+//	if (MethodList.OSLOSEM)
+//		ArrayList.NLM_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.OSLMLEM)
+//		ArrayList.NLM_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.BSREM)
+//		ArrayList.NLM_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.MBSREM)
+//		ArrayList.NLM_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.ROSEMMAP)
+//		ArrayList.NLM_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.RBIOSL)
+//		ArrayList.NLM_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.OSLCOSEM > 0)
+//		ArrayList.NLM_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//	else
+//		ArrayList.NLM_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	if (MethodList.CUSTOM) {
+//		if (MethodList.OSLOSEM) {
+//			ArrayList.custom_osem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		}
+//		else
+//			ArrayList.custom_osem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.OSLMLEM)
+//			ArrayList.custom_mlem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		else
+//			ArrayList.custom_mlem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.BSREM)
+//			ArrayList.custom_bsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		else
+//			ArrayList.custom_bsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.MBSREM)
+//			ArrayList.custom_mbsrem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		else
+//			ArrayList.custom_mbsrem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.ROSEMMAP)
+//			ArrayList.custom_rosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		else
+//			ArrayList.custom_rosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.RBIOSL)
+//			ArrayList.custom_rbi = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		else
+//			ArrayList.custom_rbi = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		if (MethodList.OSLCOSEM > 0) {
+//			ArrayList.custom_cosem = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//			ArrayList.c_osl_custom = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+//		}
+//		else {
+//			ArrayList.custom_cosem = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//			ArrayList.c_osl_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//		}
+//		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
+//			mwSize dimmiD[3] = { static_cast<mwSize>(0), static_cast<mwSize>(0), static_cast<mwSize>(0)};
+//			for (int ii = 0; ii < 3; ii++)
+//				dimmiD[ii] = dimmi[ii];
+//			ArrayList.D_custom = mxCreateNumericArray(3, dimmiD, mxSINGLE_CLASS, mxREAL);
+//		}
+//		else
+//			ArrayList.D_custom = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+//	}
+//
+//
+//	if (MethodList.MLEM)
+//		ArrayList.ele_ml = (float*)mxGetData(ArrayList.mlem);
+//	if (MethodList.OSEM)
+//		ArrayList.ele_os = (float*)mxGetData(ArrayList.osem);
+//	if (MethodList.MRAMLA)
+//		ArrayList.ele_ramlaM = (float*)mxGetData(ArrayList.ramlaM);
+//	if (MethodList.RAMLA)
+//		ArrayList.ele_ramla = (float*)mxGetData(ArrayList.ramla);
+//	if (MethodList.ROSEM)
+//		ArrayList.ele_rosem = (float*)mxGetData(ArrayList.rosem);
+//	if (MethodList.RBI)
+//		ArrayList.ele_rbi = (float*)mxGetData(ArrayList.rbi);
+//	if (MethodList.DRAMA)
+//		ArrayList.ele_drama = (float*)mxGetData(ArrayList.drama);
+//	if (MethodList.COSEM)
+//		ArrayList.ele_cosem = (float*)mxGetData(ArrayList.cosem);
+//	if (MethodList.ECOSEM)
+//		ArrayList.ele_ecosem = (float*)mxGetData(ArrayList.ecosem);
+//	if (MethodList.ACOSEM)
+//		ArrayList.ele_acosem = (float*)mxGetData(ArrayList.acosem);
+//
+//	if (MethodList.OSLOSEM && MethodList.MRP)
+//		ArrayList.ele_mrp_osem = (float*)mxGetData(ArrayList.mrp_osem);
+//	if (MethodList.OSLMLEM && MethodList.MRP)
+//		ArrayList.ele_mrp_mlem = (float*)mxGetData(ArrayList.mrp_mlem);
+//	if (MethodList.MRP && MethodList.BSREM)
+//		ArrayList.ele_mrp_bsrem = (float*)mxGetData(ArrayList.mrp_bsrem);
+//	if (MethodList.MRP && MethodList.MBSREM)
+//		ArrayList.ele_mrp_mbsrem = (float*)mxGetData(ArrayList.mrp_mbsrem);
+//	if (MethodList.MRP && MethodList.ROSEMMAP)
+//		ArrayList.ele_mrp_rosem = (float*)mxGetData(ArrayList.mrp_rosem);
+//	if (MethodList.MRP && MethodList.RBIOSL)
+//		ArrayList.ele_mrp_rbi = (float*)mxGetData(ArrayList.mrp_rbi);
+//	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_mrp_cosem = (float*)mxGetData(ArrayList.mrp_cosem);
+//
+//	if (MethodList.Quad && MethodList.OSLOSEM)
+//		ArrayList.ele_quad_osem = (float*)mxGetData(ArrayList.quad_osem);
+//	if (MethodList.OSLMLEM && MethodList.Quad)
+//		ArrayList.ele_quad_mlem = (float*)mxGetData(ArrayList.quad_mlem);
+//	if (MethodList.Quad && MethodList.BSREM)
+//		ArrayList.ele_quad_bsrem = (float*)mxGetData(ArrayList.quad_bsrem);
+//	if (MethodList.Quad && MethodList.MBSREM)
+//		ArrayList.ele_quad_mbsrem = (float*)mxGetData(ArrayList.quad_mbsrem);
+//	if (MethodList.Quad && MethodList.ROSEMMAP)
+//		ArrayList.ele_quad_rosem = (float*)mxGetData(ArrayList.quad_rosem);
+//	if (MethodList.Quad && MethodList.RBIOSL)
+//		ArrayList.ele_quad_rbi = (float*)mxGetData(ArrayList.quad_rbi);
+//	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_quad_cosem = (float*)mxGetData(ArrayList.quad_cosem);
+//
+//	if (MethodList.Huber && MethodList.OSLOSEM)
+//		ArrayList.ele_Huber_osem = (float*)mxGetData(ArrayList.Huber_osem);
+//	if (MethodList.OSLMLEM && MethodList.Huber)
+//		ArrayList.ele_Huber_mlem = (float*)mxGetData(ArrayList.Huber_mlem);
+//	if (MethodList.Huber && MethodList.BSREM)
+//		ArrayList.ele_Huber_bsrem = (float*)mxGetData(ArrayList.Huber_bsrem);
+//	if (MethodList.Huber && MethodList.MBSREM)
+//		ArrayList.ele_Huber_mbsrem = (float*)mxGetData(ArrayList.Huber_mbsrem);
+//	if (MethodList.Huber && MethodList.ROSEMMAP)
+//		ArrayList.ele_Huber_rosem = (float*)mxGetData(ArrayList.Huber_rosem);
+//	if (MethodList.Huber && MethodList.RBIOSL)
+//		ArrayList.ele_Huber_rbi = (float*)mxGetData(ArrayList.Huber_rbi);
+//	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_Huber_cosem = (float*)mxGetData(ArrayList.Huber_cosem);
+//
+//	if (MethodList.L && MethodList.OSLOSEM)
+//		ArrayList.ele_L_osem = (float*)mxGetData(ArrayList.L_osem);
+//	if (MethodList.OSLMLEM && MethodList.L)
+//		ArrayList.ele_L_mlem = (float*)mxGetData(ArrayList.L_mlem);
+//	if (MethodList.L && MethodList.BSREM)
+//		ArrayList.ele_L_bsrem = (float*)mxGetData(ArrayList.L_bsrem);
+//	if (MethodList.L && MethodList.MBSREM)
+//		ArrayList.ele_L_mbsrem = (float*)mxGetData(ArrayList.L_mbsrem);
+//	if (MethodList.L && MethodList.ROSEMMAP)
+//		ArrayList.ele_L_rosem = (float*)mxGetData(ArrayList.L_rosem);
+//	if (MethodList.L && MethodList.RBIOSL)
+//		ArrayList.ele_L_rbi = (float*)mxGetData(ArrayList.L_rbi);
+//	if (MethodList.L && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_L_cosem = (float*)mxGetData(ArrayList.L_cosem);
+//
+//	if (MethodList.FMH && MethodList.OSLOSEM)
+//		ArrayList.ele_fmh_osem = (float*)mxGetData(ArrayList.fmh_osem);
+//	if (MethodList.OSLMLEM && MethodList.FMH)
+//		ArrayList.ele_fmh_mlem = (float*)mxGetData(ArrayList.fmh_mlem);
+//	if (MethodList.FMH && MethodList.BSREM)
+//		ArrayList.ele_fmh_bsrem = (float*)mxGetData(ArrayList.fmh_bsrem);
+//	if (MethodList.FMH && MethodList.MBSREM)
+//		ArrayList.ele_fmh_mbsrem = (float*)mxGetData(ArrayList.fmh_mbsrem);
+//	if (MethodList.FMH && MethodList.ROSEMMAP)
+//		ArrayList.ele_fmh_rosem = (float*)mxGetData(ArrayList.fmh_rosem);
+//	if (MethodList.FMH && MethodList.RBIOSL)
+//		ArrayList.ele_fmh_rbi = (float*)mxGetData(ArrayList.fmh_rbi);
+//	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_fmh_cosem = (float*)mxGetData(ArrayList.fmh_cosem);
+//
+//	if (MethodList.WeightedMean && MethodList.OSLOSEM)
+//		ArrayList.ele_weighted_osem = (float*)mxGetData(ArrayList.weighted_osem);
+//	if (MethodList.OSLMLEM && MethodList.WeightedMean)
+//		ArrayList.ele_weighted_mlem = (float*)mxGetData(ArrayList.weighted_mlem);
+//	if (MethodList.WeightedMean && MethodList.BSREM)
+//		ArrayList.ele_weighted_bsrem = (float*)mxGetData(ArrayList.weighted_bsrem);
+//	if (MethodList.WeightedMean && MethodList.MBSREM)
+//		ArrayList.ele_weighted_mbsrem = (float*)mxGetData(ArrayList.weighted_mbsrem);
+//	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
+//		ArrayList.ele_weighted_rosem = (float*)mxGetData(ArrayList.weighted_rosem);
+//	if (MethodList.WeightedMean && MethodList.RBIOSL)
+//		ArrayList.ele_weighted_rbi = (float*)mxGetData(ArrayList.weighted_rbi);
+//	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_weighted_cosem = (float*)mxGetData(ArrayList.weighted_cosem);
+//
+//	if (MethodList.TV && MethodList.OSLOSEM)
+//		ArrayList.ele_TV_osem = (float*)mxGetData(ArrayList.TV_osem);
+//	if (MethodList.OSLMLEM && MethodList.TV)
+//		ArrayList.ele_TV_mlem = (float*)mxGetData(ArrayList.TV_mlem);
+//	if (MethodList.TV && MethodList.BSREM)
+//		ArrayList.ele_TV_bsrem = (float*)mxGetData(ArrayList.TV_bsrem);
+//	if (MethodList.TV && MethodList.MBSREM)
+//		ArrayList.ele_TV_mbsrem = (float*)mxGetData(ArrayList.TV_mbsrem);
+//	if (MethodList.TV && MethodList.ROSEMMAP)
+//		ArrayList.ele_TV_rosem = (float*)mxGetData(ArrayList.TV_rosem);
+//	if (MethodList.TV && MethodList.RBIOSL)
+//		ArrayList.ele_TV_rbi = (float*)mxGetData(ArrayList.TV_rbi);
+//	if (MethodList.TV && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_TV_cosem = (float*)mxGetData(ArrayList.TV_cosem);
+//
+//	if (MethodList.AD && MethodList.OSLOSEM)
+//		ArrayList.ele_AD_osem = (float*)mxGetData(ArrayList.AD_osem);
+//	if (MethodList.OSLMLEM && MethodList.AD)
+//		ArrayList.ele_AD_mlem = (float*)mxGetData(ArrayList.AD_mlem);
+//	if (MethodList.AD && MethodList.BSREM)
+//		ArrayList.ele_AD_bsrem = (float*)mxGetData(ArrayList.AD_bsrem);
+//	if (MethodList.AD && MethodList.MBSREM)
+//		ArrayList.ele_AD_mbsrem = (float*)mxGetData(ArrayList.AD_mbsrem);
+//	if (MethodList.AD && MethodList.ROSEMMAP)
+//		ArrayList.ele_AD_rosem = (float*)mxGetData(ArrayList.AD_rosem);
+//	if (MethodList.AD && MethodList.RBIOSL)
+//		ArrayList.ele_AD_rbi = (float*)mxGetData(ArrayList.AD_rbi);
+//	if (MethodList.AD && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_AD_cosem = (float*)mxGetData(ArrayList.AD_cosem);
+//
+//	if (MethodList.APLS && MethodList.OSLOSEM)
+//		ArrayList.ele_APLS_osem = (float*)mxGetData(ArrayList.APLS_osem);
+//	if (MethodList.OSLMLEM && MethodList.APLS)
+//		ArrayList.ele_APLS_mlem = (float*)mxGetData(ArrayList.APLS_mlem);
+//	if (MethodList.APLS && MethodList.BSREM)
+//		ArrayList.ele_APLS_bsrem = (float*)mxGetData(ArrayList.APLS_bsrem);
+//	if (MethodList.APLS && MethodList.MBSREM)
+//		ArrayList.ele_APLS_mbsrem = (float*)mxGetData(ArrayList.APLS_mbsrem);
+//	if (MethodList.APLS && MethodList.ROSEMMAP)
+//		ArrayList.ele_APLS_rosem = (float*)mxGetData(ArrayList.APLS_rosem);
+//	if (MethodList.APLS && MethodList.RBIOSL)
+//		ArrayList.ele_APLS_rbi = (float*)mxGetData(ArrayList.APLS_rbi);
+//	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_APLS_cosem = (float*)mxGetData(ArrayList.APLS_cosem);
+//
+//	if (MethodList.OSLOSEM)
+//		ArrayList.ele_TGV_osem = (float*)mxGetData(ArrayList.TGV_osem);
+//	if (MethodList.OSLMLEM && MethodList.TGV)
+//		ArrayList.ele_TGV_mlem = (float*)mxGetData(ArrayList.TGV_mlem);
+//	if (MethodList.BSREM)
+//		ArrayList.ele_TGV_bsrem = (float*)mxGetData(ArrayList.TGV_bsrem);
+//	if (MethodList.MBSREM)
+//		ArrayList.ele_TGV_mbsrem = (float*)mxGetData(ArrayList.TGV_mbsrem);
+//	if (MethodList.ROSEMMAP)
+//		ArrayList.ele_TGV_rosem = (float*)mxGetData(ArrayList.TGV_rosem);
+//	if (MethodList.RBIOSL)
+//		ArrayList.ele_TGV_rbi = (float*)mxGetData(ArrayList.TGV_rbi);
+//	if (MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_TGV_cosem = (float*)mxGetData(ArrayList.TGV_cosem);
+//
+//	if (MethodList.OSLOSEM)
+//		ArrayList.ele_NLM_osem = (float*)mxGetData(ArrayList.NLM_osem);
+//	if (MethodList.OSLMLEM && MethodList.NLM)
+//		ArrayList.ele_NLM_mlem = (float*)mxGetData(ArrayList.NLM_mlem);
+//	if (MethodList.BSREM)
+//		ArrayList.ele_NLM_bsrem = (float*)mxGetData(ArrayList.NLM_bsrem);
+//	if (MethodList.MBSREM)
+//		ArrayList.ele_NLM_mbsrem = (float*)mxGetData(ArrayList.NLM_mbsrem);
+//	if (MethodList.ROSEMMAP)
+//		ArrayList.ele_NLM_rosem = (float*)mxGetData(ArrayList.NLM_rosem);
+//	if (MethodList.RBIOSL)
+//		ArrayList.ele_NLM_rbi = (float*)mxGetData(ArrayList.NLM_rbi);
+//	if (MethodList.OSLCOSEM > 0)
+//		ArrayList.ele_NLM_cosem = (float*)mxGetData(ArrayList.NLM_cosem);
+//
+//	if (MethodList.CUSTOM) {
+//		if (MethodList.OSLOSEM) {
+//			ArrayList.ele_custom_osem = (float*)mxGetData(ArrayList.custom_osem);
+//		}
+//		if (MethodList.OSLMLEM)
+//			ArrayList.ele_custom_mlem = (float*)mxGetData(ArrayList.custom_mlem);
+//		if (MethodList.BSREM)
+//			ArrayList.ele_custom_bsrem = (float*)mxGetData(ArrayList.custom_bsrem);
+//		if (MethodList.MBSREM)
+//			ArrayList.ele_custom_mbsrem = (float*)mxGetData(ArrayList.custom_mbsrem);
+//		if (MethodList.ROSEMMAP)
+//			ArrayList.ele_custom_rosem = (float*)mxGetData(ArrayList.custom_rosem);
+//		if (MethodList.RBIOSL)
+//			ArrayList.ele_custom_rbi = (float*)mxGetData(ArrayList.custom_rbi);
+//		if (MethodList.OSLCOSEM > 0) {
+//			ArrayList.ele_custom_cosem = (float*)mxGetData(ArrayList.custom_cosem);
+//			ArrayList.ele_c_osl_custom = (float*)mxGetData(ArrayList.c_osl_custom);
+//		}
+//		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI) {
+//			ArrayList.ele_D_custom = (float*)mxGetData(ArrayList.D_custom);
+//		}
+//	}
+//
+//
+//}
 
 // Transfers the device data to host
 // First transfer the ArrayFire arrays from the device to the host pointers pointing to the mxArrays
 // Transfer the mxArrays to the cell
-void device_to_host_cell(matlabArrays &ArrayList, const RecMethods &MethodList, AF_im_vectors & vec, uint32_t & oo, mxArray * cell, Weighting & w_vec)
+void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint32_t & oo, mxArray * cell, Weighting & w_vec,
+	const mwSize* dimmi, const uint32_t dim_n)
 {
+	uint32_t kk;
 	// Transfer data back to host
-	if (MethodList.OSEM) {
-		vec.OSEM.host(ArrayList.ele_os);
+	for (kk = 0; kk < w_vec.nTot; kk++) {
+		mxArray* apu = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		float* apuF = (float*)mxGetSingles(apu);
+#else
+		float* apuF = (float*)mxGetData(apu);
+#endif
+		vec.imEstimates[kk].host(apuF);
+		af::sync();
+		mxSetCell(cell, static_cast<mwIndex>(w_vec.rekot[kk]), mxDuplicateArray(apu));
 	}
-	if (MethodList.MLEM)
-		vec.MLEM.host(ArrayList.ele_ml);
-	if (MethodList.MRAMLA)
-		vec.MRAMLA.host(ArrayList.ele_ramlaM);
-	if (MethodList.RAMLA)
-		vec.RAMLA.host(ArrayList.ele_ramla);
-	if (MethodList.ROSEM)
-		vec.ROSEM.host(ArrayList.ele_rosem);
-	if (MethodList.RBI)
-		vec.RBI.host(ArrayList.ele_rbi);
-	if (MethodList.DRAMA)
-		vec.DRAMA.host(ArrayList.ele_drama);
-	if (MethodList.COSEM) {
-		vec.COSEM.host(ArrayList.ele_cosem);
-	}
-	if (MethodList.ECOSEM)
-		vec.ECOSEM.host(ArrayList.ele_ecosem);
-	if (MethodList.ACOSEM)
-		vec.ACOSEM.host(ArrayList.ele_acosem);
-
-	if (MethodList.MRP && MethodList.OSLOSEM)
-		vec.MRP_OSEM.host(ArrayList.ele_mrp_osem);
-	if (MethodList.MRP && MethodList.OSLMLEM)
-		vec.MRP_MLEM.host(ArrayList.ele_mrp_mlem);
-	if (MethodList.MRP && MethodList.BSREM)
-		vec.MRP_BSREM.host(ArrayList.ele_mrp_bsrem);
-	if (MethodList.MRP && MethodList.MBSREM)
-		vec.MRP_MBSREM.host(ArrayList.ele_mrp_mbsrem);
-	if (MethodList.MRP && MethodList.ROSEMMAP)
-		vec.MRP_ROSEM.host(ArrayList.ele_mrp_rosem);
-	if (MethodList.MRP && MethodList.RBIOSL)
-		vec.MRP_RBI.host(ArrayList.ele_mrp_rbi);
-	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
-		vec.MRP_COSEM.host(ArrayList.ele_mrp_cosem);
-
-	if (MethodList.Quad && MethodList.OSLOSEM)
-		vec.Quad_OSEM.host(ArrayList.ele_quad_osem);
-	if (MethodList.Quad && MethodList.OSLMLEM)
-		vec.Quad_MLEM.host(ArrayList.ele_quad_mlem);
-	if (MethodList.Quad && MethodList.BSREM)
-		vec.Quad_BSREM.host(ArrayList.ele_quad_bsrem);
-	if (MethodList.Quad && MethodList.MBSREM)
-		vec.Quad_MBSREM.host(ArrayList.ele_quad_mbsrem);
-	if (MethodList.Quad && MethodList.ROSEMMAP)
-		vec.Quad_ROSEM.host(ArrayList.ele_quad_rosem);
-	if (MethodList.Quad && MethodList.RBIOSL)
-		vec.Quad_RBI.host(ArrayList.ele_quad_rbi);
-	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
-		vec.Quad_COSEM.host(ArrayList.ele_quad_cosem);
-
-	if (MethodList.Huber && MethodList.OSLOSEM)
-		vec.Huber_OSEM.host(ArrayList.ele_Huber_osem);
-	if (MethodList.Huber && MethodList.OSLMLEM)
-		vec.Huber_MLEM.host(ArrayList.ele_Huber_mlem);
-	if (MethodList.Huber && MethodList.BSREM)
-		vec.Huber_BSREM.host(ArrayList.ele_Huber_bsrem);
-	if (MethodList.Huber && MethodList.MBSREM)
-		vec.Huber_MBSREM.host(ArrayList.ele_Huber_mbsrem);
-	if (MethodList.Huber && MethodList.ROSEMMAP)
-		vec.Huber_ROSEM.host(ArrayList.ele_Huber_rosem);
-	if (MethodList.Huber && MethodList.RBIOSL)
-		vec.Huber_RBI.host(ArrayList.ele_Huber_rbi);
-	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
-		vec.Huber_COSEM.host(ArrayList.ele_Huber_cosem);
-
-	if (MethodList.L && MethodList.OSLOSEM)
-		vec.L_OSEM.host(ArrayList.ele_L_osem);
-	if (MethodList.L && MethodList.OSLMLEM)
-		vec.L_MLEM.host(ArrayList.ele_L_mlem);
-	if (MethodList.L && MethodList.BSREM)
-		vec.L_BSREM.host(ArrayList.ele_L_bsrem);
-	if (MethodList.L && MethodList.MBSREM)
-		vec.L_MBSREM.host(ArrayList.ele_L_mbsrem);
-	if (MethodList.L && MethodList.ROSEMMAP)
-		vec.L_ROSEM.host(ArrayList.ele_L_rosem);
-	if (MethodList.L && MethodList.RBIOSL)
-		vec.L_RBI.host(ArrayList.ele_L_rbi);
-	if (MethodList.L && MethodList.OSLCOSEM > 0)
-		vec.L_COSEM.host(ArrayList.ele_L_cosem);
-
-	if (MethodList.FMH && MethodList.OSLOSEM)
-		vec.FMH_OSEM.host(ArrayList.ele_fmh_osem);
-	if (MethodList.FMH && MethodList.OSLMLEM)
-		vec.FMH_MLEM.host(ArrayList.ele_fmh_mlem);
-	if (MethodList.FMH && MethodList.BSREM)
-		vec.FMH_BSREM.host(ArrayList.ele_fmh_bsrem);
-	if (MethodList.FMH && MethodList.MBSREM)
-		vec.FMH_MBSREM.host(ArrayList.ele_fmh_mbsrem);
-	if (MethodList.FMH && MethodList.ROSEMMAP)
-		vec.FMH_ROSEM.host(ArrayList.ele_fmh_rosem);
-	if (MethodList.FMH && MethodList.RBIOSL)
-		vec.FMH_RBI.host(ArrayList.ele_fmh_rbi);
-	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
-		vec.FMH_COSEM.host(ArrayList.ele_fmh_cosem);
-
-	if (MethodList.WeightedMean && MethodList.OSLOSEM)
-		vec.Weighted_OSEM.host(ArrayList.ele_weighted_osem);
-	if (MethodList.WeightedMean && MethodList.OSLMLEM)
-		vec.Weighted_MLEM.host(ArrayList.ele_weighted_mlem);
-	if (MethodList.WeightedMean && MethodList.BSREM)
-		vec.Weighted_BSREM.host(ArrayList.ele_weighted_bsrem);
-	if (MethodList.WeightedMean && MethodList.MBSREM)
-		vec.Weighted_MBSREM.host(ArrayList.ele_weighted_mbsrem);
-	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
-		vec.Weighted_ROSEM.host(ArrayList.ele_weighted_rosem);
-	if (MethodList.WeightedMean && MethodList.RBIOSL)
-		vec.Weighted_RBI.host(ArrayList.ele_weighted_rbi);
-	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
-		vec.Weighted_COSEM.host(ArrayList.ele_weighted_cosem);
-	
-	if (MethodList.TV && MethodList.OSLOSEM)
-		vec.TV_OSEM.host(ArrayList.ele_TV_osem);
-	if (MethodList.TV && MethodList.OSLMLEM)
-		vec.TV_MLEM.host(ArrayList.ele_TV_mlem);
-	if (MethodList.TV && MethodList.BSREM)
-		vec.TV_BSREM.host(ArrayList.ele_TV_bsrem);
-	if (MethodList.TV && MethodList.MBSREM)
-		vec.TV_MBSREM.host(ArrayList.ele_TV_mbsrem);
-	if (MethodList.TV && MethodList.ROSEMMAP)
-		vec.TV_ROSEM.host(ArrayList.ele_TV_rosem);
-	if (MethodList.TV && MethodList.RBIOSL)
-		vec.TV_RBI.host(ArrayList.ele_TV_rbi);
-	if (MethodList.TV && MethodList.OSLCOSEM > 0)
-		vec.TV_COSEM.host(ArrayList.ele_TV_cosem);
-
-	if (MethodList.AD && MethodList.OSLOSEM)
-		vec.AD_OSEM.host(ArrayList.ele_AD_osem);
-	if (MethodList.AD && MethodList.OSLMLEM)
-		vec.AD_MLEM.host(ArrayList.ele_AD_mlem);
-	if (MethodList.AD && MethodList.BSREM)
-		vec.AD_BSREM.host(ArrayList.ele_AD_bsrem);
-	if (MethodList.AD && MethodList.MBSREM)
-		vec.AD_MBSREM.host(ArrayList.ele_AD_mbsrem);
-	if (MethodList.AD && MethodList.ROSEMMAP)
-		vec.AD_ROSEM.host(ArrayList.ele_AD_rosem);
-	if (MethodList.AD && MethodList.RBIOSL)
-		vec.AD_RBI.host(ArrayList.ele_AD_rbi);
-	if (MethodList.AD && MethodList.OSLCOSEM > 0)
-		vec.AD_COSEM.host(ArrayList.ele_AD_cosem);
-
-	if (MethodList.APLS && MethodList.OSLOSEM)
-		vec.APLS_OSEM.host(ArrayList.ele_APLS_osem);
-	if (MethodList.APLS && MethodList.OSLMLEM)
-		vec.APLS_MLEM.host(ArrayList.ele_APLS_mlem);
-	if (MethodList.APLS && MethodList.BSREM)
-		vec.APLS_BSREM.host(ArrayList.ele_APLS_bsrem);
-	if (MethodList.APLS && MethodList.MBSREM)
-		vec.APLS_MBSREM.host(ArrayList.ele_APLS_mbsrem);
-	if (MethodList.APLS && MethodList.ROSEMMAP)
-		vec.APLS_ROSEM.host(ArrayList.ele_APLS_rosem);
-	if (MethodList.APLS && MethodList.RBIOSL)
-		vec.APLS_RBI.host(ArrayList.ele_APLS_rbi);
-	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
-		vec.APLS_COSEM.host(ArrayList.ele_APLS_cosem);
-
-	if (MethodList.TGV && MethodList.OSLOSEM)
-		vec.TGV_OSEM.host(ArrayList.ele_TGV_osem);
-	if (MethodList.TGV && MethodList.OSLMLEM)
-		vec.TGV_MLEM.host(ArrayList.ele_TGV_mlem);
-	if (MethodList.TGV && MethodList.BSREM)
-		vec.TGV_BSREM.host(ArrayList.ele_TGV_bsrem);
-	if (MethodList.TGV && MethodList.MBSREM)
-		vec.TGV_MBSREM.host(ArrayList.ele_TGV_mbsrem);
-	if (MethodList.TGV && MethodList.ROSEMMAP)
-		vec.TGV_ROSEM.host(ArrayList.ele_TGV_rosem);
-	if (MethodList.TGV && MethodList.RBIOSL)
-		vec.TGV_RBI.host(ArrayList.ele_TGV_rbi);
-	if (MethodList.TGV && MethodList.OSLCOSEM > 0)
-		vec.TGV_COSEM.host(ArrayList.ele_TGV_cosem);
-
-	if (MethodList.NLM && MethodList.OSLOSEM)
-		vec.NLM_OSEM.host(ArrayList.ele_NLM_osem);
-	if (MethodList.NLM && MethodList.OSLMLEM)
-		vec.NLM_MLEM.host(ArrayList.ele_NLM_mlem);
-	if (MethodList.NLM && MethodList.BSREM)
-		vec.NLM_BSREM.host(ArrayList.ele_NLM_bsrem);
-	if (MethodList.NLM && MethodList.MBSREM)
-		vec.NLM_MBSREM.host(ArrayList.ele_NLM_mbsrem);
-	if (MethodList.NLM && MethodList.ROSEMMAP)
-		vec.NLM_ROSEM.host(ArrayList.ele_NLM_rosem);
-	if (MethodList.NLM && MethodList.RBIOSL)
-		vec.NLM_RBI.host(ArrayList.ele_NLM_rbi);
-	if (MethodList.NLM && MethodList.OSLCOSEM > 0)
-		vec.NLM_COSEM.host(ArrayList.ele_NLM_cosem);
-
 	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM)
-			vec.custom_OSEM.host(ArrayList.ele_custom_osem);
-		if (MethodList.OSLMLEM)
-			vec.custom_MLEM.host(ArrayList.ele_custom_mlem);
-		if (MethodList.BSREM)
-			vec.custom_BSREM.host(ArrayList.ele_custom_bsrem);
-		if (MethodList.MBSREM)
-			vec.custom_MBSREM.host(ArrayList.ele_custom_mbsrem);
-		if (MethodList.ROSEMMAP)
-			vec.custom_ROSEM.host(ArrayList.ele_custom_rosem);
-		if (MethodList.RBIOSL)
-			vec.custom_RBI.host(ArrayList.ele_custom_rbi);
+		kk = w_vec.nTot;
 		if (MethodList.OSLCOSEM > 0) {
-			vec.custom_COSEM.host(ArrayList.ele_custom_cosem);
-			vec.C_osl.host(ArrayList.ele_c_osl_custom);
+			mxArray* apu = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apuF = (float*)mxGetSingles(apu);
+#else
+			float* apuF = (float*)mxGetData(apu);
+#endif
+			vec.C_osl.host(apuF);
+			af::sync();
+			mxSetCell(cell, static_cast<mwIndex>(w_vec.rekot[kk]), mxDuplicateArray(apu));
 		}
-		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI))
-			w_vec.D.host(ArrayList.ele_D_custom);
-	}
-
-	af::sync();
-
-	if (MethodList.MLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mlem));
-	oo++;
-	if (MethodList.OSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.osem));
-	oo++;
-	if (MethodList.MRAMLA)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.ramlaM));
-	oo++;
-	if (MethodList.RAMLA)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.ramla));
-	oo++;
-	if (MethodList.ROSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.rosem));
-	oo++;
-	if (MethodList.RBI)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.rbi));
-	oo++;
-	if (MethodList.DRAMA)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.drama));
-	oo++;
-	if (MethodList.COSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.cosem));
-	oo++;
-	if (MethodList.ECOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.ecosem));
-	oo++;
-	if (MethodList.ACOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.acosem));
-	oo++;
-
-	if (MethodList.MRP && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_osem));
-	oo++;
-	if (MethodList.MRP && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_mlem));
-	oo++;
-	if (MethodList.MRP && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_bsrem));
-	oo++;
-	if (MethodList.MRP && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_mbsrem));
-	oo++;
-	if (MethodList.MRP && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_rosem));
-	oo++;
-	if (MethodList.MRP && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_rbi));
-	oo++;
-	if (MethodList.MRP && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.mrp_cosem));
-	oo++;
-
-	if (MethodList.Quad && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_osem));
-	oo++;
-	if (MethodList.Quad && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_mlem));
-	oo++;
-	if (MethodList.Quad && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_bsrem));
-	oo++;
-	if (MethodList.Quad && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_mbsrem));
-	oo++;
-	if (MethodList.Quad && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_rosem));
-	oo++;
-	if (MethodList.Quad && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_rbi));
-	oo++;
-	if (MethodList.Quad && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.quad_cosem));
-	oo++;
-
-	if (MethodList.Huber && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_osem));
-	oo++;
-	if (MethodList.Huber && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_mlem));
-	oo++;
-	if (MethodList.Huber && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_bsrem));
-	oo++;
-	if (MethodList.Huber && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_mbsrem));
-	oo++;
-	if (MethodList.Huber && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_rosem));
-	oo++;
-	if (MethodList.Huber && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_rbi));
-	oo++;
-	if (MethodList.Huber && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.Huber_cosem));
-	oo++;
-
-	if (MethodList.L && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_osem));
-	oo++;
-	if (MethodList.L && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_mlem));
-	oo++;
-	if (MethodList.L && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_bsrem));
-	oo++;
-	if (MethodList.L && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_mbsrem));
-	oo++;
-	if (MethodList.L && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_rosem));
-	oo++;
-	if (MethodList.L && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_rbi));
-	oo++;
-	if (MethodList.L && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.L_cosem));
-	oo++;
-
-	if (MethodList.FMH && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_osem));
-	oo++;
-	if (MethodList.FMH && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_mlem));
-	oo++;
-	if (MethodList.FMH && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_bsrem));
-	oo++;
-	if (MethodList.FMH && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_mbsrem));
-	oo++;
-	if (MethodList.FMH && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_rosem));
-	oo++;
-	if (MethodList.FMH && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_rbi));
-	oo++;
-	if (MethodList.FMH && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.fmh_cosem));
-	oo++;
-
-	if (MethodList.WeightedMean && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_osem));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_mlem));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_bsrem));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_mbsrem));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_rosem));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_rbi));
-	oo++;
-	if (MethodList.WeightedMean && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.weighted_cosem));
-	oo++;
-
-	if (MethodList.TV && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_osem));
-	oo++;
-	if (MethodList.TV && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_mlem));
-	oo++;
-	if (MethodList.TV && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_bsrem));
-	oo++;
-	if (MethodList.TV && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_mbsrem));
-	oo++;
-	if (MethodList.TV && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_rosem));
-	oo++;
-	if (MethodList.TV && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_rbi));
-	oo++;
-	if (MethodList.TV && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TV_cosem));
-	oo++;
-
-	if (MethodList.AD && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_osem));
-	oo++;
-	if (MethodList.AD && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_mlem));
-	oo++;
-	if (MethodList.AD && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_bsrem));
-	oo++;
-	if (MethodList.AD && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_mbsrem));
-	oo++;
-	if (MethodList.AD && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_rosem));
-	oo++;
-	if (MethodList.AD && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_rbi));
-	oo++;
-	if (MethodList.AD && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.AD_cosem));
-	oo++;
-
-	if (MethodList.APLS && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_osem));
-	oo++;
-	if (MethodList.APLS && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_mlem));
-	oo++;
-	if (MethodList.APLS && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_bsrem));
-	oo++;
-	if (MethodList.APLS && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_mbsrem));
-	oo++;
-	if (MethodList.APLS && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_rosem));
-	oo++;
-	if (MethodList.APLS && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_rbi));
-	oo++;
-	if (MethodList.APLS && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.APLS_cosem));
-	oo++;
-
-	if (MethodList.TGV && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_osem));
-	oo++;
-	if (MethodList.TGV && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_mlem));
-	oo++;
-	if (MethodList.TGV && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_bsrem));
-	oo++;
-	if (MethodList.TGV && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_mbsrem));
-	oo++;
-	if (MethodList.TGV && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_rosem));
-	oo++;
-	if (MethodList.TGV && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_rbi));
-	oo++;
-	if (MethodList.TGV && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.TGV_cosem));
-	oo++;
-
-	if (MethodList.NLM && MethodList.OSLOSEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_osem));
-	oo++;
-	if (MethodList.NLM && MethodList.OSLMLEM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_mlem));
-	oo++;
-	if (MethodList.NLM && MethodList.BSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_bsrem));
-	oo++;
-	if (MethodList.NLM && MethodList.MBSREM)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_mbsrem));
-	oo++;
-	if (MethodList.NLM && MethodList.ROSEMMAP)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_rosem));
-	oo++;
-	if (MethodList.NLM && MethodList.RBIOSL)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_rbi));
-	oo++;
-	if (MethodList.NLM && MethodList.OSLCOSEM > 0)
-		mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.NLM_cosem));
-	oo++;
-
-
-	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_osem));
-		oo++;
-		if (MethodList.OSLMLEM)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_mlem));
-		oo++;
-		if (MethodList.BSREM)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_bsrem));
-		oo++;
-		if (MethodList.MBSREM)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_mbsrem));
-		oo++;
-		if (MethodList.ROSEMMAP)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_rosem));
-		oo++;
-		if (MethodList.RBIOSL)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_rbi));
-		oo++;
-		if (MethodList.OSLCOSEM > 0)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.custom_cosem));
-		oo++;
-		if (MethodList.OSLCOSEM > 0)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.c_osl_custom));
-		oo++;
-		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBI || MethodList.RBIOSL)
-			mxSetCell(cell, static_cast<mwIndex>(oo), mxDuplicateArray(ArrayList.D_custom));
-		oo++;
+		kk++;
+		if (MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBI || MethodList.RBIOSL || MethodList.PKMA) {
+			mwSize dimmiD[3] = { static_cast<mwSize>(0), static_cast<mwSize>(0), static_cast<mwSize>(0) };
+			for (int ii = 0; ii < 3; ii++)
+				dimmiD[ii] = dimmi[ii];
+			mxArray* apu = mxCreateNumericArray(3, dimmiD, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* apuF = (float*)mxGetSingles(apu);
+#else
+			float* apuF = (float*)mxGetData(apu);
+#endif
+			w_vec.D.host(apuF);
+			af::sync();
+			mxSetCell(cell, static_cast<mwIndex>(w_vec.rekot[kk]), mxDuplicateArray(apu));
+		}
+		kk++;
 		if (MethodList.MBSREM) {
 			mxArray* epsilon = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* epsilon1 = (float*)mxGetSingles(epsilon);
+#else
 			float* epsilon1 = (float*)mxGetData(epsilon);
+#endif
 			epsilon1[0] = w_vec.epsilon_mramla;
-			mxSetCell(cell, static_cast<mwIndex>(oo), (epsilon));
+			mxSetCell(cell, static_cast<mwIndex>(w_vec.rekot[kk]), (epsilon));
 		}
-		oo++;
+		kk++;
 		if (MethodList.MBSREM) {
 			mxArray* UU = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+			float* U = (float*)mxGetSingles(UU);
+#else
 			float* U = (float*)mxGetData(UU);
+#endif
 			U[0] = w_vec.U;
-			mxSetCell(cell, static_cast<mwIndex>(oo), (UU));
+			mxSetCell(cell, static_cast<mwIndex>(w_vec.rekot[kk]), (UU));
 		}
-		oo++;
 	}
-	else
-		oo += 9u;
-		//oo += 16u;
 }
 
 // Compute the epsilon value for MBSREM and MRAMLA
 float MBSREM_epsilon(const af::array & Sino, const float epps, const uint32_t randoms_correction, const af::array& rand, const af::array& D, 
-	const bool TOF, const int64_t nBins)
+	const bool TOF, const int64_t nBins, const bool CT)
 {
-	af::array hk_summa = Sino * af::log(Sino) - Sino;
-	hk_summa(af::isNaN(hk_summa)) = 0.f;
-	af::array P_Sino, apu, Iind;
-	if (TOF && randoms_correction) {
-		af::array rInd = rand == 0.f;
-		P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
-		apu = D + af::tile(rand, nBins);
-		apu = af::sum(Sino * af::log(apu) - apu);
-		hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & af::tile(rInd, nBins)), batchMinus);
-	}
-	else {
+	float eps;
+	if (CT) {
+		af::array hk_summa = -af::exp(-Sino) / Sino - Sino;
+		hk_summa(af::isNaN(hk_summa)) = 0.f;
+		af::array P_Sino, apu, Iind;
 		if (randoms_correction == 1u) {
 			Iind = (Sino > 0.f & rand == 0.f);
 			if (af::sum<float>(Iind) == 0.f)
 				return 1e8f;
 			P_Sino = Sino(Iind);
 			apu = D + rand;
-			apu = af::sum(Sino * af::log(apu) - apu);
+			apu = af::sum(-af::exp(-apu) / Sino - apu);
 		}
 		else {
 			Iind = (Sino > 0.f);
 			P_Sino = Sino(Iind);
-			apu = af::sum(Sino * af::log(D) - D);
+			apu = af::sum(-af::exp(-D) / Sino - D);
 		}
 		if (randoms_correction == 1u)
 			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
 		else
 			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
+		//if (DEBUG) {
+		//	mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+		//	mexEvalString("pause(.0001);");
+		//}
+		af::array epsilon = (af::min)(P_Sino, af::log(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+		eps = af::min<float>(epsilon);
 	}
-	//if (DEBUG) {
-	//	mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
-	//	mexEvalString("pause(.0001);");
-	//}
-	af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
-	float eps;
-	eps = af::min<float>(epsilon);
-	eps = eps <= 0.f ? af::min<float>(P_Sino) : eps;
+	else {
+		af::array hk_summa = Sino * af::log(Sino) - Sino;
+		hk_summa(af::isNaN(hk_summa)) = 0.f;
+		af::array P_Sino, apu, Iind;
+		if (TOF && randoms_correction) {
+			af::array rInd = rand == 0.f;
+			P_Sino = Sino(Sino > 0.f & af::tile(rInd, nBins));
+			apu = D + af::tile(rand, nBins);
+			apu = af::sum(Sino * af::log(apu) - apu);
+			hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Sino > 0.f & af::tile(rInd, nBins)), batchMinus);
+		}
+		else {
+			if (randoms_correction == 1u) {
+				Iind = (Sino > 0.f & rand == 0.f);
+				if (af::sum<float>(Iind) == 0.f)
+					return 1e8f;
+				P_Sino = Sino(Iind);
+				apu = D + rand;
+				apu = af::sum(Sino * af::log(apu) - apu);
+			}
+			else {
+				Iind = (Sino > 0.f);
+				P_Sino = Sino(Iind);
+				apu = af::sum(Sino * af::log(D) - D);
+			}
+			if (randoms_correction == 1u)
+				hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
+			else
+				hk_summa = af::batchFunc(af::sum(hk_summa), hk_summa(Iind), batchMinus);
+		}
+		//if (DEBUG) {
+		//	mexPrintf("exp = %f\n", af::min<float>(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+		//	mexEvalString("pause(.0001);");
+		//}
+		af::array epsilon = (af::min)(P_Sino, af::exp(af::batchFunc(apu, hk_summa, batchMinus) / P_Sino));
+		eps = af::min<float>(epsilon);
+	}
+	eps = eps <= 0.f ? epps : eps;
 	return eps;
 }
 
@@ -2137,8 +1388,11 @@ af::array padding(const af::array& im, const uint32_t Nx, const uint32_t Ny, con
 			padd = moddims(im, Nx, Ny, Nz);
 		else
 			padd = im;
-		af::array out = af::join(0, af::flip(padd(af::seq(static_cast<double>(Ndx)), af::span, af::span), 0), padd, af::flip(padd(af::seq(static_cast<double>(padd.dims(0) - Ndx), static_cast<double>(padd.dims(0) - 1)), af::span, af::span), 0));
-		out = af::join(1, af::flip(out(af::span, af::seq(static_cast<double>(Ndy)), af::span), 1), out, af::flip(out(af::span, af::seq(static_cast<double>(out.dims(1) - Ndy), static_cast<double>(out.dims(1) - 1)), af::span), 1));
+		af::array out = padd;
+		if (Ndx > 0)
+			out = af::join(0, af::flip(padd(af::seq(static_cast<double>(Ndx)), af::span, af::span), 0), padd, af::flip(padd(af::seq(static_cast<double>(padd.dims(0) - Ndx), static_cast<double>(padd.dims(0) - 1)), af::span, af::span), 0));
+		if (Ndy > 0)
+			out = af::join(1, af::flip(out(af::span, af::seq(static_cast<double>(Ndy)), af::span), 1), out, af::flip(out(af::span, af::seq(static_cast<double>(out.dims(1) - Ndy), static_cast<double>(out.dims(1) - 1)), af::span), 1));
 		if (Nz == 1 || Ndz == 0) {
 		}
 		else {
@@ -2158,17 +1412,21 @@ af::array OSL(const af::array &Summ, const af::array &dU, const float beta, cons
 {
 	af::array output = (Summ + beta * dU + epps);
 	//output(output < epps) = epps;
+	//if (DEBUG) {
+	//	mexPrintf("beta = %f\n", beta);
+	//}
 	return output;
 }
 
 af::array MBSREM(const af::array & im, const af::array & rhs, const float U, const af::array & pj3, const float* lam, const uint32_t iter, const uint32_t im_dim,
 	const float beta, const af::array &dU, const af::array & Summ, const float epps)
 {
-	af::array UU = af::constant(0.f, im_dim);
+	//af::array UU = af::constant(0.f, im_dim);
 	af::array output;
 	const af::array pp = im < (U / 2.f);
-	UU(pp) = im(pp) / (pj3(pp) + epps);
-	UU(!pp) = (U - im(!pp)) / (pj3(!pp) + epps);
+	//UU(pp) = im(pp);
+	af::array UU = im / pj3;
+	UU(!pp) = (U - im(!pp)) / (pj3(!pp));
 	if (beta == 0.f)
 		output = im + lam[iter] * UU * (rhs - Summ);
 	else
@@ -2250,6 +1508,17 @@ af::array COSEM(const af::array & im, const af::array & C_co, const af::array & 
 	return output;
 }
 
+af::array PKMA(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const float* alpha, const float* sigma, const af::array& D, 
+	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const float epps, const float beta, const af::array& dU)
+{
+	const af::array S = (im + epps)  / D;
+	const af::array im_ = im;
+	af::array im_apu = im - lam[iter] * S * (Summ - rhs + beta * dU);
+	im_apu(im_apu < epps) = epps;
+	uint32_t ind = iter * subsets + osa_iter;
+	im_apu = (1.f - alpha[ind]) * im_ + alpha[ind] * (sigma[ind] * im_apu);
+	return im_apu;
+}
 af::array MRP(const af::array& im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float epps,
 	const af::array& offsets, const bool med_no_norm, const uint32_t im_dim, const kernelStruct& OpenCLStruct)
 {
@@ -2259,12 +1528,17 @@ af::array MRP(const af::array& im, const uint32_t medx, const uint32_t medy, con
 	uint32_t kernelIndMed = 0U;
 	const af::dim4 dimmi(padd.dims(0), padd.dims(1), padd.dims(2));
 	cl::NDRange global_size(padd.dims(0), padd.dims(1), padd.dims(2));
+	//cl::NDRange local_size(64U);
 	af::array grad = af::constant(0.f, dimmi);
 	padd = af::flat(padd);
 	grad = af::flat(grad);
 	cl::Buffer d_grad = cl::Buffer(*grad.device<cl_mem>(), true);
 	cl::Buffer d_padd = cl::Buffer(*padd.device<cl_mem>(), true);
+	if (DEBUG) {
+		mexPrintf("padd = %f\n", af::sum<float>(padd));
+	}
 	af::sync();
+	(*OpenCLStruct.af_queue).finish();
 	kernelMed.setArg(kernelIndMed++, d_padd);
 	kernelMed.setArg(kernelIndMed++, d_grad);
 	kernelMed.setArg(kernelIndMed++, Nx);
@@ -2283,17 +1557,57 @@ af::array MRP(const af::array& im, const uint32_t medx, const uint32_t medy, con
 	status = (*OpenCLStruct.af_queue).finish();
 	grad.unlock();
 	padd.unlock();
+	af::sync();
+#else
+	CUresult status = CUDA_SUCCESS;
+	const af::dim4 dimmi(padd.dims(0), padd.dims(1), padd.dims(2));
+	af::array grad = af::constant(0.f, dimmi);
+	padd = af::flat(padd);
+	grad = af::flat(grad);
+	CUdeviceptr* d_grad = grad.device<CUdeviceptr>();
+	CUdeviceptr* d_padd = padd.device<CUdeviceptr>();
+	af::sync();
+	void* args[] = { reinterpret_cast<void*>(&d_padd), reinterpret_cast<void*>(&d_grad), (void*)&Nx, (void*)&Ny , (void*)&Nz};
+	status = cuLaunchKernel(OpenCLStruct.kernelMed, dimmi[0], dimmi[1], dimmi[2], 1, 1, 1, 0, *OpenCLStruct.af_cuda_stream, &args[0], 0);
+	if (status != CUDA_SUCCESS) {
+		std::cerr << getErrorString(status) << std::endl;
+		mexPrintf("Failed to launch the median filter kernel\n");
+		mexEvalString("pause(.0001);");
+	}
+	status = cuCtxSynchronize();
+	if (status != CUDA_SUCCESS) {
+		std::cerr << getErrorString(status) << std::endl;
+		mexPrintf("Queue finish failed after kernel\n");
+		mexEvalString("pause(.0001);");
+	}
+	grad.unlock();
+	padd.unlock();
+	if (DEBUG) {
+		mexPrintf("dims(0) = %d\n", dimmi[0]);
+		mexPrintf("dims(1) = %d\n", dimmi[1]);
+		mexPrintf("dims(2) = %d\n", dimmi[2]);
+		mexPrintf("grad = %f\n", af::sum<float>(grad));
+		mexPrintf("padd = %f\n", af::sum<float>(padd));
+	}
+	//padd = af::flat(padd);
+	//af::array grad = af::median(af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1)), 1);
+#endif
 	grad = af::moddims(grad, dimmi);
 	grad = grad(af::seq(medx, Nx + medx - 1), af::seq(medy, Ny + medy - 1), af::seq(medz, Nz + medz - 1));
-	grad = af::flat(grad);
-#else
-	padd = af::flat(padd);
-	af::array grad = af::median(af::moddims(padd(af::flat(offsets)), im_dim, offsets.dims(1)), 1);
-#endif
+	grad = af::flat(grad) + epps;
+	//if (DEBUG) {
+	//	mexPrintf("grad = %f\n", af::sum<float>(grad));
+	//	mexPrintf("im = %f\n", af::sum<float>(im));
+	//	mexPrintf("erotus = %f\n", af::sum<float>(im - grad));
+	//}
 	if (med_no_norm)
 		grad = im - grad;
 	else
-		grad = (im - grad) / (grad + epps);
+		grad = (im - (grad)) / (grad);
+	af::sync();
+	if (DEBUG) {
+		mexPrintf("grad2 = %f\n", af::sum<float>(grad));
+	}
 	return grad;
 }
 
@@ -2816,331 +2130,55 @@ void deblur(af::array& vec, const af::array& g, const uint32_t Nx, const uint32_
 
 void computeDeblur(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
 	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter) {
-	if (MethodList.OSEM) {
-		deblur(vec.OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
 
-	if (MethodList.MRAMLA) {
-		deblur(vec.MRAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.RAMLA) {
-		deblur(vec.RAMLA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.ROSEM) {
-		deblur(vec.ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.RBI) {
-		deblur(vec.RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.DRAMA) {
-		deblur(vec.DRAMA, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.COSEM) {
-		deblur(vec.COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.ECOSEM) {
-		deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.ACOSEM) {
-		deblur(vec.ACOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-
-	if (MethodList.MRP) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.MRP_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.MRP_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.MRP_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.MRP_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.MRP_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.MRP_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-
-	if (MethodList.Quad) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.Quad_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.Quad_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.Quad_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.Quad_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.Quad_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Quad_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-
-	if (MethodList.Huber) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.Huber_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.Huber_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.Huber_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.Huber_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.Huber_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Huber_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-
-	if (MethodList.L) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.L_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.L_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.L_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.L_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.L_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.L_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.FMH) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.FMH_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.FMH_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.FMH_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.FMH_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.FMH_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.FMH_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.WeightedMean) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.Weighted_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.Weighted_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.Weighted_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.Weighted_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.Weighted_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.Weighted_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.TV) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.TV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.TV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.TV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.TV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.TV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.AD) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.AD_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.AD_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.AD_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.AD_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.AD_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.AD_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.APLS) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.APLS_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.APLS_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.APLS_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.APLS_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.APLS_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.APLS_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.TGV) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.TGV_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.TGV_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.TGV_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.TGV_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.TGV_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.TGV_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.NLM) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.NLM_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.NLM_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.NLM_MBSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.NLM_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.NLM_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.NLM_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.CUSTOM) {
-		if (MethodList.OSLOSEM) {
-			deblur(vec.custom_OSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.BSREM) {
-			deblur(vec.custom_BSREM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.MBSREM) {
-			deblur(vec.ECOSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.ROSEMMAP) {
-			deblur(vec.custom_ROSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.RBIOSL) {
-			deblur(vec.custom_RBI, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.OSLCOSEM > 0) {
-			deblur(vec.custom_COSEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
+	for (uint32_t kk = 0U; kk < w_vec.nTot; kk++)
+		deblur(vec.imEstimates[kk], g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
 }
 
 
-void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
-	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter) {
-	if (MethodList.MLEM) {
-		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-	}
-	if (MethodList.OSLMLEM) {
-		if (MethodList.MRP) {
-			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.Quad) {
-			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.Huber) {
-			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.L) {
-			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.FMH) {
-			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.WeightedMean) {
-			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.TV) {
-			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.AD) {
-			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.APLS) {
-			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.TGV) {
-			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-		if (MethodList.NLM) {
-			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-	if (MethodList.CUSTOM) {
-		if (MethodList.OSLMLEM) {
-			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
-		}
-	}
-}
+//void computeDeblurMLEM(AF_im_vectors& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec,
+//	const RecMethods& MethodList, const uint32_t iter, const uint32_t subsets, const float epps, const bool saveIter) {
+//	if (MethodList.MLEM) {
+//		deblur(vec.MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//	}
+//	if (MethodList.OSLMLEM) {
+//		if (MethodList.MRP) {
+//			deblur(vec.MRP_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.Quad) {
+//			deblur(vec.Quad_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.Huber) {
+//			deblur(vec.Huber_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.L) {
+//			deblur(vec.L_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.FMH) {
+//			deblur(vec.FMH_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.WeightedMean) {
+//			deblur(vec.Weighted_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.TV) {
+//			deblur(vec.TV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.AD) {
+//			deblur(vec.AD_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.APLS) {
+//			deblur(vec.APLS_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.TGV) {
+//			deblur(vec.TGV_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//		if (MethodList.NLM) {
+//			deblur(vec.NLM_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//	}
+//	if (MethodList.CUSTOM) {
+//		if (MethodList.OSLMLEM) {
+//			deblur(vec.custom_MLEM, g, Nx, Ny, Nz, w_vec, iter, subsets, epps, saveIter);
+//		}
+//	}
+//}
