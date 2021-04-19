@@ -315,7 +315,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #ifdef MBSREM
 	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, float* axCOSEM, 
 	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, float* minimi, const uchar MBSREM_prepass,
-	const __global float* d_sc_ra, __global float* d_Amin, __global float* d_ACOSEM_lhs, const uint idx
+	const __global float* d_sc_ra, __global float* d_Amin, __global float* d_ACOSEM_lhs, const size_t idx
 #else
 	__global CAST* d_rhs_OSEM, const uint im_dim, __constant uchar* MethodList
 #endif
@@ -329,7 +329,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			break;
 		uint local_ind = convert_uint_sat(uu) * d_N + zz;
 		if (FP_bool) {
+#ifndef CT
 			*temp += (local_ele * d_N2);
+#endif
 #if defined(ATN) || defined(FP)
 			for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATN
@@ -354,7 +356,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #endif
 		}
 		else if (RHS) {
+#ifndef CT
 			local_ele *= *temp;
+#endif
 #ifdef MBSREM
 			if (d_alku == 0 && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
 				if (local_ele < *minimi && local_ele > 0.f)
@@ -408,7 +412,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #endif
 		}
 		else {
+#ifndef CT
 			local_ele *= *temp;
+#endif
 			for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
@@ -425,7 +431,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 			break;
 		uint local_ind = uu * d_N + zz; 
 		if (FP_bool) {
+#ifndef CT
 			*temp += (local_ele * d_N2);
+#endif
 #ifdef MBSREM
 			if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 				*axCOSEM += (local_ele * d_OSEM[local_ind]);
@@ -444,7 +452,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #endif
 		}
 		else if (RHS) {
+#ifndef CT
 			local_ele *= *temp;
+#endif
 #ifdef MBSREM
 			if (d_alku == 0 && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
 				if (local_ele < *minimi && local_ele > 0.f)
@@ -498,7 +508,9 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #endif
 		}
 		else {
+#ifndef CT
 			local_ele *= *temp;
+#endif
 			for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 				atom_add(&Summ[local_ind], convert_long(local_ele * TH));
@@ -511,6 +523,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 	}
 #ifdef MBSREM
 	if (!RHS) {
+#ifndef CT
 		*temp = 1.f / *temp;
 #ifdef ATN
 		* temp *= native_exp(jelppi);
@@ -522,6 +535,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 		* temp *= d_scat[idx];
 #endif
 		* temp *= global_factor;
+#endif
 	}
 	else {
 		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
@@ -534,6 +548,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 		}
 	}
 #else
+#ifndef CT
 	if (FP_bool) {
 		*temp = 1.f / *temp;
 #ifdef ATN
@@ -547,5 +562,6 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 #endif
 		* temp *= global_factor;
 	}
+#endif
 #endif
 }

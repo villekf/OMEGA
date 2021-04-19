@@ -39,7 +39,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 			else
 				local_ele = V[__float2uint_rn((local_ele - bmin) * CC)];
 			if (FP) {
-				*temp += (local_ele * d_N2);
+#ifndef CT
+				* temp += (local_ele * d_N2);
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 #ifdef ATN
 					if (zz == (int)(z_loop) && uu == (int)(apu))
@@ -52,7 +54,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -69,7 +73,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					atomicAdd(&Summ[local_ind], local_ele);
 					local_ind += d_NN;
@@ -86,7 +92,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				local_ele = V[__float2uint_rn((local_ele - bmin) * CC)];
 			unsigned int local_ind = uu * d_N + zz * Nyx;
 			if (FP) {
-				*temp += (local_ele * d_N2);
+#ifndef CT
+				* temp += (local_ele * d_N2);
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -95,7 +103,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -112,7 +122,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
@@ -135,7 +147,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				local_ele = V[__float2uint_rn((local_ele - bmin) * CC)];
 			unsigned int local_ind = uu * d_N + zz * Nyx;
 			if (FP) {
-				*temp += (local_ele * d_N2);
+#ifndef CT
+				* temp += (local_ele * d_N2);
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -144,7 +158,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -161,7 +177,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
@@ -182,7 +200,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				local_ele = V[__float2uint_rn((local_ele - bmin) * CC)];
 			unsigned int local_ind = uu * d_N + zz * Nyx;
 			if (FP) {
-				*temp += (local_ele * d_N2);
+#ifndef CT
+				* temp += (local_ele * d_N2);
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -191,7 +211,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -208,7 +230,9 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (unsigned int kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
@@ -220,6 +244,7 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 			}
 		}
 	}
+#ifndef CT
 	if (FP) {
 		*temp = 1. / *temp;
 #ifdef ATN
@@ -230,4 +255,5 @@ __device__ void vol_perpendicular_multi_3D(const float* center1, const float cen
 #endif
 		*temp *= global_factor;
 	}
+#endif
 }

@@ -112,12 +112,15 @@ __device__ unsigned int compute_ind_orth(const int tempi, const unsigned int tem
 	return local_ind;
 }
 
+//#ifdef AF
 #ifndef MBSREM
 __device__ void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float local_ele, float* temp, float* ax, const bool no_norm,
 	CAST* Summ, CAST* d_rhs_OSEM, const float local_sino, const float* d_OSEM, const unsigned int local_ind,
 	const unsigned int im_dim, const unsigned char* MethodList) {
 	if (RHS) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 		rhs(MethodList, local_ele, ax, local_ind, im_dim, d_rhs_OSEM);
 		if (no_norm == 0u)
 #ifdef ATOMIC
@@ -127,7 +130,9 @@ __device__ void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float lo
 #endif
 	}
 	else if (SUMMA) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 #ifdef ATOMIC
 		atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
 #else
@@ -135,7 +140,9 @@ __device__ void computeIndicesOrth_af(const bool RHS, const bool SUMMA, float lo
 #endif
 	}
 	else {
-		*temp += local_ele;
+#ifndef CT
+		* temp += local_ele;
+#endif
 		if (local_sino > 0.f) {
 			denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 		}
@@ -146,7 +153,9 @@ __device__ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float*
 	const float* d_COSEM, const unsigned int local_ind, float* d_E, const RecMethodsOpenCL MethodListOpenCL, 
 	CAST* d_co, CAST* d_aco, float* minimi, const unsigned int d_alku, const unsigned char MBSREM_prepass, float* axCOSEM, const unsigned int idx) {
 	if (RHS) {
+#ifndef CT
 		local_ele *= *temp;
+#endif
 		if (d_alku == 0 && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
 			if (local_ele < *minimi && local_ele > 0.f)
 				*minimi = local_ele;
@@ -176,13 +185,58 @@ __device__ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float*
 			*axACOSEM += (local_ele * d_COSEM[local_ind]);
 	}
 	else {
-		*temp += local_ele;
+#ifndef CT
+		* temp += local_ele;
+#endif
 		if (local_sino > 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
 			*axCOSEM += (local_ele * d_COSEM[local_ind]);
 		}
 	}
 }
 #endif
+//#else
+//__device__ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float* temp, float* ax, const bool no_norm,
+//	CAST* Summ, CAST* d_rhs_OSEM, const float local_sino, const float* d_OSEM, const unsigned int local_ind) {
+//#ifndef DEC
+//	if (RHS) {
+//#ifndef CT
+//		local_ele *= *temp;
+//#endif
+//#ifdef ATOMIC
+//		atomicAdd(&d_rhs_OSEM[local_ind], __float2ull_rn(local_ele * *ax * TH));
+//#else
+//		atomicAdd(&d_rhs_OSEM[local_ind], (local_ele * *ax));
+//#endif
+//		if (no_norm == 0u)
+//#ifdef ATOMIC
+//			atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
+//#else
+//			atomicAdd(&Summ[local_ind], local_ele);
+//#endif
+//	}
+//	else if (SUMMA) {
+//		local_ele *= *temp;
+//#ifdef ATOMIC
+//		atomicAdd(&Summ[local_ind], __float2ull_rn(local_ele * TH));
+//#else
+//		atomicAdd(&Summ[local_ind], local_ele);
+//#endif
+//	}
+//	else {
+//#endif
+//#ifndef CT
+//		* temp += local_ele;
+//#endif
+//#ifdef FP
+//		if (local_sino != 0.f) {
+//			denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
+//		}
+//#endif
+//#ifndef DEC
+//	}
+//#endif
+//}
+//#endif
 
 
 #ifndef PSF_LIMIT

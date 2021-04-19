@@ -18,7 +18,7 @@
 ***************************************************************************/
 #pragma once
 
-inline void vol_perpendicular_multi_3D(__constant float* center1, const float center2, __constant float* z_center,
+void vol_perpendicular_multi_3D(__constant float* center1, const float center2, __constant float* z_center,
 	float* temp, const uint d_attenuation_correction, const uint d_normalization, float* ax, const float d_b, const float d, const float d_d1,
 	const uint d_N1, const uint d_N2, const uint z_loop, const __global float* d_atten, const float d_norm, const float local_sino, const uint d_N, 
 	const uint d_NN, const __global float* d_OSEM, const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, 
@@ -39,7 +39,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 			else
 				local_ele = V[convert_uint_rte((local_ele - bmin) * CC)];
 			if (FP_bool) {
+#ifndef CT
 				*temp += (local_ele * d_N2);
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (d_attenuation_correction && zz == convert_int_sat(z_loop) && uu == convert_int_sat(apu))
 						jelppi += (d_d1 * -d_atten[local_ind]);
@@ -50,7 +52,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -67,7 +71,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					atomicAdd_g_f(&Summ[local_ind], local_ele);
 					local_ind += d_NN;
@@ -84,7 +90,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				local_ele = V[convert_uint_rte((local_ele - bmin) * CC)];
 			uint local_ind = uu * d_N + zz * Nyx;
 			if (FP_bool) {
+#ifndef CT
 				*temp += (local_ele * d_N2);
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -93,7 +101,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -110,7 +120,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
@@ -133,7 +145,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				local_ele = V[convert_uint_rte((local_ele - bmin) * CC)];
 			uint local_ind = uu * d_N + zz * Nyx;
 			if (FP_bool) {
+#ifndef CT
 				*temp += (local_ele * d_N2);
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -142,7 +156,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -159,7 +175,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
@@ -180,7 +198,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				local_ele = V[convert_uint_rte((local_ele - bmin) * CC)];
 			uint local_ind = uu * d_N + zz * Nyx;
 			if (FP_bool) {
+#ifndef CT
 				*temp += (local_ele * d_N2);
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (local_sino > 0.f) {
 						denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
@@ -189,7 +209,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else if (RHS) {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 					if (no_norm == 0u)
 #ifdef ATOMIC
@@ -206,7 +228,9 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 				}
 			}
 			else {
+#ifndef CT
 				local_ele *= *temp;
+#endif
 				for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATOMIC
 					atom_add(&Summ[local_ind], convert_ulong_sat(local_ele * TH));
@@ -218,6 +242,7 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 			}
 		}
 	}
+#ifndef CT
 	if (FP_bool) {
 		*temp = 1. / *temp;
 		if (d_attenuation_correction)
@@ -226,4 +251,5 @@ inline void vol_perpendicular_multi_3D(__constant float* center1, const float ce
 			* temp *= d_norm;
 		*temp *= global_factor;
 	}
+#endif
 }
