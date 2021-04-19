@@ -59,7 +59,7 @@ pp = im < (U/2);
 UU = zeros(size(im,1),1);
 UU(pp) = im(pp)./(varargin{2}(pp)+epps);
 UU(~pp) = (U-im(~pp))./(varargin{2}(~pp)+epps);
-if length(varargin) > 13 && varargin{14}.use_psf
+if length(varargin) > 13 && ~isempty(varargin{14}) && varargin{14}.use_psf
     im_apu = computeConvolution(im, varargin{14}, varargin{15}, varargin{16}, varargin{17}, varargin{18});
 else
     im_apu = im;
@@ -78,8 +78,13 @@ if randoms_correction
 else
     pp = l_mramla <= epsilon_mramla & varargin{5} > 0;
 end
-hr = varargin{5}./l_mramla - 1;
-hr(pp) = varargin{5}(pp)./epsilon_mramla - 1 - (varargin{5}(pp)./epsilon_mramla.^2).*(l_mramla(pp) - epsilon_mramla);
+if length(varargin) > 13 && ~isempty(varargin{14}) && varargin{14}.CT
+    hr = varargin{5}./exp(l_mramla) - 1;
+    hr(pp) = varargin{5}(pp)./exp(epsilon_mramla) - 1 - (varargin{5}(pp)./exp(epsilon_mramla)).*(l_mramla(pp) - epsilon_mramla);
+else
+    hr = varargin{5}./l_mramla - 1;
+    hr(pp) = varargin{5}(pp)./epsilon_mramla - 1 - (varargin{5}(pp)./epsilon_mramla.^2).*(l_mramla(pp) - epsilon_mramla);
+end
 if is_transposed
     rhs = varargin{3} * hr;
 else

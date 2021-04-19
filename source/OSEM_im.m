@@ -3,8 +3,8 @@ function im = OSEM_im(im, varargin)
 %estimates
 %
 % Examples:
-%   im = OSEM_im(im, A, epps, uu, Summ)
-%   im = OSEM_im(im, RHS, Summ, epps)
+%   im = OSEM_im(im, A, epps, uu, Summ, SinDelayed, is_transposed, options)
+%   im = OSEM_im(im, RHS, Summ)
 % INPUTS:
 %   im = The current estimate
 %   A = The (transpose of the) (sparse) system matrix at current subset
@@ -45,12 +45,21 @@ if nargin >= 7
     else
         im_apu = im;
     end
-    if varargin{6}
-        FP = varargin{1}' * im_apu;
-        BP = varargin{1}*(varargin{3}./(FP + varargin{2} + varargin{5})) + varargin{2};
+    if length(varargin) > 4 && isempty(varargin{5})
+        varargin{5} = 0;
+    end
+    if length(varargin) > 5 && ~isempty(varargin{6}) && varargin{6}
+        FP = varargin{1}' * im_apu + varargin{2} + varargin{5};
+        if length(varargin) > 6 && ~isempty(varargin{7}) && isfield(varargin{7},'CT') && varargin{7}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1}*(varargin{3}./(FP)) + varargin{2};
     else
-        FP = varargin{1} * im_apu;
-        BP = varargin{1}' * (varargin{3} ./ (FP + varargin{2} + varargin{5})) + varargin{2};
+        FP = varargin{1} * im_apu + varargin{2} + varargin{5};
+        if length(varargin) > 6 && ~isempty(varargin{7}) && isfield(varargin{7},'CT') && varargin{7}.CT
+            FP = exp(FP);
+        end
+        BP = varargin{1}' * (varargin{3} ./ (FP)) + varargin{2};
     end
     % Compute PSF blurring
     if length(varargin) > 6 && ~isempty(varargin{7}) && varargin{7}.use_psf
