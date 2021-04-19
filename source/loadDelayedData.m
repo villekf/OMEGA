@@ -7,7 +7,7 @@ function options = loadDelayedData(options)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2021 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -33,7 +33,9 @@ FileName = fullfile(d_fpath, d_file);
 storedStructure = load(FileName);
 variables = fieldnames(storedStructure);
 
-if isfield(storedStructure, 'SinDelayed') && ~options.use_raw_data
+if isfield(storedStructure, 'raw_SinDelayed') && ~options.use_raw_data
+    options.SinDelayed = storedStructure.raw_SinDelayed;
+elseif isfield(storedStructure, 'SinDelayed') && ~options.use_raw_data
     options.SinDelayed = storedStructure.SinDelayed;
 elseif isfield(storedStructure, 'delayed_coincidences') && options.use_raw_data
     options.SinDelayed = storedStructure.delayed_coincidences;
