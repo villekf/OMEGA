@@ -43,7 +43,9 @@ im = reshape(im, Nx, Ny, Nz);
 [n,m,c] = size(im);
 
 proj   = @(x1,x2,x3) max(1,sqrt(x1.^2+x2.^2+x3.^2)/beta);  % projection on C_beta
+proj2D   = @(x1,x2) max(1,sqrt(x1.^2+x2.^2)/beta);  % projection on C_beta
 proj2  = @(x1,x2,x3,x4) max(1,sqrt(x1.^2+x2.^2+x3.^2+3*x4.^2)/alpha); % on C^2_alpha
+proj22D  = @(x1,x2,x4) max(1,sqrt(x1.^2+x2.^2+2*x4.^2)/alpha); % on C^2_alpha
 dx     = @(x) [diff(x,1,1); x(1,:,:)-x(n,:,:)];       % discrete x-derivative
 dy     = @(x) [diff(x,1,2), x(:,1,:)-x(:,m,:)];       % discrete y-derivative
 dz     = @(x) cat(3,diff(x,1,3), x(:,:,1)-x(:,:,c));       % discrete z-derivative
@@ -78,50 +80,83 @@ for iter = 1:maxits
     ukp = ub + im;
     eta1 = dx(ukp) - vb1;
     eta2 = dy(ukp) - vb2;
-    eta3 = dz(ukp) - vb3;
+    if Nz > 1
+        eta3 = dz(ukp) - vb3;
+    end
     y1 = p1 + sigma * eta1;
     y2 = p2 + sigma * eta2;
-    y3 = p3 + sigma * eta3;
-    my = proj(y1,y2,y3);
+    if Nz > 1
+        y3 = p3 + sigma * eta3;
+        my = proj(y1,y2,y3);
+    else
+        my = proj2D(y1,y2);
+    end
     p1 = y1./my;
     p2 = y2./my;
-    p3 = y3./my;
+    if Nz > 1
+        p3 = y3./my;
+    end
     
     % update dual (q): (zeta1,zeta2,zeta3) = E(v); v: (zeta4,zeta5) = -p - div q
     zeta1 = dx(vb1);
     zeta2 = dy(vb2);
-    zeta3 = dz(vb3);
-    zeta4 = (dy(vb1) + dy(vb3) + dx(vb2) + dx(vb3) + dz(vb1) + dz(vb2))/6;
+    if Nz > 1
+        zeta3 = dz(vb3);
+        zeta4 = (dy(vb1) + dy(vb3) + dx(vb2) + dx(vb3) + dz(vb1) + dz(vb2))/6;
+    else
+        zeta4 = (dy(vb1) + dx(vb2))/2;
+    end
     z1 = q1 + sigma * zeta1;
     z2 = q2 + sigma * zeta2;
-    z3 = q3 + sigma * zeta3;
     z4 = q4 + sigma * zeta4;
-    mz = proj2(z1,z2,z3, z4);
+    if Nz > 1
+        z3 = q3 + sigma * zeta3;
+        mz = proj2(z1,z2,z3, z4);
+    else
+        mz = proj22D(z1,z2,z4);
+    end
     q1 = z1./mz;
     q2 = z2./mz;
-    q3 = z3./mz;
+    if Nz > 1
+        q3 = z3./mz;
+    end
     q4 = z4./mz;
     
     % update primal (grad): F'*F grad  + F(u) - div(p)
-    eta4 = dxt(p1)+dyt(p2)+dzt(p3); % primal variable: image
+    if Nz > 1
+        eta4 = dxt(p1)+dyt(p2)+dzt(p3); % primal variable: image
+    else
+        eta4 = dxt(p1)+dyt(p2);
+    end
     uold = grad;
     grad   = grad - tau * eta4;
     
     % update primal (v): (zeta4,zeta5) = -p - div q
-    zeta5 = dxt(q1) + dyt(q4) + dzt(q4) - p1;
-    zeta6 = dxt(q4) + dyt(q2) + dzt(q4) - p2;
-    zeta7 = dxt(q4) + dzt(q3) + dyt(q4) - p3;
+    if Nz > 1
+        zeta5 = dxt(q1) + dyt(q4) + dzt(q4) - p1;
+        zeta6 = dxt(q4) + dyt(q2) + dzt(q4) - p2;
+        zeta7 = dxt(q4) + dyt(q4) + dzt(q3) - p3;
+    else
+        zeta5 = dxt(q1) + dyt(q4) - p1;
+        zeta6 = dxt(q4) + dyt(q2) - p2;
+    end
     v1old = v1;
     v2old = v2;
-    v3old = v3;
+    if Nz > 1
+        v3old = v3;
+    end
     v1 = v1 - tau * zeta5;
     v2 = v2 - tau * zeta6;
-    v3 = v3 - tau * zeta7;
+    if Nz > 1
+        v3 = v3 - tau * zeta7;
+    end
     
     % update primal leading points
     ub = 2*grad - uold;
     vb1 = 2*v1 - v1old;
     vb2 = 2*v2 - v2old;
-    vb3 = 2*v3 - v3old;
+    if Nz > 1
+        vb3 = 2*v3 - v3old;
+    end
 end
 grad = -grad(:);

@@ -52,16 +52,15 @@ if TVtype ~= 3
     im = reshape(im,Nx,Ny,Nz);
     f = (zeros(Nx,Ny,Nz));
     f(1:Nx-1,:,:) = -diff(im);
-%     f(end,:,:) = im(end,:,:) - im(1,:,:);
     f(end,:,:) = -f(Nx-1,:,:);
     g = (zeros(Nx,Ny,Nz));
     g(:,1:Ny-1,:) = -diff(im,1,2);
-%     g(:,end,:) = im(:,end,:) - im(:,1,:);
     g(:,end,:) = -g(:,Ny-1,:);
     h = (zeros(Nx,Ny,Nz));
-    h(:,:,1:Nz-1) = -diff(im,1,3);
-%     h(:,:,end) = im(:,:,end) - im(:,:,1);
-    h(:,:,end) = -h(:,:,Nz-1);
+    if Nz > 1
+        h(:,:,1:Nz-1) = -diff(im,1,3);
+        h(:,:,end) = -h(:,:,Nz-1);
+    end
     
     f = f(:);
     g = g(:);
@@ -91,22 +90,23 @@ if TVtype ~= 3
                 pval = sqrt(s1.*f.^2 + s5.*g.^2 + s9.*h.^2 + s4.*f.*g + s7.*f.*h + s2.*f.*g + s8.*h.*g + s3.*f.*h + s6.*h.*g + options.TVsmoothing);
                 apu1 = 0.5 * (2*s1.*f + s4.*g + s7.*h + s2.*g + s3.*h)./pval; % x-direction
                 apu2 = 0.5 * (2*s5.*g + s4.*f + s2.*f + s8.*h + s6.*h)./pval; % y-direction
-                apu3 = 0.5 * (2*s9.*h + s8.*g + s6.*g + s7.*f + s3.*f)./pval; % z-direction
+                if Nz > 1
+                    apu3 = 0.5 * (2*s9.*h + s8.*g + s6.*g + s7.*f + s3.*f)./pval; % z-direction
+                end
                 apu4 = 0.5 * (2*s1.*f + 2*s5.*g + 2*s9.*h + + s4.*f + s2.*f + s8.*h + s6.*h + s4.*g + s7.*h + s2.*g + s3.*h + s8.*g + s6.*g + s7.*f + s3.*f)./pval;
             end
             if TVtype == 2
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(aData.reference_image);
-                % fp(end,:,:) = aData.reference_image(end,:,:) - aData.reference_image(1,:,:);
                 fp(end,:,:) = -fp(Nx-1,:,:);
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(aData.reference_image,1,2);
-                % gp(:,end,:) = aData.reference_image(:,end,:) - aData.reference_image(:,1,:);
                 gp(:,end,:) = -gp(:,Ny-1,:);
                 hp = (zeros(Nx,Ny,Nz));
-                hp(:,:,1:Nz-1) = -diff(aData.reference_image,1,3);
-                % hp(:,:,end) = aData.reference_image(:,:,end) - aData.reference_image(:,:,1);
-                hp(:,:,end) = -hp(:,:,Nz-1);
+                if Nz > 1
+                    hp(:,:,1:Nz-1) = -diff(aData.reference_image,1,3);
+                    hp(:,:,end) = -hp(:,:,Nz-1);
+                end
                 
                 fp = fp(:);
                 gp = gp(:);
@@ -115,25 +115,26 @@ if TVtype ~= 3
                 pval = sqrt(f.^2 + g.^2 + h.^2 + options.T*(fp.^2 + gp.^2 + hp.^2) + options.TVsmoothing);
                 apu1 = (f)./pval; % x-direction
                 apu2 = (g)./pval; % y-direction
-                apu3 = (h)./pval; % z-direction
+                if Nz > 1
+                    apu3 = (h)./pval; % z-direction
+                end
                 apu4 = ( f + g + h)./pval;
             end
             if TVtype == 5
                 fp = (zeros(Nx,Ny,Nz));
                 fp(1:Nx-1,:,:) = -diff(options.APLS_ref_image);
-%                 fp(end,:,:) = options.APLS_ref_image(end,:,:) - options.APLS_ref_image(1,:,:);
                 fp(end,:,:) = -fp(Nx-1,:,:);
                 gp = (zeros(Nx,Ny,Nz));
                 gp(:,1:Ny-1,:) = -diff(options.APLS_ref_image,1,2);
-%                 gp(:,end,:) = options.APLS_ref_image(:,end,:) - options.APLS_ref_image(:,1,:);
                 gp(:,end,:) = -gp(:,Ny-1,:);
-                hp = (zeros(Nx,Ny,Nz));
-                hp(:,:,1:Nz-1) = -diff(options.APLS_ref_image,1,3);
-%                 hp(:,:,end) = options.APLS_ref_image(:,:,end) - options.APLS_ref_image(:,:,1);
-                hp(:,:,end) = -hp(:,:,Nz-1);
                 
                 fp = fp(:) + options.epps;
                 gp = gp(:) + options.epps;
+                hp = (zeros(Nx,Ny,Nz));
+                if Nz > 1
+                    hp(:,:,1:Nz-1) = -diff(options.APLS_ref_image,1,3);
+                    hp(:,:,end) = -hp(:,:,Nz-1);
+                end
                 hp = hp(:) + options.epps;
                 
 %                 epsilon = [fp,gp,hp]./[sqrt(fp.^2 + options.eta^2)+ sqrt(gp.^2 + options.eta^2)+ sqrt(hp.^2 + options.eta^2)];
@@ -144,7 +145,9 @@ if TVtype ~= 3
                 pval = sqrt(pval);
                 apu1 = (f - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,1)))))./pval; % x-direction
                 apu2 = (g - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,2)))))./pval; % y-direction
-                apu3 = (h - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,3)))))./pval; % z-direction
+                if Nz > 1
+                    apu3 = (h - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,3)))))./pval; % z-direction
+                end
                 apu4 = (g - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,2)))) + f - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,1)))) + ...
                     h - ((sum([f,g,h].*epsilon,2)).*((epsilon(:,3)))))./pval;
             end
@@ -153,31 +156,49 @@ if TVtype ~= 3
                 if options.SATVPhi == 0
                     apu1 = sign(f); % x-direction
                     apu2 = sign(g); % y-direction
-                    apu3 = sign(h); % z-direction
+                    if Nz > 1
+                        apu3 = sign(h); % z-direction
+                    end
                 else
                     apu1 = sign(f) - sign(f) ./ (abs(f)/options.SATVPhi + 1); % x-direction
                     apu2 = sign(g) - sign(g) ./ (abs(g)/options.SATVPhi + 1); % y-direction
-                    apu3 = sign(h) - sign(h) ./ (abs(h)/options.SATVPhi + 1); % z-direction
+                    if Nz > 1
+                        apu3 = sign(h) - sign(h) ./ (abs(h)/options.SATVPhi + 1); % z-direction
+                    end
                 end
             else
                 pval = sqrt(f.^2 + g.^2 + h.^2 + options.TVsmoothing);
                 apu1 = f./pval; % x-direction
                 apu2 = g./pval; % y-direction
-                apu3 = h./pval; % z-direction
+                if Nz > 1
+                    apu3 = h./pval; % z-direction
+                end
             end
-            apu4 = apu1 + apu2 + apu3;
+            if Nz > 1
+                apu4 = apu1 + apu2 + apu3;
+            else
+                apu4 = apu1 + apu2;
+            end
         end
         apu1=reshape(apu1,Nx,Ny,Nz);
         apu2=reshape(apu2,Nx,Ny,Nz);
-        apu3=reshape(apu3,Nx,Ny,Nz);
+        if Nz > 1
+            apu3=reshape(apu3,Nx,Ny,Nz);
+        end
         apu4=reshape(apu4,Nx,Ny,Nz);
         % apu1=[apu1(end,:,:);apu1(1:end-1,:,:)];
         % apu2=[apu2(:,end,:),apu2(:,1:end-1,:)];
         % apu3=cat(3,apu3(:,:,end),apu3(:,:,1:end-1));
         apu1 = circshift(apu1,1,1);
         apu2 = circshift(apu2,1,2);
-        apu3 = circshift(apu3,1,3);
-        grad = apu4 - apu1 - apu2 - apu3;
+        if Nz > 1
+            apu3 = circshift(apu3,1,3);
+        end
+        if Nz > 1
+            grad = apu4 - apu1 - apu2 - apu3;
+        else
+            grad = apu4 - apu1 - apu2;
+        end
         
         grad = grad(:);
         extgrad = 2*options.tau*min(im(:));
