@@ -64,10 +64,8 @@ options.sourceToCRot = 210.66;
 options.name = 'Walnut3DCT_data';
 
 %%% Compute only the reconstructions
-% If this file is run with this set to true, then the data load and
-% sinogram formation steps are always skipped. Precomputation step is
-% only performed if precompute_lor = true and precompute_all = true
-% (below). Normalization coefficients are not computed even if selected.
+% If this file is run with this set to true, then the data load will be
+% skipped if the options.SinM variable exists
 options.only_reconstructions = false;
 
 %%% Show status messages
