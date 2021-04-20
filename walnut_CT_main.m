@@ -84,7 +84,7 @@ options.FOVa_y = options.FOVa_x;
 %%% Axial FOV (mm)
 options.axial_fov = 40;
 
-%%% Source horizontal offset
+%%% Source horizontal offset (mm)
 % The center of rotation is not exactly in the origin. With this parameter
 % the source location can be offset by the specifed amount (horizontally).
 % This has a similar effect as circulary shifting the projection images.
