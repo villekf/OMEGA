@@ -429,16 +429,22 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		// Output dimensions
 		const mwSize dim[4] = { static_cast<mwSize>(Nx), static_cast<mwSize>(Ny), static_cast<mwSize>(Nz), static_cast<mwSize>(outSize2) };
 
-		reconstruction_AF_matrixfree(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, options, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax,
-			NSlices, pituus, xy_index, z_index, size_x, TotSinos, cell_array_ptr, dim, verbose, randoms_correction, attenuation_correction,
-			normalization, atten, size_atten, norm, size_norm, subsets, epps, k_path, Nt, pseudos, det_per_ring, pRows, L, raw, size_z, osem_bool,
-			fileName, use_psf, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_of_x, size_center_z,
-			projector_type, header_directory, precompute_var, device, dec, n_rays, n_rays3D, cr_pz, use_64bit_atomics, n_rekos, n_rekos_mlem, reko_type, reko_type_mlem,
-			global_factor, bmin, bmax, Vmax, V, size_V, gaussian, size_gauss, saveIter, TOF, TOFSize, sigma_x, TOFCenter, nBins);
-		//}
+		try {
+			reconstruction_AF_matrixfree(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, options, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax,
+				NSlices, pituus, xy_index, z_index, size_x, TotSinos, cell_array_ptr, dim, verbose, randoms_correction, attenuation_correction,
+				normalization, atten, size_atten, norm, size_norm, subsets, epps, k_path, Nt, pseudos, det_per_ring, pRows, L, raw, size_z, osem_bool,
+				fileName, use_psf, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_of_x, size_center_z,
+				projector_type, header_directory, precompute_var, device, dec, n_rays, n_rays3D, cr_pz, use_64bit_atomics, n_rekos, n_rekos_mlem, reko_type, reko_type_mlem,
+				global_factor, bmin, bmax, Vmax, V, size_V, gaussian, size_gauss, saveIter, TOF, TOFSize, sigma_x, TOFCenter, nBins);
+			//}
 
 
-		plhs[0] = cell_array_ptr;
+			plhs[0] = cell_array_ptr;
+		}
+		catch (const std::exception& e) {
+			af::deviceGC();
+			mexErrMsgTxt(e.what());
+		}
 	}
 	// Compute the number of voxels each LOR traverses (using AF device)
 	else if (type == 2) {
