@@ -1747,7 +1747,7 @@ options = OMEGA_error_check(options);
 % value changes is the depth of where the interactions are assumed to
 % occur, i.e. it only changes the detector coordinates such that the
 % transaxial coordinates are "deeper" in the crystal.
-% options.DOI = 0;
+options.DOI = 4.584;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
