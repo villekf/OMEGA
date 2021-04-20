@@ -86,6 +86,8 @@
 - Many MEX-files now use, when available, the new interleaved complex API
   - Has no effect on the user
   - Uses type-safe data access
+  
+- Reduced the number of integration points with trapezoidal rule from 6 to 5
 
 ## OMEGA v1.1.1
 
