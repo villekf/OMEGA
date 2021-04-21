@@ -383,6 +383,9 @@ classdef forwardBackwardProjectCT
             if ~isfield(obj.OProperties,'TOF_width') || obj.OProperties.TOF_bins == 0
                 obj.OProperties.TOF_width = 0;
             end
+            if obj.OProperties.implementation == 3 || obj.OProperties.implementation == 2
+                obj.OProperties.vaimennus = single(0);
+            end
             
             obj.TOF = obj.OProperties.TOF_bins > 1;
             
