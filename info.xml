@@ -3,8 +3,8 @@
              xsi:noNamespaceSchemaLocation="optional">
     <?xml-stylesheet type="text/xsl"href="optional"?>
     <!-- info.xml file for the OMEGA toolbox -->
-    <!-- Version 1.1 -->
-    <!-- Copyright 2020 Ville-Veikko Wettenhovi.-->
+    <!-- Version 1.2 -->
+    <!-- Copyright 2021 Ville-Veikko Wettenhovi.-->
     
     <!-- Supply the following six elements in the order specified -->
     <!-- (Required) Release of MATLAB. Not currently used but required -->
