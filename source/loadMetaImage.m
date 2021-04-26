@@ -26,6 +26,7 @@ n_bytes = struct('double',8,'single', 4, 'int8',1,'uint8',1,'int16',2,'uint16',2
 tline = 0;
 ll = 1;
 M = cell(1,1);
+N = cell(1,1);
 if strcmp(filename(end-2:end),'raw')
     filename = [filename(1:end-3) 'mhd'];
 end
@@ -36,6 +37,7 @@ end
 while sum(tline ~= -1) >= 1 || isempty(tline ~= -1)
     tline = fgetl(fid);
     M{ll} = {lower(tline)};
+    N{ll} = {tline};
     ll = ll + 1;
 end
 fclose(fid);
@@ -76,6 +78,8 @@ for kk = 1 : length(M)
         type = upper(apu(ind + 1:end));
         type = element_types.(type);
     elseif ~cellfun('isempty',strfind(M{kk},'elementdatafile'))
+        apu = cell2mat(N{kk});
+        ind = strfind(apu,'=');
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
         raw_filename = apu(ind + 1:end);
