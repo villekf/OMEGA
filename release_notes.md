@@ -89,6 +89,8 @@
   
 - Reduced the number of integration points with trapezoidal rule from 6 to 5
 
+- Fixed MetaImage load when the (raw) filename has uppercase letters
+
 ## OMEGA v1.1.1
 
 ### New features
