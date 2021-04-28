@@ -46,7 +46,7 @@ end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
         || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM ...
-        || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA)
+        || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA || options.RDP)
     
     % Compute and/or load necessary variables for the TV regularization
     if options.TV && options.MAP
@@ -432,14 +432,15 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
     end
     % Compute the weights
-    if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3) || options.Huber) && options.MAP
-        if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3) || options.Huber
+    if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3) || options.Huber || options.RDP) && options.MAP
+        if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3) || options.Huber || options.RDP
             options = computeWeights(options);
         end
         % These values are needed in order to vectorize the calculation of
         % certain priors
         % Specifies the indices of the center pixel and its neighborhood
-        if (options.MRP && ((options.implementation == 2 && options.use_CUDA) || ~license('test', 'image_toolbox'))) || options.L || options.FMH || (options.TV && options.TVtype == 3)
+        if (options.MRP && ((options.implementation == 2 && options.use_CUDA) || ~license('test', 'image_toolbox'))) || options.L || options.FMH || ...
+                (options.TV && options.TVtype == 3) || (options.RDP)
             options = computeOffsets(options);
         else
             options.tr_offsets = uint32(0);
@@ -460,6 +461,9 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         if options.Huber
             options = huberWeights(options);
         end
+        if options.RDP
+            options = RDPWeights(options);
+        end
         if options.L
             if isempty(options.a_L)
                 options.a_L = lfilter_weights(options.Ndx, options.Ndy, options.Ndz, dx, dy, dz, options.oneD_weights);
@@ -471,15 +475,18 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         if options.FMH
             options = fmhWeights(options);
         end
-        if (options.FMH || options.quad || options.Huber) && options.implementation == 2
+        if (options.FMH || options.quad || options.Huber || options.RDP) && options.implementation == 2
             options.weights = single(options.weights);
             options.inffi = uint32(find(isinf(options.weights)) - 1);
+            if isempty(options.inffi)
+                options.inffi = uint32(floor(numel(options.weights) / 2));
+            end
         end
         if options.weighted_mean
             options = weightedWeights(options);
         end
         if verbose
-            disp('Prepass phase for MRP, quadratic prior, L-filter, FMH and weighted mean completed')
+            disp('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
         end
     end
     if options.AD && options.MAP

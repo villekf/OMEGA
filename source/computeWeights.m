@@ -1,6 +1,6 @@
 function options = computeWeights(options)
 %COMPUTEWEIGTHS Computes the weights required by QP, L-filter, FMH, TV type
-%3 and weighted mean
+%3, RDP and weighted mean
 %   Computes the weights based on the neighborhood size and the pixel size
 distX = options.FOVa_x/double(options.Nx);
 distY = options.FOVa_y/double(options.Ny);

@@ -85,6 +85,8 @@ if numel(varPrior) > 0 && (strcmp(varList{1},'BSREM') || strcmp(varList{1},'ROSE
     elseif strcmp(varPrior{1},'NLM')
         grad = NLM(im_vectors.([varApu '_apu']), options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
             options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+    elseif strcmp(varPrior{1},'RDP')
+        grad = RDP(im_vectors.([varApu '_apu']), options.weights_RDP, options.RDP_gamma, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.tr_offsets);
     end
 end
 

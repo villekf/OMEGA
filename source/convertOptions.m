@@ -6,6 +6,9 @@ function options = convertOptions(options)
 if ~isfield(options,'PKMA')
     options.PKMA = false;
 end
+if ~isfield(options,'RDP')
+    options.RDP = false;
+end
 
 if isfield(options,'mlem')
     options.MLEM = options.mlem;

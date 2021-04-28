@@ -66,6 +66,8 @@ if numel(varPrior) > 0
     elseif strcmp(varPrior{1},'NLM') && ~strcmp(varList{1},'BSREM') && ~strcmp(varList{1},'ROSEM_MAP')
         grad = NLM(im_vectors.OSEM_apu, options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
             options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+    elseif strcmp(varPrior{1},'RDP') && ~strcmp(varList{1},'BSREM') && ~strcmp(varList{1},'ROSEM_MAP')
+        grad = RDP(im_vectors.OSEM_apu, options.weights_RDP, options.RDP_gamma, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.tr_offsets);
     end
 end
 

@@ -34,7 +34,7 @@ else
 end
 options.tr_offsets = uint32(bsxfun(@plus,tr_ind,offsets(:)'));
 if options.implementation == 2
-    if options.MRP || options.L || options.FMH || (options.TV && options.TVtype == 3)
+    if options.MRP || options.L || options.FMH || (options.TV && options.TVtype == 3) || options.RDP
         options.tr_offsets = options.tr_offsets - 1;
     end
     options.Ndx = uint32(options.Ndx);

@@ -36,11 +36,11 @@ varOS = [OS;varMAP(nMAPMLEM + 1:end)];
 % This  will be automatically filled
 varMAPOS = [varMAP(nMAPMLEM + 1:end)];
 % Add your new prior to this list (before 'custom')
-varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'AD';'APLS';'TGV';'NLM';'custom'};
+varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'AD';'APLS';'TGV';'NLM';'RDP';'custom'};
 % Add your prior to this list also (this is used for display purposes only
 % and can be unabbreviated and contain any characters):
 varPriorFull = {'Median Root';'Quadratic';'Huber';'L-filter';'FIR Median Hybrid';'Weighted mean';'Total Variation';'Anisotropic Diffusion';...
-    'Asymmetric Parallel Level Sets';'Total Generalized Variation';'Non-Local Means';'Custom'};
+    'Asymmetric Parallel Level Sets';'Total Generalized Variation';'Non-Local Means';'Relative Difference';'Custom'};
 if ~isempty(varargin) && varargin{1} == 0
     varList = upper([upper(varMLEM(:));OS(:);varMAP(:)]);
 elseif ~isempty(varargin) && varargin{1} == 1

@@ -106,6 +106,8 @@ for kk = 1 : numel(varMAP)
         elseif strcmp(varPrior{ll},'NLM') && (strcmp(varMAP{kk},'BSREM') || strcmp(varMAP{kk},'ROSEM_MAP'))
             grad = NLM(im_vectors.([varPrior{ll} '_' varapu{kk}]), options.Ndx, options.Ndy, options.Ndz, options.Nlx, options.Nly, options.Nlz, ...
                 options.sigma, options.epps, options.Nx, options.Ny, options.Nz, options);
+        elseif strcmp(varPrior{ll},'RDP') && ~strcmp(varMAP{kk},'BSREM') && ~strcmp(varMAP{kk},'ROSEM_MAP')
+            grad = RDP(im_vectors.([varPrior{ll} '_' varapu{kk}]), options.weights_RDP, options.RDP_gamma, options.Nx, options.Ny, options.Nz, options.Ndx, options.Ndy, options.Ndz, options.tr_offsets);
         end
             
         if strcmp(varMAP{kk},'BSREM')
