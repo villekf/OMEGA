@@ -171,6 +171,9 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 			else if (MethodListPrior.NLM && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
 				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, Nx, Ny, Nz, CUDAStruct);
 			}
+			else if (MethodListPrior.RDP && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
+				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
+			}
 			else if (MethodListPrior.CUSTOM) {
 				if (ll != w_vec.mIt[0] && ll != w_vec.mIt[1])
 					dU = w_vec.dU[oo];
@@ -288,6 +291,9 @@ void computeOSEstimatesCUDA(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		}
 		else if (MethodListPrior.NLM) {
 			MethodListPrior.NLM = false;
+		}
+		else if (MethodListPrior.RDP) {
+			MethodListPrior.RDP = false;
 		}
 		else if (MethodListPrior.CUSTOM) {
 			MethodListPrior.CUSTOM = false;
