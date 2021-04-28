@@ -486,6 +486,9 @@ options.TGV = false;
 %%% Non-local Means (NLM) prior
 options.NLM = false;
 
+%%% Relative Difference Prior (RDP)
+options.RDP = false;
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ACOSEM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Acceleration parameter for ACOSEM (1 equals COSEM)
@@ -961,6 +964,39 @@ options.NLTV = false;
 %%% Use MRP algorithm (without normalization)
 % I.e. gradient = im - NLM_filtered(im)
 options.NLM_MRP = false;
+ 
+ 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% RDP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Regularization parameter for quadratic prior with OSL-OSEM
+options.beta_RDP_OSL_OSEM = 0.1;
+%%% Regularization parameter for RDP with OSL-MLEM
+options.beta_RDP_OSL_MLEM = 0.1;
+%%% Regularization parameter for RDP with MBSREM
+options.beta_RDP_MBSREM = 0.001;
+%%% Regularization parameter for RDP with BSREM
+options.beta_RDP_BSREM = 0.03;
+%%% Regularization parameter for RDP with ROSEM
+options.beta_RDP_ROSEM_MAP = 0.1;
+%%% Regularization parameter for RDP with RBI
+options.beta_RDP_OSL_RBI = 0.0001;
+%%% Regularization parameter for RDP (OSL-(A)COSEM)
+options.beta_RDP_OSL_COSEM = 0.01;
+%%% Regularization parameter for RDP with PKMA
+options.beta_RDP_PKMA = 0.0001;
+
+%%% Edge preservation constant
+options.RDP_gamma = 0.1;
+
+%%% Pixel weights for RDP
+% The number of pixels need to be the amount of neighboring pixels,
+% e.g. if the above Nd(x/y/z) values are all 1, then 27 weights need to be
+% included where the center pixel (if Nd values are 1, element 14) has no
+% effect, i.e. it will always be one. Size is (Ndx*2+1) * (Ndy*2+1) *
+% (Ndz*2+1). If left empty then  they will be calculated by OMEGA and are
+% based on the distance of the voxels from the center voxel. If you do not
+% wish to use weights, simply use ones, i.e.  
+% options.weights_RDP = ones((options.Ndx*2+1) * (options.Ndy*2+1) * (options.Ndz*2+1),1);
+options.weights_RDP = [];
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
