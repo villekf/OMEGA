@@ -73,6 +73,9 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			else if (MethodListPrior.NLM) {
 				dU = NLM(vec.im_mlem(seq(ee, ee + im_dim - 1u)), w_vec, epps, Nx, Ny, Nz, OpenCLStruct);
 			}
+			else if (MethodListPrior.RDP) {
+				dU = RDP(vec.im_mlem(seq(ee, ee + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
+			}
 			else if (MethodListPrior.CUSTOM) {
 				dU = w_vec.dU[ll];
 			}
@@ -123,6 +126,9 @@ void computeMLEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		}
 		else if (MethodListPrior.NLM) {
 			MethodListPrior.NLM = false;
+		}
+		else if (MethodListPrior.RDP) {
+			MethodListPrior.RDP = false;
 		}
 		else if (MethodListPrior.CUSTOM) {
 			MethodListPrior.CUSTOM = false;

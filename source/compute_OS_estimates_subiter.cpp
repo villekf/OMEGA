@@ -160,6 +160,9 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			else if (MethodListPrior.NLM && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
 				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, Nx, Ny, Nz, OpenCLStruct);
 			}
+			else if (MethodListPrior.RDP && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
+				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
+			}
 			else if (MethodListPrior.CUSTOM) {
 				if (ll != w_vec.mIt[0] && ll != w_vec.mIt[1])
 					dU = w_vec.dU[oo];
@@ -168,6 +171,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 
 			if (DEBUG) {
 				mexPrintf("vec.im_os(seq(yy, yy + im_dim - 1u)) = %f\n", af::sum<float>(vec.im_os(seq(yy, yy + im_dim - 1u))));
+				mexPrintf("dU = %f\n", af::sum<float>(dU));
 				mexPrintf("beta.size() = %d\n", beta.size());
 				mexPrintf("vec.im_os.dims(0) = %d\n", vec.im_os.dims(0));
 				mexPrintf("vec.rhs_os.dims(0) = %d\n", vec.rhs_os.dims(0));
@@ -179,8 +183,8 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			// MAP/Prior-algorithms
 			if (MethodListMAP.OSLOSEM) {
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = EM(vec.im_os(seq(yy, yy + im_dim - 1u)), OSL(*testi, dU, beta[dd], epps), vec.rhs_os(seq(yy, yy + im_dim - 1u)));
+				//vec.im_os(seq(yy, yy + im_dim - 1u)) = dU;
 				MethodListMAP.OSLOSEM = false;
-				//vec.im_os(seq(yy + im_dim, yy + im_dim * 2 - 1u)) = dU;
 			}
 			else if (MethodListMAP.BSREM) {
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = BSREM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.rhs_os(seq(yy, yy + im_dim - 1u)),
@@ -279,6 +283,9 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		}
 		else if (MethodListPrior.NLM) {
 			MethodListPrior.NLM = false;
+		}
+		else if (MethodListPrior.RDP) {
+			MethodListPrior.RDP = false;
 		}
 		else if (MethodListPrior.CUSTOM) {
 			MethodListPrior.CUSTOM = false;

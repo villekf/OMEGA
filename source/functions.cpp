@@ -233,7 +233,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 			data.SATVPhi = getScalarFloat(mxGetField(options, 0, "SATVPhi"), -23);
 	}
 	// General variables for neighborhood-based methods
-	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
+	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV) || MethodList.RDP) && MethodList.MAP) {
 		// Neighborhood size
 		w_vec.Ndx = getScalarUInt32(mxGetField(options, 0, "Ndx"), -24);
 		w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -25);
@@ -242,7 +242,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.med_no_norm = getScalarBool(mxGetField(options, 0, "med_no_norm"), -27);
 		w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 	}
-	if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV)) && MethodList.MAP) {
+	if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV) || MethodList.RDP) && MethodList.MAP) {
 		// Index values for the neighborhood
 //#ifdef OPENCL
 #ifdef MX_HAS_INTERLEAVED_COMPLEX
@@ -254,7 +254,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 //		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
 //#endif
 	}
-	if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
+	if (MethodList.FMH || MethodList.Quad || MethodList.Huber || MethodList.RDP)
 		w_vec.inffi = getScalarUInt32(mxGetField(options, 0, "inffi"), -28);
 	// Weights for the various priors
 	if (MethodList.Quad && MethodList.MAP) {
@@ -271,6 +271,15 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_quad(pituus / 2) = af::abs(af::sum(weight));
 		w_vec.weights_quad = af::moddims(w_quad, w_vec.Ndx * 2U + 1, w_vec.Ndy * 2U + 1, w_vec.Ndz * 2U + 1);
 
+	}
+	if (MethodList.RDP && MethodList.MAP) {
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_RDP")), afHost);
+#else
+		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetData(mxGetField(options, 0, "weights_RDP")), afHost);
+#endif
+		w_vec.weights_RDP = af::flat(w_vec.weights_RDP);
+		w_vec.RDP_gamma = getScalarFloat(mxGetField(options, 0, "RDP_gamma"), -29);
 	}
 	if (MethodList.Huber && MethodList.MAP) {
 #ifdef MX_HAS_INTERLEAVED_COMPLEX
@@ -547,6 +556,7 @@ void get_rec_methods(const mxArray * options, RecMethods &MethodList)
 	MethodList.APLS = getScalarBool(mxGetField(options, 0, "APLS"), -61);
 	MethodList.TGV = getScalarBool(mxGetField(options, 0, "TGV"), -61);
 	MethodList.NLM = getScalarBool(mxGetField(options, 0, "NLM"), -61);
+	MethodList.RDP = getScalarBool(mxGetField(options, 0, "RDP"), -61);
 
 	// MAP/prior-based algorithms
 	MethodList.OSLMLEM = getScalarBool(mxGetField(options, 0, "OSL_MLEM"), -61);
@@ -2095,6 +2105,19 @@ af::array TGV(const af::array & im, const uint32_t Nx, const uint32_t Ny, const 
 
 	return -grad;
 }
+
+af::array RDP(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const af::array& weights_RDP, 
+	const uint32_t im_dim, const float gamma, const af::array& offsets, const uint32_t inffi)
+{
+	const af::array im_apu = af::flat(padding(im, Nx, Ny, Nz, Ndx, Ndy, Ndz));
+
+	const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
+	af::array grad = af::batchFunc(im, af::moddims(im_apu(indeksi2), im_dim, weights_RDP.dims(0)), batchDiv);
+	grad = af::matmul((((grad - 1.f) * (gamma * af::abs(grad - 1.f) + grad + 3.f))  / af::pow2(grad + 1.f + gamma * af::abs(grad - 1.f))), weights_RDP);
+	grad = af::flat(grad);
+	return grad;
+}
+
 
 af::array computeConvolution(const af::array& vec, const af::array& g, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const Weighting& w_vec, 
 	const uint32_t n_rekos) {
