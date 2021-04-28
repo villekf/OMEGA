@@ -36,6 +36,7 @@ The algorithms implemented so far are:
 - Anisotropic diffusion (AD) Median Root Prior
 - Asymmetric parallel levels sets prior (APLS) [22]
 - Non-local means prior (NLM), including non-local TV [25,26,27]
+- Relative difference prior [30]
 
 
 ## Installation
@@ -348,3 +349,5 @@ This work was supported by a grant from Jane and Aatos Erkko foundation. This wo
 28. A Lougovski et al. "A volume of intersection approach for on-the-fly system matrix calculation in 3D PET image reconstruction," 2014 Phys. Med. Biol. 59 561
 
 29. Y. Lin, C. R. Schmidtlein, Q. Li, S. Li and Y. Xu, "A Krasnoselskii-Mann Algorithm With an Improved EM Preconditioner for PET Image Reconstruction," in IEEE Transactions on Medical Imaging, vol. 38, no. 9, pp. 2114-2126, Sept. 2019, doi: 10.1109/TMI.2019.2898271.
+
+30. J. Nuyts, D. Beque, P. Dupont and L. Mortelmans, "A Concave Prior Penalizing Relative Differences for Maximum-a-Posteriori Reconstruction in Emission Tomography,", in IEEE Transactions on Nuclear Science, vol. 49, no. 1, pp. 56 - 60, Aug. 2002, doi: 10.1109/TNS.2002.998681.
