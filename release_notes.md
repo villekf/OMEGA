@@ -30,6 +30,9 @@
 
 - Orthogonal and volume-based ray tracers should be a little faster
 
+- Added relative difference prior for implementations 1, 2 and 4
+  - The current method can be memory intensive with large neighborhoods or image sizes
+
 - Added support for 32-bit integer atomics (OpenCL only)
   - Should give about 20-30% faster computations at the expense of accuracy
   - Can cause integer overflow when the number of counts is high
