@@ -95,7 +95,7 @@
   - Has no effect on the user
   - Uses type-safe data access
   
-- Reduced the number of integration points with trapezoidal rule from 6 to 5
+- Reduced the number of TOF integration points with trapezoidal rule from 6 to 5
 
 - Fixed MetaImage load when the (raw) filename has uppercase letters
 
