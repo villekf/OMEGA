@@ -136,20 +136,21 @@ The following features are currently present:
 - Supports both MATLAB and Octave
 - Reconstruct any PET sinogram/list-mode data
 - Reconstruct any CT projection data
-- Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM algorithms in MATLAB/Octave NLM algorithms in  MATLAB/Octave (OpenCL support in addition to traditional C++)
-- Import [GATE](http://www.opengatecollaboration.org/) LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their list-mode format, in the OMEGA specific raw data format, or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
-- Extract GATE scatter, randoms and/or trues data and optionally reconstruct it
-- Compare the reconstructed image with the actual "true" GATE source image (i.e. error analysis)
+- Reconstruction with MLEM, OSEM, COSEM, ECOSEM, ACOSEM, RAMLA, MRAMLA, RBI, ROSEM, BSREM, MBSREM, DRAMA, PKMA, MRP, Quadratic prior, L-filter, FMH, weighted mean, TV, TGV, AD, APLS, NLM, RDP algorithms in MATLAB/Octave (OpenCL support in addition to traditional C++)
+- Import [GATE](http://www.opengatecollaboration.org/) PET LMF, ASCII or ROOT data into MATLAB/Octave and either reconstruct them in their list-mode format, in the OMEGA specific raw data format, or in the user specified sinogram format (see Known issues and limitations for LMF and ROOT limitations)
+- Import GATE imageCT data and reconstruct the data
+- Extract GATE PET scatter, randoms and/or trues data and optionally reconstruct it
+- Compare the reconstructed image with the actual "true" GATE PET source image (i.e. error analysis)
 - Matrix-free reconstruction possible, with a pure CPU version (OpenMP parallelization), pure OpenCL version (multidevice support, e.g. multiple GPUs or heterogenous computing) or OpenCL version utilizing ArrayFire libraries
 - Preliminary CUDA support available
-- Include attenuation correction, normalization, scatter correction and/or randoms correction into the reconstruction (either user-made or OMEGA made data)
-- Compute normalization coefficients from measured/simulated data
+- Include PET attenuation correction, normalization, scatter correction and/or randoms correction into the reconstruction (either user-made or OMEGA made data)
+- Compute PET normalization coefficients from measured/simulated data
 - Perform variance reduction and/or smoothing on randoms/scatter data
-- Perform GATE Monte Carlo scatter correction
+- Perform GATE PET Monte Carlo scatter correction
 - Perform corrections either to the measurement data (excluding attenuation) or during the reconstruction phase (ordinary Poisson)
-- Optionally allows to obtain only the system/observation matrix used in PET reconstruction
+- Optionally allows to obtain only the system/observation matrix used in PET/CT reconstruction
 - All the data (e.g. sinograms, system matrix) can be used with your own algorithms
-- Supports machines with pseudo detectors
+- Supports scanners with pseudo detectors
 - Supports sinogram gap filling in pseudo detector case
 - Parallel and matrix free forward and back projection functions
 - Ready-made function for custom gradient-based priors
