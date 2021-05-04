@@ -39,6 +39,11 @@
   - Numerical accuracy WILL be negatively affected
   - Should be used only when speed is of utmost importance
   
+- GATE attenuation map from the MuMap actor can now be used as the attenuation image
+  - Simply use the .mhd-file in `options.attenuation_datafile`
+  - The resolution should be the same as the output image
+  - Values are automatically scaled to 1/mm if they have some other units
+  
 ### Bug fixes and enhancements
 
 - Fixed raw data sampling increase when using sampling larger than 2
@@ -71,7 +76,7 @@
 - Compilation of ROOT support in Linux and MacOS environments can now specify the ROOT installation directory
   - Previously this was possible only on Windows despite the warning messages suggesting the contrary
   
-- ROOT supports now scanners with more than 65535 crystals when using R2019a or later
+- ROOT supports now scanners with more than 65535 crystals when using R2019a or later (were previously supported only with R2018b and earlier)
 
 - R2019a and newer can now use the (unstable) ROOT data load
   - When loading large ROOT files (about 2 GB), the data load might hang when using R2019a and newer
