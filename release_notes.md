@@ -99,6 +99,8 @@
 
 - Fixed MetaImage load when the (raw) filename has uppercase letters
 
+- Fixed InterFile load when the (raw) file is in the working directory and is not i33 or img file
+
 ## OMEGA v1.1.1
 
 ### New features
