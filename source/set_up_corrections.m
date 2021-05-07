@@ -87,29 +87,38 @@ end
 
 
 % options.use_psf = false;
-block1 = 0;
+% block1 = 0;
 if options.attenuation_correction
     if ~isfield(options,'vaimennus')
-        data = load(options.attenuation_datafile);
-        variables = fieldnames(data);
-        options.vaimennus = double(data.(variables{1}));
+        if strcmp(options.attenuation_datafile(end-2:end), 'mhd')
+            [options.vaimennus, apuStruct] = loadMetaImage(options.attenuation_datafile);
+            if round(apuStruct.EleSpacing(1)*100)/100 > round(options.FOVa_x / options.Nx*100)/100 ||  round(apuStruct.EleSpacing(1)*100)/100 < round(options.FOVa_x / options.Nx*100)/100
+                options.vaimennus = options.vaimennus * (apuStruct.EleSpacing(1) / (options.FOVa_x / options.Nx));
+            end
+        else
+            data = load(options.attenuation_datafile);
+            variables = fieldnames(data);
+            options.vaimennus = double(data.(variables{1}));
+            options.vaimennus = options.vaimennus(:) / 10;
+            clear data
+        end
         if size(options.vaimennus,1) ~= options.Nx || size(options.vaimennus,2) ~= options.Ny || size(options.vaimennus,3) ~= options.Nz
             if size(options.vaimennus,1) ~= options.Nx*options.Ny*options.Nz
                 error('Error: Attenuation data is of different size than the reconstructed image')
             end
         end
-        if rings > 0
-            if size(options.vaimennus,3) == 1
-                options.vaimennus = options.vaimennus(2*block1+1:(2*rings+1)*options.Nx*options.Ny);
-            else
-                options.vaimennus = options.vaimennus(:,:,2*block1+1:2*rings+1);
-            end
-        end
-        options.vaimennus = options.vaimennus(:) / 10;
-        if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-            options.vaimennus = single(options.vaimennus);
-        end
-        clear data
+%         if rings > 0
+%             if size(options.vaimennus,3) == 1
+%                 options.vaimennus = options.vaimennus(2*block1+1:(2*rings+1)*options.Nx*options.Ny);
+%             else
+%                 options.vaimennus = options.vaimennus(:,:,2*block1+1:2*rings+1);
+%             end
+%         end
+    end
+    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+        options.vaimennus = single(options.vaimennus);
+    else
+        options.vaimennus = double(options.vaimennus);
     end
 else
     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
@@ -201,11 +210,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
     end
     if r_exist && randoms_correction
         if (~options.variance_reduction && RandProp.variance_reduction) || (~options.randoms_smoothing && RandProp.smoothing)
-            if options.partitions == 1
-                options.SinDelayed = loadStructFromFile(sinoFile,'raw_SinDelayed');
-            else
+%             if options.partitions == 1
+%                 options.SinDelayed = loadStructFromFile(sinoFile,'raw_SinDelayed');
+%             else
                 options.SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
-            end
+%             end
             RandProp.variance_reduction = false;
             RandProp.smoothing = false;
         end
@@ -618,11 +627,11 @@ elseif (options.randoms_correction || options.scatter_correction) && ~options.re
     end
     if r_exist && options.randoms_correction
         if (~options.variance_reduction && RandProp.variance_reduction) || (~options.randoms_smoothing && RandProp.smoothing)
-            if options.partitions == 1
-                options.SinDelayed = loadStructFromFile(sinoFile,'raw_SinDelayed');
-            else
+%             if options.partitions == 1
+%                 options.SinDelayed = loadStructFromFile(sinoFile,'raw_SinDelayed');
+%             else
                 options.SinDelayed = loadStructFromFile(sinoFile, 'raw_SinDelayed');
-            end
+%             end
             RandProp.variance_reduction = false;
             RandProp.smoothing = false;
         end
