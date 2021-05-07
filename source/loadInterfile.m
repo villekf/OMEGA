@@ -147,7 +147,10 @@ for kk = 1 : length(M)
         if any(strfind(f_name, '/'))
             f_name = f_name(strfind(f_name, '/') + 1 : end);
         end
-        f_name = [fileparts(filename) '/' f_name];
+        [filepath] = fileparts(filename);
+        if ~isempty(filepath)
+            f_name = [fileparts(filename) '/' f_name];
+        end
     end
 end
 
@@ -187,5 +190,9 @@ if fid == - 1
     end
 end
 output = fread(fid, inf, [type '=>' type], 0, machinefmt);
-output = reshape(output, n_dim1, n_dim2, n_dim3, n_dim4, n_dim5);
+try
+    output = reshape(output, n_dim1, n_dim2, n_dim3, n_dim4, n_dim5);
+catch
+    output = reshape(output, n_dim1, n_dim2, []);
+end
 fclose(fid);
