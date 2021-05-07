@@ -485,6 +485,8 @@ options.attenuation_correction = false;
 % Specify the path (if not in MATLAB path) and filename.
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image.
+% You can also use the GATE MuMap actor output here in which case the 
+% attenuation data is automatically loaded (use the mhd-file).
 options.attenuation_datafile = '';
  
 %%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%

@@ -505,6 +505,8 @@ options.CT_attenuation = false;
 % NOTE: the attenuation data must be the only variable in the file and
 % have the dimensions of the final reconstructed image. Previously
 % saved attenuation images can be used here.
+% You can also use the GATE MuMap actor output here in which case the 
+% attenuation data is automatically loaded (use the mhd-file).
 options.attenuation_datafile = '';
  
 
