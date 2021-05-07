@@ -1,4 +1,4 @@
-function output = loadMetaImage(filename)
+function [output, varargout] = loadMetaImage(filename)
 %LOADMETAIMAGE Loads the input file as a MATLAB matrix with the same
 %   dimensions and format type as the original.
 %
@@ -13,11 +13,16 @@ function output = loadMetaImage(filename)
 %   Gomez:
 %   https://se.mathworks.com/matlabcentral/fileexchange/41594-medical-image-processing-toolbox
 %
-% Example:
-%   loadMetaImage(filename)
+% Examples:
+%   output = loadMetaImage(filename)
+%   [output, struct] = loadMetaImage(filename)
 %
 % Input:
 %   filename = Name of the header file (.mhd or .mha)
+%
+% Outputs:
+%   output = The image stored
+%   struct = A struct containing many of the possible variables included
 %
 % See also loadInterfile
 element_types = struct('MET_DOUBLE','double','MET_FLOAT', 'single', 'MET_CHAR','int8','MET_UCHAR','uint8','MET_SHORT','int16','MET_USHORT','uint16','MET_INT','int32','MET_UINT','uint32',...
@@ -53,6 +58,9 @@ for kk = 1 : length(M)
     ind = strfind(apu,'=');
     if ~cellfun('isempty',strfind(M{kk},'ndims'))
         NDims = str2double(apu(ind(1) + 1:end));
+        if nargout >= 2
+            varargout{1}.NDims = NDims;
+        end
     elseif ~cellfun('isempty',strfind(M{kk},'dimsize'))
         if isempty(NDims)
             for ii = 1 : length(M)
@@ -70,13 +78,22 @@ for kk = 1 : length(M)
         for ll = 1 : NDims
             Dims(ll) = str2double(apu(ind(ll):ind(ll + 1)));
         end
+        if nargout >= 2
+            varargout{1}.Dims = Dims;
+        end
     elseif ~cellfun('isempty',strfind(M{kk},'headersize'))
         skip = str2double(apu(ind(1) + 1:end));
+        if nargout >= 2
+            varargout{1}.headersize = skip;
+        end
     elseif ~cellfun('isempty',strfind(M{kk},'elementtype'))
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
         type = upper(apu(ind + 1:end));
         type = element_types.(type);
+        if nargout >= 2
+            varargout{1}.element_type = type;
+        end
     elseif ~cellfun('isempty',strfind(M{kk},'elementdatafile'))
         apu = cell2mat(N{kk});
         ind = strfind(apu,'=');
@@ -86,15 +103,61 @@ for kk = 1 : length(M)
         if any(strfind(raw_filename, '/'))
             raw_filename = raw_filename(strfind(raw_filename, '/') + 1 : end);
         end
+        if nargout >= 2
+            varargout{1}.raw_filename = raw_filename;
+        end
     elseif ~cellfun('isempty',strfind(M{kk},'transformmatrix'))
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
         transformmatrix = str2num(apu(ind + 1:end));
-    elseif ~cellfun('isempty',strfind(M{kk},'elementbyteordermsb'))
+        if nargout >= 2
+            varargout{1}.transformmatrix = transformmatrix;
+        end
+    elseif ~cellfun('isempty',strfind(M{kk},'elementbyteordermsb')) || ~cellfun('isempty',strfind(M{kk},'binarydatabyteordermsb'))
         apu = apu(ind+1:end);
-        if any(strfind(apu,'True'))
+        ind = strfind(apu,' ');
+        if any(strfind(apu(ind + 1:end),'true'))
             endian = 'b';
         end
+        if nargout >= 2
+            varargout{1}.byteOrderMSB = apu;
+        end
+    elseif ~cellfun('isempty',strfind(M{kk},'elementspacing')) && nargout >= 2
+        if isempty(NDims)
+            for ii = 1 : length(M)
+                apu2 = cell2mat(M{ii});
+                ind = strfind(apu2,'=');
+                if ~cellfun('isempty',strfind(M{ii},'ndims'))
+                    NDims = str2double(apu2(ind(1) + 1:end));
+                end
+            end
+        end
+        apu = apu(ind+1:end);
+        ind = strfind(apu,' ');
+        ind = [ind, length(apu)];
+        EleSpacing = zeros(NDims,1);
+        for ll = 1 : NDims
+            EleSpacing(ll) = str2double(apu(ind(ll):ind(ll + 1)));
+        end
+        varargout{1}.EleSpacing = EleSpacing;
+    elseif ~cellfun('isempty',strfind(M{kk},'offset')) && nargout >= 2
+        if isempty(NDims)
+            for ii = 1 : length(M)
+                apu2 = cell2mat(M{ii});
+                ind = strfind(apu2,'=');
+                if ~cellfun('isempty',strfind(M{ii},'ndims'))
+                    NDims = str2double(apu2(ind(1) + 1:end));
+                end
+            end
+        end
+        apu = apu(ind+1:end);
+        ind = strfind(apu,' ');
+        ind = [ind, length(apu)];
+        Offset = zeros(NDims,1);
+        for ll = 1 : NDims
+            Offset(ll) = str2double(apu(ind(ll):ind(ll + 1)));
+        end
+        varargout{1}.Offset = Offset;
     end
 end
 
