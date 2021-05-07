@@ -1,0 +1,192 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Adding custom built-in algorithms</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin-bottom: 20px; padding-bottom: 4px;  }
+.S2 { margin: 0px; padding: 10px 0px 10px 5px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S3 { margin: -1px 0px 0px; padding: 10px 0px 10px 7px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S4 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }
+.S5 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: 700; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0' id = 'T_239A7D22' ><span>Adding custom built-in algorithms</span></h1><div  class = 'S1'><div  class = 'S2'><span style=' font-weight: bold;'>Table of Contents</span></div><div  class = 'S3'><a href = "#H_63D28F7F"><span>Preliminary steps
+</span></a><a href = "#H_6151A082"><span>Implementation 1 specific steps
+</span></a><a href = "#H_74F48F69"><span>Implementation 4 specific steps
+</span></a><a href = "#H_39609406"><span>Implementation 2 specific steps</span></a></div></div><div  class = 'S4'><span>This page outlines how to add new algorithms to OMEGA as </span><span style=' font-weight: bold;'>built-in algorithms</span><span>. Note that performance wise you’ll most likely get only small (or no) benefits when using implementations 1 or 4. The greatest benefit is achieved when using implementation 2. However, implementation 2 is also the hardest one to add new algorithms to.</span></div><div  class = 'S4'><span>Currently, when using implementations 2 or 4, the backward projection is computed for </span><span style=' font-family: monospace;'>A' (y / x)</span><span> case where </span><span style=' font-family: monospace;'>y</span><span> are the measurements and </span><span style=' font-family: monospace;'>x</span><span> the forward projection (in CT this is </span><span style=' font-family: monospace;'>exp(-x) / y</span><span>). If an algorithm does not follow this pattern, then more modifications are needed. It is, nevertheless, possible to add built-in algorithms even if they do not follow aforementioned pattern.</span></div><h2  class = 'S5' id = 'H_63D28F7F' ><span>Preliminary steps</span></h2><div  class = 'S4'><span>First, edit </span><span style=' font-family: monospace;'>recNames.m</span><span> and add the name of the variable to list. For subset MAP algorithms, add the name to the (end of) </span><span style=' font-family: monospace;'>varMAP</span><span> list. MLEM-type (non subset-based) MAP algorithms should be placed after OSL_MLEM with the </span><span style=' font-family: monospace;'>nMAPMLEM</span><span> incremented by the number of new MLEM-type MAP algorithms. For MLEM type algorithms (non-MAP), add it to </span><span style=' font-family: monospace;'>varML</span><span> (after </span><span style=' font-family: monospace;'>'mlem'</span><span>). For OSEM type (non-MAP) algorithms, add it to </span><span style=' font-family: monospace;'>OS</span><span> (preferably to the end). For MAP algorithms, the name of the regularization parameter needs to be the same as the MAP name, for example if the MAP name is BSREM then, for MRP, the beta value should be named </span><span style=' font-family: monospace;'>options.beta_BSREM_MRP</span><span>.</span></div><div  class = 'S4'><span>For example, if you would want to add BSREM as a new algorithm you’d add it to the end of </span><span style=' font-family: monospace;'>varMAP</span><span> variable, e.g. </span><span style=' font-family: monospace;'>varMAP = {'OSL_MLEM',…​,'PKMA','BSREM'};</span><span>. If you’d want to add, for example, paraboloidal surrogates algorithm without use of any subsets, you’d add it after </span><span style=' font-family: monospace;'>'OSL_MLEM'</span><span>: </span><span style=' font-family: monospace;'>varMAP = {'OSL_MLEM','PS',…​,'PKMA'};</span><span>, where </span><span style=' font-family: monospace;'>'PS'</span><span> is the name for the algorithm. In this case, </span><span style=' font-family: monospace;'>nMAPMLEM = 2;</span><span>. For non-MAP algorithms (i.e. algorithms that do not use priors), the procedure is similar, but instead of </span><span style=' font-family: monospace;'>varMAP</span><span>, the </span><span style=' font-family: monospace;'>OS</span><span> variable is used for subsets-based algorithms and </span><span style=' font-family: monospace;'>varMLEM</span><span> (</span><span style=' font-family: monospace;'>nMLEM</span><span>) for MLEM-type non subset-based algorithms.</span></div><div  class = 'S4'><span>New priors should be placed BEFORE </span><span style=' font-family: monospace;'>'custom'</span><span>, i.e. </span><span style=' font-family: monospace;'>'custom'</span><span> should always be the last one in the prior list in </span><span style=' font-family: monospace;'>recNames.m</span><span>. Failing to do that will cause the custom prior reconstruction to stop working properly when using implementation 2.</span></div><div  class = 'S4'><span>Add possible prepass steps to </span><span style=' font-family: monospace;'>prepass_phase.m</span><span>. This mostly applies to priors (such as computing weights). It is recommended to save any needed variables to the </span><span style=' font-family: monospace;'>options</span><span> struct, though that is not explicitly required. If the </span><span style=' font-family: monospace;'>options</span><span> struct is used, then use of any added variables will be much easier and does not require the addition of additional input variables to the current functions.</span></div><div  class = 'S4'><span>If the algorithm uses sensitivity image that is computed without the use of subsets (e.g. as in MBSREM, where the one global sensitivity image is divided by the number of subsets), then you should include it to the list in </span><span style=' font-family: monospace;'>prepass_phase.m</span><span> (this applies ONLY to implementation 1). Furthermore, you should add it to the list computing the PSF after the prepass phase in </span><span style=' font-family: monospace;'>reconstructions_main.m</span><span>. If you need MBSREM-style sensitivity image divided by the number of subsets, it is recommended to use </span><span style=' font-family: monospace;'>options.pj3</span><span>.</span></div><h2  class = 'S5' id = 'H_6151A082' ><span>Implementation 1 specific steps</span></h2><div  class = 'S4'><span>These steps are necessary only for implementation 1. Note that only subset-based algorithms are supported.</span></div><div  class = 'S4'><span>Modify </span><span style=' font-family: monospace;'>computeEstimatesImp1.m</span><span> and your algorithm/prior to the list. For non-MAP methods, add the algorithm preferably after ACOSEM. For MAP/prior-based algorithms, add the algorithm along with OSL-OSEM, BSREM, etc. using the same style as the current algorithms, i.e. the estimate should be computed with and to </span><span style=' font-family: monospace;'>im_vectors.([varPrior{ll} '_' varapu{kk}])</span><span>. For priors, add the prior to the list of priors before the MAP-algorithms. </span><span style=' font-family: monospace;'>grad</span><span> should be output of the prior gradient. If you need to use prior types that do not rely on simple gradients (such as proper use of TV), you need to make more significant modifications. This will also mean that the current algorithms most likely cannot support that prior. In such a case, it is probably best to add it in the list of non-MAP/prior based algorithms and have the prior built into the algorithm.</span></div><div  class = 'S4'><span>You also need to modify </span><span style=' font-family: monospace;'>init_nex_iter.m</span><span> if one of the following applies: - Your algorithm is non-MAP/does not use a prior. - Your algorithm is MAP/prior-based, but the prior information is applied after all subiterations are complete (as in e.g. BSREM). - You are adding a new prior gradient and want it to work with BSREM and/or ROSEM-MAP.</span></div><div  class = 'S4'><span>For the first case, add your algorithm after ACOSEM following the same style as previous algorithms. For the second case, add the MAP-phase as in BSREM and ROSEM-MAP cases. For the third and last case, add your prior to the list of other priors just as in </span><span style=' font-family: monospace;'>computeEstimatesImp1.m</span><span>.</span></div><h2  class = 'S5' id = 'H_74F48F69' ><span>Implementation 4 specific steps</span></h2><div  class = 'S4'><span>These steps are necessary only for implementation 4.</span></div><div  class = 'S4'><span>For subsets-based algorithms, modify </span><span style=' font-family: monospace;'>computeEstimatesImp4.m</span><span> and your algorithm/prior to the list. Priors are first, followed by the reconstruction algorithms. The order does not matter. The algorithm input and output should be, however, always to </span><span style=' font-family: monospace;'>im_vectors.OSEM_apu</span><span>.</span></div><div  class = 'S4'><span>If your algorithm requires a prepass phase (e.g. computing the full sensitivity image), you need to add the required steps in the prepass phase section before </span><span style=' font-family: monospace;'>computeEstimatesImp4.m</span><span> in </span><span style=' font-family: monospace;'>reconstructions_main.m</span><span> (</span><span style=' font-family: monospace;'>prepass_phase.m</span><span> is only used for priors in implementation 4).</span></div><div  class = 'S4'><span>You also need to modify </span><span style=' font-family: monospace;'>computeEstimatesImp4Iter.m</span><span> if any of the following applies: - Your algorithm does not use subsets. - Your algorithm is MAP/prior-based, but the prior information is applied after all subiterations are complete (as in e.g. BSREM). - You are adding a new prior gradient and want it to work with BSREM, ROSEM-MAP and OSL-MLEM.</span></div><div  class = 'S4'><span>For the first case, add your algorithm to the </span><span style=' font-family: monospace;'>~osem </span><span>section (around line 95). The first if-section should be used for MAP/prior algorithms and the second for non-prior ones. Uncomment the commented sections and add corresponding sections for your own algorithm. For the second case, add the MAP-phase as in BSREM and ROSEM-MAP cases. For the third and last case, add your prior to the list of other priors just as in </span><span style=' font-family: monospace;'>computeEstimatesImp4.m</span><span>.</span></div><h2  class = 'S5' id = 'H_39609406' ><span>Implementation 2 specific steps</span></h2><div  class = 'S4'><span>These steps are necessary only for implementation 2. Adding new built-in algorithms is more difficult for implementation 2 than for 1 or 4. Note that this page only outlines how to add new algorithms to the OpenCL backend. The process for CUDA is practically identical though.</span></div><div  class = 'S4'><span>First you should add the new algorithm to the </span><span style=' font-family: monospace;'>RecMethods</span><span> struct in </span><span style=' font-family: monospace;'>functions.hpp</span><span>, to </span><span style=' font-family: monospace;'>RecMethodsOpenCL</span><span> in </span><span style=' font-family: monospace;'>AF_opencl_functions.hpp</span><span> and to </span><span style=' font-family: monospace;'>RecMethodsOpenCL</span><span> in </span><span style=' font-family: monospace;'>general_opencl_functions.h</span><span>. For the latter two, it is important to maintain the same order in both structures. Add non-MAP/prior algorithms to the first row, priors to the second and MAP/prior algorithms to the third. Then add a corresponding line to </span><span style=' font-family: monospace;'>get_rec_methods</span><span> function in </span><span style=' font-family: monospace;'>functions.cpp</span><span> and to </span><span style=' font-family: monospace;'>OpenCLRecMethods</span><span> in </span><span style=' font-family: monospace;'>AF_opencl_functions.hpp</span><span>.</span></div><div  class = 'S4'><span>Next step is to modify </span><span style=' font-family: monospace;'>form_data_variables</span><span> function in </span><span style=' font-family: monospace;'>functions.cpp</span><span>. For non-MAP/prior algorithms, add the algorithm after ACOSEM and initialize it just like the previous ones (simply copy-paste and modify the </span><span style=' font-family: monospace;'>MethodList</span><span> with your own prior name from previous step). For MAP/prior-based algorithms, this step is not required.</span></div><div  class = 'S4'><span>If your prior or algorithm uses some algorithm/prior specific variables (constants, weights, etc.), then you should load them preferably in </span><span style=' font-family: monospace;'>form_data_variables</span><span>. It is recommended to save any necessary variables in the </span><span style=' font-family: monospace;'>options</span><span> struct in MATLAB/Octave and then load these variables in </span><span style=' font-family: monospace;'>form_data_variables</span><span>. </span><span style=' font-family: monospace;'>w_vec</span><span> struct can be used to store the variables.</span></div><div  class = 'S4'><span>If you are adding a subset using MAP/prior-based algorithm that uses priors ONLY between iterations (i.e. the priors are NOT used during sub-iteration computations as in e.g. BSREM), you need to add it to the list in </span><span style=' font-family: monospace;'>computeImplementation23.m</span><span> (around line 135) and also add a new </span><span style=' font-family: monospace;'>push_back</span><span> step for </span><span style=' font-family: monospace;'>w_vec.mIt</span><span> in </span><span style=' font-family: monospace;'>form_data_variables</span><span> with the cell index incremented (simply copy-paste the last one and increment the second input of </span><span style=' font-family: monospace;'>mxGetCell</span><span>).</span></div><div  class = 'S4'><span>If the algorithm requires the full sensitivity image, add it to the list when loading </span><span style=' font-family: monospace;'>w_vec.MBSREM_prepass</span><span> in </span><span style=' font-family: monospace;'>form_data_variables</span><span>. </span><span style=' font-family: monospace;'>w_vec.D</span><span> stores the full sensitivity image, </span><span style=' font-family: monospace;'>pj3</span><span> is the same as </span><span style=' font-family: monospace;'>D</span><span>, but divided with the number of subsets. </span><span style=' font-family: monospace;'>MRAMLA_prepass</span><span> should be used for all algorithms requiring either (add them to the conditional(s)). You’ll also need to add it to the conditional in </span><span style=' font-family: monospace;'>createKernels</span><span> and at the bottom in </span><span style=' font-family: monospace;'>createProgram</span><span> in </span><span style=' font-family: monospace;'>AF_opencl_functions.cpp</span><span>.</span></div><div  class = 'S4'><span>The following steps apply ONLY to algorithms using subsets or when adding new priors:</span></div><div  class = 'S4'><span>First step is to modify </span><span style=' font-family: monospace;'>compute_OS_estimates_subiter.cpp</span><span> and add your own algorithm and/or prior there. Non-MAP/prior-based algorithms should go after ACOSEM. Priors and MAP/prior-based algorithms should go to the loop. The order does not matter, however, with priors you should NOT use the custom prior style (and it is recommended to place the prior before the custom prior). Note also that you need to modify the bottom of </span><span style=' font-family: monospace;'>compute_OS_estimates_subiter.cpp</span><span> as well when adding new priors.</span></div><div  class = 'S4'><span>Next step is required only if either of the two applies: - You are adding a new prior and want it to work with BSREM and/or ROSEM-MAP - You are adding a new MAP/prior-based algorithm that uses the prior information only after subiterations are complete (e.g. as with BSREM)</span></div><div  class = 'S4'><span>Modify </span><span style=' font-family: monospace;'>compute_OS_estimates_iter.cpp</span><span> and add the prior to the list, just like in </span><span style=' font-family: monospace;'>compute_OS_estimates_subiter.cpp</span><span>. For algorithms add the new one to the list just like BSREM or ROSEM-MAP is. Remember to also modify the bottom section if adding prior(s).</span></div><div  class = 'S4'><span>These steps apply ONLY to algorithms that DO NOT use subsets or when adding new priors:</span></div><div  class = 'S4'><span>Modify </span><span style=' font-family: monospace;'>compute_ML_estimates.cpp</span><span> and add your own algorithm and/or prior there. Non-MAP/prior-based algorithms should go after MLEM. Priors and MAP/prior-based algorithms should go to the loop. The order does not matter, however, with priors you should NOT use the custom prior style (and it is recommended to place the prior before the custom prior). Be sure to uncomment the conditional if adding MAP/prior-based algorithm. Note also that you need to modify the bottom of </span><span style=' font-family: monospace;'>compute_ML_estimates.cpp</span><span> as well when adding new priors.</span></div><div  class = 'S4'><span>For custom-prior functionality, some further modifications may be necessary such as loading of the full sensitivity image. Anything using </span><span style=' font-family: monospace;'>MethodList.CUSTOM</span><span> points to the custom prior.</span></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Adding custom built-in algorithms
+%% 
+% This page outlines how to add new algorithms to OMEGA as *built-in algorithms*. 
+% Note that performance wise you’ll most likely get only small (or no) benefits 
+% when using implementations 1 or 4. The greatest benefit is achieved when using 
+% implementation 2. However, implementation 2 is also the hardest one to add new 
+% algorithms to.
+% 
+% Currently, when using implementations 2 or 4, the backward projection is computed 
+% for |A' (y / x)| case where |y| are the measurements and |x| the forward projection 
+% (in CT this is |exp(-x) / y|). If an algorithm does not follow this pattern, 
+% then more modifications are needed. It is, nevertheless, possible to add built-in 
+% algorithms even if they do not follow aforementioned pattern.
+%% Preliminary steps
+% First, edit |recNames.m| and add the name of the variable to list. For subset 
+% MAP algorithms, add the name to the (end of) |varMAP| list. MLEM-type (non subset-based) 
+% MAP algorithms should be placed after OSL_MLEM with the |nMAPMLEM| incremented 
+% by the number of new MLEM-type MAP algorithms. For MLEM type algorithms (non-MAP), 
+% add it to |varML| (after |'mlem'|). For OSEM type (non-MAP) algorithms, add 
+% it to |OS| (preferably to the end). For MAP algorithms, the name of the regularization 
+% parameter needs to be the same as the MAP name, for example if the MAP name 
+% is BSREM then, for MRP, the beta value should be named |options.beta_BSREM_MRP|.
+% 
+% For example, if you would want to add BSREM as a new algorithm you’d add it 
+% to the end of |varMAP| variable, e.g. |varMAP = {'OSL_MLEM',…​,'PKMA','BSREM'};|. 
+% If you’d want to add, for example, paraboloidal surrogates algorithm without 
+% use of any subsets, you’d add it after |'OSL_MLEM'|: |varMAP = {'OSL_MLEM','PS',…​,'PKMA'};|, 
+% where |'PS'| is the name for the algorithm. In this case, |nMAPMLEM = 2;|. For 
+% non-MAP algorithms (i.e. algorithms that do not use priors), the procedure is 
+% similar, but instead of |varMAP|, the |OS| variable is used for subsets-based 
+% algorithms and |varMLEM| (|nMLEM|) for MLEM-type non subset-based algorithms.
+% 
+% New priors should be placed BEFORE |'custom'|, i.e. |'custom'| should always 
+% be the last one in the prior list in |recNames.m|. Failing to do that will cause 
+% the custom prior reconstruction to stop working properly when using implementation 
+% 2.
+% 
+% Add possible prepass steps to |prepass_phase.m|. This mostly applies to priors 
+% (such as computing weights). It is recommended to save any needed variables 
+% to the |options| struct, though that is not explicitly required. If the |options| 
+% struct is used, then use of any added variables will be much easier and does 
+% not require the addition of additional input variables to the current functions.
+% 
+% If the algorithm uses sensitivity image that is computed without the use of 
+% subsets (e.g. as in MBSREM, where the one global sensitivity image is divided 
+% by the number of subsets), then you should include it to the list in |prepass_phase.m| 
+% (this applies ONLY to implementation 1). Furthermore, you should add it to the 
+% list computing the PSF after the prepass phase in |reconstructions_main.m|. 
+% If you need MBSREM-style sensitivity image divided by the number of subsets, 
+% it is recommended to use |options.pj3|.
+%% Implementation 1 specific steps
+% These steps are necessary only for implementation 1. Note that only subset-based 
+% algorithms are supported.
+% 
+% Modify |computeEstimatesImp1.m| and your algorithm/prior to the list. For 
+% non-MAP methods, add the algorithm preferably after ACOSEM. For MAP/prior-based 
+% algorithms, add the algorithm along with OSL-OSEM, BSREM, etc. using the same 
+% style as the current algorithms, i.e. the estimate should be computed with and 
+% to |im_vectors.([varPrior{ll} '_' varapu{kk}])|. For priors, add the prior to 
+% the list of priors before the MAP-algorithms. |grad| should be output of the 
+% prior gradient. If you need to use prior types that do not rely on simple gradients 
+% (such as proper use of TV), you need to make more significant modifications. 
+% This will also mean that the current algorithms most likely cannot support that 
+% prior. In such a case, it is probably best to add it in the list of non-MAP/prior 
+% based algorithms and have the prior built into the algorithm.
+% 
+% You also need to modify |init_nex_iter.m| if one of the following applies: 
+% - Your algorithm is non-MAP/does not use a prior. - Your algorithm is MAP/prior-based, 
+% but the prior information is applied after all subiterations are complete (as 
+% in e.g. BSREM). - You are adding a new prior gradient and want it to work with 
+% BSREM and/or ROSEM-MAP.
+% 
+% For the first case, add your algorithm after ACOSEM following the same style 
+% as previous algorithms. For the second case, add the MAP-phase as in BSREM and 
+% ROSEM-MAP cases. For the third and last case, add your prior to the list of 
+% other priors just as in |computeEstimatesImp1.m|.
+%% Implementation 4 specific steps
+% These steps are necessary only for implementation 4.
+% 
+% For subsets-based algorithms, modify |computeEstimatesImp4.m| and your algorithm/prior 
+% to the list. Priors are first, followed by the reconstruction algorithms. The 
+% order does not matter. The algorithm input and output should be, however, always 
+% to |im_vectors.OSEM_apu|.
+% 
+% If your algorithm requires a prepass phase (e.g. computing the full sensitivity 
+% image), you need to add the required steps in the prepass phase section before 
+% |computeEstimatesImp4.m| in |reconstructions_main.m| (|prepass_phase.m| is only 
+% used for priors in implementation 4).
+% 
+% You also need to modify |computeEstimatesImp4Iter.m| if any of the following 
+% applies: - Your algorithm does not use subsets. - Your algorithm is MAP/prior-based, 
+% but the prior information is applied after all subiterations are complete (as 
+% in e.g. BSREM). - You are adding a new prior gradient and want it to work with 
+% BSREM, ROSEM-MAP and OSL-MLEM.
+% 
+% For the first case, add your algorithm to the |~osem| section (around line 
+% 95). The first if-section should be used for MAP/prior algorithms and the second 
+% for non-prior ones. Uncomment the commented sections and add corresponding sections 
+% for your own algorithm. For the second case, add the MAP-phase as in BSREM and 
+% ROSEM-MAP cases. For the third and last case, add your prior to the list of 
+% other priors just as in |computeEstimatesImp4.m|.
+%% Implementation 2 specific steps
+% These steps are necessary only for implementation 2. Adding new built-in algorithms 
+% is more difficult for implementation 2 than for 1 or 4. Note that this page 
+% only outlines how to add new algorithms to the OpenCL backend. The process for 
+% CUDA is practically identical though.
+% 
+% First you should add the new algorithm to the |RecMethods| struct in |functions.hpp|, 
+% to |RecMethodsOpenCL| in |AF_opencl_functions.hpp| and to |RecMethodsOpenCL| 
+% in |general_opencl_functions.h|. For the latter two, it is important to maintain 
+% the same order in both structures. Add non-MAP/prior algorithms to the first 
+% row, priors to the second and MAP/prior algorithms to the third. Then add a 
+% corresponding line to |get_rec_methods| function in |functions.cpp| and to |OpenCLRecMethods| 
+% in |AF_opencl_functions.hpp|.
+% 
+% Next step is to modify |form_data_variables| function in |functions.cpp|. 
+% For non-MAP/prior algorithms, add the algorithm after ACOSEM and initialize 
+% it just like the previous ones (simply copy-paste and modify the |MethodList| 
+% with your own prior name from previous step). For MAP/prior-based algorithms, 
+% this step is not required.
+% 
+% If your prior or algorithm uses some algorithm/prior specific variables (constants, 
+% weights, etc.), then you should load them preferably in |form_data_variables|. 
+% It is recommended to save any necessary variables in the |options| struct in 
+% MATLAB/Octave and then load these variables in |form_data_variables|. |w_vec| 
+% struct can be used to store the variables.
+% 
+% If you are adding a subset using MAP/prior-based algorithm that uses priors 
+% ONLY between iterations (i.e. the priors are NOT used during sub-iteration computations 
+% as in e.g. BSREM), you need to add it to the list in |computeImplementation23.m| 
+% (around line 135) and also add a new |push_back| step for |w_vec.mIt| in |form_data_variables| 
+% with the cell index incremented (simply copy-paste the last one and increment 
+% the second input of |mxGetCell|).
+% 
+% If the algorithm requires the full sensitivity image, add it to the list when 
+% loading |w_vec.MBSREM_prepass| in |form_data_variables|. |w_vec.D| stores the 
+% full sensitivity image, |pj3| is the same as |D|, but divided with the number 
+% of subsets. |MRAMLA_prepass| should be used for all algorithms requiring either 
+% (add them to the conditional(s)). You’ll also need to add it to the conditional 
+% in |createKernels| and at the bottom in |createProgram| in |AF_opencl_functions.cpp|.
+% 
+% The following steps apply ONLY to algorithms using subsets or when adding 
+% new priors:
+% 
+% First step is to modify |compute_OS_estimates_subiter.cpp| and add your own 
+% algorithm and/or prior there. Non-MAP/prior-based algorithms should go after 
+% ACOSEM. Priors and MAP/prior-based algorithms should go to the loop. The order 
+% does not matter, however, with priors you should NOT use the custom prior style 
+% (and it is recommended to place the prior before the custom prior). Note also 
+% that you need to modify the bottom of |compute_OS_estimates_subiter.cpp| as 
+% well when adding new priors.
+% 
+% Next step is required only if either of the two applies: - You are adding 
+% a new prior and want it to work with BSREM and/or ROSEM-MAP - You are adding 
+% a new MAP/prior-based algorithm that uses the prior information only after subiterations 
+% are complete (e.g. as with BSREM)
+% 
+% Modify |compute_OS_estimates_iter.cpp| and add the prior to the list, just 
+% like in |compute_OS_estimates_subiter.cpp|. For algorithms add the new one to 
+% the list just like BSREM or ROSEM-MAP is. Remember to also modify the bottom 
+% section if adding prior(s).
+% 
+% These steps apply ONLY to algorithms that DO NOT use subsets or when adding 
+% new priors:
+% 
+% Modify |compute_ML_estimates.cpp| and add your own algorithm and/or prior 
+% there. Non-MAP/prior-based algorithms should go after MLEM. Priors and MAP/prior-based 
+% algorithms should go to the loop. The order does not matter, however, with priors 
+% you should NOT use the custom prior style (and it is recommended to place the 
+% prior before the custom prior). Be sure to uncomment the conditional if adding 
+% MAP/prior-based algorithm. Note also that you need to modify the bottom of |compute_ML_estimates.cpp| 
+% as well when adding new priors.
+% 
+% For custom-prior functionality, some further modifications may be necessary 
+% such as loading of the full sensitivity image. Anything using |MethodList.CUSTOM| 
+% points to the custom prior.
+##### SOURCE END #####
+-->
+</div></body></html>

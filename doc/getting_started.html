@@ -1,6 +1,7 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Getting started</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
-.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Getting started</span></h1><div  class = 'S1'><span>OMEGA is a software for MATLAB and Octave to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from </span><a href = "http://www.opengatecollaboration.org/"><span>GATE</span></a><span> simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see </span><a href = "contributing.html"><span>Contributing code to OMEGA</span></a><span>.</span></div><div  class = 'S1'><a href = "installation.html"><span>Installation</span></a><span></span></div><div  class = 'S1'><a href = "features.html"><span>Features</span></a><span></span></div><div  class = 'S1'><a href = "system_requirements.html"><span>System requirements</span></a></div><div  class = 'S1'><a href = "examples.html"><span>Examples</span></a></div><div  class = 'S1'><a href = "known_issues.html"><span>Known issues and limitations</span></a></div><div  class = 'S1'><a href = "upcoming_features.html"><span>Upcoming features</span></a></div><div  class = 'S1'><a href = "bug_reports.html"><span>Reporting bug and feature requests</span></a></div><div  class = 'S1'><a href = "citation.html"><span>Citation</span></a></div><div  class = 'S1'><a href = "acknowledgments.html"><span>Acknowledgments</span></a></div></div>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Getting started</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }
+.S2 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 18px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 17px; font-weight: 700; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Getting started</span></h1><div  class = 'S1'><span>OMEGA is a software for MATLAB and Octave to reconstruct data obtained with a positron emission tomography device. This software also allows to easily reconstruct ASCII, LMF or ROOT data obtained from </span><a href = "http://www.opengatecollaboration.org/"><span>GATE</span></a><span> simulations. See Features section below for more information on available features and Known Issues and Limitations for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see </span><a href = "contributing.html"><span>Contributing code to OMEGA</span></a><span>.</span></div><h3  class = 'S2'><span>General information</span></h3><div  class = 'S1'><span>Most OMEGA features are built around m-file scripts referred to as "main-files". In these main files, a struct variable, called </span><span style=' font-family: monospace;'>options</span><span>, is filled and contains all the parameters that are needed for any of  the operations selected. PET and CT have quite different main-file  compositions due to different properties of these imaging modalities.  CT, for example, has much less adjustable parameters due to lack of  corrections. Reconstruction parameters, however, are unchanged between  different modalities. It is not necessary to use these main-files and  not every variable present in the main-files is necessary. Many of the  included functions can be used without the </span><span style=' font-family: monospace;'>options</span><span> struct,  but some core functions, such as loading GATE data, require its use. In  MATLAB you can run individual section easily when using the GUI, but in  Octave you will need to run the entire m-file or select the required  text to be run (due to the large size of the m-files, this is not  recommended). Due to this, there are parameters that allow only the load of PET data (</span><span style=' font-family: monospace;'>options.only_sinos</span><span>) when the file is run, or only performing the image reconstruction (</span><span style=' font-family: monospace;'>options.only_reconstructions</span><span>).</span></div><div  class = 'S1'><span>Most of the functions included are simple m-files, however, some of  the more demanding work is done in MEX/OCT-files. These include, for  example, sinogram creation and image reconstruction/system matrix  creation.</span></div><div  class = 'S1'><a href = "installation.html"><span>Installation</span></a><span></span></div><div  class = 'S1'><a href = "features.html"><span>Features</span></a><span></span></div><div  class = 'S1'><a href = "system_requirements.html"><span>System requirements</span></a></div><div  class = 'S1'><a href = "examples.html"><span>Examples</span></a></div><div  class = 'S1'><a href = "known_issues.html"><span>Known issues and limitations</span></a></div><div  class = 'S1'><a href = "upcoming_features.html"><span>Upcoming features</span></a></div><div  class = 'S1'><a href = "bug_reports.html"><span>Reporting bug and feature requests</span></a></div><div  class = 'S1'><a href = "citation.html"><span>Citation</span></a></div><div  class = 'S1'><a href = "acknowledgments.html"><span>Acknowledgments</span></a></div>
 <br>
 <!-- 
 ##### SOURCE BEGIN #####
@@ -12,6 +13,26 @@
 % features and Known Issues and Limitations for software limitations. If you wish 
 % to add your own code (e.g. reconstruction algorithm) see <contributing.html 
 % Contributing code to OMEGA>.
+% General information
+% Most OMEGA features are built around m-file scripts referred to as "main-files". 
+% In these main files, a struct variable, called |options|, is filled and contains 
+% all the parameters that are needed for any of  the operations selected. PET 
+% and CT have quite different main-file  compositions due to different properties 
+% of these imaging modalities.  CT, for example, has much less adjustable parameters 
+% due to lack of  corrections. Reconstruction parameters, however, are unchanged 
+% between  different modalities. It is not necessary to use these main-files and  
+% not every variable present in the main-files is necessary. Many of the  included 
+% functions can be used without the |options| struct,  but some core functions, 
+% such as loading GATE data, require its use. In  MATLAB you can run individual 
+% section easily when using the GUI, but in  Octave you will need to run the entire 
+% m-file or select the required  text to be run (due to the large size of the 
+% m-files, this is not  recommended). Due to this, there are parameters that allow 
+% only the load of PET data (|options.only_sinos|) when the file is run, or only 
+% performing the image reconstruction (|options.only_reconstructions|).
+% 
+% Most of the functions included are simple m-files, however, some of  the more 
+% demanding work is done in MEX/OCT-files. These include, for  example, sinogram 
+% creation and image reconstruction/system matrix  creation.
 % 
 % <installation.html Installation>
 % 
@@ -31,4 +52,5 @@
 % 
 % <acknowledgments.html Acknowledgments>
 ##### SOURCE END #####
---></body></html>
+-->
+</div></body></html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>CT Tutorial</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S2 { margin-bottom: 20px; padding-bottom: 4px;  }
+.S3 { margin: 0px; padding: 10px 0px 10px 5px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S4 { margin: -1px 0px 0px; padding: 10px 0px 10px 7px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S5 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }
+.S6 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: 700; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0' id = 'T_223C5A93' ><span>CT Tutorial</span></h1><h1  class = 'S1' id = 'T_1808DA9A' ><span>Getting started</span></h1><div  class = 'S2'><div  class = 'S3'><span style=' font-weight: bold;'>Table of Contents</span></div><div  class = 'S4'><a href = "#T_223C5A93"><span>Tutorials
+</span></a><a href = "#T_1808DA9A"><span>Getting started
+</span></a><span>    </span><a href = "#H_9697AAE5"><span>Scanner properties
+</span></a><span>    </span><a href = "#H_B8668EE0"><span>Data load
+</span></a><span>    </span><a href = "#H_14BA8420"><span>Image properties
+</span></a><span>    </span><a href = "#H_ABBA3E50"><span>Reconstruction properties
+</span></a><span>    </span><a href = "#H_C3065025"><span>Reconstruction algorithms
+</span></a><span>    </span><a href = "#H_FA946A09"><span>Using the forward/backward projection class</span></a></div></div><div  class = 'S5'><span>This page outlines how to load and reconstruction cone/fan beam CT data with OMEGA. All the initial four example scripts are covered here.</span></div><h2  class = 'S6' id = 'H_9697AAE5' ><span>Scanner properties</span></h2><div  class = 'S5'><span>This section includes all the necessary scanner specific data. This is very similar for all example scripts with the exception of the Inveon data. For Inveon data, most of the parameters are determined from the header file.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>use_N_positions</span></div><div  class = 'S5'><span>Inveon data ONLY (</span><span style=' font-family: monospace;'>Inveon_CT_main.m</span><span>). Specifies the number of bed positions that are both loaded and reconstructed. The example data is a step-and-shoot data with three bed positions, but with this you can select any of them. For example, </span><span style=' font-family: monospace;'>options.use_N_positions = [1];</span><span> would load only the first bed position, </span><span style=' font-family: monospace;'>options.use_N_positions = [2,3];</span><span> would load the second and last bed positions while </span><span style=' font-family: monospace;'>options.use_N_positions = [1,2,3];</span><span> loads them all.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>binning</span></div><div  class = 'S5'><span>Setting this value higher than one will bin the input data during data load. The binning is performed for both dimensions. For example binning of 2 reduces the size of the projections by two from both dimensions (e.g. 2048x3072 becomes 1024x1536). You should only use values that can be used as the divisor of the input dimensions.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>xSize</span></div><div  class = 'S5'><span>The number of detector pixels/crystals in the horizontal/axial direction of the flat detector panel. If you need to transpose (permute) the input data, this value needs to be set as the final transposed dimension. Furthermore, if you use binning, you need to use the final binned dimensions.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>ySize</span></div><div  class = 'S5'><span>The number of detector pixels/crystals in the vertical/transaxial direction of the flat detector panel. If you need to transpose (permute) the input data, this value needs to be set as the final transposed dimension. Furthermore, if you use binning, you need to use the final binned dimensions.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>nProjections</span></div><div  class = 'S5'><span>The total number of projection images. If you wish to reduce the number of projections used for reconstruction, you should modify this value only after the data has been loaded (assuming you use the automated data load functions).</span></div><div  class = 'S5'><span style=' font-weight: bold;'>angles</span></div><div  class = 'S5'><span>The angles corresponding to the projections. This can be either degrees or radians.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>dPitch</span></div><div  class = 'S5'><span>The detector pitch/size, i.e. the size of one detector crystal, in mm. If binning is used, you should multiply this value with the binning value.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>sourceToDetector</span></div><div  class = 'S5'><span>The source to detector distance in mm. This is the orthogonal distance from the X-ray source to the detector panel.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>sourceToCRot</span></div><div  class = 'S5'><span>The orthogonal distance in mm from the X-ray source to the origin/center of rotation/object.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>only_reconstructions</span></div><div  class = 'S5'><span>Data load is ignored if </span><span style=' font-family: monospace;'>options.SinM</span><span> already exists in the workspace. Set this to true, if you have already loaded the data and only adjust the reconstruction/image parameters. If you modify any of the measurement data parameters, you need to reload the measurement data.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>FOVa_x/y</span></div><div  class = 'S5'><span>Transaxial FOV sizes in mm.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>axial_fov</span></div><div  class = 'S5'><span>Axial FOV in mm.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>horizontalOffset</span></div><div  class = 'S5'><span>Often with CT scanners, the center of rotation does not lie exactly in the origin. With this value you can move (offset) the source location horizontally in mm. This has a similar effect as circulary shifting the projection images. This value can be omitted if it is not required.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>verticalOffset</span></div><div  class = 'S5'><span>Same as above, but for vertical direction. This value can be omitted if it is not required.</span></div><h2  class = 'S6' id = 'H_B8668EE0' ><span>Data load</span></h2><div  class = 'S5'><span>Three different functions for data load are provided. These are </span><span style=' font-family: monospace;'>loadInveonCTData</span><span> for Inveon CT data only, </span><span style=' font-family: monospace;'>loadProjectionImages</span><span> for any TIFF or BMP images and </span><span style=' font-family: monospace;'>loadProjectionData</span><span> for any binary data.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>loadInveonCTData</span></div><div  class = 'S5'><span>Automatically loads Inveon CT data and parameters. The user will be prompted for the location of the projection data header (.cat.hdr).</span></div><div  class = 'S5'><span style=' font-weight: bold;'>loadProjectionImages</span></div><div  class = 'S5'><span>The user will be prompted for the first projection image (TIFF or BMP). All the images matching the same name pattern in the folder will then be loaded. If there are more images than </span><span style=' font-family: monospace;'>nProjections</span><span>, then the first </span><span style=' font-family: monospace;'>nProjections</span><span> number of images are loaded. The numbering of the images can start from 0 or 1. Binning is performed during data load.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>loadProjectionData</span></div><div  class = 'S5'><span>The user will be prompted for the binary projection data. Any projection data file can be used. This is mainly intended for GATE data, but should work with any binary data. This function supports any input data type (e.g. single, double, 32-bit integer, etc.), but the type has to be input by the user (see the function help for details). The function also supports removal/ignoring of header data, either from the end of file or from the beginning. Either all binary files with the same name pattern can be loaded or only the selected file.</span></div><h2  class = 'S6' id = 'H_14BA8420' ><span>Image properties</span></h2><div  class = 'S5'><span>You can input the size of the reconstructed image here. Furthermore, you can use </span><span style=' font-family: monospace;'>options.offangle</span><span> to rotate the image (rotation is done by rotating the detectors before the reconstruction phase) or you can flip the image with </span><span style=' font-family: monospace;'>options.flip_image</span><span>.</span></div><h2  class = 'S6' id = 'H_ABBA3E50' ><span>Reconstruction properties</span></h2><div  class = 'S5'><span>Four different implementations can be selected.</span></div><div  class = 'S5'><span style=' font-style: italic;'>Implementation 1</span></div><div  class = 'S5'><span>Implementation 1 computes the system matrix as a sparse (MATLAB) matrix. This matrix is then used in MATLAB to compute the selected algorithm(s).</span></div><div  class = 'S5'><span>This implementation uses the most amount of memory and is also, most likely, the slowest.</span></div><div  class = 'S5'><span style=' font-style: italic;'>Implementation 2</span></div><div  class = 'S5'><span>This is a matrix-free reconstruction method. Implementation 2 uses both OpenCL and ArrayFire and as such you need to have both OpenCL and ArrayFire libraries installed and on your library path. Implementation 2 supports all algorithms and priors that implementation 1 supports.</span></div><div  class = 'S5'><span>Unlike implementation 1, 2 has some additional properties you can set. First is the device used (</span><span style=' font-family: monospace;'>options.use_device</span><span>). Default is device 0 and, depending on the OpenCL supported devices, might also be the only device available. This is often also a GPU. You can query the available device numbers with </span><span style=' font-family: monospace;'>ArrayFire_OpenCL_device_info()</span><span>. Any devices shown with the aforementioned function can be used, though devices with less than 2GB of memory are not recommended.</span></div><div  class = 'S5'><span>Second is the usage of 64-bit atomics (</span><span style=' font-family: monospace;'>options.use_64bit_atomics</span><span>). This is on by default and is recommended when using GPUs. If you use CPUs, this will probably have no effect on your reconstruction speeds.</span></div><div  class = 'S5'><span>Lastly is the ability to use CUDA (</span><span style=' font-family: monospace;'>options.use_CUDA</span><span>), that uses CUDA code instead of OpenCL code. This is recommended only for improved Siddon as other projectors tend to be slower than on OpenCL. CUDA support is also experimental and should </span><span style=' font-weight: bold;'>not</span><span> use 64-bit atomics.</span></div><div  class = 'S5'><span style=' font-style: italic;'>Implementation 3</span></div><div  class = 'S5'><span>This is a matrix-free reconstruction method. Implementation 3 is a pure OpenCL method, meaning that ArrayFire libraries are not required. Implementation 3 also supports multi-device (heterogeneous or multi-GPU) computing. Only OSEM and MLEM are supported (though all projectors are supported).</span></div><div  class = 'S5'><span>Similarily to implementation 2, you can set the device used with the same parameter (</span><span style=' font-family: monospace;'>options.use_device</span><span>), however, unlike implementation 2 you do not select a single device, but rather a platform. Platform contains all the supported devices from the same vendor. You can view available platforms with </span><span style=' font-family: monospace;'>OpenCL_device_info()</span><span>. Some computing devices (especially CPUs) can be in multiple platforms. Selecting a platform will, by default, use all devices available on that platform. E.g. if you both a GPU and a CPU on the same platform, then both will be used. If you have two GPUs from the same vendor, both will be used, etc. Multi-device computing from different vendors are not supported (e.g. you can’t use both an AMD and a Nvidia GPU at the same time). In multi-GPU/device case, devices with less than 2GB memory are ignored (not used).</span></div><div  class = 'S5'><span>The amount of data distributed between the CPU and GPU in heterogeneous computing can be adjusted with </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor</span><span>. E.g. if </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor = 2.5</span><span> then 2.5 times more data is given to the GPU. Alternatively, if </span><span style=' font-family: monospace;'>options.cpu_to_gpu_factor = 0</span><span>, then in multi-device platform ONLY the GPU with the highest amount of memory is used.</span></div><div  class = 'S5'><span style=' font-style: italic;'>Implementation 4</span></div><div  class = 'S5'><span>This is a matrix-free reconstruction method. Implementation 4 is a pure CPU implementation using OpenMP for parallellization. It behaves similarly to implementations 2 and 3, except that OpenCL is not required and double precision (64-bit) values are used. All algorithms except MRAMLA and MBSREM are supported. Though only one subset-based algorithm and one MLEM method can be used at the same time (with one prior). E.g. you can use MLEM and OSL-OSEM with NLM, but you can’t use MLEM with OSEM and OSL-OSEM, or OSL-OSEM with MRP and NLM.</span></div><div  class = 'S5'><span>Precomputation works just as with implementations 2 and 3.</span></div><div  class = 'S5'><span>There are no additional parameters for implementation 4. All cores are always used and sometimes all threads as well.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>Projectors</span></div><div  class = 'S5'><span>Two different projectors can be selected, the improved Siddon’s ray tracer or the volume of intersection based ray tracer. All projectors can also utilize PSF reconstruction.</span></div><div  class = 'S5'><span>First is selected by setting </span><span style=' font-family: monospace;'>options.projector_type = 1</span><span>, which is also the default and second with </span><span style=' font-family: monospace;'>options.projector_type = 3</span><span>.</span></div><div  class = 'S5'><span>Volume of intersection based ray tracer allows you to specify the radius of the tube of response (cylinder) with </span><span style=' font-family: monospace;'>options.tube_radius</span><span> and the relative size of the spherical voxels. This projector approximates the voxels as spheres and with </span><span style=' font-family: monospace;'>options.voxel_radius</span><span> you can specify their relative size. If </span><span style=' font-family: monospace;'>options.voxel_radius = 1</span><span> then the spherical voxels are just large enough to contain the entire regular voxel inside them. Lower values cause some of the original voxel to go outside the sphere while larger values cause more space between the original voxel and the sphere boundary.</span></div><div  class = 'S5'><span>PSF (point spread function) reconstruction can be enabled for any projector. </span><span style=' font-family: monospace;'>options.use_psf</span><span> controls whether PSF is included or not. The full width at half maximum (FWHM) of the PSF can be controlled with </span><span style=' font-family: monospace;'>options.FWHM</span><span> for each of the three dimensions separately. Furthermore, an optional deblurring step can be enabled for PSF reconstruction with </span><span style=' font-family: monospace;'>options.use_deblurring</span><span>. The total number of deblurring iterations is the same as the number of subsets times the number of iterations. The deblurring phase is performed only after the reconstruction is completed and is performed for all iterations. The function </span><span style=' font-family: monospace;'>gaussianKernel</span><span> is used to form the Gaussian PSF.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>Reconstruction settings</span></div><div  class = 'S5'><span>Subset type can be selected with </span><span style=' font-family: monospace;'>options.subset_type</span><span>. Random sampling is recommended for CT data.</span></div><div  class = 'S5'><span>Initial value can be set to </span><span style=' font-family: monospace;'>options.x0</span><span>. Dimensions should match with the values in image properties.</span></div><div  class = 'S5'><span style=' font-family: monospace;'>options.epps</span><span> is a small value that prevents division by zero. Shouldn’t be need to adjust.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>Misc settings</span></div><div  class = 'S5'><span>Setting </span><span style=' font-family: monospace;'>options.use_Shuffle = true</span><span> uses the file exchange function shuffle, when </span><span style=' font-family: monospace;'>options.subset_type = 3</span><span> (subsets selected randomly). Using this is optional, but recommended (reduces memory usage). This function needs to be downloaded from the file exchange: </span><a href = "https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle"><span>https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle</span></a></div><div  class = 'S5'><span>Fast sparse can be enabled with </span><span style=' font-family: monospace;'>options.use_fsparse = true</span><span>. This is also optional, but speeds up sparse matrix generation (no longer applicable in MATLAB R2020a and up). Download from </span><a href = "https://github.com/stefanengblom/stenglib"><span>https://github.com/stefanengblom/stenglib</span></a></div><div  class = 'S5'><span>When computing any median root prior based priors, the prior is normally computed as (x - median(x)) / median(x). Setting </span><span style=' font-family: monospace;'>options.med_no_norm = true</span><span> changes this such that the prior is computed as x - median(x). This can lead to improved image quality, but is NOT the way it is presented in the literature.</span></div><h2  class = 'S6' id = 'H_C3065025' ><span>Reconstruction algorithms</span></h2><div  class = 'S5'><span>Select the desired algorithms by setting them to true. Deselect them by setting them to false. Note that these are only the built-in algorithms. If you want to use the forward/backward projection class, then ignore this section and the Algorithm properties below.</span></div><div  class = 'S5'><span style=' font-weight: bold;'>Algorithm properties</span></div><div  class = 'S5'><span>Adjust the various algorithm properties here.</span></div><h2  class = 'S6' id = 'H_FA946A09' ><span>Using the forward/backward projection class</span></h2><div  class = 'S5'><span>You can use the class to compute the forward projection (</span><span style=' font-style: italic;'>A * x</span><span>) and the backward projection (</span><span style=' font-style: italic;'>A^T * y</span><span>). While </span><span style=' font-family: monospace;'>reconstructions_mainCT.m</span><span> uses the built-in algorithms, the class examples are included after it. If you do not want to use the built-in algorithms, you should comment the line with </span><span style=' font-family: monospace;'>reconstructions_mainCT</span><span>. For more information on the use of the class object, see </span><a href = "compute_forward_backwards_projections.html"><span>Computing the forward and/or backward projections</span></a><span>.</span></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% CT Tutorial
+%% Getting started
+%% 
+% This page outlines how to load and reconstruction cone/fan beam CT data with 
+% OMEGA. All the initial four example scripts are covered here.
+%% Scanner properties
+% This section includes all the necessary scanner specific data. This is very 
+% similar for all example scripts with the exception of the Inveon data. For Inveon 
+% data, most of the parameters are determined from the header file.
+% 
+% *use_N_positions*
+% 
+% Inveon data ONLY (|Inveon_CT_main.m|). Specifies the number of bed positions 
+% that are both loaded and reconstructed. The example data is a step-and-shoot 
+% data with three bed positions, but with this you can select any of them. For 
+% example, |options.use_N_positions = [1];| would load only the first bed position, 
+% |options.use_N_positions = [2,3];| would load the second and last bed positions 
+% while |options.use_N_positions = [1,2,3];| loads them all.
+% 
+% *binning*
+% 
+% Setting this value higher than one will bin the input data during data load. 
+% The binning is performed for both dimensions. For example binning of 2 reduces 
+% the size of the projections by two from both dimensions (e.g. 2048x3072 becomes 
+% 1024x1536). You should only use values that can be used as the divisor of the 
+% input dimensions.
+% 
+% *xSize*
+% 
+% The number of detector pixels/crystals in the horizontal/axial direction of 
+% the flat detector panel. If you need to transpose (permute) the input data, 
+% this value needs to be set as the final transposed dimension. Furthermore, if 
+% you use binning, you need to use the final binned dimensions.
+% 
+% *ySize*
+% 
+% The number of detector pixels/crystals in the vertical/transaxial direction 
+% of the flat detector panel. If you need to transpose (permute) the input data, 
+% this value needs to be set as the final transposed dimension. Furthermore, if 
+% you use binning, you need to use the final binned dimensions.
+% 
+% *nProjections*
+% 
+% The total number of projection images. If you wish to reduce the number of 
+% projections used for reconstruction, you should modify this value only after 
+% the data has been loaded (assuming you use the automated data load functions).
+% 
+% *angles*
+% 
+% The angles corresponding to the projections. This can be either degrees or 
+% radians.
+% 
+% *dPitch*
+% 
+% The detector pitch/size, i.e. the size of one detector crystal, in mm. If 
+% binning is used, you should multiply this value with the binning value.
+% 
+% *sourceToDetector*
+% 
+% The source to detector distance in mm. This is the orthogonal distance from 
+% the X-ray source to the detector panel.
+% 
+% *sourceToCRot*
+% 
+% The orthogonal distance in mm from the X-ray source to the origin/center of 
+% rotation/object.
+% 
+% *only_reconstructions*
+% 
+% Data load is ignored if |options.SinM| already exists in the workspace. Set 
+% this to true, if you have already loaded the data and only adjust the reconstruction/image 
+% parameters. If you modify any of the measurement data parameters, you need to 
+% reload the measurement data.
+% 
+% *FOVa_x/y*
+% 
+% Transaxial FOV sizes in mm.
+% 
+% *axial_fov*
+% 
+% Axial FOV in mm.
+% 
+% *horizontalOffset*
+% 
+% Often with CT scanners, the center of rotation does not lie exactly in the 
+% origin. With this value you can move (offset) the source location horizontally 
+% in mm. This has a similar effect as circulary shifting the projection images. 
+% This value can be omitted if it is not required.
+% 
+% *verticalOffset*
+% 
+% Same as above, but for vertical direction. This value can be omitted if it 
+% is not required.
+%% Data load
+% Three different functions for data load are provided. These are |loadInveonCTData| 
+% for Inveon CT data only, |loadProjectionImages| for any TIFF or BMP images and 
+% |loadProjectionData| for any binary data.
+% 
+% *loadInveonCTData*
+% 
+% Automatically loads Inveon CT data and parameters. The user will be prompted 
+% for the location of the projection data header (.cat.hdr).
+% 
+% *loadProjectionImages*
+% 
+% The user will be prompted for the first projection image (TIFF or BMP). All 
+% the images matching the same name pattern in the folder will then be loaded. 
+% If there are more images than |nProjections|, then the first |nProjections| 
+% number of images are loaded. The numbering of the images can start from 0 or 
+% 1. Binning is performed during data load.
+% 
+% *loadProjectionData*
+% 
+% The user will be prompted for the binary projection data. Any projection data 
+% file can be used. This is mainly intended for GATE data, but should work with 
+% any binary data. This function supports any input data type (e.g. single, double, 
+% 32-bit integer, etc.), but the type has to be input by the user (see the function 
+% help for details). The function also supports removal/ignoring of header data, 
+% either from the end of file or from the beginning. Either all binary files with 
+% the same name pattern can be loaded or only the selected file.
+%% Image properties
+% You can input the size of the reconstructed image here. Furthermore, you can 
+% use |options.offangle| to rotate the image (rotation is done by rotating the 
+% detectors before the reconstruction phase) or you can flip the image with |options.flip_image|.
+%% Reconstruction properties
+% Four different implementations can be selected.
+% 
+% _Implementation 1_
+% 
+% Implementation 1 computes the system matrix as a sparse (MATLAB) matrix. This 
+% matrix is then used in MATLAB to compute the selected algorithm(s).
+% 
+% This implementation uses the most amount of memory and is also, most likely, 
+% the slowest.
+% 
+% _Implementation 2_
+% 
+% This is a matrix-free reconstruction method. Implementation 2 uses both OpenCL 
+% and ArrayFire and as such you need to have both OpenCL and ArrayFire libraries 
+% installed and on your library path. Implementation 2 supports all algorithms 
+% and priors that implementation 1 supports.
+% 
+% Unlike implementation 1, 2 has some additional properties you can set. First 
+% is the device used (|options.use_device|). Default is device 0 and, depending 
+% on the OpenCL supported devices, might also be the only device available. This 
+% is often also a GPU. You can query the available device numbers with |ArrayFire_OpenCL_device_info()|. 
+% Any devices shown with the aforementioned function can be used, though devices 
+% with less than 2GB of memory are not recommended.
+% 
+% Second is the usage of 64-bit atomics (|options.use_64bit_atomics|). This 
+% is on by default and is recommended when using GPUs. If you use CPUs, this will 
+% probably have no effect on your reconstruction speeds.
+% 
+% Lastly is the ability to use CUDA (|options.use_CUDA|), that uses CUDA code 
+% instead of OpenCL code. This is recommended only for improved Siddon as other 
+% projectors tend to be slower than on OpenCL. CUDA support is also experimental 
+% and should *not* use 64-bit atomics.
+% 
+% _Implementation 3_
+% 
+% This is a matrix-free reconstruction method. Implementation 3 is a pure OpenCL 
+% method, meaning that ArrayFire libraries are not required. Implementation 3 
+% also supports multi-device (heterogeneous or multi-GPU) computing. Only OSEM 
+% and MLEM are supported (though all projectors are supported).
+% 
+% Similarily to implementation 2, you can set the device used with the same 
+% parameter (|options.use_device|), however, unlike implementation 2 you do not 
+% select a single device, but rather a platform. Platform contains all the supported 
+% devices from the same vendor. You can view available platforms with |OpenCL_device_info()|. 
+% Some computing devices (especially CPUs) can be in multiple platforms. Selecting 
+% a platform will, by default, use all devices available on that platform. E.g. 
+% if you both a GPU and a CPU on the same platform, then both will be used. If 
+% you have two GPUs from the same vendor, both will be used, etc. Multi-device 
+% computing from different vendors are not supported (e.g. you can’t use both 
+% an AMD and a Nvidia GPU at the same time). In multi-GPU/device case, devices 
+% with less than 2GB memory are ignored (not used).
+% 
+% The amount of data distributed between the CPU and GPU in heterogeneous computing 
+% can be adjusted with |options.cpu_to_gpu_factor|. E.g. if |options.cpu_to_gpu_factor 
+% = 2.5| then 2.5 times more data is given to the GPU. Alternatively, if |options.cpu_to_gpu_factor 
+% = 0|, then in multi-device platform ONLY the GPU with the highest amount of 
+% memory is used.
+% 
+% _Implementation 4_
+% 
+% This is a matrix-free reconstruction method. Implementation 4 is a pure CPU 
+% implementation using OpenMP for parallellization. It behaves similarly to implementations 
+% 2 and 3, except that OpenCL is not required and double precision (64-bit) values 
+% are used. All algorithms except MRAMLA and MBSREM are supported. Though only 
+% one subset-based algorithm and one MLEM method can be used at the same time 
+% (with one prior). E.g. you can use MLEM and OSL-OSEM with NLM, but you can’t 
+% use MLEM with OSEM and OSL-OSEM, or OSL-OSEM with MRP and NLM.
+% 
+% Precomputation works just as with implementations 2 and 3.
+% 
+% There are no additional parameters for implementation 4. All cores are always 
+% used and sometimes all threads as well.
+% 
+% *Projectors*
+% 
+% Two different projectors can be selected, the improved Siddon’s ray tracer 
+% or the volume of intersection based ray tracer. All projectors can also utilize 
+% PSF reconstruction.
+% 
+% First is selected by setting |options.projector_type = 1|, which is also the 
+% default and second with |options.projector_type = 3|.
+% 
+% Volume of intersection based ray tracer allows you to specify the radius of 
+% the tube of response (cylinder) with |options.tube_radius| and the relative 
+% size of the spherical voxels. This projector approximates the voxels as spheres 
+% and with |options.voxel_radius| you can specify their relative size. If |options.voxel_radius 
+% = 1| then the spherical voxels are just large enough to contain the entire regular 
+% voxel inside them. Lower values cause some of the original voxel to go outside 
+% the sphere while larger values cause more space between the original voxel and 
+% the sphere boundary.
+% 
+% PSF (point spread function) reconstruction can be enabled for any projector. 
+% |options.use_psf| controls whether PSF is included or not. The full width at 
+% half maximum (FWHM) of the PSF can be controlled with |options.FWHM| for each 
+% of the three dimensions separately. Furthermore, an optional deblurring step 
+% can be enabled for PSF reconstruction with |options.use_deblurring|. The total 
+% number of deblurring iterations is the same as the number of subsets times the 
+% number of iterations. The deblurring phase is performed only after the reconstruction 
+% is completed and is performed for all iterations. The function |gaussianKernel| 
+% is used to form the Gaussian PSF.
+% 
+% *Reconstruction settings*
+% 
+% Subset type can be selected with |options.subset_type|. Random sampling is 
+% recommended for CT data.
+% 
+% Initial value can be set to |options.x0|. Dimensions should match with the 
+% values in image properties.
+% 
+% |options.epps| is a small value that prevents division by zero. Shouldn’t 
+% be need to adjust.
+% 
+% *Misc settings*
+% 
+% Setting |options.use_Shuffle = true| uses the file exchange function shuffle, 
+% when |options.subset_type = 3| (subsets selected randomly). Using this is optional, 
+% but recommended (reduces memory usage). This function needs to be downloaded 
+% from the file exchange: <https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle 
+% https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle>
+% 
+% Fast sparse can be enabled with |options.use_fsparse = true|. This is also 
+% optional, but speeds up sparse matrix generation (no longer applicable in MATLAB 
+% R2020a and up). Download from <https://github.com/stefanengblom/stenglib https://github.com/stefanengblom/stenglib>
+% 
+% When computing any median root prior based priors, the prior is normally computed 
+% as (x - median(x)) / median(x). Setting |options.med_no_norm = true| changes 
+% this such that the prior is computed as x - median(x). This can lead to improved 
+% image quality, but is NOT the way it is presented in the literature.
+%% Reconstruction algorithms
+% Select the desired algorithms by setting them to true. Deselect them by setting 
+% them to false. Note that these are only the built-in algorithms. If you want 
+% to use the forward/backward projection class, then ignore this section and the 
+% Algorithm properties below.
+% 
+% *Algorithm properties*
+% 
+% Adjust the various algorithm properties here.
+%% Using the forward/backward projection class
+% You can use the class to compute the forward projection (_A * x_) and the 
+% backward projection (_A^T * y_). While |reconstructions_mainCT.m| uses the built-in 
+% algorithms, the class examples are included after it. If you do not want to 
+% use the built-in algorithms, you should comment the line with |reconstructions_mainCT|. 
+% For more information on the use of the class object, see <compute_forward_backwards_projections.html 
+% Computing the forward and/or backward projections>.
+##### SOURCE END #####
+-->
+</div></body></html>

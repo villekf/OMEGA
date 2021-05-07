@@ -1,0 +1,50 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Using Inveon CT data</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }
+.S2 { margin-bottom: 20px; padding-bottom: 4px;  }
+.S3 { margin: 0px; padding: 10px 0px 10px 5px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S4 { margin: -1px 0px 0px; padding: 10px 0px 10px 7px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: start;  }
+.S5 { margin: 15px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0' id = 'T_A9121A6E' ><span>Using Inveon CT data</span></h1><div  class = 'S1'><span>This page describes the contents of the open Siemens Inveon CT data and how to use it. The data can be obtained from </span><a href = "https://doi.org/10.5281/zenodo.4646835."><span>https://doi.org/10.5281/zenodo.4646835.</span></a></div><div  class = 'S2'><div  class = 'S3'><span style=' font-weight: bold;'>Table of Contents</span></div><div  class = 'S4'><a href = "#T_A9121A6E"><span>Using Inveon CT data
+</span></a><a href = "#T_E22975E6"><span>Files included
+</span></a><a href = "#T_2B534771"><span>Inveon data in OMEGA</span></a></div></div><h1  class = 'S5' id = 'T_E22975E6' ><span>Files included</span></h1><div  class = 'S1'><span style=' font-family: monospace;'>NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat</span><span> is the raw projection data. Contains first a header section, then the  dark measurements, then the light measurements and finally the actual  projection data. </span><span style=' font-family: monospace;'>NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat.hdr</span><span> is the corresponding header file that contains the necessary scanner information and can be input to </span><span style=' font-family: monospace;'>loadInveonCTData</span><span> when prompted.</span></div><div  class = 'S1'><span style=' font-family: monospace;'>NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.ct.img</span><span> is the FDK reconstructed image of the projection data. Reconstructed by the Siemens Inveon Acquisition Workplace software. The header file </span><span style=' font-family: monospace;'>NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.ct.img.hdr</span><span> contains the reconstruction parameters.</span></div><h1  class = 'S5' id = 'T_2B534771' ><span>Inveon data in OMEGA</span></h1><div  class = 'S1'><span>This data can be used without modifications with </span><span style=' font-family: monospace;'>Inveon_CT_main.m</span><span>. Running this file prompt you to select the projection header file (</span><span style=' font-family: monospace;'>NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat.hdr</span><span>). Note that, by default, the script will first run the built-in  reconstructions and then the forward/backward class examples. It is  recommended to comment all, but one of these sections (they are  separated by %%). The data has already been binned 4x4 and, as such,  selecting higher binning value will bin the data even more.</span></div><div  class = 'S1'><span>The phantom data is a step-and-shoot cone beam measurement that  contains three bed positions. This data was originally used for PET  attenuation correction. You can select any or all bed positions. Axial  FOV and axial number of pixels will be automatically adjusted.</span></div><div  class = 'S1'><span>If you use other Inveon CT data, simply modify the necessary  variables accordingly. All scanner parameters will be automatically  loaded from the header file.</span></div><div  class = 'S1'><span>For reconstruction, it is recommended to use random subset sampling (</span><span style=' font-family: monospace;'>subset_type = 3</span><span>) if you use subsets. Furthermore, reconstructing all three bed positions can take hours on the CPU, depending on the number of iterations and  core count.</span></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Using Inveon CT data
+% This page describes the contents of the open Siemens Inveon CT data and how 
+% to use it. The data can be obtained from <https://doi.org/10.5281/zenodo.4646835. 
+% https://doi.org/10.5281/zenodo.4646835.>
+%% Files included
+% |NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat| is the 
+% raw projection data. Contains first a header section, then the  dark measurements, 
+% then the light measurements and finally the actual  projection data. |NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat.hdr| 
+% is the corresponding header file that contains the necessary scanner information 
+% and can be input to |loadInveonCTData| when prompted.
+% 
+% |NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.ct.img| is the 
+% FDK reconstructed image of the projection data. Reconstructed by the Siemens 
+% Inveon Acquisition Workplace software. The header file |NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.ct.img.hdr| 
+% contains the reconstruction parameters.
+%% Inveon data in OMEGA
+% This data can be used without modifications with |Inveon_CT_main.m|. Running 
+% this file prompt you to select the projection header file (|NEMA_S6_18F_Inveon_190M_counts_XAT_Attenuation-CT_NEMA_s6_v1.cat.hdr|). 
+% Note that, by default, the script will first run the built-in  reconstructions 
+% and then the forward/backward class examples. It is  recommended to comment 
+% all, but one of these sections (they are  separated by %%). The data has already 
+% been binned 4x4 and, as such,  selecting higher binning value will bin the data 
+% even more.
+% 
+% The phantom data is a step-and-shoot cone beam measurement that  contains 
+% three bed positions. This data was originally used for PET  attenuation correction. 
+% You can select any or all bed positions. Axial  FOV and axial number of pixels 
+% will be automatically adjusted.
+% 
+% If you use other Inveon CT data, simply modify the necessary  variables accordingly. 
+% All scanner parameters will be automatically  loaded from the header file.
+% 
+% For reconstruction, it is recommended to use random subset sampling (|subset_type 
+% = 3|) if you use subsets. Furthermore, reconstructing all three bed positions 
+% can take hours on the CPU, depending on the number of iterations and  core count.
+##### SOURCE END #####
+-->
+</div></body></html>

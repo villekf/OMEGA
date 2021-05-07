@@ -1,34 +1,55 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Extracting the system matrix</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
-.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Extracting the system matrix</span></h1><div  class = 'S1'><span>This page details how you can extract only the system matrix (or a subset of it) and use it manually in your own algorithms/code.</span></div><div  class = 'S1'><span>When extracting the system matrix, it is recommended to use main_PET.m and follow its general workflow. This means that you should input the necessary parameters to the initial section (scanner properties, sinogram/raw data properties, etc.). It is also recommended to set </span><span style=' font-family: monospace;'>options.only_system_matrix = true</span><span>. Precompute step should be computed if you have set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. The reconstruction step (</span><span style=' font-family: monospace;'>reconstructions_main</span><span>) should be ignored.</span></div><div  class = 'S1'><span>After the reconstruction step, there is a specific section for the system matrix creation and (optionally) to separately compute any selected algorithms. It is important to run the </span><span style=' font-family: monospace;'>custom_prior_prepass</span><span> phase before the system matrix is created.</span></div><div  class = 'S1'><span>The subset of the system matrix can then be obtained with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options, current_subset)</span><span> or the entire system matrix with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options)</span><span>. This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any selected corrections (attenuation, normalization, scatter) are applied to the system matrix automatically.</span></div><div  class = 'S1'><span>Sinses implementation 1, it is HIGHLY recommended to set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. Furthermore, other projectors than improved Siddon are not recommended. PSF blurring needs to be added manually, though you can use PSFKernel function to obtain the Gaussian convolution kernel.</span></div></div>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Extracting the system matrix</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }
+.S2 { margin: 20px 10px 5px 4px; padding: 0px; line-height: 20px; min-height: 0px; white-space: pre-wrap; color: rgb(60, 60, 60); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 20px; font-weight: 700; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Extracting the system matrix</span></h1><div  class = 'S1'><span>Currently there are two ways to extract the system matrix. A class  based method using similar methods as when computing the  forward/backward projections or a function-based method that has been  included since the first release. Currently the class based method is  recommended. For CT data, only the class based method is supported. For  more information on extracting the system matrix in CT, see bottom of page </span><a href = "compute_forward_backwards_projections.html"><span>Computing the forward and/or backward projections</span></a><span>.</span></div><h2  class = 'S2'><span>Class based example</span></h2><div  class = 'S1'><span>This is based on </span><a href = "https://github.com/villekf/OMEGA/blob/master/forward_backward_projections_example.m"><span style=' font-family: monospace;'>forward_backward_projections_example.m</span></a><span> for PET and e.g. for CT. The initial part shows how to compute the  forward and backward projections, but "System matrix (OSEM) example"  shows how to extract the system matrix (or a subset of it) by using the  same class. First you need to build the class object with e.g. </span><span style=' font-family: monospace;'>forwardBackwardProject(options)</span><span> for PET and </span><span style=' font-family: monospace;'>forwardBackwardProjectCT(options)</span><span> for CT and then you can obtain the system matrix simply with </span><span style=' font-family: monospace;'>formMatrix(A)</span><span> or a subset of it with </span><span style=' font-family: monospace;'>formMatrix(A, subsetNumber)</span><span>. Note that if you are using precomputed data (</span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>) then this is the TRANSPOSE of the system matrix. For CT data,  precomputed data is always used so the matrix is always a transpose of  the system matrix.</span></div><h2  class = 'S2'><span>Function based example</span></h2><div  class = 'S1'><span>When extracting the system matrix with the function based method, it is recommended to use </span><a href = "https://github.com/villekf/OMEGA/blob/master/main_PET.m"><span style=' font-family: monospace;'>main_PET.m</span></a><span> and follow its general workflow. This means that you should input the  necessary parameters to the initial section (scanner properties,  sinogram/raw data properties, etc.). It is also recommended to set </span><span style=' font-family: monospace;'>options.only_system_matrix = true</span><span>. Precompute step should be computed if you have set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. The reconstruction step (</span><span style=' font-family: monospace;'>reconstructions_main</span><span>) should be ignored. CT data does not have a similar example, but should nevertheless work similarly.</span></div><div  class = 'S1'><span>After the reconstruction step, there is a specific section for the  system matrix creation and (optionally) to separately compute any  selected algorithms. It is important to run the </span><span style=' font-family: monospace;'>custom_prior_prepass</span><span> phase before the system matrix is created.</span></div><div  class = 'S1'><span>The subset of the system matrix can then be obtained with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options, subsetNumber)</span><span> or the entire system matrix with </span><span style=' font-family: monospace;'>A = observation_matrix_formation(options)</span><span>. This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any  selected corrections (attenuation, normalization, scatter) are applied  to the system matrix automatically.</span></div><div  class = 'S1'><span>Since the system matrix creation uses implementation 1, it is HIGHLY recommended to set </span><span style=' font-family: monospace;'>options.precompute_lor = true</span><span>. Furthermore, other projectors than improved Siddon are not recommended. PSF blurring needs to be added manually, though you can use </span><span style=' font-family: monospace;'>PSFKernel</span><span> function to obtain the Gaussian convolution kernel.</span></div>
 <br>
 <!-- 
 ##### SOURCE BEGIN #####
 %% Extracting the system matrix
-% This page details how you can extract only the system matrix (or a subset 
-% of it) and use it manually in your own algorithms/code.
-% 
-% When extracting the system matrix, it is recommended to use main_PET.m and 
-% follow its general workflow. This means that you should input the necessary 
-% parameters to the initial section (scanner properties, sinogram/raw data properties, 
+% Currently there are two ways to extract the system matrix. A class  based 
+% method using similar methods as when computing the  forward/backward projections 
+% or a function-based method that has been  included since the first release. 
+% Currently the class based method is  recommended. For CT data, only the class 
+% based method is supported. For  more information on extracting the system matrix 
+% in CT, see bottom of page <compute_forward_backwards_projections.html Computing 
+% the forward and/or backward projections>.
+%% Class based example
+% This is based on <https://github.com/villekf/OMEGA/blob/master/forward_backward_projections_example.m 
+% |forward_backward_projections_example.m|> for PET and e.g. for CT. The initial 
+% part shows how to compute the  forward and backward projections, but "System 
+% matrix (OSEM) example"  shows how to extract the system matrix (or a subset 
+% of it) by using the  same class. First you need to build the class object with 
+% e.g. |forwardBackwardProject(options)| for PET and |forwardBackwardProjectCT(options)| 
+% for CT and then you can obtain the system matrix simply with |formMatrix(A)| 
+% or a subset of it with |formMatrix(A, subsetNumber)|. Note that if you are using 
+% precomputed data (|options.precompute_lor = true|) then this is the TRANSPOSE 
+% of the system matrix. For CT data,  precomputed data is always used so the matrix 
+% is always a transpose of  the system matrix.
+%% Function based example
+% When extracting the system matrix with the function based method, it is recommended 
+% to use <https://github.com/villekf/OMEGA/blob/master/main_PET.m |main_PET.m|> 
+% and follow its general workflow. This means that you should input the  necessary 
+% parameters to the initial section (scanner properties,  sinogram/raw data properties, 
 % etc.). It is also recommended to set |options.only_system_matrix = true|. Precompute 
 % step should be computed if you have set |options.precompute_lor = true|. The 
-% reconstruction step (|reconstructions_main|) should be ignored.
+% reconstruction step (|reconstructions_main|) should be ignored. CT data does 
+% not have a similar example, but should nevertheless work similarly.
 % 
-% After the reconstruction step, there is a specific section for the system 
-% matrix creation and (optionally) to separately compute any selected algorithms. 
+% After the reconstruction step, there is a specific section for the  system 
+% matrix creation and (optionally) to separately compute any  selected algorithms. 
 % It is important to run the |custom_prior_prepass| phase before the system matrix 
 % is created.
 % 
 % The subset of the system matrix can then be obtained with |A = observation_matrix_formation(options, 
-% current_subset)| or the entire system matrix with |A = observation_matrix_formation(options)|. 
-% This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any selected 
-% corrections (attenuation, normalization, scatter) are applied to the system 
+% subsetNumber)| or the entire system matrix with |A = observation_matrix_formation(options)|. 
+% This matrix behaves as any other (sparse) matrix in MATLAB/Octave. Any  selected 
+% corrections (attenuation, normalization, scatter) are applied  to the system 
 % matrix automatically.
 % 
-% Sinses implementation 1, it is HIGHLY recommended to set |options.precompute_lor 
-% = true|. Furthermore, other projectors than improved Siddon are not recommended. 
-% PSF blurring needs to be added manually, though you can use PSFKernel function 
-% to obtain the Gaussian convolution kernel.
+% Since the system matrix creation uses implementation 1, it is HIGHLY recommended 
+% to set |options.precompute_lor = true|. Furthermore, other projectors than improved 
+% Siddon are not recommended. PSF blurring needs to be added manually, though 
+% you can use |PSFKernel| function to obtain the Gaussian convolution kernel.
 ##### SOURCE END #####
---></body></html>
+-->
+</div></body></html>

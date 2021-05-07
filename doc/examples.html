@@ -1,34 +1,74 @@
 <!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
-<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB R2019a"><title>Examples</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.7999992370605px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: normal; text-align: left;  }
-.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: normal; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Examples</span></h1><div  class = 'S1'><span>GATE users should use the </span><span style=' font-family: monospace;'>gate_main.m</span><span> file to import and reconstruct GATE data. For any other PET data, the file you should start with is </span><span style=' font-family: monospace;'>main_PET.m</span><span>. For computing the forward and/or backward projections use </span><span style=' font-family: monospace;'>forward_backward_projections_example.m</span><span>. For custom (gradient-based) priors, use </span><span style=' font-family: monospace;'>custom_prior_test_main.m</span><span>. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in </span><span style=' font-family: monospace;'>gate_main_simple.m</span><span>. Inveon PET data should be used with </span><span style=' font-family: monospace;'>Inveon_PET_main.m </span><span>while Biograph mCT data can be used with </span><span style=' font-family: monospace;'>Biograph_mCT_main.m</span><span> and Biograph Vision with </span><span style=' font-family: monospace;'>Biograph_Vision_main.m</span><span>.</span></div><div  class = 'S1'><span>A GATE example with GATE macros is available in exampleGATE-folder.  Simply run the GATE macros as a GATE simulation (the GATE material  database needs to be in the same folder as the macros) and then input  correct path for the GATE output data in </span><span style=' font-family: monospace;'>gate_main.m</span><span> (</span><span style=' font-family: monospace;'>options.fpath</span><span>). After this simply run </span><span style=' font-family: monospace;'>gate_main.m</span><span> to load and reconstruct the data. By default, ASCII data is used for compatibility.</span></div><div  class = 'S1'><span>Example MAT-files for non-GATE situation can be found from </span><a href = "https://doi.org/10.5281/zenodo.3522199"><span>https://doi.org/10.5281/zenodo.3522199</span></a><span>. These files are based on the above GATE-example. The original simulated GATE data can be found from </span><a href = "https://doi.org/10.5281/zenodo.3526859"><span>https://doi.org/10.5281/zenodo.3526859</span></a><span>. </span></div><div  class = 'S1'><span>Open preclinical PET data measured with Siemens Inveon PET can be found from </span><a href = "https://doi.org/10.5281/zenodo.3528056"><span>https://doi.org/10.5281/zenodo.3528056</span></a><span>.</span></div><div  class = 'S1'><span>Sinograms created with v0.9 need to be transposed for them to work.</span></div><div  class = 'S1'><span>For further help, see </span><a href = "tutorials.html"><span>tutorials</span></a><span> or </span><a href = "functions.html"><span>functions</span></a><span>.</span></div></div>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Examples</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Examples</span></h1><div  class = 'S1'><span style=' font-weight: bold;'>PET data</span></div><div  class = 'S1'><a href = "http://www.opengatecollaboration.org/"><span>GATE</span></a><span> users should use the </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main.m"><span style=' font-family: monospace;'>gate_main.m</span></a><span> file to reconstruct GATE PET data. For other PET data, the file you should start with is </span><a href = "https://github.com/villekf/OMEGA/blob/master/main_PET.m"><span style=' font-family: monospace;'>main_PET.m</span></a><span>. For computing the forward and/or backward projections use </span><a href = "https://github.com/villekf/OMEGA/blob/master/forward_backward_projections_example.m"><span style=' font-family: monospace;'>forward_backward_projections_example.m</span></a><span>. For custom (gradient-based) priors, use </span><a href = "https://github.com/villekf/OMEGA/blob/master/custom_prior_test_main.m"><span style=' font-family: monospace;'>custom_prior_test_main.m</span></a><span>. A more simplified main-file for GATE data (simple OSEM reconstruction) is available in </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m"><span style=' font-family: monospace;'>gate_main_simple.m</span></a><span>. Inveon users should use </span><a href = "https://github.com/villekf/OMEGA/blob/master/Inveon_PET_main.m"><span style=' font-family: monospace;'>Inveon_PET_main.m</span></a><span> while Biograph mCT data can be used with </span><a href = "https://github.com/villekf/OMEGA/blob/master/Biograph_mCT_main.m"><span style=' font-family: monospace;'>Biograph_mCT_main.m</span></a><span> and Biograph Vision with </span><a href = "https://github.com/villekf/OMEGA/blob/master/Biograph_Vision_main.m"><span style=' font-family: monospace;'>Biograph_Vision_main.m</span></a><span>.</span></div><div  class = 'S1'><span>A GATE example with GATE macros is available in </span><a href = "https://github.com/villekf/OMEGA/tree/master/exampleGATE"><span>exampleGATE</span></a><span>-folder. Simply run the GATE macros as a GATE simulation (GATE material database needs to be in the same folder) and then run the gate_main_example-file to reconstruct the data. By default, ASCII data is used in the  reconstruction. This example is based on both benchPET and the  cylindrical PET example found from </span><a href = "https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#cylindricalpet"><span>https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#cylindricalpet</span></a></div><div  class = 'S1'><span>exampleGATE also contains macros for normalization.</span></div><div  class = 'S1'><span>When using GATE data, all the output files of the specified format  will be read in the specified folder. E.g. if you select ASCII data, all .dat-files with Coincidences in the file name will be loaded from the  specified folder, with LMF all .ccs files and with ROOT all .root files.</span></div><div  class = 'S1'><span>Example MAT-files for non-GATE situation (created from GATE data) can be found from: </span><a href = "https://doi.org/10.5281/zenodo.3522199"><span>https://doi.org/10.5281/zenodo.3522199</span></a><span>. These files are based on the above GATE-example. Raw data obtained from the GATE macros mentioned above (not normalization) can be found from: </span><a href = "https://doi.org/10.5281/zenodo.3526859"><span>https://doi.org/10.5281/zenodo.3526859</span></a></div><div  class = 'S1'><span>Example Inveon data is available from:  </span><a href = "https://doi.org/10.5281/zenodo.3528056"><span>https://doi.org/10.5281/zenodo.3528056</span></a><span> or </span><a href = "https://doi.org/10.5281/zenodo.4646897"><span>https://doi.org/10.5281/zenodo.4646897</span></a><span>. The </span><span style=' font-family: monospace;'>Inveon_PET_main.m</span><span> file can be used automatically for this data.</span></div><div  class = 'S1'><span style=' font-weight: bold;'>CT data</span></div><div  class = 'S1'><span>Several different example scripts for CT data are provided, for  different kind of CT-scanners. These include preclinical CT and µCT  scanners as well as GATE simulated (imageCT) data. When using CT data,  the direction of rotation should be from top to bottom or from bottom to top. If you have data that is rotated from left to right/right to left, you should transpose (permute) it and adjust the </span><span style=' font-family: monospace;'>xSize</span><span> and </span><span style=' font-family: monospace;'>ySize</span><span> variables according to the final transposed dimensions. Currently also  only cone/fan beam CT scanners with flat panel detectors are inherently  supported. You can use also other type of scanners, but then you have to input the detector/source coordinates yourself (see e.g. </span><a href = "https://github.com/villekf/OMEGA/wiki/Custom-detector-coordinates-and-or-list-mode-reconstruction"><span>Custom detector coordinates and/or list mode reconstruction</span></a><span>).</span></div><div  class = 'S1'><span>For GATE data, use </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_CT_main.m"><span style=' font-family: monospace;'>gate_CT_main.m</span></a><span>. An example of µCT (using either </span><a href = "https://doi.org/10.5281/zenodo.4279613"><span>https://doi.org/10.5281/zenodo.4279613</span></a><span> or </span><a href = "https://doi.org/10.5281/zenodo.4279549"><span>https://doi.org/10.5281/zenodo.4279549</span></a><span>) is provided with the </span><a href = "https://github.com/villekf/OMEGA/blob/master/walnut_CT_main.m"><span style=' font-family: monospace;'>walnut_CT_main.m</span></a><span>. A 2D (sinogram) example is shown in </span><a href = "https://github.com/villekf/OMEGA/blob/master/walnut2D_CT_main.m"><span style=' font-family: monospace;'>walnut2D_CT_main.m</span></a><span> (uses </span><a href = "https://doi.org/10.5281/zenodo.1254206"><span>https://doi.org/10.5281/zenodo.1254206</span></a><span>). Lastly, an example script using preclinical Inveon CT is in </span><a href = "https://github.com/villekf/OMEGA/blob/master/Inveon_CT_main.m"><span style=' font-family: monospace;'>Inveon_CT_main.m</span></a><span> (uses </span><a href = "https://doi.org/10.5281/zenodo.4646835"><span>https://doi.org/10.5281/zenodo.4646835</span></a><span>). In all cases, the examples include both how to do built-in  reconstruction or how to use the forward/backward projection class for  your own custom algorithms.</span></div>
 <br>
 <!-- 
 ##### SOURCE BEGIN #####
 %% Examples
-% GATE users should use the |gate_main.m| file to import and reconstruct GATE 
-% data. For any other PET data, the file you should start with is |main_PET.m|. 
-% For computing the forward and/or backward projections use |forward_backward_projections_example.m|. 
-% For custom (gradient-based) priors, use |custom_prior_test_main.m|. A more simplified 
-% main-file for GATE data (simple OSEM reconstruction) is available in |gate_main_simple.m|. 
-% Inveon PET data should be used with |Inveon_PET_main.m |while Biograph mCT data 
-% can be used with |Biograph_mCT_main.m| and Biograph Vision with |Biograph_Vision_main.m|.
+% *PET data*
 % 
-% A GATE example with GATE macros is available in exampleGATE-folder.  Simply 
-% run the GATE macros as a GATE simulation (the GATE material  database needs 
-% to be in the same folder as the macros) and then input  correct path for the 
-% GATE output data in |gate_main.m| (|options.fpath|). After this simply run |gate_main.m| 
-% to load and reconstruct the data. By default, ASCII data is used for compatibility.
+% <http://www.opengatecollaboration.org/ GATE> users should use the <https://github.com/villekf/OMEGA/blob/master/gate_main.m 
+% |gate_main.m|> file to reconstruct GATE PET data. For other PET data, the file 
+% you should start with is <https://github.com/villekf/OMEGA/blob/master/main_PET.m 
+% |main_PET.m|>. For computing the forward and/or backward projections use <https://github.com/villekf/OMEGA/blob/master/forward_backward_projections_example.m 
+% |forward_backward_projections_example.m|>. For custom (gradient-based) priors, 
+% use <https://github.com/villekf/OMEGA/blob/master/custom_prior_test_main.m |custom_prior_test_main.m|>. 
+% A more simplified main-file for GATE data (simple OSEM reconstruction) is available 
+% in <https://github.com/villekf/OMEGA/blob/master/gate_main_simple.m |gate_main_simple.m|>. 
+% Inveon users should use <https://github.com/villekf/OMEGA/blob/master/Inveon_PET_main.m 
+% |Inveon_PET_main.m|> while Biograph mCT data can be used with <https://github.com/villekf/OMEGA/blob/master/Biograph_mCT_main.m 
+% |Biograph_mCT_main.m|> and Biograph Vision with <https://github.com/villekf/OMEGA/blob/master/Biograph_Vision_main.m 
+% |Biograph_Vision_main.m|>.
 % 
-% Example MAT-files for non-GATE situation can be found from <https://doi.org/10.5281/zenodo.3522199 
-% https://doi.org/10.5281/zenodo.3522199>. These files are based on the above 
-% GATE-example. The original simulated GATE data can be found from <https://doi.org/10.5281/zenodo.3526859 
-% https://doi.org/10.5281/zenodo.3526859>. 
+% A GATE example with GATE macros is available in <https://github.com/villekf/OMEGA/tree/master/exampleGATE 
+% exampleGATE>-folder. Simply run the GATE macros as a GATE simulation (GATE material 
+% database needs to be in the same folder) and then run the gate_main_example-file 
+% to reconstruct the data. By default, ASCII data is used in the  reconstruction. 
+% This example is based on both benchPET and the  cylindrical PET example found 
+% from <https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#cylindricalpet 
+% https://opengate.readthedocs.io/en/latest/defining_a_system_scanner_ct_pet_spect_optical.html#cylindricalpet>
 % 
-% Open preclinical PET data measured with Siemens Inveon PET can be found from 
-% <https://doi.org/10.5281/zenodo.3528056 https://doi.org/10.5281/zenodo.3528056>.
+% exampleGATE also contains macros for normalization.
 % 
-% Sinograms created with v0.9 need to be transposed for them to work.
+% When using GATE data, all the output files of the specified format  will be 
+% read in the specified folder. E.g. if you select ASCII data, all .dat-files 
+% with Coincidences in the file name will be loaded from the  specified folder, 
+% with LMF all .ccs files and with ROOT all .root files.
 % 
-% For further help, see <tutorials.html tutorials> or <functions.html functions>.
+% Example MAT-files for non-GATE situation (created from GATE data) can be found 
+% from: <https://doi.org/10.5281/zenodo.3522199 https://doi.org/10.5281/zenodo.3522199>. 
+% These files are based on the above GATE-example. Raw data obtained from the 
+% GATE macros mentioned above (not normalization) can be found from: <https://doi.org/10.5281/zenodo.3526859 
+% https://doi.org/10.5281/zenodo.3526859>
+% 
+% Example Inveon data is available from:  <https://doi.org/10.5281/zenodo.3528056 
+% https://doi.org/10.5281/zenodo.3528056> or <https://doi.org/10.5281/zenodo.4646897 
+% https://doi.org/10.5281/zenodo.4646897>. The |Inveon_PET_main.m| file can be 
+% used automatically for this data.
+% 
+% *CT data*
+% 
+% Several different example scripts for CT data are provided, for  different 
+% kind of CT-scanners. These include preclinical CT and µCT  scanners as well 
+% as GATE simulated (imageCT) data. When using CT data,  the direction of rotation 
+% should be from top to bottom or from bottom to top. If you have data that is 
+% rotated from left to right/right to left, you should transpose (permute) it 
+% and adjust the |xSize| and |ySize| variables according to the final transposed 
+% dimensions. Currently also  only cone/fan beam CT scanners with flat panel detectors 
+% are inherently  supported. You can use also other type of scanners, but then 
+% you have to input the detector/source coordinates yourself (see e.g. <https://github.com/villekf/OMEGA/wiki/Custom-detector-coordinates-and-or-list-mode-reconstruction 
+% Custom detector coordinates and/or list mode reconstruction>).
+% 
+% For GATE data, use <https://github.com/villekf/OMEGA/blob/master/gate_CT_main.m 
+% |gate_CT_main.m|>. An example of µCT (using either <https://doi.org/10.5281/zenodo.4279613 
+% https://doi.org/10.5281/zenodo.4279613> or <https://doi.org/10.5281/zenodo.4279549 
+% https://doi.org/10.5281/zenodo.4279549>) is provided with the <https://github.com/villekf/OMEGA/blob/master/walnut_CT_main.m 
+% |walnut_CT_main.m|>. A 2D (sinogram) example is shown in <https://github.com/villekf/OMEGA/blob/master/walnut2D_CT_main.m 
+% |walnut2D_CT_main.m|> (uses <https://doi.org/10.5281/zenodo.1254206 https://doi.org/10.5281/zenodo.1254206>). 
+% Lastly, an example script using preclinical Inveon CT is in <https://github.com/villekf/OMEGA/blob/master/Inveon_CT_main.m 
+% |Inveon_CT_main.m|> (uses <https://doi.org/10.5281/zenodo.4646835 https://doi.org/10.5281/zenodo.4646835>). 
+% In all cases, the examples include both how to do built-in  reconstruction or 
+% how to use the forward/backward projection class for  your own custom algorithms.
 ##### SOURCE END #####
---></body></html>
+-->
+</div></body></html>

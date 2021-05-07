@@ -1,0 +1,24 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"><meta http-equiv="X-UA-Compatible" content="IE=edge,IE=9,chrome=1"><meta name="generator" content="MATLAB 2021a"><title>Using GATE CT data</title><style type="text/css">.rtcContent { padding: 30px; } .S0 { margin: 3px 10px 5px 4px; padding: 0px; line-height: 28.8px; min-height: 0px; white-space: pre-wrap; color: rgb(213, 80, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 24px; font-weight: 400; text-align: left;  }
+.S1 { margin: 2px 10px 9px 4px; padding: 0px; line-height: 21px; min-height: 0px; white-space: pre-wrap; color: rgb(0, 0, 0); font-family: Helvetica, Arial, sans-serif; font-style: normal; font-size: 14px; font-weight: 400; text-align: left;  }</style></head><body><div class = rtcContent><h1  class = 'S0'><span>Using GATE CT data</span></h1><div  class = 'S1'><span>The example script </span><a href = "https://github.com/villekf/OMEGA/blob/master/gate_CT_main.m"><span style=' font-family: monospace;'>gate_CT_main.m</span></a><span> is an example on how to use CT projection data collected with GATE.  Currently ROOT data is not supported. The example is based on the </span><a href = "https://github.com/OpenGATE/GateContrib/tree/master/imaging/CT/classic"><span>classic</span></a><span> CT example. The function </span><span style=' font-family: monospace;'>loadProjectionData</span><span> loads any binary projection data and can be used to read all the binary files with the same file ending in the specified folder (the user will  be prompted for the data). Simply select any projection data file and  all the other projections will be automatically loaded. </span><span style=' font-family: monospace;'>loadProjectionData</span><span> can also save the projection data to a MATLAB/Octave mat-file, though that is not enabled by default.</span></div><div  class = 'S1'><span>Other than the data load, there are no differences between using GATE data to that of any other projection data. In the future, when ROOT  data support is added, similar scatter extraction features, as with PET  data, will most likely be added.</span></div>
+<br>
+<!-- 
+##### SOURCE BEGIN #####
+%% Using GATE CT data
+% The example script <https://github.com/villekf/OMEGA/blob/master/gate_CT_main.m 
+% |gate_CT_main.m|> is an example on how to use CT projection data collected with 
+% GATE.  Currently ROOT data is not supported. The example is based on the <https://github.com/OpenGATE/GateContrib/tree/master/imaging/CT/classic 
+% classic> CT example. The function |loadProjectionData| loads any binary projection 
+% data and can be used to read all the binary files with the same file ending 
+% in the specified folder (the user will  be prompted for the data). Simply select 
+% any projection data file and  all the other projections will be automatically 
+% loaded. |loadProjectionData| can also save the projection data to a MATLAB/Octave 
+% mat-file, though that is not enabled by default.
+% 
+% Other than the data load, there are no differences between using GATE data 
+% to that of any other projection data. In the future, when ROOT  data support 
+% is added, similar scatter extraction features, as with PET  data, will most 
+% likely be added.
+##### SOURCE END #####
+-->
+</div></body></html>

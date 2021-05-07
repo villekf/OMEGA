@@ -38,15 +38,14 @@
         <tocitem target="installation_help.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Installation help
         </tocitem>
-        <tocitem target="toolbox_overview.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Toolbox overview
-        </tocitem>
         <!-- User Guide comes next -->
         <tocitem target="tutorials.html" 
             image="HelpIcon.USER_GUIDE">Tutorials
             <tocitem target="basic_example.html">Basic example
             </tocitem>
             <tocitem target="advanced_example.html">Advanced example
+            </tocitem>
+            <tocitem target="ct_example.html">CT example
             </tocitem>
         </tocitem>
         <!-- Function reference next -->
@@ -57,7 +56,7 @@
             <tocitem target="core_functions.html#1">Core functions
                 <!-- Inside category, list its functions alphabetically -->
                 <tocitem target="gate_main.html">gate_main</tocitem>
-                <tocitem target="nongate_main.html">nongate_main</tocitem>
+                <tocitem target="main_PET.html">nongate_main</tocitem>
                 <tocitem target="precompute_data.html">precompute_data</tocitem>
                 <tocitem target="load_data.html">load_data</tocitem>
                 <tocitem target="form_sinograms.html">form_sinograms</tocitem>
@@ -98,38 +97,53 @@
              </tocitem>
         </tocitem>
         <!-- Optional List of Examples, with hyperlinks to examples in other files -->
-        <tocitem target="extract_GATE_data.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting GATE scatter, randoms and trues data
-        </tocitem>
-        <tocitem target="using_tof_data.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Using TOF data
-        </tocitem>
         <tocitem target="useful_information.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Useful information
         </tocitem>
         <tocitem target="visualization.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Visualization
         </tocitem>
-        <tocitem target="extracting_the_system_matrix.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting the system matrix
+        <tocitem target="using_gate_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using GATE PET data
         </tocitem>
-        <tocitem target="listmode_reconstruction.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Custom detector coordinates and/or list-mode reconstruction
+        <tocitem target="using_gate_CT_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using GATE CT data
+        </tocitem>
+        <tocitem target="extract_GATE_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting GATE scatter, randoms and trues data
         </tocitem>
         <tocitem target="compute_forward_backwards_projections.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Computing the forward and/or backward projections
         </tocitem>
-        <tocitem target="using_custom_gradient_based_priors.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Using custom gradient-based priors
-        </tocitem>
         <tocitem target="non-cylindrical_scanners.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Using non-cylindrical scanners
         </tocitem>
+        <tocitem target="listmode_reconstruction.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Custom detector coordinates and/or list-mode reconstruction
+        </tocitem>
+        <tocitem target="using_tof_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using TOF data
+        </tocitem>
+        <tocitem target="extracting_the_system_matrix.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Extracting the system matrix
+        </tocitem>
         <tocitem target="using_inveon_data.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon data
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon PET data
+        </tocitem>
+        <tocitem target="using_inveon_CT_data.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Inveon CT data
         </tocitem>
         <tocitem target="using_biograph_data.html" 
-                 image="HelpIcon.HelpIcon.EXAMPLES">Using Biograph data
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using Biograph PET data
+        </tocitem>
+        <tocitem target="using_custom_gradient_based_priors.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Using custom gradient-based priors
+        </tocitem>
+        <tocitem target="adding_custom_algorithms.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Adding custom built-in algorithms
+        </tocitem>
+        <tocitem target="toolbox_overview.html" 
+                 image="HelpIcon.HelpIcon.EXAMPLES">Toolbox overview
         </tocitem>
         <tocitem target="contributing.html" 
                  image="HelpIcon.HelpIcon.EXAMPLES">Contributing code to OMEGA
