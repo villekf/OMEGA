@@ -34,7 +34,11 @@ elseif (options.projector_type == 1 && TOF)
 else
     x_center = xx(1);
     y_center = yy(1);
-    z_center = zz(1);
+    if isempty(zz)
+        z_center = 0;
+    else
+        z_center = zz(1);
+    end
 %     if (options.apply_acceleration) && options.n_rays_transaxial * options.n_rays_axial == 1
 %         dec = uint32(sqrt(options.Nx^2 + options.Ny^2 + options.Nz^2) * 2);
 %     else
