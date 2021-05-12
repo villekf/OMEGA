@@ -20,22 +20,13 @@
   - This resulted in naming change for all non-MAP algorithms, regularization parameters and some relaxation parameters
   - Backwards compatibility is, however, maintained on all main-files except (possibly) custom prior
   - This has little to no effect on the normal user
-  
-- CUDA backend should work more reliably now
-  - CUDA may not work on Octave
-
-- Fixed the use of corrections when using the forward/backward projection class
-
-- Improved Siddon should be about 10-20% faster with Nvidia GPUs (affects both OpenCL and CUDA)
-
-- Orthogonal and volume-based ray tracers should be a little faster
 
 - Added relative difference prior for implementations 1, 2 and 4
-  - The current method can be memory intensive with large neighborhoods or image sizes
+  - The current implementation can be memory intensive with large neighborhoods or image sizes
 
 - Added support for 32-bit integer atomics (OpenCL only)
   - Should give about 20-30% faster computations at the expense of accuracy
-  - Can cause integer overflow when the number of counts is high
+  - Can cause integer overflow when the number of counts is high (in the range of thousands per voxel)
   - Numerical accuracy WILL be negatively affected
   - Should be used only when speed is of utmost importance
   
@@ -45,6 +36,12 @@
   - Values are automatically scaled to 1/mm if they have some other units
   
 ### Bug fixes and enhancements
+
+- Fixed the use of corrections when using the forward/backward projection class
+
+- Improved Siddon should be about 10-20% faster with Nvidia GPUs (affects both OpenCL and CUDA)
+
+- Orthogonal and volume-based ray tracers should be a little faster
 
 - Fixed raw data sampling increase when using sampling larger than 2
 
@@ -100,6 +97,9 @@
 - Fixed MetaImage load when the (raw) filename has uppercase letters
 
 - Fixed InterFile load when the (raw) file is in the working directory and is not i33 or img file
+  
+- CUDA backend should work more reliably now
+  - CUDA may not work on Octave
 
 ## OMEGA v1.1.1
 
