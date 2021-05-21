@@ -44,7 +44,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	w_vec.nMLEM = getScalarUInt32(mxGetField(options, 0, "nMLEM"), -4);
 	w_vec.nOS = getScalarUInt32(mxGetField(options, 0, "nOS"), -5);
 	w_vec.nTot = getScalarUInt32(mxGetField(options, 0, "nTot"), -6);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	w_vec.rekot = (uint32_t*)mxGetUint32s(mxGetField(options, 0, "rekoList"));
 #else
 	w_vec.rekot = (uint32_t*)mxGetData(mxGetField(options, 0, "rekoList"));
@@ -107,7 +107,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		yy++;
 		
 		// Relaxation parameter
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.lambda_DRAMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_drama"));
 #else
 		w_vec.lambda_DRAMA = (float*)mxGetData(mxGetField(options, 0, "lam_drama"));
@@ -183,7 +183,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		if (data.TV_use_anatomical) {
 			mxArray* TVdata_init = mxGetField(options, 0, "TVdata");
 			if (data.TVtype == 1) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 				data.s1 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s1")), afHost);
 				data.s2 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s2")), afHost);
 				data.s3 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s3")), afHost);
@@ -206,7 +206,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 #endif
 			}
 			else {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 				data.reference_image = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "reference_image")), afHost);
 #else
 				data.reference_image = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "reference_image")), afHost);
@@ -221,7 +221,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 			w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -20);
 			w_vec.Ndz = getScalarUInt32(mxGetField(options, 0, "Ndz"), -21);
 			w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
 #else
 			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
@@ -245,7 +245,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV) || MethodList.RDP) && MethodList.MAP) {
 		// Index values for the neighborhood
 //#ifdef OPENCL
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetUint32s(mxGetField(options, 0, "tr_offsets")), afHost);
 #else
 		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
@@ -258,7 +258,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.inffi = getScalarUInt32(mxGetField(options, 0, "inffi"), -28);
 	// Weights for the various priors
 	if (MethodList.Quad && MethodList.MAP) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
 #else
 		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
@@ -273,7 +273,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 
 	}
 	if (MethodList.RDP && MethodList.MAP) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_RDP")), afHost);
 #else
 		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetData(mxGetField(options, 0, "weights_RDP")), afHost);
@@ -282,7 +282,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.RDP_gamma = getScalarFloat(mxGetField(options, 0, "RDP_gamma"), -29);
 	}
 	if (MethodList.Huber && MethodList.MAP) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_huber")), afHost);
 #else
 		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_huber")), afHost);
@@ -297,20 +297,20 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.huber_delta = getScalarFloat(mxGetField(options, 0, "huber_delta"), -29);
 	}
 	if (MethodList.L && MethodList.MAP)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "a_L")), afHost);
 #else
 		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "a_L")), afHost);
 #endif
 	if (MethodList.FMH && MethodList.MAP) {
 		if (Nz == 1 || w_vec.Ndz == 0)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
 #else
 			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
 #endif
 		else
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
 #else
 			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
@@ -318,7 +318,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.alku_fmh = getScalarUInt32(mxGetField(options, 0, "inffi"), -30);
 	}
 	if (MethodList.WeightedMean && MethodList.MAP) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
 #else
 		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
@@ -359,7 +359,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		// Smoothing value
 		data.APLSsmoothing = getScalarFloat(mxGetField(options, 0, "APLSsmoothing"), -40);
 		// Anatomical reference image
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "APLS_ref_image")), afHost);
 #else
 		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
@@ -380,7 +380,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	}
 	if (MethodList.MRAMLA || MethodList.MBSREM) {
 		// Relaxation parameter
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.lambda_MBSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam_MBSREM"));
 #else
 		w_vec.lambda_MBSREM = (float*)mxGetData(mxGetField(options, 0, "lam_MBSREM"));
@@ -394,19 +394,19 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	}
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.lambda_BSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam"));
 #else
 		w_vec.lambda_BSREM = (float*)mxGetData(mxGetField(options, 0, "lam"));
 #endif
 	if (MethodList.ROSEM || MethodList.ROSEMMAP)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.lambda_ROSEM = (float*)mxGetSingles(mxGetField(options, 0, "lam_ROSEM"));
 #else
 		w_vec.lambda_ROSEM = (float*)mxGetData(mxGetField(options, 0, "lam_ROSEM"));
 #endif
 	if (MethodList.PKMA) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.lambda_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_PKMA"));
 		w_vec.alpha_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "alpha_PKMA"));
 		w_vec.sigma_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "sigma_PKMA"));
@@ -429,7 +429,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.NLTV = getScalarBool(mxGetField(options, 0, "NLTV"), -48);
 		w_vec.NLM_MRP = getScalarBool(mxGetField(options, 0, "NLM_MRP"), -49);
 		if (w_vec.NLM_anatomical)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "NLM_ref")), afHost);
 #else
 			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "NLM_ref")), afHost);
@@ -439,7 +439,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_vec.Nlx = getScalarUInt32(mxGetField(options, 0, "Nlx"), -51);
 		w_vec.Nly = getScalarUInt32(mxGetField(options, 0, "Nly"), -52);
 		w_vec.Nlz = getScalarUInt32(mxGetField(options, 0, "Nlz"), -53);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetSingles(mxGetField(options, 0, "gaussianNLM")), afHost);
 #else
 		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetData(mxGetField(options, 0, "gaussianNLM")), afHost);
@@ -448,7 +448,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	if (MethodList.CUSTOM) {
 		for (uint32_t kk = 0; kk < vec.imEstimates.size(); kk++) {
 			const char* varTot = mxArrayToString(mxGetCell(mxGetField(options, 0, "varTot"), kk));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetSingles(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
 #else
 			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetData(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
@@ -464,7 +464,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 			const char* varApu = mxArrayToString(mxGetCell(mxGetField(options, 0, "varApu"), tt));
 			const char* varBeta = mxArrayToString(mxGetCell(mxGetField(options, 0, "varBeta"), tt));
 			const char* varGrad = mxArrayToString(mxGetCell(mxGetField(options, 0, "varGrad"), tt));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varApu)), afHost));
 			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varGrad)), afHost));
 #else
@@ -481,14 +481,14 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 			}
 		}
 		if (MethodList.OSLCOSEM > 0) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetSingles(mxGetField(options, 0, "C_osl")), afHost);
 #else
 			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(mxGetField(options, 0, "C_osl")), afHost);
 #endif
 		}
 		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA))
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			w_vec.D = af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, "D")), afHost);
 #else
 			w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
@@ -1208,7 +1208,7 @@ void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint
 	// Transfer data back to host
 	for (kk = 0; kk < w_vec.nTot; kk++) {
 		mxArray* apu = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		float* apuF = (float*)mxGetSingles(apu);
 #else
 		float* apuF = (float*)mxGetData(apu);
@@ -1221,7 +1221,7 @@ void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint
 		kk = w_vec.nTot;
 		if (MethodList.OSLCOSEM > 0) {
 			mxArray* apu = mxCreateNumericArray(dim_n, dimmi, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			float* apuF = (float*)mxGetSingles(apu);
 #else
 			float* apuF = (float*)mxGetData(apu);
@@ -1236,7 +1236,7 @@ void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint
 			for (int ii = 0; ii < 3; ii++)
 				dimmiD[ii] = dimmi[ii];
 			mxArray* apu = mxCreateNumericArray(3, dimmiD, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			float* apuF = (float*)mxGetSingles(apu);
 #else
 			float* apuF = (float*)mxGetData(apu);
@@ -1248,7 +1248,7 @@ void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint
 		kk++;
 		if (MethodList.MBSREM) {
 			mxArray* epsilon = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			float* epsilon1 = (float*)mxGetSingles(epsilon);
 #else
 			float* epsilon1 = (float*)mxGetData(epsilon);
@@ -1259,7 +1259,7 @@ void device_to_host_cell(const RecMethods &MethodList, AF_im_vectors & vec, uint
 		kk++;
 		if (MethodList.MBSREM) {
 			mxArray* UU = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			float* U = (float*)mxGetSingles(UU);
 #else
 			float* U = (float*)mxGetData(UU);
@@ -2113,7 +2113,8 @@ af::array RDP(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const
 
 	const af::array indeksi2 = af::join(1, offsets.cols(0, inffi - 1), offsets.cols(inffi + 1, af::end));
 	af::array grad = af::batchFunc(im, af::moddims(im_apu(indeksi2), im_dim, weights_RDP.dims(0)), batchDiv);
-	grad = af::matmul((((grad - 1.f) * (gamma * af::abs(grad - 1.f) + grad + 3.f))  / af::pow2(grad + 1.f + gamma * af::abs(grad - 1.f))), weights_RDP);
+	af::array apu = grad + 1.f + gamma * af::abs(grad - 1.f);
+	grad = af::matmul((((grad - 1.f) * (gamma * af::abs(grad - 1.f) + grad + 3.f))  / (apu * apu)), weights_RDP);
 	grad = af::flat(grad);
 	return grad;
 }
