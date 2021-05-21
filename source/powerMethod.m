@@ -47,7 +47,7 @@ if isempty(varargin) || isempty(varargin{2})
 else
     useTV = varargin{2};
 end
-if nargin >= 6 && (isempty(varargin) || (isempty(varargin{3}) && isempty(varargin{4}) && isempty(varargin{5})))
+if nargin >= 6 && (~isempty(varargin) || (~isempty(varargin{3}) && ~isempty(varargin{4}) && ~isempty(varargin{5})))
     dim = [varargin{3} varargin{4} varargin{5}];
 else
     if ismatrix(A) && ~isa(A,'forwardBackwardProjectCT') && ~isa(A,'forwardBackwardProject')
