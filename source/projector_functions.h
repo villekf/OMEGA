@@ -19,12 +19,8 @@
 ***************************************************************************/
 #pragma once
 
-#ifdef MATLAB
-#include "mex.h"
-#elif OCTAVE
-#include <octave/oct.h>
-#endif
 #include <vector>
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <algorithm>
 #include <numeric>
@@ -35,6 +31,11 @@
 #ifdef _OPENMP
 #include <omp.h>
 #define nChunks 1000
+#endif
+#ifdef MATLAB
+#include "mex.h"
+#elif OCTAVE
+#include <octave/oct.h>
 #endif
 
 // Normalized distances below this are discarded in orthogonal ray tracer

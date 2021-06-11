@@ -1,7 +1,7 @@
 
 
-#include <octave/oct.h>
 #include "NLM.h"
+#include <octave/oct.h>
 
 using namespace std;
 

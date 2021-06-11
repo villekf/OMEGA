@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <algorithm>
+#define _USE_MATH_DEFINES
 #include <cmath>
 #include <thread>
 #ifdef _OPENMP
