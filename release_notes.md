@@ -1,5 +1,13 @@
 # Release notes
 
+## OMEGA v1.2.1
+
+### Bug fixes and enhancements
+
+- Compilation fixes for Octave on Windows
+
+- Implementation 2 (OpenCL) can now be used on Octave on Windows
+
 ## OMEGA v1.2.0
 
 ### New features
