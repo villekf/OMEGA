@@ -43,7 +43,7 @@ The algorithms implemented so far are:
 
 For additional install help, see [installation help](https://github.com/villekf/OMEGA/wiki/Installation-help) on the wiki.
 
-You're going to need a C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio on Windows, GCC on Linux, clang should work on MacOS). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ on Windows and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW. 
+You're going to need a C++ compiler in order to compile the MEX-files and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio on Windows, GCC on Linux, clang should work on MacOS). Specifically, Visual Studio  2015, 2017 and 2019 have been tested to work on Windows 7/10 and as well as G++ 5.5, 6.4, 7.3 and 9.3 on Ubuntu 16.04/18.04/20.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows. Octave supports only MinGW++ on Windows and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)).
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
@@ -254,7 +254,7 @@ ROOT is not supported on Windows, though it should, theoretically, work if you u
 
 ### Octave
 
-Implementation 2 (ArrayFire matrix free OpenCL) is not supported on Windows due to a compiler incompatibility between MinGW and ArrayFire. This can be fixed by building ArrayFire from source with MinGW.
+Implementation 2 (ArrayFire matrix free OpenCL) can only be enabled by manually building ArrayFire with Mingw. Instructions are provided [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows).
 
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
@@ -268,7 +268,6 @@ Here is a list of features that should appear in future releases:
 
 - Support for SPECT data
 - Support for "list-mode" GATE CT data (ROOT and ASCII)
-- Fourier rebinning
 - New projectors
 
 
