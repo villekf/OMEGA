@@ -104,7 +104,11 @@ sourceCoordX = -horizontalOffset * 1;
 sourceCoordZ = detSizeAx / 2;
 
 testi = reshape([sourceCoordX,sourceCoordY]', 2, 1, []);
-sXY = squeeze(sum(R .* permute(testi, [2 1 3]),2))';
+if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
+    sXY = squeeze(sum(bsxfun(@times, R, permute(testi, [2 1 3])),2))';
+else
+    sXY = squeeze(sum(R .* permute(testi, [2 1 3]),2))';
+end
 
 x = [XY(:,1) sXY(:,1)];
 y = -[XY(:,2) sXY(:,2)];
