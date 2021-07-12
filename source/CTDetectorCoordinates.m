@@ -85,10 +85,18 @@ angles = reshape(angles, 1, 1, []);
 
 R = permute([cos(angles) -sin(angles); sin(angles) cos(angles)], [2 1 3]);
 if isempty(uCenter)
-    XY = squeeze(sum(R .* [detCoordX,detCoordY],2))';
+    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
+        XY = squeeze(sum(bsxfun(@times, R, [detCoordX,detCoordY]),2))';
+    else
+        XY = squeeze(sum(R .* [detCoordX,detCoordY],2))';
+    end
 else
     R2 = permute([cos(pi/2 - angles) -sin(pi/2 - angles); sin(pi/2 - angles) cos(pi/2 - angles)], [2 1 3]);
-    XY = squeeze(sum(R .* [detCoordX,detCoordY] + R2 .* reshape([uCenter,uCenter], 1, 2, []),2))';
+    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
+        XY = squeeze(sum(bsxfun(@times, R, [detCoordX,detCoordY]) + bsxfun(@times, R2, reshape([uCenter,uCenter], 1, 2, [])),2))';
+    else
+        XY = squeeze(sum(R .* [detCoordX,detCoordY] + R2 .* reshape([uCenter,uCenter], 1, 2, []),2))';
+    end
 end
 
 sourceCoordY = sourceToCRot - verticalOffset * 1;
