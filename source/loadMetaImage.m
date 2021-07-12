@@ -120,7 +120,7 @@ for kk = 1 : length(M)
             endian = 'b';
         end
         if nargout >= 2
-            varargout{1}.byteOrderMSB = apu;
+            varargout{1}.byteOrderMSB = apu(ind + 1:end);
         end
     elseif ~cellfun('isempty',strfind(M{kk},'elementspacing')) && nargout >= 2
         if isempty(NDims)
@@ -161,11 +161,6 @@ for kk = 1 : length(M)
     end
 end
 
-if isempty(transformmatrix)
-    transformmatrix = reshape(eye(NDims), 1,NDims*NDims);
-end
-
-transformmatrix = reshape(transformmatrix, NDims, NDims);
 
 D = dir(filename);
 filename = [D.folder '/' raw_filename];
@@ -180,7 +175,12 @@ end
 
 output = fread(fid, prod(Dims), [type '=>' type], skip, endian);
 output = reshape(output, Dims');
-output = reshape(output, NDims, numel(output)/NDims);
-output = cast(double(transformmatrix) * double(output), type);
-output = reshape(output, Dims');
+% if isempty(transformmatrix)
+%     transformmatrix = reshape(eye(NDims), 1,NDims*NDims);
+% else
+%     transformmatrix = reshape(transformmatrix, NDims, NDims);
+%     output = reshape(output, NDims, numel(output)/NDims);
+%     output = cast(double(transformmatrix) * double(output), type);
+%     output = reshape(output, Dims');
+% end
 fclose(fid);
