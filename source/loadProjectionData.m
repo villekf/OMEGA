@@ -26,7 +26,8 @@ function [projData] = loadProjectionData(type,varargin)
 %   Inputs:
 %       type = The data type, e.g. 'single', 'double', 'int16', 'uint32',
 %       etc.
-%       ySize = (optional) The number of rows in the projection image
+%       ySize = (optional) The number of rows in the (final) projection
+%       image
 %       xSize = (optional) The number of columns
 %       nProjections = (optional) The number of projections
 %       binning = (optional) The binning factor
@@ -112,7 +113,7 @@ if loadAll
     fnames = dir([fpath '*.' suffix]);
     nFiles = length(fnames);
     if xSize > 0 && ySize > 0 && nProjections > 0
-        projData = zeros([ySize/binning,xSize/binning,nProjections],class(A));
+        projData = zeros([ySize,xSize,nProjections],class(A));
     else
         projData = zeros(numel(A)*nFiles/binning^2, 1, class(A));
     end
@@ -120,7 +121,7 @@ else
     nFiles = 1;
     if binning > 1
         if xSize > 0 && ySize > 0 && nProjections > 0
-            projData = zeros([ySize/binning,xSize/binning,nProjections],class(A));
+            projData = zeros([ySize,xSize,nProjections],class(A));
         else
             projData = zeros(numel(A)/binning^2, 1, class(A));
         end
@@ -140,9 +141,9 @@ for ll = 1 : nFiles
     end
     if xSize > 0 && ySize > 0
         if nFiles == 1
-            A = reshape(A, ySize, xSize, nProjections);
+            A = reshape(A, ySize * binning, xSize * binning, nProjections);
         else
-            A = reshape(A, ySize, xSize);
+            A = reshape(A, ySize * binning, xSize * binning);
         end
     end
     if xSize > 0 && ySize > 0
