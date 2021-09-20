@@ -4,6 +4,8 @@
 
 ### Bug fixes and enhancements
 
+- Fix CT projection data load when using binning values higher than 1
+
 - Compilation fixes for Octave on Windows
 
 - Implementation 2 (OpenCL) can now be used on Octave on Windows
