@@ -38,8 +38,11 @@
  
 using namespace std;
 
-
+#ifdef CT
 DEFUN_DLD(projector_octCT, prhs, nargout, "projector_octCT") {
+#else
+DEFUN_DLD(projector_oct, prhs, nargout, "projector_oct") {
+#endif
 
 	int ind = 0;
 	// Load the input arguments
