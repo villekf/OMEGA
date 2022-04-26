@@ -9,7 +9,7 @@ function z = sinogram_coordinates_3D(options)
 % See also sinogram_coordinates_2D, detector_coordinates
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Samuli Summala, Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Samuli Summala, Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -26,7 +26,7 @@ function z = sinogram_coordinates_3D(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 cr_pz = options.cr_pz;
-Nz = options.Nz;
+Nz = options.rings*2-1;
 span = options.span;
 ring_difference = options.ring_difference;
 
