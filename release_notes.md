@@ -1,6 +1,18 @@
 # Release notes
 
-## OMEGA v1.2.1
+## OMEGA v2.0.0
+
+### New features
+
+- Added two new projectors for CT data
+  - Projector type 4 is an interpolation-based GPU-only projector
+  - Projector type 5 is the branchless distance-driven projector (GPU only)
+  
+- Added support for SPECT reconstruction
+  - Supports also GATE projection data
+  - Currently no support for detector response
+  
+- Added support for direction-vector based reconstruction in CT
 
 ### Bug fixes and enhancements
 
@@ -9,6 +21,10 @@
 - Compilation fixes for Octave on Windows
 
 - Implementation 2 (OpenCL) can now be used on Octave on Windows
+
+- Fix implementation 1 and 4 in Octave when using PET data
+
+- Some fixes for older MATLAB versions
 
 ## OMEGA v1.2.0
 
