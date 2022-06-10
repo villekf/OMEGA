@@ -137,7 +137,7 @@ else
     SinD = uint16(0);
 end
 if ~isfield(options,'store_raw_data')
-    options.store_raw_data = true;
+    options.store_raw_data = false;
 end
 
 TOF = options.TOF_bins > 1;
@@ -146,6 +146,10 @@ if nargout == 8
     store_coordinates = true;
 else
     store_coordinates = false;
+end
+
+if options.use_raw_data
+    options.store_raw_data = true;
 end
 
 disp('Beginning data load')
