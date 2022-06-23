@@ -12,14 +12,17 @@ function saveMetaImage(filename, img, varargin)
 %   saveMetaImage('image_name', img)
 %   saveMetaImage(filename, img, type)
 %   saveMetaImage(filename, img, [], options)
+%   saveMetaImage(filename, img, [], pixelSize)
 %   saveMetaImage(filename, img, type, options, windows_format)
+%   saveMetaImage(filename, img, type, pixelSize, windows_format)
 %
 % Input:
 %   filename = Name of the image and header files (without file type).
 %   Saves the header file as [filename '.mhd'] and image file as [filename
 %   '.raw']. Needs to be char input.
 %
-%   img = The 3D or 4D image
+%   img = The 3D or 4D image. Note that vector format images are not
+%   supported.
 %
 %   type = Data type, e.g. 'single', 'int8', 'uint32', etc. Default is
 %   the same type as the input image. If omitted, will use the default
@@ -30,9 +33,15 @@ function saveMetaImage(filename, img, varargin)
 %   (optional). Necessary if any of the optional values are to be saved
 %   (voxel size).
 %
-%  windows_format = Text file format. Default is UNIX style (LF), but
-%  setting this value to true uses Windows file format (CR LF). Omitting
-%  will use UNIX style.
+%   pixelSize = If saving data where the above struct is not available, this
+%   can be used to input the pixel sizes for x, y and (possibly) z. This
+%   should be input as a vector with the same number of dimensions as the
+%   image. Use either the struct or the pixel size, not both. This variable
+%   is optional, if omitted values of 1 are used by default.
+%
+%   windows_format = Text file format. Default is UNIX style (LF), but
+%   setting this value to true uses Windows file format (CR LF). Omitting
+%   will use UNIX style.
 %
 % See also saveImage, saveInterfile
 
@@ -55,6 +64,11 @@ img = cast(img,type);
 koko = size(img);
 if length(koko) == 2
     koko = [koko, 1];
+end
+if ~isstruct(prop)
+    if length(prop) == 2
+        prop = [prop, 1];
+    end
 end
 fid = fopen([filename '.raw'],'w');
 fwrite(fid, img(:), type);
@@ -98,6 +112,8 @@ if nargin >= 4
         fprintf(fid,['ElementSpacing = ' num2str(prop.FOV_x/koko(1)) ' ' num2str(prop.FOV_y/koko(2)) ' ' num2str(prop.axial_FOV/koko(3)) '\r\n']);
     elseif isfield(prop,'FOVa_x')
         fprintf(fid,['ElementSpacing = ' num2str(prop.FOVa_x/koko(1)) ' ' num2str(prop.FOVa_y/koko(2)) ' ' num2str(prop.axial_fov/koko(3)) '\r\n']);
+    elseif numel(prop) == numel(koko)
+        fprintf(fid,['ElementSpacing = ' num2str(prop(1)) ' ' num2str(prop(2)) ' ' num2str(prop(3)) '\r\n']);
     else
         fprintf(fid,['ElementSpacing = 1 1 1\r\n']);
     end

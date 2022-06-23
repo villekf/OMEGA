@@ -13,17 +13,22 @@ function saveInterfile(filename, img, varargin)
 %  saveInterfile(filename, img, reko)
 %  saveInterfile(filename, img, reko, type)
 %  saveInterfile(filename, img, [], [], options)
+%  saveInterfile(filename, img, [], [], pixelSize)
+%  saveInterfile(filename, img, reko, type, options)
 %  saveInterfile(filename, img, reko, type, options, windows_format)
+%  saveInterfile(filename, img, [], [], pixelSize, windows_format)
 %
 % Input:
 %  filename = Name of the image and header files (without file type).
 %  Saves the header file as [filename '.h33'] and image file as [filename
 %  '.i33']. Needs to be char input.
 %
-%  img = The 3D or 4D image
+%  img = The 3D or 4D image. Note that vector format images are not
+%  supported.
 %
 %  reko = Name of the current reconstruction (can be an empty array). For
 %  naming purposes only. If omitted, will use an empty array (no name).
+%  This is optional variable.
 %
 %  type = Data type, e.g. 'single', 'int8', 'uint32', etc. Default is
 %  the same type as the input image. If omitted, will use the default
@@ -33,6 +38,12 @@ function saveInterfile(filename, img, varargin)
 %  main files or the image_properties struct saved in the cell-matrix
 %  (optional). Necessary if any of the optional values are to be saved
 %  (voxel size, number of time steps, total duration, etc.).
+%
+%  pixelSize = If saving data where the above struct is not available, this
+%  can be used to input the pixel sizes for x, y and (possibly) z. This
+%  should be input as a vector with the same number of dimensions as the
+%  image. Use either the struct or the pixel size, not both. This variable
+%  is optional, if omitted values of 1 are used by default.
 %
 %  windows_format = Text file format. Default is UNIX style (LF), but
 %  setting this value to true uses Windows file format (CR LF). Omitting
@@ -64,6 +75,11 @@ img = cast(img,type);
 koko = size(img);
 if length(koko) == 2
     koko = [koko, 1];
+end
+if ~isstruct(prop)
+    if length(prop) == 2
+        prop = [prop, 1];
+    end
 end
 fid = fopen([filename '.i33'],'w');
 fwrite(fid, img(:), type);
@@ -190,16 +206,21 @@ if nargin >= 5
         fprintf(fid,['scaling factor (mm/pixel) [2] := +' num2str(FOV_y/koko(2), '%e') '\r\n']);
         fprintf(fid,['scaling factor (mm/pixel) [3] := +' num2str(axial_FOV/koko(3), '%e') '\r\n']);
         fprintf(fid,['slice thickness (pixels) := +' num2str(axial_FOV/koko(3), '%e') '\r\n']);
+    elseif numel(prop) == numel(koko)
+        fprintf(fid,['scaling factor (mm/pixel) [1] := +' num2str(prop(1), '%e') '\r\n']);
+        fprintf(fid,['scaling factor (mm/pixel) [2] := +' num2str(prop(2), '%e') '\r\n']);
+        fprintf(fid,['scaling factor (mm/pixel) [3] := +' num2str(prop(3), '%e') '\r\n']);
+        fprintf(fid,['slice thickness (pixels) := +' num2str(prop(3), '%e') '\r\n']);
     else
-        fprintf(fid,['scaling factor (mm/pixel) [1] := 0\r\n']);
-        fprintf(fid,['scaling factor (mm/pixel) [2] := 0\r\n']);
-        fprintf(fid,['scaling factor (mm/pixel) [3] := 0\r\n']);
-        fprintf(fid,['slice thickness (pixels) := 0\r\n']);
+        fprintf(fid,['scaling factor (mm/pixel) [1] := 1\r\n']);
+        fprintf(fid,['scaling factor (mm/pixel) [2] := 1\r\n']);
+        fprintf(fid,['scaling factor (mm/pixel) [3] := 1\r\n']);
+        fprintf(fid,['slice thickness (pixels) := 1\r\n']);
     end
 else
-    fprintf(fid,['scaling factor (mm/pixel) [1] := 0\r\n']);
-    fprintf(fid,['scaling factor (mm/pixel) [2] := 0\r\n']);
-    fprintf(fid,['scaling factor (mm/pixel) [3] := 0\r\n']);
+    fprintf(fid,['scaling factor (mm/pixel) [1] := 1\r\n']);
+    fprintf(fid,['scaling factor (mm/pixel) [2] := 1\r\n']);
+    fprintf(fid,['scaling factor (mm/pixel) [3] := 1\r\n']);
 end
 fprintf(fid,'horizontal bed translation := stepped\r\n');
 fprintf(fid,['start horizontal bed position (mm) := \r\n']);
