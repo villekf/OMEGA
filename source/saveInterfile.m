@@ -40,10 +40,10 @@ function saveInterfile(filename, img, varargin)
 %  (voxel size, number of time steps, total duration, etc.).
 %
 %  pixelSize = If saving data where the above struct is not available, this
-%  can be used to input the pixel sizes for x, y and (possibly) z. This
-%  should be input as a vector with the same number of dimensions as the
-%  image. Use either the struct or the pixel size, not both. This variable
-%  is optional, if omitted values of 1 are used by default.
+%  can be used to input the pixel sizes (in mm) for x, y and (possibly) z.
+%  This should be input as a vector with the same number of dimensions as
+%  the image. Use either the struct or the pixel size, not both. This
+%  variable is optional, if omitted values of 1 mm are used by default.
 %
 %  windows_format = Text file format. Default is UNIX style (LF), but
 %  setting this value to true uses Windows file format (CR LF). Omitting
