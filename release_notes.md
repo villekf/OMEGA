@@ -14,6 +14,8 @@
   
 - Added support for direction-vector based reconstruction in CT
 
+## OMEGA v1.2.1
+
 ### Bug fixes and enhancements
 
 - Fix CT projection data load when using binning values higher than 1
@@ -21,10 +23,26 @@
 - Compilation fixes for Octave on Windows
 
 - Implementation 2 (OpenCL) can now be used on Octave on Windows
+  - This still requires manual building of ArrayFire with MinGW
 
 - Fix implementation 1 and 4 in Octave when using PET data
 
 - Some fixes for older MATLAB versions
+
+- Fix attenuation correction when using GATE MuMap actor
+
+- Several fixes and enhancements for Voxelized_source/phantom_handles
+  - The user can now manually select the row and column indices to crop
+  - Lesion load when using PNG/TIFF/BMP images or DICOM data is now fixed
+  - Errors regarding missing lesion data are now fixed
+  - Cropping can now be disabled with source data as well
+  - Both functions now output the original row/column/slice indices that are included in the cropped image
+  
+- SaveInterfile/MetaImage functions now accept custom pixel/voxel size
+
+- Fix raw data load when store_raw_data was false, but use_raw_data was true
+
+- Allow the use of more image slices than there are crystal rings
 
 ## OMEGA v1.2.0
 
