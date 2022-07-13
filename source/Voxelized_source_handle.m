@@ -23,9 +23,9 @@ function A = Voxelized_source_handle(input_name, output_name, pixdim, pixsize, v
 %   Voxelized_source_handle(input_name, output_name, pixdim, pixsize,
 %   first_slice, end_slice, time_frames, lesion_input_file)
 %   Voxelized_source_handle('act_1.bin', 'act', [256 256], [0.01
-%   0.01 0.01], 150, 450, 5, 'phantom_lesion_1.bin')
+%   0.01 0.01], 150, 450, [5,250], [5,250], 5, 'phantom_lesion_1.bin')
 %   Voxelized_source_handle('act_1.bin', 'act', [256 256], [0.01
-%   0.01 0.01], [], [], [], 'act_lesion_1.bin')
+%   0.01 0.01], [], [], [], [], [], 'act_lesion_1.bin')
 %
 % Inputs:
 %   input_name = Full name of the input data file, e.g. 'act_1.bin'.
@@ -49,6 +49,13 @@ function A = Voxelized_source_handle(input_name, output_name, pixdim, pixsize, v
 %   end_slice = (optional) Crop the source ending to this slice. No
 %   further cropping will be performed, even if the specified slice is
 %   empty. Can be omitted.
+%
+%   row_numbers = (optional) Crop the source starting from the specified
+%   row value and ending to the specified row value. Input should be a 2D
+%   vector, for example [x y]. Note that rows in this case mean the rows in
+%   MATLAB/Octave (i.e. 1st dimension).
+%
+%   col_numbers = (optional) Same as above, but for columns.
 %
 %   time_frames = (optional) The number of time frames (files) in a dynamic
 %   case. Each different time frame/step is assumed to be in a different
@@ -95,8 +102,22 @@ if nargin >= 5
     first_slice = varargin{1};
     end_slice = varargin{2};
 end
-if nargin >= 7
-    tt = varargin{3};
+if nargin >= 7 && ~isempty(varargin{3})
+    row1 = varargin{3}(1);
+    row2 = varargin{3}(2);
+else
+    row1 = 0;
+    row2 = 0;
+end
+if nargin >= 8 && ~isempty(varargin{4})
+    col1 = varargin{4}(1);
+    col2 = varargin{4}(2);
+else
+    col1 = 0;
+    col2 = 0;
+end
+if nargin >= 9
+    tt = varargin{5};
     if isempty(tt)
         tt = 1;
     end
@@ -105,8 +126,8 @@ else
 end
 ind = strfind(input_name,'.');
 f_type = input_name(ind(end) + 1:end);
-if nargin >= 8
-    lesion_input_file = varargin{4};
+if nargin >= 10 && ~isempty(varargin{6})
+    lesion_input_file = varargin{6};
     if strcmpi(f_type, 'dcm') || strcmpi(f_type, 'ima')
         f_path = fileparts(which(lesion_input_file));
         if isempty(f_path)
@@ -120,12 +141,12 @@ if nargin >= 8
         S = S(reindex);
         F = fullfile(f_path,S(1).name);
         X = dicomread(F);
-        A = zeros(size(X),numel(S));
-        A(:,:,1) = single(X);
+        B = zeros(size(X),numel(S));
+        B(:,:,1) = single(X);
         for k = 2:numel(S)
             F = fullfile(f_path,S(k).name);
             X = dicomread(F);
-            A(:,:,k) = single(X);
+            B(:,:,k) = single(X);
         end
     elseif strcmpi(f_type, 'bmp') || strcmp(f_type, 'png') || strcmp(f_type, 'tiff') || strcmp(f_type, 'tif')
         f_path = fileparts(which(lesion_input_file));
@@ -136,16 +157,14 @@ if nargin >= 8
         [~, reindex] = sort( str2double( regexp( {S.name}, '\d+', 'match', 'once' )));
         S = S(reindex);
         F = fullfile(f_path,S(1).name);
-        X = dicomread(F);
-        info = dicominfo(F);
+        X = imread(F);
         pixdim = size(X);
-        pixsize = [info.PixelSpacing(1)/10 info.PixelSpacing(2)/10, info.SliceThickness/10];
-        A = zeros([pixdim,numel(S)]);
-        A(:,:,1) = single(X);
+        B = zeros([pixdim,numel(S)]);
+        B(:,:,1) = single(X);
         for k = 2:numel(S)
             F = fullfile(f_path,S(k).name);
-            X = dicomread(F);
-            A(:,:,k) = single(X);
+            X = imread(F);
+            B(:,:,k) = single(X);
         end
     else
         fid = fopen(lesion_input_file);
@@ -153,15 +172,20 @@ if nargin >= 8
         fclose(fid);
     end
 end
-if nargin >= 9 && ~isempty(varargin{5})
-    output_type = varargin{5};
+if nargin >= 11 && ~isempty(varargin{7})
+    output_type = varargin{7};
 else
     output_type = 'interfile';
 end
-if nargin >= 10 && ~isempty(varargin{6})
-    windows_format = varargin{6};
+if nargin >= 12 && ~isempty(varargin{8})
+    windows_format = varargin{8};
 else
     windows_format = false;
+end
+if nargin >= 13 && ~isempty(varargin{9})
+    crop = varargin{9};
+else
+    crop = true;
 end
 % if nargin >= 9
 %     pix_width = varargin{5};
@@ -219,7 +243,7 @@ else
 end
 
 % Replace the original activity values with the lesion values
-if nargin >= 8
+if nargin >= 10 && ~isempty(varargin{6})
     ind = B > 0;
     A(ind) = B(ind);
 %     A = A + B;
@@ -242,10 +266,14 @@ end
 
 cols = reshape(any(A),pixdim(2),slices);
 rows = reshape(any(permute(A,[2 1 3])),pixdim(1),slices);
-row1 = find(any(rows,2),1,'first');
-row2 = find(any(rows,2),1,'last');
-col1 = find(any(cols,2),1,'first');
-col2 = find(any(cols,2),1,'last');
+if row1 == 0
+    row1 = find(any(rows,2),1,'first');
+    row2 = find(any(rows,2),1,'last');
+end
+if col1 == 0
+    col1 = find(any(cols,2),1,'first');
+    col2 = find(any(cols,2),1,'last');
+end
 if nargin < 5 || (nargin >= 5 && isempty(first_slice) && isempty(end_slice))
     slice = squeeze(any(A));
     slice1 = find(any(slice,1),1,'first');
@@ -254,9 +282,28 @@ else
     slice1 = 1;
     slice2 = slices;
 end
+if ~crop
+    row1 = 1;
+    row2 = size(A,1);
+    col1 = 1;
+    col2 = size(A,2);
+    slice1 = 1;
+    slice2 = slices;
+end
+if nargin >= 5 && ~isempty(first_slice)
+    sliceD1 = first_slice;
+else
+    sliceD1 = slice1;
+end
+if nargin >= 6 && ~isempty(end_slice)
+    sliceD2 = end_slice;
+else
+    sliceD2 = slice2;
+end
 
 if tt == 1
     A = A(row1:row2,col1:col2,slice1:slice2);
+    disp(['Figure cropped to [' num2str(row1) ':' num2str(row2) ',' num2str(col1) ':' num2str(col2) ',' num2str(sliceD1) ':' num2str(sliceD2) ']'])
 else
     % Leave a slight gap in the dynamic case such that the phantom can
     % freely move in each direction without getting cut-off
@@ -267,7 +314,10 @@ else
     col2 = col2 + gap;
     slice1 = slice1 - gap;
     slice2 = slice2 + gap;
+    sliceD1 = sliceD1 - gap;
+    sliceD2 = sliceD2 + gap;
     A = A(row1:row2,col1:col2,slice1:slice2);
+    disp(['Figure cropped to [' num2str(row1) ':' num2str(row2) ',' num2str(col1) ':' num2str(col2) ',' num2str(sliceD1) ':' num2str(sliceD2) ']'])
 end
 
 koko = size(A);
@@ -304,19 +354,19 @@ else
         saveInterfile([output_name '_1'], A, [], [], prop, windows_format)
     end
     input_name = input_name(1:ind(end) - 1);
-    if nargin >= 8
+    if nargin >= 10 && ~isempty(varargin{6})
         lesion_input_file = lesion_input_file(1:strfind(lesion_input_file,'.') - 1);
     end
     if any(strfind(input_name,'_1'))
         input_name = input_name(1:strfind(input_name,'_1') - 1);
-        if nargin >= 8
+        if nargin >= 10 && ~isempty(varargin{6})
             lesion_input_file = lesion_input_file(1:strfind(lesion_input_file,'_1') - 1);
         end
     end
 end
 
 for ll=2:tt
-    if nargin >= 8
+    if nargin >= 10 && ~isempty(varargin{6})
         fid = fopen([lesion_input_file '_' num2str(ll) '.' f_type]);
         B = fread(fid,inf,'single=>single',0,'l');
         fclose(fid);
