@@ -71,6 +71,9 @@ end
 if ~isfield(options,'legacyROOT')
     options.legacyROOT = false;
 end
+if ~isfield(options,'axial_multip')
+    options.axial_multip = 1;
+end
 
 if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
     error('Number of TOF bins has to be odd')
@@ -137,7 +140,7 @@ else
     SinD = uint16(0);
 end
 if ~isfield(options,'store_raw_data')
-    options.store_raw_data = false;
+    options.store_raw_data = true;
 end
 
 TOF = options.TOF_bins > 1;
@@ -146,10 +149,6 @@ if nargout == 8
     store_coordinates = true;
 else
     store_coordinates = false;
-end
-
-if options.use_raw_data
-    options.store_raw_data = true;
 end
 
 disp('Beginning data load')
@@ -884,11 +883,21 @@ elseif options.use_machine == 0
                     % "Normal" case
                 else
                     if transaxial_multip > 1
-                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        if options.axial_multip > 1
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        else
+                            ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                            ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        end
                     else
-                        ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
-                        ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        if options.axial_multip > 1
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        else
+                            ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                            ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        end
                     end
                 end
                 
@@ -1130,19 +1139,71 @@ elseif options.use_machine == 0
                 end
                 
                 if int_loc(1) > 0
-                    if ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0
-                        ring_number1 = uint16(floor(M(:,rsector_ind1)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
-                        ring_number2 = uint16(floor(M(:,rsector_ind2)/blocks_per_ring)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
+
+                % No modules
+                if (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip > 1 && no_submodules
+                    ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind1)/cryst_per_block));
+                    ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z + floor(M(:,crs_ind2)/cryst_per_block));
+                    % Only a single ring
+                elseif options.rings == 1
+                    ring_number1 = zeros(size(M,1),1,'uint16');
+                    ring_number2 = zeros(size(M,1),1,'uint16');
+                    % No modules and no repeated axial rings
+                elseif (ascii_ind.module_ind1 == 0 || ascii_ind.module_ind2 == 0) && options.linear_multip == 1 && no_submodules
+                    ring_number1 = uint16(M(:,rsector_ind1));
+                    ring_number2 = uint16(M(:,rsector_ind2));
+                    % No repeated axial rings (modules)
+                elseif options.linear_multip == 1 && no_submodules
+                    ring_number1 = uint16(M(:,ascii_ind.module_ind1));
+                    ring_number2 = uint16(M(:,ascii_ind.module_ind2));
+                    % No repeated axial rings (submodules)
+                elseif options.linear_multip == 1 && ~no_submodules
+                    ring_number1 = uint16(M(:,ascii_ind.submodule_ind1));
+                    ring_number2 = uint16(M(:,ascii_ind.submodule_ind2));
+                elseif ~no_submodules
+                    if transaxial_multip > 1
+                        ring_number1 = uint16(mod(floor(M(:,ascii_ind.submodule_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                        ring_number2 = uint16(mod(floor(M(:,ascii_ind.submodule_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
                     else
-                        ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind1)/cryst_per_block));
-                        ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2),options.linear_multip)*cryst_per_block+floor(M(:,crs_ind2)/cryst_per_block));
+                        ring_number1 = uint16(mod(M(:,ascii_ind.submodule_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                        ring_number2 = uint16(mod(M(:,ascii_ind.submodule_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
                     end
+                    % "Normal" case
+                else
+                    if transaxial_multip > 1
+                        if options.axial_multip > 1
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2) / transaxial_multip)) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        else
+                            ring_number1 = uint16(mod(floor(M(:,ascii_ind.module_ind1) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                            ring_number2 = uint16(mod(floor(M(:,ascii_ind.module_ind2) / transaxial_multip), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        end
+                    else
+                        if options.axial_multip > 1
+                            ring_number1 = uint16(floor(M(:,rsector_ind1) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind1))) * cryst_per_block + (floor(M(:,crs_ind1) / cryst_per_block))));
+                            ring_number2 = uint16(floor(M(:,rsector_ind2) / blocks_per_ring) * cryst_per_block_z * options.axial_multip + ((floor(M(:,ascii_ind.module_ind2))) * cryst_per_block + (floor(M(:,crs_ind2) / cryst_per_block))));
+                        else
+                            ring_number1 = uint16(mod(M(:,ascii_ind.module_ind1), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind1) / cryst_per_block));
+                            ring_number2 = uint16(mod(M(:,ascii_ind.module_ind2), options.linear_multip) * cryst_per_block_z + floor(M(:,crs_ind2) / cryst_per_block));
+                        end
+                    end
+                end
                     
                     % detector number of the single at the above ring (e.g. first single hits a
                     % detector number 54 on ring 5)
                     % [0 det_per_ring - 1]
-                    ring_pos1 = uint16(mod(M(:,rsector_ind1),blocks_per_ring)*cryst_per_block+mod(M(:,crs_ind1),cryst_per_block));
-                    ring_pos2 = uint16(mod(M(:,rsector_ind2),blocks_per_ring)*cryst_per_block+mod(M(:,crs_ind2),cryst_per_block));
+                if transaxial_multip > 1
+                    if no_submodules
+                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) * cryst_per_block);
+                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.module_ind2), transaxial_multip) * cryst_per_block);
+                    else
+                        ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind1), transaxial_multip) * cryst_per_block);
+                        ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind2), cryst_per_block) + mod(M(:,ascii_ind.submodule_ind2), transaxial_multip) * cryst_per_block);
+                    end
+                else
+                    ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
+                    ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
+                end
                     
                     if ~options.use_raw_data
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
