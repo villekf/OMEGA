@@ -44,6 +44,9 @@
 
 - Allow the use of more image slices than there are crystal rings
 
+- Allow the use of mini blocks for GATE data
+  - `options.axial_multip` can now be used to specify axial repetition with modules/submodules when R-sectors are already axially repeated
+
 ## OMEGA v1.2.0
 
 ### New features
