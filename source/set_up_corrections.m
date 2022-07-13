@@ -1,4 +1,4 @@
-function [normalization_correction, randoms_correction, options] = set_up_corrections(options, rings, RandProp, ScatterProp)
+function [normalization_correction, randoms_correction, options] = set_up_corrections(options, RandProp, ScatterProp)
 %% SET UP CORRECTIONS
 % This function sets up (loads) the necessary corrections that are applied.
 % Included are attenuation correction, normalization correction and randoms
@@ -8,7 +8,7 @@ function [normalization_correction, randoms_correction, options] = set_up_correc
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -92,6 +92,8 @@ if options.attenuation_correction
     if ~isfield(options,'vaimennus')
         if strcmp(options.attenuation_datafile(end-2:end), 'mhd')
             [options.vaimennus, apuStruct] = loadMetaImage(options.attenuation_datafile);
+            options.vaimennus = rot90(options.vaimennus,1);
+            options.vaimennus = options.vaimennus(:);
             if round(apuStruct.EleSpacing(1)*100)/100 > round(options.FOVa_x / options.Nx*100)/100 ||  round(apuStruct.EleSpacing(1)*100)/100 < round(options.FOVa_x / options.Nx*100)/100
                 options.vaimennus = options.vaimennus * (apuStruct.EleSpacing(1) / (options.FOVa_x / options.Nx));
             end
