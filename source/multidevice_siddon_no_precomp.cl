@@ -255,7 +255,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 			}
 			if (pass[lor]) {
 				Np_n[lor] = d_N1;
-				uint tempk = convert_uint((zs / d_zmax) * (d_NSlices - 1.f));
+				uint tempk = convert_uint((zs - d_bz) / d_dz);
 				uint apu = 0u;
 				const float element = perpendicular_elements_multiray(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &apu, tempk, d_N2, d_N3, &jelppi);
 				temp += element;
@@ -297,7 +297,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 			float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 			bool skip = false;
 			if (fabs(z_diff) < 1e-6f) {
-				tempk = convert_int((zs / d_zmax) * (d_NSlices - 1.f));
+				tempk = convert_uint((zs - d_bz) / d_dz);
 				skip = siddon_pre_loop_2D(d_bx, d_by, x_diff, y_diff, d_maxxx, d_maxyy, d_dx, d_dy, d_Nx, d_Ny, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 					ys, xs, yd, xd, &tc, &iu, &ju, &tx0, &ty0);
 			}

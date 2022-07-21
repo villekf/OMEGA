@@ -324,7 +324,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			return;
 #else // Not the precomputation phase
 
-		tempk = convert_uint((zs / d_zmax) * (d_NSlices - 1.f));
+		tempk = convert_uint((zs - d_bz) / d_dz);
 
 #ifdef SIDDON // Siddon
 
@@ -807,7 +807,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		// If the measurement is on a same ring
 			// Z-coordinate (ring)
 		if (fabs(z_diff) < 1e-6f) {
-			tempk = convert_int((zs / d_zmax) * (d_NSlices - 1.f));
+			tempk = convert_uint((zs - d_bz) / d_dz);
 			skip = siddon_pre_loop_2D(d_bx, d_by, x_diff, y_diff, d_maxxx, d_maxyy, d_dx, d_dy, d_Nx, d_Ny, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 				ys, xs, yd, xd, &tc, &iu, &ju, &tx0, &ty0);
 		}
