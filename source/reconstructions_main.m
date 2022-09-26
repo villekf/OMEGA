@@ -72,6 +72,7 @@ else
 end
 
 options.listmode = false;
+tStart = 0;
 
 % Is TOF enabled?
 TOF = options.TOF_bins > 1 && options.projector_type == 1;
