@@ -2,10 +2,10 @@ function options = OMEGA_error_check(options)
 %% Error checking file
 % This function is used to check that all the input values are allowed. It
 % also prints several variables that were chosen to inform the user of the
-%
+% selected options.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2019-2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -23,6 +23,7 @@ function options = OMEGA_error_check(options)
 
 % First parts checks if certain elements are missing from the struct and
 % assigns default values to them
+options = convertOptions(options);
 if ~isfield(options, 'custom')
     options.custom = false;
 end
@@ -71,7 +72,12 @@ end
 if ~isfield(options, 'CT')
     options.CT = false;
 end
-options = convertOptions(options);
+if ~isfield(options, 'dPitchX') && isfield(options, 'dPitch')
+    options.dPitchX = options.dPitch;
+end
+if ~isfield(options, 'dPitchY') && isfield(options, 'dPitch')
+    options.dPitchY = options.dPitch;
+end
 
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
@@ -88,65 +94,65 @@ if options.only_sinos && options.only_reconstructions
     error('options.only_sinos and options.only_reconstructions cannot be both set to true')
 end
 % Check for various illegal values
-if (options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter) && ~options.CT
+if ~options.CT && ~options.SPECT && (options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter)
     error(['Transaxial FOV is larger than the machine diameter (' num2str(options.diameter) ')'])
 end
-if (options.axial_fov) < (options.rings * options.cr_pz - options.cr_pz) && ~options.CT
+if ~options.CT && ~options.SPECT && (options.axial_fov) < (options.rings * options.cr_pz - options.cr_pz)
     error('Axial FOV is too small, crystal ring(s) on the boundary have no slices')
 end
 % if (options.axial_fov) > (options.linear_multip * options.cryst_per_block * options.cr_pz + options.axial_fov/options.Nz*2 + options.cr_pz*sum(options.pseudot))
 %     error('Axial FOV is too large, not all the slices have LORs going through them')
 % end
-if options.use_LMF && options.data_bytes < 10 && ~options.CT
+if ~options.CT && ~options.SPECT && options.use_LMF && options.data_bytes < 10
     error('Too little data bytes in LMF format, minimum allowed is 10 bytes (time + detector indices)')
 end
-if options.use_LMF && options.data_bytes > 21 && ~options.CT
+if ~options.CT && ~options.SPECT && options.use_LMF && options.data_bytes > 21
     warning(['LMF format uses more bytes than the supported 21 bytes (time + detector indices + source coordinates + event indices + Compton scattering in phantom). '...
         'If these extra bytes are before the bytes that are used, output data will be incorrect.'])
 end
-if options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16 && ~options.CT
+if ~options.CT && ~options.SPECT && options.use_LMF && options.R_bits + options.C_bits + options.M_bits + options.S_bits + options.L_bits > 16
     error('Number of bits used in LMF is more than 16 bits. OMEGA supports only 16 bit detector indices')
 end
-if options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data
     error(['Span value cannot be larger than ring difference (' num2str(options.ring_difference) ')'])
 end
-if options.span == 1 && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.span == 1 && ~options.use_raw_data
     warning('Span value of 1 is not recommended. Use raw data if you want uncompressed reconstruction!')
 end
-if (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data
     error('Span value has to be odd and positive.')
 end
-if options.ring_difference >= options.rings && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.ring_difference >= options.rings && ~options.use_raw_data
     error(['Ring difference can be at most ' num2str(options.rings-1)])
 end
-if options.ring_difference < 0 && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.ring_difference < 0 && ~options.use_raw_data
     error('Ring difference has to be at least 0.')
 end
-if options.Nang > options.det_w_pseudo/2 && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.Nang > options.det_w_pseudo/2 && ~options.use_raw_data
     error(['Number of sinogram angles can be at most the number of detectors per ring divided by two(' num2str(options.det_w_pseudo/2) ')'])
 end
-if options.TotSinos < options.NSinos && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.TotSinos < options.NSinos && ~options.use_raw_data
     error(['The numnber of sinograms used (' num2str(options.NSinos) ') is larger than the total number of sinograms (' num2str(options.TotSinos) ')'])
 end
-if (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && (options.ndist_side > 1 && mod(options.Ndist,2) == 0 || options.ndist_side < -1 && mod(options.Ndist,2) == 0) && ~options.use_raw_data
     error('ndist_side can be either 1 or -1')
 end
-if options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.ndist_side == 0 && mod(options.Ndist,2) == 0 && ~options.use_raw_data
     error('ndist_side cannot be 0 when Ndist is even')
 end
-if ((mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0) && ~options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && ((mod(options.sampling, 2) > 0 && options.sampling ~= 1) || options.sampling < 0) && ~options.use_raw_data
     error('Sampling rate has to be divisible by two and positive or one')
 end
-if ((mod(options.sampling_raw, 2) > 0 && options.sampling_raw ~= 1) || options.sampling_raw < 0) && options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && ((mod(options.sampling_raw, 2) > 0 && options.sampling_raw ~= 1) || options.sampling_raw < 0) && options.use_raw_data
     error('Sampling rate has to be divisible by two and positive or one')
 end
-if ((options.sampling > 1 && ~options.use_raw_data) || (options.sampling_raw > 1 && options.use_raw_data)) && options.precompute_lor && ~options.CT
+if ~options.CT && ~options.SPECT && ((options.sampling > 1 && ~options.use_raw_data) || (options.sampling_raw > 1 && options.use_raw_data)) && options.precompute_lor
     warning('Increased sampling rate is not supported for precomputed data')
 end
-if options.arc_correction && options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.arc_correction && options.use_raw_data
     warning('Arc correction is not supported for raw data')
 end
-if options.arc_correction && options.precompute_lor && ~options.CT
+if ~options.CT && ~options.SPECT && options.arc_correction && options.precompute_lor
     warning('Arc correction is not supported with precomputed data')
     options.arc_correction = false;
 end
@@ -154,10 +160,10 @@ if options.partitions < 1
     warning('Number of partitions is less than one. Using one partition.')
     options.partitions = 1;
 end
-if options.start > options.end && ~options.CT
+if ~options.CT && ~options.SPECT && options.start > options.end
     error('Start time is later than end time')
 end
-if options.start > options.tot_time && ~options.CT
+if ~options.CT && ~options.SPECT && options.start > options.tot_time
     error('Start time is larger than the total time of the measurement')
 end
 if options.Niter < 1
@@ -167,7 +173,7 @@ end
 %     warning('Number of subsets is less than two. Subset has to be at least 2 when using OS-methods. Using 2 subsets.')
 %     options.subsets = 2;
 % end
-if options.det_per_ring == options.det_w_pseudo && options.fill_sinogram_gaps && ~options.CT
+if ~options.CT && ~options.SPECT && options.det_per_ring == options.det_w_pseudo && options.fill_sinogram_gaps
     error('Gap filling is only supported with pseudo detectors!')
 end
 if size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz
@@ -195,7 +201,7 @@ else
         options.fpath = [options.fpath '/'];
     end
 end
-if options.use_LMF && options.randoms_correction && ~options.CT
+if ~options.CT && ~options.SPECT && options.use_LMF && options.randoms_correction
     warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
     options.randoms_correction = false;
 end
@@ -224,7 +230,7 @@ if numel(options.epps) > 1
     warning('Epsilon has to be a scalar value! Using the default value (1e-8).')
     options.epps = 1e-8;
 end
-if options.store_scatter && sum(options.scatter_components) <= 0 && ~options.CT
+if ~options.CT && ~options.SPECT && options.store_scatter && sum(options.scatter_components) <= 0
     error('Store scatter selected, but no scatter components have been selected')
 end
 if options.CT && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1)
@@ -247,7 +253,7 @@ if options.implementation == 3
         options.MLEM = true;
     end
 end
-if options.use_machine == 2 && options.use_raw_data && ~options.CT
+if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_data
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
@@ -257,32 +263,32 @@ end
 % if options.source && options.use_ASCII && (options.source_index1 == 0 || isempty(options.source_index1) || options.source_index2 == 0 || isempty(options.source_index2))
 %     error('Source image selected with ASCII data, but no source index column numbers are provided.')
 % end
-if options.reconstruct_trues && options.reconstruct_scatter && ~options.CT
+if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
     options.reconstruct_scatter = false;
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor && ~options.CT
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mex','file') ~= 3 && options.precompute_lor
     warning('MEX-file for implementation 1 not found. It is recommended to run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_oct','file') ~= 3 && options.precompute_lor && ~options.CT
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_oct','file') ~= 3 && options.precompute_lor
     warning('OCT-file for implementation 1 not found. It is recommended to run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mex','file') ~= 3 && ~options.CT
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3 && ~options.CT
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3
     error('OCT-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mexCT','file') ~= 3 && options.precompute_lor && options.CT
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 1 && exist('projector_mexCT','file') ~= 3 && options.precompute_lor
     error('MEX-file for implementation 1 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_octCT','file') ~= 3 && options.precompute_lor && options.CT
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_octCT','file') ~= 3 && options.precompute_lor
     error('OCT-file for implementation 1 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mexCT','file') ~= 3 && options.CT
+if exist('OCTAVE_VERSION','builtin') == 0 && options.implementation == 4 && exist('projector_mexCT','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
-if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_octCT','file') ~= 3 && options.CT
+if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_octCT','file') ~= 3
     error('OCT-file for implementation 4 not found. Run install_mex first.')
 end
 if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) ...
@@ -398,8 +404,20 @@ if options.implementation == 1 && ~options.precompute_lor && ~options.CT
     warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
         'precompute_lor to true or use another implementation.'])
 end
+if options.projector_type == 2 && options.implementation == 1 && options.precompute_lor
+    warning('Orthogonal distance-based projector is not recommended with implementation 1!')
+end
 if options.projector_type == 2 && options.CT
     error('Orthogonal distance-based projector is NOT supported when using CT data!')
+end
+if (options.projector_type == 4 || options.projector_type == 5) && ~options.CT
+    error('Projector types 4 and 5 are only supported with CT data!')
+end
+if (options.projector_type == 6) && ~options.SPECT
+    error('Projector type 6 is only supported with SPECT data!')
+end
+if (options.projector_type == 4 || options.projector_type == 5 || options.projector_type == 6) && options.precompute_lor
+    warning('Precomputation is not available for projector types 4, 5 and 6. No precomputation will be performed.')
 end
 if options.TOF_bins_used > 1 && options.implementation == 1 && ~options.CT
     error('TOF is currently not supported with implementation 1!')
@@ -427,6 +445,8 @@ if options.verbose
         dispi = 'Using LMF data';
     elseif options.use_root && options.use_machine == 0
         dispi = 'Using ROOT data';
+    elseif options.use_binary && options.use_machine == 0
+        dispi = 'Using BINARY data';
     elseif options.use_machine == 1
         dispi = 'Using data obtained from list-mode file';
     elseif options.use_machine == 2
@@ -828,8 +848,12 @@ if options.verbose
                 disp(['Every ' num2str(options.subsets) 'th sinogram row is taken per subset.'])
             elseif options.subset_type == 6
                 disp(['Using angle-based subset sampling with ' num2str(options.n_angles) ' angles combined per subset.'])
-            elseif options.subset_type == 5
+            elseif options.subset_type == 7
                 disp('Using golden angle-based subset sampling.')
+            elseif options.subset_type == 8
+                disp(['Using every ' num2str(options.subsets) 'th sinogram/projection image.'])
+            elseif options.subset_type == 9
+                disp('Using sinograms/projection images in random order.')
             end
         end
         disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
@@ -838,7 +862,7 @@ if options.verbose
         disp(['Using an image (matrix) size of ' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) ' with ' num2str(options.Niter) ...
             ' iterations and ' num2str(options.subsets) ' subsets.'])
         if options.use_CUDA && options.projector_type > 1
-            warning('CUDA is not recommended with orthogonal or volume-based projectors')
+            warning('CUDA is not recommended with orthogonal or volume-based projectors and not supported by projectors 4, 5 and 6')
         end
     end
 end

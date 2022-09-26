@@ -1,4 +1,4 @@
-function [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize,varargin)
+function [x,y,z] = CTDetectorCoordinatesFull(angles,nProjections,xSize,ySize,varargin)
 %CTDETECTORCOORDINATESFULL Computes the detector coordinates of the CT
 %projections
 %   This function behaves identically to CTDetectorCoordinates except that
@@ -7,8 +7,8 @@ function [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRo
 %   numel(angles).  Bed offset is not supported.
 %
 %   Examples:
-%       [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize)
-%       [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize, horizontalOffset, verticalOffset)
+%       [x,y,z] = CTDetectorCoordinatesFull(angles,nProjections,xSize,ySize,x,y,z,dPitch)
+%       [x,y,z] = CTDetectorCoordinatesFull(angles,nProjections, xSize, ySize, sourceToDetector,sourceToCRot,dPitch,horizontalOffset, verticalOffset, bedOffset, uCenter, vCenter)
 %   Inputs:
 %       angles = The projection angles
 %       sourceToDetector = Distance from the source to the detector panel
@@ -26,7 +26,7 @@ function [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRo
 % See also get_coordinates, CTDetectorCoordinates
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2021 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -41,57 +41,123 @@ function [x,y,z] = CTDetectorCoordinatesFull(angles,sourceToDetector,sourceToCRo
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-detSizeTr = ySize * dPitch;
-detSizeAx = xSize * dPitch;
 
-if nargin >= 8 && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2})
-    horizontalOffset = (varargin{1});
-    verticalOffset = varargin{2};
-    if numel(horizontalOffset) > numel(verticalOffset)
-        horizontalOffset = horizontalOffset(1:numel(angles));
-        verticalOffset = repmat(verticalOffset, numel(horizontalOffset)/numel(verticalOffset),1);
-    elseif numel(horizontalOffset) < numel(verticalOffset)
-        verticalOffset = verticalOffset(1:numel(angles));
-        horizontalOffset = repmat(horizontalOffset, numel(verticalOffset)/numel(horizontalOffset),1);
+if nargin >= 7 && ~isempty(varargin{1}) && ~isempty(varargin{2}) && ~isempty(varargin{3}) && numel(varargin{1}) > 1
+    x = varargin{1};
+    y = varargin{2};
+    z = varargin{3};
+    if numel(varargin{4}) == 2
+        dPitchX = varargin{4}(1);
+        dPitchY = varargin{4}(2);
+    else
+        dPitchX = varargin{4};
+        dPitchY = varargin{4};
+    end
+    if nargin >= 9 && ~isempty(varargin{5})
+        pitchRoll = varargin{5};
+    else
+        pitchRoll = [];
+    end
+    if size(x,2) > 1 && size(x,1) > 1
+        xx = x(:,2);
+        yy = y(:,2);
+        zz = z(:,2);
+    elseif size(x,2) > 1 && size(x,1) == 1
+        xx = x';
+        yy = y';
+        zz = z';
+        clear x y z
+    else
+        xx = x;
+        yy = y;
+        zz = z;
+        clear x y z
     end
 else
-    horizontalOffset = 0;
-    verticalOffset = 0;
+    if nargin >= 5 && ~isempty(varargin{1})
+        sourceToDetector = varargin{1};
+    else
+        error('Source to detector distance required!')
+    end
+    if nargin >= 6 && ~isempty(varargin{2})
+        sourceToCRot = varargin{2};
+    else
+        error('Source to center-of-rotation distance required!')
+    end
+    if nargin >= 7 && ~isempty(varargin{3})
+        if numel(varargin{3}) == 2
+            dPitchX = varargin{3}(1);
+            dPitchY = varargin{3}(2);
+        else
+            dPitchX = varargin{3};
+            dPitchY = varargin{3};
+        end
+    end
+    if nargin >= 8 && ~isempty(varargin{4})
+        horizontalOffset = varargin{4};
+    else
+        horizontalOffset = [];
+    end
+    if nargin >= 9 && ~isempty(varargin{5})
+        verticalOffset = varargin{5};
+    else
+        verticalOffset = [];
+    end
+    if nargin >= 10 && ~isempty(varargin{6})
+        bedOffset = varargin{6};
+    else
+        bedOffset = [];
+    end
+    if nargin >= 11 && ~isempty(varargin{7})
+        uCenter = varargin{7};
+    else
+        uCenter = [];
+    end
+    if nargin >= 12 && ~isempty(varargin{8})
+        vCenter = varargin{8};
+    else
+        vCenter = [];
+    end
+    if nargin >= 13 && ~isempty(varargin{9})
+        pitchRoll = varargin{9};
+    else
+        pitchRoll = [];
+    end
+    [x,y,z] = CTDetSource(angles,nProjections,sourceToDetector,sourceToCRot, horizontalOffset, verticalOffset, bedOffset, uCenter, vCenter);
+    xx = x(:,2);
+    yy = y(:,2);
+    zz = z(:,2);
 end
+uV = CTDetectorCoordinates(angles,pitchRoll);
 
-if max(abs(angles(:))) > 2*pi
-    angles = angles * (pi / 180);
-end
-
-detCoordY = - (sourceToDetector - sourceToCRot);
-detCoordX = -detSizeTr / 2 + dPitch / 2;
-
-X = linspace(-detCoordX,detCoordX,ySize)';
-Y = repmat(detCoordY,ySize,1);
-X = repmat(X, xSize,1);
-Y = repmat(Y, xSize,1);
-detCoordZ = repmat(repelem(linspace(dPitch/2,detSizeAx-dPitch/2,xSize)',ySize),numel(angles),1);
-angles = reshape(angles, 1, 1, []);
-
-R = permute([cos(angles) -sin(angles); sin(angles) cos(angles)], [1 2 3]);
-XY = zeros(numel(angles) * xSize * ySize,2);
-
-sourceCoordY = sourceToCRot - verticalOffset * 1;
-sourceCoordX = -horizontalOffset * 1;
-sourceCoordZ = detSizeAx / 2;
-
-for kk = 1 : numel(angles)
-    XY(1 + (kk - 1) * xSize * ySize : kk * xSize * ySize,:) = (R(:,:,kk) * [X Y]')';
-end
-
-testi = reshape([sourceCoordX,sourceCoordY]', 2, 1, []);
-if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
-    sXY = repelem(squeeze(sum(bsxfun(@times, R, permute(testi, [2 1 3])),2))',xSize*ySize,1);
+indeksiX = repmat((-ySize / 2 + .5 : ySize / 2 - .5)', nProjections, 1); 
+indeksiZ = repmat((-xSize / 2 + .5 : xSize / 2 - .5)', nProjections, 1);
+if size(uV,1) == 2
+    uV = [repelem(uV(1,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(2,:)' * dPitchX, ySize, 1) .* indeksiX];
+    xx = repelem(xx, ySize, 1) + uV(:,1);
+    yy = repelem(yy, ySize, 1) + uV(:,2);
+    xx = single(repmat(reshape(xx, ySize, []), xSize, 1));
+    xx = xx(:);
+    yy = single(repmat(reshape(yy, ySize, []), xSize, 1));
+    yy = yy(:);
+    zz = single(repelem(repelem(zz(:,1), xSize, 1) + indeksiZ * dPitchY, ySize, 1));
 else
-    sXY = repelem(squeeze(sum(R .* permute(testi, [2 1 3]),2))',xSize*ySize,1);
+    uV = [repelem(uV(1,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(2,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(3,:)' * dPitchY, xSize, 1) .* indeksiZ,...
+        repelem(uV(4,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(5,:)' * dPitchX, ySize, 1) .* indeksiX, repelem(uV(6,:)' * dPitchY, xSize, 1) .* indeksiZ];
+    xx = repelem(xx, ySize, 1) + uV(:,1) + uV(:,4);
+    yy = repelem(yy, ySize, 1) + uV(:,2) + uV(:,5);
+    xx = single(repmat(reshape(xx, ySize, []), xSize, 1));
+    xx = xx(:);
+    yy = single(repmat(reshape(yy, ySize, []), xSize, 1));
+    yy = yy(:);
+    zz = single(repelem(repelem(zz(:,1), xSize, 1) + uV(:,3) + uV(:,6), ySize, 1));
 end
-
-x = [XY(:,1) sXY(:,1)];
-y = -[XY(:,2) sXY(:,2)];
-z = [reshape(detCoordZ,[],1) repmat(sourceCoordZ,numel(detCoordZ),1)];
+if exist('x','var')
+    x = [repelem(x(:,1), xSize * ySize, 1) xx];
+    y = [repelem(y(:,1), xSize * ySize, 1) yy];
+    z = [repelem(z(:,1), xSize * ySize, 1) zz];
+else
+    x = xx;
+    y = yy;
+    z = zz;
 end

@@ -16,15 +16,15 @@ function varList = recNames(varargin)
 
 % Add Any MAP algorithm here
 % Add non-subset MAP algorithm before 'OSL_OSEM'
-varMAP = {'OSL_MLEM';'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA'};
-% Increment this if the added algorithm is MLEM (no subsets) type MAP
+varMAP = {'OSL_MLEM';'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'CP'};
+% Increment this if the added algorithm is MLEM (i.e no subsets) type MAP
 % algorithm
-nMAPMLEM = 1;
-% Increment this if the added algorithm is MLEM (no subsets) type algorithm
+nMAPMLEM = 2;
+% Increment this if the added algorithm is MLEM (i.e no subsets) type algorithm
 % (non-MAP)
-nMLEM = 1;
+nMLEM = 2;
 % Include the (non-MAP/prior-based) MLEM algorithm here
-varMLEM = {'MLEM'};
+varMLEM = {'MLEM';'LSQR'};
 % This  will be automatically filled
 varML = {varMLEM{1:nMLEM};varMAP{1:nMAPMLEM}};
 % This  will be automatically filled

@@ -32,11 +32,12 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 	bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings,
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const uint32_t* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC,
-	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose)
+	uint16_t* SinoR, uint16_t* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose, 
+	const int32_t nLayers)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
-		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
+		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0, layerID1 = 0, layerID2 = 0;
 	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 	Double_t time1 = alku, time2 = alku;
 
@@ -87,6 +88,8 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 		no_submodules = false;
 	Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 	Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
+	Coincidences->SetBranchAddress("layerID1", &layerID1);
+	Coincidences->SetBranchAddress("layerID2", &layerID2);
 	if (source) {
 		if (Coincidences->GetBranchStatus("sourcePosX1"))
 			Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
@@ -431,9 +434,18 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
 		}
+		int32_t layer = 0;
+		if (nLayers > 1) {
+			if (layerID2 == 1 && layerID1 == 1)
+				layer = 3;
+			else if (layerID2 == 1 && layerID1 == 0)
+				layer = 1;
+			else if (layerID2 == 0 && layerID1 == 1)
+				layer = 2;
+		}
 		bool swap = false;
 		const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, TOFSize,
-			vali, alku, detWPseudo, rings, bins, nDistSide, swap);
+			vali, alku, detWPseudo, rings, bins, nDistSide, swap, layer, nLayers);
 		if (sinoIndex >= 0) {
 			Sino[sinoIndex]++;
 			if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
@@ -546,9 +558,18 @@ void histogram(uint16_t * LL1, uint16_t * LL2, uint32_t * tpoints, double vali, 
 				ring_number1 += ring_number1 / gapSize;
 				ring_number2 += ring_number2 / gapSize;
 			}
+			int32_t layer = 0;
+			if (nLayers > 1) {
+				if (layerID2 == 1 && layerID1 == 1)
+					layer = 3;
+				else if (layerID2 == 1 && layerID1 == 0)
+					layer = 1;
+				else if (layerID2 == 0 && layerID1 == 1)
+					layer = 2;
+			}
 			bool swap = false;
 			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, sinoSize,
-				vali, alku, detWPseudo, rings, bins, nDistSide, swap);
+				vali, alku, detWPseudo, rings, bins, nDistSide, swap, layer, nLayers);
 			if (sinoIndex >= 0) {
 				SinoD[sinoIndex]++;
 			}
@@ -588,9 +609,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	/* Check for proper number of arguments */
 
-	if (nrhs != 40) {
+	if (nrhs != 41) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:invalidNumInputs",
-			"40 input arguments required.");
+			"41 input arguments required.");
 	}
 	else if (nlhs > 26) {
 		mexErrMsgIdAndTxt("MATLAB:GATE_root_matlab:maxlhs",
@@ -633,6 +654,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	double binSize = (double)mxGetScalar(prhs[37]);
 	double FWHM = (double)mxGetScalar(prhs[38]);
 	const bool verbose = (bool)mxGetScalar(prhs[39]);
+	int32_t nLayers = (int32_t)mxGetScalar(prhs[40]);
 	size_t outsize2 = (loppu - alku) / vali;
 
 	// Count inputs and check for char type
@@ -820,7 +842,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		output, Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter, 
 		Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, 
 		x1, x2, y1, y2, z1, z2, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference,
-		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose);
+		span, seg, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers);
 
 
 	delete Coincidences;

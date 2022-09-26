@@ -1,4 +1,4 @@
-function [varargout] = sinogram_coordinates_2D(options, xp, yp)
+function [varargout] = sinogram_coordinates_2D(options, xp, yp, varargin)
 %% Coordinates for the sinogram detectors
 % This code is used to compute the 2D coordinates for the detector
 % coordinates in sinogram space. It also provides the indexing needed for
@@ -21,7 +21,7 @@ function [varargout] = sinogram_coordinates_2D(options, xp, yp)
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -49,6 +49,11 @@ if Nang < options.det_w_pseudo/2
     mashing = (options.det_w_pseudo / Nang / 2);
     Nang = Nang * mashing;
 end
+if ~isempty(varargin) && ~isempty(varargin{1})
+    nLayers = varargin{1};
+else
+    nLayers = 1;
+end
 
 
 %% 2D coordinates
@@ -56,7 +61,7 @@ end
 % Determine the sinogram indices for each of the LOR
 
 % Form the detector vector pair
-L = formDetectorIndices(det_w_pseudo);
+L = formDetectorIndices(det_w_pseudo, nLayers, options.cryst_per_block(1));
 
 L = L - 1;
 
@@ -131,10 +136,17 @@ yy2 = yp(L(:,2));
 %%
 
 % Accumulate the coordinates
-x = accumarray([i j], xx1, [Ndist Nang],@mean, NaN);
-y = accumarray([i j], yy1, [Ndist Nang],@mean, NaN);
-x2 = accumarray([i j], xx2, [Ndist Nang],@mean, NaN);
-y2 = accumarray([i j], yy2, [Ndist Nang],@mean, NaN);
+if mashing > 1
+    x = accumarray([i j], xx1, [Ndist Nang],@mean, NaN);
+    y = accumarray([i j], yy1, [Ndist Nang],@mean, NaN);
+    x2 = accumarray([i j], xx2, [Ndist Nang],@mean, NaN);
+    y2 = accumarray([i j], yy2, [Ndist Nang],@mean, NaN);
+else
+    x = accumarray([i j], xx1, [Ndist Nang]);
+    y = accumarray([i j], yy1, [Ndist Nang]);
+    x2 = accumarray([i j], xx2, [Ndist Nang]);
+    y2 = accumarray([i j], yy2, [Ndist Nang]);
+end
 
 % Remove NaN values
 if sum(isnan(x(:))) > 0

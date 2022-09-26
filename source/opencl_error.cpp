@@ -128,8 +128,10 @@ const char * gpuErrchk(cl_int error)
 
 void gpuAssert(cl_int code, const char* file, int line)
 {
+	if (code != CL_SUCCESS) {
 		const char* errstr = gpuErrchk(code);
 		std::cerr << "GPUassert: " << errstr << ", " << file << ", line " << line << std::endl;
+	}
 		//mexPrintf("GPUassert: %s %s %d\n", errstr, file, line);
 }
 
@@ -140,4 +142,32 @@ std::string header_to_string(const char* header_directory) {
 	std::fstream sourceFile(header_source.c_str());
 	std::string content((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 	return content;
+}
+
+void getBuildLog(cl_int& status, const cl::Context& context, const cl::Program& program) {
+	getErrorString(status);
+	mexPrintf("Failed to build OpenCL program.\n");
+	std::vector<cl::Device> dev;
+	context.getInfo(CL_CONTEXT_DEVICES, &dev);
+	for (int ll = 0; ll < dev.size(); ll++) {
+		cl_build_status b_status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
+		if (b_status != CL_BUILD_ERROR)
+			continue;
+		std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
+		std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
+		mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
+	}
+	//return status;
+}
+
+mxArray* getField(const mxArray* in, mwIndex i, const char* name) {
+	const int field_num = mxGetFieldNumber(in, name); 
+	std::string output = name;
+	output = "Error with " + output;
+	mxArray* out;
+	if (field_num >= 0)
+		out = mxGetField(in, i, name);
+	else
+		mexErrMsgTxt(output.c_str());
+	return out;
 }

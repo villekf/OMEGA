@@ -3,11 +3,32 @@ function options = convertOptions(options)
 %version of OMEGA
 %   Guarantees backwards compatibility
 
+if ~isfield(options,'use_raw_data')
+    options.use_raw_data = false;
+end
+if ~isfield(options,'cryst_per_block')
+    options.cryst_per_block = 0;
+end
 if ~isfield(options,'PKMA')
     options.PKMA = false;
 end
 if ~isfield(options,'RDP')
     options.RDP = false;
+end
+if ~isfield(options, 'PET')
+    options.PET = false;
+end
+if ~isfield(options, 'SPECT')
+    options.SPECT = false;
+end
+if ~isfield(options, 'LSQR')
+    options.LSQR = false;
+end
+if ~isfield(options, 'CP')
+    options.CP = false;
+end
+if ~isfield(options, 'use_binary')
+    options.use_binary = false;
 end
 
 if isfield(options,'mlem')
@@ -65,6 +86,12 @@ end
 if isfield(options,'lambda0_rosem')
     options.lambda0_ROSEM = options.lambda0_rosem;
     options = rmfield(options,'lambda0_rosem');
+end
+if ~isfield(options,'nLayers')
+     options.nLayers = 1;
+end
+if ~isfield(options,'layerOffset')
+     options.nLayers = 0;
 end
 origPrior = {'mrp';'quad';'huber';'L';'fmh';'weighted';'TV';'ad';'APLS';'TGV';'NLM';'custom'};
 origMAP = {'mlem';'osem';'bsrem';'mbsrem';'rosem';'rbi';'cosem'};

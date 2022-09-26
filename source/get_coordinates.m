@@ -16,7 +16,7 @@ function [x, y, z, options] = get_coordinates(options, varargin)
 % detector_coordinates, getMultirayCoordinates
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -58,16 +58,38 @@ if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfi
     else
         z = zeros(numel(x),1);
     end
+%     if min(z) < 0
+%         z = z - min(z);
+%     end
     %     x = x + max(abs(x(:)));
     %     y = y + max(abs(y(:)));
     %     z = z + max(abs(z(:)));
 else
     if options.use_raw_data == false
         [~, ~, xp, yp] = detector_coordinates(options);
-        [x, y] = sinogram_coordinates_2D(options, xp, yp);
+        if options.nLayers
+            koko = numel(xp)/2;
+            x = [];
+            y = [];
+            for kk = 1 : options.nLayers
+                if options.cryst_per_block(1) == options.cryst_per_block(2)
+                    [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
+                else
+                    if kk == 2
+                        [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko), options.nLayers);
+                    else
+                        [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
+                    end
+                end
+                x = [x;x1];
+                y = [y;y1];
+            end
+        else
+            [x, y] = sinogram_coordinates_2D(options, xp, yp);
+        end
         
         if options.arc_correction && ~options.precompute_lor
-            [~, ~, xp, yp] = detector_coordinates(options);
+%             [~, ~, xp, yp] = detector_coordinates(options);
             [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
         end
         if options.sampling > 1 && ~options.precompute_lor
@@ -102,6 +124,9 @@ else
         %         z = z + options.cr_pz/2;
         z(end) = [];
     end
+    z = z - z(end) / 2;
+    x = [x(:,1)';y(:,1)';x(:,2)';y(:,2)'];
+    z = z';
 end
 
 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5

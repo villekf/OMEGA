@@ -72,8 +72,8 @@ if nargin >= 3 || (nargin >= 2 && ~isempty(varargin{2}) && numel(varargin{2}) ==
 else
     data_load = false;
 end
-if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins) || ...
-        (iscell(varargin{2}) && numel(varargin{2}{1}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins)))
+if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins * options.nLayers^2) || ...
+        (iscell(varargin{2}) && numel(varargin{2}{1}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins * options.nLayers^2)))
     sinoLoaded = true;
     Sino = varargin{2};
     variableList = {'SinM'};
@@ -387,7 +387,6 @@ if options.use_machine ~= 2
         
     end
     
-    [~, ~, xp, yp] = detector_coordinates(options);
     if ~corrections && ~sinoLoaded
         
         
@@ -829,6 +828,7 @@ if options.use_machine ~= 2
             if llo == 1
                 gaps = [];
             end
+            [~, ~, xp, yp] = detector_coordinates(options);
             [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
             if partitions > 1
                 SinM{llo} = Sin;

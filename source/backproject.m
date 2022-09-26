@@ -77,12 +77,18 @@ end
 if ~isfield(options,'CT')
     options.CT = false;
 end
+if ~isfield(options,'SPECT')
+    options.SPECT = false;
+end
+if ~isfield(options,'PITCH')
+    options.PITCH = false;
+end
 
 rings = options.rings;
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
-if Nz > options.NSinos && ~options.simple && ~options.CT
+if Nz > options.NSinos && ~options.simple && (~options.CT && ~options.SPECT)
     Nz = options.NSinos;
     rings = ceil(Nz / 2 + 0.25);
 end
@@ -205,18 +211,29 @@ if ~luokka
     end
 else
     if options.listmode
-        x = options.x(nn(1):nn(2),:);
-        y = options.y(nn(1):nn(2),:);
-        z_det = options.z_det(nn(1):nn(2),:);
+        x = options.x(:,nn(1):nn(2));
+        x = x(:);
+        y = single(0);
+        z_det = single(0);
+%         y = options.y(:,nn(1):nn(2));
+%         z_det = options.z_det(:,nn(1):nn(2));
     else
         x = options.x(:);
         y = options.y(:);
         z_det = options.z_det(:);
     end
 end
+% if isfield(options,'x2')
+%     x = options.x2(:);
+%     y = options.y2(:);
+%     z_det = options.z2(:);
+% end
+% if options.projector_type == 5
+%     z_det = [options.x(options.nProjections + 1: end); options.y(options.nProjections + 1: end)];
+% end
 if use_raw_data && isfield(options,'x')
     if options.listmode
-        det_per_ring = numel(x) / 2;
+        det_per_ring = numel(x) / 6;
         options.det_per_ring = det_per_ring;
     else
         det_per_ring = numel(x);
@@ -251,13 +268,13 @@ end
 
 if options.use_raw_data
     if options.listmode
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     else
         size_x = uint32(options.det_w_pseudo);
     end
 else
     if options.listmode
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     else
         size_x = uint32(options.Nang*options.Ndist);
     end
@@ -265,19 +282,19 @@ else
         size_x = size_x * options.sampling;
     end
 end
-if options.CT
+if options.CT || options.SPECT
     size_x = uint32(options.ySize);
     options.size_y = uint32(options.xSize);
     if options.listmode
 %         size_x = size_x * uint32(options.xSize * options.nProjections);
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     end
-    if options.implementation == 2 || options.implementation == 3
-        options.angles = single(options.angles);
-        options.dPitch = single(options.dPitch);
-        options.nProjections = int64(options.nProjections);
-        options.xSize = uint32(options.xSize);
-    end
+%     if options.implementation == 2 || options.implementation == 3
+%         options.angles = single(options.angles);
+%         options.dPitch = single(options.dPitch);
+%         options.nProjections = int64(options.nProjections);
+%         options.xSize = uint32(options.xSize);
+%     end
 end
 
 if (options.precompute_lor  || options.implementation == 5 || options.implementation == 2 || options.implementation == 3)
@@ -448,7 +465,7 @@ else
     end
     if options.use_raw_data && ~options.listmode
         LL = options.LL(nn(1) : nn(2));
-    elseif ~options.listmode && (~options.CT || numel(options.xy_index) > 1)
+    elseif ~options.listmode && ((~options.CT && ~options.SPECT) || numel(options.xy_index) > 1) && options.subsets > 1
         xy_index = options.xy_index(nn(1) : nn(2));
         z_index = options.z_index(nn(1) : nn(2));
         LL = uint16(0);
@@ -484,6 +501,48 @@ else
     xx = options.xx;
     yy = options.yy;
     zz = options.zz;
+    if options.CT || options.PET
+        if options.subset_type >= 8 && options.subsets > 1
+            if options.CT
+                x = reshape(x, 6, options.nProjections);
+                x = x(:,index);
+                x = x(:);
+            else
+                z_det = reshape(z_det, 2, options.nProjections);
+                z_det = z_det(:,index);
+                z_det = z_det(:);
+            end
+            if options.CT
+                options.uVS = options.uV(:,index);
+            end
+            options.nProjectionsS = n_meas(end) - n_meas(1);
+        else
+            if options.CT
+                if options.listmode == 0
+                    options.uVS = options.uV(:,nn(1) : nn(2));
+                else
+                    options.uVS = single(0);
+                end
+            end
+            options.nProjectionsS = n_meas(end) - n_meas(1);
+        end
+    end
+end
+
+if options.projector_type == 5 && options.meanBP
+    yI = reshape(rhs, options.ySize, options.xSize, options.nProjectionsS);
+    options.meanV = single(mean(mean(yI)));
+    yI = yI - options.meanV;
+%     options.integralX = single(integralImage(permute(yI, [2 3 1])));
+    options.integralX = single(integralImage(yI));
+    options.integralX = options.integralX(:);
+    clear yI
+elseif options.projector_type == 5
+    yI = reshape(rhs, options.ySize, options.xSize, options.nProjectionsS);
+%     options.integralX = single(integralImage(permute(yI, [2 3 1])));
+    options.integralX = single(integralImage(yI));
+    options.integralX = options.integralX(:);
+    clear yI
 end
 
 % Number of pixels
@@ -507,7 +566,8 @@ if ~options.precompute_lor
     lor_a = uint16(0);
 end
 
-zmax = max(max(z_det));
+% zmax = max(max(z_det));
+zmax = single(1);
 if zmax==0
     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
         zmax = single(1);
@@ -515,11 +575,12 @@ if zmax==0
         zmax = double(1);
     end
 end
-if options.CT
+if options.CT || options.SPECT
     if options.listmode
-        zmax = max(z_det(1:numel(z_det)/2));
+%         zmax = max(z_det(1:numel(z_det)/2));
+        zmax = single(1);
     else
-        zmax = z_det(options.nProjections) + options.dPitch * (double(options.xSize) - 1);
+        zmax = z_det(options.nProjections) + options.dPitchX * (double(options.xSize) - 1);
     end
 end
 
@@ -620,7 +681,7 @@ elseif options.implementation == 4
 else
     %     options = double_to_single(options);
     SinM = {single(rhs)};
-    if numel(SinM{1}) ~= n_meas(end) * options.TOF_bins
+    if numel(SinM{1}) ~= n_meas(end) * options.TOF_bins && ~options.projector_type > 3
         error('Size mismatch between input vector and current measurement dimension')
     end
     options.implementation = 3;

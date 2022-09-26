@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -165,7 +165,7 @@ classdef forwardBackwardProject
                 obj.OProperties.offangle = 0;
                 obj.OProperties.ndist_side = 1;
                 obj.OProperties.epps = 1e-8;
-                obj.OProperties.segment_table = [obj.OProperties.Nz, obj.OProperties.Nz - (obj.OProperties.span + 1):-obj.OProperties.span*2:max(obj.OProperties.Nz - obj.OProperties.ring_difference*2, obj.OProperties.span)];
+                obj.OProperties.segment_table = [obj.OProperties.rings*2-1, obj.OProperties.rings*2-1 - (obj.OProperties.span + 1):-obj.OProperties.span*2:max(obj.OProperties.Nz - obj.OProperties.ring_difference*2, obj.OProperties.rings - obj.OProperties.ring_difference)];
                 if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
                     obj.OProperties.segment_table = [obj.OProperties.segment_table(1), repeat_elem(obj.OProperties.segment_table(2:end),2,1)];
                 else
@@ -251,8 +251,18 @@ classdef forwardBackwardProject
                 obj.OProperties.simple = false;
             end
             obj.OProperties.listmode = false;
+            obj.OProperties.CT = false;
+            obj.OProperties.SPECT = false;
+            obj.OProperties.PET = false;
+            obj.OProperties.nProjections = obj.OProperties.NSinos;
             if obj.OProperties.implementation == 1
-                obj.OProperties.precompute_lor = true;
+%                 obj.OProperties.precompute_lor = true;
+            end
+            if (obj.OProperties.subsets > 1 && obj.OProperties.subset_type >= 8) || obj.OProperties.subsets == 1
+                obj.OProperties.PET = true;
+            end
+            if ~isfield(obj.OProperties,'apply_acceleration')
+                obj.OProperties.apply_acceleration = false;
             end
             if (isfield(obj.OProperties,'x') && isfield(obj.OProperties,'y') && (isfield(obj.OProperties,'z') || isfield(obj.OProperties,'z_det')))
                 obj.index = uint32(1:numel(obj.OProperties.x)/2)';
@@ -295,6 +305,11 @@ classdef forwardBackwardProject
                     || obj.OProperties.randoms_correction || obj.OProperties.scatter_correction)
                 error(['Corrections can only be applied during reconstruction phase. If you want to use precorrected data, '...
                 'you will need to precorrect it manually.'])
+            end
+            if (obj.OProperties.subset_type >= 8 && obj.OProperties.subsets > 1) || obj.OProperties.subsets == 1
+                obj.OProperties.PET = true;
+            else
+                obj.OProperties.PET = false;
             end
             
             obj.TOF = obj.OProperties.TOF_bins > 1;
@@ -379,7 +394,7 @@ classdef forwardBackwardProject
             
             if ~obj.OProperties.listmode
                 [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,obj.OProperties.lor_orth,discard] = ...
-                    form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF);
+                    form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, blocks, false, obj.TOF);
             else
                 obj.OProperties.LL = uint16(0);
                 obj.OProperties.xy_index = uint32(0);
@@ -416,9 +431,9 @@ classdef forwardBackwardProject
             end
             [obj.OProperties.xx,obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.OProperties.bx,obj.OProperties.by,...
                 obj.OProperties.bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.implementation);
-            if ~obj.OProperties.simple
-                obj.OProperties.zz = obj.OProperties.zz(2*block1+1:2*blocks);
-            end
+%             if ~obj.OProperties.simple
+%                 obj.OProperties.zz = obj.OProperties.zz(2*block1+1:2*blocks);
+%             end
             [obj.OProperties.x_center,obj.OProperties.y_center,obj.OProperties.z_center,obj.OProperties.dec] = computePixelCenters(obj.OProperties.xx,...
                 obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.TOF,obj.OProperties);
             
@@ -426,10 +441,16 @@ classdef forwardBackwardProject
                 obj.OProperties.dz,obj.OProperties);
             
             % Multi-ray Siddon
-            if (obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1) && ~obj.OProperties.listmode
-                [obj.OProperties.x,obj.OProperties.y] = getMultirayCoordinates(obj.OProperties);
-            end
+%             if (obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1) && ~obj.OProperties.listmode
+%                 [obj.OProperties.x,obj.OProperties.y] = getMultirayCoordinates(obj.OProperties);
+%             end
             obj.trans = false;
+%             if obj.OProperties.PET
+                obj.OProperties.x = [obj.OProperties.x(:,1)';obj.OProperties.y(:,1)';obj.OProperties.x(:,2)';obj.OProperties.y(:,2)'];
+                obj.OProperties.z_det = obj.OProperties.z_det';
+                obj.OProperties.ySize = obj.OProperties.Ndist;
+                obj.OProperties.xSize = obj.OProperties.Nang;
+%             end
         end
         
         function y = forwardProject(obj, input, varargin)
@@ -459,7 +480,12 @@ classdef forwardBackwardProject
             if obj.OProperties.use_psf
                 input = computeConvolution(input, obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
             end
-            y = forward_project(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, [obj.nn(obj.subset) + 1 , obj.nn(obj.subset+1)], ...
+            if obj.OProperties.subsets > 1
+                apuIndex = obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1));
+            else
+                apuIndex = 0;
+            end
+            y = forward_project(obj.OProperties, apuIndex, obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, [obj.nn(obj.subset) + 1 , obj.nn(obj.subset+1)], ...
                 obj.subset, true);
         end
         
@@ -495,8 +521,13 @@ classdef forwardBackwardProject
             else
                 iter = 10;
             end
+            if obj.OProperties.subsets == 1
+                apuIndex = obj.index;
+            else
+                apuIndex = obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1));
+            end
             if iter == 1
-                [f, norm] = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
+                [f, norm] = backproject(obj.OProperties, apuIndex, obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
                     [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
                 
                 if obj.OProperties.useSubsets
@@ -508,7 +539,7 @@ classdef forwardBackwardProject
                     obj.sens(:,obj.subset) = computeConvolution(obj.sens(:,obj.subset), obj.OProperties, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.gaussK);
                 end
             else
-                f = backproject(obj.OProperties, obj.index(obj.nn(obj.subset) + 1:obj.nn(obj.subset+1)), obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
+                f = backproject(obj.OProperties, apuIndex, obj.nn(obj.subset + 1) - obj.nn(obj.subset), input, ...
                     [obj.nn(obj.subset) + 1,obj.nn(obj.subset+1)], obj.subset, true);
             end
             if obj.OProperties.use_psf

@@ -3,7 +3,7 @@
 using namespace af;
 
 void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, const float epps,
-	const uint32_t iter, const uint32_t osa_iter0, const uint32_t subsets, const std::vector<float>& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz,
+	const uint32_t iter, const uint32_t osa_iter0, const scalarStruct inputScalars, const std::vector<float>& beta, 
 	const TVdata& data, const uint32_t n_rekos2, const kernelStruct& OpenCLStruct, const bool saveIter) {
 	uint32_t yy = 0u;
 	// Compute BSREM and ROSEMMAP updates if applicable
@@ -80,51 +80,51 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 		RecMethods MethodListMAP = MethodList;
 		for (uint32_t ll = 0; ll < w_vec.nMAPOS; ll++) {
 			// PRIORS
-			if (MethodListPrior.MRP && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
+			if (MethodListPrior.MRP && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.tr_offsets,
 					w_vec.med_no_norm, im_dim, OpenCLStruct);
 			}
-			else if (MethodListPrior.Quad && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = Quadratic_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.inffi,
+			else if (MethodListPrior.Quad && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = Quadratic_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.inffi,
 					w_vec.tr_offsets, w_vec.weights_quad, im_dim);
 			}
-			else if (MethodListPrior.Huber && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = Huber_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.inffi,
+			else if (MethodListPrior.Huber && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = Huber_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.inffi,
 					w_vec.tr_offsets, w_vec.weights_huber, im_dim, w_vec.huber_delta);
 			}
-			else if (MethodListPrior.L && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = L_filter(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
+			else if (MethodListPrior.L && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = L_filter(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.tr_offsets,
 					w_vec.a_L, w_vec.med_no_norm, im_dim);
 			}
-			else if (MethodListPrior.FMH && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = FMH(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.inffi, w_vec.tr_offsets,
+			else if (MethodListPrior.FMH && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = FMH(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.inffi, w_vec.tr_offsets,
 					w_vec.fmh_weights, w_vec.med_no_norm, w_vec.alku_fmh, im_dim);
 			}
-			else if (MethodListPrior.WeightedMean && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm,
+			else if (MethodListPrior.WeightedMean && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm,
 					im_dim, w_vec.mean_type, w_vec.w_sum);
 			}
-			else if (MethodListPrior.TV && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, data.TVtype, w_vec, w_vec.tr_offsets);
+			else if (MethodListPrior.TV && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = TVprior(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, data.TVtype, w_vec, w_vec.tr_offsets);
 			}
-			else if (MethodListPrior.AD && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = AD(vec.im_os(seq(yy, yy + im_dim - 1u)), Nx, Ny, Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
+			else if (MethodListPrior.AD && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = AD(vec.im_os(seq(yy, yy + im_dim - 1u)), inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 					w_vec.DiffusionType, w_vec.med_no_norm);
 			}
-			else if (MethodListPrior.APLS && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
+			else if (MethodListPrior.APLS && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = TVprior(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
 			}
-			else if (MethodListPrior.TGV && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = TGV(vec.im_os(seq(yy, yy + im_dim - 1u)), Nx, Ny, Nz, data.NiterTGV, data.TGVAlpha, data.TGVBeta);
+			else if (MethodListPrior.TGV && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = TGV(vec.im_os(seq(yy, yy + im_dim - 1u)), inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data.NiterTGV, data.TGVAlpha, data.TGVBeta);
 			}
-			else if (MethodListPrior.NLM && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, Nx, Ny, Nz, OpenCLStruct);
+			else if (MethodListPrior.NLM && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, OpenCLStruct);
 			}
-			else if (MethodListPrior.RDP && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == subsets && MethodList.CUSTOM))) {
-				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
+			else if (MethodListPrior.RDP && (ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && (!MethodList.CUSTOM || (osa_iter0 == inputScalars.subsets && MethodList.CUSTOM))) {
+				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
 			}
 			else if (MethodListPrior.CUSTOM) {
-				if ((ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && osa_iter0 == subsets)
+				if ((ll == w_vec.mIt[0] || ll == w_vec.mIt[1]) && osa_iter0 == inputScalars.subsets)
 					dU = w_vec.dU[oo];
 				oo++;
 			}

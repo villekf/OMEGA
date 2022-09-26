@@ -3,13 +3,13 @@
 using namespace af;
 
 void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t im_dim, array* testi, const float epps, 
-	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const std::vector<float>& beta, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, 
+	const uint32_t iter, const uint32_t osa_iter, const scalarStruct inputScalars, const std::vector<float>& beta, 
 	const TVdata& data, std::vector<size_t>& length, std::vector<cl::Buffer>& d_Sino, bool& break_iter, array& pj3, const uint32_t n_rekos2, const int64_t* pituus, 
 	const std::vector<cl::Buffer>& d_lor, const std::vector<cl::Buffer>& d_zindex, const std::vector<cl::Buffer>& d_xyindex, cl::Program& program_mbsrem, const cl::CommandQueue& af_queue,
-	const cl::Context& af_context, std::vector<af::array>& Summ, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& d_L, const uint8_t raw,
+	const cl::Context& af_context, std::vector<af::array>& Summ, cl::Kernel& kernel_mramla, const std::vector<cl::Buffer>& d_L, 
 	const RecMethodsOpenCL& MethodListOpenCL, const size_t koko, const bool atomic_64bit, const bool atomic_32bit, const cl_uchar compute_norm_matrix, cl::Kernel& kernelNLM,
-	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, const bool use_psf,
-	const af::array& g, const kernelStruct& OpenCLStruct, const bool TOF, const bool loadTOF, const mxArray* Sin, const int64_t nBins, const bool randoms_correction, const size_t local_size,
+	const std::vector<cl::Buffer>& d_sc_ra, cl_uint kernelInd_MRAMLA, af::array& E, const std::vector<cl::Buffer>& d_norm, const std::vector<cl::Buffer>& d_scat, 
+	const af::array& g, const kernelStruct& OpenCLStruct, const bool loadTOF, const mxArray* Sin, const size_t local_size[],
 	const bool CT) {
 
 	uint64_t yy = 0u;
@@ -61,7 +61,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 	// Dynamic RAMLA
 	if (MethodList.DRAMA) {
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = DRAMA(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)),
-			w_vec.lambda_DRAMA, iter, osa_iter, subsets);
+			w_vec.lambda_DRAMA, iter, osa_iter, inputScalars.subsets);
 		yy += im_dim;
 	}
 
@@ -93,9 +93,10 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 		vec.im_os(seq(yy, yy + im_dim - 1u)) = COSEM(vec.im_os(seq(yy, yy + im_dim - 1u)), vec.C_aco, w_vec.D, w_vec.h_ACOSEM, 1u);
 		array apu = vec.im_os(seq(yy, yy + im_dim - 1u));
 		MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ, d_Sino,
-			koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL, length,
-			atomic_64bit, atomic_32bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps, TOF, loadTOF, Sin, nBins, 
-			koko, randoms_correction, local_size);
+			koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, inputScalars.raw, MethodListOpenCL, length,
+			atomic_64bit, atomic_32bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, inputScalars.use_psf, g, 
+			inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, inputScalars.TOF, loadTOF, Sin, inputScalars.nBins,
+			koko, inputScalars.randoms_correction, local_size);
 		w_vec.ACOSEM_rhs = w_vec.ACOSEM_rhs < epps ? epps : w_vec.ACOSEM_rhs;
 		if (CT)
 			vec.im_os(seq(yy, yy + im_dim - 1u)) = vec.im_os(seq(yy, yy + im_dim - 1u)) * (w_vec.ACOSEM_rhs / uu);
@@ -116,52 +117,52 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			//}
 			// PRIORS
 			if (MethodListPrior.MRP && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
+				dU = MRP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.tr_offsets,
 					w_vec.med_no_norm, im_dim, OpenCLStruct);
 			}
 			else if (MethodListPrior.Quad && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = Quadratic_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.inffi,
+				dU = Quadratic_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.inffi,
 					w_vec.tr_offsets, w_vec.weights_quad, im_dim);
 			}
 			else if (MethodListPrior.Huber && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = Huber_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.inffi,
+				dU = Huber_prior(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.inffi,
 					w_vec.tr_offsets, w_vec.weights_huber, im_dim, w_vec.huber_delta);
 			}
 			else if (MethodListPrior.L && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = L_filter(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.tr_offsets,
+				dU = L_filter(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.tr_offsets,
 					w_vec.a_L, w_vec.med_no_norm, im_dim);
 			}
 			else if (MethodListPrior.FMH && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = FMH(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.inffi, w_vec.tr_offsets,
+				dU = FMH(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.inffi, w_vec.tr_offsets,
 					w_vec.fmh_weights, w_vec.med_no_norm, w_vec.alku_fmh, im_dim);
 			}
 			else if (MethodListPrior.WeightedMean && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm,
+				dU = Weighted_mean(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.weighted_weights, w_vec.med_no_norm,
 					im_dim, w_vec.mean_type, w_vec.w_sum);
 			}
 			else if (MethodListPrior.TV && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, data.TVtype, w_vec, w_vec.tr_offsets);
+				dU = TVprior(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, data.TVtype, w_vec, w_vec.tr_offsets);
 			}
 			else if (MethodListPrior.AD && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
 				if (osa_iter == 0u) {
 					dU = af::constant(0.f, im_dim, 1);
 				}
 				else {
-					dU = AD(vec.im_os(seq(yy, yy + im_dim - 1u)), Nx, Ny, Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
+					dU = AD(vec.im_os(seq(yy, yy + im_dim - 1u)), inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 						w_vec.DiffusionType, w_vec.med_no_norm);
 				}
 			}
 			else if (MethodListPrior.APLS && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = TVprior(Nx, Ny, Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
+				dU = TVprior(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data, vec.im_os(seq(yy, yy + im_dim - 1u)), epps, 5U, w_vec, w_vec.tr_offsets);
 			}
 			else if (MethodListPrior.TGV && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = TGV(vec.im_os(seq(yy, yy + im_dim - 1u)), Nx, Ny, Nz, data.NiterTGV, data.TGVAlpha, data.TGVBeta);
+				dU = TGV(vec.im_os(seq(yy, yy + im_dim - 1u)), inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, data.NiterTGV, data.TGVAlpha, data.TGVBeta);
 			}
 			else if (MethodListPrior.NLM && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, Nx, Ny, Nz, OpenCLStruct);
+				dU = NLM(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec, epps, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, OpenCLStruct);
 			}
 			else if (MethodListPrior.RDP && ll != w_vec.mIt[0] && ll != w_vec.mIt[1]) {
-				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, Nx, Ny, Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
+				dU = RDP(vec.im_os(seq(yy, yy + im_dim - 1u)), w_vec.Ndx, w_vec.Ndy, w_vec.Ndz, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, w_vec.weights_RDP, im_dim, w_vec.RDP_gamma, w_vec.tr_offsets, w_vec.inffi);
 			}
 			else if (MethodListPrior.CUSTOM) {
 				if (ll != w_vec.mIt[0] && ll != w_vec.mIt[1])
@@ -220,9 +221,10 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 						mexEvalString("pause(.0001);");
 					}
 					MRAMLA_prepass(osa_iter + 1u, im_dim, pituus, d_lor, d_zindex, d_xyindex, program_mbsrem, af_queue, af_context, w_vec, Summ,
-						d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, raw, MethodListOpenCL,
-						length, atomic_64bit, atomic_32bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, use_psf, g, Nx, Ny, Nz, epps, TOF, loadTOF, Sin, nBins,
-						koko, randoms_correction, local_size);
+						d_Sino, koko, apu, vec.C_co, vec.C_aco, vec.C_osl, osa_iter + 1u, kernel_mramla, d_L, inputScalars.raw, MethodListOpenCL,
+						length, atomic_64bit, atomic_32bit, compute_norm_matrix, d_sc_ra, kernelInd_MRAMLA, E, d_norm, d_scat, inputScalars.use_psf, 
+						g, inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, epps, inputScalars.TOF, loadTOF, Sin, inputScalars.nBins,
+						koko, inputScalars.randoms_correction, local_size);
 					//vec.im_os(seq(yy, yy + im_dim - 1u)) = apu;
 					if (DEBUG) {
 						mexPrintf("uu = %f\n", uu);
@@ -241,7 +243,7 @@ void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& 
 			}
 			else if (MethodListMAP.PKMA) {
 				vec.im_os(seq(yy, yy + im_dim - 1u)) = PKMA(vec.im_os(seq(yy, yy + im_dim - 1u)), *testi, vec.rhs_os(seq(yy, yy + im_dim - 1u)), w_vec.lambda_PKMA, w_vec.alpha_PKMA, 
-					w_vec.sigma_PKMA, pj3, iter, osa_iter, subsets, epps, beta[dd], dU);
+					w_vec.sigma_PKMA, pj3, iter, osa_iter, inputScalars.subsets, epps, beta[dd], dU);
 			}
 			if (DEBUG) {
 				mexPrintf("vec.rhs_os(seq(yy, yy + im_dim - 1u)) = %f\n", af::sum<float>(vec.rhs_os(seq(yy, yy + im_dim - 1u))));

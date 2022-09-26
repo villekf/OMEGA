@@ -24,22 +24,18 @@ using namespace std;
 
 // Main reconstruction function for implementation 3
 void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, 
-	const mxArray* sc_ra, const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, 
-	const float dy, const float dz, const float bx, const float by, const float bz,	const float bzb, const float maxxx, const float maxyy, const float zmax, 
-	const float NSlices, const int64_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, 
-	const uint32_t TotSinos, mxArray* cell, const bool verbose, const uint32_t randoms_correction,  const uint32_t attenuation_correction, 
-	const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm, const uint32_t subsets, 
-	const float epps, const uint8_t* rekot,	const char* k_path, const size_t size_rekot, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring, 
-	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const bool osem_bool, const char* fileName, const bool use_psf, 
-	const uint32_t device, float kerroin, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, 
-	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, 
-	const char* header_directory, const bool precompute, const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, 
-	const bool use_64bit_atomics, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, 
-	size_t local_size, const float* gaussian, const size_t size_gauss, const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, 
-	const int64_t nBins) {
+	const mxArray* sc_ra, const mxArray* options, scalarStruct inputScalars, const int64_t* pituus, const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, 
+	const uint32_t TotSinos, mxArray* cell, const bool verbose, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm, const uint8_t* rekot, 
+	const char* k_path, const size_t size_rekot, const uint32_t* pseudos, 
+	const uint16_t* L, const bool osem_bool, const char* fileName, 
+	const uint32_t device, float kerroin, const size_t numel_x, const float* x_center, const float* y_center, 
+	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, 
+	const char* header_directory, 
+	const bool use_64bit_atomics, const float* V, const size_t size_V, 
+	size_t local_size[], const float* gaussian, const size_t size_gauss, const int64_t TOFSize, const float* TOFCenter) {
 
 	// Total number of voxels
-	const uint32_t im_dim = Nx * Ny * Nz;
+	const uint32_t im_dim = inputScalars.Nx * inputScalars.Ny * inputScalars.Nz;
 
 	cl_int status = CL_SUCCESS;
 	cl::Context context;
@@ -53,8 +49,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	int cpu_device = -1;
 	bool atomic_64bit = use_64bit_atomics;
 	cl_uchar compute_norm_matrix = 1u;
-	const uint32_t Nxyz = Nx * Ny * Nz;
-	const uint8_t fp = 0;
+	const uint32_t Nxyz = im_dim;
 
 	size_t size;
 
@@ -63,8 +58,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	cl::vector<cl::Device> devices;
 
 	// Get the OpenCL context
-	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, subsets,
-		raw);
+	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, inputScalars);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to get platforms\n");
@@ -73,28 +67,27 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	std::string deviceName = devices[0].getInfo<CL_DEVICE_VENDOR>(&status);
 	std::string NV("NVIDIA Corporation");
-	if (NV.compare(deviceName) == 0 && projector_type == 1)
-		local_size = 32ULL;
+	if (NV.compare(deviceName) == 0 && inputScalars.projector_type == 1 && local_size[1] == 0ULL)
+		local_size[0] = 32ULL;
 
 	// Create the same number of command queues as there are devices
-	cl::Program program;
+	cl::Program program, programAux;
 	std::vector<cl::CommandQueue> commandQueues;
 
 
-	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+	inputScalars.scatter = static_cast<uint32_t>((bool)mxGetScalar(getField(options, 0, "scatter")));
 
-	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
-	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
-	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
-	const bool atomic_32bit = (bool)mxGetScalar(mxGetField(options, 0, "use_32bit_atomics"));
+	const uint8_t listmode = (uint8_t)mxGetScalar(getField(options, 0, "listmode"));
+	const bool computeSensImag = (bool)mxGetScalar(getField(options, 0, "compute_sensitivity_image"));
+	const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
+	const bool atomic_32bit = (bool)mxGetScalar(getField(options, 0, "use_32bit_atomics"));
 
 	if (listmode == 1 && computeSensImag)
 		compute_norm_matrix = 0u;
 
 	// Build the program and get the command queues
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit,
-		projector_type, header_directory, crystal_size_z, precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, 
-		false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode, CT);
+	status = ClBuildProgramGetQueues(program, programAux, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit,
+		inputScalars, header_directory, local_size,	false, listmode, CT);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
@@ -107,7 +100,8 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 	// Create kernels
 	// Orthogonal distance based
-	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1)))) {
+	if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u || 
+		(inputScalars.projector_type == 1u && ((inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1)))) {
 		kernel = cl::Kernel(program, "kernel_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
@@ -125,11 +119,11 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 		}
 	}
 
-	if (use_psf) {
-		kernel_3Dconvolution = cl::Kernel(program, "Convolution3D", &status);
-		kernel_3Dconvolution_f = cl::Kernel(program, "Convolution3D_f", &status);
-		kernel_vectorMult = cl::Kernel(program, "vectorMult", &status);
-		kernel_vectorDiv = cl::Kernel(program, "vectorDiv", &status);
+	if (inputScalars.use_psf) {
+		kernel_3Dconvolution = cl::Kernel(programAux, "Convolution3D", &status);
+		kernel_3Dconvolution_f = cl::Kernel(programAux, "Convolution3D_f", &status);
+		kernel_vectorMult = cl::Kernel(programAux, "vectorMult", &status);
+		kernel_vectorDiv = cl::Kernel(programAux, "vectorDiv", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			mexPrintf("Failed to create convolution OpenCL kernel\n");
@@ -138,7 +132,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	}
 
 	// Kernel for the summing (combination) of data from different devices
-	kernel_sum = cl::Kernel(program, "summa", &status);
+	kernel_sum = cl::Kernel(programAux, "summa", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Failed to create OpenCL kernel\n");
@@ -146,7 +140,7 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	}
 
 	// MLEM/OSEM kernel
-	kernel_mlem = cl::Kernel(program, "mlem", &status);
+	kernel_mlem = cl::Kernel(programAux, "mlem", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Failed to create OSEM/MLEM OpenCL kernel\n");
@@ -162,13 +156,12 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 	}
 
 	// Compute the estimates
-	OSEM_MLEM(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, options, dx, dy, dz, bx, 
-		by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
-		normalization, atten, size_atten, norm, size_norm, subsets, epps, Nt, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel, kernel_sum, 
-		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, tube_width, crystal_size_z, x_center, y_center, 
-		z_center, size_center_x, size_center_y, size_center_z, atomic_64bit, atomic_32bit, compute_norm_matrix, precompute, dec, projector_type, n_rays, n_rays3D, 
-		cr_pz, cell, osem_bool, global_factor, bmin, bmax, Vmax, V, size_V, local_size, use_psf, gaussian, size_gauss, scatter, TOF, TOFSize, sigma_x, TOFCenter, 
-		nBins, devices);
+	OSEM_MLEM(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, Sin, sc_ra, inputScalars, options, pituus, koko_l, xy_index, z_index, TotSinos, verbose,
+		atten, size_atten, norm, size_norm, pseudos, L, im_dim, kernel, kernel_sum, 
+		kernel_mlem, kernel_3Dconvolution, kernel_3Dconvolution_f, kernel_vectorMult, kernel_vectorDiv, numel_x, x_center, y_center, 
+		z_center, size_center_x, size_center_y, size_center_z, atomic_64bit, atomic_32bit, compute_norm_matrix,
+		cell, osem_bool, V, size_V, local_size, gaussian, size_gauss, TOFSize, TOFCenter, 
+		devices);
 
 
 	for (cl_uint i = 0ULL; i < num_devices_context; i++) {
@@ -179,20 +172,24 @@ void reconstruction_multigpu(const size_t koko, const uint16_t* lor1, const floa
 
 // Main reconstruction function, forward/backward projection
 void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const float* rhs, const mxArray* sc_ra, 
-	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz,
-	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const int64_t* pituus, const size_t koko_l,
-	const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose, const uint32_t randoms_correction,
-	const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
-	const char* k_path, const uint32_t* pseudos, const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, 
+	scalarStruct inputScalars, const int64_t* pituus, const size_t koko_l,
+	const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const bool verbose, const float* atten, const size_t size_atten, const float* norm, const size_t size_norm,
+	const char* k_path, const uint32_t* pseudos, const uint16_t* L, 
 	const char* fileName, const uint32_t device, float kerroin, mxArray* output, const size_t size_rhs, const cl_uchar no_norm, const size_t numel_x,
-	const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
-	const size_t size_center_y, const size_t size_center_z, const uint32_t projector_type, const char* header_directory, const bool precompute, 
-	const int32_t dec, const uint16_t n_rays, const uint16_t n_rays3D, const float cr_pz, const mxArray* Sin, const bool use_64bit_atomics, const float global_factor, 
-	const float bmin, const float bmax, const float Vmax, const float* V, const size_t size_V, size_t local_size, const bool use_psf, const mxArray* options, 
-	const bool TOF, const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins) {
+	const float* x_center, const float* y_center, const float* z_center, const size_t size_center_x,
+	const size_t size_center_y, const size_t size_center_z, const char* header_directory, 
+	const mxArray* Sin, const bool use_64bit_atomics, const float* V, const size_t size_V, size_t local_size[], const mxArray* options, 
+	const int64_t TOFSize, const float* TOFCenter) {
 	// This functions very similarly to the above function
 
-	const uint32_t im_dim = Nx * Ny * Nz;
+	const uint32_t im_dim = inputScalars.Nx * inputScalars.Ny * inputScalars.Nz;
+	if (DEBUG) {
+		mexPrintf("inputScalars.raw = %u\n", inputScalars.raw);
+		mexPrintf("inputScalars.Nx = %u\n", inputScalars.Nx);
+		mexPrintf("inputScalars.Ny = %u\n", inputScalars.Ny);
+		mexPrintf("inputScalars.Nz = %u\n", inputScalars.Nz);
+		mexEvalString("pause(.0001);");
+	}
 
 	cl_int status = CL_SUCCESS;
 	cl::Context context;
@@ -201,42 +198,41 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	int cpu_device = -1;
 	bool atomic_64bit = use_64bit_atomics;
 	cl_uchar compute_norm_matrix = 1u;
-	uint32_t Nxyz = Nx * Ny * Nz;
+	uint32_t Nxyz = im_dim;
 
 	// If 1, then the forward projection is computed
-	uint8_t fp = size_rhs == im_dim;
-	if (fp == 0)
-		fp = 2u;
-	if (atomic_64bit && fp == 1)
+	inputScalars.fp = size_rhs == im_dim;
+	if (inputScalars.fp == 0)
+		inputScalars.fp = 2u;
+	if (atomic_64bit && inputScalars.fp == 1)
 		atomic_64bit = false;
 
 	size_t size;
 
 	cl::vector<cl::Device> devices;
 
-	const bool listmode = (bool)mxGetScalar(mxGetField(options, 0, "listmode"));
-	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
-	const bool atomic_32bit = (bool)mxGetScalar(mxGetField(options, 0, "use_32bit_atomics"));
+	const bool listmode = (bool)mxGetScalar(getField(options, 0, "listmode"));
+	const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
+	const bool atomic_32bit = (bool)mxGetScalar(getField(options, 0, "use_32bit_atomics"));
 
-	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, 1u,
-		raw);
+	status = clGetPlatformsContext(device, kerroin, context, size, cpu_device, num_devices_context, devices, atomic_64bit, compute_norm_matrix, Nxyz, inputScalars);
 
 	std::string deviceName = devices[0].getInfo<CL_DEVICE_VENDOR>(&status);
 	std::string NV("NVIDIA Corporation");
-	if (NV.compare(deviceName) == 0 && projector_type == 1)
-		local_size = 32ULL;
+	if (NV.compare(deviceName) == 0 && inputScalars.projector_type == 1 && local_size[1] == 0ULL)
+		local_size[0] = 32ULL;
 
 	if (status != CL_SUCCESS) {
 		return;
 	}
 
-	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
+	inputScalars.scatter = static_cast<uint32_t>((bool)mxGetScalar(getField(options, 0, "scatter")));
 
-	cl::Program program;
+	cl::Program program, programAux;
 	std::vector<cl::CommandQueue> commandQueues;
 
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit, projector_type, header_directory, crystal_size_z,
-		precompute, raw, attenuation_correction, normalization, dec, fp, local_size, n_rays, n_rays3D, false, cr_pz, dx, use_psf, scatter, randoms_correction, TOF, nBins, listmode, CT);
+	status = ClBuildProgramGetQueues(program, programAux, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, atomic_32bit, inputScalars, header_directory,
+		local_size, false, listmode, CT);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Failed to build programs\n");
@@ -246,12 +242,39 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		mexPrintf("Program created\n");
 		mexEvalString("pause(.0001);");
 	}
+	if (DEBUG) {
+		mexPrintf("inputScalars.raw = %u\n", inputScalars.raw);
+		mexEvalString("pause(.0001);");
+	}
 
-	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && ((precompute || (n_rays * n_rays3D) == 1)))) {
+	if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u || 
+		(inputScalars.projector_type == 1u && ((inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1)))) {
 		kernel = cl::Kernel(program, "kernel_multi", &status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			mexPrintf("Failed to create OpenCL kernel\n");
+			return;
+		}
+	}
+	else if (inputScalars.projector_type == 4) {
+		if (inputScalars.fp == 1 && !inputScalars.SPECT)
+			kernel = cl::Kernel(program, "projectorType4Forward", &status);
+		else
+			kernel = cl::Kernel(program, "projectorType4Backward", &status);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrintf("Failed to create projector type 4 OpenCL kernel\n");
+			return;
+		}
+	}
+	else if (inputScalars.projector_type == 5) {
+		if (inputScalars.fp == 1 && !inputScalars.SPECT)
+			kernel = cl::Kernel(program, "projectorType5Forward", &status);
+		else
+			kernel = cl::Kernel(program, "projectorType5Backward", &status);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrintf("Failed to create projector type 5 OpenCL kernel\n");
 			return;
 		}
 	}
@@ -264,7 +287,7 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 		}
 	}
 
-	kernel_sum = cl::Kernel(program, "summa", &status);
+	kernel_sum = cl::Kernel(programAux, "summa", &status);
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
 		mexPrintf("Failed to create sum OpenCL kernel\n");
@@ -274,13 +297,15 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 	for (cl_uint i = 0; i < num_devices_context; i++) {
 		commandQueues[i].finish();
 	}
+	if (DEBUG) {
+		mexPrintf("inputScalars.raw = %u\n", inputScalars.raw);
+		mexEvalString("pause(.0001);");
+	}
 
-	f_b_project(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, rhs, sc_ra, Nx, Ny, Nz, dx, dy, dz, bx, by,
-		bz, bzb, maxxx, maxyy, zmax, NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, 
-		normalization, atten, size_atten, norm, size_norm, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, kernel_sum, kernel, output,  
-		size_rhs, no_norm, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, precompute, dec, 
-		projector_type, n_rays, n_rays3D, cr_pz, Sin, atomic_64bit, atomic_32bit, global_factor, bmin, bmax, Vmax, V, size_V, fp, local_size, options, scatter, TOF,
-		TOFSize, sigma_x, TOFCenter, nBins);
+	f_b_project(num_devices_context, kerroin, cpu_device, context, commandQueues, koko, lor1, z_det, x, y, rhs, sc_ra, inputScalars, pituus, koko_l, xy_index, z_index, TotSinos, verbose,
+		atten, size_atten, norm, size_norm, pseudos, L, im_dim, kernel_sum, kernel, output,  
+		size_rhs, no_norm, numel_x, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, 
+		Sin, atomic_64bit, atomic_32bit, V, size_V, local_size, options, TOFSize, TOFCenter);
 
 
 	for (cl_uint i = 0; i < num_devices_context; i++) {
@@ -291,15 +316,12 @@ void reconstruction_f_b_proj(const size_t koko, const uint16_t* lor1, const floa
 
 
 // Main reconstruction function, find the number of voxels each LOR traverses
-void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint32_t Nx, const uint32_t Ny, 
-	const uint32_t Nz, const float dx, const float dy, const float dz, const float bx, const float by, const float bz, 
-	const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const uint32_t size_x, 
-	const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, const char* k_path, const uint32_t* pseudos,
-	const uint32_t det_per_ring, const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const char* fileName, 
-	const uint32_t device, const size_t numel_x, const char* header_directory, const size_t local_size) {
+void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y, const uint16_t TotSinos, const bool verbose, const size_t loop_var_par, 
+	scalarStruct inputScalars, const char* k_path, const uint32_t* pseudos,	const uint16_t* L,const char* fileName, const uint32_t device, 
+	const size_t numel_x, const char* header_directory, const size_t local_size[]) {
 
 	// Number of voxels
-	const uint32_t im_dim = Nx * Ny * Nz;
+	const uint32_t im_dim = inputScalars.Nx * inputScalars.Ny * inputScalars.Nz;
 	// Never use 64 bit atomics here
 	bool atomic_64bit = false;
 
@@ -323,11 +345,11 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	}
 
 	// Get queues
-	cl::Program program;
+	cl::Program program, programAux;
 	std::vector<cl::CommandQueue> commandQueues;
 
-	status = ClBuildProgramGetQueues(program, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, false, 50u, header_directory, 0.f, false, raw, 
-		0, 0, 0, 0, local_size, 0, 0, true, 0.f, dx, false, 0, 0, false, 1LL);
+	status = ClBuildProgramGetQueues(program, programAux, k_path, context, num_devices_context, devices, verbose, commandQueues, atomic_64bit, false, inputScalars, header_directory,
+		0, local_size, true);
 
 	if (status != CL_SUCCESS) {
 		mexPrintf("Error while building or getting queues\n");
@@ -358,8 +380,7 @@ void find_LORs(uint16_t* lor, const float* z_det, const float* x, const float* y
 	}
 
 	// Compute the voxel count
-	precomp_siddon(num_devices_context, context, commandQueues, lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by,
-		bz, bzb, maxxx, maxyy, zmax, NSlices, size_x, TotSinos, verbose, loop_var_par, pseudos, det_per_ring, prows, L, raw, size_z, im_dim, 
+	precomp_siddon(num_devices_context, context, commandQueues, lor, z_det, x, y, inputScalars, TotSinos, verbose, loop_var_par, pseudos, L, im_dim,
 		kernel, numel_x, local_size);
 
 

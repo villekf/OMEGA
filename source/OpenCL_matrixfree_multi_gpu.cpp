@@ -43,6 +43,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (nlhs > 1)
 		mexErrMsgTxt("Too many output arguments.  There can be at most one.");
 
+	scalarStruct inputScalars;
+
 	// Load the input arguments
 	int ind = 0;
 
@@ -51,48 +53,48 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Image size in y-direction
-	const uint32_t Ny = getScalarUInt32(prhs[ind], ind);
+	inputScalars.Ny = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Image size in x-direction
-	const uint32_t Nx = getScalarUInt32(prhs[ind], ind);
+	inputScalars.Nx = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Image size in z-direction
-	const uint32_t Nz = getScalarUInt32(prhs[ind], ind);
+	inputScalars.Nz = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Distance between adjacent pixels in x-direction
-	const float dx = getScalarFloat(prhs[ind], ind);
+	inputScalars.dx = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Distance between adjacent pixels in z-direction
-	const float dz = getScalarFloat(prhs[ind], ind);
+	inputScalars.dz = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Distance of the pixel grid from the origin in y-direction
-	const float by = getScalarFloat(prhs[ind], ind);
+	inputScalars.by = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Distance of the pixel grid from the origin in x-direction
-	const float bx = getScalarFloat(prhs[ind], ind);
+	inputScalars.bx = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Distance of the pixel grid from the origin in z-direction
-	const float bz = getScalarFloat(prhs[ind], ind);
+	inputScalars.bz = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Coordinates of the detectors in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const float* z_det = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* z_det = (float*)mxGetData(prhs[ind]);
 #endif
-	const size_t size_z = mxGetNumberOfElements(prhs[ind]);
+	inputScalars.size_z = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Coordinates of the detectors in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const float* x = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* x = (float*)mxGetData(prhs[ind]);
@@ -101,42 +103,51 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Coordinates of the detectors in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const float* y = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* y = (float*)mxGetData(prhs[ind]);
 #endif
+	inputScalars.numelY = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
+	if (DEBUG) {
+		//mexPrintf("y[363] = %f\n", y[363]);
+		//mexPrintf("y[362] = %f\n", y[362]);
+		//mexPrintf("y[364] = %f\n", y[364]);
+		mexPrintf("numel_y = %u\n", inputScalars.numelY);
+		mexEvalString("pause(.0001);");
+	}
+
 	// Distance between adjacent pixels in y-direction
-	const float dy = getScalarFloat(prhs[ind], ind);
+	inputScalars.dy = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The maximum elements of the pixel space in both x- and y-directions
-	const float maxyy = getScalarFloat(prhs[ind], ind);
+	inputScalars.maxyy = getScalarFloat(prhs[ind], ind);
 	ind++;
 
-	const float maxxx = getScalarFloat(prhs[ind], ind);
+	inputScalars.maxxx = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Number of slices included
-	const float NSlices = getScalarFloat(prhs[ind], ind);
+	inputScalars.NSlices = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Number of detector indices
-	const uint32_t size_x = getScalarUInt32(prhs[ind], ind);
+	inputScalars.size_x = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Maximum value of the z-direction detector coordinates
-	const float zmax = getScalarFloat(prhs[ind], ind);
+	inputScalars.zmax = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Are status messages displayed
 	const bool verbose = getScalarBool(prhs[ind], ind);
 	ind++;
 
-	// Detector pair numbers, for raw list-mode data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	// Detector pair numbers, for raw data
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const uint16_t* L = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 	const uint16_t* L = (uint16_t*)mxGetData(prhs[ind]);
@@ -145,20 +156,20 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Location (ring numbers) of pseudo rings, if present
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const uint32_t* pseudos = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 	const uint32_t* pseudos = (uint32_t*)mxGetData(prhs[ind]);
 #endif
-	const uint32_t pRows = (uint32_t)mxGetNumberOfElements(prhs[ind]);
+	inputScalars.pRows = (uint32_t)mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Number of detectors per ring
-	const uint32_t det_per_ring = getScalarUInt32(prhs[ind], ind);
+	inputScalars.det_per_ring = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Is TOF data used?
-	const bool TOF = getScalarBool(prhs[ind], ind);
+	inputScalars.TOF = getScalarBool(prhs[ind], ind);
 	ind++;
 
 	// Size of single TOF-subset
@@ -166,11 +177,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Variance of the Gaussian TOF
-	const float sigma_x = getScalarFloat(prhs[ind], ind);
+	inputScalars.sigma_x = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// Centers of the TOF-bins
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	const float* TOFCenter = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* TOFCenter = (float*)mxGetData(prhs[ind]);
@@ -178,11 +189,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Index offset for TOF subsets
-	const int64_t nBins = getScalarInt64(prhs[ind], ind);
+	inputScalars.nBins = getScalarInt64(prhs[ind], ind);
 	ind++;
 
 
-	const uint32_t dec = getScalarUInt32(prhs[ind], ind);
+	inputScalars.dec = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Platform used
@@ -193,11 +204,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const char* fileName = mxArrayToString(prhs[ind]);
 	ind++;
 
-	// Is raw list-mode data used
-	const uint8_t raw = getScalarUInt8(prhs[ind], ind);
+	// Is raw data used
+	inputScalars.raw = getScalarUInt8(prhs[ind], ind);
 	ind++;
 
-	// Coefficient that determines how much more measurements the other device (usually GPU) compared to the other device
+	// Coefficient that determines how much more measurements the other device (usually GPU) has compared to the other device
 	const float kerroin = getScalarFloat(prhs[ind], ind);
 	ind++;
 
@@ -209,7 +220,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const char* header_directory = mxArrayToString(prhs[ind]);
 	ind++;
 
-	const float bzb = bz + static_cast<float>(Nz) * dz;
+	inputScalars.bzb = inputScalars.bz + static_cast<float>(inputScalars.Nz) * inputScalars.dz;
 
 	std::string s(fileName);
 
@@ -218,7 +229,9 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	fileName = s.c_str();
 
 	// Fixed local size
-	size_t local_size = 64ULL;
+	size_t local_size[2];
+	local_size[0] = 64ULL;
+	local_size[1] = 0ULL;
 
 	if (type == 2) {
 
@@ -243,28 +256,27 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		size_t loop_var_par = 1ULL;
 
-		if (raw)
+		if (inputScalars.raw)
 			loop_var_par = numRows / 2ULL;
 		else
-			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(size_x);
+			loop_var_par = static_cast<size_t>(NSinos) * static_cast<size_t>(inputScalars.size_x);
 
 		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		uint16_t* lor = (uint16_t*)mxGetUint16s(plhs[0]);
 #else
 		uint16_t* lor = (uint16_t*)mxGetData(plhs[0]);
 #endif
 
 		// Find the number of voxels each LOR traverses
-		find_LORs(lor, z_det, x, y, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, size_x, TotSinos, verbose, loop_var_par,
-			k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, numel_x, header_directory, local_size);
+		find_LORs(lor, z_det, x, y, TotSinos, verbose, loop_var_par, inputScalars, k_path, pseudos, L, fileName, device, numel_x, header_directory, local_size);
 
 	}
 	else if (type < 2) {
 
 		// attenuation values
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const float* atten = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* atten = (float*)mxGetData(prhs[ind]);
@@ -273,7 +285,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Normalization coefficients
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const float* norm = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* norm = (float*)mxGetData(prhs[ind]);
@@ -282,7 +294,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Number of measurements/LORs
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const int64_t* pituus = (int64_t*)mxGetInt64s(prhs[ind]);
 #else
 		const int64_t* pituus = (int64_t*)mxGetData(prhs[ind]);
@@ -290,15 +302,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Is the attenuation correction included
-		const uint32_t attenuation_correction = getScalarUInt32(prhs[ind], ind);
+		inputScalars.attenuation_correction = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
-		// Is the attenuation correction included
-		const uint32_t normalization = getScalarUInt32(prhs[ind], ind);
+		// Is the normalization correction included
+		inputScalars.normalization_correction = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
-		// Number of voxels the current LOR/ray traverses
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+		// Number of voxels that each LOR/ray traverses
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const uint16_t* lor1 = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 		const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[ind]);
@@ -306,7 +318,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// XY-indices of the detector coordinates of each LOR
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const uint32_t* xy_index = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 		const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[ind]);
@@ -315,23 +327,23 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Z-indices of the detector coordinates of each LOR
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const uint16_t* z_index = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 		const uint16_t* z_index = (uint16_t*)mxGetData(prhs[ind]);
 #endif
 		ind++;
 
-		// For "D orthogonal, the "strip width"
-		const float tube_width = getScalarFloat(prhs[ind], ind);
-		ind++;
+		// For 2D orthogonal, the "strip width"
+		//inputScalars.tube_width = getScalarFloat(prhs[ind], ind);
+		//ind++;
 
-		// For 3D orthogonal, the "tube width"
-		const float crystal_size_z = getScalarFloat(prhs[ind], ind);
+		// For orthogonal, either the "tube width" or strip width
+		inputScalars.tube_width = getScalarFloat(prhs[ind], ind);
 		ind++;
 
 		// Center coordinates of voxels in the X-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const float* x_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* x_center = (float*)mxGetData(prhs[ind]);
@@ -340,7 +352,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Center coordinates of voxels in the Y-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const float* y_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* y_center = (float*)mxGetData(prhs[ind]);
@@ -349,7 +361,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Center coordinates of voxels in the Z-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		const float* z_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* z_center = (float*)mxGetData(prhs[ind]);
@@ -362,27 +374,27 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Randoms corrections
-		const uint32_t randoms_correction = getScalarUInt32(prhs[ind], ind);
+		inputScalars.randoms_correction = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
 		// The type of projector used (Siddon or orthogonal)
-		const uint32_t projector_type = getScalarUInt32(prhs[ind], ind);
+		inputScalars.projector_type = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
 		// If true, then the precomputed LOR voxels counts are used
-		const bool precompute_var = getScalarBool(prhs[ind], ind);
+		inputScalars.precompute = getScalarBool(prhs[ind], ind);
 		ind++;
 
 		// Number of rays in Siddon (transaxial)
-		const uint16_t n_rays = getScalarUInt16(prhs[ind], ind);
+		inputScalars.n_rays = getScalarUInt16(prhs[ind], ind);
 		ind++;
 
 		// Number of rays in Siddon (axial)
-		const uint16_t n_rays3D = getScalarUInt16(prhs[ind], ind);
+		inputScalars.n_rays3D = getScalarUInt16(prhs[ind], ind);
 		ind++;
 
 		// Crystal pitch in z-direction
-		const float cr_pz = getScalarFloat(prhs[ind], ind);
+		inputScalars.cr_pz = getScalarFloat(prhs[ind], ind);
 		ind++;
 
 		// Measurement data
@@ -393,22 +405,63 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		const bool use_64bit_atomics = getScalarBool(prhs[ind], ind);
 		ind++;
 
+		const mxArray* options = prhs[ind];
+		ind++;
+
 		size_t koko;
-		if (raw)
+		if (inputScalars.raw)
 			koko = numRows;
 		else
 			koko = koko_l;
 
-		if (projector_type > 1)
-			local_size = 128ULL;
+		inputScalars.PET = getScalarBool(getField(options, 0, "PET"), ind);
+		inputScalars.SPECT = getScalarBool(getField(options, 0, "SPECT"), ind);
+		inputScalars.PITCH = getScalarBool(getField(options, 0, "PITCH"), ind);
+		if (inputScalars.projector_type == 5) {
+			inputScalars.meanFP = getScalarBool(getField(options, 0, "meanFP"), ind);
+			inputScalars.meanBP = getScalarBool(getField(options, 0, "meanBP"), ind);
+		}
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
+			inputScalars.maskFP = getScalarBool(getField(options, 0, "useMaskFP"), ind);
+			inputScalars.maskBP = getScalarBool(getField(options, 0, "useMaskBP"), ind);
+		}
+		if (inputScalars.projector_type == 2 || inputScalars.projector_type == 3) {
+			inputScalars.orthXY = getScalarBool(getField(options, 0, "orthTransaxial"), ind);
+			inputScalars.orthZ = getScalarBool(getField(options, 0, "orthAxial"), ind);
+		}
+		inputScalars.nProjections = getScalarInt64(getField(options, 0, "nProjections"), ind);
+		inputScalars.subsetType = getScalarUInt32(getField(options, 0, "subset_type"), ind);
+		if ((bool)mxGetScalar(getField(options, 0, "useSubsets")))
+			inputScalars.subsets = 2U;
+		const uint8_t listmode = (uint8_t)mxGetScalar(getField(options, 0, "listmode"));
+		const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
+		if (DEBUG) {
+			mexPrintf("inputScalars.PET = %u\n", inputScalars.PET);
+			mexPrintf("inputScalars.SPECT = %u\n", inputScalars.SPECT);
+			mexPrintf("inputScalars.PITCH = %u\n", inputScalars.PITCH);
+			mexPrintf("CT = %u\n", CT);
+			mexPrintf("inputScalars.subsets = %u\n", inputScalars.subsets);
+			mexPrintf("inputScalars.size_z = %u\n", inputScalars.size_z);
+			mexPrintf("inputScalars.attenuation_correction = %u\n", inputScalars.attenuation_correction);
+			mexPrintf("inputScalars.normalization_correction = %u\n", inputScalars.normalization_correction);
+			mexPrintf("inputScalars.subsetType = %u\n", inputScalars.subsetType);
+			mexEvalString("pause(.0001);");
+		}
+
+		if (inputScalars.projector_type > 0 && inputScalars.projector_type < 4)
+			local_size[0] = 128ULL;
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || ((inputScalars.PET || inputScalars.SPECT || CT) && listmode == 0)) {
+			local_size[0] = 8ULL;
+			local_size[1] = 8ULL;
+		}
 
 		if (type == 0) {
 
-			if (nrhs != 65)
-				mexErrMsgTxt("Incorrect number of input arguments. There has to be 65.");
+			if (nrhs != 64)
+				mexErrMsgTxt("Incorrect number of input arguments. There has to be 64.");
 
 			// Right hand side for forward or backprojections
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			const float* rhs = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* rhs = (float*)mxGetData(prhs[ind]);
@@ -420,19 +473,19 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const cl_uchar no_norm = getScalarUInt8(prhs[ind], ind);
 			ind++;
 
-			const float global_factor = getScalarFloat(prhs[ind], ind);
+			inputScalars.global_factor = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float bmin = getScalarFloat(prhs[ind], ind);
+			inputScalars.bmin = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float bmax = getScalarFloat(prhs[ind], ind);
+			inputScalars.bmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float Vmax = getScalarFloat(prhs[ind], ind);
+			inputScalars.Vmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			const float* V = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* V = (float*)mxGetData(prhs[ind]);
@@ -441,10 +494,63 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			ind++;
 
 			// Use PSF in Siddon
-			const bool use_psf = getScalarBool(prhs[ind], ind);
+			inputScalars.use_psf = getScalarBool(prhs[ind], ind);
 			ind++;
 
-			const size_t outSize3 = static_cast<size_t>(Nx) * static_cast<size_t>(Ny) * static_cast<size_t>(Nz);
+			//float SD = 0.f, SO = 0.f;
+			//float* offsetH = nullptr, *offsetB = nullptr;
+			if (DEBUG) {
+				mexPrintf("ind = %u\n", ind);
+				mexPrintf("inputScalars.raw = %u\n", inputScalars.raw);
+				mexPrintf("local_size[0] = %u\n", local_size[0]);
+				mexEvalString("pause(.0001);");
+			}
+			if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
+				//ind += 6;
+//				//if (DEBUG) {
+//				//	mexPrintf("ind = %u\n", ind);
+//				//	mexEvalString("pause(.0001);");
+//				//}
+				inputScalars.dL = getScalarFloat(getField(options, 0, "dL"), ind);
+				//inputScalars.detY = getScalarFloat(mxGetField(options, 0, "detY"), ind);
+				//inputScalars.tStart = getScalarFloat(mxGetField(options, 0, "tStart"), ind);
+				//inputScalars.tStep = getScalarFloat(mxGetField(options, 0, "tStep"), ind);
+				//inputScalars.d_Scale = { { getScalarFloat(mxGetField(options, 0, "dScaleX"), ind), getScalarFloat(mxGetField(options, 0, "dScaleY"), ind),
+				//	getScalarFloat(mxGetField(options, 0, "dScaleZ"), ind), 0.f } };
+				inputScalars.d_Scale.s[0] = getScalarFloat(getField(options, 0, "dScaleX"), ind);
+				inputScalars.d_Scale.s[1] = getScalarFloat(getField(options, 0, "dScaleY"), ind);
+				inputScalars.d_Scale.s[2] = getScalarFloat(getField(options, 0, "dScaleZ"), ind);
+				//inputScalars.d_Scale.s[3] = 0.f;
+				inputScalars.dSize.s[0] = getScalarFloat(getField(options, 0, "dSizeX"), ind);
+				inputScalars.dSize.s[1] = getScalarFloat(getField(options, 0, "dSizeY"), ind);
+				inputScalars.dSize.s[2] = getScalarFloat(getField(options, 0, "dSizeZ"), ind);
+				//if (inputScalars.SPECT) {
+				//	inputScalars.cThickness = getScalarFloat(mxGetField(options, 0, "cThickness"), ind);
+				//	inputScalars.cSizeX = getScalarUInt32(mxGetField(options, 0, "cSizeX"), ind);
+				//	inputScalars.cSizeY = getScalarUInt32(mxGetField(options, 0, "cSizeY"), ind);
+				//}
+				if (inputScalars.projector_type == 5) {
+					inputScalars.dSizeBP.s[0] = getScalarFloat(getField(options, 0, "dSizeXBP"), ind);
+					inputScalars.dSizeBP.s[1] = getScalarFloat(getField(options, 0, "dSizeZBP"), ind);
+					//inputScalars.meanV = getScalarFloat(mxGetField(options, 0, "meanV"), ind);
+				}
+//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+//				offsetH = (float*)mxGetSingles(mxGetField(options, 0, "horizontalOffset"));
+//#else
+//				offsetH = (float*)mxGetData(mxGetField(options, 0, "horizontalOffset"));
+//#endif
+//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+//				offsetB = (float*)mxGetSingles(mxGetField(options, 0, "bedOffset"));
+//#else
+//				offsetB = (float*)mxGetData(mxGetField(options, 0, "bedOffset"));
+//#endif
+			}
+			if (DEBUG) {
+				mexPrintf("Variables loaded\n");
+				mexEvalString("pause(.0001);");
+			}
+
+			const size_t outSize3 = static_cast<size_t>(inputScalars.Nx) * static_cast<size_t>(inputScalars.Ny) * static_cast<size_t>(inputScalars.Nz);
 			size_t outSize;
 			if (size_rhs == outSize3)
 				outSize = pituus[0];
@@ -452,18 +558,19 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 				outSize = outSize3;
 			const size_t outSize2 = 1;
 
-			const uint16_t TotSinos = size_z / 2ULL;
+			const uint16_t TotSinos = inputScalars.size_z / 2ULL;
 
 			mxArray* output;
 			output = mxCreateCellMatrix(2, 1);
+			if (DEBUG) {
+				mexPrintf("inputScalars.raw = %u\n", inputScalars.raw);
+				mexEvalString("pause(.0001);");
+			}
 
 			// Forward/backward projection
-			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, Nx, Ny, Nz, dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax, NSlices, pituus,
-				koko_l, xy_index, z_index, size_x, TotSinos, verbose, randoms_correction, attenuation_correction, normalization, atten, size_atten, norm,
-				size_norm, k_path, pseudos, det_per_ring, pRows, L, raw, size_z, fileName, device, kerroin, output, size_rhs, no_norm, numel_x,
-				tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, projector_type, header_directory,
-				precompute_var, dec, n_rays, n_rays3D, cr_pz, Sin, use_64bit_atomics, global_factor, bmin, bmax, Vmax, V, size_V, local_size, false,
-				prhs[ind], TOF, TOFSize, sigma_x, TOFCenter, nBins);
+			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, inputScalars, pituus, koko_l, xy_index, z_index, TotSinos, verbose, atten, size_atten, norm,
+				size_norm, k_path, pseudos, L, fileName, device, kerroin, output, size_rhs, no_norm, numel_x, x_center, y_center, z_center, size_center_x, 
+				size_center_y, size_center_z, header_directory,	Sin, use_64bit_atomics, V, size_V, local_size, options, TOFSize, TOFCenter);
 			plhs[0] = output;
 
 		}
@@ -481,15 +588,15 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			ind++;
 
 			// Number of iterations
-			const uint32_t Niter = getScalarUInt32(prhs[ind], ind);
+			inputScalars.Niter = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
 			// Number of subsets
-			const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
+			inputScalars.subsets = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
 			// Which reconstruction methods are used
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			const uint8_t* rekot = (uint8_t*)mxGetSingles(prhs[ind]);
 #else
 			const uint8_t* rekot = (uint8_t*)mxGetData(prhs[ind]);
@@ -498,11 +605,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			ind++;
 
 			// Epsilon value
-			const float epps = getScalarFloat(prhs[ind], ind);
+			inputScalars.epps = getScalarFloat(prhs[ind], ind);
 			ind++;
 
 			// Number of time steps
-			const uint32_t Nt = getScalarUInt32(prhs[ind], ind);
+			inputScalars.Nt = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
 			// Is OSEM used
@@ -510,22 +617,22 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			ind++;
 
 			// Use PSF in Siddon
-			const bool use_psf = getScalarBool(prhs[ind], ind);
+			inputScalars.use_psf = getScalarBool(prhs[ind], ind);
 			ind++;
 
-			const float global_factor = getScalarFloat(prhs[ind], ind);
+			inputScalars.global_factor = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float bmin = getScalarFloat(prhs[ind], ind);
+			inputScalars.bmin = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float bmax = getScalarFloat(prhs[ind], ind);
+			inputScalars.bmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-			const float Vmax = getScalarFloat(prhs[ind], ind);
+			inputScalars.Vmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			const float* V = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* V = (float*)mxGetData(prhs[ind]);
@@ -533,7 +640,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const size_t size_V = mxGetNumberOfElements(prhs[ind]);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 			const float* gaussian = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* gaussian = (float*)mxGetData(prhs[ind]);
@@ -541,24 +648,22 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const size_t size_gauss = mxGetNumberOfElements(prhs[ind]);
 			ind++;
 
-			const size_t outSize = Nx * Ny * Nz;
+			const size_t outSize = inputScalars.Nx * inputScalars.Ny * inputScalars.Nz;
 			size_t Ni = 0U;
-			const bool saveIter = getScalarBool(mxGetField(prhs[ind], 0, "save_iter"), -1);
+			const bool saveIter = getScalarBool(getField(prhs[ind], 0, "save_iter"), -1);
 			if (saveIter)
-				Ni = static_cast<size_t>(Niter);
+				Ni = static_cast<size_t>(inputScalars.Niter);
 			const size_t outSize2 = Ni + 1ULL;
 
 			// Create the output cell array
 			mxArray* cell_array_ptr;
-			cell_array_ptr = mxCreateCellMatrix(1, Nt);
+			cell_array_ptr = mxCreateCellMatrix(1, inputScalars.Nt);
 
 			// Implementation 3 (multi-device OpenCL)
-			reconstruction_multigpu(koko, lor1, z_det, x, y, Sin, sc_ra, Nx, Ny, Nz, Niter, prhs[ind], dx, dy, dz, bx, by, bz, bzb, maxxx, maxyy, zmax,
-				NSlices, pituus, koko_l, xy_index, z_index, size_x, TotSinos, cell_array_ptr, verbose, randoms_correction, attenuation_correction,
-				normalization, atten, size_atten, norm, size_norm, subsets, epps, rekot, k_path, size_reko, Nt, pseudos, det_per_ring, pRows, L, raw,
-				size_z, osem_bool, fileName, use_psf, device, kerroin, numel_x, tube_width, crystal_size_z, x_center, y_center, z_center, size_center_x,
-				size_center_y, size_center_z, projector_type, header_directory, precompute_var, dec, n_rays, n_rays3D, cr_pz, use_64bit_atomics, global_factor,
-				bmin, bmax, Vmax, V, size_V, local_size, gaussian, size_gauss, TOF, TOFSize, sigma_x, TOFCenter, nBins);
+			reconstruction_multigpu(koko, lor1, z_det, x, y, Sin, sc_ra, prhs[ind], inputScalars, pituus, koko_l, xy_index, z_index, TotSinos, 
+				cell_array_ptr, verbose, atten, size_atten, norm, size_norm, rekot, k_path, size_reko, pseudos, L, osem_bool, fileName, device, 
+				kerroin, numel_x, x_center, y_center, z_center, size_center_x, size_center_y, size_center_z, header_directory, use_64bit_atomics, 
+				V, size_V, local_size, gaussian, size_gauss, TOFSize, TOFCenter);
 
 			plhs[0] = cell_array_ptr;
 		}

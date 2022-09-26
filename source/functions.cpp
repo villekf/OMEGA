@@ -28,29 +28,29 @@ const char* getErrorString(CUresult error)
 #endif
 
 // Loads the input data and forms device data variables
-void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighting & w_vec, const mxArray *options, const uint32_t Nx, const uint32_t Ny,
-	const uint32_t Nz, const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
+void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighting & w_vec, const mxArray *options, scalarStruct& inputScalars, 
+	const uint32_t Niter, const af::array &x0, const uint32_t im_dim, const size_t koko_l, const RecMethods &MethodList, TVdata &data, 
 	const uint32_t subsets, const uint32_t osa_iter0, const bool use_psf, const bool saveIter, const uint32_t Nt, const uint32_t iter0, const bool CT)
 {
 	// Load the number of priors, all MAP-algorithms, non-OS MAP algorithms, non-OS non-MAP algorithms, non-MAP algorithms and total number of algorithms
-	w_vec.nPriors = getScalarUInt32(mxGetField(options, 0, "nPriors"), -2);
+	w_vec.nPriors = getScalarUInt32(getField(options, 0, "nPriors"), -2);
 	if (MethodList.CUSTOM)
 		w_vec.nPriorsTot = w_vec.nPriors + 1U;
 	else
 		w_vec.nPriorsTot = w_vec.nPriors;
-	w_vec.nMAP = getScalarUInt32(mxGetField(options, 0, "nMAP"), -2);
-	w_vec.nMAPML = getScalarUInt32(mxGetField(options, 0, "nMAPML"), -3);
+	w_vec.nMAP = getScalarUInt32(getField(options, 0, "nMAP"), -2);
+	w_vec.nMAPML = getScalarUInt32(getField(options, 0, "nMAPML"), -3);
 	w_vec.nMAPOS = w_vec.nMAP - w_vec.nMAPML;
-	w_vec.nMLEM = getScalarUInt32(mxGetField(options, 0, "nMLEM"), -4);
-	w_vec.nOS = getScalarUInt32(mxGetField(options, 0, "nOS"), -5);
-	w_vec.nTot = getScalarUInt32(mxGetField(options, 0, "nTot"), -6);
+	w_vec.nMLEM = getScalarUInt32(getField(options, 0, "nMLEM"), -4);
+	w_vec.nOS = getScalarUInt32(getField(options, 0, "nOS"), -5);
+	w_vec.nTot = getScalarUInt32(getField(options, 0, "nTot"), -6);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-	w_vec.rekot = (uint32_t*)mxGetUint32s(mxGetField(options, 0, "rekoList"));
+	w_vec.rekot = (uint32_t*)mxGetUint32s(getField(options, 0, "rekoList"));
 #else
-	w_vec.rekot = (uint32_t*)mxGetData(mxGetField(options, 0, "rekoList"));
+	w_vec.rekot = (uint32_t*)mxGetData(getField(options, 0, "rekoList"));
 #endif
-	w_vec.mIt.push_back(getScalarInt32(mxGetCell(mxGetField(options, 0, "mIt"), 0), -7));
-	w_vec.mIt.push_back(getScalarInt32(mxGetCell(mxGetField(options, 0, "mIt"), 1), -8));
+	w_vec.mIt.push_back(getScalarInt32(mxGetCell(getField(options, 0, "mIt"), 0), -7));
+	w_vec.mIt.push_back(getScalarInt32(mxGetCell(getField(options, 0, "mIt"), 1), -8));
 	if (DEBUG) {
 		mexPrintf("nPriors = %u\n", w_vec.nPriors);
 		mexPrintf("nMAP = %u\n", w_vec.nMAP);
@@ -67,13 +67,15 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	// First non-MAP/prior-based algorithms (e.g. MLEM)
 	if (MethodList.MLEM) {
 		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
-		vec.imEstimates[yy](af::span, 0) = x0;
+		if (saveIter)
+			vec.imEstimates[yy](af::span, 0) = x0;
 		yy++;
 	}
 	
 	if (MethodList.OSEM) {
 		vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
-		vec.imEstimates[yy](af::span, 0) = x0;
+		if (saveIter)
+			vec.imEstimates[yy](af::span, 0) = x0;
 		yy++;
 	}
 	
@@ -108,9 +110,9 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		
 		// Relaxation parameter
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.lambda_DRAMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_drama"));
+		w_vec.lambda_DRAMA = (float*)mxGetSingles(getField(options, 0, "lam_drama"));
 #else
-		w_vec.lambda_DRAMA = (float*)mxGetData(mxGetField(options, 0, "lam_drama"));
+		w_vec.lambda_DRAMA = (float*)mxGetData(getField(options, 0, "lam_drama"));
 #endif
 	}
 	
@@ -149,7 +151,7 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	int tt = 0;
 	for (uint32_t kk = 0; kk < w_vec.nPriors; kk++) {
 		for (uint32_t ll = 0; ll < w_vec.nMAP; ll++) {
-			const char* varChar = mxArrayToString(mxGetCell(mxGetField(options, 0, "varList"), tt));
+			const char* varChar = mxArrayToString(mxGetCell(getField(options, 0, "varList"), tt));
 			vec.imEstimates.push_back(af::constant(0.f, im_dim, Ni));
 			vec.imEstimates[yy](af::span, 0) = x0;
 			if (DEBUG) {
@@ -157,111 +159,181 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 				mexEvalString("pause(.0001);");
 			}
 			// Load the regularization parameter as well if the prior is used
-			beta.push_back(getScalarFloat(mxGetField(options, 0, varChar), -9));
+			beta.push_back(getScalarFloat(getField(options, 0, varChar), -9));
 			yy++;
 			tt++;
 		}
 	}
 
+	if (inputScalars.maskFP)
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+		w_vec.maskFP = (uint8_t*)mxGetUint8s(getField(options, 0, "maskFP"));
+#else
+		w_vec.maskFP = (uint8_t*)mxGetData(getField(options, 0, "maskFP"));
+#endif
+	if (inputScalars.maskBP && (inputScalars.projector_type == 5 || inputScalars.projector_type == 4)) {
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+		w_vec.maskBP = (uint8_t*)mxGetUint8s(getField(options, 0, "maskBP"));
+#else
+		w_vec.maskBP = (uint8_t*)mxGetData(getField(options, 0, "maskBP"));
+#endif
+		const size_t nMask = mxGetNumberOfElements(getField(options, 0, "maskBP"));
+		if (DEBUG) {
+			mexPrintf("nMask = %d\n", nMask);
+			mexEvalString("pause(.0001);");
+		}
+	}
 	// CT-related variables such as number of projection images
 	if (CT) {
-		w_vec.size_y = getScalarUInt32(mxGetField(options, 0, "xSize"), -10);
-		w_vec.nProjections = getScalarInt64(mxGetField(options, 0, "nProjections"), -11);
-		w_vec.dPitch = getScalarFloat(mxGetField(options, 0, "dPitch"), -12);
+		w_vec.size_y = getScalarUInt32(getField(options, 0, "xSize"), -10);
+		w_vec.size_x = getScalarUInt32(getField(options, 0, "ySize"), -10);
+		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);
+		//w_vec.dPitch = getScalarFloat(getField(options, 0, "dPitch"), -12);
+		w_vec.dPitch.s[0] = (float)mxGetScalar(getField(options, 0, "dPitchX"));
+		w_vec.dPitch.s[1] = (float)mxGetScalar(getField(options, 0, "dPitchY"));
+//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+//		w_vec.uv = (float*)mxGetSingles(getField(options, 0, "uV"));
+//#else
+//		w_vec.uv = (float*)mxGetData(getField(options, 0, "uV"));
+//#endif
 	}
+	else if (inputScalars.PET) {
+		w_vec.nProjections = (int64_t)mxGetScalar(getField(options, 0, "nProjections"));
+		w_vec.size_y = (uint32_t)mxGetScalar(getField(options, 0, "Nang"));
+		w_vec.size_x = (uint32_t)mxGetScalar(getField(options, 0, "Ndist"));
+		w_vec.dPitch.s[0] = (float)mxGetScalar(getField(options, 0, "cr_p"));
+		w_vec.dPitch.s[1] = (float)mxGetScalar(getField(options, 0, "cr_pz"));
+	}
+	else {
+		w_vec.size_y = (uint32_t)mxGetScalar(getField(options, 0, "Nang"));
+		w_vec.size_x = (uint32_t)mxGetScalar(getField(options, 0, "Ndist"));
+		w_vec.nProjections = (int64_t)mxGetScalar(getField(options, 0, "nProjections"));
+		// Detector pitch
+		w_vec.dPitch.s[0] = (float)mxGetScalar(getField(options, 0, "cr_p"));
+		w_vec.dPitch.s[1] = (float)mxGetScalar(getField(options, 0, "cr_pz"));
+	}
+	if (inputScalars.projector_type == 4U)
+		w_vec.kerroin4 = (float)mxGetScalar(getField(options, 0, "kerroin"));
+
+	if (inputScalars.projector_type == 6U) {
+		const mwSize* ind = mxGetDimensions(getField(options, 0, "gFilter"));
+		if (DEBUG) {
+			mexPrintf("indX = %d\n", ind[0]);
+			mexPrintf("indY = %d\n", ind[1]);
+			mexEvalString("pause(.0001);");
+		}
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+		w_vec.angles = (float*)mxGetSingles(getField(options, 0, "angles"));
+		w_vec.gFilter = af::array(ind[0], ind[1], ind[2], ind[3], (float*)mxGetSingles(getField(options, 0, "gFilter")));
+		w_vec.distInt = (uint32_t*)mxGetUint32s(getField(options, 0, "blurPlanes"));
+#else
+		w_vec.angles = (float*)mxGetData(getField(options, 0, "angles"));
+		w_vec.gFilter = af::array(ind[0], ind[1], ind[2], ind[3], (float*)mxGetData(getField(options, 0, "angles")));
+		w_vec.distInt = (uint32_t*)mxGetData(getField(options, 0, "blurPlanes"));
+#endif
+		if (DEBUG) {
+			mexPrintf("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
+			mexPrintf("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));
+			mexPrintf("w_vec.gFilter.dims(2) = %d\n", w_vec.gFilter.dims(2));
+			mexPrintf("w_vec.gFilter.dims(3) = %d\n", w_vec.gFilter.dims(3));
+			mexPrintf("w_vec.distInt[0] = %d\n", w_vec.distInt[0]);
+			mexEvalString("pause(.0001);");
+		}
+	}
+
 	// Load TV related input data
 	if (MethodList.TV && MethodList.MAP) {
 		// Is anatomical reference image used
-		data.TV_use_anatomical = getScalarBool(mxGetField(options, 0, "TV_use_anatomical"), -13);
+		data.TV_use_anatomical = getScalarBool(getField(options, 0, "TV_use_anatomical"), -13);
 		// Tau-value
-		data.tau = getScalarFloat(mxGetField(options, 0, "tau"), -14);
+		data.tau = getScalarFloat(getField(options, 0, "tau"), -14);
 		// "Smoothing" parameter, prevents zero values in the square root
-		data.TVsmoothing = getScalarFloat(mxGetField(options, 0, "TVsmoothing"), -15);
+		data.TVsmoothing = getScalarFloat(getField(options, 0, "TVsmoothing"), -15);
 		// The type of TV prior used
-		data.TVtype = getScalarUInt32(mxGetField(options, 0, "TVtype"), -16);
+		data.TVtype = getScalarUInt32(getField(options, 0, "TVtype"), -16);
 		// If anatomical prior is used, load the necessary coefficients
 		if (data.TV_use_anatomical) {
-			mxArray* TVdata_init = mxGetField(options, 0, "TVdata");
+			mxArray* TVdata_init = getField(options, 0, "TVdata");
 			if (data.TVtype == 1) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-				data.s1 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s1")), afHost);
-				data.s2 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s2")), afHost);
-				data.s3 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s3")), afHost);
-				data.s4 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s4")), afHost);
-				data.s5 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s5")), afHost);
-				data.s6 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s6")), afHost);
-				data.s7 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s7")), afHost);
-				data.s8 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s8")), afHost);
-				data.s9 = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "s9")), afHost);
+				data.s1 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s1")), afHost);
+				data.s2 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s2")), afHost);
+				data.s3 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s3")), afHost);
+				data.s4 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s4")), afHost);
+				data.s5 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s5")), afHost);
+				data.s6 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s6")), afHost);
+				data.s7 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s7")), afHost);
+				data.s8 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s8")), afHost);
+				data.s9 = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "s9")), afHost);
 #else
-				data.s1 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s1")), afHost);
-				data.s2 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s2")), afHost);
-				data.s3 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s3")), afHost);
-				data.s4 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s4")), afHost);
-				data.s5 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s5")), afHost);
-				data.s6 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s6")), afHost);
-				data.s7 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s7")), afHost);
-				data.s8 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s8")), afHost);
-				data.s9 = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "s9")), afHost);
+				data.s1 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s1")), afHost);
+				data.s2 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s2")), afHost);
+				data.s3 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s3")), afHost);
+				data.s4 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s4")), afHost);
+				data.s5 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s5")), afHost);
+				data.s6 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s6")), afHost);
+				data.s7 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s7")), afHost);
+				data.s8 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s8")), afHost);
+				data.s9 = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "s9")), afHost);
 #endif
 			}
 			else {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-				data.reference_image = af::array(im_dim, (float*)mxGetSingles(mxGetField(TVdata_init, 0, "reference_image")), afHost);
+				data.reference_image = af::array(im_dim, (float*)mxGetSingles(getField(TVdata_init, 0, "reference_image")), afHost);
 #else
-				data.reference_image = af::array(im_dim, (float*)mxGetData(mxGetField(TVdata_init, 0, "reference_image")), afHost);
+				data.reference_image = af::array(im_dim, (float*)mxGetData(getField(TVdata_init, 0, "reference_image")), afHost);
 #endif
 			}
-			data.T = getScalarFloat(mxGetField(options, 0, "T"), -17);
-			data.C = getScalarFloat(mxGetField(options, 0, "C"), -18);
+			data.T = getScalarFloat(getField(options, 0, "T"), -17);
+			data.C = getScalarFloat(getField(options, 0, "C"), -18);
 		}
 		// Additional weights for the TV type 3
 		if (data.TVtype == 3 && !MethodList.Quad) {
-			w_vec.Ndx = getScalarUInt32(mxGetField(options, 0, "Ndx"), -19);
-			w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -20);
-			w_vec.Ndz = getScalarUInt32(mxGetField(options, 0, "Ndz"), -21);
+			w_vec.Ndx = getScalarUInt32(getField(options, 0, "Ndx"), -19);
+			w_vec.Ndy = getScalarUInt32(getField(options, 0, "Ndy"), -20);
+			w_vec.Ndz = getScalarUInt32(getField(options, 0, "Ndz"), -21);
 			w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
+			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(getField(options, 0, "weights_quad")), afHost);
 #else
-			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+			w_vec.weights_TV = af::array(w_vec.dimmu - 1, (float*)mxGetData(getField(options, 0, "weights_quad")), afHost);
 #endif
 		}
 		if (data.TVtype == 3)
-			data.C = getScalarFloat(mxGetField(options, 0, "C"), -22);
+			data.C = getScalarFloat(getField(options, 0, "C"), -22);
 		if (data.TVtype == 4)
-			data.SATVPhi = getScalarFloat(mxGetField(options, 0, "SATVPhi"), -23);
+			data.SATVPhi = getScalarFloat(getField(options, 0, "SATVPhi"), -23);
 	}
 	// General variables for neighborhood-based methods
 	if ((MethodList.L || MethodList.FMH || MethodList.WeightedMean || MethodList.Quad || MethodList.Huber || MethodList.MRP || MethodList.NLM || (data.TVtype == 3 && MethodList.TV) || MethodList.RDP) && MethodList.MAP) {
 		// Neighborhood size
-		w_vec.Ndx = getScalarUInt32(mxGetField(options, 0, "Ndx"), -24);
-		w_vec.Ndy = getScalarUInt32(mxGetField(options, 0, "Ndy"), -25);
-		w_vec.Ndz = getScalarUInt32(mxGetField(options, 0, "Ndz"), -26);
+		w_vec.Ndx = getScalarUInt32(getField(options, 0, "Ndx"), -24);
+		w_vec.Ndy = getScalarUInt32(getField(options, 0, "Ndy"), -25);
+		w_vec.Ndz = getScalarUInt32(getField(options, 0, "Ndz"), -26);
 		// Is normalization used in MRP, FMH, L, weighted mean or AD
-		w_vec.med_no_norm = getScalarBool(mxGetField(options, 0, "med_no_norm"), -27);
+		w_vec.med_no_norm = getScalarBool(getField(options, 0, "med_no_norm"), -27);
 		w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 	}
 	if ((MethodList.L || MethodList.FMH || (data.TVtype == 3 && MethodList.TV) || MethodList.RDP) && MethodList.MAP) {
 		// Index values for the neighborhood
 //#ifdef OPENCL
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetUint32s(mxGetField(options, 0, "tr_offsets")), afHost);
+		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetUint32s(getField(options, 0, "tr_offsets")), afHost);
 #else
-		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
+		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(getField(options, 0, "tr_offsets")), afHost);
 #endif
 //#else
-//		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(mxGetField(options, 0, "tr_offsets")), afHost);
+//		w_vec.tr_offsets = af::array(im_dim, w_vec.dimmu, (uint32_t*)mxGetData(getField(options, 0, "tr_offsets")), afHost);
 //#endif
 	}
 	if (MethodList.FMH || MethodList.Quad || MethodList.Huber || MethodList.RDP)
-		w_vec.inffi = getScalarUInt32(mxGetField(options, 0, "inffi"), -28);
+		w_vec.inffi = getScalarUInt32(getField(options, 0, "inffi"), -28);
 	// Weights for the various priors
 	if (MethodList.Quad && MethodList.MAP) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_quad")), afHost);
+		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(getField(options, 0, "weights_quad")), afHost);
 #else
-		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_quad")), afHost);
+		w_vec.weights_quad = af::array(w_vec.dimmu - 1, (float*)mxGetData(getField(options, 0, "weights_quad")), afHost);
 #endif
 		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 		af::array weight = w_vec.weights_quad * -1.f;
@@ -274,18 +346,18 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	}
 	if (MethodList.RDP && MethodList.MAP) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_RDP")), afHost);
+		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetSingles(getField(options, 0, "weights_RDP")), afHost);
 #else
-		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetData(mxGetField(options, 0, "weights_RDP")), afHost);
+		w_vec.weights_RDP = af::array((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, (float*)mxGetData(getField(options, 0, "weights_RDP")), afHost);
 #endif
 		w_vec.weights_RDP = af::flat(w_vec.weights_RDP);
-		w_vec.RDP_gamma = getScalarFloat(mxGetField(options, 0, "RDP_gamma"), -29);
+		w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 	}
 	if (MethodList.Huber && MethodList.MAP) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(mxGetField(options, 0, "weights_huber")), afHost);
+		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetSingles(getField(options, 0, "weights_huber")), afHost);
 #else
-		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetData(mxGetField(options, 0, "weights_huber")), afHost);
+		w_vec.weights_huber = af::array(w_vec.dimmu - 1, (float*)mxGetData(getField(options, 0, "weights_huber")), afHost);
 #endif
 		int pituus = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
 		af::array weight = w_vec.weights_huber * -1.f;
@@ -294,51 +366,51 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		w_quad(af::seq(pituus / 2 + 1, af::end)) = weight(af::seq(pituus / 2, af::end));
 		w_quad(pituus / 2) = af::abs(af::sum(weight));
 		w_vec.weights_huber = af::moddims(w_quad, w_vec.Ndx * 2U + 1, w_vec.Ndy * 2U + 1, w_vec.Ndz * 2U + 1);
-		w_vec.huber_delta = getScalarFloat(mxGetField(options, 0, "huber_delta"), -29);
+		w_vec.huber_delta = getScalarFloat(getField(options, 0, "huber_delta"), -29);
 	}
 	if (MethodList.L && MethodList.MAP)
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "a_L")), afHost);
+		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetSingles(getField(options, 0, "a_L")), afHost);
 #else
-		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "a_L")), afHost);
+		w_vec.a_L = af::array(w_vec.dimmu, (float*)mxGetData(getField(options, 0, "a_L")), afHost);
 #endif
 	if (MethodList.FMH && MethodList.MAP) {
-		if (Nz == 1 || w_vec.Ndz == 0)
+		if (inputScalars.Nz == 1 || w_vec.Ndz == 0)
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
+			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetSingles(getField(options, 0, "fmh_weights")), afHost);
 #else
-			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
+			w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, (float*)mxGetData(getField(options, 0, "fmh_weights")), afHost);
 #endif
 		else
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetSingles(mxGetField(options, 0, "fmh_weights")), afHost);
+			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetSingles(getField(options, 0, "fmh_weights")), afHost);
 #else
-			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetData(mxGetField(options, 0, "fmh_weights")), afHost);
+			w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, (float*)mxGetData(getField(options, 0, "fmh_weights")), afHost);
 #endif
-		w_vec.alku_fmh = getScalarUInt32(mxGetField(options, 0, "inffi"), -30);
+		w_vec.alku_fmh = getScalarUInt32(getField(options, 0, "inffi"), -30);
 	}
 	if (MethodList.WeightedMean && MethodList.MAP) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetSingles(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
+		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetSingles(getField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
 #else
-		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(mxGetField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
+		w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, (float*)mxGetData(getField(options, 0, "weighted_weights")), afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
 #endif
 		// Type of mean used (arithmetic, harmonic or geometric)
-		w_vec.mean_type = getScalarInt32(mxGetField(options, 0, "mean_type"), -31);
+		w_vec.mean_type = getScalarInt32(getField(options, 0, "mean_type"), -31);
 		// Sum of the weights
-		w_vec.w_sum = getScalarFloat(mxGetField(options, 0, "w_sum"), -31);
+		w_vec.w_sum = getScalarFloat(getField(options, 0, "w_sum"), -31);
 	}
 	if (MethodList.AD && MethodList.MAP) {
 		// Time-step value
-		w_vec.TimeStepAD = getScalarFloat(mxGetField(options, 0, "TimeStepAD"), -32);
+		w_vec.TimeStepAD = getScalarFloat(getField(options, 0, "TimeStepAD"), -32);
 		// Conductance (edge value)
-		w_vec.KAD = getScalarFloat(mxGetField(options, 0, "KAD"), -33);
+		w_vec.KAD = getScalarFloat(getField(options, 0, "KAD"), -33);
 		// Number of AD iterations
-		w_vec.NiterAD = getScalarUInt32(mxGetField(options, 0, "NiterAD"), -34);
+		w_vec.NiterAD = getScalarUInt32(getField(options, 0, "NiterAD"), -34);
 		// Flux type
-		uint32_t Flux = getScalarUInt32(mxGetField(options, 0, "FluxType"), -35);
+		uint32_t Flux = getScalarUInt32(getField(options, 0, "FluxType"), -35);
 		// Diffusion type
-		uint32_t Diffusion = getScalarUInt32(mxGetField(options, 0, "DiffusionType"), -36);
+		uint32_t Diffusion = getScalarUInt32(getField(options, 0, "DiffusionType"), -36);
 		if (Flux == 2U)
 			w_vec.FluxType = AF_FLUX_QUADRATIC;
 		else
@@ -348,45 +420,45 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		else
 			w_vec.DiffusionType = AF_DIFFUSION_GRAD;
 		if (!MethodList.L && !MethodList.FMH && !MethodList.WeightedMean && !MethodList.Quad && !MethodList.MRP)
-			w_vec.med_no_norm = getScalarBool(mxGetField(options, 0, "med_no_norm"), -37);
+			w_vec.med_no_norm = getScalarBool(getField(options, 0, "med_no_norm"), -37);
 	}
 	if (MethodList.APLS && MethodList.MAP) {
 		// Eta value
-		data.eta = getScalarFloat(mxGetField(options, 0, "eta"), -38);
+		data.eta = getScalarFloat(getField(options, 0, "eta"), -38);
 		// Tau-value
 		if (!MethodList.TV)
-			data.tau = getScalarFloat(mxGetField(options, 0, "tau"), -39);
+			data.tau = getScalarFloat(getField(options, 0, "tau"), -39);
 		// Smoothing value
-		data.APLSsmoothing = getScalarFloat(mxGetField(options, 0, "APLSsmoothing"), -40);
+		data.APLSsmoothing = getScalarFloat(getField(options, 0, "APLSsmoothing"), -40);
 		// Anatomical reference image
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "APLS_ref_image")), afHost);
+		data.APLSReference = af::array(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, (float*)mxGetSingles(getField(options, 0, "APLS_ref_image")), afHost);
 #else
-		data.APLSReference = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "APLS_ref_image")), afHost);
+		data.APLSReference = af::array(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, (float*)mxGetData(getField(options, 0, "APLS_ref_image")), afHost);
 #endif
 	}
 	if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.COSEM
 		|| MethodList.ECOSEM || MethodList.ACOSEM || MethodList.PKMA || MethodList.OSLCOSEM > 0) {
 		// Sum of the rows (measurements) of the system matrix
-		//w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
+		//w_vec.D = af::array(im_dim, (float*)mxGetData(getField(options, 0, "D")), afHost);
 		w_vec.D = af::constant(0.f, im_dim, 1);
 		// For manual determination of the upper bound
 		if ((MethodList.MRAMLA || MethodList.MBSREM) && Nt > 1U)
 			w_vec.Amin = af::constant(0.f, koko_l, 1);
 		else
 			w_vec.Amin = af::constant(0.f, 1, 1);
-		//w_vec.Amin = af::array(koko_l, (float*)mxGetData(mxGetField(options, 0, "Amin")), afHost);
-		w_vec.MBSREM_prepass = getScalarBool(mxGetField(options, 0, "MBSREM_prepass"), -41);
+		//w_vec.Amin = af::array(koko_l, (float*)mxGetData(getField(options, 0, "Amin")), afHost);
+		w_vec.MBSREM_prepass = getScalarBool(getField(options, 0, "MBSREM_prepass"), -41);
 	}
 	if (MethodList.MRAMLA || MethodList.MBSREM) {
 		// Relaxation parameter
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.lambda_MBSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam_MBSREM"));
+		w_vec.lambda_MBSREM = (float*)mxGetSingles(getField(options, 0, "lam_MBSREM"));
 #else
-		w_vec.lambda_MBSREM = (float*)mxGetData(mxGetField(options, 0, "lam_MBSREM"));
+		w_vec.lambda_MBSREM = (float*)mxGetData(getField(options, 0, "lam_MBSREM"));
 #endif
 		// Upper bound
-		w_vec.U = getScalarFloat(mxGetField(options, 0, "U"), -42);
+		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
 	if (DEBUG) {
 		mexPrintf("w_vec.lambda_MBSREM = %f\n", w_vec.lambda_MBSREM);
@@ -395,63 +467,63 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 	// Relaxation parameters
 	if (MethodList.RAMLA || MethodList.BSREM)
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.lambda_BSREM = (float*)mxGetSingles(mxGetField(options, 0, "lam"));
+		w_vec.lambda_BSREM = (float*)mxGetSingles(getField(options, 0, "lam"));
 #else
-		w_vec.lambda_BSREM = (float*)mxGetData(mxGetField(options, 0, "lam"));
+		w_vec.lambda_BSREM = (float*)mxGetData(getField(options, 0, "lam"));
 #endif
 	if (MethodList.ROSEM || MethodList.ROSEMMAP)
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.lambda_ROSEM = (float*)mxGetSingles(mxGetField(options, 0, "lam_ROSEM"));
+		w_vec.lambda_ROSEM = (float*)mxGetSingles(getField(options, 0, "lam_ROSEM"));
 #else
-		w_vec.lambda_ROSEM = (float*)mxGetData(mxGetField(options, 0, "lam_ROSEM"));
+		w_vec.lambda_ROSEM = (float*)mxGetData(getField(options, 0, "lam_ROSEM"));
 #endif
 	if (MethodList.PKMA) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.lambda_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "lam_PKMA"));
-		w_vec.alpha_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "alpha_PKMA"));
-		w_vec.sigma_PKMA = (float*)mxGetSingles(mxGetField(options, 0, "sigma_PKMA"));
+		w_vec.lambda_PKMA = (float*)mxGetSingles(getField(options, 0, "lam_PKMA"));
+		w_vec.alpha_PKMA = (float*)mxGetSingles(getField(options, 0, "alpha_PKMA"));
+		w_vec.sigma_PKMA = (float*)mxGetSingles(getField(options, 0, "sigma_PKMA"));
 #else
-		w_vec.lambda_PKMA = (float*)mxGetData(mxGetField(options, 0, "lam_PKMA"));
-		w_vec.alpha_PKMA = (float*)mxGetData(mxGetField(options, 0, "alpha_PKMA"));
-		w_vec.sigma_PKMA = (float*)mxGetData(mxGetField(options, 0, "sigma_PKMA"));
+		w_vec.lambda_PKMA = (float*)mxGetData(getField(options, 0, "lam_PKMA"));
+		w_vec.alpha_PKMA = (float*)mxGetData(getField(options, 0, "alpha_PKMA"));
+		w_vec.sigma_PKMA = (float*)mxGetData(getField(options, 0, "sigma_PKMA"));
 #endif
 	}
 	// Power factor for ACOSEM
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM == 1)
-		w_vec.h_ACOSEM = getScalarFloat(mxGetField(options, 0, "h"), -43);
+		w_vec.h_ACOSEM = getScalarFloat(getField(options, 0, "h"), -43);
 	if (MethodList.TGV && MethodList.MAP) {
-		data.TGVAlpha = getScalarFloat(mxGetField(options, 0, "alphaTGV"), -44);
-		data.TGVBeta = getScalarFloat(mxGetField(options, 0, "betaTGV"), -45);
-		data.NiterTGV = getScalarUInt32(mxGetField(options, 0, "NiterTGV"), -46);
+		data.TGVAlpha = getScalarFloat(getField(options, 0, "alphaTGV"), -44);
+		data.TGVBeta = getScalarFloat(getField(options, 0, "betaTGV"), -45);
+		data.NiterTGV = getScalarUInt32(getField(options, 0, "NiterTGV"), -46);
 	}
 	if (MethodList.NLM && MethodList.MAP) {
-		w_vec.NLM_anatomical = getScalarBool(mxGetField(options, 0, "NLM_use_anatomical"), -47);
-		w_vec.NLTV = getScalarBool(mxGetField(options, 0, "NLTV"), -48);
-		w_vec.NLM_MRP = getScalarBool(mxGetField(options, 0, "NLM_MRP"), -49);
+		w_vec.NLM_anatomical = getScalarBool(getField(options, 0, "NLM_use_anatomical"), -47);
+		w_vec.NLTV = getScalarBool(getField(options, 0, "NLTV"), -48);
+		w_vec.NLM_MRP = getScalarBool(getField(options, 0, "NLM_MRP"), -49);
 		if (w_vec.NLM_anatomical)
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetSingles(mxGetField(options, 0, "NLM_ref")), afHost);
+			w_vec.NLM_ref = af::array(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, (float*)mxGetSingles(getField(options, 0, "NLM_ref")), afHost);
 #else
-			w_vec.NLM_ref = af::array(Nx, Ny, Nz, (float*)mxGetData(mxGetField(options, 0, "NLM_ref")), afHost);
+			w_vec.NLM_ref = af::array(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz, (float*)mxGetData(getField(options, 0, "NLM_ref")), afHost);
 #endif
-		w_vec.h2 = getScalarFloat(mxGetField(options, 0, "sigma"), -50);
+		w_vec.h2 = getScalarFloat(getField(options, 0, "sigma"), -50);
 		w_vec.h2 = w_vec.h2 * w_vec.h2;
-		w_vec.Nlx = getScalarUInt32(mxGetField(options, 0, "Nlx"), -51);
-		w_vec.Nly = getScalarUInt32(mxGetField(options, 0, "Nly"), -52);
-		w_vec.Nlz = getScalarUInt32(mxGetField(options, 0, "Nlz"), -53);
+		w_vec.Nlx = getScalarUInt32(getField(options, 0, "Nlx"), -51);
+		w_vec.Nly = getScalarUInt32(getField(options, 0, "Nly"), -52);
+		w_vec.Nlz = getScalarUInt32(getField(options, 0, "Nlz"), -53);
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetSingles(mxGetField(options, 0, "gaussianNLM")), afHost);
+		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetSingles(getField(options, 0, "gaussianNLM")), afHost);
 #else
-		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetData(mxGetField(options, 0, "gaussianNLM")), afHost);
+		w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), (float*)mxGetData(getField(options, 0, "gaussianNLM")), afHost);
 #endif
 	}
 	if (MethodList.CUSTOM) {
 		for (uint32_t kk = 0; kk < vec.imEstimates.size(); kk++) {
-			const char* varTot = mxArrayToString(mxGetCell(mxGetField(options, 0, "varTot"), kk));
+			const char* varTot = mxArrayToString(mxGetCell(getField(options, 0, "varTot"), kk));
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetSingles(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
+			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetSingles(getField(getField(options, 0, "im_vectors"), 0, varTot)), afHost);
 #else
-			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetData(mxGetField(mxGetField(options, 0, "im_vectors"), 0, varTot)), afHost);
+			vec.imEstimates[kk](af::span, 0) = af::array(im_dim, (float*)mxGetData(getField(getField(options, 0, "im_vectors"), 0, varTot)), afHost);
 #endif
 			if (DEBUG) {
 				mexPrintf("%s\n", varTot);
@@ -461,37 +533,37 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		}
 		tt = 0;
 		for (uint32_t ll = 0; ll < w_vec.nMAP; ll++) {
-			const char* varApu = mxArrayToString(mxGetCell(mxGetField(options, 0, "varApu"), tt));
-			const char* varBeta = mxArrayToString(mxGetCell(mxGetField(options, 0, "varBeta"), tt));
-			const char* varGrad = mxArrayToString(mxGetCell(mxGetField(options, 0, "varGrad"), tt));
+			const char* varApu = mxArrayToString(mxGetCell(getField(options, 0, "varApu"), tt));
+			const char* varBeta = mxArrayToString(mxGetCell(getField(options, 0, "varBeta"), tt));
+			const char* varGrad = mxArrayToString(mxGetCell(getField(options, 0, "varGrad"), tt));
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varApu)), afHost));
-			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, varGrad)), afHost));
+			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetSingles(getField(options, 0, varApu)), afHost));
+			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetSingles(getField(options, 0, varGrad)), afHost));
 #else
-			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, varApu)), afHost));
-			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, varGrad)), afHost));
+			vec.imEstimates.push_back(af::array(im_dim, (float*)mxGetData(getField(options, 0, varApu)), afHost));
+			w_vec.dU.push_back(af::array(im_dim, (float*)mxGetData(getField(options, 0, varGrad)), afHost));
 #endif
-			beta.push_back(getScalarFloat(mxGetField(options, 0, varBeta), -54));
+			beta.push_back(getScalarFloat(getField(options, 0, varBeta), -54));
 			tt++;
 		}
 		if (MethodList.MBSREM) {
 			if (iter0 > 0 || osa_iter0 > 0) {
-				w_vec.U = getScalarFloat(mxGetField(options, 0, "U"), -55);
-				w_vec.epsilon_mramla = getScalarFloat(mxGetField(options, 0, "epsilon_mramla"), -56);
+				w_vec.U = getScalarFloat(getField(options, 0, "U"), -55);
+				w_vec.epsilon_mramla = getScalarFloat(getField(options, 0, "epsilon_mramla"), -56);
 			}
 		}
 		if (MethodList.OSLCOSEM > 0) {
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetSingles(mxGetField(options, 0, "C_osl")), afHost);
+			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetSingles(getField(options, 0, "C_osl")), afHost);
 #else
-			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(mxGetField(options, 0, "C_osl")), afHost);
+			vec.C_osl = af::array(im_dim, subsets, (float*)mxGetData(getField(options, 0, "C_osl")), afHost);
 #endif
 		}
 		if ((MethodList.OSLCOSEM > 0 || MethodList.MBSREM || MethodList.RBIOSL || MethodList.RBI || MethodList.PKMA))
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			w_vec.D = af::array(im_dim, (float*)mxGetSingles(mxGetField(options, 0, "D")), afHost);
+			w_vec.D = af::array(im_dim, (float*)mxGetSingles(getField(options, 0, "D")), afHost);
 #else
-			w_vec.D = af::array(im_dim, (float*)mxGetData(mxGetField(options, 0, "D")), afHost);
+			w_vec.D = af::array(im_dim, (float*)mxGetData(getField(options, 0, "D")), afHost);
 #endif
 
 		//uint32_t dd = n_rekos_mlem + n_rekos - 1U - nMAPOS;
@@ -522,10 +594,18 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 		}
 	}
 	if (use_psf) {
-		w_vec.g_dim_x = getScalarUInt32(mxGetField(options, 0, "g_dim_x"), -57);
-		w_vec.g_dim_y = getScalarUInt32(mxGetField(options, 0, "g_dim_y"), -58);
-		w_vec.g_dim_z = getScalarUInt32(mxGetField(options, 0, "g_dim_z"), -59);
-		w_vec.deconvolution = getScalarBool(mxGetField(options, 0, "deblurring"), -60);
+		w_vec.g_dim_x = getScalarUInt32(getField(options, 0, "g_dim_x"), -57);
+		w_vec.g_dim_y = getScalarUInt32(getField(options, 0, "g_dim_y"), -58);
+		w_vec.g_dim_z = getScalarUInt32(getField(options, 0, "g_dim_z"), -59);
+		w_vec.deconvolution = getScalarBool(getField(options, 0, "deblurring"), -60);
+	}
+	if (MethodList.CP) {
+		w_vec.tauCP = getScalarFloat(getField(options, 0, "tauCP"), -61);
+		w_vec.sigmaCP = getScalarFloat(getField(options, 0, "sigmaCP"), -62);
+		w_vec.thetaCP = getScalarFloat(getField(options, 0, "thetaCP"), -63);
+	}
+	if (inputScalars.projector_type == 6) {
+		//w_vec.
 	}
 }
 
@@ -533,46 +613,48 @@ void form_data_variables(AF_im_vectors & vec, std::vector<float> & beta, Weighti
 void get_rec_methods(const mxArray * options, RecMethods &MethodList)
 {
 	// Non-MAP/prior algorithms
-	MethodList.MLEM = getScalarBool(mxGetField(options, 0, "MLEM"), -61);
-	MethodList.OSEM = getScalarBool(mxGetField(options, 0, "OSEM"), -61);
-	MethodList.RAMLA = getScalarBool(mxGetField(options, 0, "RAMLA"), -61);
-	MethodList.MRAMLA = getScalarBool(mxGetField(options, 0, "MRAMLA"), -61);
-	MethodList.ROSEM = getScalarBool(mxGetField(options, 0, "ROSEM"), -61);
-	MethodList.RBI = getScalarBool(mxGetField(options, 0, "RBI"), -61);
-	MethodList.DRAMA = getScalarBool(mxGetField(options, 0, "DRAMA"), -61);
-	MethodList.COSEM = getScalarBool(mxGetField(options, 0, "COSEM"), -61);
-	MethodList.ECOSEM = getScalarBool(mxGetField(options, 0, "ECOSEM"), -61);
-	MethodList.ACOSEM = getScalarBool(mxGetField(options, 0, "ACOSEM"), -61);
+	MethodList.MLEM = getScalarBool(getField(options, 0, "MLEM"), -61);
+	MethodList.OSEM = getScalarBool(getField(options, 0, "OSEM"), -61);
+	MethodList.RAMLA = getScalarBool(getField(options, 0, "RAMLA"), -61);
+	MethodList.MRAMLA = getScalarBool(getField(options, 0, "MRAMLA"), -61);
+	MethodList.ROSEM = getScalarBool(getField(options, 0, "ROSEM"), -61);
+	MethodList.RBI = getScalarBool(getField(options, 0, "RBI"), -61);
+	MethodList.DRAMA = getScalarBool(getField(options, 0, "DRAMA"), -61);
+	MethodList.COSEM = getScalarBool(getField(options, 0, "COSEM"), -61);
+	MethodList.ECOSEM = getScalarBool(getField(options, 0, "ECOSEM"), -61);
+	MethodList.ACOSEM = getScalarBool(getField(options, 0, "ACOSEM"), -61);
+	MethodList.LSQR = getScalarBool(getField(options, 0, "LSQR"), -61);
 
 	// Priors
-	MethodList.MRP = getScalarBool(mxGetField(options, 0, "MRP"), -61);
-	MethodList.Quad = getScalarBool(mxGetField(options, 0, "quad"), -61);
-	MethodList.Huber = getScalarBool(mxGetField(options, 0, "Huber"), -61);
-	MethodList.L = getScalarBool(mxGetField(options, 0, "L"), -61);
-	MethodList.FMH = getScalarBool(mxGetField(options, 0, "FMH"), -61);
-	MethodList.WeightedMean = getScalarBool(mxGetField(options, 0, "weighted_mean"), -61);
-	MethodList.TV = getScalarBool(mxGetField(options, 0, "TV"), -61);
-	MethodList.AD = getScalarBool(mxGetField(options, 0, "AD"), -61);
-	MethodList.APLS = getScalarBool(mxGetField(options, 0, "APLS"), -61);
-	MethodList.TGV = getScalarBool(mxGetField(options, 0, "TGV"), -61);
-	MethodList.NLM = getScalarBool(mxGetField(options, 0, "NLM"), -61);
-	MethodList.RDP = getScalarBool(mxGetField(options, 0, "RDP"), -61);
+	MethodList.MRP = getScalarBool(getField(options, 0, "MRP"), -61);
+	MethodList.Quad = getScalarBool(getField(options, 0, "quad"), -61);
+	MethodList.Huber = getScalarBool(getField(options, 0, "Huber"), -61);
+	MethodList.L = getScalarBool(getField(options, 0, "L"), -61);
+	MethodList.FMH = getScalarBool(getField(options, 0, "FMH"), -61);
+	MethodList.WeightedMean = getScalarBool(getField(options, 0, "weighted_mean"), -61);
+	MethodList.TV = getScalarBool(getField(options, 0, "TV"), -61);
+	MethodList.AD = getScalarBool(getField(options, 0, "AD"), -61);
+	MethodList.APLS = getScalarBool(getField(options, 0, "APLS"), -61);
+	MethodList.TGV = getScalarBool(getField(options, 0, "TGV"), -61);
+	MethodList.NLM = getScalarBool(getField(options, 0, "NLM"), -61);
+	MethodList.RDP = getScalarBool(getField(options, 0, "RDP"), -61);
 
 	// MAP/prior-based algorithms
-	MethodList.OSLMLEM = getScalarBool(mxGetField(options, 0, "OSL_MLEM"), -61);
-	MethodList.OSLOSEM = getScalarBool(mxGetField(options, 0, "OSL_OSEM"), -61);
-	MethodList.BSREM = getScalarBool(mxGetField(options, 0, "BSREM"), -61);
-	MethodList.MBSREM = getScalarBool(mxGetField(options, 0, "MBSREM"), -61);
-	MethodList.ROSEMMAP = getScalarBool(mxGetField(options, 0, "ROSEM_MAP"), -61);
-	MethodList.RBIOSL = getScalarBool(mxGetField(options, 0, "OSL_RBI"), -61);
-	MethodList.OSLCOSEM = getScalarUInt32(mxGetField(options, 0, "OSL_COSEM"), -61);
-	MethodList.PKMA = getScalarBool(mxGetField(options, 0, "PKMA"), -61);
+	MethodList.OSLMLEM = getScalarBool(getField(options, 0, "OSL_MLEM"), -61);
+	MethodList.OSLOSEM = getScalarBool(getField(options, 0, "OSL_OSEM"), -61);
+	MethodList.BSREM = getScalarBool(getField(options, 0, "BSREM"), -61);
+	MethodList.MBSREM = getScalarBool(getField(options, 0, "MBSREM"), -61);
+	MethodList.ROSEMMAP = getScalarBool(getField(options, 0, "ROSEM_MAP"), -61);
+	MethodList.RBIOSL = getScalarBool(getField(options, 0, "OSL_RBI"), -61);
+	MethodList.OSLCOSEM = getScalarUInt32(getField(options, 0, "OSL_COSEM"), -61);
+	MethodList.PKMA = getScalarBool(getField(options, 0, "PKMA"), -61);
+	MethodList.CP = getScalarBool(getField(options, 0, "CP"), -61);
 
 	// Whether MAP/prior-based algorithms are used
-	MethodList.MAP = getScalarBool(mxGetField(options, 0, "MAP"), -61);
+	MethodList.MAP = getScalarBool(getField(options, 0, "MAP"), -61);
 
 	// Custom prior
-	MethodList.CUSTOM = getScalarBool(mxGetField(options, 0, "custom"), -61);
+	MethodList.CUSTOM = getScalarBool(getField(options, 0, "custom"), -61);
 }
 
 // Create the MATLAB output

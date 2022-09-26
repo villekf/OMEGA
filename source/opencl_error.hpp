@@ -35,6 +35,7 @@
 
 #define TH 100000000000.f
 #define TH32 100000.f
+#define NVOXELS 8
 
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
@@ -43,3 +44,5 @@ void gpuAssert(cl_int code, const char* file, int line);
 //const char *getErrorString(cl_int error);
 
 std::string header_to_string(const char* header_directory);
+
+void getBuildLog(cl_int& status, const cl::Context& context, const cl::Program& program);

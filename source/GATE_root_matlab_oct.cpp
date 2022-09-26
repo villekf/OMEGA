@@ -13,11 +13,12 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 	float* z1, float* z2, bool store_coordinates, const bool dynamic, const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, const uint32_t rings, 
 	const uint64_t sinoSize, const uint32_t Ndist, const uint32_t Nang, const uint32_t ringDifference, const uint32_t span, const octave_uint32* seg,
 	const uint64_t NT, const uint64_t TOFSize, const int32_t nDistSide, const bool storeRawData, octave_uint16* Sino, octave_uint16* SinoT, octave_uint16* SinoC, 
-	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose)
+	octave_uint16* SinoR, octave_uint16* SinoD, const int32_t detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose, 
+	const int32_t nLayers)
 {
 
 	Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
-		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
+		comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0, layerID1 = 0, layerID2 = 0;
 	Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 	Double_t time1 = alku, time2 = alku;
 
@@ -67,6 +68,8 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 		no_submodules = false;
 	Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 	Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
+	Coincidences->SetBranchAddress("layerID1", &layerID1);
+	Coincidences->SetBranchAddress("layerID2", &layerID2);
 	if (source) {
 		if (Coincidences->GetBranchStatus("sourcePosX1"))
 			Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
@@ -407,9 +410,18 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 			ring_number1 += ring_number1 / gapSize;
 			ring_number2 += ring_number2 / gapSize;
 		}
+		int32_t layer = 0;
+		if (nLayers > 1) {
+			if (layerID2 == 1 && layerID1 == 1)
+				layer = 3;
+			else if (layerID2 == 1 && layerID1 == 0)
+				layer = 1;
+			else if (layerID2 == 0 && layerID1 == 1)
+				layer = 2;
+		}
 		bool swap = false;
 		const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, TOFSize, 
-			vali, alku, detWPseudo, rings, bins, nDistSide, swap);
+			vali, alku, detWPseudo, rings, bins, nDistSide, swap, layer, nLayers);
 		if (sinoIndex >= 0) {
 			Sino[sinoIndex] = Sino[sinoIndex] + static_cast<octave_uint16>(1);
 			if (event_true && obtain_trues)
@@ -530,9 +542,18 @@ void histogram(octave_uint16* LL1, octave_uint16* LL2, octave_uint32* tpoints, d
 				ring_number1 += ring_number1 / gapSize;
 				ring_number2 += ring_number2 / gapSize;
 			}
+			int32_t layer = 0;
+			if (nLayers > 1) {
+				if (layerID2 == 1 && layerID1 == 1)
+					layer = 3;
+				else if (layerID2 == 1 && layerID1 == 0)
+					layer = 1;
+				else if (layerID2 == 0 && layerID1 == 1)
+					layer = 2;
+			}
 			bool swap = false;
 			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ringDifference, span, seg, time, NT, sinoSize,
-				vali, alku, detWPseudo, rings, bins, nDistSide, swap);
+				vali, alku, detWPseudo, rings, bins, nDistSide, swap, layer, nLayers);
 			if (sinoIndex >= 0) {
 				SinoD[sinoIndex] = SinoD[sinoIndex] + static_cast<octave_uint16>(1);
 			}
@@ -594,6 +615,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	double binSize = prhs(37).scalar_value();
 	double FWHM = prhs(38).scalar_value();
 	const bool verbose = prhs(39).scalar_value();
+	const int32_t nLayers = prhs(40).int32_scalar_value();
 	size_t outsize2 = (loppu - alku) / vali;
 	const uint8_t* scatter_components_p = reinterpret_cast<uint8_t*>(scatter_components.fortran_vec());
 	const double* time_intervals_p = time_intervals.fortran_vec();
@@ -783,7 +805,7 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		Coincidences, Nentries, time_intervals_p, int_loc_p, obtain_trues, store_scatter, store_randoms, scatter_components_p, Ltrues_p, Lscatter_p,
 		Lrandoms_p, trues_loc_p, Ndelays, randoms_correction, delay, Ldelay1_p, Ldelay2_p, int_loc_delay_p, tpoints_delay_p, randoms_loc_p, scatter_loc_p, 
 		x1_p, x2_p, y1_p, y1_p, z1_p, z2_p, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, 
-		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose);
+		span, seg_p, NT, TOFSize, nDistSide, storeRawData, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers);
 
 
 	delete Coincidences;

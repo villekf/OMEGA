@@ -1,21 +1,17 @@
-/**************************************************************************
-* General functions for all the OpenCL kernel files.
+/*******************************************************************************************************************************************
+* General functions for all the OpenCL kernel files. Contains functions that compute the necessary source and detector coordinates, atomics,
+* forward and backward projections. Special functions are available for different cases such as TOF, listmode data, CT data, etc.
 *
-* Copyright (C) 2020  Ville-Veikko Wettenhovi
+* Copyright (C) 2022 Ville-Veikko Wettenhovi
 *
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
+* This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 *
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program. If not, see <https://www.gnu.org/licenses/>.
-***************************************************************************/
+* You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*******************************************************************************************************************************************/
 //#pragma once
 
 #ifdef ATOMIC
@@ -39,11 +35,26 @@
 #ifdef VOL
 #define CC 1e3f
 #endif
-#define TRAPZ_BINS 5.f
+#define TRAPZ_BINS 4.f
+#ifdef PITCH
+#define NA 6
+#else
+#define NA 2
+#endif
+#if defined(PTYPE4) || defined(PROJ5)
+#define T float4
+__constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
+#else
+#define T int4
+__constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+#endif
+
+__constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_NONE;
+
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
-#if !defined(ATOMIC) && !defined(ATOMIC32)
+#if !defined(ATOMIC) && !defined(ATOMIC32) && !defined(PTYPE4)
 void atomicAdd_g_f(volatile __global float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -58,10 +69,12 @@ void atomicAdd_g_f(volatile __global float *addr, float val) {
 }
 #endif
 
-#ifdef AF
+#if defined(AF) && !defined(PTYPE4) && !defined(PROJ5)
 // Computes the forward projection
-void forwardProject(const float local_ele, float* ax, const uint kk, const uint local_ind, const __global float* d_OSEM) {
-	ax[kk] += (local_ele * d_OSEM[local_ind]);
+//void forwardProject(const float local_ele, float* ax, const uint kk, const uint local_ind, const __global float* d_OSEM) {
+void forwardProject(const float local_ele, float* ax, const uint kk, const T local_ind, __read_only image3d_t d_OSEM) {
+	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).x);
+	//ax[kk] += (local_ele * d_OSEM[local_ind]);
 }
 
 // Computes y / (x + r), where x is the forward projection and r randoms and/or scatter
@@ -76,6 +89,7 @@ void yDivFP(float* ax, const float d_Sino, const uint kk, const float local_rand
 #endif
 }
 
+// Same as above, but for special MBSREM/MRAMLA case
 #ifdef MRAMLA
 void yDivFPMBSREM(float* ax, const float d_Sino, const uint kk, const float local_rand, const float d_epsilon_mramla) {
 #ifdef RANDOMS
@@ -99,17 +113,21 @@ typedef struct _RecMethodsOpenCL {
 
 #ifndef MBSREM
 // Denominator (forward projection)
-void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
+//void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
+void denominator(float local_ele, float* ax, int4 localInd, const uint d_N, __read_only image3d_t d_OSEM) {
 #ifdef NREKOS1
-	forwardProject(local_ele, ax, 0, local_ind, d_OSEM);
+	forwardProject(local_ele, ax, 0, localInd, d_OSEM);
 #elif defined(NREKOS2)
-	forwardProject(local_ele, ax, 0, local_ind, d_OSEM);
-	forwardProject(local_ele, ax, 1, local_ind + d_N, d_OSEM);
+	forwardProject(local_ele, ax, 0, localInd, d_OSEM);
+	localInd.z += d_N;
+	forwardProject(local_ele, ax, 1, localInd, d_OSEM);
+	//forwardProject(local_ele, ax, 1, local_ind + d_N, d_OSEM);
 #else
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
-		forwardProject(local_ele, ax, kk, local_ind, d_OSEM);
-		local_ind += d_N;
+		forwardProject(local_ele, ax, kk, localInd, d_OSEM);
+		localInd.z += d_N;
+		//local_ind += d_N;
 	}
 #endif
 }
@@ -261,6 +279,7 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 
 #else
 
+#if !defined(PTYPE4) && !defined(PROJ5)
 // Nominator (backprojection), multi-GPU version
 void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
 	const size_t idx) {
@@ -283,253 +302,331 @@ void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, cons
 #endif
 }
 #endif
+#endif
 
-#if defined(MBSREM) || !defined(AF)
+#if (defined(MBSREM) || !defined(AF)) && !defined(PTYPE4) && !defined(PROJ5)
 // Denominator (forward projection), multi-GPU version
-void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
-	*axOSEM += (local_ele * *d_OSEM);
+//void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
+void denominator_multi(const float local_ele, float* axOSEM, const float d_OSEM) {
+	*axOSEM += (local_ele * d_OSEM);
+	//*axOSEM += (local_ele * *d_OSEM);
 }
 #endif
 
-#ifdef CT
-void get_detector_coordinates_CT(const __global float* x, const __global float* y, const __global float* z, const uint size_x, const size_t idx, const uint subsets,
-	__constant float* angles, const __global uint* d_xyindex, const __global ushort* d_zindex, const uint size_z, const float dPitch, const long nProjections,
-	float* xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
+// Detector coordinates for listmode data
 #ifdef LISTMODE
-		*xs = x[idx];
-		*xd = x[idx + size_x];
-		*ys = y[idx];
-		*yd = y[idx + size_x];
-		*zs = z[idx];
-		*zd = z[idx + size_x];
-#else
-		if (subsets > 1U) {
-			const uint lu = d_xyindex[idx];
-			*xs = x[d_zindex[idx] + nProjections];
-			*xd = x[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_cos(angles[d_zindex[idx]]);
-			*ys = y[d_zindex[idx] + nProjections];
-			*yd = y[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_sin(angles[d_zindex[idx]]);
-			*zs = z[d_zindex[idx] + nProjections];
-			*zd = z[d_zindex[idx]] + dPitch * convert_float(lu / size_x);
-		}
-		else {
-			const long ll = idx / ((size_x) * (size_z));
-			const long lu = idx % ((size_x) * (size_z));
-			*xs = x[ll + nProjections];
-			*xd = x[ll] - dPitch * convert_float(lu % size_x) * native_cos(angles[ll]);
-			*ys = y[ll + nProjections];
-			*yd = y[ll] - dPitch * convert_float(lu % size_x) * native_sin(angles[ll]);
-			*zs = z[ll + nProjections];
-			*zd = z[ll] + dPitch * convert_float(lu / size_x);
-		}
+void getDetectorCoordinatesListmode(const __global float* d_xyz, float3* s, float3* d, const size_t idx
+#if defined(N_RAYS)
+	, const int lorXY, const int lorZ, const float2 cr
+#endif
+) {
+	const size_t i = idx * 6;
+	*s = (float3)(d_xyz[i], d_xyz[i + 1], d_xyz[i + 2]);
+	*d = (float3)(d_xyz[i + 3], d_xyz[i + 4], d_xyz[i + 5]);
+#if defined(N_RAYS)
+	if (N_RAYS3D > 1)
+		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+	if (N_RAYS2D > 1)
+		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
 #endif
 }
+#endif
+
+// Detector coordinates for CT or SPECT data
+#if defined(CT) || (defined(SPECT) && !defined(SPECTMASK))
+void getDetectorCoordinatesCT(__constant float* d_xyz, __constant float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
+	const uint d_sizey, const float2 d_dPitch
+#ifdef PROJ5
+	, float3* dR, float3* dL, float3* dU, float3* dD
+#endif
+) {
+	int id = i.z * 6;
+	*s = (float3)(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
+	*d = (float3)(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
+	//*s = vload3(i.z * 2, d_xyz);
+	//*d = vload3(i.z * 2, &d_xyz[3]);
+	const float2 indeksi = { convert_float(i.x) - convert_float(d_size_x) / 2.f + .5f, convert_float(i.y) - convert_float(d_sizey) / 2.f + .5f };
+	id = i.z * NA;
+#if defined(PITCH)
+	const float3 apuX = (float3)(d_uv[id], d_uv[id + 1], d_uv[id + 2]);
+	const float3 apuY = (float3)(d_uv[id + 3], d_uv[id + 4], d_uv[id + 5]);
+	*d += apuX * indeksi.x + apuY * indeksi.y;
+#if defined(PROJ5) && defined(FP)
+	*dR = *d - apuX * 0.5f;
+	*dL = *d + apuX * 0.5f;
+	*dU = *d + apuY * 0.5f;
+	*dD = *d - apuY * 0.5f;
+	//*dR = (float3)((*d).x - apuX.x * 0.5f, (*d).y - apuX.y * 0.5f, (*d).z);
+	//*dL = (float3)((*d).x + apuX.x * 0.5f, (*d).y + apuX.y * 0.5f, (*d).z);
+	//*dU = (float3)((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
+	//*dD = (float3)((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
+#endif
+	//*d.x += indeksi.x * d_uv[i.z * NA] + indeksi.y * d_uv[i.z * NA + 1];
+	//*d.y += indeksi.x * d_uv[i.z * NA + 2] + indeksi.y * d_uv[i.z * NA + 3];
+	//*d.z += indeksi.x * d_uv[i.z * NA + 4] + indeksi.y * d_uv[i.z * NA + 5];
 #else
-#if defined(RAW) && !defined(N_RAYS)
+	const float apuX = d_uv[id];
+	const float apuY = d_uv[id + 1];
+	//if (i.x == 0 && i.y == 0 && i.z == 0) {
+	//	printf("apuX = % f\n", apuX);
+	//	printf("apuY = % f\n", apuY);
+	//	printf("indeksi.x = %f\n", indeksi.x);
+	//	printf("indeksi.y = %f\n", indeksi.y);
+	//	printf("indeksi.x * apuX = %f\n", indeksi.x * apuX);
+	//	printf("indeksi.x * apuY = %f\n", indeksi.x * apuY);
+	//}
+	(*d).x += indeksi.x * apuX;
+	(*d).y += indeksi.x * apuY;
+	(*d).z += indeksi.y * d_dPitch.y;
+#if defined(PROJ5) && defined(FP)
+	*dR = (float3)((*d).x - apuX * 0.5f, (*d).y - apuY * 0.5f, (*d).z);
+	*dL = (float3)((*d).x + apuX * 0.5f, (*d).y + apuY * 0.5f, (*d).z);
+	*dU = (float3)((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
+	*dD = (float3)((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
+#endif
+#endif
+}
+
+
+//void get_detector_coordinates_CT_const(__constant float* x, __constant float* y, __constant float* z, const uint size_x, const size_t idx, const uint subsets,
+//	__constant float* angles, const __global uint* d_xyindex, const __global ushort* d_zindex, const uint size_z, const float dPitch, const long nProjections,
+//	float* xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
+//#ifdef LISTMODE
+//	* xs = x[idx];
+//	*xd = x[idx + size_x];
+//	*ys = y[idx];
+//	*yd = y[idx + size_x];
+//	*zs = z[idx];
+//	*zd = z[idx + size_x];
+//#else
+//	if (subsets > 1U) {
+//		const uint lu = d_xyindex[idx];
+//		*xs = x[d_zindex[idx] + nProjections];
+//		*xd = x[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_cos(angles[d_zindex[idx]]);
+//		*ys = y[d_zindex[idx] + nProjections];
+//		*yd = y[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_sin(angles[d_zindex[idx]]);
+//		*zs = z[d_zindex[idx] + nProjections];
+//		*zd = z[d_zindex[idx]] + dPitch * convert_float(lu / size_x);
+//	}
+//	else {
+//		const long ll = idx / ((size_x) * (size_z));
+//		const long lu = idx % ((size_x) * (size_z));
+//		*xs = x[ll + nProjections];
+//		*xd = x[ll] - dPitch * convert_float(lu % size_x) * native_cos(angles[ll]);
+//		*ys = y[ll + nProjections];
+//		*yd = y[ll] - dPitch * convert_float(lu % size_x) * native_sin(angles[ll]);
+//		*zs = z[ll + nProjections];
+//		*zd = z[ll] + dPitch * convert_float(lu / size_x);
+//		}
+//#endif
+//}
+#else
+#if defined(RAW)
 // Get the detector coordinates for the current (raw) measurement
-void get_detector_coordinates_raw(const __global float *d_x, const __global float *d_y, const __global float *d_zdet, const __global ushort* d_L, 
-	const uint d_det_per_ring, const size_t idx, __constant uint *d_pseudos, const uint d_pRows, float *xs, float* xd, float* ys, float* yd, float* zs, 
-	float* zd) {
+void getDetectorCoordinatesRaw(__constant float *d_xy, __constant float *d_z, const __global ushort* d_L,
+	const uint d_detPerRing, const size_t idx, float3* s, float3* d
+#if defined(N_RAYS)
+	, const int lorXY, const int lorZ, const float2 cr
+#endif
+) {
 	// Get the current detector numbers
-	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
-	const uint detektorit2 = convert_uint(d_L[idx * 2u + 1u]) - 1u;
+	uint2 detektorit = { convert_uint(d_L[idx * 2u]), convert_uint(d_L[idx * 2u + 1u])} - 1U;
 	// Which ring
-	const uint loop1 = ((detektorit1) / d_det_per_ring);
-	const uint loop2 = ((detektorit2) / d_det_per_ring);
+	const uint2 loop = ((detektorit) / d_detPerRing);
 	// same ring
-	if (loop1 == loop2) {
-		*zs = d_zdet[loop1];
-		*zd = *zs;
+	(*s).z = d_z[loop.x];
+	if (loop.x == loop.y) {
+		(*d).z = *s.z;
 	}
 	else {
-		*zs = d_zdet[loop1];
-		*zd = d_zdet[loop2];
+		(*d).z = d_z[loop.y];
 	}
+	detektorit -= loop * d_detPerRing;
 	// Get the current x- and y-detector coordinates
-	*xs = d_x[detektorit1 - d_det_per_ring * (loop1)];
-	*xd = d_x[detektorit2 - d_det_per_ring * (loop2)];
-	*ys = d_y[detektorit1 - d_det_per_ring * (loop1)];
-	*yd = d_y[detektorit2 - d_det_per_ring * (loop2)];
+	(*s).x = d_xy[detektorit.x * 2];
+	(*s).y = d_xy[detektorit.x * 2 + 1];
+	(*d).x = d_xy[detektorit.y * 2];
+	(*d).y = d_xy[detektorit.y * 2 + 1];
+#if defined(N_RAYS)
+	if (N_RAYS3D > 1)
+		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+	if (N_RAYS2D > 1)
+		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
+#endif
 }
 #endif
 
 
 
-#if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
-// Get the detector coordinates for the current (raw) measurement
-void get_detector_coordinates_raw_multiray(const __global float* d_x, const __global float* d_y, const __global float* d_zdet, const __global ushort* d_L, 
-	const uint d_det_per_ring, const size_t idx, __constant uint* d_pseudos, const uint d_pRows, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd,
-	const ushort lor, const float cr_pz) {
-	uint ps = 0;
-	// Get the current detector numbers
-	const uint detektorit1 = convert_uint(d_L[idx * 2u]) - 1u;
-	const uint detektorit2 = convert_uint(d_L[idx * 2u + 1u]) - 1u;
-	// Which ring
-	const uint loop1 = ((detektorit1) / d_det_per_ring);
-	const uint loop2 = ((detektorit2) / d_det_per_ring);
-	// same ring
-	if (loop1 == loop2) {
-		*zs = d_zdet[loop1];
-		*zd = *zs;
-	}
-	else {
-		*zs = d_zdet[loop1];
-		*zd = d_zdet[loop2];
-	}
-	// Get the current x- and y-detector coordinates
-	if (N_RAYS3D > 1) {
-		ushort rays3D = N_RAYS3D;
-		if (N_RAYS3D % 2 == 0)
-			rays3D++;
-		int r[N_RAYS3D + 1];
-		int hh = 0;
-		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
-			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
-			else {
-				r[hh] = kk;
-				hh++;
-			}
-		}
-		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
-		*zs += (cr_pz * rr);
-		*zd += (cr_pz * rr);
-	}
-	if (N_RAYS2D > 1) {
-		const ushort ll = (lor - 1) / N_RAYS3D;
-		*xs = d_x[detektorit1 - d_det_per_ring * loop1 + d_det_per_ring * ll];
-		*xd = d_x[detektorit2 - d_det_per_ring * loop2 + d_det_per_ring * ll];
-		*ys = d_y[detektorit1 - d_det_per_ring * loop1 + d_det_per_ring * ll];
-		*yd = d_y[detektorit2 - d_det_per_ring * loop2 + d_det_per_ring * ll];
-	}
-	else {
-		*xs = d_x[detektorit1 - d_det_per_ring * loop1];
-		*xd = d_x[detektorit2 - d_det_per_ring * loop2];
-		*ys = d_y[detektorit1 - d_det_per_ring * loop1];
-		*yd = d_y[detektorit2 - d_det_per_ring * loop2];
-	}
-}
-#endif
+//#if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
+//// Get the detector coordinates for the current (raw) measurement (multi-ray case)
+//void get_detector_coordinates_raw_multiray(__constant float* d_xy, __constant float* d_z, const __global ushort* d_L,
+//	const uint d_detPerRing, const size_t idx, float3* s, float3* d, const ushort lor, const float cr_pz) {
+//	// Get the current detector numbers
+//	uint2 detektorit = { convert_uint(d_L[idx * 2u]), convert_uint(d_L[idx * 2u + 1u]) } - 1U;
+//	// Which ring
+//	const uint2 loop = ((detektorit) / d_detPerRing);
+//	// same ring
+//	(*s).z = d_z[loop.x];
+//	if (loop.x == loop.y) {
+//		(*d).z = *s.z;
+//	}
+//	else {
+//		(*d).z = d_z[loop.y];
+//	}
+//	// Get the current x- and y-detector coordinates
+//	if (N_RAYS3D > 1) {
+//		ushort rays3D = N_RAYS3D;
+//		if (N_RAYS3D % 2 == 0)
+//			rays3D++;
+//		int r[N_RAYS3D + 1];
+//		int hh = 0;
+//		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
+//			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
+//			else {
+//				r[hh] = kk;
+//				hh++;
+//			}
+//		}
+//		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]) * cr_pz;
+//		(*s).z += rr;
+//		(*d).z += rr;
+//	}
+//	detektorit -= loop * d_detPerRing;
+//	if (N_RAYS2D > 1) {
+//		const uint ll = (lor - 1) / N_RAYS3D * d_detPerRing;
+//		detektorit += ll;
+//	}
+//	(*s).x = d_xy[detektorit.x * 2];
+//	(*s).y = d_xy[detektorit.x * 2 + 1];
+//	(*d).x = d_xy[detektorit.y * 2];
+//	(*d).y = d_xy[detektorit.y * 2 + 1];
+//}
+//#endif
 
-#if !defined(N_RAYS) && (!defined(RAW) || defined(LISTMODE))
+#if !defined(RAW) && !defined(LISTMODE) && !defined(CT) && !defined(SPECT) && !defined(PET) && !defined(PTYPE4) && !defined(PROJ5)
 // Get the detector coordinates for the current sinogram bin
-void get_detector_coordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const uint d_size_x, const size_t idx,
-	const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float *d_x, const __global float *d_y,
-	const __global float *d_zdet, const ulong cumsum) {
+void getDetectorCoordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const size_t idx,
+	float3* s, float3* d, __constant float *d_xy, __constant float *d_z
+#if defined(N_RAYS)
+	, const int lorXY, const int lorZ, const float2 cr
+#endif
+) {
 
-#ifdef LISTMODE
-	*xs = d_x[idx + cumsum];
-	*xd = d_x[idx + d_size_x + cumsum];
-	*ys = d_y[idx + cumsum];
-	*yd = d_y[idx + d_size_x + cumsum];
-	*zs = d_zdet[idx + cumsum];
-	*zd = d_zdet[idx + d_size_x + cumsum];
-#else
-	if (d_xyindex[idx] >= d_size_x) {
-		*xs = d_x[d_xyindex[idx]];
-		*xd = d_x[d_xyindex[idx] - d_size_x];
-		*ys = d_y[d_xyindex[idx]];
-		*yd = d_y[d_xyindex[idx] - d_size_x];
-	}
-	else {
-		*xs = d_x[d_xyindex[idx]];
-		*xd = d_x[d_xyindex[idx] + d_size_x];
-		*ys = d_y[d_xyindex[idx]];
-		*yd = d_y[d_xyindex[idx] + d_size_x];
-	}
-	if (d_zindex[idx] >= d_TotSinos) {
-		*zs = d_zdet[d_zindex[idx]];
-		*zd = d_zdet[d_zindex[idx] - d_TotSinos];
-	}
-	else {
-		*zs = d_zdet[d_zindex[idx]];
-		*zd = d_zdet[d_zindex[idx] + d_TotSinos];
-	}
+	const uint ind = d_xyindex[idx] * 4;
+	const uint indz = d_zindex[idx] * 2;
+	(*s).x = d_xy[ind];
+	(*s).y = d_xy[ind + 1];
+	(*d).x = d_xy[ind + 2];
+	(*d).y = d_xy[ind + 3];
+	(*s).z = d_z[indz];
+	(*d).z = d_z[indz + 1];
+#if defined(N_RAYS)
+	if (N_RAYS3D > 1)
+		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+	if (N_RAYS2D > 1)
+		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
+#endif
+}
+#endif
+#endif
+
+#if defined(N_RAYS)
+void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const float cr) {
+	float interval = cr / (convert_float(N_RAYS2D * 2));
+	(*s).x += (interval - cr / 2.f);
+	(*d).x += (interval - cr / 2.f);
+	(*s).y += (interval - cr / 2.f);
+	(*d).y += (interval - cr / 2.f);
+	interval *= 2.f;
+	(*s).x += interval * lor;
+	(*d).x += interval * lor;
+	(*s).y += interval * lor;
+	(*d).y += interval * lor;
+}
+
+void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const float cr) {
+	float interval = cr / (convert_float(N_RAYS3D * 2));
+	(*s).z += (interval - cr / 2.f);
+	(*d).z += (interval - cr / 2.f);
+	interval *= 2.f;
+	(*s).z += interval * lor;
+	(*d).z += interval * lor;
+}
+#endif
+
+//#if defined(N_RAYS) && !defined(RAW) && !defined(LISTMODE) && defined(SUBSETS)
+//// Get the detector coordinates for the current sinogram bin (multi-ray case)
+//void getDetectorCoordinatesMultiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x, const size_t idx,
+//	float3* s, float3* d, __constant float* d_xy, __constant float* d_z, const int lorXY, const int lorZ, const float2 cr) {
+//
+//	const uint indz = d_zindex[idx] * 2;
+//	(*s).z = d_z[indz];
+//	(*d).z = d_z[indz + 1];
+//	// More than 1 axial ray
+//	if (N_RAYS3D > 1) {
+//		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+//		//int r[N_RAYS3D + 1];
+//		//int hh = 0;
+//		//for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
+//		//	if (kk == 0 && (N_RAYS3D % 2 == 0)) {
+//		//		continue;
+//		//	}
+//		//	else {
+//		//		r[hh] = kk;
+//		//		hh++;
+//		//	}
+//		//}
+//		//const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
+//	}
+//	uint ind = d_xyindex[idx] * 4;
+//	(*s).x = d_xy[ind];
+//	(*s).y = d_xy[ind + 1];
+//	(*d).x = d_xy[ind + 2];
+//	(*d).y = d_xy[ind + 3];
+//	if (N_RAYS2D > 1) {
+//		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
+//	}
+//}
+//#endif
+
+//#if defined(N_RAYS) && !defined(RAW) && !defined(LISTMODE) && !defined(SUBSETS)
+//void getDetectorCoordinatesFullSinogramMultiray(const uint d_size_x, const int3 i, float3* s, float3* d, __constant float* d_xy,
+//	__constant float* d_z) {
+//	const int id = (i.x + i.y * d_size_x) * 4;
+//	const int idz = i.z * 2;
+//	*s = (float3)(d_xy[id], d_xy[id + 1], d_z[idz]);
+//	*d = (float3)(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
+//	if (N_RAYS3D > 1)
+//		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+//	if (N_RAYS2D > 1)
+//		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
+//}
+//#endif
+
+#if !defined(PTYPE4) && (defined(FIND_LORS) || !defined(SUBSETS)) && !defined(PROJ5)
+//#ifdef FIND_LORS
+// Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
+void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, __constant float* d_xy,
+	__constant float* d_z
+#if defined(N_RAYS)
+	, const int lorXY, const int lorZ, const float2 cr
+#endif
+) {
+	const int id = (i.x + i.y * d_size_x) * 4;
+	const int idz = i.z * 2;
+	*s = (float3)(d_xy[id], d_xy[id + 1], d_z[idz]);
+	*d = (float3)(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
+#if defined(N_RAYS)
+	if (N_RAYS3D > 1)
+		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
+	if (N_RAYS2D > 1)
+		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
 #endif
 }
 #endif
 
-#if defined(N_RAYS) && !defined(RAW)
-// Get the detector coordinates for the current sinogram bin
-void get_detector_coordinates_multiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x, const size_t idx,
-	const ushort d_TotSinos, float* xs, float* xd, float* ys, float* yd, float* zs, float* zd, const __global float* d_x, const __global float* d_y,
-	const __global float* d_zdet, const ushort lor, const float cr_pz) {
-
-	if (N_RAYS3D > 1) {
-		ushort rays3D = N_RAYS3D;
-		if (N_RAYS3D % 2 == 0)
-			rays3D++;
-		int r[N_RAYS3D + 1];
-		int hh = 0;
-		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
-			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
-			else {
-				r[hh] = kk;
-				hh++;
-			}
-		}
-		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
-		*zs = d_zdet[d_zindex[idx]] + cr_pz * rr;
-		if (d_zindex[idx] >= d_TotSinos) {
-			*zd = d_zdet[d_zindex[idx] - d_TotSinos] + cr_pz * rr;
-		}
-		else {
-			*zd = d_zdet[d_zindex[idx] + d_TotSinos] + cr_pz * rr;
-		}
-	}
-	else {
-		*zs = d_zdet[d_zindex[idx]];
-		if (d_zindex[idx] >= d_TotSinos) {
-			*zd = d_zdet[d_zindex[idx] - d_TotSinos];
-		}
-		else {
-			*zd = d_zdet[d_zindex[idx] + d_TotSinos];
-		}
-	}
-	if (N_RAYS2D > 1) {
-		const ushort ll = (lor - 1) / N_RAYS3D * 2;
-		*xs = d_x[d_xyindex[idx] + d_size_x * ll];
-		*ys = d_y[d_xyindex[idx] + d_size_x * ll];
-		if (d_xyindex[idx] >= d_size_x) {
-			*xd = d_x[d_xyindex[idx] + d_size_x * (ll - 1)];
-			*yd = d_y[d_xyindex[idx] + d_size_x * (ll - 1)];
-		}
-		else {
-			*xd = d_x[d_xyindex[idx] + d_size_x * (ll + 1)];
-			*yd = d_y[d_xyindex[idx] + d_size_x * (ll + 1)];
-		}
-	}
-	else {
-		*xs = d_x[d_xyindex[idx]];
-		*ys = d_y[d_xyindex[idx]];
-		if (d_xyindex[idx] >= d_size_x) {
-			*xd = d_x[d_xyindex[idx] - d_size_x];
-			*yd = d_y[d_xyindex[idx] - d_size_x];
-		}
-		else {
-			*xd = d_x[d_xyindex[idx] + d_size_x];
-			*yd = d_y[d_xyindex[idx] + d_size_x];
-		}
-	}
-}
-#endif
-
-#ifdef FIND_LORS
-// Get the detector coordinates for the current measurement (precomputation phase)
-void get_detector_coordinates_precomp(const uint d_size_x, const size_t idx, const ushort d_TotSinos, float *xs, float* xd, float* ys, float* yd, float* zs,
-	float* zd, const __global float *d_x, const __global float *d_y, const __global float *d_zdet) {
-
-	const uint id = idx % d_size_x;
-	const uint idz = idx / d_size_x;
-	*xs = d_x[id];
-	*xd = d_x[id + d_size_x];
-	*ys = d_y[id];
-	*yd = d_y[id + d_size_x];
-	*zs = d_zdet[idz];
-	*zd = d_zdet[idz + d_TotSinos];
-}
-#endif
-#endif
-
+#if !defined(PTYPE4) && !defined(PROJ5)
 // Compute the voxel index where the current perpendicular measurement starts
 int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
 	int tempi = 0;
@@ -546,23 +643,41 @@ int perpendicular_start(const float d_b, const float d, const float d_d, const u
 
 // Compute the probability for the perpendicular elements
 void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
-	const __global float* d_atten, float* templ_ijk, uint* tempk, const uint z_loop, const uint d_N, const uint d_NN, 
-	const __global float* d_norm, const size_t idx, const float global_factor, const __global float* d_scat) {
+	float* templ_ijk, int4* tempi, int* z_loop, const uint d_N, const uint d_NN,
+	const __global float* d_norm, const size_t idx, const float global_factor, const __global float* d_scat
+#if !defined(CT) && defined(ATN)
+	, __read_only image3d_t d_atten
+#endif
+) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
-	*tempk = convert_uint_sat(apu) * d_N + z_loop * d_N1 * d_N2;
+	*z_loop = convert_int_sat(apu) * d_N + *z_loop * d_N1 * d_N2;
+	if (d_N == 1)
+		(*tempi).x = apu;
+	else
+		(*tempi).y = apu;
 #ifdef CT
 	* templ_ijk = d_d2;
 #else
 	float temp = d_d2 * convert_float(d_N2);
 	// Probability
+#if !defined(N_RAYS)
 	temp = 1.f / temp;
+#endif
 #ifdef ATN
 		float jelppi = 0.f;
 		for (uint iii = 0u; iii < d_N2; iii++) {
-			jelppi += (*templ_ijk * (-d_atten[*tempk + iii * d_NN]));
+			//jelppi += (*templ_ijk * (-d_atten[*tempk + iii * d_NN]));
+			if (d_NN == 1)
+				(*tempi).x = iii;
+			else
+				(*tempj).y = iii;
+			jelppi += (*templ_ijk * (-read_imagef(d_atten, samplerIm, *tempi).x));
 		}
+#if !defined(N_RAYS)
 		temp *= native_exp(jelppi);
 #endif
+#endif
+#if !defined(N_RAYS)
 #ifdef NORM
 		temp *= d_norm[idx];
 #endif
@@ -571,6 +686,9 @@ void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, 
 #endif
 	temp *= global_factor;
 	*templ_ijk = temp * d_d2;
+#else
+	*templ_ijk = temp;
+#endif
 #endif
 }
 
@@ -702,8 +820,10 @@ float compute_matrix_element(const float t0, const float tc, const float L) {
 }
 
 void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
-	const uint Nyx, const __global float* d_atten) {
-	*jelppi += (compute_matrix_element(t0, *tc, LL) * -d_atten[tempi + tempj * Nx + Nyx * tempk]);
+//void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
+	//const uint Nyx, const __global float* d_atten) {
+	const uint Nyx, __read_only image3d_t d_atten) {
+	*jelppi += (compute_matrix_element(t0, *tc, LL) * -read_imagef(d_atten, samplerIm, (int4)(tempi, tempj, tempk, 0)).x);
 	*tc = t0;
 }
 #endif
@@ -742,9 +862,10 @@ int voxel_index(const float pt, const float diff, const float d, const float apu
 
 bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
 	const float d1, const float d2, const uint N1, const uint N2, int* temp1, int* temp2, float* t1u, float* t2u, uint* Np,
-	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20) {
+	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20, bool* xy) {
 	// If neither x- nor y-directions are perpendicular
 // Correspond to the equations (9) and (10) from reference [2]
+	//const float2 apuT = { b1 - xs, b2 - ys };
 	const float apu_tx = b1 - xs;
 	const float apu_ty = b2 - ys;
 	*t10 = (apu_tx) / (diff1);
@@ -761,6 +882,20 @@ bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const
 	// (3-4)
 	*tc = fmax(txmin, tymin);
 	const float tmax = fmin(txmax, tymax);
+#ifdef ORTH
+	if (*tc == *t10 || *tc == txback)
+		*xy = true;
+	else
+		*xy = false;
+#endif
+	//int3 i = { get_global_id(0), get_global_id(1), get_global_id(2) };
+	//if (i.z == 0 && i.y == 100 && i.x == 150) {
+	//	printf("tx0 = %f\n", *t10);
+	//	printf("ty0 = %f\n", *t20);
+	//	printf("tc = %f\n", *tc);
+	//	printf("tBack.x = %f\n", txback);
+	//	printf("tBack.y = %f\n", tyback);
+	//}
 
 	uint imin, imax, jmin, jmax;
 
@@ -816,37 +951,61 @@ bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const
 			return true;
 	}
 
-	if (*tc == *t10 || *tc == *t20)
-		*tc -= 1e-7f;
+	//if (*tc == *t10 || *tc == *t20)
+	//	*tc -= 1e-7f;
 
 	return false;
 }
 
-bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
-	const float maxxx, const float maxyy, const float bzb, const float dx, const float dy, const float dz,
-	const uint Nx, const uint Ny, const uint Nz, int* tempi, int* tempj, int* tempk, float* tyu, float* txu, float* tzu,
-	uint* Np, const int TYYPPI, const float ys, const float xs, const float yd, const float xd, const float zs, const float zd, float* tc, 
-	int* iu, int* ju, int* ku, float* tx0, float* ty0, float* tz0) {
+//bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const float x_diff, const float y_diff, const float z_diff,
+//	const float maxxx, const float maxyy, const float bzb, const float dx, const float dy, const float dz,
+//	const uint Nx, const uint Ny, const uint Nz, int* tempi, int* tempj, int* tempk, float* tyu, float* txu, float* tzu,
+//	uint* Np, const int TYYPPI, const float ys, const float xs, const float yd, const float xd, const float zs, const float zd, float* tc, 
+//	int* iu, int* ju, int* ku, float* tx0, float* ty0, float* tz0) {
+bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, const float3 dd, const uint3 N, int* tempi, int* tempj, int* tempk, 
+	float* txu, float* tyu, float* tzu, uint* Np, const int TYYPPI, const float3 s, const float3 d, float* tc, int* i, int* j, int* k, float* tx0, 
+	float* ty0, float* tz0, bool* xy) {
 
-	const float apu_tx = bx - xs;
-	const float apu_ty = by - ys;
-	const float apu_tz = bz - zs;
-	*tx0 = (apu_tx) / (x_diff);
-	*ty0 = (apu_ty) / (y_diff);
-	*tz0 = (apu_tz) / (z_diff);
-	const float txback = (maxxx - xs) / (x_diff);
-	const float tyback = (maxyy - ys) / (y_diff);
-	const float tzback = (bzb - zs) / (z_diff);
+	const float3 apuT = b - s;
+	const float3 t0 = native_divide(apuT, diff);
+	//*tx0 = (apu_tx) / (x_diff);
+	//*ty0 = (apu_ty) / (y_diff);
+	//*tz0 = (apu_tz) / (z_diff);
+	const float3 tBack = native_divide(max - s, diff);
+	//const float txback = (maxxx - xs) / (x_diff);
+	//const float tyback = (maxyy - ys) / (y_diff);
+	//const float tzback = (bzb - zs) / (z_diff);
 
-	const float txmin = fmin(*tx0, txback);
-	const float txmax = fmax(*tx0, txback);
-	const float tymin = fmin(*ty0, tyback);
-	const float tymax = fmax(*ty0, tyback);
-	const float tzmin = fmin(*tz0, tzback);
-	const float tzmax = fmax(*tz0, tzback);
+	const float3 tMin = fmin(t0, tBack);
+	const float3 tMax = fmax(t0, tBack);
+	//const float txmin = fmin(*tx0, txback);
+	//const float txmax = fmax(*tx0, txback);
+	//const float tymin = fmin(*ty0, tyback);
+	//const float tymax = fmax(*ty0, tyback);
+	//const float tzmin = fmin(*tz0, tzback);
+	//const float tzmax = fmax(*tz0, tzback);
 
-	*tc = fmax(fmax(txmin, tzmin), tymin);
-	const float tmax = fmin(fmin(txmax, tzmax), tymax);
+
+
+	*tc = fmax(fmax(tMin.x, tMin.z), tMin.y);
+	const float tmax = fmin(fmin(tMax.x, tMax.z), tMax.y);
+	*tx0 = t0.x;
+	*ty0 = t0.y;
+	*tz0 = t0.z;
+#ifdef ORTH
+	if (*tc == *tx0 || *tc == tBack.x)
+		*xy = true;
+	else
+		*xy = false;
+	//int3 ii = { get_global_id(0), get_global_id(1), get_global_id(2) };
+	//if (ii.z == 543 && ii.y == 4 && ii.x == 115) {
+	//	printf("tx0 = %f\n", *tx0);
+	//	printf("ty0 = %f\n", *ty0);
+	//	printf("tc = %f\n", *tc);
+	//	printf("tBack.x = %f\n", tBack.x);
+	//	printf("tBack.y = %f\n", tBack.y);
+	//}
+#endif
 
 	uint imin, imax, jmin, jmax, kmin, kmax;
 
@@ -854,55 +1013,65 @@ bool siddon_pre_loop_3D(const float bx, const float by, const float bz, const fl
 		if (*tc >= tmax) {
 			return true;
 		}
-
-		if (xs < xd)
-			d_g_s_precomp(*tc, txmin, tmax, txmax, &imin, &imax, tx0, iu, x_diff, bx, dx, xs, Nx);
+		//float ax = 
+		if (s.x < d.x)
+			d_g_s_precomp(*tc, tMin.x, tmax, tMax.x, &imin, &imax, tx0, i, diff.x, b.x, dd.x, s.x, N.x);
 		else
-			s_g_d_precomp(*tc, txmin, tmax, txmax, &imin, &imax, tx0, iu, x_diff, bx, dx, xs, Nx);
+			s_g_d_precomp(*tc, tMin.x, tmax, tMax.x, &imin, &imax, tx0, i, diff.x, b.x, dd.x, s.x, N.x);
 
-		if (ys < yd)
-			d_g_s_precomp(*tc, tymin, tmax, tymax, &jmin, &jmax, ty0, ju, y_diff, by, dy, ys, Ny);
+		if (s.y < d.y)
+			d_g_s_precomp(*tc, tMin.y, tmax, tMax.y, &jmin, &jmax, ty0, j, diff.y, b.y, dd.y, s.y, N.y);
 		else
-			s_g_d_precomp(*tc, tymin, tmax, tymax, &jmin, &jmax, ty0, ju, y_diff, by, dy, ys, Ny);
+			s_g_d_precomp(*tc, tMin.y, tmax, tMax.y, &jmin, &jmax, ty0, j, diff.y, b.y, dd.y, s.y, N.y);
 
-		if (zs < zd)
-			d_g_s_precomp(*tc, tzmin, tmax, tzmax, &kmin, &kmax, tz0, ku, z_diff, bz, dz, zs, Nz);
+		if (s.z < d.z)
+			d_g_s_precomp(*tc, tMin.z, tmax, tMax.z, &kmin, &kmax, tz0, k, diff.z, b.z, dd.z, s.z, N.z);
 		else
-			s_g_d_precomp(*tc, tzmin, tmax, tzmax, &kmin, &kmax, tz0, ku, z_diff, bz, dz, zs, Nz);
+			s_g_d_precomp(*tc, tMin.z, tmax, tMax.z, &kmin, &kmax, tz0, k, diff.z, b.z, dd.z, s.z, N.z);
 
 		*Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 	}
 	else {
-		if (xs < xd)
-			d_g_s(*tc, txmin, &imin, tx0, iu, x_diff, bx, dx, xs);
+		if (s.x < d.x)
+			d_g_s(*tc, tMin.x, &imin, tx0, i, diff.x, b.x, dd.x, s.x);
 		else
-			s_g_d(*tc, txmin, &imax, tx0, iu, x_diff, bx, dx, xs, Nx);
+			s_g_d(*tc, tMin.x, &imax, tx0, i, diff.x, b.x, dd.x, s.x, N.x);
 
-		if (ys < yd)
-			d_g_s(*tc, tymin, &jmin, ty0, ju, y_diff, by, dy, ys);
+		if (s.y < d.y)
+			d_g_s(*tc, tMin.y, &jmin, ty0, j, diff.y, b.y, dd.y, s.y);
 		else
-			s_g_d(*tc, tymin, &jmax, ty0, ju, y_diff, by, dy, ys, Ny);
+			s_g_d(*tc, tMin.y, &jmax, ty0, j, diff.y, b.y, dd.y, s.y, N.y);
 
-		if (zs < zd)
-			d_g_s(*tc, tzmin, &kmin, tz0, ku, z_diff, bz, dz, zs);
+		if (s.z < d.z)
+			d_g_s(*tc, tMin.z, &kmin, tz0, k, diff.z, b.z, dd.z, s.z);
 		else
-			s_g_d(*tc, tzmin, &kmax, tz0, ku, z_diff, bz, dz, zs, Nz);
+			s_g_d(*tc, tMin.z, &kmax, tz0, k, diff.z, b.z, dd.z, s.z, N.z);
 	}
 
 	const float pt = ((fmin(fmin(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
-	*tempi = voxel_index(pt, x_diff, dx, apu_tx);
-	*tempj = voxel_index(pt, y_diff, dy, apu_ty);
-	*tempk = voxel_index(pt, z_diff, dz, apu_tz);
+	const int3 tempijk = convert_int3_rtz(mad(pt, diff, -apuT) / dd);
+	*tempi = tempijk.x;
+	*tempj = tempijk.y;
+	*tempk = tempijk.z;
+	//*tempijk = convert_int3_rtz((pt * diff - apuT) / dd);
+
+	//*tempi = voxel_index(pt, x_diff, dx, apu_tx);
+	//*tempj = voxel_index(pt, y_diff, dy, apu_ty);
+	//*tempk = voxel_index(pt, z_diff, dz, apu_tz);
 
 	if (TYYPPI == 0) {
-		if (*tempi < 0 || *tempj < 0 || *tempk < 0 || *tempi >= Nx || *tempj >= Ny || *tempk >= Nz)
+		//if (*tempijk.x < 0 || *tempijk.y < 0 || *tempijk.z < 0 || *tempijk.x >= N.x || *tempijk.y >= N.y || *tempijk.z >= N.z) {
+		if (any(tempijk < 0) || any(tempijk >= convert_int3(N))) {
+			//*tc = (pt * y_diff - apu_ty) / dy;
 			return true;
+		}
 	}
 
-	*txu = dx / fabs(x_diff);
-	*tyu = dy / fabs(y_diff);
-	*tzu = dz / fabs(z_diff);
+	//*tu = dd / fabs(diff);
+	*txu = dd.x / fabs(diff.x);
+	*tyu = dd.y / fabs(diff.y);
+	*tzu = dd.z / fabs(diff.z);
 
 	return false;
 }
@@ -917,11 +1086,11 @@ float normPDF(const float x, const float mu, const float sigma) {
 	return _2PI / sigma * native_exp(-0.5f * a * a);
 }
 
-void TOFDis(const float x_diff, const float y_diff, const float z_diff, const float tc, const float LL, float* D, float* DD) {
-	const float xI = x_diff * tc;
-	const float yI = y_diff * tc;
-	const float zI = z_diff * tc;
-	*D = native_sqrt(xI * xI + yI * yI + zI * zI) - LL / 2.f;
+void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
+	//const float xI = x_diff * tc;
+	//const float yI = y_diff * tc;
+	//const float zI = z_diff * tc;
+	*D = length(diff * tc) - LL / 2.f;
 	*DD = *D;
 }
 
@@ -967,7 +1136,9 @@ float TOFLoop(const float DD, const float element, __private float* TOFVal, __co
 }
 
 
-void denominatorTOF(float* ax, const float element, const __global float* d_OSEM, uint local_ind, const float TOFSum, __private float* TOFVal,
+//void denominatorTOF(float* ax, const float element, const __global float* d_OSEM, uint local_ind, const float TOFSum, __private float* TOFVal,
+//	const float DD, __constant float* TOFCenter, const float sigma_x, float* D, const uint tid, const float epps, const uint d_N) {
+void denominatorTOF(float* ax, const float element, __read_only image3d_t d_OSEM, int4 ind, const float TOFSum, __private float* TOFVal,
 	const float DD, __constant float* TOFCenter, const float sigma_x, float* D, const uint tid, const float epps, const uint d_N) {
 #if defined(AF) && !defined(MBSREM)
 	uint ll = NBINS;
@@ -977,7 +1148,8 @@ void denominatorTOF(float* ax, const float element, const __global float* d_OSEM
 #else
 	const uint ii = 0U;
 #endif
-	float apu = element * d_OSEM[local_ind];
+	//float apu = element * d_OSEM[local_ind];
+	float apu = element * read_imagef(d_OSEM, samplerIm, ind).x;
 #ifndef DEC
 	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
@@ -991,7 +1163,8 @@ void denominatorTOF(float* ax, const float element, const __global float* d_OSEM
 #endif
 	}
 #if defined(AF) && !defined(MBSREM)
-		local_ind += d_N;
+	ind.z += d_N;
+		//local_ind += d_N;
 	}
 #endif
 #ifndef DEC
@@ -1029,7 +1202,8 @@ void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float*
 			ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[to + ii] <= d_epsilon_mramla && local_rand == 0.f && local_sino > 0.f)
-				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / native_powr(d_epsilon_mramla, 2)) * (ax[to + ii] - d_epsilon_mramla);
+				ax[to + ii] = d_Sino[idx + to * TOFSize] / d_epsilon_mramla - (d_Sino[idx + to * TOFSize] / native_powr(d_epsilon_mramla, 2))
+				* (ax[to + ii] - d_epsilon_mramla);
 			else
 				ax[to + ii] = d_Sino[idx + to * TOFSize] / ax[to + ii];
 		}
@@ -1045,14 +1219,14 @@ void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float*
 }
 
 
-void backprojectTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, const float* yax, 
-	__global CAST* d_Summ
+void backprojectTOF(const uint local_ind, const int4 localInd, const float local_ele, const uint tid, const __private float* TOFVal, 
+	const float* yax, __global CAST* d_Summ, const float local_sino
 #ifndef DEC
 	, const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum
 #endif
 #ifdef MBSREM
-	, const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM, 
-	__global float* d_E, __global CAST* d_co, __global CAST* d_aco, const float local_sino, const size_t idx, const long TOFSize
+	, const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, 
+	const __global float* d_OSEM, __global float* d_E, __global CAST* d_co, __global CAST* d_aco, const size_t idx, const long TOFSize
 #else
 	, __global CAST* d_rhs, const uchar no_norm, const uint d_N
 #endif
@@ -1088,7 +1262,8 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerIm, localInd).x);
+			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 
 		val += apu;
@@ -1131,12 +1306,18 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 #else
 		atomicAdd_g_f(&d_Summ[local_ind], val);
 #endif
+#if defined(FP) && defined(BP)
+	if (local_sino != 0.f) {
+#endif
 #ifdef ATOMIC
-	atom_add(&d_rhs[yy], convert_long(yaxTOF * TH));
+		atom_add(&d_rhs[yy], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
-	atomic_add(&d_rhs[yy], convert_int(yaxTOF * TH));
+		atomic_add(&d_rhs[yy], convert_int(yaxTOF * TH));
 #else
-	atomicAdd_g_f(&d_rhs[yy], (yaxTOF));
+		atomicAdd_g_f(&d_rhs[yy], (yaxTOF));
+#endif
+#if defined(FP) && defined(BP)
+	}
 #endif
 #endif
 
@@ -1151,13 +1332,14 @@ void backprojectTOF(const uint local_ind, const float local_ele, const uint tid,
 }
 
 
-void sensTOF(const uint local_ind, const float local_ele, const uint tid, const __private float* TOFVal, __global CAST * d_Summ, 
+void sensTOF(const uint local_ind, const int4 localInd, const float local_ele, const uint tid, const __private float* TOFVal, 
+	__global CAST * d_Summ, 
 #ifndef DEC
 	const float temp, const float sigma_x, float* D, const float DD, __constant float* TOFCenter, const float epps, const float TOFSum, 
 #endif
 #ifdef MBSREM
-	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, const __global float* d_OSEM,
-	__global float* d_E, const size_t idx, const long TOFSize,
+	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, const uchar MBSREM_prepass, float* minimi, float* axACOSEM, 
+	const __global float* d_OSEM, __global float* d_E, const size_t idx, const long TOFSize,
 #endif
 	const uchar no_norm) {
 	float val = 0.f;
@@ -1179,7 +1361,8 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * d_OSEM[local_ind]);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerIm, localInd).x);
+			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 		val += apu;
 	}
@@ -1208,3 +1391,559 @@ void sensTOF(const uint local_ind, const float local_ele, const uint tid, const 
 #endif
 }
 #endif
+
+#endif
+
+#if defined(AF) && defined(FP) && !defined(BP)
+void forwardProjectAF(__global float* output, float* ax, size_t idx, const uint N) {
+
+#ifdef NREKOS1
+	output[idx] = ax[0];
+#elif defined(NREKOS2)
+	output[idx] = ax[0];
+	output[idx + N] = ax[1];
+#else
+#pragma unroll N_REKOS
+	for (uint kk = 0; kk < N_REKOS; kk++) {
+		output[idx + kk * N] = ax[kk];
+	}
+#endif
+}
+#endif
+
+//#ifdef PTYPE4
+//void forwardProject4(const float diff1, const float diff2, const float diff, const float s1, const float s2, const float s3, const float d1, const float d2,
+//	const float d3, const int n12, const int n22, const int n32, const uint d_N1, const uint d_N2, const uint d_N3, const __global float* d_OSEM, 
+//	float* temp, const uint d_N4, const uint d_N5, const uint d_N6) {
+//	const float slope1 = (diff1) / (diff);
+//	const float slope2 = (diff2) / (diff);
+//	const float k1 = slope1 * slope1;
+//	const float k2 = slope2 * slope2;
+//	const float l = native_sqrt(k1 + k2 + 1.f) * d3;
+//	const float yy = s1 / d1 + convert_float(n12);
+//	const float zz = s2 / d2 + convert_float(n22);
+//	//const float zz = s2 / d2;
+//	//const float yy = s1 + convert_float(n12);
+//	float apu1, apu2, ry, rz;
+//	int iy, iz;
+//	for (int ix = 0; ix < d_N1; ix++) {
+//		float xx1 = convert_float(ix - n32);
+//		//const float xx2 = (xx1 + 1.f);
+//		const float xx2 = (xx1 + 1.f) * d3;
+//		xx1 *= d3;
+//		if (slope1 >= 0) {
+//			apu1 = xx1 - s3;
+//			apu2 = xx2 - s3;
+//		}
+//		else {
+//			apu1 = xx2 - s3;
+//			apu2 = xx1 - s3;
+//		}
+//		const float yy1 = yy + slope1 * apu1 / d1;
+//		const float yy2 = yy + slope1 * apu2 / d1;
+//		//const float yy1 = yy + slope1 * apu1;
+//		//const float yy2 = yy + slope1 * apu2;
+//		const int cy1 = convert_int_rtn(yy1);
+//		const int cy2 = convert_int_rtn(yy2);
+//		//if (cy1 >= d_N2 || cy1 < 0 || cy2 > d_N2 || cy2 < 0)
+//		//	continue;
+//		if (slope2 >= 0) {
+//			apu1 = xx1 - s3;
+//			apu2 = xx2 - s3;
+//		}
+//		else {
+//			apu1 = xx2 - s3;
+//			apu2 = xx1 - s3;
+//		}
+//		const float zz1 = (slope2 * apu1) / d2 + zz;
+//		const float zz2 = (slope2 * apu2) / d2 + zz;
+//		const int cz1 = convert_int_rtn(zz1);
+//		const int cz2 = convert_int_rtn(zz2);
+//		//if (cz1 >= d_Nz || cz1 < 0 || cz2 > d_Nz || cz2 < 0 || cy1 >= d_Ny || cy1 < 0 || cy2 > d_Ny || cy2 < 0)
+//		//if (cz1 >= d_N3 || cz1 < 0 || cz2 > d_N3 || cz2 < 0)
+//		//    continue;
+//
+//		//d = yy2 - yy1;
+//		//l = native_sqrt(d * d + 1.f) * tmp;
+//
+//		if (cy2 == cy1) {
+//			if (cy1 >= 0 && cy1 <= d_N2 - 1) {
+//				iy = cy1;
+//				if (cz2 == cz1) {
+//					if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 11
+//						iz = cz1;
+//						*temp += l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//					}
+//				}
+//				else {
+//					if (cz2 > 0 && cz2 < d_N3) {// 12
+//						rz = (cz2 - zz1) / (zz2 - zz1);
+//						iz = cz1;
+//						*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						iz = cz2;
+//						*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//					}
+//					else {
+//						if (cz2 == 0) {// 13
+//							rz = (cz2 - zz1) / (zz2 - zz1);
+//							iz = cz2;
+//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//						else if (cz2 == d_N3) {// 14
+//							rz = (cz2 - zz1) / (zz2 - zz1);
+//							iz = cz1;
+//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//				}
+//			}
+//		}
+//		else {
+//			if (cy2 > 0 && cy2 < d_N2) {
+//				if (cz2 == cz1) {
+//					if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 21
+//						ry = (cy2 - yy1) / (yy2 - yy1);
+//						iy = cy1;
+//						iz = cz1;
+//						*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						iy = cy2;
+//						*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//					}
+//				}
+//				else {
+//					if (cz2 > 0 && cz2 < d_N3) {// 22
+//						ry = (cy2 - yy1) / (yy2 - yy1);
+//						rz = (cz2 - zz1) / (zz2 - zz1);
+//						iy = cy1;
+//						iz = cz1;
+//						if (ry > rz) {
+//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iz = cz2;
+//							*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iy = cy2;
+//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//						else {
+//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iy = cy2;
+//							*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iz = cz2;
+//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//					else if (cz2 == 0) {// 23
+//						ry = (cy2 - yy1) / (yy2 - yy1);
+//						rz = (cz2 - zz1) / (zz2 - zz1);
+//						iy = cy2;
+//						iz = cz2;
+//						if (ry > rz) {
+//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iy = cy1;
+//							*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//						else {
+//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//					else if (cz2 == d_N3) {// 24
+//						ry = (cy2 - yy1) / (yy2 - yy1);
+//						rz = (cz2 - zz1) / (zz2 - zz1);
+//						iy = cy1;
+//						iz = cz1;
+//						if (ry > rz) {
+//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//						else {
+//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							iy = cy2;
+//							*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//				}
+//			}
+//			else {
+//				if (cy2 == 0) {
+//					if (cz2 == cz1) {
+//						if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 31
+//							ry = (cy2 - yy1) / (yy2 - yy1);
+//							iy = cy2;
+//							iz = cz1;
+//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//					else {
+//						if (cz2 > 0 && cz2 < d_N3) {// 32
+//							ry = (cy2 - yy1) / (yy2 - yy1);
+//							rz = (cz2 - zz1) / (zz2 - zz1);
+//							iy = cy2;
+//							iz = cz2;
+//							if (ry > rz) {
+//								*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							}
+//							else {
+//								*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								iz = cz1;
+//								*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							}
+//						}
+//						else {
+//							if (cz2 == 0) {// 33
+//								ry = (cy2 - yy1) / (yy2 - yy1);
+//								rz = (cz2 - zz1) / (zz2 - zz1);
+//								iy = cy2;
+//								iz = cz2;
+//								if (ry > rz) {
+//									*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//								else {
+//									*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//							}
+//							else if (cz2 == d_N3) {// 34
+//								ry = (cy2 - yy1) / (yy2 - yy1);
+//								rz = (cz2 - zz1) / (zz2 - zz1);
+//								if (ry > rz) {
+//								}
+//								else {
+//									iy = cy2;
+//									iz = cz1;
+//									*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//							}
+//						}
+//					}
+//				}
+//				if (cy2 == d_N2) {
+//					if (cz2 == cz1) {
+//						if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 41
+//							ry = (cy2 - yy1) / (yy2 - yy1);
+//							iy = cy1;
+//							iz = cz1;
+//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//						}
+//					}
+//					else {
+//						if (cz2 > 0 && cz2 < d_N3) {// 42
+//							ry = (cy2 - yy1) / (yy2 - yy1);
+//							rz = (cz2 - zz1) / (zz2 - zz1);
+//							iy = cy1;
+//							iz = cz1;
+//							if (ry > rz) {
+//								*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								iz = cz2;
+//								*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							}
+//							else {
+//								*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//							}
+//						}
+//						else {
+//							if (cz2 == 0) {// 43
+//								ry = (cy2 - yy1) / (yy2 - yy1);
+//								rz = (cz2 - zz1) / (zz2 - zz1);
+//								if (ry > rz) {
+//									iy = cy1;
+//									iz = cz2;
+//									*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//								else {
+//								}
+//							}
+//							else if (cz2 == d_N3) {// 44
+//								ry = (cy2 - yy1) / (yy2 - yy1);
+//								rz = (cz2 - zz1) / (zz2 - zz1);
+//								iy = cy1;
+//								iz = cz1;
+//								if (ry > rz) {
+//									*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//								else {
+//									*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
+//								}
+//							}
+//						}
+//					}
+//				}
+//			}
+//		}
+//	}
+//}
+//
+//float find_l(float x1_0, float y1_0, float x2_0, float y2_0, float dx, float dy, float x, float y) {
+//	float l = 0.f, slope, tmp, tmp2, xi[2], yi[2];
+//	int i;
+//
+//	const float a = x2_0 - x1_0; 
+//	const float b = y2_0 - y1_0;
+//	const float dx2 = dx / 2.f;
+//	const float dy2 = dy / 2.f;
+//
+//	if (a == 0) {
+//		tmp = fabs(x1_0 - x);
+//		if (tmp <= dx2) {
+//			l = dy;
+//		}
+//	}
+//	else {
+//		if (b == 0 ) {
+//			tmp = fabs(y1_0 - y);
+//			if (tmp <= dy2) {
+//				l = dx;
+//			}
+//		}
+//		else {
+//			const float x1 = x1_0 - x;
+//			const float y1 = y1_0 - y;
+//			//            x2=x2_0-x;y2=y2_0-y;
+//
+//			i = 0;
+//			if (fabs(a) > fabs(b)) {
+//				slope = b / a;
+//				tmp = slope * (-x1) + y1;
+//				tmp2 = slope * dx2;
+//				if (fabs(tmp - tmp2) <= dy2) {
+//					xi[i] = -dx2; 
+//					yi[i] = tmp - tmp2; 
+//					i++;
+//				}
+//				if (fabs(tmp + tmp2) <= dy2) {
+//					xi[i] = dx2; 
+//					yi[i] = tmp + tmp2; 
+//					i++;
+//				}
+//
+//				if (i < 2) {
+//					slope = a / b;
+//					tmp = slope * (-y1) + x1;
+//					tmp2 = slope * dy2;
+//					if (fabs(tmp - tmp2) <= dx2) {
+//						yi[i] = -dy2; 
+//						xi[i] = tmp - tmp2; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp + tmp2) <= dx2) {
+//							yi[i] = dy2; 
+//							xi[i] = tmp + tmp2; 
+//							i++;
+//						}
+//					}
+//				}
+//			}
+//			else {
+//				slope = a / b;
+//				tmp = slope * (-y1) + x1;
+//				tmp2 = slope * dy2;
+//				if (fabs(tmp - tmp2) <= dx2) {
+//					yi[i] = -dy2; 
+//					xi[i] = tmp - tmp2; 
+//					i++;
+//				}
+//				if (fabs(tmp + tmp2) <= dx2) {
+//					yi[i] = dy2; 
+//					xi[i] = tmp + tmp2; 
+//					i++;
+//				}
+//
+//				if (i < 2) {
+//					slope = b / a;
+//					tmp = slope * (-x1) + y1;
+//					tmp2 = slope * dx2;
+//					if (fabs(tmp - tmp2) <= dy2) {
+//						xi[i] = -dx2; 
+//						yi[i] = tmp - tmp2; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp + tmp2) <= dy2) {
+//							xi[i] = dx2; 
+//							yi[i] = tmp + tmp2; 
+//							i++;
+//						}
+//					}
+//				}
+//			}
+//
+//			if (i == 2) {
+//				tmp = xi[1] - xi[0]; 
+//				tmp2 = yi[1] - yi[0];
+//				l = native_sqrt(tmp * tmp + tmp2 * tmp2);
+//			}
+//		}
+//	}
+//	return l;
+//}
+//
+//float find_l_3d(float x1_0, float y1_0, float z1_0, float x2_0, float y2_0, float z2_0, float dx, float dy, float dz, float x, float y, float z) {
+//// assuming c~=0
+//// A method for computing the intersecting length of a voxel with a infinitely-narrow beam
+//// A better formula will be supplied to improve the speed.
+//	float l = 0.f, slope, tmpx, tmpy, tmpz, xi[2], yi[2], zi[2];
+//	float2 tmp, tmp2;
+//	int i;
+//
+//	const float a = x2_0 - x1_0;
+//	const float b = y2_0 - y1_0;
+//	const float c = z2_0 - z1_0;
+//	const float dx2 = dx / 2.f;
+//	const float dy2 = dy / 2.f;
+//	const float dz2 = dz / 2.f;
+//
+//	if (a == 0) {
+//		l = find_l(y1_0, z1_0, y2_0, z2_0, dy, dz, y, z);
+//	}
+//	else {
+//		if (b == 0) {
+//			l = find_l(x1_0, z1_0, x2_0, z2_0, dx, dz, x, z);
+//		}
+//		else {
+//			const float x1 = x1_0 - x;
+//			const float y1 = y1_0 - y;
+//			const float z1 = z1_0 - z;
+//			//            x2=x2_0-x;y2=y2_0-y;z2=z2_0-z;
+//
+//			i = 0;
+//			if (fabs(a) > fabs(b)) {
+//				slope = b / a; 
+//				tmp.x = slope * (-x1) + y1; 
+//				tmp2.x = slope * dx2;
+//				slope = c / a; 
+//				tmp.y = slope * (-x1) + z1; 
+//				tmp2.y = slope * dx2;
+//				if (fabs(tmp.x - tmp2.x) <= dy2 && fabs(tmp.y - tmp2.y) <= dz2) {
+//					xi[i] = -dx2; 
+//					yi[i] = tmp.x - tmp2.x; 
+//					zi[i] = tmp.y - tmp2.y; 
+//					i++;
+//				}
+//				if (fabs(tmp.x + tmp2.x) <= dy2 && fabs(tmp.y + tmp2.y) <= dz2) {
+//					xi[i] = dx2; 
+//					yi[i] = tmp.x + tmp2.x; 
+//					zi[i] = tmp.y + tmp2.y; 
+//					i++;
+//				}
+//
+//				if (i < 2) {
+//					slope = a / b; 
+//					tmp.x = slope * (-y1) + x1; 
+//					tmp2.x = slope * dy2;
+//					slope = c / b; 
+//					tmp.y = slope * (-y1) + z1; 
+//					tmp2.y = slope * dy2;
+//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dz2) {
+//						xi[i] = tmp.x - tmp2.x; 
+//						yi[i] = -dy2; 
+//						zi[i] = tmp.y - tmp2.y; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dz2) {
+//							xi[i] = tmp.x + tmp2.x; 
+//							yi[i] = dy2; 
+//							zi[i] = tmp.y + tmp2.y; 
+//							i++;
+//						}
+//					}
+//				}
+//
+//				if (i < 2) {
+//					slope = a / c; 
+//					tmp.x = slope * (-z1) + x1; 
+//					tmp2.x = slope * dz2;
+//					slope = b / c; 
+//					tmp.y = slope * (-z1) + y1; 
+//					tmp2.y = slope * dz2;
+//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dy2) {
+//						xi[i] = tmp.x - tmp2.x; 
+//						yi[i] = tmp.y - tmp2.y; 
+//						zi[i] = -dz2; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dy2) {
+//							xi[i] = tmp.x + tmp2.x; 
+//							yi[i] = tmp.y + tmp2.y; 
+//							zi[i] = dz2; 
+//							i++;
+//						}
+//					}
+//				}
+//			}
+//			else {
+//				slope = a / b; 
+//				tmp.x = slope * (-y1) + x1; 
+//				tmp2.x = slope * dy2;
+//				slope = c / b; 
+//				tmp.y = slope * (-y1) + z1; 
+//				tmp2.y = slope * dy2;
+//				if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dz2) {
+//					xi[i] = tmp.x - tmp2.x; 
+//					yi[i] = -dy2; 
+//					zi[i] = tmp.y - tmp2.y; 
+//					i++;
+//				}
+//				if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dz2) {
+//					xi[i] = tmp.x + tmp2.x; 
+//					yi[i] = dy2; 
+//					zi[i] = tmp.y + tmp2.y; 
+//					i++;
+//				}
+//
+//				if (i < 2) {
+//					slope = b / a; 
+//					tmp.x = slope * (-x1) + y1; 
+//					tmp2.x = slope * dx2;
+//					slope = c / a; 
+//					tmp.y = slope * (-x1) + z1; 
+//					tmp2.y = slope * dx2;
+//					if (fabs(tmp.x - tmp2.x) <= dy2 && fabs(tmp.y - tmp2.y) <= dz2) {
+//						xi[i] = -dx2; 
+//						yi[i] = tmp.x - tmp2.x; 
+//						zi[i] = tmp.y - tmp2.y; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp.x + tmp2.x) <= dy2 && fabs(tmp.y + tmp2.y) <= dz2) {
+//							xi[i] = dx2; 
+//							yi[i] = tmp.x + tmp2.x; 
+//							zi[i] = tmp.y + tmp2.y; 
+//							i++;
+//						}
+//					}
+//				}
+//
+//				if (i < 2) {
+//					slope = a / c; 
+//					tmp.x = slope * (-z1) + x1; 
+//					tmp2.x = slope * dz2;
+//					slope = b / c; 
+//					tmp.y = slope * (-z1) + y1; 
+//					tmp2.y = slope * dz2;
+//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dy2) {
+//						xi[i] = tmp.x - tmp2.x; 
+//						yi[i] = tmp.y - tmp2.y; 
+//						zi[i] = -dz2; 
+//						i++;
+//					}
+//					if (i < 2) {
+//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dy2) {
+//							xi[i] = tmp.x + tmp2.x; 
+//							yi[i] = tmp.y + tmp2.y; 
+//							zi[i] = dz2; 
+//							i++;
+//						}
+//					}
+//				}
+//			}
+//
+//			if (i == 2) {
+//				tmpx = xi[1] - xi[0]; 
+//				tmpy = yi[1] - yi[0]; 
+//				tmpz = zi[1] - zi[0];
+//				l = native_sqrt(tmpx * tmpx + tmpy * tmpy + tmpz * tmpz);
+//			}
+//		}
+//	}
+//	return l;
+//}
+//#endif

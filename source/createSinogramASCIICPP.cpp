@@ -58,6 +58,9 @@ public:
 		const int32_t detWPseudo = inputs[26][0];
 		const int32_t nPseudos = inputs[27][0];
 		const int32_t crystPerBlock = inputs[28][0];
+		const int32_t nLayers = inputs[29][0];
+		const matlab::data::TypedArray<uint8_t> layer1 = std::move(inputs[30]);
+		const matlab::data::TypedArray<uint8_t> layer2 = std::move(inputs[31]);
 
 		bool storeTrues = false;
 		bool storeScatter = false;
@@ -83,7 +86,7 @@ public:
 
 		openMPSino(ringPos1, ringPos2, ringNumber1, ringNumber2, truesIndex, scatterIndex, randomsIndex, sinoSize, Ndist, Nang, ringDifference,
 			span, seg, time, NT, TOFSize, vali, alku, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko,
-			bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock);
+			bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1, layer2, nLayers);
 
 		outputs[0] = Sino;
 		outputs[1] = SinoT;
@@ -109,7 +112,7 @@ public:
 		matlab::data::TypedArray<uint16_t>& Sino, matlab::data::TypedArray<uint16_t>& SinoT, matlab::data::TypedArray<uint16_t>& SinoC, matlab::data::TypedArray<uint16_t>& SinoR,
 		const bool store_trues, const bool store_scatter, const bool store_randoms, const int32_t det_per_ring, const int32_t rings,
 		const int64_t koko, const matlab::data::TypedArray<uint16_t>& bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos,
-		const int32_t cryst_per_block) {
+		const int32_t cryst_per_block, const matlab::data::TypedArray<uint8_t>& layer1, const matlab::data::TypedArray<uint8_t>& layer2, const int32_t nLayers) {
 
 #ifdef _OPENMP
 		if (omp_get_max_threads() == 1) {
@@ -145,6 +148,15 @@ public:
 			int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 			int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
 			int32_t ring_number2 = static_cast<int32_t>(ringNumber2[kk]);
+			int32_t layer = 0;
+			if (nLayers > 1) {
+				if (layer1[kk] == 1 && layer2[kk] == 1)
+					layer = 3;
+				else if (layer1[kk] == 1 && layer2[kk] == 0)
+					layer = 1;
+				else if (layer1[kk] == 0 && layer2[kk] == 1)
+					layer = 2;
+			}
 			if (pseudoD) {
 				ring_pos1 += ring_pos1 / cryst_per_block;
 				ring_pos2 += ring_pos2 / cryst_per_block;
@@ -155,7 +167,7 @@ public:
 			}
 			bool swap = false;
 			const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg_p, aika, NT, TOFSize,
-				vali, alku, detWPseudo, rings, binN, nDistSide, swap);
+				vali, alku, detWPseudo, rings, binN, nDistSide, swap, layer, nLayers);
 			if (indeksi >= 0) {
 				if (store_trues && trues_index[kk]) {
 #pragma omp atomic

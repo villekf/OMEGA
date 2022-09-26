@@ -30,7 +30,7 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 	const uint64_t TOFSize, const double vali, const double alku, uint16_t* Sino, uint16_t* SinoT, uint16_t* SinoC, uint16_t* SinoR, 
 	const bool store_trues, const bool store_scatter, const bool store_randoms, const int32_t det_per_ring, const int32_t rings, 
 	const int64_t koko, const uint16_t* bins, const int32_t nDistSide, const size_t pituus, const int32_t detWPseudo, const int32_t nPseudos, 
-	const int32_t cryst_per_block) {
+	const int32_t cryst_per_block, const uint8_t* layer1, const uint8_t* layer2, const int32_t nLayers) {
 
 #ifdef _OPENMP
 	if (omp_get_max_threads() == 1) {
@@ -62,6 +62,15 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 		int32_t ring_pos2 = static_cast<int32_t>(ringPos2[kk]);
 		int32_t ring_number1 = static_cast<int32_t>(ringNumber1[kk]);
 		int32_t ring_number2 = static_cast<int32_t>(ringNumber2[kk]);
+		int32_t layer = 0;
+		if (nLayers > 1) {
+			if (layer1[kk] == 1 && layer2[kk] == 1)
+				layer = 3;
+			else if (layer1[kk] == 1 && layer2[kk] == 0)
+				layer = 1;
+			else if (layer1[kk] == 0 && layer2[kk] == 1)
+				layer = 2;
+		}
 		// Pseudo detectors
 		if (pseudoD) {
 			ring_pos1 += ring_pos1 / cryst_per_block;
@@ -74,7 +83,7 @@ void openMPSino(const uint16_t* ringPos1, const uint16_t* ringPos2, const uint16
 		}
 		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, aika, NT, TOFSize,
-			vali, alku, detWPseudo, rings, binN, nDistSide, swap);
+			vali, alku, detWPseudo, rings, binN, nDistSide, swap, layer, nLayers);
 		if (indeksi >= 0) {
 			// Trues
 			if (store_trues && trues_index[kk]) {
@@ -207,6 +216,20 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	ind++;
 	const int32_t crystPerBlock = getScalarInt32(prhs[ind], ind);
 	ind++;
+	const int32_t nLayers = getScalarInt32(prhs[ind], ind);
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint8_t* layer1 = (uint8_t*)mxGetUint8s(prhs[ind]);
+#else
+	const uint8_t* layer1 = (uint8_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
+#ifdef MX_HAS_INTERLEAVED_COMPLEX
+	const uint8_t* layer2 = (uint8_t*)mxGetUint8s(prhs[ind]);
+#else
+	const uint8_t* layer2 = (uint8_t*)mxGetData(prhs[ind]);
+#endif
+	ind++;
 
 	bool storeTrues = false;
 	bool storeScatter = false;
@@ -242,7 +265,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	openMPSino(ringPos1, ringPos2, ringNumber1, ringNumber2, truesIndex, scatterIndex, randomsIndex, sinoSize, Ndist, Nang, ringDifference,
 		span, seg, time, NT, TOFSize, vali, alku, Sino, SinoT, SinoC, SinoR, storeTrues, storeScatter, storeRandoms, detPerRing, rings, koko, 
-		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock);
+		bins, nDistSide, pituus, detWPseudo, nPseudos, crystPerBlock, layer1, layer2, nLayers);
 
 	return;
 

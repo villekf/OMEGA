@@ -1,5 +1,5 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2021 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -178,7 +178,7 @@ classdef forwardBackwardProjectCT
                 obj.OProperties.FWHM = 0;
                 obj.OProperties.subset_type = 3;
                 obj.OProperties.use_Shuffle = false;
-            elseif nargin > 1 && (ismatrix(options) || isvector(options)) && (ismatrix(varargin{1}) || isvector(varargin{1}))
+            elseif nargin > 1 && (ismatrix(options) || isvector(options)) && (ismatrix(varargin{1}) || isvector(varargin{1})) && isscalar(varargin{3})
                 obj.OProperties.x = options;
                 obj.OProperties.y = varargin{1};
                 obj.OProperties.z = varargin{2};
@@ -232,20 +232,160 @@ classdef forwardBackwardProjectCT
                 obj.OProperties.FWHM = 0;
                 obj.OProperties.subset_type = 3;
                 obj.OProperties.use_Shuffle = false;
+            elseif nargin > 1 && (ismatrix(options) || isvector(options)) && (ismatrix(varargin{1}) || isvector(varargin{1})) && (ismatrix(varargin{3}) || isvector(varargin{3}))
+                obj.OProperties.x = options;
+                obj.OProperties.y = varargin{1};
+                obj.OProperties.z = varargin{2};
+                if isvector(obj.OProperties.x)
+                    obj.OProperties.x = reshape(obj.OProperties.x, [], 2);
+                end
+                if isvector(obj.OProperties.y)
+                    obj.OProperties.y = reshape(obj.OProperties.y, [], 2);
+                end
+                if isvector(obj.OProperties.z)
+                    obj.OProperties.z = reshape(obj.OProperties.z, [], 2);
+                end
+                obj.OProperties.uV = varargin{3};
+                if size(obj.OProperties.uV,1) == 2 || size(obj.OProperties.uV) == 6
+                else
+                    obj.OProperties.uV = reshape(obj.OProperties.uV, [], numel(obj.OProperties.x) / 2);
+                end
+                obj.OProperties.Nx = varargin{4}(1);
+                obj.OProperties.Ny = varargin{4}(2);
+                obj.OProperties.Nz = varargin{4}(3);
+                obj.OProperties.FOVa_x = varargin{5};
+                obj.OProperties.FOVa_y = obj.OProperties.FOVa_x;
+                obj.OProperties.axial_fov = varargin{6};
+                obj.OProperties.bx = varargin{7}(1);
+                obj.OProperties.by = varargin{7}(2);
+                obj.OProperties.bz = varargin{7}(3);
+                obj.OProperties.simple = true;
+                obj.OProperties.dPitch = 0;
+                obj.OProperties.sourceToCRot = 0;
+                obj.OProperties.xSize = varargin{8}(1);
+                obj.OProperties.ySize = varargin{8}(2);
+                obj.OProperties.dPitchX = varargin{9}(1);
+                obj.OProperties.dPitchY = varargin{9}(2);
+                if nargin >= 11 && ~isempty(varargin{10})
+                    obj.OProperties.projector_type = varargin{10};
+                else
+                    obj.OProperties.projector_type = 4;
+                end
+                if nargin >= 12 && ~isempty(varargin{11})
+                    obj.OProperties.subsets = varargin{11};
+                else
+                    obj.OProperties.subsets = 1;
+                end
+                obj.OProperties.implementation = 3;
+                if nargin >= 13 && ~isempty(varargin{12})
+                    obj.OProperties.use_device = varargin{12};
+                else
+                    obj.OProperties.use_device = 0;
+                end
+                obj.OProperties.angles = 0;
+                obj.OProperties.nBed = 1;
+                obj.OProperties.nProjections = numel(obj.OProperties.x) / 2;
+                obj.OProperties.simple = true;
+                obj.OProperties.use_64bit_atomics = false;
+                obj.OProperties.verbose = true;
+                obj.OProperties.tube_width_z = 0;
+                obj.OProperties.tube_radius = 0;
+                obj.OProperties.voxel_radius = 0;
+                obj.OProperties.use_psf = false;
+                obj.OProperties.FWHM = 0;
+                obj.OProperties.subset_type = 9;
+                obj.OProperties.use_Shuffle = false;
+                obj.OProperties.dL = obj.OProperties.FOVa_x / obj.OProperties.Nx / 2;
+                obj.OProperties.sourceToDetector = mean(sqrt((obj.OProperties.x(:,1) - obj.OProperties.x(:,2)).^2 + (obj.OProperties.y(:,1) - obj.OProperties.y(:,2)).^2 ....
+                    + (obj.OProperties.z(:,1) - obj.OProperties.z(:,2)).^2));
             else
                 obj.OProperties = options;
                 obj.OProperties.simple = false;
             end
+            obj.OProperties.CT = true;
+            obj.OProperties.PET = false;
             if ~isfield(obj.OProperties, 'verticalOffset')
                 obj.OProperties.verticalOffset = 0;
             end
             if ~isfield(obj.OProperties, 'horizontalOffset')
                 obj.OProperties.horizontalOffset = 0;
             end
+            if isfield(obj.OProperties, 'mask1') && isfield(obj.OProperties, 'cThickness')
+                obj.OProperties.SPECT = true;
+                obj.OProperties.CT = false;
+                obj.OProperties.cSizeX = size(obj.OProperties.mask1,1);
+                obj.OProperties.cSizeY = size(obj.OProperties.mask1,2);
+            else
+                obj.OProperties.CT = true;
+                obj.OProperties.SPECT = false;
+            end
+            if ~isfield(obj.OProperties,'orthTransaxial') && (obj.OProperties.projector_type == 2 || obj.OProperties.projector_type == 3)
+                if obj.OProperties.projector_type == 3
+                    obj.OProperties.orthTransaxial = true;
+                elseif obj.OProperties.projector_type == 2 && isfield(obj.OProperties,'tube_width_xy') && obj.OProperties.tube_width_xy > 0
+                    obj.OProperties.orthTransaxial = true;
+                else
+                    obj.OProperties.orthTransaxial = false;
+                end
+            end
+            if ~isfield(obj.OProperties,'orthAxial') && (obj.OProperties.projector_type == 2 || obj.OProperties.projector_type == 3)
+                if obj.OProperties.projector_type == 3
+                    obj.OProperties.orthAxial = true;
+                elseif obj.OProperties.projector_type == 2 && isfield(obj.OProperties,'tube_width_z') && obj.OProperties.tube_width_z > 0
+                    obj.OProperties.orthAxial = true;
+                else
+                    obj.OProperties.orthAxial = false;
+                end
+            end
+            if ~isfield(obj.OProperties, 'useMaskFP')
+                obj.OProperties.useMaskFP = false;
+            end
+            if ~isfield(obj.OProperties, 'useMaskBP')
+                obj.OProperties.useMaskBP = false;
+            end
+            if ~isfield(obj.OProperties, 'dPitchX')
+                obj.OProperties.dPitchX = obj.OProperties.dPitch;
+            end
+            if ~isfield(obj.OProperties, 'dPitchY')
+                obj.OProperties.dPitchY = obj.OProperties.dPitch;
+            end
+            if obj.OProperties.projector_type == 4 || obj.OProperties.projector_type == 5
+                if obj.OProperties.implementation ~= 3
+                    error('Projector types 4 and 5 available only with implementation 3!')
+                end
+                if isfield(obj.OProperties, 'maskFP') && numel(obj.OProperties.maskFP) > 1 && numel(obj.OProperties.maskFP) ~= obj.OProperties.ySize * obj.OProperties.xSize
+                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.OProperties.ySize) ' ' num2str(obj.OProperties.xSize) ']'])
+                elseif isfield(obj.OProperties, 'maskFP') && numel(obj.OProperties.maskFP) > 1 && numel(obj.OProperties.maskFP) == obj.OProperties.xSize * obj.OProperties.ySize
+                    obj.OProperties.useMaskFP = true;
+                else
+                    obj.OProperties.useMaskFP = false;
+                end
+                if isfield(obj.OProperties, 'maskBP') && numel(obj.OProperties.maskBP) > 1 && numel(obj.OProperties.maskBP) ~= obj.OProperties.Nx * obj.OProperties.Ny
+                    error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.OProperties.Nx) ' ' num2str(obj.OProperties.Ny) ']'])
+                elseif isfield(obj.OProperties, 'maskBP') && numel(obj.OProperties.maskBP) > 1 && numel(obj.OProperties.maskBP) == obj.OProperties.Nx * obj.OProperties.Ny
+                    obj.OProperties.useMaskBP = true;
+                else
+                    obj.OProperties.useMaskBP = false;
+                end
+                if obj.OProperties.projector_type == 5
+                    if ~isfield(obj.OProperties,'meanFP')
+                        obj.OProperties.meanFP = false;
+                    end
+                    if ~isfield(obj.OProperties,'meanBP')
+                        obj.OProperties.meanBP = false;
+                    end
+                end
+            end
             obj.OProperties.NSinos = obj.OProperties.nProjections;
             obj.OProperties.TotSinos = obj.OProperties.nProjections;
             if ~isfield(obj.OProperties,'bedOffset')
-                obj.OProperties.bedOffset = 0;
+                obj.OProperties.bedOffset = [];
+            end
+            if ~isfield(obj.OProperties,'uCenter')
+                obj.OProperties.uCenter = [];
+            end
+            if ~isfield(obj.OProperties,'vCenter')
+                obj.OProperties.vCenter = [];
             end
             if ~isfield(obj.OProperties,'nBed')
                 obj.OProperties.nBed = 1;
@@ -275,7 +415,6 @@ classdef forwardBackwardProjectCT
             obj.OProperties.det_per_ring = obj.OProperties.ySize * obj.OProperties.nProjections;
             obj.OProperties.precompute_lor = false;
             obj.OProperties.sampling = 1;
-            obj.OProperties.CT = true;
             obj.OProperties.start = 0;
             obj.OProperties.arc_correction = false;
             obj.OProperties.tot_time = 0;
@@ -284,7 +423,8 @@ classdef forwardBackwardProjectCT
             obj.OProperties.blocks_per_ring = 1;
             obj.OProperties.linear_multip = 0;
             obj.OProperties.cryst_per_block = obj.OProperties.xSize * obj.OProperties.ySize;
-            obj.OProperties.cr_pz = obj.OProperties.dPitch;
+            obj.OProperties.cr_p = obj.OProperties.dPitchX;
+            obj.OProperties.cr_pz = obj.OProperties.dPitchY;
             obj.OProperties.deblurring = false;
             obj.OProperties.deblur_iterations = 0;
             obj.OProperties.tube_width_xy = 0;
@@ -307,7 +447,6 @@ classdef forwardBackwardProjectCT
             obj.OProperties.listmode = false;
             obj.OProperties.lor_a = [];
             obj.OProperties.lor_orth = [];
-            obj.OProperties.CT = true;
             if max(abs(obj.OProperties.angles(:))) > 2*pi
                 obj.OProperties.angles = obj.OProperties.angles * (pi / 180);
             end
@@ -321,43 +460,66 @@ classdef forwardBackwardProjectCT
             else
                 storeMatrix = false;
             end
-            if (isfield(obj.OProperties,'x') && isfield(obj.OProperties,'y') && (isfield(obj.OProperties,'z') || isfield(obj.OProperties,'z_det')))
-%                 obj.index = uint32(1:numel(obj.OProperties.x)/2)';
-                obj.OProperties.listmode = true;
-                obj.OProperties.diameter = 0;
-                det_per_ring = numel(obj.OProperties.x) / 2;
-                obj.OProperties.Nang = det_per_ring;
-                obj.OProperties.xSize = det_per_ring;
-                obj.OProperties.ySize = det_per_ring;
-                if obj.OProperties.subsets > 1 || (obj.OProperties.implementation == 1 && ~obj.OProperties.precompute_lor)
-                    obj.OProperties.precompute_lor = false;
-                    [obj.index, obj.n_meas, obj.OProperties.subsets, obj.OProperties.lor_a, obj.OProperties.lor_orth] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
-                        obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos,storeMatrix);
-                    if ~isempty(obj.index) && iscell(obj.index)
-                        obj.index = cell2mat(obj.index);
-                    end
-                    obj.OProperties.x = obj.OProperties.x(obj.index,:);
-                    obj.OProperties.y = obj.OProperties.y(obj.index,:);
-                    if isfield(obj.OProperties,'z')
-                        obj.OProperties.z = obj.OProperties.z(obj.index,:);
-                    else
-                        obj.OProperties.z_det = obj.OProperties.z_det(obj.index,:);
-                    end
-                    if obj.OProperties.implementation == 1
-                        obj.OProperties.precompute_lor = true;
-                    end
+            if obj.OProperties.subset_type < 8 && obj.OProperties.subsets > 1
+                warning('Use of subset_types < 8 are not recommended with CT data!')
+                if obj.OProperties.flip_image
+                    obj.OProperties.angles = -obj.OProperties.angles;
                 end
-                obj.n_meas = floor(det_per_ring / obj.OProperties.subsets);
-                obj.n_meas = int64([repmat(obj.n_meas,obj.OProperties.subsets - 1,1); det_per_ring - obj.n_meas*(obj.OProperties.subsets - 1)]);
-%                 if abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:))) > obj.OProperties.diameter
-%                     obj.OProperties.diameter = abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:)));
-%                 end
+                if obj.OProperties.offangle > 0
+                    obj.OProperties.angles = obj.OProperties.angles + obj.OProperties.offangle;
+                end
+                [obj.OProperties.x,obj.OProperties.y,obj.OProperties.z] = CTDetectorCoordinatesFull(obj.OProperties.angles,obj.OProperties.nProjections, obj.OProperties.xSize, ...
+                    obj.OProperties.ySize, obj.OProperties.sourceToDetector,obj.OProperties.sourceToCRot,obj.OProperties.dPitch,obj.OProperties.horizontalOffset, ...
+                    obj.OProperties.verticalOffset, obj.OProperties.bedOffset, obj.OProperties.uCenter, obj.OProperties.vCenter);
+            end
+            if (isfield(obj.OProperties,'x') && isfield(obj.OProperties,'y') && (isfield(obj.OProperties,'z') || isfield(obj.OProperties,'z_det')))
+                if ~isfield(obj.OProperties,'ySize') || numel(obj.OProperties.x) / 2 ~= obj.OProperties.nProjections
+                    obj.OProperties.listmode = true;
+                    obj.OProperties.diameter = 0;
+                    det_per_ring = numel(obj.OProperties.x) / 2;
+                    obj.OProperties.Nang = det_per_ring;
+                    obj.OProperties.Ndist = 1;
+                    obj.OProperties.NSinos = 1;
+                    obj.OProperties.xSize = det_per_ring;
+                    obj.OProperties.ySize = det_per_ring;
+                end
+                if obj.OProperties.subsets > 1%|| numel(obj.OProperties.x) / 2 ~= obj.OProperties.nProjections
+                    %                 obj.index = uint32(1:numel(obj.OProperties.x)/2)';
+                    if obj.OProperties.subsets > 1 || (obj.OProperties.implementation == 1 && ~obj.OProperties.precompute_lor)
+                        obj.OProperties.precompute_lor = false;
+                        [obj.index, obj.n_meas, obj.OProperties.subsets, obj.OProperties.lor_a, obj.OProperties.lor_orth] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
+                            obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos,storeMatrix);
+                        if ~isempty(obj.index) && iscell(obj.index)
+                            obj.index = cell2mat(obj.index);
+                        end
+                        if ~isfield(obj.OProperties,'ySize') || numel(obj.OProperties.x) / 2 ~= obj.OProperties.nProjections
+                            if obj.OProperties.implementation == 1
+                                obj.OProperties.precompute_lor = true;
+                            end
+                        end
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        if obj.OProperties.subset_type < 8
+                            obj.n_meas = floor(det_per_ring / obj.OProperties.subsets);
+                            obj.n_meas = int64([repmat(obj.n_meas,obj.OProperties.subsets - 1,1); det_per_ring - obj.n_meas*(obj.OProperties.subsets - 1)]);
+                        end
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+                    else
+                        obj.n_meas = [0, obj.OProperties.nProjections];
+                    end
+                    %                 if abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:))) > obj.OProperties.diameter
+                    %                     obj.OProperties.diameter = abs(min(obj.OProperties.x(:))) + abs(max(obj.OProperties.x(:)));
+                    %                 end
+                else
+                    obj.n_meas = int64(obj.OProperties.nProjections);
+                end
             else
                 if obj.OProperties.subsets > 1 || (obj.OProperties.implementation == 1 && ~obj.OProperties.precompute_lor)
                     [obj.index, obj.n_meas, obj.OProperties.subsets, obj.OProperties.lor_a, obj.OProperties.lor_orth] = index_maker(obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.subsets, obj.OProperties.use_raw_data, ...
                         obj.OProperties.machine_name, obj.OProperties, obj.OProperties.Nang, obj.OProperties.Ndist, obj.OProperties.TotSinos, obj.OProperties.NSinos);
                 else
-                    obj.n_meas = int64(obj.OProperties.nProjections * obj.OProperties.ySize * obj.OProperties.xSize);
+                    obj.n_meas = int64(obj.OProperties.nProjections);
                     obj.index = 0;
                 end
             end
@@ -373,7 +535,11 @@ classdef forwardBackwardProjectCT
                 obj.subset = 1;
             end
             
-            
+%             if obj.OProperties.SPECT
+%                 if isempty(obj.OProperties.mask2)
+%                     obj.OProperties.mask2 = obj.OProperties.mask1;
+%                 end
+%             end
             if ~isfield(obj.OProperties,'use_machine')
                 obj.OProperties.use_machine = 0;
             end
@@ -417,16 +583,27 @@ classdef forwardBackwardProjectCT
             rings = obj.OProperties.rings;
             blocks = uint32(rings + length(pseudot) - 1);
             % block1 = uint32(0);
-            if (~isfield(obj.OProperties,'x') && ~isfield(obj.OProperties,'y') && (~isfield(obj.OProperties,'z') || ~isfield(obj.OProperties,'z_det')))
+            if ~obj.OProperties.listmode
                 if obj.OProperties.flip_image
                     obj.OProperties.angles = -obj.OProperties.angles;
                 end
                 if obj.OProperties.offangle > 0
                     obj.OProperties.angles = obj.OProperties.angles + obj.OProperties.offangle;
                 end
-                [x,y,z_det] = CTDetectorCoordinates(obj.OProperties.angles(1:obj.OProperties.nProjections/obj.OProperties.nBed),obj.OProperties.sourceToDetector,...
-                    obj.OProperties.sourceToCRot,obj.OProperties.dPitch,obj.OProperties.xSize,obj.OProperties.ySize,obj.OProperties.horizontalOffset,...
-                    obj.OProperties.verticalOffset,obj.OProperties.bedOffset);
+                if (~isfield(obj.OProperties,'x') && ~isfield(obj.OProperties,'y') && (~isfield(obj.OProperties,'z') || ~isfield(obj.OProperties,'z_det')))
+                    [x,y,z_det] = CTDetSource(obj.OProperties.angles(1:obj.OProperties.nProjections/obj.OProperties.nBed),obj.OProperties.nProjections,...
+                        obj.OProperties.sourceToDetector, obj.OProperties.sourceToCRot,obj.OProperties.horizontalOffset,...
+                        obj.OProperties.verticalOffset,obj.OProperties.bedOffset);
+                else
+                    x = obj.OProperties.x;
+                    y = obj.OProperties.y;
+                    z_det = obj.OProperties.z;
+                end
+                if ~isfield(obj.OProperties,'pitchRoll') && ~isfield(obj.OProperties,'uV')
+                    obj.OProperties.uV = CTDetectorCoordinates(obj.OProperties.angles);
+                elseif ~isfield(obj.OProperties,'uV')
+                    obj.OProperties.uV = CTDetectorCoordinates(obj.OProperties.angles,obj.OProperties.pitchRoll);
+                end
             end
             if exist('x','var')
                 obj.OProperties.x = x;
@@ -450,7 +627,7 @@ classdef forwardBackwardProjectCT
                     clear z_det
                 end
             end
-            if numel(obj.OProperties.z_det)/2 > numel(obj.OProperties.angles)
+            if numel(obj.OProperties.z_det)/2 > numel(obj.OProperties.angles) && obj.OProperties.listmode == 0
                 if size(obj.OProperties.angles,1) == 1
                     obj.OProperties.angles = reshape(obj.OProperties.angles, [],1);
                 end
@@ -477,14 +654,12 @@ classdef forwardBackwardProjectCT
             if obj.OProperties.listmode
                 size_x = size_x * uint32(obj.OProperties.xSize * obj.OProperties.nProjections);
             end
-            if obj.OProperties.implementation == 2 || obj.OProperties.implementation == 3
-                obj.OProperties.angles = single(obj.OProperties.angles);
-                obj.OProperties.dPitch = single(obj.OProperties.dPitch);
-            end
             
-            if ~obj.OProperties.listmode
+%             if obj.OProperties.subsets > 1
                 [obj.OProperties, obj.OProperties.lor_a, obj.OProperties.xy_index, obj.OProperties.z_index, obj.OProperties.LL, obj.OProperties.summa, obj.n_meas,~,obj.OProperties.lor_orth,discard] = ...
-                    form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, y, z_det, blocks, false, obj.TOF, [], obj.OProperties.lor_a, obj.OProperties.lor_orth, storeMatrix);
+                    form_subset_indices(obj.OProperties, obj.n_meas, obj.OProperties.subsets, obj.index, size_x, obj.OProperties.y, blocks, false, obj.TOF, [], obj.OProperties.lor_a, obj.OProperties.lor_orth, storeMatrix);
+%             end
+            if ~obj.OProperties.listmode
             else
                 obj.OProperties.LL = uint16(0);
                 obj.OProperties.xy_index = uint32(0);
@@ -502,16 +677,23 @@ classdef forwardBackwardProjectCT
             end
             
             R = 0;
-            if ~obj.OProperties.simple
-                Z = obj.OProperties.dPitch * double(obj.OProperties.xSize) + obj.OProperties.z_det(obj.OProperties.nProjections);
-            else
-                Z = max(obj.OProperties.z_det(:)) + min(obj.OProperties.z_det(:));
-                if Z == obj.OProperties.axial_fov && min(obj.OProperties.z_det(:)) > 0
-                    Z = Z + min(obj.OProperties.z_det(:)) + max(obj.OProperties.z_det(:));
-                end
-                obj.OProperties.Z = Z;
-            end
+%             if ~obj.OProperties.simple
+% %                 Z = obj.OProperties.dPitch * double(obj.OProperties.xSize) + obj.OProperties.z_det(obj.OProperties.nProjections);
+                Z = 0;
+%             else
+% %                 Z = max(obj.OProperties.z_det(:)) + min(obj.OProperties.z_det(:));
+% %                 if Z == obj.OProperties.axial_fov && min(obj.OProperties.z_det(:)) > 0
+% %                     Z = Z + min(obj.OProperties.z_det(:)) + max(obj.OProperties.z_det(:));
+% %                 end
+% %                 obj.OProperties.Z = Z;
+%                 Z = 0;
+%             end
             
+            if isfield(obj.OProperties, 'bx') && isfield(obj.OProperties, 'by')
+                bx = obj.OProperties.bx;
+                by = obj.OProperties.by;
+                bz = obj.OProperties.bz;
+            end
             [obj.OProperties.xx,obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.OProperties.bx,obj.OProperties.by,...
                 obj.OProperties.bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.implementation);
             
@@ -520,6 +702,169 @@ classdef forwardBackwardProjectCT
             
             [obj.OProperties.V,obj.OProperties.Vmax,obj.OProperties.bmin,obj.OProperties.bmax] = computeVoxelVolumes(obj.OProperties.dx,obj.OProperties.dy,...
                 obj.OProperties.dz,obj.OProperties);
+            
+            if isfield(obj.OProperties, 'oOffsetX')
+                obj.OProperties.bx = obj.OProperties.bx + obj.OProperties.oOffsetX;
+            end
+            if isfield(obj.OProperties, 'oOffsetY')
+                obj.OProperties.by = obj.OProperties.bx + obj.OProperties.oOffsetY;
+            end
+            if isfield(obj.OProperties, 'oOffsetZ')
+                obj.OProperties.bz = obj.OProperties.bz + obj.OProperties.oOffsetZ;
+            end
+            if exist('bx','var') && exist('by','var')
+                obj.OProperties.bx = bx;
+                obj.OProperties.by = by;
+                obj.OProperties.bz = bz;
+            end
+            
+            if ~obj.OProperties.listmode
+%                 if obj.OProperties.projectory_type == 5
+%                     obj.OProperties.x2 = obj.OProperties.x .* cos(obj.OProperties.angles(:)) + obj.OProperties.y .* sin(obj.OProperties.angles(:));
+%                     obj.OProperties.y2 = obj.OProperties.y .* cos(obj.OProperties.angles(:)) - obj.OProperties.x .* sin(obj.OProperties.angles(:));
+%                 end
+                % obj.OProperties.vOffset = zeros(3,obj.OProperties.nProjections,'single');
+                    obj.OProperties.x = [obj.OProperties.x(:,1) obj.OProperties.y(:,1) obj.OProperties.z_det(:,1) obj.OProperties.x(:,2) obj.OProperties.y(:,2) obj.OProperties.z_det(:,2)]';
+                if (isfield(options,'pitchRoll') && ~isempty(options.pitchRoll))
+                    obj.OProperties.PITCH = true;
+                    if obj.OProperties.implementation == 3
+                        obj.OProperties.uV = single(obj.OProperties.uV);
+                    end
+                    obj.OProperties.uV(1,:) = obj.OProperties.uV(1,:) * obj.OProperties.dPitchX;
+                    obj.OProperties.uV(2,:) = obj.OProperties.uV(2,:) * obj.OProperties.dPitchX;
+                    obj.OProperties.uV(4,:) = obj.OProperties.uV(4,:) * obj.OProperties.dPitchX;
+                    obj.OProperties.uV(5,:) = obj.OProperties.uV(5,:) * obj.OProperties.dPitchX;
+                    obj.OProperties.uV(3,:) = obj.OProperties.uV(3,:) * obj.OProperties.dPitchY;
+                    obj.OProperties.uV(6,:) = obj.OProperties.uV(6,:) * obj.OProperties.dPitchY;
+                    
+%                     obj.OProperties.vOffset(1,:) = obj.OProperties.x(:,1);
+%                     obj.OProperties.vOffset(2,:) = obj.OProperties.y(:,1);
+%                     obj.OProperties.vOffset(3,:) = obj.OProperties.z_det(:,1);
+%                     obj.OProperties.detY = 0;
+%                     obj.OProperties.x2 = obj.OProperties.x;
+%                     obj.OProperties.y2 = obj.OProperties.y;
+%                     obj.OProperties.z2 = obj.OProperties.z_det;
+%                     obj.OProperties.x2 = [obj.OProperties.x2(:,2) - obj.OProperties.x2(:,1), obj.OProperties.y2(:,2) - obj.OProperties.y2(:,1), obj.OProperties.z2(:,2) - obj.OProperties.z2(:,1)]';
+%                     angles = permute(obj.OProperties.angles, [2 3 1]);
+%                     pitchRoll = permute(options.pitchRoll, [2 3 1]);
+%                     pitchRoll = zeros(size(permute(options.pitchRoll, [2 3 1])));                    
+%                     RR = [cos(angles).*cosd(pitchRoll(2,:,:)) cos(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:)) - sin(angles).*cosd(pitchRoll(1,:,:)) ...
+%                         cos(angles).*sind(pitchRoll(2,:,:)).*cosd(pitchRoll(1,:,:)) + sin(angles).*sind(pitchRoll(1,:,:));...
+%                         sin(angles).*cosd(pitchRoll(2,:,:)) sin(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:)) + cos(angles).*cosd(pitchRoll(1,:,:))...
+%                         sin(angles).*sind(pitchRoll(2,:,:)).*cosd(pitchRoll(1,:,:)) - cos(angles).*sind(pitchRoll(1,:,:));
+%                         -sind(pitchRoll(2,:,:)) cosd(pitchRoll(2,:,:)) .* sind(pitchRoll(1,:,:)) cosd(pitchRoll(2,:,:)) .* cosd(pitchRoll(1,:,:))];
+%                     RR = [cos(angles).*cosd(pitchRoll(1,:,:)) - sin(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:))...
+%                         sin(angles).*cosd(pitchRoll(1,:,:)) + cos(angles).*sind(pitchRoll(1,:,:)).*sind(pitchRoll(2,:,:)) ...
+%                         -sind(pitchRoll(1,:,:)).*cosd(pitchRoll(2,:,:));...
+%                         -sin(angles).*cosd(pitchRoll(2,:,:)) ...
+%                         cos(angles).*cosd(pitchRoll(2,:,:))...
+%                         sind(pitchRoll(2,:,:));
+%                         cos(angles).*sind(pitchRoll(1,:,:)) + sin(angles).*cosd(pitchRoll(1,:,:)).* sind(pitchRoll(2,:,:))...
+%                         sin(angles).*sind(pitchRoll(1,:,:)) - cos(angles).*cosd(pitchRoll(1,:,:)) .* sind(pitchRoll(2,:,:))...
+%                         cosd(pitchRoll(2,:,:)) .* cosd(pitchRoll(1,:,:))];
+%                     RR = [cos(angles).*cosd(pitchRoll(2,:,:)) - sin(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:))...
+%                         sin(angles).*cosd(pitchRoll(2,:,:)) + cos(angles).*sind(pitchRoll(1,:,:)).*sind(pitchRoll(2,:,:)) ...
+%                         -sind(pitchRoll(1,:,:)).*cosd(pitchRoll(2,:,:));...
+%                         -sin(angles).*cosd(pitchRoll(2,:,:)) ...
+%                         cos(angles).*cosd(pitchRoll(2,:,:))...
+%                         sind(pitchRoll(2,:,:));
+%                         (-cos(angles).*sind(pitchRoll(1,:,:)) + sin(angles).*cosd(pitchRoll(1,:,:)).* sind(pitchRoll(2,:,:)))...
+%                         (-sin(angles).*sind(pitchRoll(1,:,:)) - cos(angles).*cosd(pitchRoll(1,:,:)) .* sind(pitchRoll(2,:,:)))...
+%                         cosd(pitchRoll(2,:,:)) .* cosd(pitchRoll(1,:,:))];
+% K1 * K3 * K2
+%                     RR = [cos(angles).*cosd(pitchRoll(2,:,:)) - sin(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:))...
+%                         sin(angles).*cosd(pitchRoll(2,:,:)) + cos(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:)) ...
+%                         -sind(pitchRoll(2,:,:)).*cosd(pitchRoll(1,:,:));...
+%                         -sin(angles).*cosd(pitchRoll(1,:,:)) ...
+%                         cos(angles).*cosd(pitchRoll(1,:,:))...
+%                         sind(pitchRoll(1,:,:));
+%                         (cos(angles).*sind(pitchRoll(2,:,:)) + sin(angles).*cosd(pitchRoll(2,:,:)).* sind(pitchRoll(1,:,:)))...
+%                         sin(angles).*sind(pitchRoll(2,:,:)) - cos(angles).*cosd(pitchRoll(2,:,:)) .* sind(pitchRoll(1,:,:))...
+%                         cosd(pitchRoll(2,:,:)) .* cosd(pitchRoll(1,:,:))];
+                    % (K1 * K3' * K2)'
+%                     RR = [cos(angles).*cosd(pitchRoll(2,:,:)) + sin(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:))...
+%                         sin(angles).*cosd(pitchRoll(2,:,:)) - cos(angles).*sind(pitchRoll(2,:,:)).*sind(pitchRoll(1,:,:)) ...
+%                         -sind(pitchRoll(2,:,:)).*cosd(pitchRoll(1,:,:));...
+%                         -sin(angles).*cosd(pitchRoll(1,:,:)) ...
+%                         cos(angles).*cosd(pitchRoll(1,:,:))...
+%                         -sind(pitchRoll(1,:,:));
+%                         (cos(angles).*sind(pitchRoll(2,:,:)) - sin(angles).*cosd(pitchRoll(2,:,:)).* sind(pitchRoll(1,:,:)))...
+%                         (sin(angles).*sind(pitchRoll(2,:,:)) + cos(angles).*cosd(pitchRoll(2,:,:)) .* sind(pitchRoll(1,:,:)))...
+%                         cosd(pitchRoll(2,:,:)) .* cosd(pitchRoll(1,:,:))];
+%                     RR = permute(RR, [2 1 3]);
+%                     obj.OProperties.x2 = pagemtimes(RR, permute(obj.OProperties.x2, [1 3 2]));
+                elseif obj.OProperties.dPitchX > 0
+                    obj.OProperties.uV(1,:) = obj.OProperties.uV(1,:) * obj.OProperties.dPitchX;
+                    obj.OProperties.uV(2,:) = obj.OProperties.uV(2,:) * obj.OProperties.dPitchX;
+%                     obj.OProperties.x2 = obj.OProperties.x .* cos(obj.OProperties.angles(:)) + obj.OProperties.y .* sin(obj.OProperties.angles(:));
+%                     obj.OProperties.y2 = obj.OProperties.y .* cos(obj.OProperties.angles(:)) - obj.OProperties.x .* sin(obj.OProperties.angles(:));
+%                     %                 obj.OProperties.x2 = obj.OProperties.x;
+%                     %                 obj.OProperties.y2 = obj.OProperties.y;
+%                     obj.OProperties.z2 = obj.OProperties.z_det;
+%                     if isfield(obj.OProperties, 'uCenter')
+%                         obj.OProperties.detY = obj.OProperties.y2(1) + obj.OProperties.uCenter(1);
+%                         obj.OProperties.x2 = obj.OProperties.x2 + obj.OProperties.uCenter .* cos(obj.OProperties.angles) + obj.OProperties.uCenter .* sin(obj.OProperties.angles);
+%                         obj.OProperties.y2 = obj.OProperties.y2 + obj.OProperties.uCenter .* cos(obj.OProperties.angles) - obj.OProperties.uCenter .* sin(obj.OProperties.angles);
+%                         obj.OProperties.vOffset(1,:) = obj.OProperties.uCenter .* cos(obj.OProperties.angles) + obj.OProperties.uCenter .* sin(obj.OProperties.angles);
+%                         obj.OProperties.vOffset(2,:) = obj.OProperties.uCenter .* cos(obj.OProperties.angles) - obj.OProperties.uCenter .* sin(obj.OProperties.angles);
+%                     else
+%                         offsetValuesY = (obj.OProperties.y2(1) - obj.OProperties.y2(:,1));
+%                         offsetValuesX = (obj.OProperties.x2(1) - obj.OProperties.x2(:,1)) + obj.OProperties.dPitchY * obj.OProperties.ySize / 2 - obj.OProperties.dPitchY / 2 - obj.OProperties.x2(1);
+%                         obj.OProperties.x2 = obj.OProperties.x2 + offsetValuesX;
+%                         obj.OProperties.y2 = obj.OProperties.y2 + offsetValuesY;
+%                         obj.OProperties.detY = obj.OProperties.y2(1);
+%                         obj.OProperties.vOffset(1,:) = offsetValuesX;
+%                         obj.OProperties.vOffset(2,:) = offsetValuesY;
+%                     end
+%                     if isfield(obj.OProperties, 'vCenter')
+%                         obj.OProperties.z2 = obj.OProperties.z2 + obj.OProperties.vCenter;
+%                     else
+%                         offsetValuesZ = (obj.OProperties.z2(1) - obj.OProperties.z2(:,1)) + (-(obj.OProperties.dPitchX * obj.OProperties.xSize / 2 - obj.OProperties.dPitchX / 2) - obj.OProperties.z2(1));
+%                         obj.OProperties.z2 = obj.OProperties.z2 + offsetValuesZ;
+%                         obj.OProperties.vOffset(3,:) = offsetValuesZ;
+%                     end
+%                     obj.OProperties.x2 = [obj.OProperties.x2(:,2), obj.OProperties.y2(:,2), obj.OProperties.z2(:,2)]';
+                    %                 if obj.OProperties.CT && obj.OProperties.projector_type == 4
+                    %                     obj.OProperties.x = obj.OProperties.x - obj.OProperties.bx;
+                    %                     obj.OProperties.y = obj.OProperties.y - obj.OProperties.by;
+                    %                     obj.OProperties.z_det = obj.OProperties.z_det - obj.OProperties.bz;
+                    %                 end
+                    %                 obj.OProperties.dScaleX = obj.OProperties.angles == 0;
+                    %                 obj.OProperties.dScaleX = obj.OProperties.x(obj.OProperties.dScaleX);
+                    %                 obj.OProperties.dScaleX = obj.OProperties.dScaleX(1);
+                end
+                obj.OProperties.dScaleX = 1 / (obj.OProperties.dx * (obj.OProperties.Nx));
+                obj.OProperties.dScaleY = 1 / (obj.OProperties.dy * (obj.OProperties.Ny));
+                obj.OProperties.dScaleZ = 1 / (obj.OProperties.dz * (obj.OProperties.Nz));
+                obj.OProperties.dSizeY = obj.OProperties.ySize * obj.OProperties.dPitchY;
+                obj.OProperties.dSizeX = obj.OProperties.ySize * obj.OProperties.dPitchY;
+%                 obj.OProperties.dSizeX = obj.OProperties.dSizeY / 2 + obj.OProperties.bx;
+                obj.OProperties.dSizeZ = obj.OProperties.xSize * obj.OProperties.dPitchX;
+                if obj.OProperties.projector_type == 5
+                    obj.OProperties.dSizeY = 1 / (obj.OProperties.dy * (obj.OProperties.Ny));
+                    obj.OProperties.dSizeX = 1 / (obj.OProperties.dx * (obj.OProperties.Nx));
+                    obj.OProperties.dScaleX = 1 / (obj.OProperties.dx * (obj.OProperties.Nx + 1));
+                    obj.OProperties.dScaleY = 1 / (obj.OProperties.dy * (obj.OProperties.Ny + 1));
+                    obj.OProperties.dScaleZ = 1 / (obj.OProperties.dz * (obj.OProperties.Nz + 1));
+                    obj.OProperties.dSizeZBP = (obj.OProperties.xSize + 1) * obj.OProperties.dPitchX;
+                    obj.OProperties.dSizeXBP = (obj.OProperties.ySize + 1) * obj.OProperties.dPitchY;
+                end
+                obj.OProperties.kerroin = (obj.OProperties.dx * obj.OProperties.dy * obj.OProperties.dz) / (obj.OProperties.dPitchX * obj.OProperties.dPitchY * obj.OProperties.sourceToDetector);
+%                 obj.OProperties.kerroin = obj.OProperties.sourceToCRot;
+            else
+                obj.OProperties.x = [obj.OProperties.x(:,1) obj.OProperties.y(:,1) obj.OProperties.z_det(:,1) obj.OProperties.x(:,2) obj.OProperties.y(:,2) obj.OProperties.z_det(:,2)]';
+                obj.OProperties = rmfield(obj.OProperties, {'y','z_det'});
+            end
+%             if isfield(options,'pitchRoll') && ~isempty(options.pitchRoll)
+%                 options.pitchRoll = options.pitchRoll .* pi ./ 180;
+%                 obj.OProperties.angles = [obj.OProperties.angles options.pitchRoll]';
+% %                 obj.OProperties.angles = [obj.OProperties.angles; single(options.uV)];
+%             end
+            if obj.OProperties.implementation == 2 || obj.OProperties.implementation == 3
+%                 obj.OProperties.angles = single(obj.OProperties.angles);
+                obj.OProperties.dPitchX = single(obj.OProperties.dPitchX);
+                obj.OProperties.dPitchY = single(obj.OProperties.dPitchY);
+            end
             
             % Multi-ray Siddon
 %             if (obj.OProperties.implementation > 1 && obj.OProperties.n_rays_transaxial > 1 && ~obj.OProperties.precompute_lor && obj.OProperties.projector_type == 1) && ~obj.OProperties.listmode
@@ -631,6 +976,10 @@ classdef forwardBackwardProjectCT
             %   Backprojection is selected if transpose operator is used.
             if obj.OProperties.subsets > 1
                 subs = obj.n_meas_subs(obj.subset);
+                if isempty(subs)
+                    obj.subset = 1;
+                    subs = obj.n_meas_subs(obj.subset);
+                end
             else
                 subs = obj.n_meas(end);
             end

@@ -55,6 +55,7 @@ public:
 		const bool large_case = inputs[20][0];
 		const bool TOF = inputs[21][0];
 		const bool verbose = inputs[22][0];
+		const int32_t nLayers = inputs[23][0];
 		size_t outsize2 = (loppu - alku) / vali;
 
 		bool dynamic = outsize2 > 1 ? true : false;
@@ -94,6 +95,10 @@ public:
 		matlab::data::TypedArray<float> y2 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> z1 = factory.createArray<float>({ 1, 1 });
 		matlab::data::TypedArray<float> z2 = factory.createArray<float>({ 1, 1 });
+		matlab::data::TypedArray<uint8_t> layer1 = factory.createArray<uint8_t>({ 1, 1 });
+		matlab::data::TypedArray<uint8_t> layer2 = factory.createArray<uint8_t>({ 1, 1 });
+		matlab::data::TypedArray<uint8_t> layerD1 = factory.createArray<uint8_t>({ 1, 1 });
+		matlab::data::TypedArray<uint8_t> layerD2 = factory.createArray<uint8_t>({ 1, 1 });
 
 		if (outsize2 == 1ULL && !large_case) {
 			if (obtain_trues) {
@@ -155,6 +160,18 @@ public:
 			z2 = factory.createArray<float>({ Nentries, 1 });
 			std::fill(z2.begin(), z2.end(), 0.f);
 		}
+		if (nLayers > 1) {
+			layer1 = factory.createArray<uint8_t>({ Nentries, 1 });
+			layer2 = factory.createArray<uint8_t>({ Nentries, 1 });
+			if (randoms_correction) {
+				layerD1 = factory.createArray<uint8_t>({ Ndelays, 1 });
+				layerD2 = factory.createArray<uint8_t>({ Ndelays, 1 });
+			}
+		}
+		std::fill(layer1.begin(), layer1.end(), static_cast<uint8_t>(0));
+		std::fill(layer2.begin(), layer2.end(), static_cast<uint8_t>(0));
+		std::fill(layerD1.begin(), layerD1.end(), static_cast<uint8_t>(0));
+		std::fill(layerD2.begin(), layerD2.end(), static_cast<uint8_t>(0));
 		matlab::data::TypedArray<uint32_t> tpoints = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
 		std::fill(tpoints.begin(), tpoints.end(), 0U);
 		matlab::data::TypedArray<uint32_t> tpoints_delay = factory.createArray<uint32_t>({ 1, 1 }, { 0 });
@@ -201,7 +218,8 @@ public:
 		histogram(LL1, LL2, tpoints, vali, alku, loppu, outsize2, detectors, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S,
 			Coincidences, Nentries, time_intervals, int_loc, obtain_trues, store_scatter, store_randoms, scatter_components, Ltrues, Lscatter,
 			Lrandoms, trues_loc, Ndelays, randoms_correction, delay, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_loc, scatter_loc, x1, x2,
-			y1, y2, z1, z2, store_coordinates, dynamic, large_case, rings, cryst_per_block_z, transaxial_multip, TP, TPd, TOF, verbose);
+			y1, y2, z1, z2, store_coordinates, dynamic, large_case, rings, cryst_per_block_z, transaxial_multip, TP, TPd, TOF, verbose, layer1, layer2, 
+			layerD1, layerD2, nLayers);
 
 		delete Coincidences;
 		if (randoms_correction)
@@ -230,6 +248,10 @@ public:
 		outputs[20] = std::move(z2);
 		outputs[21] = std::move(TP);
 		outputs[22] = std::move(TPd);
+		outputs[23] = std::move(layer1);
+		outputs[24] = std::move(layer2);
+		outputs[25] = std::move(layerD1);
+		outputs[26] = std::move(layerD2);
 
 		//mexEvalString("pause(.001);");
 
@@ -264,11 +286,12 @@ public:
 		matlab::data::TypedArray<float>& x1, matlab::data::TypedArray<float>& x2, matlab::data::TypedArray<float>& y1, matlab::data::TypedArray<float>& y2,
 		matlab::data::TypedArray<float>& z1, matlab::data::TypedArray<float>& z2, bool store_coordinates, const bool dynamic, const bool large_case, const uint32_t rings, 
 		const uint32_t cryst_per_block_z, const uint32_t transaxial_multip, matlab::data::TypedArray<double>& TP, matlab::data::TypedArray<double>& TPd, const bool TOF, 
-		const bool verbose)
+		const bool verbose, matlab::data::TypedArray<uint8_t>& layer1, matlab::data::TypedArray<uint8_t>& layer2, matlab::data::TypedArray<uint8_t>& layerD1, 
+		matlab::data::TypedArray<uint8_t>& layerD2, const int32_t nLayers)
 	{
 
 		Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
-			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0;
+			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0, layerID1 = 0, layerID2 = 0;
 		Float_t sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, globalPosX1, globalPosX2, globalPosY1, globalPosY2, globalPosZ1, globalPosZ2;
 		Double_t time1 = alku, time2 = alku;
 
@@ -317,6 +340,8 @@ public:
 			no_submodules = false;
 		Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 		Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
+		Coincidences->SetBranchAddress("layerID1", &layerID1);
+		Coincidences->SetBranchAddress("layerID2", &layerID2);
 		if (source) {
 			if (Coincidences->GetBranchStatus("sourcePosX1"))
 				Coincidences->SetBranchAddress("sourcePosX1", &sourcePosX1);
@@ -680,6 +705,10 @@ public:
 				L1 = L2;
 				L2 = L3;
 			}
+			if (nLayers > 1) {
+				layer1[kk] = layerID2;
+				layer2[kk] = layerID1;
+			}
 			if (obtain_trues || store_scatter || store_randoms) {
 				if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
 					if (outsize2 == 1ULL) {
@@ -823,6 +852,10 @@ public:
 					tpoints_delay[ll++] = 0u;
 					aika = time_intervals[pa];
 					int_loc_delay[0] = pa;
+				}
+				if (nLayers > 1) {
+					layerD1[kk] = layerID2;
+					layerD2[kk] = layerID1;
 				}
 				if (outsize2 == 1) {
 					if (large_case) {

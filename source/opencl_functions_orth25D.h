@@ -310,7 +310,7 @@
 void orth_distance_perpendicular_multi(__constant float* center1, const float center2, __constant float* z_center, const float kerroin,
 	float* temp, float* ax, const float d_b, const float d, 
 	const float d_d1, const uint d_N1, const uint d_N2, const uint z_loop, const __global float* d_atten, const float d_norm, const float local_sino, 
-	const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const uint d_N, const uint d_NN, 
+	const float3 s, const float3 diff, const uint d_N, const uint d_NN, 
 	const __global float* d_OSEM, const uchar no_norm, __global CAST* Summ, const bool FP_bool, const bool RHS, const float global_factor, 
 #ifdef MBSREM
 	const RecMethodsOpenCL MethodListOpenCL, const uint d_alku, float* axCOSEM, 
@@ -324,7 +324,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 	const int apu = perpendicular_start(d_b, d, d_d1, d_N1);
 	float jelppi = 0.f;
 	for (int uu = apu; uu >= 0; uu--) {
-		float local_ele = compute_element_orth_3D_per(xs, ys, zs, xl, yl, zl, kerroin, center1[uu], center2, z_center[z_loop]);
+		float local_ele = computeElementOrth3DPer(s, diff, kerroin, center1[uu], center2, z_center[z_loop]);
 		if (local_ele <= THR)
 			break;
 		uint local_ind = convert_uint_sat(uu) * d_N + zz;
@@ -426,7 +426,7 @@ void orth_distance_perpendicular_multi(__constant float* center1, const float ce
 		}
 	}
 	for (uint uu = convert_uint_sat(apu) + 1u; uu < d_N1; uu++) {
-		float local_ele = compute_element_orth_3D_per(xs, ys, zs, xl, yl, zl, kerroin, center1[uu], center2, z_center[z_loop]);
+		float local_ele = computeElementOrth3DPer(xs, ys, zs, xl, yl, zl, kerroin, center1[uu], center2, z_center[z_loop]);
 		if (local_ele <= THR)
 			break;
 		uint local_ind = uu * d_N + zz; 

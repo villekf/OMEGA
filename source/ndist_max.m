@@ -53,6 +53,7 @@ end
 if ~isfield(options,'implementation')
     options.implementation = 4;
 end
+options.nLayers = 1;
 if nargin > 5 && ~isempty(options.pseudot) && options.pseudot > 0
     [~, ~, x, y] = detector_coordinates(options);
 else

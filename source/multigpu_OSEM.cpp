@@ -20,20 +20,18 @@
 
 // Implementation 3
 void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues,
-	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, const mxArray* sc_ra, const uint32_t Nx,
-	const uint32_t Ny, const uint32_t Nz, const uint32_t Niter, const mxArray* options, const float dx, const float dy, const float dz, const float bx,
-	const float by, const float bz, const float bzb, const float maxxx, const float maxyy, const float zmax, const float NSlices, const int64_t* pituus,
-	const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t size_x, const uint32_t TotSinos, const bool verbose,
-	const uint32_t randoms_correction, const uint32_t attenuation_correction, const uint32_t normalization, const float* atten, const size_t size_atten,
-	const float* norm, const size_t size_norm, const uint32_t subsets, const float epps, const uint32_t Nt, const uint32_t* pseudos, const uint32_t det_per_ring,
-	const uint32_t prows, const uint16_t* L, const uint8_t raw, const size_t size_z, const uint32_t im_dim, const cl::Kernel& kernel, const cl::Kernel& kernel_sum,
+	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, const mxArray* sc_ra, scalarStruct inputScalars, 
+	const mxArray* options, const int64_t* pituus,
+	const size_t koko_l, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos, const bool verbose,
+	const float* atten, const size_t size_atten,
+	const float* norm, const size_t size_norm, const uint32_t* pseudos, const uint16_t* L, const uint32_t im_dim, const cl::Kernel& kernel, const cl::Kernel& kernel_sum,
 	const cl::Kernel& kernel_mlem, const cl::Kernel& kernel_convolution, const cl::Kernel& kernel_convolution_f, const cl::Kernel& kernel_vectorMult,
-	const cl::Kernel& kernel_vectorDiv, const size_t numel_x, const float tube_width, const float crystal_size_z, const float* x_center, const float* y_center,
+	const cl::Kernel& kernel_vectorDiv, const size_t numel_x, const float* x_center, const float* y_center,
 	const float* z_center, const size_t size_center_x, const size_t size_center_y, const size_t size_center_z, const bool atomic_64bit, const bool atomic_32bit, 
-	const cl_uchar compute_norm_matrix, const bool precompute, const int32_t dec, const uint32_t projector_type, const uint16_t n_rays, const uint16_t n_rays3D,
-	const float cr_pz, mxArray* cell, const bool osem_bool, const float global_factor, const float bmin, const float bmax, const float Vmax, const float* V,
-	const size_t size_V, const size_t local_size, const bool use_psf, const float* gaussian, const size_t size_gauss, const uint32_t scatter, const bool TOF, 
-	const int64_t TOFSize, const float sigma_x, const float* TOFCenter, const int64_t nBins, const cl::vector<cl::Device> devices) {
+	const cl_uchar compute_norm_matrix, 
+	mxArray* cell, const bool osem_bool, const float* V,
+	const size_t size_V, const size_t local_size[], const float* gaussian, const size_t size_gauss, 
+	const int64_t TOFSize, const float* TOFCenter, const cl::vector<cl::Device> devices) {
 
 	cl_int status = CL_SUCCESS;
 	cl_float zero = 0.f;
@@ -42,12 +40,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	cl_uint zeroU = 0u;
 	cl_int zero32 = 0;
 	const cl_ulong st = 0ULL;
-	const cl_uchar fp = 0u;
 	// Number of voxels in a single image
-	const uint32_t Nxy = Nx * Ny;
-	const bool deblur = (bool)mxGetScalar(mxGetField(options, 0, "deblurring"));
-	const bool saveIter = (bool)mxGetScalar(mxGetField(options, 0, "save_iter"));
-	const bool CT = (bool)mxGetScalar(mxGetField(options, 0, "CT"));
+	const uint32_t Nxy = inputScalars.Nx * inputScalars.Ny;
+	const bool deblur = (bool)mxGetScalar(getField(options, 0, "deblurring"));
+	const bool saveIter = (bool)mxGetScalar(getField(options, 0, "save_iter"));
+	const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
 
 	size_t vSize = 0ULL;
 	if (atomic_64bit)
@@ -61,41 +58,41 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 
 	size_t Ni = 0ULL;
 	if (saveIter)
-		Ni = static_cast<size_t>(Niter);
-	const mwSize dimmi[2] = { static_cast<mwSize>(Nx) * static_cast<mwSize>(Ny) * static_cast<mwSize>(Nz), static_cast<mwSize>(Ni + 1ULL) };
+		Ni = static_cast<size_t>(inputScalars.Niter);
+	const mwSize dimmi[2] = { static_cast<mwSize>(inputScalars.Nx) * static_cast<mwSize>(inputScalars.Ny) * static_cast<mwSize>(inputScalars.Nz), static_cast<mwSize>(Ni + 1ULL) };
 
 	// Output matrix
 	mxArray* mlem = mxCreateNumericArray(2, dimmi, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 	float* ele_ml = (float*)mxGetSingles(mlem);
 #else
 	float* ele_ml = (float*)mxGetData(mlem);
 #endif
 
-	int64_t nProjections = 0LL;
-	float dPitch = 0.f;
+	//int64_t nProjections = 0LL;
+	//float dPitch = 0.f;
 	float* angles = nullptr;
-	uint32_t size_y = 0U;
+	//uint32_t size_y = 0U;
 	if (CT) {
-		dPitch = (float)mxGetScalar(mxGetField(options, 0, "dPitch"));
-		nProjections = (int64_t)mxGetScalar(mxGetField(options, 0, "nProjections"));
-		size_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "xSize"));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
+		inputScalars.dPitch = (float)mxGetScalar(getField(options, 0, "dPitch"));
+		inputScalars.nProjections = (int64_t)mxGetScalar(getField(options, 0, "nProjections"));
+		inputScalars.size_y = (uint32_t)mxGetScalar(getField(options, 0, "xSize"));
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+		angles = (float*)mxGetSingles(getField(options, 0, "angles"));
 #else
-		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
+		angles = (float*)mxGetData(getField(options, 0, "angles"));
 #endif
 	}
 
 	// Distance between rays in multi-ray Siddon
-	const float dc_z = cr_pz / static_cast<float>(n_rays3D + 1);
+	const float dc_z = inputScalars.cr_pz / static_cast<float>(inputScalars.n_rays3D + 1);
 
 	// How many LORs at each subset with each device
-	std::vector<size_t> meas_per_gpu(subsets);
-	std::vector<size_t> meas_per_cpu(subsets);
+	std::vector<size_t> meas_per_gpu(inputScalars.subsets);
+	std::vector<size_t> meas_per_cpu(inputScalars.subsets);
 	// How many measurements should be in a single GPU and/or CPU part
 	// Each subset is divided among the devices
-	for (uint32_t kk = 0u; kk < subsets; kk++) {
+	for (uint32_t kk = 0u; kk < inputScalars.subsets; kk++) {
 		size_t osa_length = (pituus[kk + 1u] - pituus[kk]);
 		// CPU is used if cpu_device >= 0
 		if (cpu_device >= 0) {
@@ -106,11 +103,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			meas_per_gpu[kk] = osa_length / static_cast<size_t>(num_devices_context);
 	}
 
-	std::vector<cl_ulong> cumsum((num_devices_context + 1u) * subsets, 0);
-	std::vector<size_t> length(num_devices_context * subsets, 0);
+	std::vector<cl_ulong> cumsum((num_devices_context + 1u) * inputScalars.subsets, 0);
+	std::vector<size_t> length(num_devices_context * inputScalars.subsets, 0);
 	// Number of measurements/LORs in the current subset in the current device
 	// Heterogeneous cases are handled differently
-	for (cl_uint kk = 0u; kk < subsets; kk++) {
+	for (cl_uint kk = 0u; kk < inputScalars.subsets; kk++) {
 		size_t osa_length = pituus[kk + 1] - pituus[kk];
 		for (cl_uint i = 0u; i < num_devices_context; i++) {
 			// Last device
@@ -146,31 +143,31 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	}
 
 
-	const uint8_t listmode = (uint8_t)mxGetScalar(mxGetField(options, 0, "listmode"));
-	const bool computeSensImag = (bool)mxGetScalar(mxGetField(options, 0, "compute_sensitivity_image"));
+	const uint8_t listmode = (uint8_t)mxGetScalar(getField(options, 0, "listmode"));
+	const bool computeSensImag = (bool)mxGetScalar(getField(options, 0, "compute_sensitivity_image"));
 
 	size_t size_scat = 1ULL;
-	if (scatter == 1U) {
-		size_scat = mxGetNumberOfElements(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+	if (inputScalars.scatter == 1U) {
+		size_scat = mxGetNumberOfElements(mxGetCell(getField(options, 0, "ScatterC"), 0));
 	}
 
 	uint32_t deblur_iterations = 0U;
-	if (use_psf && deblur) {
-		deblur_iterations = (uint32_t)mxGetScalar(mxGetField(options, 0, "deblur_iterations"));
+	if (inputScalars.use_psf && deblur) {
+		deblur_iterations = (uint32_t)mxGetScalar(getField(options, 0, "deblur_iterations"));
 	}
 
-	if (num_devices_context == 1 && TOF) {
+	if (num_devices_context == 1 && inputScalars.TOF) {
 		cl_ulong mem = devices[0].getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>(&status);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
 		}
 
-		if (static_cast<double>(mem) * 0.75 < static_cast<double>(koko * nBins * sizeof(float)) && TOF)
+		if (static_cast<double>(mem) * 0.75 < static_cast<double>(koko * inputScalars.nBins * sizeof(float)) && inputScalars.TOF)
 			loadTOF = false;
 	}
 
-	uint32_t TOFsubsets = subsets;
+	uint32_t TOFsubsets = inputScalars.subsets;
 	if (!loadTOF)
 		TOFsubsets = 1U;
 
@@ -193,16 +190,16 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	std::vector<cl::Buffer> d_mlem(num_devices_context);
 	std::vector<cl::Buffer> d_mlem_blurred(num_devices_context);
 	std::vector<cl::Buffer> d_Sino(TOFsubsets * num_devices_context);
-	std::vector<cl::Buffer> d_sc_ra(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_norm(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_scat(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_lor(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_xyindex(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_zindex(subsets * num_devices_context);
-	std::vector<cl::Buffer> d_L(subsets * num_devices_context);
+	std::vector<cl::Buffer> d_sc_ra(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_norm(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_scat(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_lor(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_xyindex(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_zindex(inputScalars.subsets * num_devices_context);
+	std::vector<cl::Buffer> d_L(inputScalars.subsets * num_devices_context);
 	std::vector<cl::Buffer> d_reko_type(num_devices_context);
 	if (compute_norm_matrix == 0u)
-		d_Summ.resize(subsets * num_devices_context);
+		d_Summ.resize(inputScalars.subsets * num_devices_context);
 	else
 		d_Summ.resize(num_devices_context);
 	if (num_devices_context > 1u) {
@@ -211,10 +208,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	}
 
 	// Create the necessary buffers
-	for (cl_uint kk = 0u; kk < subsets; kk++) {
+	for (cl_uint kk = 0u; kk < inputScalars.subsets; kk++) {
 		for (cl_uint i = 0u; i < num_devices_context; i++) {
 			if (kk == 0u) {
-				if (i == 0 && use_psf) {
+				if (i == 0 && inputScalars.use_psf) {
 					d_gauss = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_gauss, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -231,7 +228,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				d_z[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_z, NULL, &status);
+				d_z[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -247,7 +244,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 				if (CT) {
-					d_angles[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * nProjections, NULL, &status);
+					d_angles[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
@@ -279,12 +276,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 				// TOF bin centers
-				d_TOFCenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * nBins, NULL, &status);
+				d_TOFCenter[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				d_pseudos[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * prows, NULL, &status);
+				d_pseudos[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * inputScalars.pRows, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -331,19 +328,19 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (TOF && num_devices_context == 1 && !loadTOF && listmode != 2) {
+			if (inputScalars.TOF && num_devices_context == 1 && !loadTOF && listmode != 2) {
 				if (kk == 0)
-					d_Sino[kk] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * nBins, NULL, &status);
+					d_Sino[kk] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * inputScalars.nBins, NULL, &status);
 			}
 			else if (listmode != 2)
-				d_Sino[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i] * nBins, NULL, &status);
+				d_Sino[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i] * inputScalars.nBins, NULL, &status);
 			else
 				d_Sino[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			if (normalization == 1u) {
+			if (inputScalars.normalization_correction == 1u) {
 				d_norm[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -357,7 +354,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (randoms_correction == 1u) {
+			if (inputScalars.randoms_correction == 1u) {
 				d_sc_ra[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -371,7 +368,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (scatter == 1u) {
+			if (inputScalars.scatter == 1u) {
 				d_scat[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -385,7 +382,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (precompute)
+			if (inputScalars.precompute)
 				d_lor[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk * num_devices_context + i], NULL, &status);
 			else
 				d_lor[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint16_t), NULL, &status);
@@ -400,7 +397,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			if (raw && listmode != 1) {
+			if (inputScalars.raw && listmode != 1) {
 				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t), NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -417,7 +414,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else if (listmode != 1 && (!CT || subsets > 1)) {
+			else if (listmode != 1 && (!CT || inputScalars.subsets > 1)) {
 				d_xyindex[kk * num_devices_context + i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk * num_devices_context + i], NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -474,10 +471,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	}
 
 	// Fill the buffers with host data
-	for (cl_uint kk = 0u; kk < subsets; kk++) {
+	for (cl_uint kk = 0u; kk < inputScalars.subsets; kk++) {
 		for (cl_uint i = 0u; i < num_devices_context; i++) {
 			if (kk == 0u) {
-				if (i == 0 && use_psf) {
+				if (i == 0 && inputScalars.use_psf) {
 					status = commandQueues[i].enqueueWriteBuffer(d_gauss, CL_FALSE, 0, sizeof(float) * size_gauss, gaussian);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -494,7 +491,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &fp);
+				status = commandQueues[i].enqueueWriteBuffer(d_reko_type[i], CL_FALSE, 0, sizeof(uint8_t), &inputScalars.fp);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -510,7 +507,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 				if (CT) {
-					status = commandQueues[i].enqueueWriteBuffer(d_angles[i], CL_FALSE, 0, sizeof(float) * nProjections, angles);
+					status = commandQueues[i].enqueueWriteBuffer(d_angles[i], CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, angles);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return;
@@ -536,7 +533,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d_z[i], CL_FALSE, 0, sizeof(float) * size_z, z_det);
+				status = commandQueues[i].enqueueWriteBuffer(d_z[i], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
@@ -546,27 +543,27 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d_TOFCenter[i], CL_FALSE, 0, sizeof(float) * nBins, TOFCenter);
+				status = commandQueues[i].enqueueWriteBuffer(d_TOFCenter[i], CL_FALSE, 0, sizeof(float) * inputScalars.nBins, TOFCenter);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-				status = commandQueues[i].enqueueWriteBuffer(d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * prows, pseudos);
+				status = commandQueues[i].enqueueWriteBuffer(d_pseudos[i], CL_FALSE, 0, sizeof(uint32_t) * inputScalars.pRows, pseudos);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(getField(options, 0, "x0")));
 #else
-				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(getField(options, 0, "x0")));
 #endif
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return;
 				}
 			}
-			if (precompute)
+			if (inputScalars.precompute)
 				status = commandQueues[i].enqueueWriteBuffer(d_lor[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint16_t) * length[kk * num_devices_context + i], 
 					&lor1[cumsum[kk * num_devices_context + i]]);
 			else
@@ -575,7 +572,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				getErrorString(status);
 				return;
 			}
-			if (normalization == 1u) {
+			if (inputScalars.normalization_correction == 1u) {
 				status = commandQueues[i].enqueueWriteBuffer(d_norm[kk * num_devices_context + i], CL_FALSE, 0, sizeof(cl_float) * length[kk * num_devices_context + i], 
 					&norm[cumsum[kk * num_devices_context + i]]);
 				if (status != CL_SUCCESS) {
@@ -591,7 +588,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 			}
 
-			if (raw && listmode != 1) {
+			if (inputScalars.raw && listmode != 1) {
 				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t), xy_index);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -609,7 +606,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					return;
 				}
 			}
-			else if (listmode != 1 && (!CT || subsets > 1)) {
+			else if (listmode != 1 && (!CT || inputScalars.subsets > 1)) {
 				status = commandQueues[i].enqueueWriteBuffer(d_xyindex[kk * num_devices_context + i], CL_FALSE, 0, sizeof(uint32_t) * length[kk * num_devices_context + i], 
 					&xy_index[cumsum[kk * num_devices_context + i]]);
 				if (status != CL_SUCCESS) {
@@ -695,63 +692,64 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	// Set the constant kernel arguments
 	cl::Kernel kernel_ = kernel;
 	cl::Kernel kernel_mlem_ = kernel_mlem;
-	kernel_.setArg(kernelInd++, global_factor);
-	kernel_.setArg(kernelInd++, epps);
+	kernel_.setArg(kernelInd++, inputScalars.global_factor);
+	kernel_.setArg(kernelInd++, inputScalars.epps);
 	kernel_.setArg(kernelInd++, im_dim);
-	kernel_.setArg(kernelInd++, Nx);
-	kernel_.setArg(kernelInd++, Ny);
-	kernel_.setArg(kernelInd++, Nz);
-	kernel_.setArg(kernelInd++, dz);
-	kernel_.setArg(kernelInd++, dx);
-	kernel_.setArg(kernelInd++, dy);
-	kernel_.setArg(kernelInd++, bz);
-	kernel_.setArg(kernelInd++, bx);
-	kernel_.setArg(kernelInd++, by);
-	kernel_.setArg(kernelInd++, bzb);
-	kernel_.setArg(kernelInd++, maxxx);
-	kernel_.setArg(kernelInd++, maxyy);
-	kernel_.setArg(kernelInd++, zmax);
-	kernel_.setArg(kernelInd++, NSlices);
-	kernel_.setArg(kernelInd++, size_x);
+	kernel_.setArg(kernelInd++, inputScalars.Nx);
+	kernel_.setArg(kernelInd++, inputScalars.Ny);
+	kernel_.setArg(kernelInd++, inputScalars.Nz);
+	kernel_.setArg(kernelInd++, inputScalars.dz);
+	kernel_.setArg(kernelInd++, inputScalars.dx);
+	kernel_.setArg(kernelInd++, inputScalars.dy);
+	kernel_.setArg(kernelInd++, inputScalars.bz);
+	kernel_.setArg(kernelInd++, inputScalars.bx);
+	kernel_.setArg(kernelInd++, inputScalars.by);
+	kernel_.setArg(kernelInd++, inputScalars.bzb);
+	kernel_.setArg(kernelInd++, inputScalars.maxxx);
+	kernel_.setArg(kernelInd++, inputScalars.maxyy);
+	kernel_.setArg(kernelInd++, inputScalars.zmax);
+	kernel_.setArg(kernelInd++, inputScalars.NSlices);
+	kernel_.setArg(kernelInd++, inputScalars.size_x);
 	kernel_.setArg(kernelInd++, TotSinos);
-	kernel_.setArg(kernelInd++, det_per_ring);
-	kernel_.setArg(kernelInd++, prows);
+	kernel_.setArg(kernelInd++, inputScalars.det_per_ring);
+	kernel_.setArg(kernelInd++, inputScalars.pRows);
 	kernel_.setArg(kernelInd++, Nxy);
-	kernel_.setArg(kernelInd++, fp);
-	kernel_.setArg(kernelInd++, sigma_x);
-	if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
-		kernel_.setArg(kernelInd++, tube_width);
-		kernel_.setArg(kernelInd++, crystal_size_z);
-		kernel_.setArg(kernelInd++, bmin);
-		kernel_.setArg(kernelInd++, bmax);
-		kernel_.setArg(kernelInd++, Vmax);
+	kernel_.setArg(kernelInd++, inputScalars.fp);
+	kernel_.setArg(kernelInd++, inputScalars.sigma_x);
+	if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u || 
+		(inputScalars.projector_type == 1u && (inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1))) {
+		kernel_.setArg(kernelInd++, inputScalars.tube_width);
+		kernel_.setArg(kernelInd++, inputScalars.crystal_size_z);
+		kernel_.setArg(kernelInd++, inputScalars.bmin);
+		kernel_.setArg(kernelInd++, inputScalars.bmax);
+		kernel_.setArg(kernelInd++, inputScalars.Vmax);
 	}
-	else if (projector_type == 1u && !precompute) {
+	else if (inputScalars.projector_type == 1u && !inputScalars.precompute) {
 		kernel_.setArg(kernelInd++, dc_z);
-		kernel_.setArg(kernelInd++, n_rays);
+		kernel_.setArg(kernelInd++, inputScalars.n_rays);
 	}
 	kernel_.setArg(kernelInd++, zero);
 
 
 	kernel_mlem_.setArg(3, im_dim);
-	kernel_mlem_.setArg(4, epps);
+	kernel_mlem_.setArg(4, inputScalars.epps);
 
 	cl_uint event_count = (3u);
 
 	int32_t w_size_x, w_size_y, w_size_z;
-	if (use_psf) {
-		w_size_x = (int32_t)mxGetScalar(mxGetField(options, 0, "g_dim_x"));
-		w_size_y = (int32_t)mxGetScalar(mxGetField(options, 0, "g_dim_y"));
-		w_size_z = (int32_t)mxGetScalar(mxGetField(options, 0, "g_dim_z"));
+	if (inputScalars.use_psf) {
+		w_size_x = (int32_t)mxGetScalar(getField(options, 0, "g_dim_x"));
+		w_size_y = (int32_t)mxGetScalar(getField(options, 0, "g_dim_y"));
+		w_size_z = (int32_t)mxGetScalar(getField(options, 0, "g_dim_z"));
 	}
 
 	// If the normalization constant is only computed during the first iteration, create a sufficiently large buffer and fill it with zeros
 	if (compute_norm_matrix == 0u || (listmode == 1 && computeSensImag)) {
 		if (listmode == 1 && computeSensImag) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-			float* apu = (float*)mxGetSingles(mxGetField(options, 0, "Summ"));
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+			float* apu = (float*)mxGetSingles(getField(options, 0, "Summ"));
 #else
-			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
+			float* apu = (float*)mxGetData(getField(options, 0, "Summ"));
 #endif
 			int64_t* summ_apu;
 			int32_t* summ_apu32;
@@ -767,7 +765,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					summ_apu32[aa] = static_cast<int32_t>(apu[aa] * TH32);
 				}
 			}
-			for (uint32_t osa_iter = 0u; osa_iter < subsets; osa_iter++) {
+			for (uint32_t osa_iter = 0u; osa_iter < inputScalars.subsets; osa_iter++) {
 				for (cl_uint i = 0u; i < num_devices_context; i++) {
 					if (atomic_64bit)
 						status = commandQueues[i].enqueueWriteBuffer(d_Summ[osa_iter * num_devices_context + i], CL_TRUE, 0, sizeof(cl_long) * im_dim, summ_apu);
@@ -799,7 +797,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			}
 		}
 		else {
-			for (uint32_t osa_iter = 0u; osa_iter < subsets; osa_iter++) {
+			for (uint32_t osa_iter = 0u; osa_iter < inputScalars.subsets; osa_iter++) {
 				for (cl_uint i = 0u; i < num_devices_context; i++) {
 					if (atomic_64bit)
 						status = commandQueues[i].enqueueFillBuffer(d_Summ[osa_iter * num_devices_context + i], zerou, 0, sizeof(cl_ulong) * im_dim);
@@ -819,13 +817,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	cl_uchar no_norm = 0u;
 
 	// Time steps
-	for (uint32_t tt = 0u; tt < Nt; tt++) {
+	for (uint32_t tt = 0u; tt < inputScalars.Nt; tt++) {
 
 		if ((tt > 0u && compute_norm_matrix == 0u) || (listmode == 1 && computeSensImag))
 			no_norm = 1u;
 
 		// Measurement data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 		float* Sino = (float*)mxGetSingles(mxGetCell(Sin, static_cast<mwIndex>(tt)));
 #else
 		float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(tt)));
@@ -840,18 +838,18 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		}
 
 		// Transfer data from host to device
-		for (cl_uint kk = 0u; kk < subsets; kk++) {
+		for (cl_uint kk = 0u; kk < inputScalars.subsets; kk++) {
 			for (cl_uint i = 0u; i < num_devices_context; i++) {
-				if (TOF && num_devices_context == 1 && !loadTOF && listmode != 2) {
+				if (inputScalars.TOF && num_devices_context == 1 && !loadTOF && listmode != 2) {
 					if (kk == 0) {
-						for (int64_t to = 0LL; to < nBins; to++) {
+						for (int64_t to = 0LL; to < inputScalars.nBins; to++) {
 							status = commandQueues[i].enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[0] * to,
 								sizeof(float) * length[0], &Sino[cumsum[0] + koko * to]);
 						}
 					}
 				}
 				else if (listmode != 2) {
-					for (int64_t to = 0LL; to < nBins; to++) {
+					for (int64_t to = 0LL; to < inputScalars.nBins; to++) {
 						status = commandQueues[i].enqueueWriteBuffer(d_Sino[kk * num_devices_context + i], CL_FALSE, sizeof(float) * length[kk * num_devices_context + i] * to,
 							sizeof(float) * length[kk * num_devices_context + i], &Sino[cumsum[kk * num_devices_context + i] + koko * to]);
 					}
@@ -868,8 +866,8 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					mexEvalString("pause(.0001);");
 				}
 				// Randoms
-				if (randoms_correction == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+				if (inputScalars.randoms_correction == 1u) {
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
 					float* S_R = (float*)mxGetSingles(mxGetCell(sc_ra, static_cast<mwIndex>(tt)));
 #else
 					float* S_R = (float*)mxGetData(mxGetCell(sc_ra, tt));
@@ -889,11 +887,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						return;
 					}
 				}
-				if (scatter == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+				if (inputScalars.scatter == 1u) {
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+					float* scat = (float*)mxGetSingles(mxGetCell(getField(options, 0, "ScatterC"), tt));
 #else
-					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
+					float* scat = (float*)mxGetData(mxGetCell(getField(options, 0, "ScatterC"), tt));
 #endif
 					status = commandQueues[i].enqueueWriteBuffer(d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float) * length[kk * num_devices_context + i],
 						&scat[cumsum[kk * num_devices_context + i]]);
@@ -903,10 +901,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 				else {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), static_cast<mwIndex>(0)));
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+					float* scat = (float*)mxGetSingles(mxGetCell(getField(options, 0, "ScatterC"), static_cast<mwIndex>(0)));
 #else
-					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
+					float* scat = (float*)mxGetData(mxGetCell(getField(options, 0, "ScatterC"), 0));
 #endif
 					//status = commandQueues[i].enqueueWriteBuffer(d_scat[kk * num_devices_context + i], CL_FALSE, 0, sizeof(float), scat);
 					status = commandQueues[i].enqueueFillBuffer(d_scat[kk * num_devices_context + i], zero, 0, sizeof(cl_float));
@@ -927,10 +925,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		// Reset the estimate with the initial value in the next time step
 		if (tt > 0u) {
 			for (cl_uint i = 0u; i < num_devices_context; i++) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
-				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(getField(options, 0, "x0")));
 #else
-				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));
+				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(getField(options, 0, "x0")));
 #endif
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -950,7 +948,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		uint32_t it = 0U;
 
 		// Iterations
-		for (uint32_t iter = 0u; iter < Niter; iter++) {
+		for (uint32_t iter = 0u; iter < inputScalars.Niter; iter++) {
 			if (saveIter)
 				it = iter + 1U;
 
@@ -959,12 +957,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				no_norm = 1u;
 
 			// Subsets
-			for (uint32_t osa_iter = 0u; osa_iter < subsets; osa_iter++) {
+			for (uint32_t osa_iter = 0u; osa_iter < inputScalars.subsets; osa_iter++) {
 
 
-				if (num_devices_context == 1 && osa_iter > 0u && TOF && !loadTOF) {
-					d_Sino[0] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * nBins, NULL, &status);
-					for (int64_t to = 0LL; to < nBins; to++)
+				if (num_devices_context == 1 && osa_iter > 0u && inputScalars.TOF && !loadTOF) {
+					d_Sino[0] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * inputScalars.nBins, NULL, &status);
+					for (int64_t to = 0LL; to < inputScalars.nBins; to++)
 						status = commandQueues[0].enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length[osa_iter] * to, sizeof(float) * length[osa_iter], &Sino[cumsum[osa_iter] + koko * to]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -1032,13 +1030,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				for (cl_uint i = 0u; i < num_devices_context; i++) {
 
 
-					if (use_psf) {
+					if (inputScalars.use_psf) {
 						status = commandQueues[i].finish();
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return;
 						}
-						cl::NDRange convn_size(Nx, Ny, Nz);
+						cl::NDRange convn_size(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz);
 						kernel_convolution_f_.setArg(0, d_mlem[i]);
 						kernel_convolution_f_.setArg(1, d_mlem_blurred[i]);
 						kernel_convolution_f_.setArg(2, d_gauss);
@@ -1072,10 +1070,10 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					cl_uint kernelIndSubIter = kernelInd;
 
 					// Make sure the global size is divisible with 64
-					size_t erotus = length[osa_iter * num_devices_context + i] % local_size;
+					size_t erotus = length[osa_iter * num_devices_context + i] % local_size[0];
 
 					if (erotus > 0)
-						erotus = (local_size - erotus);
+						erotus = (local_size[0] - erotus);
 
 					const size_t global_size = length[osa_iter * num_devices_context + i] + erotus;
 
@@ -1083,11 +1081,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					const uint64_t m_size = static_cast<uint64_t>(length[osa_iter * num_devices_context + i]);
 
 					cl::NDRange global(global_size);
-					cl::NDRange local(local_size);
+					cl::NDRange local(local_size[0]);
 
 					if (DEBUG) {
 						mexPrintf("global_size = %u\n", global_size);
-						mexPrintf("local_size = %u\n", local_size);
+						mexPrintf("local_size = %u\n", local_size[0]);
 						mexPrintf("st = %u\n", st);
 						mexEvalString("pause(.0001);");
 					}
@@ -1099,7 +1097,8 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					kernel_.setArg(kernelIndSubIter++, d_x[i]);
 					kernel_.setArg(kernelIndSubIter++, d_y[i]);
 					kernel_.setArg(kernelIndSubIter++, d_z[i]);
-					if (projector_type == 2u || projector_type == 3u || (projector_type == 1u && (precompute || (n_rays * n_rays3D) == 1))) {
+					if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u || 
+						(inputScalars.projector_type == 1u && (inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1))) {
 						kernel_.setArg(kernelIndSubIter++, d_xcenter[i]);
 						kernel_.setArg(kernelIndSubIter++, d_ycenter[i]);
 						kernel_.setArg(kernelIndSubIter++, d_zcenter[i]);
@@ -1107,11 +1106,11 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 					kernel_.setArg(kernelIndSubIter++, d_reko_type[i]);
 					if (CT) {
-						kernel_.setArg(kernelIndSubIter++, subsets);
+						kernel_.setArg(kernelIndSubIter++, inputScalars.subsets);
 						kernel_.setArg(kernelIndSubIter++, d_angles[i]);
-						kernel_.setArg(kernelIndSubIter++, size_y);
-						kernel_.setArg(kernelIndSubIter++, dPitch);
-						kernel_.setArg(kernelIndSubIter++, nProjections);
+						kernel_.setArg(kernelIndSubIter++, inputScalars.size_y);
+						kernel_.setArg(kernelIndSubIter++, inputScalars.dPitch);
+						kernel_.setArg(kernelIndSubIter++, inputScalars.nProjections);
 					}
 					kernel_.setArg(kernelIndSubIter++, d_norm[osa_iter * num_devices_context + i]);
 					kernel_.setArg(kernelIndSubIter++, d_scat[osa_iter * num_devices_context + i]);
@@ -1125,7 +1124,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					kernel_.setArg(kernelIndSubIter++, d_xyindex[osa_iter * num_devices_context + i]);
 					kernel_.setArg(kernelIndSubIter++, d_zindex[osa_iter * num_devices_context + i]);
 					kernel_.setArg(kernelIndSubIter++, d_L[osa_iter * num_devices_context + i]);
-					if (TOF && !loadTOF && num_devices_context == 1U)
+					if (inputScalars.TOF && !loadTOF && num_devices_context == 1U)
 						kernel_.setArg(kernelIndSubIter++, d_Sino[0]);
 					else
 						kernel_.setArg(kernelIndSubIter++, d_Sino[osa_iter * num_devices_context + i]);
@@ -1278,7 +1277,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				//for (cl_uint i = 1u; i < num_devices_context; i++)
 				//	clWaitForEvents(1, &events[i][3]);
 
-				if (use_psf) {
+				if (inputScalars.use_psf) {
 					cl::Kernel kernel_convolution_ = kernel_convolution;
 					cl::Buffer d_rhs_apu;
 					status = commandQueues[0].finish();
@@ -1289,7 +1288,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 						}
 						status = commandQueues[0].enqueueCopyBuffer(d_rhs[0], d_rhs_apu, 0, 0, im_dim * vSize);
 					status = commandQueues[0].finish();
-					cl::NDRange convn_size(Nx, Ny, Nz);
+					cl::NDRange convn_size(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz);
 					kernel_convolution_.setArg(0, d_rhs_apu);
 					kernel_convolution_.setArg(1, d_rhs[0]);
 					kernel_convolution_.setArg(2, d_gauss);
@@ -1428,12 +1427,12 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 
-				if (verbose && subsets > 1u) {
+				if (verbose && inputScalars.subsets > 1u) {
 					mexPrintf("Sub-iteration %u complete\n", osa_iter + 1u);
 					mexEvalString("pause(.0001);");
 				}
 			}
-			if (use_psf && deblur && listmode != 2) {
+			if (inputScalars.use_psf && deblur && listmode != 2) {
 				cl::Kernel kernel_convolution_f_ = kernel_convolution_f;
 				cl::Kernel kernel_vectorDiv_ = kernel_vectorDiv;
 				cl::Kernel kernel_vectorMult_ = kernel_vectorMult;
@@ -1459,13 +1458,13 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-				cl::NDRange convn_size(Nx, Ny, Nz);
+				cl::NDRange convn_size(inputScalars.Nx, inputScalars.Ny, inputScalars.Nz);
 				cl::NDRange vector_size(im_dim);
 				kernel_convolution_f_.setArg(2, d_gauss);
 				kernel_convolution_f_.setArg(3, w_size_x);
 				kernel_convolution_f_.setArg(4, w_size_y);
 				kernel_convolution_f_.setArg(5, w_size_z);
-				for (int ss = 0; ss < deblur_iterations; ss++) {
+				for (uint32_t ss = 0; ss < deblur_iterations; ss++) {
 					status = commandQueues[0].enqueueCopyBuffer(d_mlem[0], d_mlem_apu_kolmas, 0, 0, im_dim * sizeof(float));
 					status = commandQueues[0].finish();
 					kernel_convolution_f_.setArg(0, d_mlem_apu_neljas);
@@ -1483,7 +1482,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					status = commandQueues[0].finish();
 					kernel_vectorDiv_.setArg(0, d_mlem_apu);
 					kernel_vectorDiv_.setArg(1, d_mlem_apu_kolmas);
-					kernel_vectorDiv_.setArg(2, epps);
+					kernel_vectorDiv_.setArg(2, inputScalars.epps);
 					status = commandQueues[0].enqueueNDRangeKernel(kernel_vectorDiv_, cl::NullRange, vector_size);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);

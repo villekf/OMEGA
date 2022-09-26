@@ -80,6 +80,9 @@ end
 if ~isfield(options,'CT')
     options.CT = false;
 end
+if ~isfield(options,'SPECT')
+    options.SPECT = false;
+end
 if ~store_matrix && options.implementation == 1 && options.CT
     error('Implementation 1 is not supported for forward/backward projection. Use B = formMatrix(A,subset) instead.')
 end
@@ -90,7 +93,7 @@ rings = options.rings;
 Nx = options.Nx;
 Ny = options.Ny;
 Nz = options.Nz;
-if Nz > options.NSinos && ~options.simple && ~options.CT
+if Nz > options.NSinos && ~options.simple && (~options.CT && ~options.SPECT)
     Nz = options.NSinos;
     rings = ceil(Nz / 2 + 0.25);
 end
@@ -119,18 +122,18 @@ else
     if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
         options.diameter = (min(options.x(:))) + (max(options.x(:)));
     end
-    if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
-        if min(options.z_det(:)) < 0
-            Z = options.axial_fov - min(options.z_det(:)) * 2;
-        elseif max(options.z_det(:)) > options.axial_fov
-            Z = options.axial_fov + (max(options.z_det(:)) - options.axial_fov) * 2;
-        else
+%     if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
+%         if min(options.z_det(:)) < 0
+%             Z = options.axial_fov - min(options.z_det(:)) * 2;
+%         elseif max(options.z_det(:)) > options.axial_fov
+%             Z = options.axial_fov + (max(options.z_det(:)) - options.axial_fov) * 2;
+%         else
             Z = options.axial_fov;
-        end
-    else
-        Z = 0;
-    end
-    if (options.implementation == 4 || options.implementation == 1) && ~options.CT
+%         end
+%     else
+%         Z = 0;
+%     end
+    if (options.implementation == 4 || options.implementation == 1) && (~options.CT && ~options.SPECT)
         use_raw_data = true;
         options.use_raw_data = use_raw_data;
     end
@@ -159,6 +162,31 @@ end
 
 if ~isa(n_meas,'int64')
     n_meas = int64(n_meas);
+end
+
+if options.projector_type == 5 && options.meanFP
+    yIA = reshape(f, options.Nx, options.Ny, options.Nz);
+    yI = permute(yIA, [2 3 1]);
+    options.meanV = zeros(1,1,options.Nx + options.Ny,'single');
+    options.meanV(1 : options.Nx) = single(mean(mean(yI)));
+    yI = yI - options.meanV(1 : options.Nx);
+    options.integralX = single(integralImage(yI));
+    options.integralX = options.integralX(:);
+    yI = permute(yIA, [1 3 2]);
+    options.meanV(options.Nx + 1 : options.Nx + options.Ny) = single(mean(mean(yI)));
+    yI = yI - options.meanV(options.Nx + 1 : options.Nx + options.Ny);
+    options.integralY = single(integralImage(yI));
+    options.integralY = options.integralY(:);
+    clear yI yIA
+elseif options.projector_type == 5
+    yI = reshape(f, options.Nx, options.Ny, options.Nz);
+%     options.integralX = [reshape(single(integralImage(permute(yI, [2 3 1]))), [], 1) ;...
+%         reshape(single(integralImage(permute(yI, [1 3 2]))), [], 1)];
+    options.integralX = single(integralImage(permute(yI, [2 3 1])));
+    options.integralY = single(integralImage(permute(yI, [1 3 2])));
+    options.integralY = options.integralY(:);
+    options.integralX = options.integralX(:);
+    clear yI
 end
 
 if TOF
@@ -257,12 +285,14 @@ if ~luokka
     end
 else
     if options.listmode
-        x = options.x(nn(1):nn(2),:);
-        y = options.y(nn(1):nn(2),:);
-        z_det = options.z_det(nn(1):nn(2),:);
+        x = options.x(:,nn(1):nn(2));
+%         y = options.y(nn(1):nn(2),:);
+%         z_det = options.z_det(nn(1):nn(2),:);
         x = x(:);
-        y = y(:);
-        z_det = z_det(:);
+        y = single(0);
+        z_det = single(0);
+%         y = y(:);
+%         z_det = z_det(:);
     else
         x = options.x(:);
         y = options.y(:);
@@ -325,7 +355,7 @@ if options.use_raw_data
     end
 else
     if options.listmode
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     else
         size_x = uint32(options.Nang*options.Ndist);
     end
@@ -333,19 +363,19 @@ else
         size_x = size_x * options.sampling;
     end
 end
-if options.CT
+if options.CT || options.PET
     size_x = uint32(options.ySize);
     options.size_y = uint32(options.xSize);
     if options.listmode
         % size_x = size_x * uint32(options.xSize * options.nProjections);
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     end
-    if options.implementation == 2 || options.implementation == 3
-        options.angles = single(options.angles);
-        options.dPitch = single(options.dPitch);
-        options.nProjections = int64(options.nProjections);
-        options.xSize = uint32(options.xSize);
-    end
+%     if options.implementation == 2 || options.implementation == 3
+%         options.angles = single(options.angles);
+%         options.dPitch = single(options.dPitch);
+%         options.nProjections = int64(options.nProjections);
+%         options.xSize = uint32(options.xSize);
+%     end
 end
 
 if (options.precompute_lor || options.implementation == 5 || options.implementation == 2 || options.implementation == 3)
@@ -478,7 +508,7 @@ else
     end
     if options.use_raw_data && ~options.listmode
         LL = options.LL(nn(1) : nn(2));
-    elseif ~options.listmode && (~options.CT || numel(options.xy_index) > 1)
+    elseif ~options.listmode && ((~options.CT && ~options.SPECT) || numel(options.xy_index) > 1) && options.subsets > 1
         xy_index = options.xy_index(nn(1) : nn(2));
         z_index = options.z_index(nn(1) : nn(2));
         LL = uint16(0);
@@ -507,6 +537,32 @@ else
         lor_a = uint16(0);
         lor_orth = uint16(0);
     end
+    if options.CT || options.PET
+        if options.subset_type >= 8 && options.subsets > 1
+            if options.CT
+                x = reshape(x, 6, options.nProjections);
+                x = x(:,index);
+                x = x(:);
+            else
+                z_det = reshape(z_det, 2, options.nProjections);
+                z_det = z_det(:,index);
+                z_det = z_det(:);
+            end
+            if options.CT
+                options.uVS = options.uV(:,index);
+            end
+            options.nProjectionsS = n_meas(end) - n_meas(1);
+        else
+            if options.CT
+                if options.listmode == 0
+                    options.uVS = options.uV(:,nn(1) : nn(2));
+                else
+                    options.uVS = single(0);
+                end
+            end
+            options.nProjectionsS = n_meas(end) - n_meas(1);
+        end
+    end
 end
 
 % Number of pixels
@@ -527,21 +583,22 @@ if options.implementation == 1
 end
 
 
-zmax = max(max(z_det));
-if zmax==0
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        zmax = single(1);
-    else
-        zmax = double(1);
-    end
-end
-if options.CT
-    if options.listmode
-        zmax = max(z_det(1:numel(z_det)/2));
-    else
-        zmax = z_det(options.nProjections) + options.dPitch * (double(options.xSize) - 1);
-    end
-end
+% zmax = max(max(z_det));
+% if zmax==0
+%     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+%         zmax = single(1);
+%     else
+%         zmax = double(1);
+%     end
+% end
+% if options.CT || options.SPECT
+%     if options.listmode
+%         zmax = max(z_det(1:numel(z_det)/2));
+%     else
+%         zmax = z_det(options.nProjections) + options.dPitchX * (double(options.xSize) - 1);
+%     end
+% end
+zmax = 0;
 if ~luokka
     [x_center,y_center,z_center,dec] = computePixelCenters(xx,yy,zz,dx,dy,dz,TOF,options);
     
@@ -624,7 +681,7 @@ elseif options.implementation == 4
     no_norm = uint8(1);
     
     epps = 1e-8;
-    if options.rings > 1 && ~options.CT
+    if options.rings > 1 && (~options.CT && ~options.SPECT)
         dc_z = z_det(2,1) - z_det(1,1);
     else
         dc_z = options.cr_pz;

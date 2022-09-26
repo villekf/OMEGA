@@ -25,11 +25,11 @@
 // Get the OpenCL context for the current platform
 cl_int clGetPlatformsContext(const uint32_t device, const float kerroin, cl::Context& context, size_t& size, int& cpu_device, 
 	cl_uint& num_devices_context, cl::vector<cl::Device> &devices, bool& atomic_64bit, cl_uchar& compute_norm_matrix, const uint32_t Nxyz,
-	const uint32_t subsets, const uint8_t raw) {
+	const scalarStruct inputScalars) {
 	cl_int status = CL_SUCCESS;
 	cl_float mem_portions;
 	// These variables are used to determine if the normalization constant is memory-wise possible to store
-	if (raw == 1u)
+	if (inputScalars.raw == 1u)
 		mem_portions = 0.1f;
 	else
 		mem_portions = 0.2f;
@@ -272,12 +272,9 @@ cl_int clGetPlatformsContextSingle(const uint32_t device, cl::Context& context, 
 }
 
 // Build the programs and get the command queues
-cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
+cl_int ClBuildProgramGetQueues(cl::Program& program, cl::Program& programAux, const char* k_path, const cl::Context context, const cl_uint num_devices_context,
 	const cl::vector<cl::Device>& devices, const bool verbose, std::vector<cl::CommandQueue>& commandQueues, bool& atomic_64bit, const bool atomic_32bit, 
-	const uint32_t projector_type, const char* header_directory, const float crystal_size_z, const bool precompute, const uint8_t raw, const uint32_t attenuation_correction, 
-	const uint32_t normalization_correction, const int32_t dec, const uint8_t fp, const size_t local_size, const uint16_t n_rays, const uint16_t n_rays3D, 
-	const bool find_lors, const float cr_pz, const float dx, const bool use_psf, const uint32_t scatter, const uint32_t randoms_correction, const bool TOF, 
-	const int64_t nBins, const uint8_t listmode, const bool CT) {
+	const scalarStruct inputScalars, const char* header_directory, const size_t local_size[], const bool find_lors, const uint8_t listmode, const bool CT) {
 	cl_int status = CL_SUCCESS;
 
 
@@ -301,21 +298,31 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	std::ifstream sourceHeader(kernelFile + "general_opencl_functions.h");
 	std::string contentHeader((std::istreambuf_iterator<char>(sourceHeader)), std::istreambuf_iterator<char>());
 	std::string content;
+	std::string auxKernelPath = kernelFile + "auxKernels.cl";
+	std::ifstream sourceFileAux(auxKernelPath.c_str());
+	std::string contentAux((std::istreambuf_iterator<char>(sourceFileAux)), std::istreambuf_iterator<char>());
 	std::string options = "-cl-single-precision-constant";
 	//options += " -cl-fast-relaxed-math";
-	if (crystal_size_z == 0.f && projector_type == 2u) {
-		options += " -DCRYST";
-		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
-		std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
-		std::ifstream sourceHeader2(kernelFile + "opencl_functions_orth25D.h");
-		std::string contentHeader2((std::istreambuf_iterator<char>(sourceHeader2)), std::istreambuf_iterator<char>());
-		//content = content + contentHeader2;
-		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
-		std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
-		content = contentHeader + contentHeader1 + contentHeader2 + contentHeader3 + contentF;
-	}
-	else if ((crystal_size_z > 0.f && projector_type == 2u) || projector_type == 3u) {
-		options += " -DCRYSTZ";
+	//if (inputScalars.crystal_size_z == 0.f && inputScalars.projector_type == 2u) {
+	//	options += " -DCRYST";
+	//	std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
+	//	std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
+	//	std::ifstream sourceHeader2(kernelFile + "opencl_functions_orth25D.h");
+	//	std::string contentHeader2((std::istreambuf_iterator<char>(sourceHeader2)), std::istreambuf_iterator<char>());
+	//	//content = content + contentHeader2;
+	//	std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
+	//	std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
+	//	content = contentHeader + contentHeader1 + contentHeader2 + contentHeader3 + contentF;
+	//}
+	if ((inputScalars.tube_width > 0.f && inputScalars.projector_type == 2u) || inputScalars.projector_type == 3u) {
+		const int NSTEPS = std::max(std::max(static_cast<int>(std::ceil(inputScalars.tube_width / inputScalars.dx)), 
+			static_cast<int>(std::ceil(inputScalars.tube_width / inputScalars.dy))), 
+			static_cast<int>(std::ceil(inputScalars.tube_width / inputScalars.dz)));
+		if (inputScalars.orthXY)
+			options += " -DCRYSTXY";
+		if (inputScalars.orthZ)
+			options += " -DCRYSTZ";
+		options += (" -DNSTEPS=" + std::to_string(NSTEPS));
 		std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
 		std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
 		std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
@@ -325,50 +332,91 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	}
 	else
 		content = contentHeader + contentF;
-	if (projector_type == 3u)
+	if (inputScalars.projector_type == 3u)
 		options += " -DVOL";
-	if (precompute)
+	if (inputScalars.precompute)
 		options += " -DPRECOMPUTE";
-	if (raw == 1)
+	if (inputScalars.raw == 1)
 		options += " -DRAW";
-	if (projector_type == 1u)
+	if (inputScalars.projector_type == 1u)
 		options += " -DSIDDON";
-	else if (projector_type == 2u || projector_type == 3u)
+	else if (inputScalars.projector_type == 4u) {
+		options += " -DPTYPE4";
+		//options += (" -DNPROJECTIONS=" + std::to_string(inputScalars.nProjections));
+		options += (" -DNVOXELS=" + std::to_string(NVOXELS));
+		if (inputScalars.maskFP && inputScalars.fp == 1)
+			options += " -DMASKFP";
+		else if (inputScalars.maskBP && inputScalars.fp == 2)
+			options += " -DMASKBP";
+	}
+	else if (inputScalars.projector_type == 5u) {
+		//options += (" -DNPROJECTIONS=" + std::to_string(inputScalars.nProjections));
+		options += " -DPROJ5";
+		if (inputScalars.meanFP && inputScalars.fp == 1)
+			options += " -DMEANDISTANCEFP";
+		else if (inputScalars.meanBP && inputScalars.fp == 2)
+			options += " -DMEANDISTANCEBP";
+		if (inputScalars.maskFP && inputScalars.fp == 1)
+			options += " -DMASKFP";
+		else if (inputScalars.maskBP && inputScalars.fp == 2)
+			options += " -DMASKBP";
+	}
+	else if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u)
 		options += " -DORTH";
-	if (attenuation_correction == 1u)
+	if (inputScalars.attenuation_correction == 1u)
 		options += " -DATN";
-	if (normalization_correction == 1u)
+	if (inputScalars.normalization_correction == 1u)
 		options += " -DNORM";
-	if ((projector_type == 2 || projector_type == 3u || (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1))) && dec > 0)
-		options += (" -DDEC=" + std::to_string(dec));
-	if (fp < 2)
+	if (inputScalars.fp != 1) {
+		if ((inputScalars.projector_type == 2 || inputScalars.projector_type == 3u ||
+			(inputScalars.projector_type == 1u && inputScalars.use_psf && (inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1))) && inputScalars.dec > 0)
+			options += (" -DDEC=" + std::to_string(inputScalars.dec));
+	}
+	if (inputScalars.fp < 2)
 		options += " -DFP";
-	if (fp != 1)
+	if (inputScalars.fp != 1)
 		options += " -DBP";
-	if (projector_type == 1u && !precompute && (n_rays * n_rays3D) > 1) {
-		options += (" -DN_RAYS=" + std::to_string(n_rays * n_rays3D));
-		options += (" -DN_RAYS2D=" + std::to_string(n_rays));
-		options += (" -DN_RAYS3D=" + std::to_string(n_rays3D));
+	if (inputScalars.PITCH)
+		options += " -DPITCH";
+	if (inputScalars.projector_type == 1u && !inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
+		options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
+		options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
+		options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
+		//options += (" -DN_RAYS=" + std::to_string(1));
+		//options += (" -DN_RAYS2D=" + std::to_string(1));
+		//options += (" -DN_RAYS3D=" + std::to_string(1));
 	}
 	if (find_lors)
 		options += " -DFIND_LORS";
-	if (use_psf)
+	if (inputScalars.use_psf)
 		options += " -DPSF";
-	if (scatter == 1u)
+	if (inputScalars.scatter == 1u)
 		options += " -DSCATTER";
-	if (randoms_correction == 1u)
+	if (inputScalars.randoms_correction == 1u)
 		options += " -DRANDOMS";
-	if (TOF && projector_type == 1u) {
+	if (inputScalars.TOF && inputScalars.projector_type == 1u) {
 		options += " -DTOF";
 		options += (" -DTRAPZ_BINS=" + std::to_string(6.f));
 	}
-	options += (" -DNBINS=" + std::to_string(nBins));
+	options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
 	if (CT)
 		options += " -DCT";
+	if (inputScalars.SPECT) {
+		options += " -DSPECT";
+		if (inputScalars.cThickness > 0.f)
+			options += " -DMASK2";
+		//options += (" -DCSIZEX=" + std::to_string(inputScalars.cSizeX));
+		//options += (" -DCSIZEY=" + std::to_string(inputScalars.cSizeY));
+	}
+	if (((inputScalars.subsets > 1 && (inputScalars.subsetType == 8 || inputScalars.subsetType == 9)) || inputScalars.subsets == 1) && inputScalars.PET)
+		options += " -DPET";
+	if (((inputScalars.subsets > 1 && inputScalars.subsetType < 8)) && !CT && !inputScalars.SPECT && !inputScalars.PET)
+		options += " -DSUBSETS";
 	if (listmode == 1)
 		options += " -DLISTMODE";
 	else if (listmode == 2)
 		options += " -DLISTMODE2";
+
 	//if (projector_type == 1u && use_psf && (precompute || (n_rays * n_rays3D) == 1)) {
 	//	options += " -DORTH";
 	//	options += " -DCRYSTZ";
@@ -377,7 +425,12 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	//	options += (" -DX=" + std::to_string(dx));
 	//	options += (" -DSIGMA=" + std::to_string(cr_pz));
 	//}
-	options += (" -DLOCAL_SIZE=" + std::to_string(local_size));
+	if (local_size[1] > 0ULL) {
+		options += (" -DLOCAL_SIZE=" + std::to_string(local_size[0]));
+		options += (" -DLOCAL_SIZE2=" + std::to_string(local_size[1]));
+	}
+	else
+		options += (" -DLOCAL_SIZE=" + std::to_string(local_size[0]));
 	size_t pituus;
 	if (atomic_64bit) {
 		pituus = options.length();
@@ -393,7 +446,10 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 	else
 		options += " -DCAST=float";
 	if (DEBUG) {
+		mexPrintf("path = %s\n", kernel_path.c_str());
 		mexPrintf("%s\n", options.c_str());
+		mexPrintf("file = %s\n", kernelFile.c_str());
+		mexPrintf("auxKernelPath = %s\n", auxKernelPath.c_str());
 		mexEvalString("pause(.0001);");
 	}
 	// If integer atomic 64-bit operations are enabled, check if they are supported by the device(s)
@@ -427,19 +483,7 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 			if (status != CL_SUCCESS) {
 				mexPrintf("Failed to build 64-bit atomics program.\n");
 				if (DEBUG) {
-					getErrorString(status);
-					mexPrintf("Failed to build OpenCL program.\n");
-					std::vector<cl::Device> dev;
-					context.getInfo(CL_CONTEXT_DEVICES, &dev);
-					for (int ll = 0; ll < dev.size(); ll++) {
-						cl_build_status b_status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
-						if (b_status != CL_BUILD_ERROR)
-							continue;
-						std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
-						std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
-						mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
-					}
-					//return status;
+					getBuildLog(status, context, program);
 				}
 				options.erase(pituus, options.size() + 1);
 				options += " -DCAST=float";
@@ -447,6 +491,21 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 			else {
 				if (verbose)
 					mexPrintf("OpenCL program (64-bit atomics) built\n");
+				std::vector<std::string> aux;
+				aux.push_back(contentAux);
+				cl::Program::Sources sourceAux(aux);
+				programAux = cl::Program(context, sourceAux);
+				//try {
+				status = programAux.build(options.c_str());
+				if (status == CL_SUCCESS) {
+					if (verbose)
+						mexPrintf("Auxliary program built\n");
+				}
+				else {
+					mexPrintf("Failed to build auxliary programs.\n");
+					if (DEBUG)
+						getBuildLog(status, context, programAux);
+				}
 			}
 			//}
 			//catch (cl::Error& e) {
@@ -481,20 +540,23 @@ cl_int ClBuildProgramGetQueues(cl::Program& program, const char* k_path, const c
 					mexPrintf("OpenCL program built\n");
 			}
 			else {
-				getErrorString(status);
-				mexPrintf("Failed to build OpenCL program.\n");
-				std::vector<cl::Device> dev;
-				context.getInfo(CL_CONTEXT_DEVICES, &dev);
-				for (int ll = 0; ll < dev.size(); ll++) {
-					cl_build_status b_status = program.getBuildInfo<CL_PROGRAM_BUILD_STATUS>(dev[ll]);
-					if (b_status != CL_BUILD_ERROR)
-						continue;
-					std::string name = dev[ll].getInfo<CL_DEVICE_NAME>();
-					std::string buildlog = program.getBuildInfo<CL_PROGRAM_BUILD_LOG>(dev[ll]);
-					mexPrintf("Build log for %s:\n %s", name.c_str(), buildlog.c_str());
-				}
+				getBuildLog(status, context, program);
 				return status;
-
+			}
+			std::vector<std::string> aux;
+			aux.push_back(contentAux);
+			cl::Program::Sources sourceAux(aux);
+			programAux = cl::Program(context, sourceAux);
+			//try {
+			status = programAux.build(options.c_str());
+			if (status == CL_SUCCESS) {
+				if (DEBUG)
+					mexPrintf("Auxliary program built\n");
+			}
+			else {
+				mexPrintf("Failed to build auxliary programs.\n");
+				getBuildLog(status, context, programAux);
+				return status;
 			}
 		//}
 		//catch (cl::Error& e) {

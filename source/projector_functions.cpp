@@ -396,8 +396,9 @@ void get_detector_coordinates_CT(const double* x, const double* y, const double*
 #endif
 
 // Get the current ring in axial direction
-uint32_t z_ring(const double zmax, const double zs, const double NSlices) {
-	return static_cast<uint32_t>((zs / zmax) * (NSlices - 1.));
+int32_t z_ring(const double zmax, const double zs, const double NSlices, const float zmin) {
+	//return static_cast<uint32_t>(((zs - zmin) / (zmax - zmin)) * (NSlices - 1.));
+	return static_cast<int32_t>((zs - zmin) / zmax);
 }
 
 // Compute the initial and maximum voxel indices and the direction of the ray, detector greater than source
@@ -518,7 +519,11 @@ void s_g_d_precomp(const double tmin, const double t_min, const double tmax, con
 
 // Compute the distance that the ray traverses in the current voxel
 double pixel_value(const double t, const double tc, const double L) {
+//#ifdef CT
 	return (t - tc) * L;
+//#else
+//	return (t - tc);
+//#endif
 }
 
 // Compute the sum in the attenuation correction (distance times attenuation coefficient)

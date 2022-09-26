@@ -1,29 +1,26 @@
 function [pz,varargout] = reconstructions_main(options,varargin)
 %% Main reconstruction file
-% This function is used to compute various reconstructions with the
-% selected method. Can be used with any sinogram or raw data.
+% This function is used to compute various reconstructions with the selected method. Can be used with any sinogram or 
+% raw data.
 %
 % OUTPUT:
-%   pz = A cell matrix containing output from each of the selected
-%   algorithms and/or priors. E.g. if OSEM and ROSEM are selected pz{2}
+%   pz = A cell matrix containing output from each of the selected algorithms and/or priors. E.g. if OSEM and ROSEM are 
+%   selected pz{2}
 %   contains the OSEM estimates and pz{5} the ROSEM estimates.
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2021 Ville-Veikko Wettenhovi, Samuli Summala
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2022 Ville-Veikko Wettenhovi, Samuli Summala
 %
-% This program is free software: you can redistribute it and/or modify
-% it under the terms of the GNU General Public License as published by
-% the Free Software Foundation, either version 3 of the License, or
-% (at your option) any later version.
+% This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public 
+% License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later 
+% version.
 %
-% This program is distributed in the hope that it will be useful,
-% but WITHOUT ANY WARRANTY; without even the implied warranty of
-% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-% GNU General Public License for more details.
+% This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied 
+% warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 %
-% You should have received a copy of the GNU General Public License
-% along with this program. If not, see <https://www.gnu.org/licenses/>.
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% You should have received a copy of the GNU General Public License along with this program. If not, see 
+% <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Check if certain variables are present
 if ~isfield(options,'use_machine')
@@ -64,6 +61,18 @@ end
 if ~isfield(options,'CT')
     options.CT = false;
 end
+if ~isfield(options,'oOffsetX')
+    options.oOffsetX = 0;
+end
+if ~isfield(options,'oOffsetY')
+    options.oOffsetY = 0;
+end
+if ~isfield(options,'oOffsetZ')
+    options.oOffsetZ = 0;
+end
+if ~isfield(options, 'dL')
+    options.dL = options.FOVa_x / options.Nx / 2;
+end
 
 if nargin > 1
     tyyppi = varargin{1};
@@ -78,9 +87,9 @@ tStart_iter = 0;
 % Is TOF enabled?
 TOF = options.TOF_bins > 1 && options.projector_type == 1;
 
-folder = fileparts(which('reconstructions_main.m'));
-folder = strrep(folder, 'source','mat-files/');
-folder = strrep(folder, '\','/');
+% folder = fileparts(which('reconstructions_main.m'));
+% folder = strrep(folder, 'source','mat-files/');
+% folder = strrep(folder, '\','/');
 
 % Special requirements for span 1 case
 if options.span == 1
@@ -110,9 +119,6 @@ while ll == 0 && kk <= numel(var)
 end
 options.MAP = ll > 0;
 
-% options.MAP = (options.OSL_MLEM || options.OSL_OSEM || options.BSREM || options.MBSREM || options.ROSEM_MAP || options.OSL_RBI...
-%     || any(options.OSL_COSEM) || options.PKMA);
-
 var = recNames(3);
 ll = 0;
 kk = 1;
@@ -130,6 +136,25 @@ while ll == 0 && kk <= numel(var)
     kk = kk +1;
 end
 OS_bool = ll > 0;
+
+if isfield(options, 'maskFP') && numel(options.maskFP) > 1 && ((numel(options.maskFP) ~= options.ySize * options.xSize && options.CT) || (numel(options.maskFP) ~= options.Nang * options.Ndist && ~options.CT))
+    if options.CT || options.SPECT
+        error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(options.ySize) ' ' num2str(options.xSize) ']'])
+    else
+        error(['Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' num2str(options.Nang) ' ' num2str(options.Ndist) ']'])
+    end
+elseif isfield(options, 'maskFP') && numel(options.maskFP) > 1 && ((numel(options.maskFP) == options.ySize * options.xSize && options.CT) || (numel(options.maskFP) == options.Nang * options.Ndist && ~options.CT))
+    options.useMaskFP = true;
+else
+    options.useMaskFP = false;
+end
+if isfield(options, 'maskBP') && numel(options.maskBP) > 1 && numel(options.maskBP) ~= options.Nx * options.Ny
+    error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(options.Nx) ' ' num2str(options.Ny) ']'])
+elseif isfield(options, 'maskBP') && numel(options.maskBP) > 1 && numel(options.maskBP) == options.Nx * options.Ny
+    options.useMaskBP = true;
+else
+    options.useMaskBP = false;
+end
 
 if tyyppi < 2
     % Load the measurement data if it does not exist in options.SinM
@@ -178,7 +203,8 @@ if tyyppi < 2
                 load_string =  [load_string '_listmode.mat'];
             end
         end
-        if options.reconstruct_trues == false && ~options.reconstruct_scatter && (isfield(options, 'coincidences') == 0 || options.precompute_all) && options.use_machine < 2
+        if options.reconstruct_trues == false && ~options.reconstruct_scatter && (isfield(options, 'coincidences') == 0 ...
+                || options.precompute_all) && options.use_machine < 2
             options.SinM = loadStructFromFile(load_string, 'coincidences');
         elseif ~options.reconstruct_trues && ~options.reconstruct_scatter && isfield(options, 'coincidences')
             options.SinM = options.coincidences;
@@ -228,12 +254,14 @@ if tyyppi < 2
         ScatterProp.normalization = false;
         if options.partitions == 1
             if TOF
-                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
-                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_static_' num2str(options.Ndist) ...
+                    'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
+                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
+                    num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
                 load_string = [load_string load_string_TOF];
             else
-                load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' ...
-                    num2str(options.TotSinos) '_span' num2str(options.span)];
+                load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) ...
+                    'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
             end
             if options.use_machine == 0
                 sinoFile = [load_string '.mat'];
@@ -246,9 +274,11 @@ if tyyppi < 2
             end
         else
             if TOF
-                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_' num2str(poptions.artitions) 'timepoints_for_total_of_' num2str(options.tot_time) 's_' ...
-                    num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
-                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
+                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_' num2str(poptions.artitions) ...
+                    'timepoints_for_total_of_' num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) ...
+                    'x' num2str(options.TotSinos) '_span' num2str(options.span)];
+                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
+                    num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
                 load_string = [load_string load_string_TOF];
                 load_string2 = load_string;
             else
@@ -585,7 +615,7 @@ if tyyppi < 2
     if options.L && options.MAP
         if ~isempty(options.a_L)
             if length(options.a_L(:)) < ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Weights vector options.a_L is too small, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Weights vector options.a_L is too short, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             elseif length(options.a_L(:)) > ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
                 error(['Weights vector options.a_L is too large, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             end
@@ -594,9 +624,9 @@ if tyyppi < 2
     if (options.quad || options.FMH || options.L || options.weighted_mean || options.Huber) && options.MAP
         if ~isempty(options.weights)
             if length(options.weights(:)) < ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Weights vector is too small, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Weights vector is too short, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             elseif length(options.weights(:)) > ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Weights vector is too large, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Weights vector is too long, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             end
             if ~isinf(options.weights(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))))
                 options.weights(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))) = Inf;
@@ -608,9 +638,9 @@ if tyyppi < 2
     if options.Huber && options.MAP
         if ~isempty(options.weights_huber)
             if length(options.weights_huber(:)) < ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Huber weights vector is too small, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Huber weights vector is too short, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             elseif length(options.weights_huber(:)) > ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Huber weights vector is too large, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Huber weights vector is too long, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             end
             if ~isinf(options.weights_huber(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))))
                 options.weights_huber(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))) = Inf;
@@ -621,15 +651,15 @@ if tyyppi < 2
         if ~isempty(options.fmh_weights)
             if Nz == 1 || Ndz == 0
                 if length(options.fmh_weights(:)) < (4*(Ndx*2+1))
-                    error(['Weights vector options.fmh_weights is too small, needs to be [' num2str(Ndx*2+1) ', 4] in size'])
+                    error(['Weights vector options.fmh_weights is too short, needs to be [' num2str(Ndx*2+1) ', 4] in size'])
                 elseif length(options.fmh_weights(:)) > (4*(Ndx*2+1))
                     error(['Weights vector options.fmh_weights is too large, needs to be [' num2str(Ndx*2+1) ', 4] in size'])
                 end
             else
                 if length(options.fmh_weights(:)) < (13*(Ndx*2+1))
-                    error(['Weights vector options.fmh_weights is too small, needs to be [' num2str(Ndx*2+1) ', 13] in size'])
+                    error(['Weights vector options.fmh_weights is too short, needs to be [' num2str(Ndx*2+1) ', 13] in size'])
                 elseif length(options.fmh_weights(:)) > (13*(Ndx*2+1))
-                    error(['Weights vector options.fmh_weights is too large, needs to be [' num2str(Ndx*2+1) ', 13] in size'])
+                    error(['Weights vector options.fmh_weights is too long, needs to be [' num2str(Ndx*2+1) ', 13] in size'])
                 end
             end
         end
@@ -637,9 +667,9 @@ if tyyppi < 2
     if options.weighted_mean && options.MAP
         if ~isempty(options.weighted_weights)
             if length(options.weighted_weights(:)) < ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Weights vector options.weighted_weights is too small, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Weights vector options.weighted_weights is too short, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             elseif length(options.weighted_weights(:)) > ((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))
-                error(['Weights vector options.weighted_weights is too large, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
+                error(['Weights vector options.weighted_weights is too long, needs to be ' num2str(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1))) ' in length'])
             end
             if ~isinf(options.weighted_weights(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))))
                 options.weighted_weights(ceil(((Ndx*2+1) * (Ndy*2+1) * (Ndz*2+1)/2))) = Inf;
@@ -663,7 +693,7 @@ if tyyppi == 0
     precompute_obs_matrix = options.precompute_obs_matrix;
     attenuation_correction = options.attenuation_correction;
 end
-diameter = options.diameter;
+% diameter = options.diameter;
 FOVax = options.FOVa_x;
 FOVay = options.FOVa_y;
 axial_fov = options.axial_fov;
@@ -700,11 +730,6 @@ options.MBSREM_prepass = true;
 options.tr_offsets = 0;
 list_mode_format = false;
 
-
-% MLEM_bool = options.OSL_MLEM || options.MLEM;
-% OS_bool = options.OSEM || options.rosem || options.ramla || options.OSL_OSEM || options.BSREM || options.ROSEM_MAP || options.RBI || options.drama ...
-%     || options.COSEM || options.ECOSEM || options.ACOSEM || options.OSL_RBI || any(options.OSL_COSEM) || options.PKMA;
-
 pz = cell(length(rekot),partitions);
 
 
@@ -722,17 +747,15 @@ end
 if options.implementation == 3 && tyyppi == 0
     if options.OSEM && options.MLEM
         if subsets == 1
-            disp(['Both OSEM and MLEM set for method ' num2str(options.implementation) ', using MLEM'])
+            warning(['Both OSEM and MLEM set for implementation ' num2str(options.implementation) ', using MLEM'])
             options.OSEM = false;
         else
-            disp(['Both OSEM and MLEM set for method ' num2str(options.implementation) ', using OSEM'])
+            warning(['Both OSEM and MLEM set for implementation ' num2str(options.implementation) ', using OSEM'])
             options.MLEM = false;
         end
     end
 end
 
-% if options.CT && (options.xSize == 1 || size(options.SinM,3) == 1 || numel(options.SinM) < 6340608) && isfield(options,'x') && numel(options.x)/2 ~= numel(options.SinM)
-%     options.precompute_lor = false;
 if options.CT && options.implementation == 1
     options.precompute_lor = true;
 end
@@ -789,66 +812,74 @@ end
 
 % Whether list-mode or sinogram/raw data is used
 if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))) && numel(options.x) / 2 == numel(options.SinM)
-    index = 0;
+%     index = 0;
     det_per_ring = numel(options.SinM);
-    pituus = floor(det_per_ring / subsets);
-    pituus = int64([repmat(pituus,subsets - 1,1); det_per_ring - pituus*(subsets - 1)]);
+%     pituus = floor(det_per_ring / subsets);
+%     pituus = int64([repmat(pituus,subsets - 1,1); det_per_ring - pituus*(subsets - 1)]);
+    Nang = 1;
+    options.Nang = 1;
+    Ndist = 1;
+    options.Ndist = 1;
+    NSinos = det_per_ring;
+    options.NSinos = det_per_ring;
+    TotSinos = NSinos;
+    options.TotSinos = NSinos;
     list_mode_format = true;
     options.listmode = true;
     %     if options.implementation == 2 && options.use_CUDA
     %         error('CUDA support not enabled for list-mode data')
     %     end
-    if options.implementation == 4 || options.implementation == 1
-        use_raw_data = true;
-        options.use_raw_data = use_raw_data;
-    end
-    if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
-        diameter = (min(options.x(:))) + (max(options.x(:)));
-    elseif abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter > 0
-        diameter = options.diameter;
-    else
-        diameter = 0;
-    end
-    if isfield(options,'z')
-        if abs(min(options.z(:))) < abs(max(options.z(:))) / 2
-            if min(options.z(:)) < 0
-                Z = options.axial_fov - min(options.z(:)) * 2;
-            elseif max(options.z(:)) > options.axial_fov
-                Z = options.axial_fov + (max(options.z(:)) - options.axial_fov) * 2;
-            else
-                Z = options.axial_fov;
-            end
-        else
-            Z = 0;
-        end
-    else
-        if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
-            if min(options.z_det(:)) < 0
-                Z = options.axial_fov - min(options.z_det(:)) * 2;
-            elseif max(options.z_det(:)) > options.axial_fov
-                Z = options.axial_fov + (max(options.z_det(:)) - options.axial_fov) * 2;
-            else
-                Z = options.axial_fov;
-            end
-        else
-            Z = 0;
-        end
-    end
-    options.Z = Z;
+%     if options.implementation == 4 || options.implementation == 1
+%         use_raw_data = true;
+%         options.use_raw_data = use_raw_data;
+%     end
+%     if abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter == 0
+%         diameter = (min(options.x(:))) + (max(options.x(:)));
+%     elseif abs(min(options.x(:))) < abs(max(options.x(:))) / 2 && options.diameter > 0
+%         diameter = options.diameter;
+%     else
+%         diameter = 0;
+%     end
+%     if isfield(options,'z')
+%         if abs(min(options.z(:))) < abs(max(options.z(:))) / 2
+%             if min(options.z(:)) < 0
+%                 Z = options.axial_fov - min(options.z(:)) * 2;
+%             elseif max(options.z(:)) > options.axial_fov
+%                 Z = options.axial_fov + (max(options.z(:)) - options.axial_fov) * 2;
+%             else
+%                 Z = options.axial_fov;
+%             end
+%         else
+%             Z = 0;
+%         end
+%     else
+%         if abs(min(options.z_det(:))) < abs(max(options.z_det(:))) / 2
+%             if min(options.z_det(:)) < 0
+%                 Z = options.axial_fov - min(options.z_det(:)) * 2;
+%             elseif max(options.z_det(:)) > options.axial_fov
+%                 Z = options.axial_fov + (max(options.z_det(:)) - options.axial_fov) * 2;
+%             else
+%                 Z = options.axial_fov;
+%             end
+%         else
+%             Z = 0;
+%         end
+%     end
+%     options.Z = Z;
 else
     % Compute the indices for the subsets used.
     % For Sinogram data, six different methods to select the subsets are
-    % available. For data, three methods are available.
+    % available. For raw data, three methods are available.
     options.listmode = false;
-    [index, pituus, subsets, lor_a, lor_orth] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
-    Z = axial_fov;
-    options.Z = Z;
+%     Z = axial_fov;
+%     options.Z = Z;
 end
+[index, pituus, subsets, lor_a, lor_orth] = index_maker(Nx, Ny, Nz, subsets, use_raw_data, machine_name, options, Nang, Ndist, TotSinos, NSinos);
 
 %%
 
 % Diameter of the PET-scanner (bore) (mm)
-R = double(diameter);
+% R = double(diameter);
 % Transaxial FOV (x-direction, horizontal) (mm)
 FOVax = double(FOVax);
 % Transaxial FOV (y-direction, vertical) (mm)
@@ -873,7 +904,15 @@ else
 end
 
 % Coordinates of the detectors
+if options.projector_type ~= 6
 [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
+else
+    y = 0;
+    x= 0;
+    z_det = 0;
+end
+
+
 
 if options.use_raw_data
     if list_mode_format
@@ -891,18 +930,12 @@ else
         size_x = size_x * options.sampling;
     end
 end
-if options.CT
+if options.CT || options.projector_type == 6
     size_x = uint32(options.ySize);
     options.size_y = uint32(options.xSize);
     if options.listmode
         %         size_x = size_x * uint32(options.xSize * options.nProjections);
         size_x = uint32(numel(x) / 2);
-    end
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        options.angles = single(options.angles);
-        options.dPitch = single(options.dPitch);
-        options.nProjections = int64(options.nProjections);
-        options.xSize = uint32(options.xSize);
     end
 else
     options.angles = 0;
@@ -921,18 +954,45 @@ end
 
 % Compute the necessary indices required for subsets (e.g. the index of
 % the detector coordinates for the current LOR)
-if ~list_mode_format
-    [options, lor_a, xy_index, z_index, LL, summa, pituus, options.SinM, lor_orth] = form_subset_indices(options, pituus, subsets, index, size_x, y, z_det, rings, false, TOF, ...
+% if ~list_mode_format
+    [options, lor_a, xy_index, z_index, LL, summa, pituus2, options.SinM, lor_orth] = form_subset_indices(options, pituus, subsets, index, size_x, y, rings, false, TOF, ...
         options.SinM, lor_a, lor_orth);
-else
-    LL = uint16(0);
-    xy_index = uint32(0);
-    z_index = uint16(0);
-    lor_orth = uint16(0);
-    summa = zeros(subsets, 1, 'uint64');
-end
-if options.implementation > 1
-    index = uint32(0);
+    if options.listmode && options.subsets > 1
+        x = options.x;
+        y = options.y;
+        z_det = options.z;
+    end
+% else
+%     LL = uint16(0);
+%     xy_index = uint32(0);
+%     z_index = uint16(0);
+%     lor_orth = uint16(0);
+%     summa = zeros(subsets, 1, 'uint64');
+% end
+if options.CT || options.PET || (options.SPECT && options.projector_type ~= 6)
+    if options.subset_type >= 8 && options.subsets > 1
+        if options.CT
+            x = reshape(x, 6, options.nProjections);
+            x = x(:,index);
+            x = x(:);
+            if options.PITCH
+                z_det = reshape(z_det, 6, options.nProjections);
+                z_det = z_det(:,index);
+                z_det = z_det(:);
+            else
+                z_det = reshape(z_det, 2, options.nProjections);
+                z_det = z_det(:,index);
+                z_det = z_det(:);
+            end
+        else
+            z_det = reshape(z_det, 2, options.nProjections);
+            z_det = z_det(:,index);
+            z_det = z_det(:);
+        end
+        if options.CT
+            options.uV = options.uV(:,index);
+        end
+    end
 end
 if ~options.precompute_lor
     lor_a = uint16(0);
@@ -949,11 +1009,12 @@ if use_raw_data
     end
 end
 
-if options.CT
-    R = 0;
-    Z = options.dPitch * double(options.xSize) + z_det(options.nProjections);
-end
-[xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, Nx, Ny, Nz, options.implementation);
+% if options.CT
+%     R = 0;
+% %     Z = options.dPitch * double(options.xSize) + z_det(options.nProjections);
+%     Z = 0;
+% end
+[xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize([FOVax, FOVay, axial_fov], [Nx, Ny, Nz], [options.oOffsetX options.oOffsetY options.oOffsetZ], options.implementation);
 
 % Number of pixels
 Ny = uint32(Ny);
@@ -971,20 +1032,25 @@ else
     ind_size = uint32((numel(x))^2 / subsets * Nx * (Ny));
 end
 
-zmax = max(max(z_det));
-if zmax==0
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        zmax = single(1);
-    else
-        zmax = double(1);
-    end
-end
-if options.CT
-    zmax = z_det(options.nProjections) + options.dPitch * (double(options.xSize) - 1);
-    if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-        zmax = single(zmax);
-    end
-end
+
+% zmax = options.axial_fov - bz;
+zmax = dz;
+zmin = bz;
+% if zmax==0 && zmin == 0
+%     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+%         zmax = single(1);
+%     else
+%         zmax = double(1);
+%     end
+% end
+% if options.CT
+%     zmax = z_det(options.nProjections) + options.dPitch * (double(options.xSize) - 1);
+%     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
+%         zmax = single(zmax);
+%     end
+%     zmin = 0;
+% end
+options.zmin = zmin;
 
 [x_center,y_center,z_center,dec] = computePixelCenters(xx,yy,zz,dx,dy,dz,TOF,options);
 
@@ -994,6 +1060,30 @@ if options.implementation == 1
     iij = double(0:Nx);
     jji = double(0:Ny);
     kkj = double(0:Nz);
+end
+
+
+
+if options.projector_type == 4 || options.projector_type == 5
+    options.dScaleX = 1 / (dx * (options.Nx));
+    options.dScaleY = 1 / (dy * (options.Ny));
+    options.dScaleZ = 1 / (dz * (options.Nz));
+    options.dSizeY = options.ySize * options.dPitchY;
+    options.dSizeX = options.ySize * options.dPitchY;
+    %                 options.dSizeX = options.dSizeY / 2 + options.bx;
+    options.dSizeZ = options.xSize * options.dPitchX;
+    if options.projector_type == 5
+        options.dSizeY = 1 / (dy * (options.Ny));
+        options.dSizeX = 1 / (dx * (options.Nx));
+        options.dScaleX = 1 / (dx * (options.Nx + 1));
+        options.dScaleY = 1 / (dy * (options.Ny + 1));
+        options.dScaleZ = 1 / (dz * (options.Nz + 1));
+        options.dSizeZBP = (options.xSize + 1) * options.dPitchX;
+        options.dSizeXBP = (options.ySize + 1) * options.dPitchY;
+    end
+    options.kerroin = (dx * dy * dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector);
+    options.use_64bit_atomics = false;
+    options.use_32bit_atomics = false;
 end
 
 if exist('feature','builtin') == 5
@@ -1008,6 +1098,22 @@ end
 
 % Compute PSF kernel
 [gaussK, options] = PSFKernel(options);
+
+if options.projector_type == 6
+    options.dx = dx;
+    options.dz = dz;
+    options = SPECTParameters(options);
+    if options.subsets > 1 && (options.subset_type == 8 || options.subset_type == 9)
+        options.angles = options.angles(index);
+%         for ii = 1 : options.nHeads
+%             apu = options.angles(options.nProjections * (ii - 1) + 1:options.nProjections * ii);
+%             options.angles(options.nProjections * (ii - 1) + 1:options.nProjections * ii) = apu(index);
+%         end
+    end
+end
+if options.implementation > 1
+    index = uint32(0);
+end
 
 %% This computes a whole observation matrix and uses it to compute the MLEM (no on-the-fly calculations)
 % NOTE: Only attenuation correction is supported
@@ -1050,6 +1156,7 @@ if tyyppi == 0 && precompute_obs_matrix && options.implementation == 1
                 options.Nz = Nz;
                 options.N = N;
                 options.zmax = zmax;
+                options.zmin = zmin;
                 options.summa = summa;
                 options.normalization_correction = normalization_correction;
                 %             options.randoms_correction = false;
@@ -1284,7 +1391,7 @@ else
                 Sino = options.SinM;
                 clear options.SinM
             end
-            if options.scatter_correction && ~options.subtract_scatter
+            if options.scatter_correction && ~options.subtract_scatter && ~options.CT
                 if iscell(options.ScatterC)
                     if length(options.ScatterC) > 1
                         ScatterC = double(options.ScatterC{llo});
@@ -1579,7 +1686,7 @@ else
                             TOF, TOFSize, sigma_x, TOFCenter, dec, nCores, L_input, lor_a_input, xy_index_input, z_index_input, epps, uu, OSEM_apu, no_norm, ...
                             x_center, y_center, z_center, bmin, bmax, Vmax, V, scatter_input, norm_input, SinD, dc_z);
                         
-                        if list_mode_format
+                        if list_mode_format && use_raw_data
                             x = apux;
                             y = apuy;
                             z_det = apuz;
@@ -1672,10 +1779,23 @@ else
                                 fullSize = size(LL,1);
                             else
                                 L_input = uint16(0);
-                                if options.CT && options.subsets == 1
+                                if (options.CT || list_mode_format)
                                     xy_index_input = xy_index;
                                     z_index_input = z_index;
-                                else
+                                    apux = x;
+                                    apuy = y;
+                                    apuz = z_det;
+                                    x = reshape(x, numel(x)/2,2);
+                                    y = reshape(y, numel(y)/2,2);
+                                    z_det = reshape(z_det, numel(z_det)/2,2);
+                                    x = x(pituus(osa_iter) + 1 : pituus(osa_iter + 1),:);
+                                    y = y(pituus(osa_iter) + 1 : pituus(osa_iter + 1),:);
+                                    z_det = z_det(pituus(osa_iter) + 1 : pituus(osa_iter + 1),:);
+                                    x = x(:);
+                                    y = y(:);
+                                    z_det = z_det(:);
+                                    det_per_ring = uint32(numel(x)/2);
+                                elseif ~list_mode_format
                                     xy_index_input = xy_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                                     z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                                 end

@@ -1,21 +1,18 @@
-function [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, Nx, Ny, Nz, implementation)
+function [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(FOV, N, offset, implementation)
 %COMPUTEPIXELSIZE Computes the pixel size and distance from origin
 %   Utility function for OMEGA
 
 % Pixel boundaries
-etaisyys_x = (R - FOVax) / 2;
-etaisyys_y = (R - FOVay) / 2;
-etaisyys_z = (Z - axial_fov) / 2;
+etaisyys = -(FOV) / 2 + offset;
 if implementation == 2 || implementation == 3 || implementation == 5
-    zz = single(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    xx = single(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    yy = single(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
+    xx = single(linspace(etaisyys(1) + offset(1), -etaisyys(1) + offset(1), N(1) + 1));
+    yy = single(linspace(etaisyys(2) + offset(2), -etaisyys(2) + offset(2), N(2) + 1));
+    zz = single(linspace(etaisyys(3) + offset(3), -etaisyys(3) + offset(3), N(3) + 1));
 else
-    zz = double(linspace(etaisyys_z, Z - etaisyys_z, Nz + 1));
-    xx = double(linspace(etaisyys_x, R - etaisyys_x, Nx + 1));
-    yy = double(linspace(etaisyys_y, R - etaisyys_y, Ny + 1));
+    xx = double(linspace(etaisyys(1) + offset(1), -etaisyys(1) + offset(1), N(2) + 1));
+    yy = double(linspace(etaisyys(2) + offset(2), -etaisyys(2) + offset(2), N(1) + 1));
+    zz = double(linspace(etaisyys(3) + offset(3), -etaisyys(3) + offset(3), N(3) + 1));
 end
-%     zz = zz(2*block1 + 1 : 2*blocks + 2);
 
 % Distance of adjacent pixels
 dx = diff(xx(1:2));

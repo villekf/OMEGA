@@ -26,4 +26,6 @@ const uint64_t getScalarUInt64(const mxArray* mx, int ind);
 const float getScalarFloat(const mxArray* mx, int ind);
 
 const double getScalarDouble(const mxArray* mx, int ind);
+
+mxArray* getField(const mxArray* in, mwIndex i, const char* name);
 #endif

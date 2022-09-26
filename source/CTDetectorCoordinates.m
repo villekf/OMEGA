@@ -1,36 +1,30 @@
-function [x,y,z] = CTDetectorCoordinates(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize,varargin)
-%CTDETECTORCOORDINATES Computes the detector coordinates of the CT
-%projections
-%   This function computes the detector coordinates for one detector panel
-%   in each projection/bed position. x and y coordinates correspond to the
-%   columns and rows of the projection image. z coordinates correspond to
-%   the axial coordinates.
+function uV = CTDetectorCoordinates(angles,varargin)
+%CTDETECTORCOORDINATES Computes the direction vectors for each direction in
+%the detector array.
+%   This function computes the direction vectors for each detector
+%   direction in the detector array. If the detector panel has no pitch
+%   and/or roll, then only two vectors are computed. If the pitch and/or
+%   roll angles are input, six direction vectors are output. Even if either
+%   pitch or roll angle is zero, it still has to be input if the other one
+%   is input. If both are zero, they can (and should) be omitted. Note that
+%   the direction vectors have to be multiplied by the detector size to get
+%   the correct vectors, i.e. the vectors are output as unit vectors.
 %
 %   Examples:
-%       [x,y,z] = CTDetectorCoordinates(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize)
-%       [x,y,z] = CTDetectorCoordinates(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize, horizontalOffset, verticalOffset)
-%       [x,y,z] = CTDetectorCoordinates(angles,sourceToDetector,sourceToCRot,dPitch,xSize,ySize, horizontalOffset, verticalOffset, bedOffset)
+%       uV = CTDetectorCoordinates(angles)
+%       uV = CTDetectorCoordinates(angles,pitchRoll)
 %   Inputs:
-%       angles = The projection angles
-%       sourceToDetector = Distance from the source to the detector panel
-%       (mm)
-%       sourceToCRot = Distance from the source to the center of rotation
-%       (mm)
-%       dPitch = Distance between adjacent detectors (detector pitch) (mm)
-%       xSize = Number of columns in the projection image
-%       ySize = Number of rows in the projection image
-%       horizontalOffset = (optional) Possible horizontal offset of the
-%       source (i.e. the center of rotation is not in the origin)
-%       verticalOffset = (optional) same as above, but for vertical
-%       direction
-%       bedOffset = The bed offsets for each different bed positions in
-%       step-and-shoot mode. I.e. this is the amount that the bed moves in
-%       each bed position. First one should be 0. (mm)
+%       angles = The projection angles (in radians).
+%       pitchRoll = (Optional) Pitch and roll angles for the detector. The
+%       first column should include the pitch and the second the roll. As
+%       above, this needs to be in radians.
+%   Outputs:
+%       uV = Direction unit vectors for the detector array.
 %
-% See also get_coordinates, CTDetectorCoordinatesFull
+% See also get_coordinates, CTDetSource, CTDetectorCoordinatesFull
 %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2021 Ville-Veikko Wettenhovi
+% Copyright (C) 2022 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -45,81 +39,19 @@ function [x,y,z] = CTDetectorCoordinates(angles,sourceToDetector,sourceToCRot,dP
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-detSizeTr = ySize * dPitch;
-detSizeAx = xSize * dPitch;
 
-if nargin >= 7 && ~isempty(varargin) && ~isempty(varargin{1})
-    horizontalOffset = (varargin{1});
-    if nargin >= 8 && ~isempty(varargin{2})
-        verticalOffset = varargin{2};
-    else
-        verticalOffset = 0;
-    end
-    if numel(horizontalOffset) > numel(verticalOffset)
-        horizontalOffset = horizontalOffset(1:numel(angles));
-        verticalOffset = repmat(verticalOffset, numel(horizontalOffset)/numel(verticalOffset),1);
-    elseif numel(horizontalOffset) < numel(verticalOffset)
-        verticalOffset = verticalOffset(1:numel(angles));
-        horizontalOffset = repmat(horizontalOffset, numel(verticalOffset)/numel(horizontalOffset),1);
-    end
+angles = reshape(angles, [], 1);
+if isempty(varargin) || isempty(varargin{1})
+    uV = single([cos(angles) sin(angles)]');
 else
-    horizontalOffset = 0;
-    verticalOffset = 0;
+    pitchRoll = reshape(varargin{1}, [], 2);
+    uV = single([-sin(angles).*cos(pitchRoll(:,1,:,:)) - cos(angles).*sin(pitchRoll(:,1,:,:)).*sin(pitchRoll(:,2,:,:)) ...
+        cos(angles).*cos(pitchRoll(:,1,:)) - sin(angles).*sin(pitchRoll(:,1,:,:)).*sin(pitchRoll(:,2,:,:))...
+        sin(pitchRoll(:,1,:,:)).*cos(pitchRoll(:,2,:,:)),...
+        sin(angles).*sin(pitchRoll(:,1,:,:)) - cos(angles).*cos(pitchRoll(:,1,:,:)) .* sin(pitchRoll(:,2,:,:))...
+        -(cos(angles).*sin(pitchRoll(:,1,:,:)) + sin(angles).*cos(pitchRoll(:,1,:,:)).* sin(pitchRoll(:,2,:,:)))...
+        cos(pitchRoll(:,2,:,:)) .* cos(pitchRoll(:,1,:,:))]');
 end
-if nargin >= 10 && ~isempty(varargin) && ~isempty(varargin{5}) && ~isempty(varargin{4})
-    uCenter = (varargin{4});
-    vCenter = (varargin{5});
-else
-    uCenter = [];
-    vCenter = [];
-end
-
-detCoordY = - (sourceToDetector - sourceToCRot);
-detCoordX = detSizeTr / 2 - dPitch / 2;
-if isempty(vCenter)
-    detCoordZ = repmat(dPitch/2,numel(angles),1);
-else
-    detCoordZ = repmat(dPitch/2,numel(angles),1) - vCenter;
-end
-angles = reshape(angles, 1, 1, []);
-
-R = permute([cos(angles) -sin(angles); sin(angles) cos(angles)], [2 1 3]);
-if isempty(uCenter)
-    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
-        XY = squeeze(sum(bsxfun(@times, R, [detCoordX,detCoordY]),2))';
-    else
-        XY = squeeze(sum(R .* [detCoordX,detCoordY],2))';
-    end
-else
-    R2 = permute([cos(pi/2 - angles) -sin(pi/2 - angles); sin(pi/2 - angles) cos(pi/2 - angles)], [2 1 3]);
-    if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
-        XY = squeeze(sum(bsxfun(@times, R, [detCoordX,detCoordY]) + bsxfun(@times, R2, reshape([uCenter,uCenter], 1, 2, [])),2))';
-    else
-        XY = squeeze(sum(R .* [detCoordX,detCoordY] + R2 .* reshape([uCenter,uCenter], 1, 2, []),2))';
-    end
-end
-
-sourceCoordY = sourceToCRot - verticalOffset * 1;
-sourceCoordX = -horizontalOffset * 1;
-sourceCoordZ = detSizeAx / 2;
-
-testi = reshape([sourceCoordX,sourceCoordY]', 2, 1, []);
-if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.1')
-    sXY = squeeze(sum(bsxfun(@times, R, permute(testi, [2 1 3])),2))';
-else
-    sXY = squeeze(sum(R .* permute(testi, [2 1 3]),2))';
-end
-
-x = [XY(:,1) sXY(:,1)];
-y = -[XY(:,2) sXY(:,2)];
-z = [reshape(detCoordZ,[],1) repmat(sourceCoordZ,numel(detCoordZ),1)];
-
-if nargin >= 9 && ~isempty(varargin) && ~isempty(varargin{3}) && numel(varargin{3}) > 1
-    x = repmat(x, numel(varargin{3}),1);
-    y = repmat(y, numel(varargin{3}),1);
-    z = bsxfun(@plus, repmat(z, numel(varargin{3}),1), repelem(varargin{3}, numel(angles),1));
-end
-
 
 end
 

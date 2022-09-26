@@ -84,7 +84,7 @@ void get_detector_coordinates_CT(const double* x, const double* y, const double*
 
 #endif
 
-uint32_t z_ring(const double zmax, const double zs, const double NSlices);
+int32_t z_ring(const double zmax, const double zs, const double NSlices, const float zmin = 0.f);
 
 void s_g_d(const double tmin, const double t_min, const double tmax, const double t_max, uint32_t& v_min, uint32_t& v_max, double& t_0, int32_t& v_u, 
 	const double diff, const double b, const double d, const double s, const uint32_t N);
@@ -98,7 +98,7 @@ void s_g_d_precomp(const double tmin, const double t_min, const double tmax, con
 void d_g_s_precomp(const double tmin, const double t_min, const double tmax, const double t_max, uint32_t& v_min, uint32_t& v_max, double& t_0, int32_t& v_u, 
 	const double diff, const double b, const double d, const double s, const uint32_t N);
 
-double pixel_value(const double t, const double tc, const double L);
+double pixel_value(const double t, const double tc, const double L = 0.);
 
 #ifndef CT
 
@@ -320,7 +320,7 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, const uint8_t list_mode_format,
 	const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
 	const int64_t nBins, const uint32_t dec_v, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
-	const uint32_t nCores = 1U);
+	const uint32_t nCores = 1U, const float zmin = 0.f);
 
 #ifndef CT
 

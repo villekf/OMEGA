@@ -74,6 +74,9 @@ end
 if ~isfield(options,'axial_multip')
     options.axial_multip = 1;
 end
+if ~isfield(options,'nLayers')
+     options.nLayers = 1;
+end
 
 if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
     error('Number of TOF bins has to be odd')
@@ -115,27 +118,27 @@ if ~isempty(temp) && temp > 0
 elseif temp == 0
     pseudot = [];
 end
-raw_SinM = zeros(options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions, 'uint16');
+raw_SinM = zeros(options.Ndist, options.Nang, totSinos, options.nLayers^2, options.TOF_bins, options.partitions, 'uint16');
 % raw_SinM = cell(options.partitions,1);
 % ix = cellfun('isempty',raw_SinM);
 % raw_SinM(ix) = {zeros(options.Ndist, options.Nang, totSinos, options.TOF_bins, 'uint16')};
 if options.obtain_trues
-    SinTrues = zeros(options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions, 'uint16');
+    SinTrues = zeros(options.Ndist, options.Nang, totSinos, options.nLayers^2, options.TOF_bins, options.partitions, 'uint16');
 else
     SinTrues = uint16(0);
 end
 if options.store_scatter
-    SinScatter = zeros(options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions, 'uint16');
+    SinScatter = zeros(options.Ndist, options.Nang, totSinos, options.nLayers^2, options.TOF_bins, options.partitions, 'uint16');
 else
     SinScatter = uint16(0);
 end
 if options.store_randoms
-    SinRandoms = zeros(options.Ndist, options.Nang, totSinos, options.TOF_bins, options.partitions, 'uint16');
+    SinRandoms = zeros(options.Ndist, options.Nang, totSinos, options.nLayers^2, options.TOF_bins, options.partitions, 'uint16');
 else
     SinRandoms = uint16(0);
 end
 if options.randoms_correction
-    SinD = zeros(options.Ndist, options.Nang, totSinos, options.partitions, 'uint16');
+    SinD = zeros(options.Ndist, options.Nang, totSinos, options.nLayers^2, options.partitions, 'uint16');
 else
     SinD = uint16(0);
 end
@@ -366,8 +369,11 @@ elseif options.use_machine == 0
     
     variableList = {'true_coincidences','scattered_coincidences','random_coincidences','delayed_coincidences'};
     
-    
-    time_intervals = linspace(alku, loppu, options.partitions + 1);
+    if numel(options.partitions) == 1
+        time_intervals = linspace(alku, loppu, options.partitions + 1);
+    else
+        time_intervals = options.partitions;
+    end
     
     if partitions > 1
         if store_coordinates
@@ -616,18 +622,31 @@ elseif options.use_machine == 0
             fpath = [fpath '/'];
             fnames = dir([fpath '*Coincidences*.dat']);
             if size(fnames,1) == 0
-                error('No ASCII (.dat) coincidence files were found. Check your filepath (options.fpath) or current folder.')
+                warning('No ASCII (.dat) coincidence files were found. Input the ASCII output file (if you used a cluster, input the number 1 file).')
+                [file, fpath] = uigetfile({'*.dat'},'Select the first GATE ASCII output file');
+                if isequal(file, 0)
+                    error('No file was selected!')
+                end
+                fnames = dir([fpath file(1:end-17) '*Coincidences*.dat']);
             end
         end
         
         if options.randoms_correction
             delay_names = dir([fpath '*delay*.dat']);
             if size(delay_names,1) == 0
-                fpath = pwd;
-                fpath = [fpath '/'];
-                delay_names = dir([fpath '*delay*.dat']);
+                dfpath = pwd;
+                dfpath = [dfpath '/'];
+                delay_names = dir([dfpath '*delay*.dat']);
                 if size(delay_names,1) == 0
-                    error('No ASCII (.dat) delayed coincidence files were found. Check your filepath (options.fpath) or current folder.')
+                    delay_names = dir([fpath file(1:end-17) '*delay*.dat']);
+                    if size(delay_names,1) == 0
+                        warning('No ASCII (.dat) delayed coincidence files were found. Input the ASCII delayed output file (if you used a cluster, input the number 1 file).')
+                        [file, fpath] = uigetfile({'*.dat'},'Select the first GATE ASCII delayed output file');
+                        if isequal(file, 0)
+                            error('No file was selected!')
+                        end
+                        fnames = dir([fpath file(1:end-17) '*delay*.dat']);
+                    end
                 end
             end
         end
@@ -644,7 +663,7 @@ elseif options.use_machine == 0
             if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6') || exist('OCTAVE_VERSION','builtin') == 5
                 M = importdata([fpath fnames(lk).name]);
                 % Check for corrupted data
-                if any(any(isnan(M))) > 0
+                if any(any(isnan(M)))
                     header = size(M,1);
                     warning(['Line ' num2str(header) ' corrupted, skipping.'])
                     B = importdata([fpath fnames(lk).name],' ', header);
@@ -666,7 +685,7 @@ elseif options.use_machine == 0
                         M(rows(kg),:) = [];
                     end
                 else
-                    if any(any(isnan(M))) > 0
+                    if any(any(isnan(M)))
                         [rows, ~] = find(isnan(M));
                         rows = unique(rows);
                         for kg = 1 : length(rows)
@@ -916,6 +935,13 @@ elseif options.use_machine == 0
                     ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
                     ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
                 end
+                if options.nLayers > 1
+                    layer1 = uint8(M(:,ascii_ind.layer_ind2));
+                    layer2 = uint8(M(:,ascii_ind.layer_ind1));
+                else
+                    layer1 = uint8(0);
+                    layer2 = uint8(0);
+                end
                 
                 if options.store_raw_data
                     % detector number (MATLAB numbering) of each single
@@ -1039,19 +1065,19 @@ elseif options.use_machine == 0
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                     elseif exist('OCTAVE_VERSION','builtin') == 5
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM, SinTrues, SinScatter, SinRandoms, int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                     else
                         [raw_SinM, SinTrues, SinScatter, SinRandoms] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, trues_index, scatter_index, ...
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), timeI, uint64(options.partitions), ...
                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side),...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                     end
                 end
                 
@@ -1084,7 +1110,7 @@ elseif options.use_machine == 0
                 if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.6') || exist('OCTAVE_VERSION','builtin') == 5
                     M = importdata([fpath delay_names(lk).name]);
                     % Check for corrupted data
-                    if any(any(isnan(M))) > 0
+                    if any(any(isnan(M)))
                         header = size(M,1);
                         warning(['Line ' num2str(header) ' corrupted, skipping.'])
                         B = importdata([fpath delay_names(lk).name],' ', header);
@@ -1204,6 +1230,13 @@ elseif options.use_machine == 0
                     ring_pos1 = uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind1), cryst_per_block));
                     ring_pos2 = uint16(mod(M(:,rsector_ind2), blocks_per_ring) * cryst_per_block + mod(M(:,crs_ind2), cryst_per_block));
                 end
+                if options.nLayers > 1
+                    layer1 = uint8(M(:,ascii_ind.layer_ind1));
+                    layer2 = uint8(M(:,ascii_ind.layer_ind2));
+                else
+                    layer1 = uint8(0);
+                    layer2 = uint8(0);
+                end
                     
                     if ~options.use_raw_data
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','9.4')
@@ -1211,19 +1244,19 @@ elseif options.use_machine == 0
                                 [], sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize * uint64(1), M(:,time_index), uint64(options.partitions), ...
                                 alku, int32(options.det_per_ring), int32(options.rings), uint16([]), SinD, [], [], [], int32(options.ndist_side),...
-                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                         elseif exist('OCTAVE_VERSION','builtin') == 5
                             [SinD, ~, ~, ~] = createSinogramASCIIOct(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, [], [], ...
                                 [], sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize * uint64(1), M(:,time_index), uint64(options.partitions), ...
                                 alku, int32(options.det_per_ring), int32(options.rings), uint16([]), SinD, [], [], [], int32(options.ndist_side),...
-                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                         else
                             [SinD, ~, ~, ~] = createSinogramASCIICPP(vali, ring_pos1, ring_pos2, ring_number1, ring_number2, logical([]), logical([]), ...
                                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize * uint64(1), M(:,time_index), uint64(options.partitions), ...
                                 alku, int32(options.det_per_ring), int32(options.rings), uint16([]), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side),...
-                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                         end
                     end
                     if options.store_raw_data
@@ -1301,7 +1334,12 @@ elseif options.use_machine == 0
             fpath = [fpath '/'];
             fnames = dir([fpath '*.root']);
             if size(fnames,1) == 0
-                error('No ROOT (.root) files were found. Check your filepath (options.fpath) or current folder.')
+                warning('No ROOT (.root) files were found. Input the ROOT output file (if you used a cluster, input the number 1 file).')
+                [file, fpath] = uigetfile({'*.root'},'Select the first GATE ROOT output file');
+                if isequal(file, 0)
+                    error('No file was selected!')
+                end
+                fnames = dir([fpath file(1:end-17) '*.root']);
             end
         end
         
@@ -1362,7 +1400,7 @@ elseif options.use_machine == 0
                     large_case = true;
                 end
                 [L1, L2, tpoints, A, int_loc, Ltrues, Lscatter, Lrandoms, trues_index, Ldelay1, Ldelay2, int_loc_delay, tpoints_delay, randoms_index, scatter_index, x1, x2, y1, ...
-                    y2, z1, z2, time, timeD] = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, time_intervals, ...
+                    y2, z1, z2, time, timeD, layer1, layer2, layerD1, layerD2] = GATE_root_matlab_MEX(nimi,vali,alku,loppu, detectors, blocks_per_ring, cryst_per_block, det_per_ring, source, time_intervals, ...
                     options, scatter_components, store_coordinates, uint32(transaxial_multip), uint32(cryst_per_block_z), uint32(options.rings), large_case, TOF, ...
                     options.verbose, outputUint32);
             end
@@ -1436,7 +1474,7 @@ elseif options.use_machine == 0
                             randoms_index, sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                             uint32(cumsum(options.segment_table)), sinoSize * uint64(options.TOF_bins), time, uint64(options.partitions), ...
                             alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), raw_SinM(:), SinTrues(:), SinScatter(:), SinRandoms(:), int32(options.ndist_side), ...
-                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                            int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layer1, layer2);
                         if options.randoms_correction
                             Ldelay1(Ldelay1 == 0) = [];
                             Ldelay2(Ldelay2 == 0) = [];
@@ -1456,7 +1494,7 @@ elseif options.use_machine == 0
                                 logical([]), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), ...
                                 uint32(cumsum(options.segment_table)), sinoSize, time, uint64(options.partitions), ...
                                 alku, int32(options.det_per_ring), int32(options.rings), uint16(bins), SinD(:), uint16([]), uint16([]), uint16([]), int32(options.ndist_side), ...
-                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block));
+                                int32(options.det_w_pseudo), int32(sum(options.pseudot)), int32(options.cryst_per_block), options.nLayers, layerD1, layerD2);
                         end
                     end
                 end

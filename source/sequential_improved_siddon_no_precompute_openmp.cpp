@@ -1,34 +1,26 @@
-/**************************************************************************
-* Implements both the improved Siddon's algorithm and Orthogonal Siddon's 
-* algorithm for OMEGA (Implementation 4).
-* Determines which LORs intercept the FOV on-the-fly (slower). Improved
-* Siddon can use n rays.
+/*******************************************************************************************************************************************
+* Implements both the improved Siddon's algorithm and Orthogonal Siddon's algorithm for OMEGA (Implementation 4). Determines which LORs 
+* intercept the FOV on-the-fly (slower). Improved Siddon can use n rays.
 *
-* Uses OpenMP for parallellization. If OpenMP is not available, the code
-* is serial with no parallellization.
+* Uses OpenMP for parallellization. If OpenMP is not available, the code is serial with no parallellization.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2022 Ville-Veikko Wettenhovi
 *
-* This program is free software: you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation, either version 3 of the License, or
-* (at your option) any later version.
+* This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 *
-* This program is distributed in the hope that it will be useful,
-* but WITHOUT ANY WARRANTY; without even the implied warranty of
-* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-* GNU General Public License for more details.
+* This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
 *
-* You should have received a copy of the GNU General Public License
-* along with this program. If not, see <https://www.gnu.org/licenses/>.
-***************************************************************************/
+* You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*******************************************************************************************************************************************/
 #include "projector_functions.h"
 
 // if 0, then determines whether the LOR intercepts the FOV (i.e. no precomputation phase performed)
 const static int TYPE = 0;
 
 // Whether to use the OpenMP code or not
-const static bool OMP = true;
+const static bool OMP = false;
 
 // Using non-OpenMP with either precomputation or without
 const static bool PRECOMPUTE = false;
@@ -36,19 +28,22 @@ const static bool PRECOMPUTE = false;
 const static bool DISCARD = false;
 
 
+//#undef _OPENMP
+
 using namespace std;
 
 // Improved multi-ray Siddon
-void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, const double maxyy,
-	const double maxxx,	const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, const float* norm_coef, 
-	const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, const uint32_t Nx, const uint32_t Ny, 
-	const uint32_t Nz, const double dx, const double dz, const double bx, const double by, const double bz, const bool attenuation_correction, 
-	const bool normalization, const bool randoms_correction, const uint32_t* xy_index, const uint16_t* z_index, const uint32_t TotSinos,
-	const double epps, const float* Sino, double* osem_apu, const uint16_t* L, const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring,
-	const bool raw, const double cr_pz, const bool no_norm, const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, 
-	const uint8_t list_mode_format, const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
-	const int64_t nBins, const uint32_t dec_v, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, const int64_t nProjections, 
-	const uint32_t nCores) {
+void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const uint32_t size_x, const double zmax, double* Summ, double* rhs, 
+	const double maxyy, const double maxxx,	const vector<double>& xx_vec, const double dy, const vector<double>& yy_vec, const double* atten, 
+	const float* norm_coef, const float* randoms, const double* x, const double* y, const double* z_det, const uint32_t NSlices, 
+	const uint32_t Nx, const uint32_t Ny, const uint32_t Nz, const double dx, const double dz, const double bx, const double by, 
+	const double bz, const bool attenuation_correction, const bool normalization, const bool randoms_correction, const uint32_t* xy_index, 
+	const uint16_t* z_index, const uint32_t TotSinos, const double epps, const float* Sino, double* osem_apu, const uint16_t* L, 
+	const uint32_t* pseudos, const size_t pRows, const uint32_t det_per_ring, const bool raw, const double cr_pz, const bool no_norm, 
+	const uint16_t n_rays, const uint16_t n_rays3D, const double global_factor, const uint8_t fp, const uint8_t list_mode_format, 
+	const bool scatter, const double* scatter_coef, const bool TOF, const int64_t TOFSize, const double sigma_x, const double* TOFCenter,
+	const int64_t nBins, const uint32_t dec_v, const uint32_t subsets, const double* angles, const uint32_t size_y, const double dPitch, 
+	const int64_t nProjections, const uint32_t nCores, const float zmin) {
 
 #ifdef _OPENMP
 	if (nCores == 1U)
@@ -57,10 +52,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 		omp_set_num_threads(nCores);
 #endif
 
-	// Size of single 2D image
+	// Size of a single 2D image
 	const uint32_t Nyx = Ny * Nx;
 
-	uint32_t bin = 0U;
+	//uint32_t bin = 0U;
 
 	// Distance of the last slice from origin
 	const double bzb = bz + static_cast<double>(Nz) * dz;
@@ -79,12 +74,15 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 	vector<double> TOFVal(nRays * nBins * dec_v * threads, 0.);
 
 #ifdef _OPENMP
-#if _OPENMP >= 201511 && defined(MATLAB)
-#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
-#else
+//#if _OPENMP >= 201511 && defined(MATLAB)
+//#pragma omp parallel for schedule(monotonic:dynamic, nChunks)
+//#else
 #pragma omp parallel for schedule(dynamic, nChunks)
+//#pragma omp parallel for
+//#endif
 #endif
-#endif
+
+	//mexPrintf("loop_var_par = %u\n", loop_var_par);
 	for (int64_t lo = 0LL; lo < loop_var_par; lo++) {
 
 		double local_sino = 0.;
@@ -97,6 +95,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 		}
 		if (no_norm && local_sino == 0.)
 			continue;
+
+		//mexPrintf("lo = %u\n", lo);
 
 		// Form vectors that store the necessary multi-ray information
 		vector<int32_t> tempi_a(nRays, 0);
@@ -158,6 +158,11 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 			Det detectors;
 
+			//if (lo == 984039) {
+			//	mexPrintf("lo = %u\n", lo);
+			//	mexPrintf("list_mode_format = %u\n", list_mode_format);
+			//}
+
 #ifndef CT
 			// Raw data
 			if (raw) {
@@ -168,6 +173,8 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 				else
 					get_detector_coordinates_raw_N(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, lor + 1u, dc_z, n_rays, n_rays3D);
 			}
+			else if (list_mode_format > 0)
+				get_detector_coordinates_raw(det_per_ring, x, y, z_det, detectors, L, lo, pseudos, pRows, list_mode_format);
 			// Sinogram data
 			else {
 				get_detector_coordinates_mr(x, y, z_det, size_x, detectors, xy_index, z_index, TotSinos, lo, lor + 1u, dc_z, n_rays, n_rays3D);
@@ -176,6 +183,12 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			// CT data
 			get_detector_coordinates_CT(x, y, z_det, size_x, detectors, lo, subsets, angles, xy_index, z_index, size_y, dPitch, nProjections, list_mode_format);
 #endif
+			//if (lo == 984039) {
+			//	mexPrintf("detectors.yd = %f\n", detectors.yd);
+			//	mexPrintf("detectors.xd = %f\n", detectors.xd);
+			//	mexPrintf("detectors.zd = %f\n", detectors.zd);
+			//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+			//}
 
 			// Calculate the x, y and z distances of the detector pair
 			y_diff[lor] = (detectors.yd - detectors.ys);
@@ -185,15 +198,33 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			if ((y_diff[lor] == 0. && x_diff[lor] == 0. && z_diff[lor] == 0.) || (y_diff[lor] == 0. && x_diff[lor] == 0.)) {
 				continue;
 			}
+			//if (detectors.zs < -56. && detectors.zs > -57.) {
+			//	mexPrintf("z_diff[lor] = %f\n", z_diff[lor]);
+			//}
 
 			// Number of voxels the ray traverses
 			uint32_t Np = 0U;
+			//if (lo == 984039) {
+			//	mexPrintf("z_diff[lor] = %f\n", z_diff[lor]);
+			//	mexPrintf("x_diff[lor] = %f\n", x_diff[lor]);
+			//	mexPrintf("y_diff[lor] = %f\n", y_diff[lor]);
+			//}
 
 
 			if (fabs(z_diff[lor]) < 1e-8 && (fabs(y_diff[lor]) < 1e-8 || fabs(x_diff[lor]) < 1e-8)) {
 
 				// Ring number
-				const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				const int32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices), zmin);
+				if (tempk < 0 || tempk >= Nz)
+					continue;
+				//if (lo == 984039) {
+				//	mexPrintf("tempk = %u\n", tempk);
+				//}
+				//if (detectors.zs < -56. && detectors.zs > -57.) {
+				//	mexPrintf("tempk = %u\n", tempk);
+				//	mexPrintf("detectors.zs = %f\n", detectors.zs);
+				//	mexPrintf("(zs - zmin) / (zmax - zmin) = %f\n", (detectors.zs - zmin) / (zmax - zmin) * 127.);
+				//}
 
 				// Detectors are perpendicular
 				// Siddon cannot be applied --> trivial to compute
@@ -203,8 +234,21 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						int32_t apu = 0;
 
 						// Determine the starting coordinate, ray length and compute attenuation effects
+						//if (lo == 12) {
+						//	mexPrintf("lor = %d\n", lor);
+						//	mexPrintf("Ny = %d\n", Ny);
+						//	mexPrintf("Nx = %d\n", Nx);
+						//	mexPrintf("tempk = %u\n", tempk);
+						//	mexPrintf("NSlices = %u\n", NSlices);
+						//	mexPrintf("zmax = %f\n", zmax);
+						//}
 						double element = perpendicular_elements_multiray(Ny, detectors.yd, yy_vec, dx, tempk, Nx, Ny, atten, attenuation_correction,
 							apu, 1u, jelppi);
+						//if (lo == 12) {
+						//	mexPrintf("apu = %u\n", apu);
+						//	if (apu > Ny)
+						//		break;
+						//}
 						if (fp != 2 && list_mode_format <= 1) {
 							if (TOF) {
 								xI = (dx * Nx) / 2.;
@@ -218,6 +262,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 							else {
 								// Forward projection
 								for (uint32_t k = 0; k < Nx; k++) {
+									//if (lo == 984039) {
+									//	mexPrintf("apu + k = %u\n", apu + k);
+									//	mexPrintf("osem_apu[apu + k] = %f\n", osem_apu[apu + k]);
+									//}
 									ax[0] += (dx * osem_apu[apu + k]);
 								}
 							}
@@ -234,8 +282,21 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 
 					if (detectors.xd <= maxxx && detectors.xd >= bx) {
 						int32_t apu = 0;
+						//if (lo == 12) {
+						//	mexPrintf("lory = %d\n", lor);
+						//	mexPrintf("Ny = %d\n", Ny);
+						//	mexPrintf("Nx = %d\n", Nx);
+						//	mexPrintf("NSlices = %u\n", NSlices);
+						//	mexPrintf("zmax = %f\n", zmax);
+						//	mexPrintf("tempk = %u\n", tempk);
+						//}
 						double element = perpendicular_elements_multiray(1u, detectors.xd, xx_vec, dy, tempk, Ny, Nx, atten, attenuation_correction,
 							apu, Nx, jelppi);
+						//if (lo == 12) {
+						//	mexPrintf("apu = %u\n", apu);
+						//	if (apu > Ny)
+						//		break;
+						//}
 
 						if (fp != 2 && list_mode_format <= 1) {
 							if (TOF) {
@@ -250,6 +311,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 							else {
 								// Forward projection
 								for (uint32_t k = 0; k < Ny; k++) {
+									//if (lo == 984039) {
+									//	mexPrintf("apu + k = %u\n", apu + k);
+									//	mexPrintf("osem_apu[apu + k] = %f\n", osem_apu[apu + k]);
+									//}
 									ax[0] += (dy * osem_apu[apu + k * Nx]);
 								}
 							}
@@ -271,7 +336,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 				// Determine the above values and whether the ray intersects the FOV
 				// Both detectors are on the same ring, but not perpendicular
 				if (std::fabs(z_diff[lor]) < 1e-8) {
-					tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+					tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices), zmin);
+					if (tempk < 0 || tempk >= Nz)
+						continue;
 					skip = siddon_pre_loop_2D(bx, by, x_diff[lor], y_diff[lor], maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
 						detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 				}
@@ -322,6 +389,12 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 #endif
 					//Compute the total distance traveled by this ray in the FOV
 					for (uint32_t ii = 0; ii < Np; ii++) {
+						//if (lo == 984039) {
+						//	mexPrintf("tempijk = %u\n", tempijk);
+						//	mexPrintf("tempi = %u\n", tempi);
+						//	mexPrintf("tempi = %u\n", tempj);
+						//	mexPrintf("tempi = %u\n", tempk);
+						//}
 						if (tx0 < ty0 && tx0 < tz0) {
 							ForwardProject(tx0, tc, txu, LL[lor], attenuation_correction, jelppi, atten, tempijk, TOF, DD, nBins, TOFVal, TOFCenter,
 								sigma_x, D, osem_apu, ax, epps, temp, tempi, iu, 1U, tid, ii, fp, list_mode_format);
@@ -347,6 +420,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 #endif
 				// This ray passed the FOV
 				pass[lor] = true;
+				//if (lo == 984039) {
+				//	mexPrintf("pass[lor] = %u\n", pass[lor]);
+				//}
 			}
 		}
 
@@ -378,6 +454,10 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 						temp *= scatter_coef[lo];
 					// Global correction factor
 					temp *= global_factor;
+					//if (lo == 984039) {
+					//	mexPrintf("temp = %f\n", temp);
+					//	mexPrintf("local_sino = %f\n", local_sino);
+					//}
 					// Special, only forward projection, case
 					if (fp == 1 && list_mode_format <= 1) {
 						if (TOF) {
@@ -429,6 +509,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 									ax[0] += local_rand;
 								yax[0] = local_sino / ax[0];
 							}
+							//if (lo == 984039) {
+							//	mexPrintf("local_sino = %f\n", local_sino);
+							//}
 						}
 					}
 					alku = false;
@@ -587,6 +670,12 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 #ifndef CT
 					if (local_sino != 0. && list_mode_format <= 1) {
 #endif
+						//if (lo == 984039) {
+						//	mexPrintf("tempijk2 = %u\n", tempijk);
+						//	mexPrintf("tempi2 = %u\n", tempi);
+						//	mexPrintf("tempi2 = %u\n", tempj);
+						//	mexPrintf("tempi2 = %u\n", tempk);
+						//}
 						for (uint32_t ii = 0; ii < Np_n[lor]; ii++) {
 							if (tx0 < ty0 && tx0 < tz0) {
 								backwardProjection(tx0, tc, txu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, yax, epps, temp,
@@ -609,6 +698,12 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 					}
 					else {
 						for (uint32_t ii = 0; ii < Np_n[lor]; ii++) {
+							//if (lo == 984039) {
+							//	mexPrintf("tempijk2 = %u\n", tempijk);
+							//	mexPrintf("tempi2 = %u\n", tempi);
+							//	mexPrintf("tempj2 = %u\n", tempj);
+							//	mexPrintf("tempk2 = %u\n", tempk);
+							//}
 							if (tx0 < ty0 && tx0 < tz0) {
 								sensImage(tx0, tc, txu, LL[lor], tempijk, TOF, DD, nBins, TOFVal, TOFCenter, sigma_x, D, epps, temp,
 									iu, 1U, no_norm, Summ, tid, ii);

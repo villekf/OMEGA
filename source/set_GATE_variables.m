@@ -11,6 +11,7 @@ options.reconstruct_scatter = false;
 options.store_randoms = false;
 options.source = false;
 options.use_ASCII = false;
+options.use_binary = false;
 % options.rsector_ind1 = 0;
 % options.rsector_ind2 = 0;
 % options.module_ind1 = 0;
