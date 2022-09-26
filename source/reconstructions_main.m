@@ -863,13 +863,13 @@ NSlices = uint32(Nz);
 
 if ~list_mode_format
     % Load correction data
-    [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks, RandProp, ScatterProp);
+    [normalization_correction, randoms_correction, options] = set_up_corrections(options, RandProp, ScatterProp);
 else
     % list-mode does not support corrections
     options.normalization_correction = false;
     options.randoms_correction = false;
     options.scatter_correction = false;
-    [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks, RandProp, ScatterProp);
+    [normalization_correction, randoms_correction, options] = set_up_corrections(options, RandProp, ScatterProp);
 end
 
 % Coordinates of the detectors

@@ -605,7 +605,7 @@ if ~custom && ~isfield(options,'scatter_correction')
     options.scatter_correction = false;
 end
 
-[normalization_correction, randoms_correction, options] = set_up_corrections(options, options.blocks, [], []);
+[normalization_correction, randoms_correction, options] = set_up_corrections(options, [], []);
 options.normalization_correction = normalization_correction;
 options.randoms_correction = randoms_correction;
 

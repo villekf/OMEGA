@@ -350,14 +350,14 @@ classdef forwardBackwardProject
             end
             
             if ~obj.OProperties.listmode
-                [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
+                [normalization_correction, randoms_correction, obj.OProperties] = set_up_corrections(obj.OProperties);
                 obj.OProperties.normalization_correction = normalization_correction;
                 obj.OProperties.randoms_correction = randoms_correction;
             else
                 obj.OProperties.normalization_correction = false;
                 obj.OProperties.randoms_correction = false;
                 obj.OProperties.scatter_correction = false;
-                [~, ~, obj.OProperties] = set_up_corrections(obj.OProperties, blocks);
+                [~, ~, obj.OProperties] = set_up_corrections(obj.OProperties);
             end
             
             if obj.OProperties.use_raw_data

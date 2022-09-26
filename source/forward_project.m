@@ -300,7 +300,7 @@ if isfield(options,'scat_full')
 end
 
 if ~luokka
-    [normalization_correction, randoms_correction, options] = set_up_corrections(options, blocks);
+    [normalization_correction, randoms_correction, options] = set_up_corrections(options);
     
     
     if save_norm
