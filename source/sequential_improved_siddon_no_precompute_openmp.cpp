@@ -193,7 +193,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 			if (fabs(z_diff[lor]) < 1e-8 && (fabs(y_diff[lor]) < 1e-8 || fabs(x_diff[lor]) < 1e-8)) {
 
 				// Ring number
-				const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				const int32_t tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
+				if (tempk >= Nz || tempk < 0)
+					continue;
 
 				// Detectors are perpendicular
 				// Siddon cannot be applied --> trivial to compute
@@ -271,7 +273,9 @@ void sequential_improved_siddon_no_precompute(const int64_t loop_var_par, const 
 				// Determine the above values and whether the ray intersects the FOV
 				// Both detectors are on the same ring, but not perpendicular
 				if (std::fabs(z_diff[lor]) < 1e-8) {
-					tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+					tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
+					if (tempk >= Nz || tempk < 0)
+						continue;
 					skip = siddon_pre_loop_2D(bx, by, x_diff[lor], y_diff[lor], maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
 						detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 				}

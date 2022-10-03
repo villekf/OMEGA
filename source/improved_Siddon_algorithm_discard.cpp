@@ -169,8 +169,8 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
-			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
-			if (tempk >= Nz)
+			const int32_t tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
+			if (tempk >= Nz || tempk < 0)
 				continue;
 
 			if (fabs(y_diff) < 1e-8) {
@@ -238,7 +238,9 @@ void improved_siddon_precomputation_phase(const int64_t loop_var_par, const uint
 			bool skip = false;
 
 			if (std::fabs(z_diff) < 1e-8) {
-				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
+				if (tempk >= Nz || tempk < 0)
+					continue;
 				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
 					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}

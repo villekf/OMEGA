@@ -142,7 +142,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 		if (fabs(z_diff) < 1e-8 && (fabs(y_diff) < 1e-8 || fabs(x_diff) < 1e-8)) {
 
 			// Z-coordinate (ring number)
-			const uint32_t tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+			const int32_t tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
 
 			// If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 			if (fabs(y_diff) < 1e-8) {
@@ -172,7 +172,7 @@ void vol_siddon_precomputed(const int64_t loop_var_par, const uint32_t size_x, c
 			bool skip = false;
 
 			if (std::fabs(z_diff) < 1e-8) {
-				tempk = z_ring(zmax, detectors.zs, static_cast<double>(NSlices));
+				tempk = static_cast<int32_t>(fabs(detectors.zs - bz) / dz);
 				skip = siddon_pre_loop_2D(bx, by, x_diff, y_diff, maxxx, maxyy, dx, dy, Nx, Ny, tempi, tempj, txu, tyu, Np, TYPE,
 					detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, iu, ju, tx0, ty0);
 			}
