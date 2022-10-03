@@ -10,9 +10,17 @@
   
 - Added support for SPECT reconstruction
   - Supports also GATE projection data
-  - Currently no support for detector response
+  - Collimator-detector response is only supported with implementation 2
   
 - Added support for direction-vector based reconstruction in CT
+  - Added support for pitch/roll/yaw for cone-beam CT
+
+- Added subset selection based on projection images/sinograms
+  - I.e. every Nth projection image/sinogram is selected
+
+- Added support for dual-layer PET reconstruction
+  - Supports both with and without detector offset
+  - Automatic GATE data import only supports dual-layer without detector offset
 
 ## OMEGA v1.2.1
 
@@ -30,6 +38,7 @@
 - Some fixes for older MATLAB versions
 
 - Fix attenuation correction when using GATE MuMap actor
+  - Fix errors caused by the above fix
 
 - Several fixes and enhancements for Voxelized_source/phantom_handles
   - The user can now manually select the row and column indices to crop
@@ -42,10 +51,12 @@
 
 - Fix raw data load when store_raw_data was false, but use_raw_data was true
 
-- Allow the use of more image slices than there are crystal rings
+- Allow the use of more, or less, image slices than twice the number of crystal rings - 1
 
 - Allow the use of mini blocks for GATE data
   - `options.axial_multip` can now be used to specify axial repetition with modules/submodules when R-sectors are already axially repeated
+  
+- Implementation 4 is now usable when verbosity is set to 0
 
 ## OMEGA v1.2.0
 
