@@ -19,7 +19,7 @@ function [algo_char] = algorithms_char(varargin)
 % along with this program. If not; see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-varNonMAP = [recNames(5);recNames(6)];
+varNonMAP = [recNames(6)];
 varMAP = recNames(2);
 varMAP = strrep(varMAP,'_','-');
 varPriorNames = recNames(10);
@@ -40,7 +40,8 @@ for kk = 1 : numel(algo_char) - 1
         end
     end
 end
-algo_char{end} = 'Image properties';
+algo_char{end} = 'FDK';
+% algo_char{end} = 'Image properties';
 dispi = [];
 if nargin >= 1
     for kk = 1 : numel(algo_char) - 1

@@ -67,10 +67,10 @@ if isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfi
 else
     if options.use_raw_data == false
         [~, ~, xp, yp] = detector_coordinates(options);
-        if options.nLayers
+        if options.nLayers > 1
             koko = numel(xp)/2;
-            x = [];
-            y = [];
+            x = zeros(options.Ndist * options.Nang * 4, 2);
+            y = zeros(options.Ndist * options.Nang * 4, 2);
             for kk = 1 : options.nLayers
                 if options.cryst_per_block(1) == options.cryst_per_block(2)
                     [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
@@ -81,9 +81,17 @@ else
                         [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
                     end
                 end
-                x = [x;x1];
-                y = [y;y1];
+                x1(ismember(x1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(x1, [0 0], 'rows')), 1);
+                y1(ismember(y1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(y1, [0 0], 'rows')), 1);
+                x(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = x1;
+                y(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = y1;
             end
+            ind2 = 1 + options.Ndist * options.Nang * 3;
+            ind1 = options.Ndist * options.Nang;
+            x(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [x(ind2:end,1) x(1 : ind1, 2)];
+            y(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [y(ind2:end,1) y(1 : ind1, 2)];
+            x(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [x(1 : ind1, 1) x(ind2:end,2)];
+            y(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [y(1 : ind1, 1) y(ind2:end,2)];
         else
             [x, y] = sinogram_coordinates_2D(options, xp, yp);
         end
@@ -99,6 +107,8 @@ else
         if options.NSinos ~= options.TotSinos
             z = z(1:options.NSinos,:);
         end
+        x = [x(:,1)';y(:,1)';x(:,2)';y(:,2)'];
+        z = z';
     else
         if options.det_per_ring < options.det_w_pseudo
             options.offangle = options.offangle / options.det_w_pseudo;
@@ -110,23 +120,22 @@ else
         end
         
         z_length = double(rings + 1 + sum(options.pseudot)) * options.cr_pz;
-        z = linspace(0, z_length, rings + 2 + sum(options.pseudot))';
+        z = linspace(-(z_length / 2 - options.cr_pz/2), z_length / 2 - options.cr_pz/2, rings + 1 + sum(options.pseudot))';
         if sum(pseudot) > 0
             z(pseudot) = [];
         end
+        x = [x';y'];
     end
-    if min(z(:)) == 0
-        z = z + (options.axial_fov - (options.rings + sum(options.pseudot)) * options.cr_pz)/2 + options.cr_pz/2;
-    end
+%     if min(z(:)) == 0
+%         z = z + (options.axial_fov - (options.rings + sum(options.pseudot)) * options.cr_pz)/2 + options.cr_pz/2;
+%     end
     
-    if options.use_raw_data
-        
-        %         z = z + options.cr_pz/2;
-        z(end) = [];
-    end
-    z = z - z(end) / 2;
-    x = [x(:,1)';y(:,1)';x(:,2)';y(:,2)'];
-    z = z';
+%     if options.use_raw_data
+%         
+%         %         z = z + options.cr_pz/2;
+%         z(end) = [];
+%     end
+%     z = z - z(end) / 2;
 end
 
 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5

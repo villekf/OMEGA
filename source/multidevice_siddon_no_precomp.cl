@@ -66,8 +66,8 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 #else
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, 1, 1)))
 #endif
-void siddon_multi(const float global_factor, const float d_epps, const uint d_N, const uint3 d_Nxyz, const float3 d_d,
-	const float3 b, const float3 d_max, const uint d_size_x, const uint d_det_per_ring, const uint d_Nxy, const uchar fp, 
+void proj1SiddonMultiRay(const float global_factor, const float d_epps, const uint d_N, const uint3 d_Nxyz, const float3 d_d,
+	const float3 b, const float3 d_max, const uint d_size_x, const uint d_det_per_ring, const uint d_Nxy, 
 	const float sigma_x, const float2 dc_z, 
 #ifdef MASKFP
 	__read_only image2d_t maskFP,
@@ -87,7 +87,7 @@ void siddon_multi(const float global_factor, const float d_epps, const uint d_N,
 #else
 	__constant float* d_xy, __constant float* d_z,
 #endif
-	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ,
+	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ, const uchar fp,
 #ifdef PRECOMPUTE
 	const __global ushort* restrict d_lor,
 #endif

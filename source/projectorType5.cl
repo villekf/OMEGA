@@ -42,10 +42,12 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
     const float3 uVector = fabs(normalize(d - s));
     float kerroin = d_d.x * d_d.y * d_d.z;
     const float apuZ = (b.z - s.z - d_d.z / 2.f);
+    //const float apuZ = (b.z - s.z - d_d.z);
     if (fabs(s.x) <= fabs(s.y)) {
         const float2 X = { (dL.x - s.x) / (dL.y - s.y), (dR.x - s.x) / (dR.y - s.y) };
         const float2 Z = { (dU.z - s.z) / (dU.y - s.y), (dD.z - s.z) / (dD.y - s.y) };
         kerroin /= uVector.y;
+        //const float apuX = (b.x - s.x - d_d.x);
         const float apuX = (b.x - s.x - d_d.x / 2.f);
         const float apuV = b.y - s.y;
         for (uint jj = 0; jj < d_N.y; jj++) {
@@ -78,12 +80,27 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
             const float C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).x;
             const float D = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).x;
             float apu = C + D - A - B;
-            //if (i.x == 300 && i.y == 300 && i.z == 49) {
+            //if (i.x == 300 && i.y == 300 && i.z == 0 && jj < 10) {
             //    printf("apu1 = %f\n", apu);
+            //}
+            //if (i.x == 300 && i.y == 300 && i.z == 0 && jj == 10) {
+            //    printf("dL.x = %f\n", dL.x);
+            //    printf("dL.y = %f\n", dL.y);
+            //    printf("dR.x = %f\n", dR.x);
+            //    printf("dR.y = %f\n", dR.y);
+            //    printf("dU.y = %f\n", dU.y);
+            //    printf("dU.z = %f\n", dU.z);
+            //    printf("dD.y = %f\n", dD.y);
+            //    printf("dD.z = %f\n", dD.z);
+            //    printf("apu1 = %f\n", apu);
+            //    printf("C = %f\n", C);
+            //    printf("D = %f\n", D);
+            //    printf("A = %f\n", A);
+            //    printf("B = %f\n", B);
             //}
 #ifdef MEANDISTANCEFP
             const float area2 = fabs((xLR.x - xLR.y) * (zUD.x - zUD.y)) * convert_float(get_image_width(d_IImageY) * get_image_height(d_IImageY));
-            apu = (apu + d_meanV[jj + d_N.x] * area2);
+            apu += d_meanV[jj + d_N.x] * area2;
 #endif
             temp += apu / area;
             //if (i.x == 300 && i.y == 1 && i.z == 49) {
@@ -97,6 +114,7 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
         const float2 Y = { (dL.y - s.y) / (dL.x - s.x), (dR.y - s.y) / (dR.x - s.x) };
         const float2 Z = { (dU.z - s.z) / (dU.x - s.x), (dD.z - s.z) / (dD.x - s.x) };
         kerroin /= uVector.x;
+        //const float apuY = (b.y - s.y - d_d.y);
         const float apuY = (b.y - s.y - d_d.y / 2.f);
         const float apuV = b.x - s.x;
         for (uint ii = 0; ii < d_N.x; ii++) {
@@ -129,7 +147,7 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
             const float C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).x;
             const float D = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).x;
             float apu = C + D - A - B;
-            float apuT = apu;
+            //float apuT = apu;
             //if (i.x == 1 && i.y == 300 && i.z == 149) {
             //    printf("apu1 = %f\n", apu);
             //}
@@ -159,6 +177,7 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
         }
     }
     //if (i.x == 1 && i.y == 300 && i.z == 149) {
+    //if (i.x == 300 && i.y == 300 && i.z == 0) {
     //    printf("temp * kerroin = %f\n", temp * kerroin);
     //    printf("temp = %f\n", temp);
     //    printf("kerroin = %f\n", kerroin);
@@ -207,6 +226,7 @@ void projectorType5Backward(const uint3 d_N, const float3 b, const uint d_size_x
     //float pz = nZ / 2.f;
     const float3 dV = convert_float(i) * d_d + d_d / 2.f + b;
     const float2 koko = { convert_float(get_image_width(d_IImage)) * d_dPitch.x, convert_float(get_image_height(d_IImage)) * d_dPitch.y };
+    const float2 indeksi = { convert_float(get_image_width(d_IImage)) / 2.f, convert_float(get_image_height(d_IImage)) / 2.f };
 #ifdef CT
     for (int kk = 0; kk < d_nProjections; kk++) {
 
@@ -216,14 +236,14 @@ void projectorType5Backward(const uint3 d_N, const float3 b, const uint d_size_x
         int id = kk * 6;
         const float3 s = (float3)(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
         d = (float3)(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-        const float2 indeksi = { convert_float(get_image_width(d_IImage)) / 2.f, convert_float(get_image_height(d_IImage)) / 2.f };
-#if defined(PITCH)
-        const float3 apuX = (float3)(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
-        const float3 apuY = (float3)(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
-#else
+        //const float2 indeksi = { ceil(convert_float(get_image_width(d_IImage)) / 2.f + .4f), ceil(convert_float(get_image_height(d_IImage)) / 2.f + .4f) };
+//#if defined(PITCH)
+//        const float3 apuX = (float3)(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
+//        const float3 apuY = (float3)(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
+//#else
         const float3 apuX = (float3)(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
         const float3 apuY = (float3)(0.f, 0.f, indeksi.y * d_dPitch.y);
-#endif
+//#endif
         d2 = apuX - apuY;
         d3 = d - apuX - apuY;
         const float3 normX = normalize(apuX);

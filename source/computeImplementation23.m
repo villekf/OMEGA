@@ -27,19 +27,19 @@ end
 if ~isfield(options,'PITCH')
     options.PITCH = false;
 end
-if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3)
-    if options.projector_type == 3
+if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if options.projector_type == 3 || options.projector_type == 33
         options.orthTransaxial = true;
-    elseif options.projector_type == 2 && isfield(options,'tube_width_xy') && options.tube_width_xy > 0
+    elseif (options.projector_type == 2 || options.projector_type == 22) && isfield(options,'tube_width_xy') && options.tube_width_xy > 0
         options.orthTransaxial = true;
     else
         options.orthTransaxial = false;
     end
 end
-if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3)
-    if options.projector_type == 3
+if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
+    if options.projector_type == 3 || options.projector_type == 33
         options.orthAxial = true;
-    elseif options.projector_type == 2 && isfield(options,'tube_width_z') && options.tube_width_z > 0
+    elseif (options.projector_type == 2 || options.projector_type == 22) && isfield(options,'tube_width_z') && options.tube_width_z > 0
         options.orthAxial = true;
     else
         options.orthAxial = false;
@@ -97,7 +97,8 @@ end
 
 tube_width_xy = single(options.tube_width_xy);
 crystal_size_z = single(options.tube_width_z);
-if (options.projector_type == 1 && (options.precompute_lor || (n_rays + n_rays3D) <= 2)) || options.projector_type == 2 || options.projector_type == 3
+if ((options.projector_type == 1 || options.projector_type == 11) && (options.precompute_lor || (n_rays * n_rays3D) == 1)) ...
+    || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33
     kernel_file = 'multidevice_kernel.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
@@ -111,7 +112,7 @@ elseif options.projector_type == 1 && ~options.precompute_lor
     kernel_path = strrep(kernel_path, '.cl', '');
     filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'multidevice_siddon_no_precomp','');
-elseif options.projector_type == 4
+elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14
     kernel_file = 'projectorType4.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
@@ -142,9 +143,9 @@ if options.implementation == 2
 %     varList = recNames();
     varPrior = recNames(1);
     varMAP = recNames(2);
-    varMAPML = recNames(7);
+%     varMAPML = recNames(7);
 %     varMAPOS = recNames(8);
-    varMLEM = recNames(5);
+%     varMLEM = recNames(5);
     varOS = recNames(6);
     options.nTot = uint32(sum(rekot));
     apu = false(numel(varPrior),1);
@@ -163,22 +164,22 @@ if options.implementation == 2
     end
     varMAP = varMAP(apu);
     options.nMAP = uint32(numel(varMAP));
-    apu = false(numel(varMAPML),1);
-    for kk = 1 : numel(varMAPML)
-        if options.(varMAPML{kk})
-            apu(kk) = true;
-        end
-    end
-    varMAPML = varMAPML(apu);
-    options.nMAPML = uint32(numel(varMAPML));
-    apu = false(numel(varMLEM),1);
-    for kk = 1 : numel(varMLEM)
-        if options.(varMLEM{kk})
-            apu(kk) = true;
-        end
-    end
-    varMLEM = varMLEM(apu);
-    options.nMLEM = uint32(numel(varMLEM));
+%     apu = false(numel(varMAPML),1);
+%     for kk = 1 : numel(varMAPML)
+%         if options.(varMAPML{kk})
+%             apu(kk) = true;
+%         end
+%     end
+%     varMAPML = varMAPML(apu);
+%     options.nMAPML = uint32(numel(varMAPML));
+%     apu = false(numel(varMLEM),1);
+%     for kk = 1 : numel(varMLEM)
+%         if options.(varMLEM{kk})
+%             apu(kk) = true;
+%         end
+%     end
+%     varMLEM = varMLEM(apu);
+%     options.nMLEM = uint32(numel(varMLEM));
     apu = false(numel(varOS),1);
     for kk = 1 : numel(varOS)
         if options.(varOS{kk})
@@ -256,10 +257,10 @@ if options.listmode && options.compute_sensitivity_image
     else
         [tz] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, zd, xd, yd, dy, yy(end), xx(end), single(NSlices), size_x, max(zd(:)), options.verbose, ...
             LL, pseudot, uint32(options.det_per_ring), TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), uint32(dec), uint32(options.use_device), filename, uint8(true), single(options.cpu_to_gpu_factor), uint32(1), header_directory, ...
-            options.vaimennus, normalization, pituusD, uint32(attenuation_correction), uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, ...
+            options, options.vaimennus, normalization, pituusD, uint32(attenuation_correction), uint32(normalization_correction), lor_a, xy_index, z_index, tube_width_xy, ...
             crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, ...
             n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), NSinos, uint16(NSinos), uint32(1), uint32(1), uint8(rekot), ...
-            single(epps), uint32(1), options.OSEM, options.use_psf, options.global_correction_factor, bmin, bmax, Vmax, V, gaussK, options);
+            single(epps), uint32(1), options.OSEM, options.use_psf, options.global_correction_factor, bmin, bmax, Vmax, V, gaussK);
         options.Summ = tz{1}(:,end) / single(subsets);
         if (options.use_psf)
             options.Summ = computeConvolution(options.Summ, options, Nx, Ny, Nz, gaussK);
@@ -310,7 +311,7 @@ if options.implementation == 2
         [pz] = OpenCL_matrixfree( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), NSinos, single(NSlices), size_x, zmax, NSinos, ...
             options.verbose, LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), uint32(dec), device, uint8(use_raw_data), ...
             filename, uint32(0), options.use_psf, header_directory, options.vaimennus, normalization, pituus, uint32(attenuation_correction), ...
-            uint32(normalization_correction), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), lor_a, xy_index, z_index, any(n_rekos), tube_width_xy, ...
+            uint32(normalization_correction), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), lor_a, xy_index, z_index, any(n_rekos), ...
             crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, ...
             dc_z, options, SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, reko_type_mlem, ...
             options.global_correction_factor, bmin, bmax, Vmax, V, gaussK);
@@ -319,7 +320,7 @@ if options.implementation == 2
         [pz] = CUDA_matrixfree( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), NSinos, single(NSlices), size_x, zmax, NSinos, ...
             options.verbose, LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), uint32(dec), device, uint8(use_raw_data), ...
             filename, uint32(0), options.use_psf, header_directory, options.vaimennus, normalization, pituus, uint32(attenuation_correction), ...
-            uint32(normalization_correction), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), lor_a, xy_index, z_index, any(n_rekos), tube_width_xy, ...
+            uint32(normalization_correction), uint32(Niter), uint32(subsets), uint8(rekot), single(epps), lor_a, xy_index, z_index, any(n_rekos), ...
             crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, ...
             dc_z, options, SinM, uint32(options.partitions), logical(options.use_64bit_atomics), n_rekos, n_rekos_mlem, reko_type, reko_type_mlem, ...
             options.global_correction_factor, bmin, bmax, Vmax, V, gaussK);
@@ -338,18 +339,18 @@ else
         if type <= 0
             [tz] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), single(NSlices), size_x, zmax, options.verbose, ... 19
                 LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), uint32(dec), uint32(options.use_device), filename, uint8(use_raw_data), ... 31
-                single(options.cpu_to_gpu_factor), uint32(1), header_directory, options.vaimennus, normalization, pituus, uint32(attenuation_correction), ... 38
+                single(options.cpu_to_gpu_factor), uint32(1), header_directory, options, options.vaimennus, normalization, pituus, uint32(attenuation_correction), ... 38
                 uint32(normalization_correction), lor_a, xy_index, z_index, crystal_size_z, x_center, y_center, z_center, SinDelayed, randoms, ...48
-                uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), options, NSinos, uint16(NSinos), uint32(Niter), ... 58
+                uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, dc_z, SinM, logical(options.use_64bit_atomics), NSinos, uint16(NSinos), uint32(Niter), ... 58
                 uint32(subsets), uint8(rekot), single(epps), uint32(options.partitions), options.OSEM, options.use_psf, options.global_correction_factor, bmin, bmax, Vmax, ...
                 V, gaussK);
         else
             [pz] = OpenCL_matrixfree_multi_gpu( kernel_path, Ny, Nx, Nz, dx, dz, by, bx, bz, z_det, x, y, dy, yy(end), xx(end), ... 15
                 single(NSlices), size_x, zmax, options.verbose, LL, pseudot, det_per_ring, TOF, TOFSize, sigma_x, TOFCenter, int64(options.TOF_bins), uint32(dec), ... 28
-                uint32(options.use_device), filename, uint8(use_raw_data), single(options.cpu_to_gpu_factor), uint32(0), header_directory, options.vaimennus, ... 35
+                uint32(options.use_device), filename, uint8(use_raw_data), single(options.cpu_to_gpu_factor), uint32(0), header_directory, options, options.vaimennus, ... 35
                 normalization, pituus(end), uint32(attenuation_correction), uint32(normalization_correction), lor_a, xy_index, z_index, crystal_size_z, ... 43
                 x_center, y_center, z_center, SinDelayed, randoms, uint32(options.projector_type), options.precompute_lor, n_rays, n_rays3D, dc_z, SinM, ... 54
-                logical(options.use_64bit_atomics), options, varargin{2}, uint8(varargin{3}), options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf);
+                logical(options.use_64bit_atomics), varargin{2}, uint8(varargin{3}), options.global_correction_factor, bmin, bmax, Vmax, V, options.use_psf);
         end
         if options.verbose
             toc(tStart)

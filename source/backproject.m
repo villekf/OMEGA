@@ -83,6 +83,9 @@ end
 if ~isfield(options,'PITCH')
     options.PITCH = false;
 end
+if ~isfield(options,'PET')
+    options.PET = false;
+end
 
 rings = options.rings;
 Nx = options.Nx;
@@ -535,6 +538,7 @@ if options.projector_type == 5 && options.meanBP
     yI = yI - options.meanV;
 %     options.integralX = single(integralImage(permute(yI, [2 3 1])));
     options.integralX = single(integralImage(yI));
+    figure(2);imagesc(options.integralX(:,:,10));colorbar
     options.integralX = options.integralX(:);
     clear yI
 elseif options.projector_type == 5

@@ -23,7 +23,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-#include "AF_opencl_functions.hpp"
+//#include "AF_opencl_functions.hpp"
+#include "functions.hpp"
 
 
 void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
@@ -73,7 +74,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 	const float* z_det = (float*)mxGetData(prhs[ind]);
 #endif
-	const size_t size_z = mxGetNumberOfElements(prhs[ind]);
+	inputScalars.size_z = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Coordinates of the detectors in x-direction
@@ -82,7 +83,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 	const float* x = (float*)mxGetData(prhs[ind]);
 #endif
-	const size_t size_of_x = mxGetNumberOfElements(prhs[ind]);
+	inputScalars.size_of_x = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Coordinates of the detectors in y-direction
@@ -102,7 +103,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	inputScalars.maxxx = getScalarFloat(prhs[ind], ind);
 	ind++;
 
-	const uint32_t NSinos = getScalarUInt32(prhs[ind], ind);
+	inputScalars.NSinos = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	inputScalars.NSlices = getScalarFloat(prhs[ind], ind);
@@ -114,10 +115,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	inputScalars.zmax = getScalarFloat(prhs[ind], ind);
 	ind++;
 
-	const uint32_t TotSinos = getScalarUInt32(prhs[ind], ind);
+	inputScalars.TotSinos = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
-	const bool verbose = getScalarBool(prhs[ind], ind);
+	inputScalars.verbose = getScalarUInt8(prhs[ind], ind);
 	ind++;
 	
 	// Detector pair numbers, for raw list-mode data
@@ -146,7 +147,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 	ind++;
 
 	// Size of single TOF-subset
-	const int64_t TOFSize = getScalarInt64(prhs[ind], ind);
+	inputScalars.TOFSize = getScalarInt64(prhs[ind], ind);
 	ind++;
 
 	// Variance of the Gaussian TOF
@@ -204,7 +205,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* atten = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_atten = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_atten = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Normalization coefficients
@@ -213,7 +214,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* norm = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_norm = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_norm = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Number of measurements/LORs
@@ -231,7 +232,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		inputScalars.normalization_correction = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
-		const uint32_t Niter = getScalarUInt32(prhs[ind], ind);
+		inputScalars.Niter = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
 		inputScalars.subsets = getScalarUInt32(prhs[ind], ind);
@@ -241,7 +242,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		const size_t size_reko = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
-		const float epps = getScalarFloat(prhs[ind], ind);
+		inputScalars.epps = getScalarFloat(prhs[ind], ind);
 		ind++;
 
 		// Number of voxels the current LOR/ray traverses
@@ -284,7 +285,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* x_center = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_center_x = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_center_x = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Center coordinates of voxels in the Y-dimension
@@ -293,7 +294,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* y_center = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_center_y = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_center_y = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Center coordinates of voxels in the Z-dimension
@@ -302,7 +303,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* z_center = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_center_z = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_center_z = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 		// Randoms
@@ -336,10 +337,10 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		const mxArray* options = prhs[ind];
 		ind++;
 
-		const bool saveIter = getScalarBool(getField(options, 0, "save_iter"), ind);
+		inputScalars.saveIter = getScalarBool(getField(options, 0, "save_iter"), ind);
 		size_t Ni = 0ULL;
-		if (saveIter)
-			Ni = static_cast<size_t>(Niter);
+		if (inputScalars.saveIter)
+			Ni = static_cast<size_t>(inputScalars.Niter);
 		const size_t outSize = static_cast<size_t>(inputScalars.Nx) * static_cast<size_t>(inputScalars.Ny) * static_cast<size_t>(inputScalars.Nz);
 		const size_t outSize2 = Ni + 1ULL;
 
@@ -355,7 +356,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		ind++;
 
 		// Use 64-bit integer atomic functions if possible
-		const bool use_64bit_atomics = getScalarBool(prhs[ind], ind);
+		inputScalars.atomic_64bit = getScalarBool(prhs[ind], ind);
 		ind++;
 
 		// Number of OS-reconstruction algorithms (including priors)
@@ -401,7 +402,7 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 #else
 		const float* V = (float*)mxGetData(prhs[ind]);
 #endif
-		const size_t size_V = mxGetNumberOfElements(prhs[ind]);
+		inputScalars.size_V = mxGetNumberOfElements(prhs[ind]);
 		ind++;
 
 #if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
@@ -428,17 +429,17 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			inputScalars.meanFP = getScalarBool(getField(options, 0, "meanFP"), ind);
 			inputScalars.meanBP = getScalarBool(getField(options, 0, "meanBP"), ind);
 		}
-		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || inputScalars.projector_type == 14) {
 			inputScalars.maskBP = getScalarBool(getField(options, 0, "useMaskBP"), ind);
 		}
 		inputScalars.maskFP = getScalarBool(getField(options, 0, "useMaskFP"), ind);
-		if (inputScalars.projector_type == 2 || inputScalars.projector_type == 3) {
+		if (inputScalars.projector_type == 2 || inputScalars.projector_type == 3 || inputScalars.projector_type == 22 || inputScalars.projector_type == 33) {
 			inputScalars.orthXY = getScalarBool(getField(options, 0, "orthTransaxial"), ind);
 			inputScalars.orthZ = getScalarBool(getField(options, 0, "orthAxial"), ind);
 		}
 		inputScalars.nProjections = getScalarInt64(getField(options, 0, "nProjections"), ind);
 		inputScalars.subsetType = getScalarUInt32(getField(options, 0, "subset_type"), ind);
-		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || inputScalars.projector_type == 14 || inputScalars.projector_type == 41) {
 			inputScalars.dL = getScalarFloat(getField(options, 0, "dL"), ind);
 			inputScalars.d_Scale.s[0] = getScalarFloat(getField(options, 0, "dScaleX"), ind);
 			inputScalars.d_Scale.s[1] = getScalarFloat(getField(options, 0, "dScaleY"), ind);
@@ -452,13 +453,14 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 				inputScalars.dSizeBP.s[1] = getScalarFloat(getField(options, 0, "dSizeZBP"), ind);
 			}
 		}
+		if (!inputScalars.CT && !inputScalars.SPECT)
+			inputScalars.nLayers = getScalarUInt32(getField(options, 0, "nLayers"), ind);
 
 		size_t mDim = mxGetNumberOfElements(mxGetCell(Sin, 0));
-		size_t koko = 0ULL;
 		if (inputScalars.raw)
-			koko = numRows / 2;
+			inputScalars.koko = numRows / 2;
 		else {
-			koko = mDim / inputScalars.nBins;
+			inputScalars.koko = mDim / inputScalars.nBins;
 			//for (int uu = 0; uu < nPituus; uu++)
 			//	if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			//		koko += pituus[uu] * mDim;
@@ -466,8 +468,8 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 			//		koko += pituus[uu];
 		}
 		if (DEBUG) {
-			mexPrintf("koko = %u\n", koko);
-			mexPrintf("size_z = %u\n", size_z);
+			mexPrintf("koko = %u\n", inputScalars.koko);
+			mexPrintf("size_z = %u\n", inputScalars.size_z);
 			mexPrintf("inputScalars.maskBP = %u\n", inputScalars.maskBP);
 			mexPrintf("inputScalars.maskFP = %u\n", inputScalars.maskFP);
 			mexPrintf("inputScalars.projector_type = %u\n", inputScalars.projector_type);
@@ -485,11 +487,9 @@ void mexFunction(int nlhs, mxArray *plhs[], int nrhs, const mxArray*prhs[]) {
 		//}
 		try {
 
-			reconstruction_AF_matrixfree(koko, lor1, z_det, x, y, Sin, sc_ra, inputScalars, Niter, options, pituus, xy_index, 
-				z_index, TotSinos, cell_array_ptr, dim, verbose, atten, size_atten, norm, size_norm, epps, k_path, Nt, pseudos, pRows, L, size_z, osem_bool,
-				fileName, x_center, y_center, z_center, size_center_x, size_center_y, size_of_x, size_center_z,
-				header_directory, device, use_64bit_atomics, n_rekos, n_rekos_mlem, reko_type, reko_type_mlem,
-				V, size_V, gaussian, size_gauss, saveIter, TOFSize, TOFCenter);
+			reconstruction_AF_matrixfree(lor1, z_det, x, y, Sin, sc_ra, inputScalars, options, pituus, xy_index, z_index, cell_array_ptr, 
+				dim, atten, norm, k_path, Nt, pseudos, pRows, L, fileName, x_center, y_center, z_center, header_directory, device, 
+				n_rekos, reko_type, V, gaussian, size_gauss, TOFCenter);
 			//}
 
 

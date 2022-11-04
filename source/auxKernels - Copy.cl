@@ -228,56 +228,49 @@ __kernel void vectorMult(const __global float* input, __global float* output) {
 #endif
 
 #ifdef NLM_
-__constant sampler_t samplerNLM = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
-
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
-__kernel void NLM(__global float* restrict grad, __read_only image3d_t restrict u, __constant float* gaussian, const int3 search_window,
-	const int3 patch_window, const uint3 N, const float h, const float epps, const int type
-#ifdef NLMREF
-	, __read_only image3d_t u_ref
-#endif
-) {
+__kernel void NLM(__global float* grad, const __global float* u, const __global float* u_ref, __constant float* gaussian, const int search_window_x, const int search_window_y,
+	const int search_window_z, const int patch_window_x, const int patch_window_y, const int patch_window_z, const uint Nx, const uint Ny, const uint Nz,
+	const float h, const float epps, const int Nxy, const int min_x, const int max_x, const int min_y, const int max_y, const int min_z,
+	const int max_z, const int type) {
 
 	int3 xyz = { get_global_id(0) , get_global_id(1), get_global_id(2) };
-	if (any(xyz < N) || any(xyz >= N))
+	//int x = get_global_id(0);
+	//int y = get_global_id(1);
+	//int z = get_global_id(2);
+	if (z < min_z || z >= max_z || x < min_x || x >= max_x || y < min_y || y >= max_y)
 		return;
-	const uint n = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-	int4 xyzN = { 0, 0, 0, 0 };
-	int4 xyzK = { 0, 0, 0, 0 };
-	int4 xyzJ = { 0, 0, 0, 0 };
+	uint n = get_global_id(0) + get_global_id(1) * Nx + get_global_id(2) * Nx * Ny;
 	float weight_sum = 0.f;
 	float output = 0.f;
-	const float uj = read_imagef(u, samplerNLM, xyz).x;
-	for (int k = -search_window.z; k <= search_window.z; k++) {
-		xyzN.z = xyz.z + k;
-		for (int j = -search_window.y; j <= search_window.y; j++) {
-			xyzN.y = xyz.y + j;
-			for (int i = -search_window.x; i <= search_window.x; i++) {
-				xyzN.x = xyz.x + i;
-				//const int dim_n = z_n * Nxy + y_n * convert_int(N.x) + x_n;
-				const float uk = read_imagef(u, samplerNLM, xyzN).x;
+	const float uj = u[n];
+	for (int k = -search_window_z; k <= search_window_z; k++) {
+		const int z_n = z + k;
+		for (int j = -search_window_y; j <= search_window_y; j++) {
+			const int y_n = y + j;
+			for (int i = -search_window_x; i <= search_window_x; i++) {
+				const int x_n = x + i;
+				const int dim_n = z_n * Nxy + y_n * convert_int(Nx) + x_n;
+				const float uk = u[dim_n];
 				float distance = 0.f;
 				float weight = 0.f;
 
-				for (int pz = -patch_window.z; pz <= patch_window.z; pz++) {
-					xyzK.z = (xyzN.z + pz);
-					xyzJ.z = (xyz.z + pz);
-					for (int py = -patch_window.y; py <= patch_window.y; py++) {
-						xyzK.y = (xyzN.y + py);
-						xyzJ.y = (xyz.y + py);
-						int dim_g = (pz + patch_window.z) * (patch_window.x * 2 + 1) * (patch_window.y * 2 + 1) + (py + patch_window.y) * (patch_window.x * 2 + 1);
-						for (int px = -patch_window.x; px <= patch_window.x; px++) {
+				for (int pz = -patch_window_z; pz <= patch_window_z; pz++) {
+					const int z_k = (z_n + pz) * Nxy;
+					const int z_j = (z + pz) * Nxy;
+					for (int py = -patch_window_y; py <= patch_window_y; py++) {
+						const int y_k = (y_n + py) * convert_int(Nx);
+						const int y_j = (y + py) * convert_int(Nx);
+						int dim_g = (pz + patch_window_z) * (patch_window_x * 2 + 1) * (patch_window_y * 2 + 1) + (py + patch_window_y) * (patch_window_x * 2 + 1);
+						for (int px = -patch_window_x; px <= patch_window_x; px++) {
 							const float gg = gaussian[dim_g++];
 							//const float gg = 1.;
-							xyzK.x = (xyzN.x + px);
-							xyzJ.x = (xyz.x + px);
-#ifdef NLMREF
-							const float Pj = read_imagef(u_ref, samplerNLM, xyzK).x;
-							const float Pk = read_imagef(u_ref, samplerNLM, xyzJ).x;
-#else
-							const float Pj = read_imagef(u, samplerNLM, xyzK).x;
-							const float Pk = read_imagef(u, samplerNLM, xyzJ).x;
-#endif
+							const int x_k = x_n + px;
+							const int dim_k = z_k + y_k + x_k;
+							const float Pj = u_ref[dim_k];
+							const int x_j = x + px;
+							const int dim_j = z_j + y_j + x_j;
+							const float Pk = u_ref[dim_j];
 							distance += gg * (Pj - Pk) * (Pj - Pk);
 						}
 					}

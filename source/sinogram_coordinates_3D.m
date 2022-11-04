@@ -27,19 +27,36 @@ function z = sinogram_coordinates_3D(options)
 
 cr_pz = options.cr_pz;
 Nz = options.rings*2-1;
-span = options.span;
-ring_difference = options.ring_difference;
+% span = options.span;
+% ring_difference = options.ring_difference;
 
+z_length = double(options.rings + 1) * cr_pz;
+if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+    maxZ = z_length + cr_pz * (options.linear_multip - 1);
+else
+    maxZ = z_length;
+end
+
+if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+    apu = zeros(options.linear_multip,1);
+    for kk = 0 : options.linear_multip - 1
+        apu(kk + 1) = kk * cr_pz;
+    end
+    apu = repelem(apu, sum(options.cryst_per_block_axial));
+end
 %% Compute the 3D coordinates
 
 if options.span > 1
     % Ring coordinates
-    z_length = double(options.rings + 1) * options.cr_pz;
-    z = linspace(0, z_length, options.rings + 2)';
-    if min(z(:)) == 0
-        z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
-    end
+    z = linspace(cr_pz, z_length + cr_pz, options.rings + 2)';
+%     if min(z(:)) == 0
+%         z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
+%     end
     z = z(1 : options.rings);
+    if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+        z = z + apu;
+    end
+    z = z - maxZ / 2;
     ringsp = options.rings;
     z_ring = zeros(options.rings, options.rings, 2);
     % Create ring combinations
@@ -96,17 +113,37 @@ if options.span > 1
     z(ind1,:) = fliplr(z(ind1,:));
     
 else
-    
+
     dif = cr_pz;
     % Michelogram row/column indices for each segment
-    p = zeros(floor((ring_difference-ceil(span/2))/span) + 2,1);
-    for kk = 0 : floor((ring_difference-ceil(span/2))/span)
-        p(kk+2) = ceil(span/2)*2 + (span*2)*kk;
+    %     p = zeros(floor((ring_difference-ceil(span/2))/span) + 2,1);
+    %     for kk = 0 : floor((ring_difference-ceil(span/2))/span)
+    %         p(kk+2) = ceil(span/2)*2 + (span*2)*kk;
+    %     end
+    ind = (0 : cr_pz : cr_pz * (options.rings - 1))';
+    if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+        ind = ind + apu;
+        layers = repmat([0;1], options.cryst_per_block_axial(2), 1);
+        layers = repmat([layers;0], options.linear_multip, 1);
     end
-    
+
     z = zeros(options.rings^2,2);
-    
+    z2 = zeros(options.rings^2,2);
+
     for t=1:options.rings
-        z((t-1) * options.rings + 1 : t * options.rings,:) = [ dif * (t-1) * ones(options.rings,1) (0 : dif : dif * (options.rings - 1))'];
+        if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+            z((t-1) * options.rings + 1 : t * options.rings,:) = [ dif * (t-1) * ones(options.rings,1) + apu(t) ind];
+            z2((t-1) * options.rings + 1 : t * options.rings,:) = [ layers(t) * ones(options.rings,1) layers];
+        else
+            z((t-1) * options.rings + 1 : t * options.rings,:) = [ dif * (t-1) * ones(options.rings,1) ind];
+        end
+    end
+    z = z - (maxZ/2 - cr_pz);
+    if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
+        apuZ = zeros(options.rings^2,1);
+        apuZ(ismember(z2,[1 1], 'rows')) = 3;
+        apuZ(ismember(z2,[1 0], 'rows')) = 1;
+        apuZ(ismember(z2,[0 1], 'rows')) = 2;
+        z = [apuZ z];
     end
 end

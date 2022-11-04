@@ -41,20 +41,23 @@
 #else
 #define NA 2
 #endif
-#if defined(PTYPE4) || defined(PROJ5)
+#if defined(PTYPE41)
 #define T float4
-__constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
 #else
 #define T int4
-__constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
 #endif
+__constant sampler_t samplerIm = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
+__constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
+//#else
+__constant sampler_t samplerSiddon = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
+//#endif
 
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_NONE;
 
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
-#if !defined(ATOMIC) && !defined(ATOMIC32) && !defined(PTYPE4)
+#if !defined(ATOMIC) && !defined(ATOMIC32) && defined(SIDDON)
 void atomicAdd_g_f(volatile __global float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -69,52 +72,60 @@ void atomicAdd_g_f(volatile __global float *addr, float val) {
 }
 #endif
 
-#if defined(AF) && !defined(PTYPE4) && !defined(PROJ5)
+#if defined(AF)//&& defined(SIDDON)
 // Computes the forward projection
 //void forwardProject(const float local_ele, float* ax, const uint kk, const uint local_ind, const __global float* d_OSEM) {
 void forwardProject(const float local_ele, float* ax, const uint kk, const T local_ind, __read_only image3d_t d_OSEM) {
-	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).x);
+#ifdef PTYPE4
+	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerForw, local_ind).x);
+#else
+	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerSiddon, local_ind).x);
+#endif
+	//ax[kk] += (local_ele);
 	//ax[kk] += (local_ele * d_OSEM[local_ind]);
 }
 
+#ifdef BP
 // Computes y / (x + r), where x is the forward projection and r randoms and/or scatter
 void yDivFP(float* ax, const float d_Sino, const uint kk, const float local_rand) {
-#ifdef RANDOMS
+#if defined(RANDOMS) && defined(BP) && defined(FP)
 	ax[kk] += local_rand;
 #endif
 #ifdef CT
 	ax[kk] = native_exp(-ax[kk]) / d_Sino;
 #else
 	ax[kk] = d_Sino / ax[kk];
+	//float joku = d_Sino;
 #endif
 }
+#endif
 
 // Same as above, but for special MBSREM/MRAMLA case
-#ifdef MRAMLA
-void yDivFPMBSREM(float* ax, const float d_Sino, const uint kk, const float local_rand, const float d_epsilon_mramla) {
-#ifdef RANDOMS
-	ax[kk] += local_rand;
-#endif
-#ifdef CT
-	ax[kk] = native_exp(-d_epsilon_mramla) / d_Sino - (native_exp(-d_epsilon_mramla) / d_Sino) * (ax[kk] - d_epsilon_mramla);
-#else
-	ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
-#endif
-}
-#endif
-#ifdef MBSREM
-// Struct for boolean operators indicating whether a certain method is selected (OpenCL)
-typedef struct _RecMethodsOpenCL {
-	char MLEM, OSEM, MRAMLA_, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
-	char MRP, Quad, Huber, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
-	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM, PKMA;
-} RecMethodsOpenCL;
-#endif
+//#ifdef MRAMLA
+//void yDivFPMBSREM(float* ax, const float d_Sino, const uint kk, const float local_rand, const float d_epsilon_mramla) {
+//#if defined(RANDOMS) && defined(BP) && defined(FP)
+//	ax[kk] += local_rand;
+//#endif
+//#ifdef CT
+//	ax[kk] = native_exp(-d_epsilon_mramla) / d_Sino - (native_exp(-d_epsilon_mramla) / d_Sino) * (ax[kk] - d_epsilon_mramla);
+//#else
+//	ax[kk] = d_Sino / d_epsilon_mramla - (d_Sino / native_powr(d_epsilon_mramla, 2)) * (ax[kk] - d_epsilon_mramla);
+//#endif
+//}
+//#endif
+//#ifdef MBSREM
+//// Struct for boolean operators indicating whether a certain method is selected (OpenCL)
+//typedef struct _RecMethodsOpenCL {
+//	char MLEM, OSEM, MRAMLA_, RAMLA, ROSEM, RBI, DRAMA, COSEM, ECOSEM, ACOSEM;
+//	char MRP, Quad, Huber, L, FMH, WeightedMean, TV, AD, APLS, TGV, NLM;
+//	char OSLMLEM, OSLOSEM, MBSREM_, BSREM, ROSEMMAP, RBIOSL, OSLCOSEM, PKMA;
+//} RecMethodsOpenCL;
+//#endif
 
 #ifndef MBSREM
 // Denominator (forward projection)
 //void denominator(float local_ele, float* ax, uint local_ind, const uint d_N, const __global float* d_OSEM) {
-void denominator(float local_ele, float* ax, int4 localInd, const uint d_N, __read_only image3d_t d_OSEM) {
+void denominator(float local_ele, float* ax, T localInd, const uint d_N, __read_only image3d_t d_OSEM) {
 #ifdef NREKOS1
 	forwardProject(local_ele, ax, 0, localInd, d_OSEM);
 #elif defined(NREKOS2)
@@ -133,18 +144,30 @@ void denominator(float local_ele, float* ax, int4 localInd, const uint d_N, __re
 }
 
 // Nominator (backprojection) in MLEM
-void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
-	const float temp, const __global float* d_sc_ra, const size_t idx) {
+void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, const float d_epps, 
+	const float temp, const size_t idx
+#if defined(BP) && defined(FP)
+	, __constant uchar* MethodList
+#if defined(RANDOMS)
+	, const __global float* restrict d_sc_ra
+#endif
+#endif
+) {
+#if defined(BP) && defined(FP)
 	float local_rand = 0.f;
-#ifdef RANDOMS
+#endif
+#if defined(RANDOMS) && defined(BP) && defined(FP)
 	local_rand = d_sc_ra[idx];
 #endif
 #ifdef NREKOS1
 #ifndef CT
 	ax[0] *= temp;
+#if defined(BP) && defined(FP)
 	if (ax[0] < d_epps)
 		ax[0] = d_epps;
 #endif
+#endif
+#if defined(BP) && defined(FP)
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		yDivFP(ax, d_Sino, 0, local_rand);
@@ -157,12 +180,16 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 #else
 	yDivFP(ax, d_Sino, 0, local_rand);
 #endif
+#endif
 #elif defined(NREKOS2)
 #ifndef CT
 	ax[0] *= temp;
+#if defined(BP) && defined(FP)
 	if (ax[0] < d_epps)
 		ax[0] = d_epps;
 #endif
+#endif
+#if defined(BP) && defined(FP)
 #ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		yDivFP(ax, d_Sino, 0, local_rand);
@@ -175,11 +202,15 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 #else
 	yDivFP(ax, d_Sino, 0, local_rand);
 #endif
+#endif
 #ifndef CT
 	ax[1] *= temp;
+#if defined(BP) && defined(FP)
 	if (ax[1] < d_epps)
 		ax[1] = d_epps;
 #endif
+#endif
+#if defined(BP) && defined(FP)
 #ifdef MRAMLA
 	if (MethodList[1] != 1u)
 		yDivFP(ax, d_Sino, 1, local_rand);
@@ -192,14 +223,19 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 #else
 	yDivFP(ax, d_Sino, 1, local_rand);
 #endif
+#endif
 #else
+#if (defined(BP) && defined(FP)) || !defined(CT)
 #pragma unroll N_REKOS
 	for (uint kk = 0; kk < N_REKOS; kk++) {
 #ifndef CT
 		ax[kk] *= temp;
+#if defined(BP) && defined(FP)
 		if (ax[kk] < d_epps)
 			ax[kk] = d_epps;
 #endif
+#endif
+#if defined(BP) && defined(FP)
 #ifdef MRAMLA
 		if (MethodList[kk] != 1u)
 			yDivFP(ax, d_Sino, kk, local_rand);
@@ -212,38 +248,43 @@ void nominator(__constant uchar* MethodList, float* ax, const float d_Sino, cons
 #else
 		yDivFP(ax, d_Sino, kk, local_rand);
 #endif
+#endif
 	}
 #endif
+#endif
 }
 #endif
 
-#ifdef MBSREM
-// Nominator (backprojection), COSEM
-void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
-	const size_t idx) {
-#ifndef CT
-	* axCOSEM *= temp;
-	if (*axCOSEM < d_epps)
-		*axCOSEM = d_epps;
-#endif
-#ifdef RANDOMS
-	* axCOSEM += d_sc_ra[idx];
-#endif
-#ifdef CT
-	* axCOSEM = native_exp(-*axCOSEM) / local_sino;
-#else
-	*axCOSEM = local_sino / *axCOSEM;
-#endif
-}
-#endif
+//#ifdef MBSREM
+//// Nominator (backprojection), COSEM
+//void nominator_cosem(float* axCOSEM, const float local_sino, const float d_epps, const float temp, const __global float* d_sc_ra,
+//	const size_t idx) {
+//#ifndef CT
+//	* axCOSEM *= temp;
+//	if (*axCOSEM < d_epps)
+//		*axCOSEM = d_epps;
+//#endif
+//#if defined(RANDOMS) && defined(BP) && defined(FP)
+//	* axCOSEM += d_sc_ra[idx];
+//#endif
+//#ifdef CT
+//	* axCOSEM = native_exp(-*axCOSEM) / local_sino;
+//#else
+//	*axCOSEM = local_sino / *axCOSEM;
+//#endif
+//}
+//#endif
 
 #ifndef MBSREM
+#ifdef BP
 // Compute the backprojection
 void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, const uint local_ind,
 	const uint d_N, __global CAST* d_rhs_OSEM) {
 #ifdef NREKOS1
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * ax[0] * TH));
+	//atom_add(&d_rhs_OSEM[local_ind], convert_long(TH));
+	//atom_add(&d_rhs_OSEM[local_ind], convert_long(local_ele * TH));
 #elif defined(ATOMIC32)
 	atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * ax[0] * TH));
 #else
@@ -255,7 +296,7 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 	atom_add(&d_rhs_OSEM[local_ind + d_N], convert_long(local_ele * ax[1] * TH));
 #elif defined(ATOMIC32)
 	atomic_add(&d_rhs_OSEM[local_ind], convert_int(local_ele * ax[0] * TH));
-	atom_atomic_addadd(&d_rhs_OSEM[local_ind + d_N], convert_int(local_ele * ax[1] * TH));
+	atomic_add(&d_rhs_OSEM[local_ind + d_N], convert_int(local_ele * ax[1] * TH));
 #else
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind], (local_ele * ax[0]));
 	atomicAdd_g_f(&d_rhs_OSEM[local_ind + d_N], (local_ele * ax[1]));
@@ -276,13 +317,18 @@ void rhs(__constant uchar* MethodList, const float local_ele, const float* ax, c
 #endif
 }
 #endif
+#endif
 
 #else
 
 #if !defined(PTYPE4) && !defined(PROJ5)
 // Nominator (backprojection), multi-GPU version
-void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, const __global float* d_sc_ra, 
-	const size_t idx) {
+void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, const float temp, 
+	const size_t idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+	, const __global float* d_sc_ra
+#endif
+) {
 #ifndef CT
 	*axOSEM *= temp;
 #ifdef BP
@@ -290,7 +336,7 @@ void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, cons
 		* axOSEM = d_epps;
 #endif
 #endif
-#ifdef RANDOMS
+#if defined(RANDOMS) && defined(BP) && defined(FP)
 		* axOSEM += d_sc_ra[idx];
 #endif
 #ifdef BP
@@ -304,7 +350,7 @@ void nominator_multi(float* axOSEM, const float d_Sino, const float d_epps, cons
 #endif
 #endif
 
-#if (defined(MBSREM) || !defined(AF)) && !defined(PTYPE4) && !defined(PROJ5)
+#if (defined(MBSREM) || !defined(AF)) && defined(SIDDON)
 // Denominator (forward projection), multi-GPU version
 //void denominator_multi(const float local_ele, float* axOSEM, const __global float* d_OSEM) {
 void denominator_multi(const float local_ele, float* axOSEM, const float d_OSEM) {
@@ -386,40 +432,6 @@ void getDetectorCoordinatesCT(__constant float* d_xyz, __constant float* d_uv, f
 #endif
 #endif
 }
-
-
-//void get_detector_coordinates_CT_const(__constant float* x, __constant float* y, __constant float* z, const uint size_x, const size_t idx, const uint subsets,
-//	__constant float* angles, const __global uint* d_xyindex, const __global ushort* d_zindex, const uint size_z, const float dPitch, const long nProjections,
-//	float* xs, float* xd, float* ys, float* yd, float* zs, float* zd) {
-//#ifdef LISTMODE
-//	* xs = x[idx];
-//	*xd = x[idx + size_x];
-//	*ys = y[idx];
-//	*yd = y[idx + size_x];
-//	*zs = z[idx];
-//	*zd = z[idx + size_x];
-//#else
-//	if (subsets > 1U) {
-//		const uint lu = d_xyindex[idx];
-//		*xs = x[d_zindex[idx] + nProjections];
-//		*xd = x[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_cos(angles[d_zindex[idx]]);
-//		*ys = y[d_zindex[idx] + nProjections];
-//		*yd = y[d_zindex[idx]] - dPitch * convert_float(lu % size_x) * native_sin(angles[d_zindex[idx]]);
-//		*zs = z[d_zindex[idx] + nProjections];
-//		*zd = z[d_zindex[idx]] + dPitch * convert_float(lu / size_x);
-//	}
-//	else {
-//		const long ll = idx / ((size_x) * (size_z));
-//		const long lu = idx % ((size_x) * (size_z));
-//		*xs = x[ll + nProjections];
-//		*xd = x[ll] - dPitch * convert_float(lu % size_x) * native_cos(angles[ll]);
-//		*ys = y[ll + nProjections];
-//		*yd = y[ll] - dPitch * convert_float(lu % size_x) * native_sin(angles[ll]);
-//		*zs = z[ll + nProjections];
-//		*zd = z[ll] + dPitch * convert_float(lu / size_x);
-//		}
-//#endif
-//}
 #else
 #if defined(RAW)
 // Get the detector coordinates for the current (raw) measurement
@@ -430,13 +442,13 @@ void getDetectorCoordinatesRaw(__constant float *d_xy, __constant float *d_z, co
 #endif
 ) {
 	// Get the current detector numbers
-	uint2 detektorit = { convert_uint(d_L[idx * 2u]), convert_uint(d_L[idx * 2u + 1u])} - 1U;
+	uint2 detektorit = { convert_uint(d_L[idx * 2u]) - 1U, convert_uint(d_L[idx * 2u + 1u]) - 1U };
 	// Which ring
 	const uint2 loop = ((detektorit) / d_detPerRing);
 	// same ring
 	(*s).z = d_z[loop.x];
 	if (loop.x == loop.y) {
-		(*d).z = *s.z;
+		(*d).z = (*s).z;
 	}
 	else {
 		(*d).z = d_z[loop.y];
@@ -457,63 +469,28 @@ void getDetectorCoordinatesRaw(__constant float *d_xy, __constant float *d_z, co
 #endif
 
 
-
-//#if defined(N_RAYS) && (defined(RAW) && !defined(LISTMODE))
-//// Get the detector coordinates for the current (raw) measurement (multi-ray case)
-//void get_detector_coordinates_raw_multiray(__constant float* d_xy, __constant float* d_z, const __global ushort* d_L,
-//	const uint d_detPerRing, const size_t idx, float3* s, float3* d, const ushort lor, const float cr_pz) {
-//	// Get the current detector numbers
-//	uint2 detektorit = { convert_uint(d_L[idx * 2u]), convert_uint(d_L[idx * 2u + 1u]) } - 1U;
-//	// Which ring
-//	const uint2 loop = ((detektorit) / d_detPerRing);
-//	// same ring
-//	(*s).z = d_z[loop.x];
-//	if (loop.x == loop.y) {
-//		(*d).z = *s.z;
-//	}
-//	else {
-//		(*d).z = d_z[loop.y];
-//	}
-//	// Get the current x- and y-detector coordinates
-//	if (N_RAYS3D > 1) {
-//		ushort rays3D = N_RAYS3D;
-//		if (N_RAYS3D % 2 == 0)
-//			rays3D++;
-//		int r[N_RAYS3D + 1];
-//		int hh = 0;
-//		for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
-//			if (kk == 0 && (N_RAYS3D % 2 == 0)) {}
-//			else {
-//				r[hh] = kk;
-//				hh++;
-//			}
-//		}
-//		const float rr = convert_float(r[(lor - 1) % N_RAYS3D]) * cr_pz;
-//		(*s).z += rr;
-//		(*d).z += rr;
-//	}
-//	detektorit -= loop * d_detPerRing;
-//	if (N_RAYS2D > 1) {
-//		const uint ll = (lor - 1) / N_RAYS3D * d_detPerRing;
-//		detektorit += ll;
-//	}
-//	(*s).x = d_xy[detektorit.x * 2];
-//	(*s).y = d_xy[detektorit.x * 2 + 1];
-//	(*d).x = d_xy[detektorit.y * 2];
-//	(*d).y = d_xy[detektorit.y * 2 + 1];
-//}
-//#endif
-
-#if !defined(RAW) && !defined(LISTMODE) && !defined(CT) && !defined(SPECT) && !defined(PET) && !defined(PTYPE4) && !defined(PROJ5)
+#if !defined(RAW) && !defined(LISTMODE) && !defined(CT) && !defined(SPECT) && !defined(PET) && defined(SIDDON)
 // Get the detector coordinates for the current sinogram bin
 void getDetectorCoordinates(const __global uint *d_xyindex, const __global ushort *d_zindex, const size_t idx,
 	float3* s, float3* d, __constant float *d_xy, __constant float *d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
+#if defined(NLAYERS)
+	, const uint d_sizey, const uint d_size_x
+#endif
 ) {
-
 	const uint ind = d_xyindex[idx] * 4;
+#if defined(NLAYERS)
+	const uint indz = d_zindex[idx] * 3;
+	const int layer = d_z[indz];
+	(*s).x = d_xy[ind + layer * d_size_x * d_sizey];
+	(*s).y = d_xy[ind + 1 + layer * d_size_x * d_sizey];
+	(*d).x = d_xy[ind + 2 + layer * d_size_x * d_sizey];
+	(*d).y = d_xy[ind + 3 + layer * d_size_x * d_sizey];
+	(*s).z = d_z[indz + 1];
+	(*d).z = d_z[indz + 2];
+#else
 	const uint indz = d_zindex[idx] * 2;
 	(*s).x = d_xy[ind];
 	(*s).y = d_xy[ind + 1];
@@ -521,6 +498,7 @@ void getDetectorCoordinates(const __global uint *d_xyindex, const __global ushor
 	(*d).y = d_xy[ind + 3];
 	(*s).z = d_z[indz];
 	(*d).z = d_z[indz + 1];
+#endif
 #if defined(N_RAYS)
 	if (N_RAYS3D > 1)
 		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
@@ -531,7 +509,7 @@ void getDetectorCoordinates(const __global uint *d_xyindex, const __global ushor
 #endif
 #endif
 
-#if defined(N_RAYS)
+#if defined(N_RAYS) && defined(SIDDON)
 void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const float cr) {
 	float interval = cr / (convert_float(N_RAYS2D * 2));
 	(*s).x += (interval - cr / 2.f);
@@ -555,68 +533,34 @@ void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const float c
 }
 #endif
 
-//#if defined(N_RAYS) && !defined(RAW) && !defined(LISTMODE) && defined(SUBSETS)
-//// Get the detector coordinates for the current sinogram bin (multi-ray case)
-//void getDetectorCoordinatesMultiray(const __global uint* d_xyindex, const __global ushort* d_zindex, const uint d_size_x, const size_t idx,
-//	float3* s, float3* d, __constant float* d_xy, __constant float* d_z, const int lorXY, const int lorZ, const float2 cr) {
-//
-//	const uint indz = d_zindex[idx] * 2;
-//	(*s).z = d_z[indz];
-//	(*d).z = d_z[indz + 1];
-//	// More than 1 axial ray
-//	if (N_RAYS3D > 1) {
-//		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
-//		//int r[N_RAYS3D + 1];
-//		//int hh = 0;
-//		//for (int kk = -N_RAYS3D / 2; kk <= N_RAYS3D / 2; kk++) {
-//		//	if (kk == 0 && (N_RAYS3D % 2 == 0)) {
-//		//		continue;
-//		//	}
-//		//	else {
-//		//		r[hh] = kk;
-//		//		hh++;
-//		//	}
-//		//}
-//		//const float rr = convert_float(r[(lor - 1) % N_RAYS3D]);
-//	}
-//	uint ind = d_xyindex[idx] * 4;
-//	(*s).x = d_xy[ind];
-//	(*s).y = d_xy[ind + 1];
-//	(*d).x = d_xy[ind + 2];
-//	(*d).y = d_xy[ind + 3];
-//	if (N_RAYS2D > 1) {
-//		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
-//	}
-//}
-//#endif
-
-//#if defined(N_RAYS) && !defined(RAW) && !defined(LISTMODE) && !defined(SUBSETS)
-//void getDetectorCoordinatesFullSinogramMultiray(const uint d_size_x, const int3 i, float3* s, float3* d, __constant float* d_xy,
-//	__constant float* d_z) {
-//	const int id = (i.x + i.y * d_size_x) * 4;
-//	const int idz = i.z * 2;
-//	*s = (float3)(d_xy[id], d_xy[id + 1], d_z[idz]);
-//	*d = (float3)(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
-//	if (N_RAYS3D > 1)
-//		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
-//	if (N_RAYS2D > 1)
-//		multirayCoordinateShiftXY(s, d, lorXY, cr.x);
-//}
-//#endif
-
-#if !defined(PTYPE4) && (defined(FIND_LORS) || !defined(SUBSETS)) && !defined(PROJ5)
+#if (defined(FIND_LORS) || !defined(SUBSETS)) && !defined(CT)
 //#ifdef FIND_LORS
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
-void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, __constant float* d_xy,
+void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, 
+#ifdef CT
+	__constant float* d_xy,
+#else
+	const __global float* restrict d_xy,
+#endif
 	__constant float* d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
+#if defined(NLAYERS)
+	, const long NSinos, const uint d_sizey
+#endif
 ) {
 	const int id = (i.x + i.y * d_size_x) * 4;
+#if defined(NLAYERS)
+	const int idz = i.z * 3;
+	const int layer = d_z[idz];
+	*s = (float3)(d_xy[id + layer * d_size_x * d_sizey], d_xy[id + layer * d_size_x * d_sizey + 1], d_z[idz + 1]);
+	*d = (float3)(d_xy[id + layer * d_size_x * d_sizey + 2], d_xy[id + layer * d_size_x * d_sizey + 3], d_z[idz + 2]);
+#else
 	const int idz = i.z * 2;
 	*s = (float3)(d_xy[id], d_xy[id + 1], d_z[idz]);
 	*d = (float3)(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
+#endif
 #if defined(N_RAYS)
 	if (N_RAYS3D > 1)
 		multirayCoordinateShiftZ(s, d, lorZ, cr.y);
@@ -626,7 +570,7 @@ void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float
 }
 #endif
 
-#if !defined(PTYPE4) && !defined(PROJ5)
+#if defined(SIDDON)
 // Compute the voxel index where the current perpendicular measurement starts
 int perpendicular_start(const float d_b, const float d, const float d_d, const uint d_N) {
 	int tempi = 0;
@@ -644,9 +588,15 @@ int perpendicular_start(const float d_b, const float d, const float d_d, const u
 // Compute the probability for the perpendicular elements
 void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
 	float* templ_ijk, int4* tempi, int* z_loop, const uint d_N, const uint d_NN,
-	const __global float* d_norm, const size_t idx, const float global_factor, const __global float* d_scat
+	const size_t idx, const float global_factor
+#if defined(SCATTER)
+	, const __global float* d_scat
+#endif
 #if !defined(CT) && defined(ATN)
 	, __read_only image3d_t d_atten
+#endif
+#if defined(NORM)
+	, const __global float* d_norm
 #endif
 ) {
 	int apu = perpendicular_start(d_b, d, d_d1, d_N1);
@@ -665,13 +615,15 @@ void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, 
 #endif
 #ifdef ATN
 		float jelppi = 0.f;
+		int4 atnind = *tempi;
 		for (uint iii = 0u; iii < d_N2; iii++) {
 			//jelppi += (*templ_ijk * (-d_atten[*tempk + iii * d_NN]));
 			if (d_NN == 1)
-				(*tempi).x = iii;
+				atnind.x = iii;
 			else
-				(*tempj).y = iii;
-			jelppi += (*templ_ijk * (-read_imagef(d_atten, samplerIm, *tempi).x));
+				atnind.y = iii;
+			jelppi += (*templ_ijk * (-read_imagef(d_atten, samplerSiddon, atnind).x));
+			//jelppi += (*templ_ijk * 0.0095f);
 		}
 #if !defined(N_RAYS)
 		temp *= native_exp(jelppi);
@@ -801,16 +753,16 @@ void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const 
 uint compute_ind(const int tempj, const int tempi, const int tempk, const uint d_N1, const uint d_N2, const uint d_N, const uint d_Nx, 
 	const uint d_Nyx) {
 	uint local_ind = convert_uint_sat(tempj) * d_Nx + convert_uint_sat(tempi) + convert_uint_sat(tempk) * d_Nyx;
-#ifndef PRECOMPUTE
-	if (local_ind >= d_N) {
-		if (local_ind - d_N1 >= d_N)
-			local_ind -= (d_N1 * d_N2);
-		else if (local_ind - 1u >= d_N)
-			local_ind -= d_N1;
-		else
-			local_ind--;
-	}
-#endif
+//#ifndef PRECOMPUTE
+//	if (local_ind >= d_N) {
+//		if (local_ind - d_N1 >= d_N)
+//			local_ind -= (d_N1 * d_N2);
+//		else if (local_ind - 1u >= d_N)
+//			local_ind -= d_N1;
+//		else
+//			local_ind--;
+//	}
+//#endif
 	return local_ind;
 }
 
@@ -823,7 +775,7 @@ void compute_attenuation(float* tc, float* jelppi, const float LL, const float t
 //void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
 	//const uint Nyx, const __global float* d_atten) {
 	const uint Nyx, __read_only image3d_t d_atten) {
-	*jelppi += (compute_matrix_element(t0, *tc, LL) * -read_imagef(d_atten, samplerIm, (int4)(tempi, tempj, tempk, 0)).x);
+	*jelppi += (compute_matrix_element(t0, *tc, LL) * -read_imagef(d_atten, samplerSiddon, (int4)(tempi, tempj, tempk, 0)).x);
 	*tc = t0;
 }
 #endif
@@ -964,10 +916,11 @@ bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const
 //	int* iu, int* ju, int* ku, float* tx0, float* ty0, float* tz0) {
 bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, const float3 dd, const uint3 N, int* tempi, int* tempj, int* tempk, 
 	float* txu, float* tyu, float* tzu, uint* Np, const int TYYPPI, const float3 s, const float3 d, float* tc, int* i, int* j, int* k, float* tx0, 
-	float* ty0, float* tz0, bool* xy) {
+	float* ty0, float* tz0, bool* xy, const int3 ii) {
 
 	const float3 apuT = b - s;
-	const float3 t0 = native_divide(apuT, diff);
+	//const float3 t0 = native_divide(apuT, diff);
+	const float3 t0 = apuT / diff;
 	//*tx0 = (apu_tx) / (x_diff);
 	//*ty0 = (apu_ty) / (y_diff);
 	//*tz0 = (apu_tz) / (z_diff);
@@ -1050,23 +1003,35 @@ bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, con
 
 	const float pt = ((fmin(fmin(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
-	const int3 tempijk = convert_int3_rtz(mad(pt, diff, -apuT) / dd);
+	const float3 tempijkF = clamp(mad(pt, diff, -apuT) / dd, 0.f, convert_float3(N - 1));
+	const int3 tempijk = convert_int3_rtz(tempijkF);
+	//const int3 tempijk = convert_int3_rtz(mad(pt, diff, -apuT) / dd);
 	*tempi = tempijk.x;
 	*tempj = tempijk.y;
 	*tempk = tempijk.z;
 	//*tempijk = convert_int3_rtz((pt * diff - apuT) / dd);
 
-	//*tempi = voxel_index(pt, x_diff, dx, apu_tx);
-	//*tempj = voxel_index(pt, y_diff, dy, apu_ty);
-	//*tempk = voxel_index(pt, z_diff, dz, apu_tz);
+	//*tempi = voxel_index(pt, diff.x, dd.x, apuT.x);
+	//*tempj = voxel_index(pt, diff.y, dd.y, apuT.y);
+	//*tempk = voxel_index(pt, diff.z, dd.z, apuT.z);
 
-	if (TYYPPI == 0) {
-		//if (*tempijk.x < 0 || *tempijk.y < 0 || *tempijk.z < 0 || *tempijk.x >= N.x || *tempijk.y >= N.y || *tempijk.z >= N.z) {
-		if (any(tempijk < 0) || any(tempijk >= convert_int3(N))) {
-			//*tc = (pt * y_diff - apu_ty) / dy;
-			return true;
-		}
-	}
+	//if (ii.x == 526 && ii.y == 345 && ii.z == 0) {
+	//	printf("*tc = %f\n", *tc);
+	//	printf("t0.x = %f\n", t0.x);
+	//	printf("t0.y = %f\n", t0.y);
+	//	printf("t0.z = %f\n", t0.z);
+	//	printf("tmax = %f\n", tmax);
+	//	//printf("((pt * diff - apuT) / dd).y = %f\n", ((pt * diff - apuT) / dd).y);
+	//}
+
+	//if (TYYPPI == 0) {
+	//	//if (*tempi < 0 || *tempj < 0 || *tempk < 0 || *tempi >= N.x || *tempj >= N.y || *tempk >= N.z) {
+	//	//if (*tempijk.x < 0 || *tempijk.y < 0 || *tempijk.z < 0 || *tempijk.x >= N.x || *tempijk.y >= N.y || *tempijk.z >= N.z) {
+	//	if (any(tempijk < 0) || any(tempijk >= convert_int3(N))) {
+	//		//*tc = (pt * y_diff - apu_ty) / dy;
+	//		return true;
+	//	}
+	//}
 
 	//*tu = dd / fabs(diff);
 	*txu = dd.x / fabs(diff.x);
@@ -1149,7 +1114,7 @@ void denominatorTOF(float* ax, const float element, __read_only image3d_t d_OSEM
 	const uint ii = 0U;
 #endif
 	//float apu = element * d_OSEM[local_ind];
-	float apu = element * read_imagef(d_OSEM, samplerIm, ind).x;
+	float apu = element * read_imagef(d_OSEM, samplerSiddon, ind).x;
 #ifndef DEC
 	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
@@ -1176,9 +1141,13 @@ void denominatorTOF(float* ax, const float element, __read_only image3d_t d_OSEM
 
 // Nominator (y for backprojection)
 void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float* d_Sino, const float d_epsilon_mramla, const float d_epps,
-	const float temp, const __global float* d_sc_ra, const size_t idx, const long TOFSize, const float local_sino) {
+	const float temp, const size_t idx, const long TOFSize, const float local_sino
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+	, const __global float* restrict d_sc_ra
+#endif
+	{
 	float local_rand = 0.f;
-#ifdef RANDOMS
+#if defined(RANDOMS) && defined(BP) && defined(FP)
 	local_rand = d_sc_ra[idx];
 #endif
 #if defined(AF) && !defined(MBSREM)
@@ -1194,7 +1163,7 @@ void nominatorTOF(__constant uchar* MethodList, float* ax, const __global float*
 		ax[to + ii] *= temp;
 		if (ax[to + ii] < d_epps)
 			ax[to + ii] = d_epps;
-#ifdef RANDOMS
+#if defined(RANDOMS) && defined(BP) && defined(FP)
 		ax[to + ii] += local_rand;
 #endif
 #if defined(AF) && defined(MRAMLA) && !defined(MBSREM)
@@ -1262,7 +1231,7 @@ void backprojectTOF(const uint local_ind, const int4 localInd, const float local
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerIm, localInd).x);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).x);
 			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 
@@ -1361,7 +1330,7 @@ void sensTOF(const uint local_ind, const int4 localInd, const float local_ele, c
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerIm, localInd).x);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).x);
 			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 		val += apu;
@@ -1410,540 +1379,3 @@ void forwardProjectAF(__global float* output, float* ax, size_t idx, const uint 
 #endif
 }
 #endif
-
-//#ifdef PTYPE4
-//void forwardProject4(const float diff1, const float diff2, const float diff, const float s1, const float s2, const float s3, const float d1, const float d2,
-//	const float d3, const int n12, const int n22, const int n32, const uint d_N1, const uint d_N2, const uint d_N3, const __global float* d_OSEM, 
-//	float* temp, const uint d_N4, const uint d_N5, const uint d_N6) {
-//	const float slope1 = (diff1) / (diff);
-//	const float slope2 = (diff2) / (diff);
-//	const float k1 = slope1 * slope1;
-//	const float k2 = slope2 * slope2;
-//	const float l = native_sqrt(k1 + k2 + 1.f) * d3;
-//	const float yy = s1 / d1 + convert_float(n12);
-//	const float zz = s2 / d2 + convert_float(n22);
-//	//const float zz = s2 / d2;
-//	//const float yy = s1 + convert_float(n12);
-//	float apu1, apu2, ry, rz;
-//	int iy, iz;
-//	for (int ix = 0; ix < d_N1; ix++) {
-//		float xx1 = convert_float(ix - n32);
-//		//const float xx2 = (xx1 + 1.f);
-//		const float xx2 = (xx1 + 1.f) * d3;
-//		xx1 *= d3;
-//		if (slope1 >= 0) {
-//			apu1 = xx1 - s3;
-//			apu2 = xx2 - s3;
-//		}
-//		else {
-//			apu1 = xx2 - s3;
-//			apu2 = xx1 - s3;
-//		}
-//		const float yy1 = yy + slope1 * apu1 / d1;
-//		const float yy2 = yy + slope1 * apu2 / d1;
-//		//const float yy1 = yy + slope1 * apu1;
-//		//const float yy2 = yy + slope1 * apu2;
-//		const int cy1 = convert_int_rtn(yy1);
-//		const int cy2 = convert_int_rtn(yy2);
-//		//if (cy1 >= d_N2 || cy1 < 0 || cy2 > d_N2 || cy2 < 0)
-//		//	continue;
-//		if (slope2 >= 0) {
-//			apu1 = xx1 - s3;
-//			apu2 = xx2 - s3;
-//		}
-//		else {
-//			apu1 = xx2 - s3;
-//			apu2 = xx1 - s3;
-//		}
-//		const float zz1 = (slope2 * apu1) / d2 + zz;
-//		const float zz2 = (slope2 * apu2) / d2 + zz;
-//		const int cz1 = convert_int_rtn(zz1);
-//		const int cz2 = convert_int_rtn(zz2);
-//		//if (cz1 >= d_Nz || cz1 < 0 || cz2 > d_Nz || cz2 < 0 || cy1 >= d_Ny || cy1 < 0 || cy2 > d_Ny || cy2 < 0)
-//		//if (cz1 >= d_N3 || cz1 < 0 || cz2 > d_N3 || cz2 < 0)
-//		//    continue;
-//
-//		//d = yy2 - yy1;
-//		//l = native_sqrt(d * d + 1.f) * tmp;
-//
-//		if (cy2 == cy1) {
-//			if (cy1 >= 0 && cy1 <= d_N2 - 1) {
-//				iy = cy1;
-//				if (cz2 == cz1) {
-//					if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 11
-//						iz = cz1;
-//						*temp += l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//					}
-//				}
-//				else {
-//					if (cz2 > 0 && cz2 < d_N3) {// 12
-//						rz = (cz2 - zz1) / (zz2 - zz1);
-//						iz = cz1;
-//						*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						iz = cz2;
-//						*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//					}
-//					else {
-//						if (cz2 == 0) {// 13
-//							rz = (cz2 - zz1) / (zz2 - zz1);
-//							iz = cz2;
-//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//						else if (cz2 == d_N3) {// 14
-//							rz = (cz2 - zz1) / (zz2 - zz1);
-//							iz = cz1;
-//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//				}
-//			}
-//		}
-//		else {
-//			if (cy2 > 0 && cy2 < d_N2) {
-//				if (cz2 == cz1) {
-//					if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 21
-//						ry = (cy2 - yy1) / (yy2 - yy1);
-//						iy = cy1;
-//						iz = cz1;
-//						*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						iy = cy2;
-//						*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//					}
-//				}
-//				else {
-//					if (cz2 > 0 && cz2 < d_N3) {// 22
-//						ry = (cy2 - yy1) / (yy2 - yy1);
-//						rz = (cz2 - zz1) / (zz2 - zz1);
-//						iy = cy1;
-//						iz = cz1;
-//						if (ry > rz) {
-//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iz = cz2;
-//							*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iy = cy2;
-//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//						else {
-//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iy = cy2;
-//							*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iz = cz2;
-//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//					else if (cz2 == 0) {// 23
-//						ry = (cy2 - yy1) / (yy2 - yy1);
-//						rz = (cz2 - zz1) / (zz2 - zz1);
-//						iy = cy2;
-//						iz = cz2;
-//						if (ry > rz) {
-//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iy = cy1;
-//							*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//						else {
-//							*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//					else if (cz2 == d_N3) {// 24
-//						ry = (cy2 - yy1) / (yy2 - yy1);
-//						rz = (cz2 - zz1) / (zz2 - zz1);
-//						iy = cy1;
-//						iz = cz1;
-//						if (ry > rz) {
-//							*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//						else {
-//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							iy = cy2;
-//							*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//				}
-//			}
-//			else {
-//				if (cy2 == 0) {
-//					if (cz2 == cz1) {
-//						if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 31
-//							ry = (cy2 - yy1) / (yy2 - yy1);
-//							iy = cy2;
-//							iz = cz1;
-//							*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//					else {
-//						if (cz2 > 0 && cz2 < d_N3) {// 32
-//							ry = (cy2 - yy1) / (yy2 - yy1);
-//							rz = (cz2 - zz1) / (zz2 - zz1);
-//							iy = cy2;
-//							iz = cz2;
-//							if (ry > rz) {
-//								*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							}
-//							else {
-//								*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								iz = cz1;
-//								*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							}
-//						}
-//						else {
-//							if (cz2 == 0) {// 33
-//								ry = (cy2 - yy1) / (yy2 - yy1);
-//								rz = (cz2 - zz1) / (zz2 - zz1);
-//								iy = cy2;
-//								iz = cz2;
-//								if (ry > rz) {
-//									*temp += (1.f - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//								else {
-//									*temp += (1.f - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//							}
-//							else if (cz2 == d_N3) {// 34
-//								ry = (cy2 - yy1) / (yy2 - yy1);
-//								rz = (cz2 - zz1) / (zz2 - zz1);
-//								if (ry > rz) {
-//								}
-//								else {
-//									iy = cy2;
-//									iz = cz1;
-//									*temp += (rz - ry) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//							}
-//						}
-//					}
-//				}
-//				if (cy2 == d_N2) {
-//					if (cz2 == cz1) {
-//						if (cz1 >= 0 && cz1 <= d_N3 - 1) {// 41
-//							ry = (cy2 - yy1) / (yy2 - yy1);
-//							iy = cy1;
-//							iz = cz1;
-//							*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//						}
-//					}
-//					else {
-//						if (cz2 > 0 && cz2 < d_N3) {// 42
-//							ry = (cy2 - yy1) / (yy2 - yy1);
-//							rz = (cz2 - zz1) / (zz2 - zz1);
-//							iy = cy1;
-//							iz = cz1;
-//							if (ry > rz) {
-//								*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								iz = cz2;
-//								*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							}
-//							else {
-//								*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//							}
-//						}
-//						else {
-//							if (cz2 == 0) {// 43
-//								ry = (cy2 - yy1) / (yy2 - yy1);
-//								rz = (cz2 - zz1) / (zz2 - zz1);
-//								if (ry > rz) {
-//									iy = cy1;
-//									iz = cz2;
-//									*temp += (ry - rz) * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//								else {
-//								}
-//							}
-//							else if (cz2 == d_N3) {// 44
-//								ry = (cy2 - yy1) / (yy2 - yy1);
-//								rz = (cz2 - zz1) / (zz2 - zz1);
-//								iy = cy1;
-//								iz = cz1;
-//								if (ry > rz) {
-//									*temp += rz * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//								else {
-//									*temp += ry * l * d_OSEM[iz * d_N4 + iy * d_N5 + ix * d_N6];
-//								}
-//							}
-//						}
-//					}
-//				}
-//			}
-//		}
-//	}
-//}
-//
-//float find_l(float x1_0, float y1_0, float x2_0, float y2_0, float dx, float dy, float x, float y) {
-//	float l = 0.f, slope, tmp, tmp2, xi[2], yi[2];
-//	int i;
-//
-//	const float a = x2_0 - x1_0; 
-//	const float b = y2_0 - y1_0;
-//	const float dx2 = dx / 2.f;
-//	const float dy2 = dy / 2.f;
-//
-//	if (a == 0) {
-//		tmp = fabs(x1_0 - x);
-//		if (tmp <= dx2) {
-//			l = dy;
-//		}
-//	}
-//	else {
-//		if (b == 0 ) {
-//			tmp = fabs(y1_0 - y);
-//			if (tmp <= dy2) {
-//				l = dx;
-//			}
-//		}
-//		else {
-//			const float x1 = x1_0 - x;
-//			const float y1 = y1_0 - y;
-//			//            x2=x2_0-x;y2=y2_0-y;
-//
-//			i = 0;
-//			if (fabs(a) > fabs(b)) {
-//				slope = b / a;
-//				tmp = slope * (-x1) + y1;
-//				tmp2 = slope * dx2;
-//				if (fabs(tmp - tmp2) <= dy2) {
-//					xi[i] = -dx2; 
-//					yi[i] = tmp - tmp2; 
-//					i++;
-//				}
-//				if (fabs(tmp + tmp2) <= dy2) {
-//					xi[i] = dx2; 
-//					yi[i] = tmp + tmp2; 
-//					i++;
-//				}
-//
-//				if (i < 2) {
-//					slope = a / b;
-//					tmp = slope * (-y1) + x1;
-//					tmp2 = slope * dy2;
-//					if (fabs(tmp - tmp2) <= dx2) {
-//						yi[i] = -dy2; 
-//						xi[i] = tmp - tmp2; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp + tmp2) <= dx2) {
-//							yi[i] = dy2; 
-//							xi[i] = tmp + tmp2; 
-//							i++;
-//						}
-//					}
-//				}
-//			}
-//			else {
-//				slope = a / b;
-//				tmp = slope * (-y1) + x1;
-//				tmp2 = slope * dy2;
-//				if (fabs(tmp - tmp2) <= dx2) {
-//					yi[i] = -dy2; 
-//					xi[i] = tmp - tmp2; 
-//					i++;
-//				}
-//				if (fabs(tmp + tmp2) <= dx2) {
-//					yi[i] = dy2; 
-//					xi[i] = tmp + tmp2; 
-//					i++;
-//				}
-//
-//				if (i < 2) {
-//					slope = b / a;
-//					tmp = slope * (-x1) + y1;
-//					tmp2 = slope * dx2;
-//					if (fabs(tmp - tmp2) <= dy2) {
-//						xi[i] = -dx2; 
-//						yi[i] = tmp - tmp2; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp + tmp2) <= dy2) {
-//							xi[i] = dx2; 
-//							yi[i] = tmp + tmp2; 
-//							i++;
-//						}
-//					}
-//				}
-//			}
-//
-//			if (i == 2) {
-//				tmp = xi[1] - xi[0]; 
-//				tmp2 = yi[1] - yi[0];
-//				l = native_sqrt(tmp * tmp + tmp2 * tmp2);
-//			}
-//		}
-//	}
-//	return l;
-//}
-//
-//float find_l_3d(float x1_0, float y1_0, float z1_0, float x2_0, float y2_0, float z2_0, float dx, float dy, float dz, float x, float y, float z) {
-//// assuming c~=0
-//// A method for computing the intersecting length of a voxel with a infinitely-narrow beam
-//// A better formula will be supplied to improve the speed.
-//	float l = 0.f, slope, tmpx, tmpy, tmpz, xi[2], yi[2], zi[2];
-//	float2 tmp, tmp2;
-//	int i;
-//
-//	const float a = x2_0 - x1_0;
-//	const float b = y2_0 - y1_0;
-//	const float c = z2_0 - z1_0;
-//	const float dx2 = dx / 2.f;
-//	const float dy2 = dy / 2.f;
-//	const float dz2 = dz / 2.f;
-//
-//	if (a == 0) {
-//		l = find_l(y1_0, z1_0, y2_0, z2_0, dy, dz, y, z);
-//	}
-//	else {
-//		if (b == 0) {
-//			l = find_l(x1_0, z1_0, x2_0, z2_0, dx, dz, x, z);
-//		}
-//		else {
-//			const float x1 = x1_0 - x;
-//			const float y1 = y1_0 - y;
-//			const float z1 = z1_0 - z;
-//			//            x2=x2_0-x;y2=y2_0-y;z2=z2_0-z;
-//
-//			i = 0;
-//			if (fabs(a) > fabs(b)) {
-//				slope = b / a; 
-//				tmp.x = slope * (-x1) + y1; 
-//				tmp2.x = slope * dx2;
-//				slope = c / a; 
-//				tmp.y = slope * (-x1) + z1; 
-//				tmp2.y = slope * dx2;
-//				if (fabs(tmp.x - tmp2.x) <= dy2 && fabs(tmp.y - tmp2.y) <= dz2) {
-//					xi[i] = -dx2; 
-//					yi[i] = tmp.x - tmp2.x; 
-//					zi[i] = tmp.y - tmp2.y; 
-//					i++;
-//				}
-//				if (fabs(tmp.x + tmp2.x) <= dy2 && fabs(tmp.y + tmp2.y) <= dz2) {
-//					xi[i] = dx2; 
-//					yi[i] = tmp.x + tmp2.x; 
-//					zi[i] = tmp.y + tmp2.y; 
-//					i++;
-//				}
-//
-//				if (i < 2) {
-//					slope = a / b; 
-//					tmp.x = slope * (-y1) + x1; 
-//					tmp2.x = slope * dy2;
-//					slope = c / b; 
-//					tmp.y = slope * (-y1) + z1; 
-//					tmp2.y = slope * dy2;
-//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dz2) {
-//						xi[i] = tmp.x - tmp2.x; 
-//						yi[i] = -dy2; 
-//						zi[i] = tmp.y - tmp2.y; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dz2) {
-//							xi[i] = tmp.x + tmp2.x; 
-//							yi[i] = dy2; 
-//							zi[i] = tmp.y + tmp2.y; 
-//							i++;
-//						}
-//					}
-//				}
-//
-//				if (i < 2) {
-//					slope = a / c; 
-//					tmp.x = slope * (-z1) + x1; 
-//					tmp2.x = slope * dz2;
-//					slope = b / c; 
-//					tmp.y = slope * (-z1) + y1; 
-//					tmp2.y = slope * dz2;
-//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dy2) {
-//						xi[i] = tmp.x - tmp2.x; 
-//						yi[i] = tmp.y - tmp2.y; 
-//						zi[i] = -dz2; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dy2) {
-//							xi[i] = tmp.x + tmp2.x; 
-//							yi[i] = tmp.y + tmp2.y; 
-//							zi[i] = dz2; 
-//							i++;
-//						}
-//					}
-//				}
-//			}
-//			else {
-//				slope = a / b; 
-//				tmp.x = slope * (-y1) + x1; 
-//				tmp2.x = slope * dy2;
-//				slope = c / b; 
-//				tmp.y = slope * (-y1) + z1; 
-//				tmp2.y = slope * dy2;
-//				if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dz2) {
-//					xi[i] = tmp.x - tmp2.x; 
-//					yi[i] = -dy2; 
-//					zi[i] = tmp.y - tmp2.y; 
-//					i++;
-//				}
-//				if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dz2) {
-//					xi[i] = tmp.x + tmp2.x; 
-//					yi[i] = dy2; 
-//					zi[i] = tmp.y + tmp2.y; 
-//					i++;
-//				}
-//
-//				if (i < 2) {
-//					slope = b / a; 
-//					tmp.x = slope * (-x1) + y1; 
-//					tmp2.x = slope * dx2;
-//					slope = c / a; 
-//					tmp.y = slope * (-x1) + z1; 
-//					tmp2.y = slope * dx2;
-//					if (fabs(tmp.x - tmp2.x) <= dy2 && fabs(tmp.y - tmp2.y) <= dz2) {
-//						xi[i] = -dx2; 
-//						yi[i] = tmp.x - tmp2.x; 
-//						zi[i] = tmp.y - tmp2.y; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp.x + tmp2.x) <= dy2 && fabs(tmp.y + tmp2.y) <= dz2) {
-//							xi[i] = dx2; 
-//							yi[i] = tmp.x + tmp2.x; 
-//							zi[i] = tmp.y + tmp2.y; 
-//							i++;
-//						}
-//					}
-//				}
-//
-//				if (i < 2) {
-//					slope = a / c; 
-//					tmp.x = slope * (-z1) + x1; 
-//					tmp2.x = slope * dz2;
-//					slope = b / c; 
-//					tmp.y = slope * (-z1) + y1; 
-//					tmp2.y = slope * dz2;
-//					if (fabs(tmp.x - tmp2.x) <= dx2 && fabs(tmp.y - tmp2.y) <= dy2) {
-//						xi[i] = tmp.x - tmp2.x; 
-//						yi[i] = tmp.y - tmp2.y; 
-//						zi[i] = -dz2; 
-//						i++;
-//					}
-//					if (i < 2) {
-//						if (fabs(tmp.x + tmp2.x) <= dx2 && fabs(tmp.y + tmp2.y) <= dy2) {
-//							xi[i] = tmp.x + tmp2.x; 
-//							yi[i] = tmp.y + tmp2.y; 
-//							zi[i] = dz2; 
-//							i++;
-//						}
-//					}
-//				}
-//			}
-//
-//			if (i == 2) {
-//				tmpx = xi[1] - xi[0]; 
-//				tmpy = yi[1] - yi[0]; 
-//				tmpz = zi[1] - zi[0];
-//				l = native_sqrt(tmpx * tmpx + tmpy * tmpy + tmpz * tmpz);
-//			}
-//		}
-//	}
-//	return l;
-//}
-//#endif

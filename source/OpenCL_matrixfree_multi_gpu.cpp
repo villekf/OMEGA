@@ -219,6 +219,13 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Directory to look for OpenCL headers
 	const char* header_directory = mxArrayToString(prhs[ind]);
 	ind++;
+	if (DEBUG) {
+		mexPrintf("ind = %u\n", ind);
+		mexEvalString("pause(.0001);");
+	}
+
+	const mxArray* options = prhs[ind];
+	ind++;
 
 	inputScalars.bzb = inputScalars.bz + static_cast<float>(inputScalars.Nz) * inputScalars.dz;
 
@@ -229,9 +236,38 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	fileName = s.c_str();
 
 	// Fixed local size
-	size_t local_size[2];
-	local_size[0] = 64ULL;
-	local_size[1] = 0ULL;
+	size_t local_size[2] = { 64ULL, 0ULL };
+	//local_size[0] = 64ULL;
+	//local_size[1] = 0ULL;
+
+	inputScalars.PET = getScalarBool(getField(options, 0, "PET"), ind);
+	if (DEBUG) {
+		mexPrintf("inputScalars.PET = %u\n", inputScalars.PET);
+		mexEvalString("pause(.0001);");
+	}
+	inputScalars.SPECT = getScalarBool(getField(options, 0, "SPECT"), ind);
+	if (DEBUG) {
+		mexPrintf("inputScalars.SPECT = %u\n", inputScalars.SPECT);
+		mexEvalString("pause(.0001);");
+	}
+	inputScalars.PITCH = getScalarBool(getField(options, 0, "PITCH"), ind);
+	inputScalars.nProjections = getScalarInt64(getField(options, 0, "nProjections"), ind);
+	inputScalars.subsetType = getScalarUInt32(getField(options, 0, "subset_type"), ind);
+	if ((bool)mxGetScalar(getField(options, 0, "useSubsets")))
+		inputScalars.subsets = 2U;
+	const uint8_t listmode = (uint8_t)mxGetScalar(getField(options, 0, "listmode"));
+	const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
+	if (DEBUG) {
+		mexPrintf("inputScalars.PITCH = %u\n", inputScalars.PITCH);
+		mexPrintf("CT = %u\n", CT);
+		mexPrintf("inputScalars.subsets = %u\n", inputScalars.subsets);
+		mexPrintf("inputScalars.size_z = %u\n", inputScalars.size_z);
+		mexPrintf("inputScalars.attenuation_correction = %u\n", inputScalars.attenuation_correction);
+		mexPrintf("inputScalars.normalization_correction = %u\n", inputScalars.normalization_correction);
+		mexPrintf("inputScalars.subsetType = %u\n", inputScalars.subsetType);
+		mexEvalString("pause(.0001);");
+	}
+
 
 	if (type == 2) {
 
@@ -405,18 +441,18 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		const bool use_64bit_atomics = getScalarBool(prhs[ind], ind);
 		ind++;
 
-		const mxArray* options = prhs[ind];
-		ind++;
-
 		size_t koko;
 		if (inputScalars.raw)
 			koko = numRows;
 		else
 			koko = koko_l;
 
-		inputScalars.PET = getScalarBool(getField(options, 0, "PET"), ind);
-		inputScalars.SPECT = getScalarBool(getField(options, 0, "SPECT"), ind);
-		inputScalars.PITCH = getScalarBool(getField(options, 0, "PITCH"), ind);
+		if (inputScalars.projector_type > 0 && inputScalars.projector_type < 4)
+			local_size[0] = 128ULL;
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || ((inputScalars.PET || inputScalars.SPECT || CT) && listmode == 0)) {
+			local_size[0] = 8ULL;
+			local_size[1] = 8ULL;
+		}
 		if (inputScalars.projector_type == 5) {
 			inputScalars.meanFP = getScalarBool(getField(options, 0, "meanFP"), ind);
 			inputScalars.meanBP = getScalarBool(getField(options, 0, "meanBP"), ind);
@@ -429,30 +465,45 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			inputScalars.orthXY = getScalarBool(getField(options, 0, "orthTransaxial"), ind);
 			inputScalars.orthZ = getScalarBool(getField(options, 0, "orthAxial"), ind);
 		}
-		inputScalars.nProjections = getScalarInt64(getField(options, 0, "nProjections"), ind);
-		inputScalars.subsetType = getScalarUInt32(getField(options, 0, "subset_type"), ind);
-		if ((bool)mxGetScalar(getField(options, 0, "useSubsets")))
-			inputScalars.subsets = 2U;
-		const uint8_t listmode = (uint8_t)mxGetScalar(getField(options, 0, "listmode"));
-		const bool CT = (bool)mxGetScalar(getField(options, 0, "CT"));
-		if (DEBUG) {
-			mexPrintf("inputScalars.PET = %u\n", inputScalars.PET);
-			mexPrintf("inputScalars.SPECT = %u\n", inputScalars.SPECT);
-			mexPrintf("inputScalars.PITCH = %u\n", inputScalars.PITCH);
-			mexPrintf("CT = %u\n", CT);
-			mexPrintf("inputScalars.subsets = %u\n", inputScalars.subsets);
-			mexPrintf("inputScalars.size_z = %u\n", inputScalars.size_z);
-			mexPrintf("inputScalars.attenuation_correction = %u\n", inputScalars.attenuation_correction);
-			mexPrintf("inputScalars.normalization_correction = %u\n", inputScalars.normalization_correction);
-			mexPrintf("inputScalars.subsetType = %u\n", inputScalars.subsetType);
-			mexEvalString("pause(.0001);");
-		}
-
-		if (inputScalars.projector_type > 0 && inputScalars.projector_type < 4)
-			local_size[0] = 128ULL;
-		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || ((inputScalars.PET || inputScalars.SPECT || CT) && listmode == 0)) {
-			local_size[0] = 8ULL;
-			local_size[1] = 8ULL;
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
+			//ind += 6;
+//				//if (DEBUG) {
+//				//	mexPrintf("ind = %u\n", ind);
+//				//	mexEvalString("pause(.0001);");
+//				//}
+			inputScalars.dL = getScalarFloat(getField(options, 0, "dL"), ind);
+			//inputScalars.detY = getScalarFloat(mxGetField(options, 0, "detY"), ind);
+			//inputScalars.tStart = getScalarFloat(mxGetField(options, 0, "tStart"), ind);
+			//inputScalars.tStep = getScalarFloat(mxGetField(options, 0, "tStep"), ind);
+			//inputScalars.d_Scale = { { getScalarFloat(mxGetField(options, 0, "dScaleX"), ind), getScalarFloat(mxGetField(options, 0, "dScaleY"), ind),
+			//	getScalarFloat(mxGetField(options, 0, "dScaleZ"), ind), 0.f } };
+			inputScalars.d_Scale.s[0] = getScalarFloat(getField(options, 0, "dScaleX"), ind);
+			inputScalars.d_Scale.s[1] = getScalarFloat(getField(options, 0, "dScaleY"), ind);
+			inputScalars.d_Scale.s[2] = getScalarFloat(getField(options, 0, "dScaleZ"), ind);
+			//inputScalars.d_Scale.s[3] = 0.f;
+			inputScalars.dSize.s[0] = getScalarFloat(getField(options, 0, "dSizeX"), ind);
+			inputScalars.dSize.s[1] = getScalarFloat(getField(options, 0, "dSizeY"), ind);
+			inputScalars.dSize.s[2] = getScalarFloat(getField(options, 0, "dSizeZ"), ind);
+			//if (inputScalars.SPECT) {
+			//	inputScalars.cThickness = getScalarFloat(mxGetField(options, 0, "cThickness"), ind);
+			//	inputScalars.cSizeX = getScalarUInt32(mxGetField(options, 0, "cSizeX"), ind);
+			//	inputScalars.cSizeY = getScalarUInt32(mxGetField(options, 0, "cSizeY"), ind);
+			//}
+			if (inputScalars.projector_type == 5) {
+				inputScalars.dSizeBP.s[0] = getScalarFloat(getField(options, 0, "dSizeXBP"), ind);
+				inputScalars.dSizeBP.s[1] = getScalarFloat(getField(options, 0, "dSizeZBP"), ind);
+				//inputScalars.meanV = getScalarFloat(mxGetField(options, 0, "meanV"), ind);
+			}
+			//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+			//				offsetH = (float*)mxGetSingles(mxGetField(options, 0, "horizontalOffset"));
+			//#else
+			//				offsetH = (float*)mxGetData(mxGetField(options, 0, "horizontalOffset"));
+			//#endif
+			//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+			//				offsetB = (float*)mxGetSingles(mxGetField(options, 0, "bedOffset"));
+			//#else
+			//				offsetB = (float*)mxGetData(mxGetField(options, 0, "bedOffset"));
+			//#endif
 		}
 
 		if (type == 0) {
@@ -505,46 +556,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 				mexPrintf("local_size[0] = %u\n", local_size[0]);
 				mexEvalString("pause(.0001);");
 			}
-			if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5) {
-				//ind += 6;
-//				//if (DEBUG) {
-//				//	mexPrintf("ind = %u\n", ind);
-//				//	mexEvalString("pause(.0001);");
-//				//}
-				inputScalars.dL = getScalarFloat(getField(options, 0, "dL"), ind);
-				//inputScalars.detY = getScalarFloat(mxGetField(options, 0, "detY"), ind);
-				//inputScalars.tStart = getScalarFloat(mxGetField(options, 0, "tStart"), ind);
-				//inputScalars.tStep = getScalarFloat(mxGetField(options, 0, "tStep"), ind);
-				//inputScalars.d_Scale = { { getScalarFloat(mxGetField(options, 0, "dScaleX"), ind), getScalarFloat(mxGetField(options, 0, "dScaleY"), ind),
-				//	getScalarFloat(mxGetField(options, 0, "dScaleZ"), ind), 0.f } };
-				inputScalars.d_Scale.s[0] = getScalarFloat(getField(options, 0, "dScaleX"), ind);
-				inputScalars.d_Scale.s[1] = getScalarFloat(getField(options, 0, "dScaleY"), ind);
-				inputScalars.d_Scale.s[2] = getScalarFloat(getField(options, 0, "dScaleZ"), ind);
-				//inputScalars.d_Scale.s[3] = 0.f;
-				inputScalars.dSize.s[0] = getScalarFloat(getField(options, 0, "dSizeX"), ind);
-				inputScalars.dSize.s[1] = getScalarFloat(getField(options, 0, "dSizeY"), ind);
-				inputScalars.dSize.s[2] = getScalarFloat(getField(options, 0, "dSizeZ"), ind);
-				//if (inputScalars.SPECT) {
-				//	inputScalars.cThickness = getScalarFloat(mxGetField(options, 0, "cThickness"), ind);
-				//	inputScalars.cSizeX = getScalarUInt32(mxGetField(options, 0, "cSizeX"), ind);
-				//	inputScalars.cSizeY = getScalarUInt32(mxGetField(options, 0, "cSizeY"), ind);
-				//}
-				if (inputScalars.projector_type == 5) {
-					inputScalars.dSizeBP.s[0] = getScalarFloat(getField(options, 0, "dSizeXBP"), ind);
-					inputScalars.dSizeBP.s[1] = getScalarFloat(getField(options, 0, "dSizeZBP"), ind);
-					//inputScalars.meanV = getScalarFloat(mxGetField(options, 0, "meanV"), ind);
-				}
-//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-//				offsetH = (float*)mxGetSingles(mxGetField(options, 0, "horizontalOffset"));
-//#else
-//				offsetH = (float*)mxGetData(mxGetField(options, 0, "horizontalOffset"));
-//#endif
-//#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-//				offsetB = (float*)mxGetSingles(mxGetField(options, 0, "bedOffset"));
-//#else
-//				offsetB = (float*)mxGetData(mxGetField(options, 0, "bedOffset"));
-//#endif
-			}
 			if (DEBUG) {
 				mexPrintf("Variables loaded\n");
 				mexEvalString("pause(.0001);");
@@ -568,9 +579,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			}
 
 			// Forward/backward projection
-			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, inputScalars, pituus, koko_l, xy_index, z_index, TotSinos, verbose, atten, size_atten, norm,
-				size_norm, k_path, pseudos, L, fileName, device, kerroin, output, size_rhs, no_norm, numel_x, x_center, y_center, z_center, size_center_x, 
-				size_center_y, size_center_z, header_directory,	Sin, use_64bit_atomics, V, size_V, local_size, options, TOFSize, TOFCenter);
+			reconstruction_f_b_proj(koko, lor1, z_det, x, y, rhs, sc_ra, inputScalars, pituus, koko_l, xy_index, z_index, TotSinos, verbose, 
+				atten, size_atten, norm, size_norm, k_path, pseudos, L, fileName, device, kerroin, output, size_rhs, no_norm, numel_x, x_center, 
+				y_center, z_center, size_center_x, size_center_y, size_center_z, header_directory,	Sin, use_64bit_atomics, V, size_V, local_size, 
+				options, TOFSize, TOFCenter);
 			plhs[0] = output;
 
 		}

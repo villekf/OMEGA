@@ -93,82 +93,113 @@ void siddon_precomp(const uint d_Nxy, const uint d_N, const uint3 d_Nxyz, const 
 
 #else
 
-void kernel_multi(const float global_factor, const float d_epps, const uint d_N, const uint3 d_Nxyz, const float3 d_d, 
+void proj123SiddonSingleRay(const float global_factor, const float d_epps, const uint d_N, const uint3 d_Nxyz, const float3 d_d,
 	const float3 b, const float3 d_max, const uint d_size_x, const uint d_det_per_ring,
-	const uint d_Nxy, const uchar fp, const float sigma_x, const float2 crystalSize, const float orthWidth, const float bmin,
-	const float bmax, const float Vmax,	
+	const uint d_Nxy, const float sigma_x, const float2 crystalSize, 
+	////////////////////////////////////////////////////////////////////////
+#ifdef ORTH
+	const float orthWidth, const float bmin, const float bmax, const float Vmax,	
+#endif
+	////////////////////////////////////////////////////////////////////////
 #ifdef MASKFP
 	__read_only image2d_t maskFP,
 #endif
+	////////////////////////////////////////////////////////////////////////
 #ifdef TOF
 	__constant float* TOFCenter, 
 #endif
+	////////////////////////////////////////////////////////////////////////
 #ifdef ORTH
 	__constant float* x_center, __constant float* y_center, __constant float* z_center,
 	__constant float* V, 
 #endif
-	__constant uchar* MethodList, const float d_epsilon_mramla,
+	////////////////////////////////////////////////////////////////////////
+//#ifdef BP
+	__constant uchar* MethodList, 
+//#endif
+	const float d_epsilon_mramla, const uint d_sizey,
+	////////////////////////////////////////////////////////////////////////
 #if !defined(CT) && defined(ATN)
 	__read_only image3d_t d_atten,
 #endif
-#if defined(CT) || defined(SPECT) || defined(PET)
-	const uint d_sizey, const long d_nProjections,
+	////////////////////////////////////////////////////////////////////////
+#if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
+	const long d_nProjections,
+#endif
+	////////////////////////////////////////////////////////////////////////
+#if defined(CT) || defined(RAW) || defined(SUBSETS)
+	__constant float* d_xy,
+#else
+	const __global float* restrict d_xy,
 #endif
 #if defined(LISTMODE)
-	const __global float* restrict d_xy, const __global float* restrict d_z,
+	const __global float* restrict d_z,
 #else
-	__constant float* d_xy, __constant float* d_z,
+	__constant float* d_z,
 #endif
-	const __global float* restrict d_norm, const __global float* restrict d_scat, __global CAST* restrict d_Summ, 
+	////////////////////////////////////////////////////////////////////////
+#ifdef NORM
+	const __global float* restrict d_norm, 
+#endif
+	////////////////////////////////////////////////////////////////////////
+#ifdef SCATTER
+	const __global float* restrict d_scat, 
+#endif
+	////////////////////////////////////////////////////////////////////////
+	__global CAST* restrict d_Summ, const uchar fp,
+	////////////////////////////////////////////////////////////////////////
 #ifdef PRECOMPUTE
 	const __global ushort* restrict d_lor, 
 #endif
-#ifdef SUBSETS
+	////////////////////////////////////////////////////////////////////////
+#if defined(SUBSETS) && !defined(LISTMODE)
 	const __global uint* restrict d_xyindex, const __global ushort* restrict d_zindex, 
 #endif
+	////////////////////////////////////////////////////////////////////////
 #ifdef RAW
 	const __global ushort* restrict d_L, 
 #endif
-	const __global float* restrict d_Sino, const __global float* restrict d_sc_ra, 
+	////////////////////////////////////////////////////////////////////////
+	const __global float* restrict d_Sino,
+	////////////////////////////////////////////////////////////////////////
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+	const __global float* restrict d_sc_ra, 
+#endif
+	////////////////////////////////////////////////////////////////////////
 #if defined(FP)
 	__read_only image3d_t d_OSEM, 
 #else
 	const __global float* restrict d_OSEM, 
 #endif
-	//////////////////////////// Not yet implemented ////////////////////////////
+	////////////////////////////////////////////////////////////////////////
+	/* Not yet implemented //////////////
 #ifdef MATRIX
 	__global int* restrict indices, __global int* restrict rowInd, __global float* restrict values, const int maxLOR, 
 #endif
-	//////////////////////////// Not yet implemented ////////////////////////////
-#ifndef MBSREM
-	__global CAST* d_output, const uchar no_norm, const ulong m_size, 
+	////////////// Not yet implemented */
+#if defined(BP)
+	__global CAST* d_output,
 #else
-	const uint d_alku, const uchar MBSREM_prepass, __global float* restrict d_ACOSEM_lhs, __global float* restrict d_Amin, __global CAST* restrict d_co,
-	__global CAST* restrict d_aco, __global float* restrict d_E, const ulong m_size, const RecMethodsOpenCL MethodListOpenCL, 
+	__global float* d_output,
 #endif
-	const ulong cumsum) {
+	const uchar no_norm, const ulong m_size, 
+	//////////////////////////////////////////////////////////////////////
+	const ulong cumsum
+) {
 #endif
+	
 	// Get the current global index
-	//size_t idx = get_global_id(0);
 	int3 i = { get_global_id(0), get_global_id(1), get_global_id(2) };
-#if defined(CT) || defined(SPECT) || defined(PET)
-	size_t idx = get_global_id(0) + get_global_id(1) * d_size_x + get_global_id(2) * d_sizey * d_size_x;
+#if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
+	size_t idx = i.x + i.y * d_size_x + i.z * d_sizey * d_size_x;
 	if (i.x >= d_size_x || i.y >= d_sizey || i.z >= d_nProjections)
 #else
-	//size_t idx = get_global_id(0) + get_global_id(1) * get_global_size(0) + get_global_id(2) * get_global_size(1) * get_global_size(0);
 	size_t idx = get_global_id(0);
-	//if (idx == 1 || idx == 0) {
-	//	printf("idx = %d\n", idx);
-	//}
 	if (idx >= m_size)
 #endif
 		return;
 
-
-#ifdef MASKFP
-//#if !defined(PET) && !defined(CT) && !defined(SPECT) && !defined(LISTMODE)
-//	i.x = i.y * d_size_x;
-//#endif
+#ifdef MASKFP // Mask image
 	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).x;
 	if (maskVal == 0)
 		return;
@@ -194,57 +225,37 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #endif
 #endif
 #endif
-#if !defined(MBSREM) && defined(BP) && defined(FP)
+#if defined(BP) && defined(FP)
 	if (no_norm == 1u && local_sino == 0.f)
 		return;
-#elif defined(MBSREM)
-	const uchar no_norm = 0u;
 #endif
 #endif
 	//return;
 
 	float3 s, d;
 	// Load the next detector index
-#if (defined(CT) || (defined(SPECT))) && !defined(LISTMODE) && !defined(PET)
+#if (defined(CT) || (defined(SPECT))) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
-#elif defined(LISTMODE)
+#elif defined(LISTMODE) // Listmode data
 	getDetectorCoordinatesListmode(d_xy, &s, &d, idx);
 #elif defined(RAW) // raw data
-	getDetectorCoordinatesRaw(d_xy, d_z, d_L, d_det_per_ring, idx, &s, &d); // Sinogram data
-#elif defined(FIND_LORS) || !defined(SUBSETS) // Precomputation phase
-	getDetectorCoordinatesFullSinogram(d_size_x, i, &s, &d, d_xy, d_z);
-#else // Not the precomputation phase
-	getDetectorCoordinates(d_xyindex, d_zindex, idx, &s, &d, d_xy, d_z);
+	getDetectorCoordinatesRaw(d_xy, d_z, d_L, d_det_per_ring, idx, &s, &d);
+#elif defined(FIND_LORS) || !defined(SUBSETS) // Precomputation phase, subset types >= 8 and no subsets
+	getDetectorCoordinatesFullSinogram(d_size_x, i, &s, &d, d_xy, d_z
+#if defined(NLAYERS)
+		, d_nProjections, d_sizey
+#endif
+	);
+#else // Subset types < 8
+	getDetectorCoordinates(d_xyindex, d_zindex, idx, &s, &d, d_xy, d_z
+#if defined(NLAYERS)
+		, d_sizey, d_size_x
+#endif
+	);
 #endif
 
-	//if (i.x == 100 && i.y == 100 && i.z == 0) {
-	//	printf("i.x = %d\n", i.x);
-	//	printf("i.y = %d\n", i.y);
-	//	printf("i.z = %d\n", i.z);
-	//	printf("d_size_x = %d\n", d_size_x);
-	//	//printf("d_sizey = %d\n", d_sizey);
-	//	//printf("d_nProjections = %d\n", d_nProjections);
-	//	//printf("Np_n = %d\n", Np_n);
-	//	//printf("tempi = %d\n", tempi);
-	//	//printf("tempj = %d\n", tempj);
-	//	//printf("tempk = %d\n", tempk);
-	//	//printf("get_global_size(0) = %d\n", get_global_size(0));
-	//	//printf("get_global_size(1) = %d\n", get_global_size(1));
-	//	//printf("get_global_size(2) = %d\n", get_global_size(2));
-	//	//printf("local_sino = % f\n", local_sino);
-	//	printf("s.x = % f\n", s.x);
-	//	printf("s.y = % f\n", s.y);
-	//	printf("s.z = % f\n", s.z);
-	//	printf("d.x = % f\n", d.x);
-	//	printf("d.y = % f\n", d.y);
-	//	printf("d.z = % f\n", d.z);
-	//	//printf("axOSEM = % f\n", axOSEM);
-	//}
 	// Calculate the x, y and z distances of the detector pair
 	float3 diff = d - s;
-	//float y_diff = (yd - ys);
-	//float x_diff = (xd - xs);
-	//const float z_diff = (zd - zs);
 
 #ifdef PRECOMPUTE // Using precomputed data
 	uint Np = convert_uint(d_lor[idx]);
@@ -252,7 +263,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	uint Np_n = Np;
 #endif
 #else // No precomputation
-	if (all(diff == 0.f) || (diff.x == 0.f && diff.y == 0.f))
+	if (all(diff == 0.f) || (diff.x == 0.f && diff.y == 0.f) || any(isinf(diff)))
 		return;
 	uint Np = 0u;
 #if !defined(DEC) || defined(TOF) // Intermediate results are not saved
@@ -282,49 +293,19 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	uint d_N2 = 1u;
 	uint d_N3 = d_Nxyz.x;
 
-//#ifdef ORTH // 3D Orthogonal
-//	uint d_N4 = d_Nxyz.z;
-//#endif
-
-	//int3 tempijk = { 0, 0, 0 }; 
-	//int3 u = { 0, 0, 0 };
 	 int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
-	//int tempijk.x = 0, tempijk.y = 0, tempijk.z = 0, ux = 0, uy = 0, uz = 0;
 
 #ifndef FIND_LORS // Not the precomputation phase
 
 #ifdef AF
-#ifdef MBSREM
-#ifdef TOF
-	float axACOSEM[NBINS];
-	float ax[NBINS];
-#pragma unroll NBINS
-	for (uint to = 0; to < NBINS; to++) {
-		axACOSEM[to] = 0.f;
-		ax[to] = 0.f;
-	}
-#else
-	float axACOSEM = 0.f;
-	float axCOSEM = 0.f;
-#endif
-#ifdef TOF
-	float minimi[NBINS];
-#pragma unroll NBINS
-	for (uint to = 0; to < NBINS; to++)
-		minimi[to] = 1e8f;
-#else
-	float minimi = 1e8f;
-#endif
-#else
 	float ax[NROLLS];
 #pragma unroll
 	for (uint kk = 0; kk < NROLLS; kk++)
 		ax[kk] = 0.f;
 #if defined(BP) && !defined(FP)
-#pragma unroll NROLLS
+#pragma unroll
 	for (uint to = 0; to < NROLLS; to++)
 		ax[to] = d_OSEM[idx + to * m_size];
-#endif
 #endif
 #else
 #ifdef TOF
@@ -339,15 +320,20 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #if !defined(FP) && defined(BP)
 #ifndef LISTMODE2
-	//if (fp == 2) {
+#ifdef AF
+#pragma unroll
+	for (uint to = 0; to < NROLLS; to++)
+		ax[to] = d_OSEM[idx + to * m_size];
+#else
 #ifdef TOF
 #pragma unroll NBINS
 		for (uint to = 0; to < NBINS; to++)
-			ax[to] = d_OSEM[idx + to * m_size + cumsum];
+			ax[to] = d_OSEM[idx + to * m_size];
 #else
-		axOSEM = d_OSEM[idx + cumsum];
+		axOSEM = d_OSEM[idx];
 #endif
 	//}
+#endif
 #endif
 #endif
 
@@ -360,13 +346,10 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 	kerroin = length(diff) * orthWidth;
 #elif defined VOL // Volume-based
 	kerroin = length(diff);
-//#elif defined(CRYSTZ) && !defined(VOL) // 3D Orthogonal
-//	kerroin = length(diff) * crystalSize.y;
 #endif
 #elif defined SIDDON // Siddon
 	uint local_ind = 0u;
 	//int indX = 0, indY = 0, indZ = 0;
-	//int4 testi = { &indX, &indY, &indZ, 0 };
 	int4 localInd = { 0, 0, 0, 0 };
 	//uint local_ind = 0;
 	float local_ele = 0.f;
@@ -397,9 +380,9 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #else // Not the precomputation phase
 
 		tempk = convert_int(fabs(s.z - b.z) / d_d.z);
-		//if (i.z == 28) {
-		//	printf("tempk = %d\n", tempk);
-		//}
+		if (tempk < 0 || tempk >= d_Nxyz.z)
+			return;
+		const int apuK = tempk;
 
 #if defined(ORTH)
 		float center2;
@@ -444,12 +427,18 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 		//printf("templ_ijk = %f\n", templ_ijk);
 		localInd.z = tempk;
 		//uint z_loop = 0u;
-		perpendicular_elements(d_b, d_db, d_N0, dd, d_d2, d_N1, &templ_ijk, &localInd, &tempk, d_N2, d_N3, d_norm, idx, global_factor,
-			d_scat
+		perpendicular_elements(d_b, d_db, d_N0, dd, d_d2, d_N1, &templ_ijk, &localInd, &tempk, d_N2, d_N3, idx, global_factor
+#if defined(SCATTER)
+			, d_scat
+#endif
 #if !defined(CT) && defined(ATN)
 			, d_atten
 #endif
+#if defined(NORM)
+			, d_norm
+#endif
 		);
+		local_ele = templ_ijk;
 		//local_ind = tempk;
 		//perpendicular_elements(d_b, d_d, d_N0, dd, d_d2, d_N1, d_atten, &templ_ijk, &z_loop, tempk, d_N2, d_N3,
 		//	d_norm, idx, global_factor, d_scat);
@@ -481,7 +470,11 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 //#ifndef AF
 #if defined(FP) && !defined(BP)
 		//if (fp == 1) {
-			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, idx, m_size, local_sino
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 #pragma unroll NBINS
 			for (long to = 0; to < NBINS; to++)
 				d_output[idx + to * m_size] = ax[to];
@@ -499,7 +492,11 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #if defined(FP) && defined(BP)
 		if (local_sino != 0.f) {
 #endif
-			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, idx, m_size, local_sino,
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 			for (uint ii = 0u; ii < d_N1; ii++) {
 #ifndef DEC
 				const float TOFSum = TOFLoop(DD, d_d2, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
@@ -509,11 +506,7 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifndef DEC
 					temp, sigma_x, &D, DD, TOFCenter, d_epps, TOFSum,
 #endif
-#ifdef MBSREM
-					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, d_co, d_aco, local_sino, idx, m_size);
-#else
 					d_output, no_norm, d_N);
-#endif
 				local_ind += d_N3;
 				if (d_N3 == 1)
 					localInd.x++;
@@ -532,9 +525,6 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 #ifndef DEC
 					temp, sigma_x, &D, DD, TOFCenter, d_epps, TOFSum,
 #endif
-#ifdef MBSREM
-					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, idx, m_size,
-#endif
 					no_norm);
 				local_ind += d_N3;
 				if (d_N3 == 1)
@@ -544,257 +534,102 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			}
 		}
 #endif
-#ifdef MBSREM
-		if (d_alku == 0u && (MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
-#pragma unroll NBINS
-			for (long to = 0L; to < NBINS; to++) {
-				d_Amin[idx + to * m_size] = minimi[to];
-			}
-		else if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-#pragma unroll NBINS
-			for (long to = 0L; to < NBINS; to++) {
-#ifdef RANDOMS
-				axACOSEM[to] += d_sc_ra[idx];
 #endif
-				d_ACOSEM_lhs[idx + to * m_size] = axACOSEM[to];
-			}
-		}
-#endif
-#endif
-#else
-#ifdef MBSREM
-		if (d_alku == 0u && ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0 ||
-			(MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1 || MethodListOpenCL.RBIOSL == 1 || MethodListOpenCL.RBI == 1))) && local_sino != 0.f) {
-			local_ele = templ_ijk;
-			//local_ind = z_loop;
-			//local_ind = z_loop;
-			for (uint ii = 0u; ii < Np; ii++) {
-				if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0)
-					axCOSEM += (local_ele * read_imagef(d_OSEM, samplerIm, localInd).x);
-					//axCOSEM += (local_ele * d_OSEM[local_ind]);
-				if (MBSREM_prepass == 1)
-#ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-					//atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-#elif defined(ATOMIC32)
-					//atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
-					atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
-#else // 32-bit float atomics
-					atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-					//atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-#endif
-				if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
-					if (local_ele < minimi && local_ele > 0.f)
-						minimi = local_ele;
-					d_E[idx] += local_ele;
-				}
-				local_ind += d_N3;
-				//local_ind += d_N3;
-			}
-			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1)
-				d_Amin[idx] = minimi;
-			if (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) {
-#ifndef CT
-				if (axCOSEM < d_epps)
-					axCOSEM = d_epps;
-#endif
-#ifdef RANDOMS
-				axCOSEM += d_sc_ra[idx];
-#endif
-#ifdef CT
-				axCOSEM = native_exp(-axCOSEM) / local_sino;
-#else
-				axCOSEM = local_sino / axCOSEM;
-#endif
-			}
-			local_ele = templ_ijk;
-			//local_ind = z_loop;
-			local_ind = tempk;
-			for (uint ii = 0u; ii < Np; ii++) {
-				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2))
-#ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
-					//atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
-#elif defined(ATOMIC32)
-					atomic_add(&d_co[local_ind], convert_int(axCOSEM * local_ele * TH));
-					//atomic_add(&d_co[local_ind], convert_int(axCOSEM * local_ele * TH));
-#else // 32-bit float atomics
-					atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
-					//atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
-#endif
-				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1))
-#ifdef ATOMIC // 64-bit atomics
-					atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
-					//atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
-#elif defined(ATOMIC32)
-					atomic_add(&d_aco[local_ind], convert_int(axCOSEM * local_ele * TH));
-					//atomic_add(&d_aco[local_ind], convert_int(axCOSEM * local_ele * TH));
-#else // 32-bit float atomics
-					atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
-					//atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
-#endif
-				local_ind += d_N3;
-				//local_ind += d_N3;
-			}
-		}
-		else if (MBSREM_prepass == 1 && d_alku == 0u) {
-			local_ele = templ_ijk;
-			local_ind = tempk;
-			//local_ind = z_loop;
-			for (uint ii = 0u; ii < Np; ii++) {
-#ifdef ATOMIC // 64-bit atomics
-				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-				//atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-#elif defined(ATOMIC32)
-				atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-				//atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-#else // 32-bit float atomics
-				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-				//atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-#endif
-				if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1)) {
-					if (local_ele < minimi && local_ele != 0.f)
-						minimi = local_ele;
-					d_E[idx] += local_ele;
-				}
-				local_ind += d_N3;
-			}
-			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1))
-				d_Amin[idx] = minimi;
-		}
-		else if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-			local_ele = templ_ijk;
-			localInd.z = tempk;
-			//local_ind = z_loop;
-			for (uint ii = 0u; ii < Np; ii++) {
-				axACOSEM += (local_ele * read_imagef(d_OSEM, samplerIm, localInd).x);
-				//axACOSEM += (local_ele * d_OSEM[local_ind]);
-				if (d_N3 == 1)
-					localInd.x++;
-				else
-					localInd.y++;
-				//local_ind += d_N3;
-			}
-#ifdef RANDOMS
-				axACOSEM += d_sc_ra[idx];
-#endif
-#ifdef CT
-			d_ACOSEM_lhs[idx] = native_exp(-axACOSEM);
-#else
-			d_ACOSEM_lhs[idx] = axACOSEM;
-#endif
-		}
 #else
 #if !defined(BP) && defined(FP)
-		//if (fp == 1) {
-			//L = length(diff);
-			//local_ele = templ_ijk / L;
-			local_ele = templ_ijk;
-			//localInd.z = tempk;
-			//local_ind = z_loop;
-			//if (i.x == 1 && i.y == 300 && i.z == 59) {
-			//}
 			for (uint ii = 0u; ii < d_N1; ii++) {
 
 #ifdef AF // Implementation 2
 
 				denominator(local_ele, ax, localInd, d_N, d_OSEM);
-				//denominator(local_ele, ax, local_ind, d_N, d_OSEM);
 
 #else // Implementation 3
-				//denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind]);
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerIm, localInd).x);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
 #endif
 				if (d_N3 == 1)
 					localInd.x++;
 				else
 					localInd.y++;
-				//if (d_N3 == 1)
-				//	indX++;
-				//else
-				//	indY++;
-				//	localInd.x = localInd.x + 1;
-					//localInd.y = localInd.y + 1;
-				//local_ind += d_N3;
-					//localInd++;
 			}
 #ifdef AF // Implementation 2
 
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, 1.f, d_sc_ra, idx); 
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, 1.f, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
 			forwardProjectAF(d_output, ax, idx, d_N);
 
 #else // Implementation 3
-			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 			d_output[idx] = axOSEM;
 #endif
 			return;
-		//}
 #endif
-		//return;
-		//local_ele = templ_ijk;
-		//localInd.z = tempk;
-		//local_ind = z_loop;
 		 //Calculate the next index and store it as weL as the probability of emission
 		 //If measurements are present, calculate the 
 #if defined(FP) && defined(BP) // Forward projection
 		if (local_sino != 0.f) {
-
 			for (uint ii = 0u; ii < d_N1; ii++) {
 
 #ifdef AF // Implementation 2
 
 				denominator(local_ele, ax, localInd, d_N, d_OSEM);
-				//denominator(local_ele, ax, local_ind, d_N, d_OSEM);
 
 #else // Implementation 3
 
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerIm, localInd).x);
-				//denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind]);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
 
 #endif
-				//if (d_N3 == 1)
-				//	indX++;
-				//else
-				//	indY++;
 				if (d_N3 == 1)
 					localInd.x++;
 				else
 					localInd.y++;
-				//local_ind += d_N3;
 			}
 #ifdef AF // Implementation 2
 
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, 1.f, d_sc_ra, idx);
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, 1.f, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
 
 #else // Implementation 3
 
-			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, 1.f, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 
 #endif
-			//local_ind = z_loop;
 		}
 #endif
 #ifdef BP
 		local_ind = tempk;
 		for (uint ii = 0u; ii < d_N1; ii++) {
-			//if (local_ind >= 1032192)
-			//	continue;
 #if defined(FP) && defined(BP)
 			if (local_sino != 0.f) {
 #endif
 #ifdef AF
 				rhs(MethodList, local_ele, ax, local_ind, d_N, d_output);
-				//rhs(MethodList, local_ele, ax, local_ind, d_N, d_output);
 #else
 #ifdef ATOMIC // 64-bit atomics
 				atom_add(&d_output[local_ind], convert_long(local_ele * axOSEM * TH));
-				//atom_add(&d_output[local_ind], convert_long(local_ele * axOSEM * TH));
 #elif defined(ATOMIC32)
 				atomic_add(&d_output[local_ind], convert_int(local_ele * axOSEM * TH));
-				//atomic_add(&d_output[local_ind], convert_int(local_ele* axOSEM* TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_output[local_ind], (local_ele * axOSEM));
-				//atomicAdd_g_f(&d_output[local_ind], (local_ele * axOSEM));
 #endif
 #endif
 #if defined(FP) && defined(BP)
@@ -803,37 +638,13 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 			if (no_norm == 0u)
 #ifdef ATOMIC // 64-bit atomics
 				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-			//atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
 #elif defined(ATOMIC32)
 				atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
-			//atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
 #else // 32-bit float atomics
 				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-			//atomicAdd_g_f(&d_Summ[local_ind], local_ele);
 #endif
 			local_ind += d_N3;
-			//local_ind += d_N3;
 		}
-#endif
-//		}
-//		else {
-//			//local_ele = templ_ijk;
-//			//local_ind = z_loop;
-//			for (uint ii = 0u; ii < d_N1; ii++) {
-//#ifdef ATOMIC // 64-bit atomics
-//				atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-//				//atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-//#elif defined(ATOMIC32)
-//				atomic_add(&d_Summ[local_ind], convert_int(local_ele * TH));
-//				//atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-//#else // 32-bit float atomics
-//				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-//				//atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-//#endif
-//				local_ind += d_N3;
-//				//local_ind += d_N3;
-//			}
-//		}
 #endif
 #endif
 
@@ -841,8 +652,6 @@ void kernel_multi(const float global_factor, const float d_epps, const uint d_N,
 
 #ifdef AF
 orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, ax,
-#elif defined(MBSREM)
-orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axCOSEM,
 #else
 orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #endif
@@ -851,49 +660,55 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 	d_OSEM, 
 #endif
 	s, diff, kerroin, d_Nxy, no_norm, d_Summ, true, false, global_factor, bmin, bmax, Vmax, V,
-#ifdef MBSREM
-	MethodListOpenCL, d_alku, & axCOSEM, d_E, d_co, d_aco, & minimi, MBSREM_prepass, d_sc_ra, d_Amin, d_ACOSEM_lhs, idx
-#else
 	d_output, d_N, MethodList
-#endif
 #if !defined(CT) && defined(ATN)
 	, d_atten
 #endif
 );
 
-//#ifndef AF
 #if defined(FP) && !defined(BP)
-		//if (fp == 1) {
 #ifdef AF // Implementation 2
-
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
+			
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, temp, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
 			forwardProjectAF(d_output, ax, idx, d_N);
 
 #else // Implementation 3
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 			d_output[idx] = axOSEM;
 #endif
 			return;
-		//}
 #endif
-//#endif
-#ifdef MBSREM
-		if (d_alku == 0 && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1
-			|| MethodListOpenCL.OSLCOSEM > 0) && local_sino != 0.f) {
-			nominator_cosem(&axCOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
-		}
-
-#else
 #if defined(FP) && defined(BP) // Forward projection
 		if (local_sino != 0.f) {
 
 #ifdef AF
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, temp, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
 #else
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 #endif
 		}
-#endif
 #endif
 #ifdef BP
 #ifdef AF
@@ -926,43 +741,17 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	///*
 	else {
-	//return;
-		//float3 tu = { 0.f, 0.f, 0.f };
-		//float3 t0 = { 1e8f, 1e8f, 1e8f };
-		//float tc = 0.f;
-		//float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		bool skip = false, XY = true;
 
 		// If the measurement is on a same ring
 			// Z-coordinate (ring)
 		if (fabs(diff.z) < 1e-6f) {
-			//return;
-			//tempk = convert_int((zs / d_zmax) * (d_NSlices - 1.f));
 			tempk = convert_int(fabs(s.z - b.z) / d_d.z);
+			if (tempk < 0 || tempk >= d_Nxyz.z)
+				return;
 			skip = siddon_pre_loop_2D(b.x, b.y, diff.x, diff.y, d_max.x, d_max.y, d_d.x, d_d.y, d_Nxyz.x, d_Nxyz.y, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
 				s.y, s.x, d.y, d.x, &tc, &ux, &uy, &tx0, &ty0, &XY);
-			//if (i.z == 0 && i.y == 100 && i.x == 150) {
-			//	printf("tempi = %d\n", tempi);
-			//	printf("tempj = %d\n", tempj);
-			//	printf("tempk = %d\n", tempk);
-			//	printf("Np = %d\n", Np);
-			//	printf("tx0 = %f\n", tx0);
-			//	printf("ty0 = %f\n", ty0);
-			//	printf("tz0 = %f\n", tz0);
-			//	printf("tc = %f\n", tc);
-			//	//printf("s.x = %f\n", s.x);
-			//	//printf("s.y = %f\n", s.y);
-			//	//printf("s.z = %f\n", s.z);
-			//	//printf("d.x = %f\n", d.x);
-			//	//printf("d.y = %f\n", d.y);
-			//	//printf("d.z = %f\n", d.z);
-			//	//printf("b.x = %f\n", b.x);
-			//	//printf("b.y = %f\n", b.y);
-			//	//printf("b.z = %f\n", b.z);
-			//}
-			//skip = siddon_pre_loop_2D(d_bx, d_by, x_diff, y_diff, d_maxxx, d_maxyy, d_dx, d_dy, d_Nx, d_Ny, &tempi, &tempj, &txu, &tyu, &Np, TYPE,
-			//	ys, xs, yd, xd, &tc, &ux, &uy, &tx0, &ty0);
 		}
 		else if (fabs(diff.y) < 1e-6f) {
 			//return;
@@ -981,59 +770,14 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			skip = siddon_pre_loop_2D(b.y, b.z, diff.y, diff.z, d_max.y, d_max.z, d_d.y, d_d.z, d_Nxyz.y, d_Nxyz.z, &tempj, &tempk, &tyu, &tzu, &Np, TYPE,
 				s.z, s.y, d.z, d.y, &tc, &uy, &uz, &ty0, &tz0, &XY);
 			XY = false;
-//#ifndef SIDDON
-//			int apu_tempi = tempi;
-//			float apu_txu = txu;
-//			float apu_tx0 = tx0;
-//			float apu_xdiff = diff.x;
-//			float apu_xs = s.x;
-//			int apu_iu = ux;
-//			ux = uy;
-//			uy = apu_iu;
-//			tempi = tempj;
-//			tempj = apu_tempi;
-//			txu = tyu;
-//			tyu = apu_txu;
-//			tx0 = ty0;
-//			ty0 = apu_tx0;
-//			diff.x = diff.y;
-//			diff.y = apu_xdiff;
-//			s.x = s.y;
-//			s.y = apu_xs;
-//			d_N0 = d_Nxyz.y;
-//			d_N1 = d_Nxyz.x;
-//			d_N2 = d_Nxyz.y;
-//			d_N3 = 1u;
-//#ifdef ORTH // Orthogonal or volume-based
-//			ycenter = x_center;
-//			xcenter = y_center;
-//#endif
-//#endif
 #ifndef PRECOMPUTE
 			if (d.x > d_max.x || d.x < b.x)
 				skip = true;
 #endif
 		}
 		else {
-			//return;
-			skip = siddon_pre_loop_3D(b, diff, d_max, d_d, d_Nxyz, &tempi, &tempj, &tempk, &txu, &tyu, &tzu, &Np, TYPE, s, d, &tc, &ux, &uy, &uz, &tx0, &ty0, &tz0, &XY);
-			//skip = siddon_pre_loop_3D(d_bx, d_by, d_bz, x_diff, y_diff, z_diff, d_maxxx, d_maxyy, d_bzb, d_dx, d_dy, d_dz, d_Nx, d_Ny, d_Nz, &tempi, &tempj, &tempk, &tyu, &txu, &tzu,
-			//	&Np, TYPE, ys, xs, yd, xd, zs, zd, &tc, &ux, &uy, &uz, &tx0, &ty0, &tz0);
+			skip = siddon_pre_loop_3D(b, diff, d_max, d_d, d_Nxyz, &tempi, &tempj, &tempk, &txu, &tyu, &tzu, &Np, TYPE, s, d, &tc, &ux, &uy, &uz, &tx0, &ty0, &tz0, &XY, i);
 		}
-
-		////if (i.x == 30 && i.y == 86 && i.z == 543) {
-		//if (i.x == 100 && i.y == 100 && i.z == 0) {
-		//	printf("tc = %f\n", tc);
-		//	//printf("tyu = %f\n", tyu);
-		//	printf("tempi = %d\n", tempi);
-		//	printf("tempj = %d\n", tempj);
-		//	printf("tempk = %d\n", tempk);
-		//	//printf("idx = %u\n", idx);
-		//	printf("tx0 = %f\n", tx0);
-		//	printf("ty0 = %f\n", ty0);
-		//	printf("tz0 = %f\n", tz0);			
-		//	//return;
-		//}
 #ifndef PRECOMPUTE // No precomputation step performed
 		if (skip)
 			return;
@@ -1087,8 +831,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 		uint local_ind = 0u;
 		float t0_b, tu_b, diff_b, s_b, dd_b;
 		uint3 d_NN = { d_Nxyz.x, d_Nxyz.y, d_Nxyz.z };
-		//__local float* xCenter;
-		//__local float* yCenter;
 #ifdef DEC // Save intermediate results
 		__private float store_elements[DEC];
 		__private uint store_indices[DEC];
@@ -1096,32 +838,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 		__private float store_elements[1];
 		__private uint store_indices[1];
 #endif
-		//if (i.z == 543 && i.y == 4 && i.x == 115) {
-		//	printf("tempi = %d\n", tempi);
-		//	printf("tempj = %d\n", tempj);
-		//	printf("tempk = %d\n", tempk);
-		//	printf("Np = %d\n", Np);
-		//		printf("tx0 = %f\n", tx0);
-		//		printf("ty0 = %f\n", ty0);
-		//		printf("tz0 = %f\n", tz0);		
-		//		printf("tc = %f\n", tc);
-		//		printf("xyvar = %d\n", xyvar);
-		//			//printf("s.x = %f\n", s.x);
-		//			//printf("s.y = %f\n", s.y);
-		//			//printf("s.z = %f\n", s.z);
-		//			//printf("d.x = %f\n", d.x);
-		//			//printf("d.y = %f\n", d.y);
-		//			//printf("d.z = %f\n", d.z);
-		//			//printf("b.x = %f\n", b.x);
-		//			//printf("b.y = %f\n", b.y);
-		//			//printf("b.z = %f\n", b.z);
-		//}
-		//bool XY = true;
 		if (!XY) {
-		//if (fabs(diff.y) > fabs(diff.x)) {
-		//if (fabs(s.x) > fabs(s.y)) {
-		//if (ty0 > tx0) {
-		//if ((tempj == d_Nxyz.y - 1 || tempj == 0) && tempi != 0 && tempi != d_Nxyz.x - 1) {
 			tempi_b = tempi;
 			tempi = tempj;
 			tempj = tempi_b;
@@ -1154,81 +871,17 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			//XY = false;
 		}
 		else {
-			//return;
-			//if (tempj == d_Nxyz.y - 1 || tempj == 0) {
-			//	tempi_b = tempi;
-			//	tempi = tempj;
-			//	tempj = tempi_b;
-			//	s_b = s.x;
-			//	s.x = s.y;
-			//	s.y = s_b;
-			//	dd_b = d.x;
-			//	d.x = d.y;
-			//	d.y = dd_b;
-			//	u_b = ux;
-			//	ux = uy;
-			//	uy = u_b;
-			//	t0_b = tx0;
-			//	tx0 = ty0;
-			//	ty0 = t0_b;
-			//	tu_b = txu;
-			//	txu = tyu;
-			//	tyu = tu_b;
-			//	diff_b = diff.x;
-			//	diff.x = diff.y;
-			//	diff.y = diff_b;
-			//	xcenter = y_center;
-			//	ycenter = x_center;
-			//	d_NN.x = d_Nxyz.y;
-			//	d_NN.y = d_Nxyz.x;
-			//	d_N0 = d_Nxyz.y;
-			//	d_N1 = d_Nxyz.x;
-			//	d_N2 = d_Nxyz.x;
-			//	d_N3 = 1;
-			//	XY = false;
-			//}
-			//else {
 				xcenter = x_center;
 				ycenter = y_center;
 				d_N0 = d_Nxyz.x;
 				d_N1 = d_Nxyz.y;
 				d_N2 = 1;
 				d_N3 = d_Nxyz.x;
-			//}
-			//if (i.x == 80 && i.y == 6 && i.z == 20) {
-			//	printf("tempi = %d\n", tempi);
-			//	printf("tempj = %d\n", tempj);
-			//	printf("tempk = %d\n", tempk);
-			//}
 		}
 #if !defined(DEC)
 		const float tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		const int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
 #endif
-		//if (tempi != 0 && tempi != d_Nxyz.x - 1 && i.z == 0 && i.y == 100 && i.x == 150) {
-		//	printf("tempi = %d\n", tempi);
-		//	printf("tempj = %d\n", tempj);
-		//	printf("tempk = %d\n", tempk);
-		//	//printf("i.x = %d\n", i.x);
-		//	//printf("i.y = %d\n", i.y);
-		//	printf("Np = %d\n", Np);
-		//	printf("tx0 = %f\n", tx0);
-		//	printf("ty0 = %f\n", ty0);
-		//	printf("tz0 = %f\n", tz0);
-		//	printf("tc = %f\n", tc);
-		//	printf("s.x = %f\n", s.x);
-		//	printf("s.y = %f\n", s.y);
-		//	printf("s.z = %f\n", s.z);
-		//	printf("d.x = %f\n", d.x);
-		//	printf("d.y = %f\n", d.y);
-		//	printf("d.z = %f\n", d.z);
-		//	printf("diff.x = %f\n", diff.x);
-		//	printf("diff.y = %f\n", diff.y);
-		//}
-		//bool ekaz = false;
-		//bool ekay = false;
-		//int temp1 = tempj;
-		//int temp2 = tempk;
 		for (uint ii = 0u; ii < Np; ii++) {
 			if (tz0 < ty0 && tz0 < tx0) {
 #ifdef ATN
@@ -1257,16 +910,10 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 					s.x, s.y, s.z, d_Nxy, kerroin, no_norm, RHS, SUMMA, d_Summ, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, 
 					store_elements, XY, i, 
 #ifdef AF
-#ifdef MBSREM
-					store_indices, &local_ind, &axACOSEM, MethodListOpenCL, d_E, idx, d_co, d_aco, &minimi, MBSREM_prepass, &axCOSEM, d_alku);
-#else
 					store_indices, & local_ind, d_output, d_N, MethodList, ax);
-#endif
 #else
 					store_indices, & local_ind, d_output, d_N, MethodList, & axOSEM);
 #endif
-				//temp1 = tempj;
-				//temp2 = tempk;
 				tempi += ux;
 				tc = tx0;
 				tx0 += txu;
@@ -1275,17 +922,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifndef DEC
 			Np_n++;
 #endif
-			//if (i.x == 30 && i.y == 86 && i.z == 543) {
-			//	printf("tempi = %d\n", tempi);
-			//	printf("tempj = %d\n", tempj);
-			//	printf("tempk = %d\n", tempk);
-			//	printf("s.x = %f\n", s.x);
-			//	printf("s.y = %f\n", s.y);
-			//	printf("s.z = %f\n", s.z);
-			//	printf("d.x = %f\n", d.x);
-			//	printf("d.y = %f\n", d.y);
-			//	printf("d.z = %f\n", d.z);
-			//}
 			if (tempi < 0 || tempi >= d_NN.x || tempj < 0 || tempj >= d_NN.y || tempk < 0 || tempk >= d_NN.z) {
 				break;
 			}
@@ -1293,10 +929,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 		}
 		if (tempi >= 0 && tempi < d_NN.x) {
 			int aloitus = tempi;
-			//if (tempi < 0)
-			//	aloitus = 0;
-			//else if (aloitus >= d_NN.x)
-			//	aloitus = d_NN.x - 1;
 			if (tempj < 0)
 				tempj = 0;
 			else if (tempj >= d_NN.y)
@@ -1306,7 +938,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			else if (tempk >= d_NN.z)
 				tempk = d_NN.z - 1;
 			if (ux < 0) {
-				//const int minimi = max(aloitus - NSTEPS, 0);
 				const int minimi = 0;
 				for (int kk = aloitus; kk >= minimi; kk--) {
 					orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter[kk], ycenter, z_center, &temp, tempj, tempk, local_sino,
@@ -1327,7 +958,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 				}
 			}
 			else {
-				//const int maksimi = min(aloitus + NSTEPS, convert_int(d_N0));
 				const int maksimi = convert_int(d_N0);
 				for (int kk = aloitus; kk < maksimi; kk++) {
 					orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter[kk], ycenter, z_center, &temp, tempj, tempk, local_sino,
@@ -1348,47 +978,9 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 				}
 			}
 		}
-		//if (i.x == 126 && i.y == 35 && i.z == 697) {
-		//	printf("axOSEM = %f\n", axOSEM);
-		//}
-//#ifdef PRECOMPUTE
-//#ifdef CRYSTZ
-//		if (xyz < 3 && fabs(z_diff) >= 1e-6f) {
-//			if (xyz == 1)
-//				tempi -= ux;
-//			else if (xyz == 2)
-//				tempj -= uy;
-//			if ((tempk >= (d_Nz - 1) && uz > 0) || (tempk <= 0 && uz < 0) || uz == 0) {}
-//			else {
-//				tempk += uz;
-//				alku = d_Nz;
-//				loppu = 0;
-//				if (uz > 0) {
-//					loppu = tempk;
-//				}
-//				else if (uz < 0) {
-//					alku = tempk + 1;
-//				}
-//				orthDistance3D(tempi, d_N0, d_N4, y_diff, x_diff, z_diff, y_center, x_center, z_center, &temp, d_N2, tempj, tempk,
-//					local_sino, d_OSEM, xs, ys, zs, d_Nxy, kerroin, no_norm, RHS, SUMMA, d_Summ, d_N1, d_N3, alku,
-//					ux, uy, loppu, bmin, bmax, Vmax, V, store_elements,
-//#ifdef AF
-//#ifdef MBSREM
-//					store_indices, &local_ind, &axACOSEM, MethodListOpenCL, d_E, idx, d_co, d_aco, &minimi, MBSREM_prepass, &axCOSEM, d_alku);
-//#else
-//					store_indices, & local_ind, d_output, d_N, MethodList, ax);
-//#endif
-//#else
-//					store_indices, & local_ind, d_output, d_N, MethodList, & axOSEM);
-//#endif
-//			}
-//		}
-//#endif
-//#endif
 #elif defined(SIDDON)
 #if !defined(CT) || (defined(FP) && defined(CT))
 		for (uint ii = 0U; ii < Np; ii++) {
-			//local_ind = compute_ind(tempj, tempi, tempk, d_N0, d_N1, d_N, d_N3, d_Nxy);
 			localInd = (int4)(tempi, tempj, tempk, 0);
 			if (tz0 < ty0 && tz0 < tx0) {
 				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk, &temp);
@@ -1402,7 +994,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifdef MATRIX
 			local_ele /= L;
 #ifdef ATN
-			local_ele *= native_exp(local_ele * -read_imagef(d_atten, samplerIm, localInd).x));
+			local_ele *= native_exp(local_ele * -read_imagef(d_atten, samplerSiddon, localInd).x));
 #endif
 #ifdef NORM
 			local_ele *= local_norm;
@@ -1415,7 +1007,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			values[idx * maxLOR + ii] = local_ele;
 #else
 #ifdef ATN
-			jelppi += (local_ele * -read_imagef(d_atten, samplerIm, localInd).x);
+			jelppi += (local_ele * -read_imagef(d_atten, samplerSiddon, localInd).x);
 #endif
 #if defined(TOF) && (defined(DEC) || defined(FP))
 			const float TOFSum = TOFLoop(DD, local_ele, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
@@ -1426,28 +1018,18 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #endif
 #ifdef AF // Implementation 2
 
-#ifdef MBSREM
-#ifdef TOF
-				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0u)
-					denominatorTOF(ax, local_ele, d_OSEM, localInd.x, localInd.y, localInd.z, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii * NBINS, d_epps, d_N);
-#else
-				if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0u)
-					denominator_multi(local_ele, &axCOSEM, read_imagef(d_OSEM, samplerIm, localInd).x);
-#endif
-#else
 #ifdef TOF
 				denominatorTOF(ax, local_ele, d_OSEM, localInd.x, localInd.y, localInd.z, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii * NBINS, d_epps, d_N);
 #else
 				denominator(local_ele, ax, localInd, d_N, d_OSEM);
 #endif
 
-#endif
 
 #else // Implementation 3
 #ifdef TOF
 				denominatorTOF(ax, local_ele, d_OSEM, localInd, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii* NBINS, d_epps, d_N);
 #else
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerIm, localInd).x);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
 #endif
 
 #endif
@@ -1456,12 +1038,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #endif
 #endif
 #endif
-			if (i.x == 100 && i.y == 100 && i.z == 0) {
-				printf("axOSEM = %f\n", axOSEM);
-				printf("tempi = %d\n", tempi);
-				printf("tempj = %d\n", tempj);
-				printf("tempk = %d\n", tempk);
-			}
 #ifndef PRECOMPUTE
 			Np_n++;
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
@@ -1474,10 +1050,12 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #else
 		Np_n = Np;
 #endif
+		////// UNUSED //////
 #ifdef MATRIX
 		rowInd[idx + 1] = Np_n;
 		return;
 #endif
+		////// UNUSED //////
 #endif
 
 #ifndef CT
@@ -1503,91 +1081,74 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifdef TOF
 		D = DD;
 #endif
-//#else
-//#if !defined(DEC)
-//		xyz = 0u;
-//#endif
 #endif
-#ifdef MBSREM
-		if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino != 0.f && d_alku == 0u) {
-#ifdef TOF
-#pragma unroll NBINS
-			for (int to = 0; to < NBINS; to++) {
-				ax[to] *= temp;
-				if (ax[to] < d_epps)
-					ax[to] = d_epps;
-#ifdef RANDOMS
-				ax[to] += d_sc_ra[idx];
-#endif
-				ax[to] = d_Sino[idx + to * m_size] / ax[to];
-			}
-#else
-#ifndef CT
-			axCOSEM *= temp;
-			if (axCOSEM < d_epps)
-				axCOSEM = d_epps;
-#endif
-#ifdef RANDOMS
-			axCOSEM += d_sc_ra[idx];
-#endif
-#ifdef CT
-			axCOSEM = native_exp(-axCOSEM) / local_sino;
-#else
-			axCOSEM = local_sino / axCOSEM;
-#endif
-#endif
-		}
-		RHS = true;
-#else
-//#ifndef AF
 #if defined(FP) && !defined(BP)
-		//if (fp == 1) {
 #ifdef TOF
-			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, idx, m_size, local_sino
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 #pragma unroll NBINS
 			for (int to = 0; to < NBINS; to++)
 				d_output[idx + to * m_size] = ax[to];
 #else
-			//if (i.x == 89 && i.y == 89 && i.z == 20) {
-			//	printf("idx = %d\n", idx);
-			//	printf("axOSEM = %f\n", axOSEM);
-			//}
-			//if (i.x == 82 && i.y == 82 && i.z == 20) {
-			//	printf("idx = %d\n", idx);
-			//	printf("axOSEM = %f\n", axOSEM);
-			//}
 #ifdef AF // Implementation 2
 
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, temp, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
+			//return;
 			forwardProjectAF(d_output, ax, idx, d_N);
 
 #else // Implementation 3
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 			d_output[idx] = axOSEM;
 #endif
 #endif
 			return;
 		//}
 #endif
-//#endif
 
+			//return;
 #if defined(FP) && defined(BP)
 		if (local_sino != 0.f) {
 #ifdef TOF
-			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx, m_size, local_sino);
+			nominatorTOF(MethodList, ax, d_Sino, d_epsilon_mramla, d_epps, temp, idx, m_size, local_sino
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 #else
-#ifdef AF
-			nominator(MethodList, ax, local_sino, d_epsilon_mramla, d_epps, temp, d_sc_ra, idx);
-#else
-			nominator_multi(&axOSEM, local_sino, d_epps, temp, d_sc_ra, idx);
+#ifdef AF // Implementation 2
+			nominator(ax, local_sino, d_epsilon_mramla, d_epps, temp, idx
+#if defined(BP) && defined(FP)
+				, MethodList
+#if defined(RANDOMS)
+				, d_sc_ra
+#endif
+#endif
+			);
+#else // Implementation 3
+			nominator_multi(&axOSEM, local_sino, d_epps, temp, idx
+#if defined(RANDOMS) && defined(BP) && defined(FP)
+				, d_sc_ra
+#endif
+			);
 #endif
 #endif
 		}
 #endif
 			RHS = true;
-		//else
-		//	SUMMA = true;
-#endif
 #if defined(BP) || defined(MBSREM)
 		// Add additional computations before backprojection here
 #ifdef ORTH
@@ -1622,14 +1183,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #endif
 		}
 #else
-			//if (!XY) {
-			//	tempi_b = tempi;
-			//	tempi = tempj;
-			//	tempj = tempi_b;
-			//	t0_b = tx0;
-			//	tx0 = ty0;
-			//	ty0 = t0_b;
-			//}
 		for (uint ii = 0u; ii < Np_n; ii++) {
 			if (tz0 < ty0 && tz0 < tx0) {
 				tempk += uz;
@@ -1647,11 +1200,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 					s.x, s.y, s.z, d_Nxy, kerroin, no_norm, RHS, SUMMA, d_Summ, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V,
 					store_elements, XY, i,
 #ifdef AF
-#ifdef MBSREM
-					store_indices, &local_ind, &axACOSEM, MethodListOpenCL, d_E, idx, d_co, d_aco, &minimi, MBSREM_prepass, &axCOSEM, d_alku);
-#else
 					store_indices, & local_ind, d_output, d_N, MethodList, ax);
-#endif
 #else
 					store_indices, & local_ind, d_output, d_N, MethodList, & axOSEM);
 #endif
@@ -1661,10 +1210,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 		}
 		if (tempi >= 0 && tempi < d_NN.x) {
 			int aloitus = tempi;
-			//if (tempi < 0)
-			//	aloitus = 0;
-			//else if (aloitus >= d_NN.x)
-			//	aloitus = d_NN.x - 1;
 			if (tempj < 0)
 				tempj = 0;
 			else if (tempj >= d_NN.y)
@@ -1674,7 +1219,6 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			else if (tempk >= d_NN.z)
 				tempk = d_NN.z - 1;
 			if (ux < 0) {
-				//const int minimi = max(tempi - NSTEPS, 0);
 				const int minimi = 0;
 				for (int kk = tempi - 1; kk >= minimi; kk--) {
 					orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter[kk], ycenter, z_center, &temp, tempj, tempk, local_sino,
@@ -1684,11 +1228,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 						s.x, s.y, s.z, d_Nxy, kerroin, no_norm, RHS, SUMMA, d_Summ, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V,
 						store_elements, XY, i,
 #ifdef AF
-#ifdef MBSREM
-						store_indices, &local_ind, &axACOSEM, MethodListOpenCL, d_E, idx, d_co, d_aco, &minimi, MBSREM_prepass, &axCOSEM, d_alku);
-#else
 						store_indices, & local_ind, d_output, d_N, MethodList, ax);
-#endif
 #else
 						store_indices, & local_ind, d_output, d_N, MethodList, & axOSEM);
 #endif
@@ -1705,31 +1245,16 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 						s.x, s.y, s.z, d_Nxy, kerroin, no_norm, RHS, SUMMA, d_Summ, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V,
 						store_elements, XY, i,
 #ifdef AF
-#ifdef MBSREM
-						store_indices, &local_ind, &axACOSEM, MethodListOpenCL, d_E, idx, d_co, d_aco, &minimi, MBSREM_prepass, &axCOSEM, d_alku);
-#else
 						store_indices, & local_ind, d_output, d_N, MethodList, ax);
-#endif
 #else
 						store_indices, & local_ind, d_output, d_N, MethodList, & axOSEM);
 #endif
 				}
 			}
 		}
-#ifdef MBSREM
-		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
-			d_Amin[idx] = minimi;
-		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-#ifdef RANDOMS
-				axACOSEM += d_sc_ra[idx];
-#endif
-			d_ACOSEM_lhs[idx] = axACOSEM;
-		}
-#endif
 
 #endif
 #elif defined(SIDDON)
-		//if (RHS) {
 			for (uint ii = 0u; ii < Np_n; ii++) {
 				local_ind = compute_ind(tempj, tempi, tempk, d_N0, d_N1, d_N, d_N3, d_Nxy);
 #if defined(TOF) || defined(MBSREM)
@@ -1752,47 +1277,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifndef DEC
 					temp, sigma_x, &D, DD, TOFCenter, d_epps, TOFSum,
 #endif
-#ifdef MBSREM
-					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, d_co, d_aco, idx, m_size);
-#else
 					d_output, no_norm, d_N);
-#endif
-#else
-#ifdef MBSREM
-				if (d_alku == 0u) {
-					if (MBSREM_prepass == 1)
-#ifdef ATOMIC
-						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-#elif defined(ATOMIC32)
-						atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-#else
-						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-#endif
-					if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
-						if (local_ele < minimi && local_ele > 0.f)
-							minimi = local_ele;
-						d_E[idx] += local_ele;
-					}
-					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.OSLCOSEM == 2) && local_sino != 0.f)
-#ifdef ATOMIC
-						atom_add(&d_co[local_ind], convert_long(axCOSEM * local_ele * TH));
-#elif defined(ATOMIC32)
-						atomic_add(&d_co[local_ind], convert_int(axCOSEM* local_ele* TH));
-#else
-						atomicAdd_g_f(&d_co[local_ind], axCOSEM * local_ele);
-#endif
-					if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && local_sino != 0.f)
-#ifdef ATOMIC
-						atom_add(&d_aco[local_ind], convert_long(axCOSEM * local_ele * TH));
-#elif defined(ATOMIC32)
-						atomic_add(&d_aco[local_ind], convert_int(axCOSEM* local_ele* TH));
-#else
-						atomicAdd_g_f(&d_aco[local_ind], axCOSEM * local_ele);
-#endif
-				}
-				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-					axACOSEM += (local_ele * read_imagef(d_OSEM, samplerIm, localInd).x);
-					//axACOSEM += (local_ele * d_OSEM[local_ind]);
 #else
 				if (no_norm == 0u)
 #ifdef ATOMIC
@@ -1821,102 +1306,12 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 				}
 #endif
 #endif
-#endif
 #if defined(CT) && !defined(FP)
 				if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
 					break;
 				}
 #endif
 			}
-#endif
-		//}
-//		else {
-//			for (uint ii = 0u; ii < Np_n; ii++) {
-//				local_ind = compute_ind(tempj, tempi, tempk, d_N0, d_N1, d_N, d_N3, d_Nxy);
-//				if (tz0 < ty0 && tz0 < tx0) {
-//					local_ele = compute_element_2nd(&tz0, &tc, L, tzu, uz, &tempk, temp);
-//				}
-//				else if (ty0 < tx0) {
-//					local_ele = compute_element_2nd(&ty0, &tc, L, tyu, uy, &tempj, temp);
-//				}
-//				else {
-//					local_ele = compute_element_2nd(&tx0, &tc, L, txu, ux, &tempi, temp);
-//				}
-//#ifdef TOF
-//#ifndef DEC
-//				const float TOFSum = TOFLoop(DD, local_ele / temp, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
-//#endif
-//				sensTOF(local_ind, local_ele, ii* NBINS, store_elements, d_Summ, 
-//#ifndef DEC
-//					temp, sigma_x, & D, DD, TOFCenter, d_epps, TOFSum,
-//#endif
-//#ifdef MBSREM
-//					MethodListOpenCL, d_alku, MBSREM_prepass, minimi, axACOSEM, d_OSEM, d_E, idx, m_size,
-//#endif
-//					no_norm);
-//#else
-//#ifdef MBSREM
-//				if (d_alku == 0u) {
-//					if (MBSREM_prepass == 1)
-//#ifdef ATOMIC
-//						atom_add(&d_Summ[local_ind], convert_long(local_ele * TH));
-//#elif defined(ATOMIC32)
-//						atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-//#else
-//						atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-//#endif
-//					if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1) {
-//						if (local_ele < minimi && local_ele > 0.f)
-//							minimi = local_ele;
-//						d_E[idx] += local_ele;
-//					}
-//				}
-//				if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-//					axACOSEM += (local_ele * d_OSEM[local_ind]);
-//#else
-//#ifdef ATOMIC
-//				atom_add(&d_Summ[local_ind], convert_long(local_ele* TH));
-//#elif defined(ATOMIC32)
-//				atomic_add(&d_Summ[local_ind], convert_int(local_ele* TH));
-//#else
-//				atomicAdd_g_f(&d_Summ[local_ind], local_ele);
-//#endif
-//#endif
-//#endif
-//#if defined(CT) && !defined(FP)
-//				if (tempj < 0 || tempi < 0 || tempk < 0 || tempi >= d_N0 || tempj >= d_N1 || tempk >= d_Nz) {
-//					break;
-//				}
-//#endif
-//			}
-//		}
-#ifdef MBSREM
-#ifdef TOF
-#pragma unroll NBINS
-		for (long to = 0L; to < NBINS; to++) {
-			if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
-				d_Amin[idx + to * m_size] = minimi[to];
-			if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-#ifdef RANDOMS
-				axACOSEM[to] += d_sc_ra[idx];
-#endif
-				d_ACOSEM_lhs[idx + to * m_size] = axACOSEM[to];
-			}
-		}
-#else
-		if ((MethodListOpenCL.MRAMLA_ == 1 || MethodListOpenCL.MBSREM_ == 1) && MBSREM_prepass == 1 && d_alku == 0u)
-			d_Amin[idx] = minimi;
-		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u) {
-#ifdef RANDOMS
-			axACOSEM += d_sc_ra[idx];
-#endif
-#ifdef CT
-			d_ACOSEM_lhs[idx] = native_exp(-axACOSEM);
-#else
-			d_ACOSEM_lhs[idx] = axACOSEM;
-#endif
-		}
-#endif
 #endif
 #endif
 #endif

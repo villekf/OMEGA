@@ -304,12 +304,6 @@ classdef forwardBackwardProjectCT
             end
             obj.OProperties.CT = true;
             obj.OProperties.PET = false;
-            if ~isfield(obj.OProperties, 'verticalOffset')
-                obj.OProperties.verticalOffset = 0;
-            end
-            if ~isfield(obj.OProperties, 'horizontalOffset')
-                obj.OProperties.horizontalOffset = 0;
-            end
             if isfield(obj.OProperties, 'mask1') && isfield(obj.OProperties, 'cThickness')
                 obj.OProperties.SPECT = true;
                 obj.OProperties.CT = false;
@@ -337,21 +331,10 @@ classdef forwardBackwardProjectCT
                     obj.OProperties.orthAxial = false;
                 end
             end
-            if ~isfield(obj.OProperties, 'useMaskFP')
-                obj.OProperties.useMaskFP = false;
-            end
-            if ~isfield(obj.OProperties, 'useMaskBP')
-                obj.OProperties.useMaskBP = false;
-            end
-            if ~isfield(obj.OProperties, 'dPitchX')
-                obj.OProperties.dPitchX = obj.OProperties.dPitch;
-            end
-            if ~isfield(obj.OProperties, 'dPitchY')
-                obj.OProperties.dPitchY = obj.OProperties.dPitch;
-            end
             if obj.OProperties.projector_type == 4 || obj.OProperties.projector_type == 5
                 if obj.OProperties.implementation ~= 3
-                    error('Projector types 4 and 5 available only with implementation 3!')
+                    warning('Projector types 4 and 5 available only with implementation 3! Switching to implementation 3.')
+                    obj.OProperties.implementation = 3;
                 end
                 if isfield(obj.OProperties, 'maskFP') && numel(obj.OProperties.maskFP) > 1 && numel(obj.OProperties.maskFP) ~= obj.OProperties.ySize * obj.OProperties.xSize
                     error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.OProperties.ySize) ' ' num2str(obj.OProperties.xSize) ']'])
@@ -367,29 +350,10 @@ classdef forwardBackwardProjectCT
                 else
                     obj.OProperties.useMaskBP = false;
                 end
-                if obj.OProperties.projector_type == 5
-                    if ~isfield(obj.OProperties,'meanFP')
-                        obj.OProperties.meanFP = false;
-                    end
-                    if ~isfield(obj.OProperties,'meanBP')
-                        obj.OProperties.meanBP = false;
-                    end
-                end
             end
+            obj.OProperties = setMissingValues(obj.OProperties);
             obj.OProperties.NSinos = obj.OProperties.nProjections;
             obj.OProperties.TotSinos = obj.OProperties.nProjections;
-            if ~isfield(obj.OProperties,'bedOffset')
-                obj.OProperties.bedOffset = [];
-            end
-            if ~isfield(obj.OProperties,'uCenter')
-                obj.OProperties.uCenter = [];
-            end
-            if ~isfield(obj.OProperties,'vCenter')
-                obj.OProperties.vCenter = [];
-            end
-            if ~isfield(obj.OProperties,'nBed')
-                obj.OProperties.nBed = 1;
-            end
             obj.OProperties.span = 3;
             obj.OProperties.segment_table = [];
             obj.OProperties.Ndist = obj.OProperties.ySize;
@@ -435,12 +399,6 @@ classdef forwardBackwardProjectCT
             obj.OProperties.apply_acceleration = false;
             obj.OProperties.cpu_to_gpu_factor = 0;
             obj.OProperties.name = '';
-            if ~isfield(obj.OProperties,'flip_image')
-                obj.OProperties.flip_image = false;
-            end
-            if ~isfield(obj.OProperties,'offangle')
-                obj.OProperties.offangle = 0;
-            end
             obj.OProperties.ndist_side = 1;
             obj.OProperties.epps = 1e-8;
             obj.OProperties.segment_table = 0;
@@ -460,7 +418,7 @@ classdef forwardBackwardProjectCT
             else
                 storeMatrix = false;
             end
-            if obj.OProperties.subset_type < 8 && obj.OProperties.subsets > 1
+            if obj.OProperties.subsets > 1 && obj.OProperties.subset_type < 8
                 warning('Use of subset_types < 8 are not recommended with CT data!')
                 if obj.OProperties.flip_image
                     obj.OProperties.angles = -obj.OProperties.angles;
@@ -627,6 +585,7 @@ classdef forwardBackwardProjectCT
                     clear z_det
                 end
             end
+            
             if numel(obj.OProperties.z_det)/2 > numel(obj.OProperties.angles) && obj.OProperties.listmode == 0
                 if size(obj.OProperties.angles,1) == 1
                     obj.OProperties.angles = reshape(obj.OProperties.angles, [],1);
@@ -677,6 +636,9 @@ classdef forwardBackwardProjectCT
             end
             
             R = 0;
+            N = [obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz];
+            offset = [obj.OProperties.oOffsetX obj.OProperties.oOffsetY obj.OProperties.oOffsetZ];
+            FOV = [obj.OProperties.FOVa_x obj.OProperties.FOVa_y obj.OProperties.axial_fov];
 %             if ~obj.OProperties.simple
 % %                 Z = obj.OProperties.dPitch * double(obj.OProperties.xSize) + obj.OProperties.z_det(obj.OProperties.nProjections);
                 Z = 0;
@@ -689,13 +651,13 @@ classdef forwardBackwardProjectCT
 %                 Z = 0;
 %             end
             
-            if isfield(obj.OProperties, 'bx') && isfield(obj.OProperties, 'by')
-                bx = obj.OProperties.bx;
-                by = obj.OProperties.by;
-                bz = obj.OProperties.bz;
-            end
+%             if isfield(obj.OProperties, 'bx') && isfield(obj.OProperties, 'by')
+%                 bx = obj.OProperties.bx;
+%                 by = obj.OProperties.by;
+%                 bz = obj.OProperties.bz;
+%             end
             [obj.OProperties.xx,obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.OProperties.bx,obj.OProperties.by,...
-                obj.OProperties.bz] = computePixelSize(R, FOVax, FOVay, Z, axial_fov, obj.OProperties.Nx, obj.OProperties.Ny, obj.OProperties.Nz, obj.OProperties.implementation);
+                obj.OProperties.bz] = computePixelSize(FOV, N, offset, obj.OProperties.implementation);
             
             [obj.OProperties.x_center,obj.OProperties.y_center,obj.OProperties.z_center,obj.OProperties.dec] = computePixelCenters(obj.OProperties.xx,...
                 obj.OProperties.yy,obj.OProperties.zz,obj.OProperties.dx,obj.OProperties.dy,obj.OProperties.dz,obj.TOF,obj.OProperties);
@@ -703,20 +665,20 @@ classdef forwardBackwardProjectCT
             [obj.OProperties.V,obj.OProperties.Vmax,obj.OProperties.bmin,obj.OProperties.bmax] = computeVoxelVolumes(obj.OProperties.dx,obj.OProperties.dy,...
                 obj.OProperties.dz,obj.OProperties);
             
-            if isfield(obj.OProperties, 'oOffsetX')
-                obj.OProperties.bx = obj.OProperties.bx + obj.OProperties.oOffsetX;
-            end
-            if isfield(obj.OProperties, 'oOffsetY')
-                obj.OProperties.by = obj.OProperties.bx + obj.OProperties.oOffsetY;
-            end
-            if isfield(obj.OProperties, 'oOffsetZ')
-                obj.OProperties.bz = obj.OProperties.bz + obj.OProperties.oOffsetZ;
-            end
-            if exist('bx','var') && exist('by','var')
-                obj.OProperties.bx = bx;
-                obj.OProperties.by = by;
-                obj.OProperties.bz = bz;
-            end
+%             if isfield(obj.OProperties, 'oOffsetX')
+%                 obj.OProperties.bx = obj.OProperties.bx + obj.OProperties.oOffsetX;
+%             end
+%             if isfield(obj.OProperties, 'oOffsetY')
+%                 obj.OProperties.by = obj.OProperties.bx + obj.OProperties.oOffsetY;
+%             end
+%             if isfield(obj.OProperties, 'oOffsetZ')
+%                 obj.OProperties.bz = obj.OProperties.bz + obj.OProperties.oOffsetZ;
+%             end
+%             if exist('bx','var') && exist('by','var')
+%                 obj.OProperties.bx = bx;
+%                 obj.OProperties.by = by;
+%                 obj.OProperties.bz = bz;
+%             end
             
             if ~obj.OProperties.listmode
 %                 if obj.OProperties.projectory_type == 5

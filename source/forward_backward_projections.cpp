@@ -309,7 +309,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	std::vector<cl::Buffer> d_meanV(num_devices_context);
 	std::vector<cl::Image3D> d_inputImage(num_devices_context);
 	std::vector<cl::Image2D> d_mask1(num_devices_context);
-	std::vector<cl::Image2D> d_mask2(num_devices_context);
+	//std::vector<cl::Image2D> d_mask2(num_devices_context);
 	std::vector<cl::Image3D> d_ImageX(num_devices_context);
 	std::vector<cl::Image3D> d_ImageY(num_devices_context);
 	if (num_devices_context > 1u) {
@@ -1031,8 +1031,8 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		if (inputScalars.precompute)
 			status = commandQueues[i].enqueueWriteBuffer(d_lor[i], CL_FALSE, 0, sizeof(uint16_t) * length[i], &lor1[cumsum[i]]);
-		else
-			status = commandQueues[i].enqueueWriteBuffer(d_lor[i], CL_FALSE, 0, sizeof(uint16_t), lor1);
+		//else
+		//	status = commandQueues[i].enqueueWriteBuffer(d_lor[i], CL_FALSE, 0, sizeof(uint16_t), lor1);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return;
@@ -1048,13 +1048,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				return;
 			}
 		}
-		else {
-			status = commandQueues[i].enqueueWriteBuffer(d_norm[i], CL_FALSE, 0, sizeof(cl_float), norm);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
-		}
+		//else {
+		//	status = commandQueues[i].enqueueWriteBuffer(d_norm[i], CL_FALSE, 0, sizeof(cl_float), norm);
+		//	if (status != CL_SUCCESS) {
+		//		getErrorString(status);
+		//		return;
+		//	}
+		//}
 		if (DEBUG) {
 			mexPrintf("Step 44444 done\n");
 			mexEvalString("pause(.0001);");
@@ -1141,6 +1141,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			kernel_.setArg(kernelInd++, bmax);
 			kernel_.setArg(kernelInd++, inputScalars.dL);
 			kernel_.setArg(kernelInd++, inputScalars.d_Scale);
+			kernel_.setArg(kernelInd++, inputScalars.global_factor);
 		}
 		//}
 		//else {
@@ -1202,20 +1203,18 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		kernel_.setArg(kernelInd++, inputScalars.size_x);
 		kernel_.setArg(kernelInd++, inputScalars.det_per_ring);
 		kernel_.setArg(kernelInd++, Nxy);
-		kernel_.setArg(kernelInd++, inputScalars.fp);
 		kernel_.setArg(kernelInd++, inputScalars.sigma_x);
 		kernel_.setArg(kernelInd++, dPitch);
-		if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u || 
-			(inputScalars.projector_type == 1u && (inputScalars.precompute || (inputScalars.n_rays * inputScalars.n_rays3D) == 1))) {
+		if (inputScalars.projector_type == 2u || inputScalars.projector_type == 3u) {
 			kernel_.setArg(kernelInd++, inputScalars.tube_width);
 			kernel_.setArg(kernelInd++, inputScalars.bmin);
 			kernel_.setArg(kernelInd++, inputScalars.bmax);
 			kernel_.setArg(kernelInd++, inputScalars.Vmax);
 		}
-		//else if (inputScalars.projector_type == 1u && !inputScalars.precompute) {
-		//	//kernel_.setArg(kernelInd++, inputScalars.dc_z);
-		//	kernel_.setArg(kernelInd++, inputScalars.n_rays);
-		//}
+		else if (inputScalars.projector_type == 1u && !inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
+			//kernel_.setArg(kernelInd++, inputScalars.dc_z);
+			kernel_.setArg(kernelInd++, inputScalars.n_rays);
+		}
 	}
 	if (status != CL_SUCCESS) {
 		getErrorString(status);
@@ -1445,7 +1444,11 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		}
 		//}
 		if (inputScalars.projector_type == 4) {
-			kernel_.setArg(kernelIndSubIter++, d_inputImage[i]);
+			status = kernel_.setArg(kernelIndSubIter++, d_inputImage[i]);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
 			//kernel_.setArg(kernelIndSubIter++, m_size);
 			status = kernel_.setArg(kernelIndSubIter++, d_output[i]);
 			if (status != CL_SUCCESS) {
@@ -1538,7 +1541,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			if ((inputScalars.fp == 1 && inputScalars.meanFP) || (inputScalars.meanBP && inputScalars.fp == 2))
 				kernel_.setArg(kernelIndSubIter++, d_meanV[i]);
 			if ((inputScalars.fp == 2 || (inputScalars.fp == 1 && inputScalars.SPECT)))
-				kernel_.setArg(kernelInd++, no_norm);
+				kernel_.setArg(kernelIndSubIter++, no_norm);
 			kernel_.setArg(kernelIndSubIter++, inputScalars.nProjections);
 			if (DEBUG) {
 				mexPrintf("step 5\n");
@@ -1556,10 +1559,10 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 			kernel_.setArg(kernelIndSubIter++, d_reko_type[i]);
 			kernel_.setArg(kernelIndSubIter++, zero);
+			kernel_.setArg(kernelIndSubIter++, inputScalars.size_y);
 			if (!CT && inputScalars.attenuation_correction)
 				kernel_.setArg(kernelIndSubIter++, d_atten[i]);
 			if (CT || inputScalars.SPECT || inputScalars.PET) {
-				kernel_.setArg(kernelIndSubIter++, inputScalars.size_y);
 				kernel_.setArg(kernelIndSubIter++, inputScalars.nProjections);
 			}
 			kernel_.setArg(kernelIndSubIter++, d_xy[i]);
@@ -1572,9 +1575,12 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 				mexPrintf("step 2\n");
 				mexEvalString("pause(.0001);");
 			}
-			kernel_.setArg(kernelIndSubIter++, d_norm[i]);
-			kernel_.setArg(kernelIndSubIter++, d_scat[i]);
+			if (inputScalars.normalization_correction)
+				kernel_.setArg(kernelIndSubIter++, d_norm[i]);
+			if (inputScalars.scatter)
+				kernel_.setArg(kernelIndSubIter++, d_scat[i]);
 			kernel_.setArg(kernelIndSubIter++, d_Summ[i]);
+			kernel_.setArg(kernelIndSubIter++, inputScalars.fp);
 			if (inputScalars.precompute)
 				kernel_.setArg(kernelIndSubIter++, d_lor[i]);
 			if (inputScalars.subsets > 1 && inputScalars.subsetType < 8) {
@@ -1584,7 +1590,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			if (inputScalars.raw)
 				kernel_.setArg(kernelIndSubIter++, d_L[i]);
 			kernel_.setArg(kernelIndSubIter++, d_Sino[i]);
-			kernel_.setArg(kernelIndSubIter++, d_sc_ra[i]);
+			//kernel_.setArg(kernelIndSubIter++, d_sc_ra[i]);
 			if (DEBUG) {
 				mexPrintf("step 3\n");
 				mexEvalString("pause(.0001);");

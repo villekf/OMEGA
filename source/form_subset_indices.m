@@ -103,7 +103,7 @@ end
 if ~isfield(options,'SPECT')
     options.SPECT = false;
 end
-pituus = [];
+% pituus = [];
 LL = [];
 lor_a = [];
 if options.precompute_lor
@@ -269,9 +269,9 @@ if ~options.precompute_lor
         index = index(1:options.Ndist*options.Nang*options.NSinos);
     end
 end
-if options.subset_type < 8 && options.subsets > 1
-    if options.use_raw_data
-        if ~exist('LL','var')
+if options.subset_type < 8 && (options.subsets > 1 || options.precompute_lor)
+    if options.use_raw_data 
+        if ~exist('LL','var') || isempty(LL)
             LL = form_detector_pairs_raw(rings, options.det_per_ring);
         end
         %             LL = LL(discard,:);
@@ -284,20 +284,93 @@ if options.subset_type < 8 && options.subsets > 1
         %             end
         LL = LL(index,:);
     end
+end
+if subsets > 1 || options.precompute_lor
+    if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
+        if options.partitions > 1
+            for ff = 1 : options.partitions
+                if ~options.use_raw_data
+                    temp = varargin{2}{ff};
+                    if options.NSinos ~= options.TotSinos
+                        temp = temp(:,:,1:options.NSinos,:);
+                    end
+                else
+                    temp = single(full(varargin{2}{ff}));
+                end
+                if TOF
+                    if options.subset_type >= 8
+                        temp = temp(:,:,index,:);
+                    else
+                        temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
+                        temp = temp(index,:);
+                    end
+                else
+                    if options.subset_type >= 8
+                        temp = temp(:,:,index);
+                    else
+                        temp = temp(index);
+                    end
+                end
+                varargout{1}{ff} = temp(:);
+            end
+            clear temp
+        else
+            if ~options.use_raw_data
+                varargout{1} = varargin{2};
+                if options.NSinos ~= options.TotSinos
+                    varargout{1} = varargout{1}(:,:,1:options.NSinos,:);
+                end
+            else
+                varargout{1} = single(full(varargin{2}{1}));
+            end
+            if TOF
+                if options.subset_type >= 8
+                    varargout{1} = varargout{1}(:,:,index,:);
+                else
+                    varargout{1} = reshape(varargout{1}, numel(varargout{1}) / options.TOF_bins, options.TOF_bins);
+                    varargout{1} = varargout{1}(index,:);
+                end
+            else
+                if options.subset_type >= 8
+                    varargout{1} = varargout{1}(:,:,index);
+                else
+                    varargout{1} = varargout{1}(index);
+                end
+            end
+            varargout{1} = varargout{1}(:);
+        end
+    end
     if options.precompute_lor
-        lor_a = (lor(index));
+        if options.subset_type >= 8
+            lor_a = reshape(lor, options.Ndist, options.Nang, []);
+            lor_a = lor_a(:,:,index);
+        else
+            lor_a = (lor(index));
+        end
         if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
                 lor_orth = lor_orth(1:options.NSinos*options.Ndist*options.Nang);
             end
-            lor_orth = (lor_orth(index));
+            if options.subset_type >= 8
+                lor_orth = reshape(lor_orth, options.Ndist, options.Nang, []);
+                lor_orth = lor_orth(:,:,index);
+            else
+                lor_orth = (lor_orth(index));
+            end
         end
     end
+    clear lor
     if options.normalization_correction && options.corrections_during_reconstruction
         if options.use_raw_data == false && options.NSinos ~= options.TotSinos
             options.normalization = options.normalization(1:options.NSinos*options.Ndist*options.Nang);
         end
-        options.normalization = options.normalization(index);
+        if options.subset_type >= 8
+            options.normalization = reshape(options.normalization, options.Ndist, options.Nang, []);
+            options.normalization = options.normalization(:,:,index);
+            options.normalization = options.normalization(:);
+        else
+            options.normalization = options.normalization(index);
+        end
     end
     if (options.randoms_correction || (options.scatter_correction  && options.subtract_scatter)) && options.corrections_during_reconstruction ...
             && ~options.reconstruct_trues && ~options.reconstruct_scatter
@@ -311,15 +384,32 @@ if options.subset_type < 8 && options.subsets > 1
                 else
                     temp = single(full(options.SinDelayed{ff}));
                 end
-                temp = temp(index);
+                if options.subset_type >= 8
+                    temp = temp(:,:,index);
+                    temp = temp(:);
+                else
+                    temp = temp(index);
+                end
                 options.SinDelayed{ff} = temp;
             end
             clear temp
         else
             if iscell(options.SinDelayed)
-                options.SinDelayed{1} = options.SinDelayed{1}(index);
+                if options.subset_type >= 8
+                    options.SinDelayed{1} = reshape(options.SinDelayed{1}, options.Ndist, options.Nang, []);
+                    options.SinDelayed{1} = options.SinDelayed{1}(:,:,index);
+                    options.SinDelayed{1} = options.SinDelayed{1}(:);
+                else
+                    options.SinDelayed{1} = options.SinDelayed{1}(index);
+                end
             else
-                options.SinDelayed = options.SinDelayed(index);
+                if options.subset_type >= 8
+                    options.SinDelayed = reshape(options.SinDelayed, options.Ndist, options.Nang, []);
+                    options.SinDelayed = options.SinDelayed(:,:,index);
+                    options.SinDelayed = options.SinDelayed(:);
+                else
+                    options.SinDelayed = options.SinDelayed(index);
+                end
             end
         end
     end
@@ -335,94 +425,33 @@ if options.subset_type < 8 && options.subsets > 1
                 else
                     temp = single(full(options.ScatterC{ff}));
                 end
-                temp = temp(index);
+                if options.subset_type >= 8
+                    temp = temp(:,:,index);
+                    temp = temp(:);
+                else
+                    temp = temp(index);
+                end
                 options.ScatterC{ff} = temp;
             end
             clear temp
         else
             if iscell(options.ScatterC)
-                options.ScatterC = options.ScatterC{1}(index);
-            else
-                options.ScatterC = options.ScatterC(index);
-            end
-        end
-    end
-    if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
-        if options.partitions > 1
-            for ff = 1 : options.partitions
-                if ~options.use_raw_data
-                    temp = varargin{2}{ff};
-                    if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos,:);
-                    end
+                if options.subset_type >= 8
+                    options.ScatterC{1} = reshape(options.ScatterC{1}, options.Ndist, options.Nang, []);
+                    options.ScatterC{1} = options.ScatterC{1}(:,:,index);
+                    options.ScatterC{1} = options.ScatterC{1}(:);
                 else
-                    temp = single(full(varargin{2}{ff}));
+                    options.ScatterC = options.ScatterC{1}(index);
                 end
-                if TOF
-                    temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
-                    temp = temp(index,:);
+            else
+                if options.subset_type >= 8
+                    options.ScatterC = reshape(options.ScatterC, options.Ndist, options.Nang, []);
+                    options.ScatterC = options.ScatterC(:,:,index);
+                    options.ScatterC = options.ScatterC(:);
                 else
-                    temp = temp(index);
+                    options.ScatterC = options.ScatterC(index);
                 end
-                varargout{1}{ff} = temp(:);
             end
-            clear temp
-        else
-            if ~options.use_raw_data
-                varargout{1} = varargin{2};
-                if options.NSinos ~= options.TotSinos
-                    varargout{1} = varargout{1}(:,:,1:options.NSinos,:);
-                end
-            else
-                varargout{1} = single(full(varargin{2}{1}));
-            end
-            if TOF
-                varargout{1} = reshape(varargout{1}, numel(varargout{1}) / options.TOF_bins, options.TOF_bins);
-                varargout{1} = varargout{1}(index,:);
-            else
-                varargout{1} = varargout{1}(index);
-            end
-            varargout{1} = varargout{1}(:);
-        end
-    end
-    clear lor
-elseif subsets > 1 && options.subset_type >= 8
-    if nargout >= 8 && ~isempty(varargin) && length(varargin) > 1 && ~isempty(varargin{2})
-        if options.partitions > 1
-            for ff = 1 : options.partitions
-                if ~options.use_raw_data
-                    temp = varargin{2}{ff};
-                    if options.NSinos ~= options.TotSinos
-                        temp = temp(:,:,1:options.NSinos,:);
-                    end
-                else
-                    temp = single(full(varargin{2}{ff}));
-                end
-                if TOF
-%                     temp = reshape(temp, numel(temp) / options.TOF_bins, options.TOF_bins);
-                    temp = temp(:,:,index,:);
-                else
-                    temp = temp(:,:,index);
-                end
-                varargout{1}{ff} = temp(:);
-            end
-            clear temp
-        else
-            if ~options.use_raw_data
-                varargout{1} = varargin{2};
-                if options.NSinos ~= options.TotSinos
-                    varargout{1} = varargout{1}(:,:,1:options.NSinos,:);
-                end
-            else
-                varargout{1} = single(full(varargin{2}{1}));
-            end
-            if TOF
-%                 varargout{1} = reshape(varargout{1}, numel(varargout{1}) / options.TOF_bins, options.TOF_bins);
-                varargout{1} = varargout{1}(:,:,index,:);
-            else
-                varargout{1} = varargout{1}(:,:,index);
-            end
-            varargout{1} = varargout{1}(:);
         end
     end
 end
@@ -447,20 +476,20 @@ elseif options.listmode > 0 && (options.subset_type == 8 || options.subset_type 
     end
     xy_index = uint32(0);
     z_index = uint16(0);
-elseif ~options.use_raw_data && subsets > 1
-    xy_index = uint32(1:size_x)';
+elseif ~options.use_raw_data && ((subsets > 1 && options.subset_type < 8) || (options.precompute_lor && options.subsets == 1))
+    xy_index = uint32(1:options.Nang * options.Ndist)';
     if options.span > 1
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.Nz, 1);
-        xy_index = [repmat(xy_index, options.Nz, 1); xy_index2];
+        xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - (options.rings * 2 - 1), 1);
+        xy_index = [repmat(xy_index,  options.rings * 2 - 1, 1); xy_index2];
     else
-        xy_index2 = repmat(uint32(1:size_x)', options.NSinos - options.rings, 1);
+        xy_index2 = repmat(uint32(1:options.Nang * options.Ndist)', options.NSinos - options.rings, 1);
         xy_index = [repmat(xy_index, options.rings, 1); xy_index2];
     end
     z_index = uint16(1:options.NSinos)';
     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-        z_index = repeat_elem(z_index, size_x);
+        z_index = repeat_elem(z_index, options.Nang * options.Ndist);
     else
-        z_index = repelem(z_index, size_x);
+        z_index = repelem(z_index, options.Nang * options.Ndist);
     end
     z_index = z_index(index);
     z_index = z_index - 1;
@@ -515,10 +544,12 @@ if options.use_raw_data
             apu2(y_i,:) = fliplr(apu2(y_i,:));
             apu(idx,:) = apu2;
             LL(pituus(kk) + 1 : pituus(kk + 1),:) = apu + 1;
-            if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
-                summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
-            else
-                summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
+            if options.precompute_lor
+                if (options.projector_type == 2 || options.projector_type == 3) && options.implementation == 1
+                    summa(kk) = uint64(sum(int64(lor_orth(pituus(kk)+1:pituus(kk+1)))));
+                else
+                    summa(kk) = uint64(sum(int64(lor_a(pituus(kk)+1:pituus(kk+1)))));
+                end
             end
         end
     else

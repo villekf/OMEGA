@@ -169,6 +169,9 @@ end
 if options.Niter < 1
     error('Number of iterations is less than one')
 end
+if options.subset_type >= 8 && options.subsets > 1 && options.precompute_lor
+    error('Subset type 8 and 9 do not support precomputed data. Set options.precompute_lor = false to use subset type 8 or 9.')
+end
 % if options.subsets < 2 && OS
 %     warning('Number of subsets is less than two. Subset has to be at least 2 when using OS-methods. Using 2 subsets.')
 %     options.subsets = 2;
@@ -247,12 +250,12 @@ if options.implementation == 3
     if options.MLEM && options.subsets > 1 && (options.implementation == 3 || options.implementation == 1)
         options.subsets = 1;
     end
-    if options.OSEM && options.subsets == 1
-        warning('OSEM selected with only 1 subset. Switching to MLEM instead')
-        options.OSEM = false;
-        options.MLEM = true;
-    end
 end
+% if options.OSEM && options.subsets == 1
+%     warning('OSEM selected with only 1 subset. Switching to MLEM instead')
+%     options.OSEM = false;
+%     options.MLEM = true;
+% end
 if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_data
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;

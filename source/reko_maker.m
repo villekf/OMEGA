@@ -37,7 +37,7 @@ varPrior = recNames(1);
 
 prior = numel(varPrior);
 MAP = numel(recNames(2));
-ML = numel([recNames(5);recNames(6)]);
+ML = numel([recNames(6)]);
 
 rekot = false(ML+MAP*prior + 1,1);
 for gg = 1 : ML
@@ -49,7 +49,7 @@ ll = 1;
 for gg = gg + 1 : MAP : numel(rekot) - 1 - prior
     tt = ML + 1;
     for uu = gg : gg + MAP - 1
-        if options.(varML{tt}) &&  options.(varPrior{ll})
+        if options.(varML{tt}) && options.(varPrior{ll})
             rekot(uu) = true;
         end
         tt = tt + 1;

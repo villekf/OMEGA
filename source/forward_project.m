@@ -83,6 +83,12 @@ end
 if ~isfield(options,'SPECT')
     options.SPECT = false;
 end
+if ~isfield(options,'PITCH')
+    options.PITCH = false;
+end
+if ~isfield(options,'PET')
+    options.PET = false;
+end
 if ~store_matrix && options.implementation == 1 && options.CT
     error('Implementation 1 is not supported for forward/backward projection. Use B = formMatrix(A,subset) instead.')
 end
@@ -174,7 +180,7 @@ if options.projector_type == 5 && options.meanFP
     options.integralX = options.integralX(:);
     yI = permute(yIA, [1 3 2]);
     options.meanV(options.Nx + 1 : options.Nx + options.Ny) = single(mean(mean(yI)));
-    yI = yI - options.meanV(options.Nx + 1 : options.Nx + options.Ny);
+    yI = yI - options.meanV(options.Nx + 1 : end);
     options.integralY = single(integralImage(yI));
     options.integralY = options.integralY(:);
     clear yI yIA
@@ -184,6 +190,8 @@ elseif options.projector_type == 5
 %         reshape(single(integralImage(permute(yI, [1 3 2]))), [], 1)];
     options.integralX = single(integralImage(permute(yI, [2 3 1])));
     options.integralY = single(integralImage(permute(yI, [1 3 2])));
+    
+    
     options.integralY = options.integralY(:);
     options.integralX = options.integralX(:);
     clear yI

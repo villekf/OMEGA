@@ -24,11 +24,20 @@ end
 if ~isfield(options, 'LSQR')
     options.LSQR = false;
 end
-if ~isfield(options, 'CP')
-    options.CP = false;
+if ~isfield(options, 'CPLS')
+    options.CPLS = false;
+end
+if ~isfield(options, 'CPTV')
+    options.CPTV = false;
+end
+if ~isfield(options, 'CGLS')
+    options.CGLS = false;
 end
 if ~isfield(options, 'use_binary')
     options.use_binary = false;
+end
+if ~isfield(options, 'PITCH')
+    options.PITCH = false;
 end
 
 if isfield(options,'mlem')
@@ -90,9 +99,9 @@ end
 if ~isfield(options,'nLayers')
      options.nLayers = 1;
 end
-if ~isfield(options,'layerOffset')
-     options.nLayers = 0;
-end
+% if ~isfield(options,'layerOffset')
+%      options.nLayers = 0;
+% end
 origPrior = {'mrp';'quad';'huber';'L';'fmh';'weighted';'TV';'ad';'APLS';'TGV';'NLM';'custom'};
 origMAP = {'mlem';'osem';'bsrem';'mbsrem';'rosem';'rbi';'cosem'};
 varPrior = recNames(1);

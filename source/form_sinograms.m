@@ -72,8 +72,8 @@ if nargin >= 3 || (nargin >= 2 && ~isempty(varargin{2}) && numel(varargin{2}) ==
 else
     data_load = false;
 end
-if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins * options.nLayers^2) || ...
-        (iscell(varargin{2}) && numel(varargin{2}{1}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins * options.nLayers^2)))
+if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins) || ...
+        (iscell(varargin{2}) && numel(varargin{2}{1}) == (options.Ndist * options.Nang * NSlices * options.TOF_bins)))
     sinoLoaded = true;
     Sino = varargin{2};
     variableList = {'SinM'};

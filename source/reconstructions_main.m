@@ -85,7 +85,8 @@ tStart = 0;
 tStart_iter = 0;
 
 % Is TOF enabled?
-TOF = options.TOF_bins > 1 && options.projector_type == 1;
+TOF = options.TOF_bins > 1 && (options.projector_type == 1 || options.projector_type == 11);
+options.TOF = TOF;
 
 % folder = fileparts(which('reconstructions_main.m'));
 % folder = strrep(folder, 'source','mat-files/');
@@ -108,7 +109,12 @@ Ny = options.Ny;
 Nz = options.Nz;
 N = Nx * Ny * Nz;
 options.N = N;
-
+if (~options.CT && ~options.SPECT) && ((options.subset_type > 7 && options.subsets > 1) || options.subsets == 1)
+    options.nProjections = options.NSinos;
+    options.PET = true;
+else
+    options.PET = false;
+end
 
 var = recNames(2);
 ll = 0;
@@ -157,450 +163,9 @@ else
 end
 
 if tyyppi < 2
-    % Load the measurement data if it does not exist in options.SinM
-    % Raw data
-    if options.use_raw_data
-        RandProp.smoothing = false;
-        RandProp.variance_reduction = false;
-        ScatterProp.smoothing = false;
-        ScatterProp.variance_reduction = false;
-        ScatterProp.normalization = false;
-        if options.partitions == 1
-            load_string = [options.machine_name '_measurements_' options.name '_static_raw'];
-            if options.use_ASCII && options.use_machine == 0
-                load_string =  [load_string '_ASCII.mat'];
-            elseif options.use_LMF && options.use_machine == 0
-                load_string =  [load_string '_LMF.mat'];
-            elseif options.use_root && options.use_machine == 0
-                load_string =  [load_string '_root.mat'];
-            else
-                load_string =  [load_string '_listmode.mat'];
-            end
-        else
-            load_string = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_' ...
-                num2str(options.tot_time) 's_raw'];
-            load_string2 = [options.machine_name '_measurements_' options.name '_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                num2str(options.tot_time) 's_raw'];
-            if options.use_ASCII && options.use_machine == 0
-                if exist([load_string '_ASCII.mat'], 'file') == 0
-                    load_string = load_string2;
-                end
-                load_string =  [load_string '_ASCII.mat'];
-            elseif options.use_LMF && options.use_machine == 0
-                if exist([load_string '_LMF.mat'], 'file') == 0
-                    load_string = load_string2;
-                end
-                load_string =  [load_string '_LMF.mat'];
-            elseif options.use_root && options.use_machine == 0
-                if exist([load_string '_root.mat'], 'file') == 0
-                    load_string = load_string2;
-                end
-                load_string =  [load_string '_root.mat'];
-            else
-                if exist([load_string '_listmode.mat'], 'file') == 0
-                    load_string = load_string2;
-                end
-                load_string =  [load_string '_listmode.mat'];
-            end
-        end
-        if options.reconstruct_trues == false && ~options.reconstruct_scatter && (isfield(options, 'coincidences') == 0 ...
-                || options.precompute_all) && options.use_machine < 2
-            options.SinM = loadStructFromFile(load_string, 'coincidences');
-        elseif ~options.reconstruct_trues && ~options.reconstruct_scatter && isfield(options, 'coincidences')
-            options.SinM = options.coincidences;
-        elseif options.reconstruct_trues
-            % Load Trues
-            options.SinM = loadStructFromFile(load_string, 'true_coincidences');
-        elseif options.reconstruct_scatter
-            % Load scattered coincidences
-            options.SinM = loadStructFromFile(load_string, 'scattered_coincidences');
-        end
-        % Perform corrections if needed
-        if options.randoms_correction && ~options.reconstruct_trues && ~options.reconstruct_scatter
-            if ((options.use_ASCII || options.use_LMF || options.use_root) && options.use_machine == 0) || options.use_machine == 1
-                options.SinDelayed = loadStructFromFile(load_string, 'delayed_coincidences');
-                if ~isfield(options,'SinDelayed')
-                    warning('No randoms correction data detected, disabling randoms correction!')
-                    options.randoms_correction = false;
-                elseif iscell(options.SinDelayed)
-                    if numel(options.SinDelayed{1}) == 1
-                        warning('No randoms correction data detected, disabling randoms correction!')
-                        options.randoms_correction = false;
-                    end
-                else
-                    if numel(options.SinDelayed) == 1
-                        warning('No randoms correction data detected, disabling randoms correction!')
-                        options.randoms_correction = false;
-                    end
-                end
-            else
-                if ~isfield(options,'SinDelayed')
-                    options = loadDelayedData(options);
-                end
-            end
-        end
-        if options.scatter_correction && ~options.corrections_during_reconstruction
-            if ~isfield(options,'ScatterC')
-                options = loadScatterData(options);
-            end
-        end
-        clear coincidences options.coincidences true_coincidences delayed_coincidences
-        % Sinogram data
-    else
-        RandProp.smoothing = false;
-        RandProp.variance_reduction = false;
-        ScatterProp.smoothing = false;
-        ScatterProp.variance_reduction = false;
-        ScatterProp.normalization = false;
-        if options.partitions == 1
-            if TOF
-                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_static_' num2str(options.Ndist) ...
-                    'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
-                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
-                    num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
-                load_string = [load_string load_string_TOF];
-            else
-                load_string = [options.machine_name '_' options.name '_sinograms_combined_static_' num2str(options.Ndist) ...
-                    'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' num2str(options.span)];
-            end
-            if options.use_machine == 0
-                sinoFile = [load_string '.mat'];
-            elseif options.use_machine == 1
-                sinoFile = [load_string '_listmode.mat'];
-            elseif options.use_machine == 2
-                sinoFile = [load_string '_machine_sinogram.mat'];
-            elseif options.use_machine == 3
-                sinoFile = [load_string '_listmode_sinogram.mat'];
-            end
-        else
-            if TOF
-                load_string = [options.machine_name '_' options.name '_TOFsinograms_combined_' num2str(poptions.artitions) ...
-                    'timepoints_for_total_of_' num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) ...
-                    'x' num2str(options.TotSinos) '_span' num2str(options.span)];
-                load_string_TOF = ['_' num2str(options.TOF_bins) 'bins_' num2str(options.TOF_width*1e12) 'psBinSize_' ...
-                    num2str(options.TOF_noise_FWHM*1e12) 'psFWHM'];
-                load_string = [load_string load_string_TOF];
-                load_string2 = load_string;
-            else
-                load_string = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span)];
-                load_string2 = [options.machine_name '_' options.name '_sinograms_combined_' num2str(options.partitions) 'timepoints_for_total_of_ ' ...
-                    num2str(options.tot_time) 's_' num2str(options.Ndist) 'x' num2str(options.Nang) 'x' num2str(options.TotSinos) '_span' ...
-                    num2str(options.span)];
-            end
-            if options.use_machine == 0
-                sinoFile = [load_string '.mat'];
-                if exist(sinoFile, 'file') == 0
-                    sinoFile = [load_string2 '.mat'];
-                end
-            elseif options.use_machine == 1
-                sinoFile = [load_string '_listmode.mat'];
-                if exist(sinoFile, 'file') == 0
-                    sinoFile = [load_string2 '_listmode.mat'];
-                end
-            elseif options.use_machine == 2
-                sinoFile = [load_string '_machine_sinogram.mat'];
-                if exist(sinoFile, 'file') == 0
-                    sinoFile = [load_string2 '_machine_sinogram.mat'];
-                end
-            elseif options.use_machine == 3
-                sinoFile = [load_string '_listmode_sinogram.mat'];
-                if exist(sinoFile, 'file') == 0
-                    sinoFile = [load_string2 '_listmode_sinogram.mat'];
-                end
-            end
-        end
-        if ~options.reconstruct_trues && ~options.reconstruct_scatter
-            loadRaw = false;
-            if isfield(options,'SinM') == 0
-                if ((options.randoms_correction || options.scatter_correction || options.normalization_correction) && ~options.corrections_during_reconstruction) ...
-                        || options.fill_sinogram_gaps
-                    try
-                        [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'SinM','appliedCorrections');
-                    catch
-                        [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                        loadRaw = true;
-                    end
-                else
-                    options.SinM = loadStructFromFile(sinoFile, 'raw_SinM');
-                    appliedCorrections = [];
-                end
-            else
-                try
-                    appliedCorrections = loadStructFromFile(sinoFile,'appliedCorrections');
-                catch
-                    appliedCorrections = [];
-                end
-            end
-            if ~options.corrections_during_reconstruction && ~isempty(appliedCorrections)
-                normalization_correction = options.normalization_correction;
-                if appliedCorrections.normalization && ~options.normalization_correction
-                    warning('Normalization correction not selected, but data precorrected with normalization! Precorrecting without normalization.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    loadRaw = true;
-                end
-                if appliedCorrections.normalization
-                    normalization_correction = false;
-                end
-                randoms_correction = options.randoms_correction;
-                if ~isempty(strfind(appliedCorrections.randoms,'variance reduction')) && ~options.variance_reduction && options.randoms_correction
-                    warning('Randoms variance correction not selected, but data precorrected with randoms with applied variance reduction! Precorrecting without variance reduction.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    loadRaw = true;
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                elseif ~isempty(strfind(appliedCorrections.randoms,'smoothing')) && ~options.randoms_smoothing && options.randoms_correction
-                    warning('Randoms smoothing not selected, but data precorrected with randoms with applied smoothing! Precorrecting without smoothing.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    loadRaw = true;
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                elseif isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw && randoms_correction
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    loadRaw = true;
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && randoms_correction && ...
-                        ((options.variance_reduction && isempty(strfind(appliedCorrections.randoms,'variance reduction'))) ...
-                        || (options.randoms_smoothing && isempty(strfind(appliedCorrections.randoms,'smoothing'))))
-                    warning('Randoms corrections selected, but data not precorrected with selected options! Precorrecting with selected options.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    loadRaw = true;
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                elseif ~isempty(strfind(appliedCorrections.randoms,'randoms correction')) && ~loadRaw
-                    randoms_correction = false;
-                end
-                if ~isempty(strfind(appliedCorrections.scatter,'variance reduction')) && ~options.scatter_variance_reduction && options.scatter_correction
-                    warning('Scatter variance correction not selected, but data precorrected with scatter with applied variance reduction! Precorrecting without variance reduction.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    if ~randoms_correction && options.randoms_correction
-                        randoms_correction = true;
-                    end
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                    loadRaw = true;
-                elseif ~isempty(strfind(appliedCorrections.scatter,'smoothing')) && ~options.scatter_smoothing && options.scatter_correction
-                    warning('Scatter smoothing not selected, but data precorrected with scatter with applied smoothing! Precorrecting without smoothing.')
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    if ~randoms_correction && options.randoms_correction
-                        randoms_correction = true;
-                    end
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                    loadRaw = true;
-                elseif isempty(strfind(appliedCorrections.scatter,'scatter correction')) && ~loadRaw && options.scatter_correction
-                    [options.SinM, appliedCorrections] = loadStructFromFile(sinoFile, 'raw_SinM','appliedCorrections');
-                    if ~randoms_correction && options.randoms_correction
-                        randoms_correction = true;
-                    end
-                    if appliedCorrections.normalization && ~normalization_correction
-                        normalization_correction = true;
-                    end
-                    loadRaw = true;
-                elseif ~isempty(strfind(appliedCorrections.scatter, 'scatter correction')) && ~loadRaw
-                    options.scatter_correction = false;
-                end
-                options.randoms_correction = randoms_correction;
-                options.normalization_correction = normalization_correction;
-                if (~appliedCorrections.gapFilling || loadRaw) && options.fill_sinogram_gaps
-                    appliedCorrections.gapFilling = true;
-                    [~, ~, xp, yp] = detector_coordinates(options);
-                    for llo = 1 : options.partitions
-                        if llo == 1
-                            gaps = [];
-                        end
-                        if options.partitions > 1
-                            Sin = options.SinM{llo};
-                        else
-                            Sin = options.SinM;
-                        end
-                        [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
-                        if options.partitions > 1
-                            options.SinM{llo} = Sin;
-                        else
-                            options.SinM = Sin;
-                        end
-                    end
-                    clear Sin
-                end
-            elseif options.corrections_during_reconstruction && ~isempty(appliedCorrections)
-                if (appliedCorrections.normalization || ~isempty(appliedCorrections.randoms) || ~isempty(appliedCorrections.scatter) || ~appliedCorrections.gapFilling) ...
-                        && options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
-                    options.SinM = loadStructFromFile(sinoFile, 'raw_SinM');
-                    appliedCorrections = [];
-                    appliedCorrections.gapFilling = true;
-                    [~, ~, xp, yp] = detector_coordinates(options);
-                    for llo = 1 : options.partitions
-                        if llo == 1
-                            gaps = [];
-                        end
-                        if options.partitions > 1
-                            Sin = options.SinM{llo};
-                        else
-                            Sin = options.SinM;
-                        end
-                        [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
-                        if options.partitions > 1
-                            options.SinM{llo} = Sin;
-                        else
-                            options.SinM = Sin;
-                        end
-                    end
-                    clear Sin
-                end
-            end
-        elseif options.reconstruct_trues && options.use_machine == 0
-            if options.partitions == 1 && isfield(options, 'SinTrues') == 0
-                options.SinM = loadStructFromFile(sinoFile,'SinTrues');
-            elseif isfield(options, 'SinTrues') == 0
-                options.SinM = loadStructFromFile(sinoFile, 'SinTrues');
-            end
-            if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
-                if options.verbose
-                    disp('Performing sinogram gap filling on trues data')
-                end
-                [~, ~, xp, yp] = detector_coordinates(options);
-                for llo = 1 : options.partitions
-                    if llo == 1
-                        gaps = [];
-                    end
-                    if options.partitions > 1
-                        Sin = options.SinM{llo};
-                    else
-                        Sin = options.SinM;
-                    end
-                    [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
-                    if options.partitions > 1
-                        options.SinM{llo} = Sin;
-                    else
-                        options.SinM = Sin;
-                    end
-                end
-                clear Sin
-            end
-        elseif options.reconstruct_scatter && options.use_machine == 0
-            if options.partitions == 1 && isfield(options, 'SinScatter') == 0
-                options.SinM = loadStructFromFile(sinoFile,'SinScatter');
-            elseif isfield(options, 'SinScatter') == 0
-                options.SinM = loadStructFromFile(sinoFile, 'SinScatter');
-            end
-            if options.fill_sinogram_gaps && options.det_per_ring < options.det_w_pseudo
-                if options.verbose
-                    disp('Performing sinogram gap filling on scatter data')
-                end
-                [~, ~, xp, yp] = detector_coordinates(options);
-                for llo = 1 : options.partitions
-                    if llo == 1
-                        gaps = [];
-                    end
-                    if options.partitions > 1
-                        Sin = options.SinM{llo};
-                    else
-                        Sin = options.SinM;
-                    end
-                    [Sin, gaps] = gapFilling(options, Sin, xp, yp, llo, gaps);
-                    if options.partitions > 1
-                        options.SinM{llo} = Sin;
-                    else
-                        options.SinM = Sin;
-                    end
-                end
-                clear Sin
-            end
-        end
-        if options.partitions == 1 && options.randoms_correction && ~options.reconstruct_scatter && ~options.reconstruct_trues
-            if options.use_machine == 0 || options.use_machine == 1 || options.use_machine == 3
-                try
-                    [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
-                catch
-                    options = loadDelayedData(options);
-                end
-            else
-                options = loadDelayedData(options);
-            end
-            if iscell(options.SinDelayed)
-                if numel(options.SinDelayed{1}) == 1
-                    warning('No randoms correction data detected, disabling randoms correction!')
-                    options.randoms_correction = false;
-                end
-            else
-                if numel(options.SinDelayed) == 1
-                    warning('No randoms correction data detected, disabling randoms correction!')
-                    options.randoms_correction = false;
-                end
-            end
-        elseif options.randoms_correction && ~options.reconstruct_scatter && ~options.reconstruct_trues
-            if options.use_machine == 0 || options.use_machine == 1 || options.use_machine == 3
-                try
-                    [options.SinDelayed,RandProp] = loadStructFromFile(sinoFile,'SinDelayed','RandProp');
-                catch
-                    options = loadDelayedData(options);
-                end
-            else
-                options = loadDelayedData(options);
-            end
-            if length(options.SinDelayed) < options.partitions && iscell(options.SinDelayed)
-                warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
-                temp = options.SinDelayed;
-                options.SinDelayed = cell(options.partitions,1);
-                if sum(size(temp{1})) > 1
-                    if size(temp{1},1) ~= size(options.Nang)
-                        temp{1} = permute(temp{1},[2 1 3]);
-                    end
-                end
-                for kk = 1 : options.partitions
-                    options.SinDelayed{kk} = temp{1};
-                end
-            elseif options.partitions > 1
-                warning('The number of delayed coincidence sinograms is less than the number of time points. Using the first one')
-                temp = options.SinDelayed;
-                options.SinDelayed = cell(options.partitions,1);
-                if sum(size(temp)) > 1
-                    if size(temp,1) ~= size(options.Nang)
-                        temp = permute(temp,[2 1 3]);
-                    end
-                end
-                for kk = 1 : options.partitions
-                    options.SinDelayed{kk} = temp;
-                end
-            else
-                if iscell(options.SinDelayed)
-                    for kk = 1 : length(options.SinDelayed)
-                        if sum(size(options.SinDelayed{kk})) > 1
-                            if size(options.SinDelayed{kk},1) ~= size(options.Nang)
-                                options.SinDelayed{kk} = permute(options.SinDelayed{kk},[2 1 3]);
-                            end
-                        end
-                    end
-                else
-                    if sum(size(options.SinDelayed)) > 1
-                        if size(options.SinDelayed,1) ~= size(options.Nang)
-                            options.SinDelayed = permute(options.SinDelayed,[2 1 3]);
-                        end
-                    end
-                end
-            end
-            if iscell(options.SinDelayed)
-                if numel(options.SinDelayed{1}) == 1
-                    warning('No randoms correction data detected, disabling randoms correction!')
-                    options.randoms_correction = false;
-                end
-            else
-                if numel(options.SinDelayed) == 1
-                    warning('No randoms correction data detected, disabling randoms correction!')
-                    options.randoms_correction = false;
-                end
-            end
-        end
-    end
+    [options, RandProp, ScatterProp] = loadInputData(options);
+end
+
     
     if (options.quad || options.FMH || options.L || options.weighted_mean || options.MRP || options.TV || options.Huber) && options.MAP
         Ndx = options.Ndx;
@@ -681,7 +246,6 @@ if tyyppi < 2
     if (options.implementation == 1 || options.implementation == 4) || tyyppi == 1
         im_vectors = form_image_vectors(options, N);
     end
-end
 
 % Vector to identify the reconstruction algorithms
 rekot = reko_maker(options);
@@ -807,6 +371,10 @@ if options.implementation == 2 || options.implementation == 3
     TOFCenter = single(TOFCenter);
 end
 
+if options.CT && (options.LSQR || options.CPLS || options.CGLS || options.CPTV)
+    options = linearizeData(options);
+end
+
 
 %%
 
@@ -905,7 +473,7 @@ end
 
 % Coordinates of the detectors
 if options.projector_type ~= 6
-[x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
+    [x, y, z_det, options] = get_coordinates(options, blocks, pseudot);
 else
     y = 0;
     x= 0;
@@ -916,15 +484,15 @@ end
 
 if options.use_raw_data
     if list_mode_format
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     else
         size_x = uint32(numel(x));
     end
 else
     if list_mode_format
-        size_x = uint32(numel(x) / 2);
+        size_x = uint32(numel(x) / 6);
     else
-        size_x = uint32(options.Nang*options.Ndist);
+        size_x = uint32(options.Ndist);
     end
     if options.sampling > 1 && ~options.precompute_lor
         size_x = size_x * options.sampling;
@@ -939,18 +507,21 @@ if options.CT || options.projector_type == 6
     end
 else
     options.angles = 0;
-    options.dPitch = 0;
-    options.size_y = uint32(0);
-    options.nProjections = int64(0);
-    options.xSize = 0;
+    options.dPitch = options.cr_p;
+    options.dPitchY = options.cr_p;
+    options.dPitchX = options.cr_pz;
+    options.size_y = options.Nang;
+    options.nProjections = options.NSinos;
+    options.xSize = options.Ndist;
+    options.ySize = options.Nang;
 end
 
-if subsets > 1
+% if subsets > 1
     pituus = [int64(0);int64(cumsum(pituus))];
     if iscell(index)
         index = cell2mat(index);
     end
-end
+% end
 
 % Compute the necessary indices required for subsets (e.g. the index of
 % the detector coordinates for the current LOR)
@@ -985,7 +556,7 @@ if options.CT || options.PET || (options.SPECT && options.projector_type ~= 6)
                 z_det = z_det(:);
             end
         else
-            z_det = reshape(z_det, 2, options.nProjections);
+            z_det = reshape(z_det, [], options.nProjections);
             z_det = z_det(:,index);
             z_det = z_det(:);
         end
@@ -1064,7 +635,7 @@ end
 
 
 
-if options.projector_type == 4 || options.projector_type == 5
+if options.projector_type == 4 || options.projector_type == 5 || options.projector_type == 14 || options.projector_type == 41
     options.dScaleX = 1 / (dx * (options.Nx));
     options.dScaleY = 1 / (dy * (options.Ny));
     options.dScaleZ = 1 / (dz * (options.Nz));
@@ -1081,9 +652,15 @@ if options.projector_type == 4 || options.projector_type == 5
         options.dSizeZBP = (options.xSize + 1) * options.dPitchX;
         options.dSizeXBP = (options.ySize + 1) * options.dPitchY;
     end
-    options.kerroin = (dx * dy * dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector);
-    options.use_64bit_atomics = false;
-    options.use_32bit_atomics = false;
+    if options.projector_type == 4 || options.projector_type == 14
+        options.kerroin = (dx * dy * dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector);
+    else
+        options.kerroin = 0;
+    end
+    if options.projector_type == 4 || options.projector_type == 5 || options.projector_type == 14
+        options.use_64bit_atomics = false;
+        options.use_32bit_atomics = false;
+    end
 end
 
 if exist('feature','builtin') == 5
@@ -1111,7 +688,7 @@ if options.projector_type == 6
 %         end
     end
 end
-if options.implementation > 1
+if options.implementation > 1 || options.precompute_lor || (exist('OCTAVE_VERSION','builtin') == 0 && exist('projector_mex','file') == 3) || (exist('OCTAVE_VERSION','builtin') == 5 && exist('projector_oct','file') == 3)
     index = uint32(0);
 end
 
@@ -1234,23 +811,24 @@ else
     
     % Multi-ray Siddon
     % Compute the multi-ray coordinates
-    if options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && options.projector_type == 1
+    if options.implementation > 1 && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1) && ~options.precompute_lor && (options.projector_type == 1 || options.projector_type == 11)
         [x,y] = getMultirayCoordinates(options);
     end
     
     if length(pituus) == 1
         pituus = [int64(0);pituus];
     end
-    
+
     % Remove negative values
-    if iscell(options.SinM)
-        for llo = 1 : partitions
-            options.SinM{llo}(options.SinM{llo} < 0) = 0;
+    if ~options.CT && (~options.LSQR && ~options.CPLS && ~options.CGLS && ~options.CPTV)
+        if iscell(options.SinM)
+            for llo = 1 : partitions
+                options.SinM{llo}(options.SinM{llo} < 0) = 0;
+            end
+        else
+            options.SinM(options.SinM < 0) = 0;
         end
-    else
-        options.SinM(options.SinM < 0) = 0;
     end
-    
     % Perform various prepass steps, if necessary
     % These include computing weights, matrices required by some algorithms
     % (COSEM, etc.) and loading anatomic reference images
@@ -1446,11 +1024,16 @@ else
                 for iter = 1 : Niter
                     
                     for osa_iter = 1 : subsets
+                        if options.subset_type >= 8
+                            kerroin = options.Ndist*options.Nang;
+                        else
+                            kerroin = 1;
+                        end
                         if randoms_correction
                             if iscell(options.SinDelayed)
-                                SinD = double(options.SinDelayed{llo}(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                                SinD = double(options.SinDelayed{llo}(pituus(osa_iter)*kerroin+1:pituus(osa_iter + 1)*kerroin));
                             else
-                                SinD = double(options.SinDelayed(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                                SinD = double(options.SinDelayed(pituus(osa_iter)*kerroin+1:pituus(osa_iter + 1)*kerroin));
                             end
                             if issparse(SinD)
                                 SinD = (full(SinD));
@@ -1460,12 +1043,12 @@ else
                             SinD = 0;
                         end
                         if normalization_correction
-                            norm_input = single(options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                            norm_input = single(options.normalization(pituus(osa_iter)*kerroin+1:pituus(osa_iter + 1)*kerroin));
                         else
                             norm_input = single(0);
                         end
                         if options.scatter_correction && ~options.subtract_scatter
-                            scatter_input = double(ScatterC(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                            scatter_input = double(ScatterC(pituus(osa_iter)*kerroin+1:pituus(osa_iter + 1)*kerroin));
                         else
                             scatter_input = 0;
                         end
@@ -1473,11 +1056,11 @@ else
                             if iter == 1 && osa_iter == 1
                                 lor_a = lor_pixel_count_prepass(options, false);
                                 for lla = 1 : subsets
-                                    summa(lla) = uint64(sum(lor_a(pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                    summa(lla) = uint64(sum(lor_a(pituus(osa_iter)*koko+1:pituus(osa_iter + 1)*kerroin)));
                                 end
                             end
                         end
-                        uu = double(Sino(pituus(osa_iter) + 1 : pituus(osa_iter + 1)));
+                        uu = double(Sino(pituus(osa_iter)*kerroin+1:pituus(osa_iter + 1)*kerroin));
                         koko = length(uu);
                         [A,ll, Summ] = computeImplementation1(options,use_raw_data,randoms_correction, pituus,osa_iter, normalization_correction,...
                             Nx, Ny, Nz, dx, dy, dz, bx, by, bz, x, y, z_det, xx, yy, size_x, NSinos, NSlices, zmax, attenuation_correction, pseudot, det_per_ring, ...
@@ -1731,26 +1314,6 @@ else
                             f_Summ = ones(Nx*Ny*Nz,subsets);
                         end
                         for osa_iter = 1 : subsets
-                            if randoms_correction
-                                if iscell(options.SinDelayed)
-                                    SinD = single(full(options.SinDelayed{llo}(pituus(osa_iter)+1:pituus(osa_iter + 1))));
-                                else
-                                    SinD = single(full(options.SinDelayed(pituus(osa_iter)+1:pituus(osa_iter + 1))));
-                                end
-                                SinD = SinD(:);
-                            else
-                                SinD = 0;
-                            end
-                            if normalization_correction
-                                norm_input = single(options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1)));
-                            else
-                                norm_input = 0;
-                            end
-                            if options.scatter_correction && ~options.subtract_scatter
-                                scatter_input = double(ScatterC(pituus(osa_iter)+1:pituus(osa_iter + 1)));
-                            else
-                                scatter_input = 0;
-                            end
                             if verbose
                                 tStart = tic;
                             end
@@ -1795,6 +1358,9 @@ else
                                     y = y(:);
                                     z_det = z_det(:);
                                     det_per_ring = uint32(numel(x)/2);
+                                elseif ~list_mode_format && options.subset_type >= 8
+                                    xy_index_input = 0;
+                                    z_index_input = 0;
                                 elseif ~list_mode_format
                                     xy_index_input = xy_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
                                     z_index_input = z_index(pituus(osa_iter)+1:pituus(osa_iter + 1));
@@ -1807,13 +1373,71 @@ else
                             else
                                 lor_a_input = uint16(0);
                             end
-                            if TOF
-                                uu = zeros(TOFSize * options.TOF_bins, 1);
-                                for dd = 1 : options.TOF_bins
-                                    uu(1 + TOFSize * (dd - 1) : TOFSize * dd) = single(full(Sino(pituus(osa_iter) + 1 + fullSize * (dd - 1) : pituus(osa_iter + 1) + fullSize * (dd - 1))));
+                            if options.subset_type >= 8
+                                koko = options.Ndist*options.Nang;
+                                if normalization_correction
+                                    norm_input = single(options.normalization(pituus(osa_iter)*koko+1:pituus(osa_iter + 1)*koko));
+                                else
+                                    norm_input = 0;
                                 end
+                                if options.scatter_correction && ~options.subtract_scatter
+                                    scatter_input = double(ScatterC(pituus(osa_iter)*koko+1:pituus(osa_iter + 1)*koko));
+                                else
+                                    scatter_input = 0;
+                                end
+                                if randoms_correction
+                                    if iscell(options.SinDelayed)
+                                        SinD = options.SinDelayed{llo};
+                                        SinD = reshape(SinD, options.Ndist, options.Nang, options.NSinos,options.TOF_bins);
+                                        SinD = single(full(SinD(:,:,pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                    else
+                                        SinD = reshape(options.SinDelayed, options.Ndist, options.Nang, options.NSinos,options.TOF_bins);
+                                        SinD = single(full(SinD(:,:,pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                    end
+                                    SinD = SinD(:);
+                                else
+                                    SinD = 0;
+                                end
+                                TOFSize = options.Ndist * options.Nang * (pituus(osa_iter + 1) - pituus(osa_iter));
+                                Sino = reshape(Sino, options.Ndist, options.Nang, options.NSinos,options.TOF_bins);
+                                if TOF
+                                    uu = zeros(TOFSize * options.TOF_bins, 1);
+                                    for dd = 1 : options.TOF_bins
+                                        uu(1 + TOFSize * (dd - 1) : TOFSize * dd) = single(full(Sino(:,:,pituus(osa_iter)+1:pituus(osa_iter + 1), dd)));
+                                    end
+                                else
+                                    uu = single(full(Sino(:,:,pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                end
+                                uu = uu(:);
                             else
-                                uu = single(full(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                if normalization_correction
+                                    norm_input = single(options.normalization(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                                else
+                                    norm_input = 0;
+                                end
+                                if options.scatter_correction && ~options.subtract_scatter
+                                    scatter_input = double(ScatterC(pituus(osa_iter)+1:pituus(osa_iter + 1)));
+                                else
+                                    scatter_input = 0;
+                                end
+                                if randoms_correction
+                                    if iscell(options.SinDelayed)
+                                        SinD = single(full(options.SinDelayed{llo}(pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                    else
+                                        SinD = single(full(options.SinDelayed(pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                    end
+                                    SinD = SinD(:);
+                                else
+                                    SinD = 0;
+                                end
+                                if TOF
+                                    uu = zeros(TOFSize * options.TOF_bins, 1);
+                                    for dd = 1 : options.TOF_bins
+                                        uu(1 + TOFSize * (dd - 1) : TOFSize * dd) = single(full(Sino(pituus(osa_iter) + 1 + fullSize * (dd - 1) : pituus(osa_iter + 1) + fullSize * (dd - 1))));
+                                    end
+                                else
+                                    uu = single(full(Sino(pituus(osa_iter)+1:pituus(osa_iter + 1))));
+                                end
                             end
                             uu(isnan(uu)) = 0;
                             uu(isinf(uu)) = 0;
