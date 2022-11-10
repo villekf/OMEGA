@@ -63,7 +63,7 @@ void projectorType4Forward(const uint3 d_N, const float3 b, const uint d_size_x,
 #endif
         return; 
 #ifdef MASKFP
-    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).x;
+    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
     if (maskVal == 0)
         return;
 #endif
@@ -170,7 +170,7 @@ void projectorType4Forward(const uint3 d_N, const float3 b, const uint d_size_x,
         const float4 p = (float4)(mad(t, v, s), 0.f);
 #if !defined(CT)
 #ifdef ATN
-        jelppi -= read_imagef(d_atten, samplerForw, p).x;
+        jelppi -= read_imagef(d_atten, samplerForw, p).w;
 #endif
 #if defined(TOF) && (defined(DEC) || defined(FP))
         const float TOFSum = TOFLoop(DD, dL, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
@@ -181,13 +181,13 @@ void projectorType4Forward(const uint3 d_N, const float3 b, const uint d_size_x,
          denominator(dL, ax, p, d_NN, d_OSEM);
 
 #else // Implementation 3
-            denominator_multi(dL, &axOSEM, read_imagef(d_OSEM, samplerForw, p).x);
+            denominator_multi(dL, &axOSEM, read_imagef(d_OSEM, samplerForw, p).w);
 
 #endif
 #endif
             // dP += dL;
 #else
-        temp += read_imagef(d_OSEM, samplerForw, p).x;
+        temp += read_imagef(d_OSEM, samplerForw, p).w;
 #endif
         t += tStep;
         if (t > tEnd)
@@ -268,7 +268,16 @@ void projectorType4Backward(const uint3 d_N, const float3 b, const uint d_size_x
     if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
         return;
 #ifdef MASKBP
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).x;
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
+    //if (i.x == 400 && i.y == 400 && get_global_id(2) == 10) {
+    //    printf("i.x = %d\n", i.x);
+    //    printf("i.y = %d\n", i.y);
+    //    printf("i.z = %d\n", i.z);
+    //    printf("maskVal = %d\n", maskVal);
+    //    //printf("temp[zz] = %f\n", temp[zz]);
+    //    //printf("get_global_id(2)= %d\n", get_global_id(2));
+    //    //printf("get_global_size(2)= %d\n", get_global_size(2));
+    //}
     if (maskVal == 0)
         return;
 #endif
@@ -295,6 +304,7 @@ void projectorType4Backward(const uint3 d_N, const float3 b, const uint d_size_x
         s = (float3)(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
         d1 = (float3)(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
         //s = vload3(kk * 2, d_xyz);
+
         //d1 = vload3(kk * 2, &d_xyz[3]);
 #if defined(PITCH)
         const float3 apuX = (float3)(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
@@ -338,7 +348,7 @@ void projectorType4Backward(const uint3 d_N, const float3 b, const uint d_size_x
             p -= d3;
             const float weight = (L * L * L) / (l1)*kerroin;
             //const float yVar = read_imagef(d_forw, samplerIm, (float4)(dot(p, normX) / koko.x, dot(p, normY) / koko.y, pz, 0.f)).x;
-            const float yVar = read_imagef(d_forw, samplerIm, (float4)(dot(p, normX), dot(p, normY), pz, 0.f)).x;
+            const float yVar = read_imagef(d_forw, samplerIm, (float4)(dot(p, normX), dot(p, normY), pz, 0.f)).w;
             //const float yVar = read_imagef(d_forw, sampler, (float4)(p.x, p.z, pz, 0.f)).x;
             //const float yVar = p.x;
             if (yVar != 0.f) {

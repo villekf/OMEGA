@@ -28,7 +28,7 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
         return;
 
 #ifdef MASKFP
-    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).x;
+    const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
     if (maskVal == 0)
         return;
 #endif
@@ -75,10 +75,10 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
                 zUD.x = zUD.y;
                 zUD.y = apu;
             }
-            const float A = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).x;
-            const float B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).x;
-            const float C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).x;
-            const float D = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).x;
+            const float A = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.x, dy, 0.f)).w;
+            const float B = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.y, dy, 0.f)).w;
+            const float C = read_imagef(d_IImageY, sampler2, (float4)(xLR.y, zUD.y, dy, 0.f)).w;
+            const float D = read_imagef(d_IImageY, sampler2, (float4)(xLR.x, zUD.x, dy, 0.f)).w;
             float apu = C + D - A - B;
             //if (i.x == 300 && i.y == 300 && i.z == 0 && jj < 10) {
             //    printf("apu1 = %f\n", apu);
@@ -142,10 +142,10 @@ void projectorType5Forward(const uint3 d_N, const float3 b, const uint d_size_x,
                 zUD.x = zUD.y;
                 zUD.y = apu;
             }
-            const float A = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).x;
-            const float B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).x;
-            const float C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).x;
-            const float D = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).x;
+            const float A = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.x, dx, 0.f)).w;
+            const float B = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.y, dx, 0.f)).w;
+            const float C = read_imagef(d_IImageX, sampler2, (float4)(yLR.y, zUD.y, dx, 0.f)).w;
+            const float D = read_imagef(d_IImageX, sampler2, (float4)(yLR.x, zUD.x, dx, 0.f)).w;
             float apu = C + D - A - B;
             //float apuT = apu;
             //if (i.x == 1 && i.y == 300 && i.z == 149) {
@@ -213,7 +213,7 @@ void projectorType5Backward(const uint3 d_N, const float3 b, const uint d_size_x
         return;
 
 #ifdef MASKBP
-    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).x;
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
     if (maskVal == 0)
         return;
 #endif
@@ -311,10 +311,10 @@ void projectorType5Backward(const uint3 d_N, const float3 b, const uint d_size_x
         //if (any(coordA > 1.f) || any(coordB > 1.f) || any(coordA < 0.f) || any(coordB < 0.f) || any(coordC > 1.f) || any(coordD > 1.f) || any(coordC < 0.f) || any(coordD < 0.f))
         //    continue;
         //#endif
-        float A = read_imagef(d_IImage, sampler2, coordA).x;
-        float B = read_imagef(d_IImage, sampler2, coordB).x;
-        float C = read_imagef(d_IImage, sampler2, coordC).x;
-        float D = read_imagef(d_IImage, sampler2, coordD).x;
+        float A = read_imagef(d_IImage, sampler2, coordA).w;
+        float B = read_imagef(d_IImage, sampler2, coordB).w;
+        float C = read_imagef(d_IImage, sampler2, coordC).w;
+        float D = read_imagef(d_IImage, sampler2, coordD).w;
         //const float l = native_sqrt(v.x * v.x + v.y * v.y);
         //const float l = length(v);
         //v = normalize(v);

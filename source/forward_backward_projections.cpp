@@ -372,15 +372,17 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		// Attenuation image
 		//d_atten[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(float) * size_atten, NULL, &status);
 		cl::ImageFormat format;
-		format.image_channel_order = CL_R;
+		format.image_channel_order = CL_A;
 		format.image_channel_data_type = CL_FLOAT;
 		cl::size_type imX = inputScalars.Nx;
 		cl::size_type imY = inputScalars.Ny;
 		cl::size_type imZ = inputScalars.Nz;
-		d_atten[i] = cl::Image3D(context, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return;
+		if (inputScalars.attenuation_correction) {
+			d_atten[i] = cl::Image3D(context, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return;
+			}
 		}
 		//d_pseudos[i] = cl::Buffer(context, CL_MEM_READ_ONLY, sizeof(uint32_t) * inputScalars.pRows, NULL, &status);
 		//if (status != CL_SUCCESS) {
@@ -414,7 +416,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		// Mask images for projector types 4 and 5
 		if ((inputScalars.projector_type == 5 || inputScalars.projector_type == 4)) {
 			cl::ImageFormat format;
-			format.image_channel_order = CL_R;
+			format.image_channel_order = CL_A;
 			format.image_channel_data_type = CL_UNSIGNED_INT8;
 			if (inputScalars.maskFP && inputScalars.fp == 1) {
 				cl::size_type imX = inputScalars.size_x;
@@ -439,7 +441,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		// Integral image and mean values for projector type 5
 		if (inputScalars.projector_type == 5) {
 			cl::ImageFormat format;
-			format.image_channel_order = CL_R;
+			format.image_channel_order = CL_A;
 			format.image_channel_data_type = CL_FLOAT;
 			if (inputScalars.fp == 2) {
 				cl::size_type imX = inputScalars.size_x;
@@ -490,7 +492,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		// Current estimate/image when using forward projection or projection image for projector type 4
 		else if (inputScalars.projector_type == 4 || inputScalars.fp == 1) {
 			cl::ImageFormat format;
-			format.image_channel_order = CL_R;
+			format.image_channel_order = CL_A;
 			format.image_channel_data_type = CL_FLOAT;
 			cl::size_type imX = inputScalars.Nx;
 			cl::size_type imY = inputScalars.Ny;

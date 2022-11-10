@@ -414,13 +414,13 @@ const int4 local_ind, uint ind, const uchar no_norm, __global CAST* Summ, const 
 		for (uint kk = 0u; kk < d_N2; kk++) {
 #ifdef ATN
 			if (zz == convert_int_sat(z_loop) && uu == convert_int_sat(apu))
-				*jelppi += (d_d1 * -read_imagef(d_atten, samplerIm, local_ind).x);
+				*jelppi += (d_d1 * -read_imagef(d_atten, samplerIm, local_ind).w);
 				//jelppi += (d_d1 * -d_atten[local_ind]);
 #endif
 #ifdef MBSREM
 			if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || 
 				MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
-				*axCOSEM += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).x);
+				*axCOSEM += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).w);
 				//*axCOSEM += (local_ele * d_OSEM[local_ind]);
 			}
 #elif defined(FP)
@@ -431,7 +431,7 @@ const int4 local_ind, uint ind, const uchar no_norm, __global CAST* Summ, const 
 				denominator(local_ele, ax, local_ind, im_dim, d_OSEM);
 #else
 				//denominator_multi(local_ele, ax, &d_OSEM[local_ind]);
-				denominator_multi(local_ele, ax, read_imagef(d_OSEM, samplerIm, local_ind).x);
+				denominator_multi(local_ele, ax, read_imagef(d_OSEM, samplerIm, local_ind).w);
 #endif
 #ifdef BP
 			}
@@ -483,7 +483,7 @@ const int4 local_ind, uint ind, const uchar no_norm, __global CAST* Summ, const 
 #endif
 			}
 			else
-				*ax += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).x);
+				*ax += (local_ele * read_imagef(d_OSEM, samplerIm, local_ind).w);
 				//*ax += (local_ele * d_OSEM[local_ind]);
 			ind += d_NN;
 			if (d_NN == 1)

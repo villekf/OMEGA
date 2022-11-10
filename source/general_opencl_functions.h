@@ -77,9 +77,9 @@ void atomicAdd_g_f(volatile __global float *addr, float val) {
 //void forwardProject(const float local_ele, float* ax, const uint kk, const uint local_ind, const __global float* d_OSEM) {
 void forwardProject(const float local_ele, float* ax, const uint kk, const T local_ind, __read_only image3d_t d_OSEM) {
 #ifdef PTYPE4
-	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerForw, local_ind).x);
+	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerForw, local_ind).w);
 #else
-	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerSiddon, local_ind).x);
+	ax[kk] += (local_ele * read_imagef(d_OSEM, samplerSiddon, local_ind).w);
 #endif
 	//ax[kk] += (local_ele);
 	//ax[kk] += (local_ele * d_OSEM[local_ind]);
@@ -159,7 +159,7 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 #if defined(RANDOMS) && defined(BP) && defined(FP)
 	local_rand = d_sc_ra[idx];
 #endif
-#ifdef NREKOS1
+#if defined(NREKOS1) || defined(NREKOS2)
 #ifndef CT
 	ax[0] *= temp;
 #if defined(BP) && defined(FP)
@@ -168,7 +168,7 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 #endif
 #endif
 #if defined(BP) && defined(FP)
-#ifdef MRAMLA
+//#ifdef MRAMLA
 	if (MethodList[0] != 1u)
 		yDivFP(ax, d_Sino, 0, local_rand);
 	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
@@ -177,32 +177,15 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 		else
 			yDivFP(ax, d_Sino, 0, local_rand);
 	}
-#else
-	yDivFP(ax, d_Sino, 0, local_rand);
+	if (MethodList[0] == 2)
+		ax[0] -= 1.f;
+	else if (MethodList[0] == 3)
+		ax[0] = 1.f - ax[0];
+//#else
+//	yDivFP(ax, d_Sino, 0, local_rand);
+//#endif
 #endif
-#endif
-#elif defined(NREKOS2)
-#ifndef CT
-	ax[0] *= temp;
-#if defined(BP) && defined(FP)
-	if (ax[0] < d_epps)
-		ax[0] = d_epps;
-#endif
-#endif
-#if defined(BP) && defined(FP)
-#ifdef MRAMLA
-	if (MethodList[0] != 1u)
-		yDivFP(ax, d_Sino, 0, local_rand);
-	else if (MethodList[0] == 1u) { // MRAMLA/MBSREM
-		if (ax[0] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
-			yDivFPMBSREM(ax, d_Sino, 0, local_rand, d_epsilon_mramla);
-		else
-			yDivFP(ax, d_Sino, 0, local_rand);
-	}
-#else
-	yDivFP(ax, d_Sino, 0, local_rand);
-#endif
-#endif
+#if defined(NREKOS2)
 #ifndef CT
 	ax[1] *= temp;
 #if defined(BP) && defined(FP)
@@ -211,7 +194,7 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 #endif
 #endif
 #if defined(BP) && defined(FP)
-#ifdef MRAMLA
+//#ifdef MRAMLA
 	if (MethodList[1] != 1u)
 		yDivFP(ax, d_Sino, 1, local_rand);
 	else if (MethodList[1] == 1u) { // MRAMLA/MBSREM
@@ -220,8 +203,13 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 		else
 			yDivFP(ax, d_Sino, 1, local_rand);
 	}
-#else
-	yDivFP(ax, d_Sino, 1, local_rand);
+	if (MethodList[1] == 2)
+		ax[1] -= 1.f;
+	else if (MethodList[1] == 3)
+		ax[1] = 1.f - ax[1];
+//#else
+//	yDivFP(ax, d_Sino, 1, local_rand);
+//#endif
 #endif
 #endif
 #else
@@ -236,8 +224,8 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 #endif
 #endif
 #if defined(BP) && defined(FP)
-#ifdef MRAMLA
-		if (MethodList[kk] != 1u)
+//#ifdef MRAMLA
+		if (MethodList[kk] == 0)
 			yDivFP(ax, d_Sino, kk, local_rand);
 		else if (MethodList[kk] == 1u) { // MRAMLA/MBSREM
 			if (ax[kk] < d_epsilon_mramla && local_rand == 0.f && d_Sino > 0.f)
@@ -245,9 +233,13 @@ void nominator(float* ax, const float d_Sino, const float d_epsilon_mramla, cons
 			else
 				yDivFP(ax, d_Sino, kk, local_rand);
 		}
-#else
-		yDivFP(ax, d_Sino, kk, local_rand);
-#endif
+		if (MethodList[kk] == 2)
+			ax[kk] -= 1.f;
+		else if (MethodList[kk] == 3)
+			ax[kk] = 1.f - ax[kk];
+//#else
+//		yDivFP(ax, d_Sino, kk, local_rand);
+//#endif
 #endif
 	}
 #endif
@@ -622,7 +614,7 @@ void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, 
 				atnind.x = iii;
 			else
 				atnind.y = iii;
-			jelppi += (*templ_ijk * (-read_imagef(d_atten, samplerSiddon, atnind).x));
+			jelppi += (*templ_ijk * (-read_imagef(d_atten, samplerSiddon, atnind).w));
 			//jelppi += (*templ_ijk * 0.0095f);
 		}
 #if !defined(N_RAYS)
@@ -775,7 +767,7 @@ void compute_attenuation(float* tc, float* jelppi, const float LL, const float t
 //void compute_attenuation(float* tc, float* jelppi, const float LL, const float t0, const int tempi, const int tempj, const int tempk, const uint Nx, 
 	//const uint Nyx, const __global float* d_atten) {
 	const uint Nyx, __read_only image3d_t d_atten) {
-	*jelppi += (compute_matrix_element(t0, *tc, LL) * -read_imagef(d_atten, samplerSiddon, (int4)(tempi, tempj, tempk, 0)).x);
+	*jelppi += (compute_matrix_element(t0, *tc, LL) * -read_imagef(d_atten, samplerSiddon, (int4)(tempi, tempj, tempk, 0)).w);
 	*tc = t0;
 }
 #endif
@@ -1114,7 +1106,7 @@ void denominatorTOF(float* ax, const float element, __read_only image3d_t d_OSEM
 	const uint ii = 0U;
 #endif
 	//float apu = element * d_OSEM[local_ind];
-	float apu = element * read_imagef(d_OSEM, samplerSiddon, ind).x;
+	float apu = element * read_imagef(d_OSEM, samplerSiddon, ind).w;
 #ifndef DEC
 	const float dX = element / (TRAPZ_BINS - 1.f);
 #endif
@@ -1231,7 +1223,7 @@ void backprojectTOF(const uint local_ind, const int4 localInd, const float local
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).x);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).w);
 			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 
@@ -1330,7 +1322,7 @@ void sensTOF(const uint local_ind, const int4 localInd, const float local_ele, c
 			d_E[idx + to * TOFSize] += apu;
 		}
 		if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).x);
+			axACOSEM[to] += (apu * read_imagef(d_OSEM, samplerSiddon, localInd).w);
 			//axACOSEM[to] += (apu * d_OSEM[local_ind]);
 #endif
 		val += apu;

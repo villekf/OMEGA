@@ -200,7 +200,7 @@ void proj123SiddonSingleRay(const float global_factor, const float d_epps, const
 		return;
 
 #ifdef MASKFP // Mask image
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).x;
+	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
 	if (maskVal == 0)
 		return;
 #endif
@@ -544,7 +544,7 @@ void proj123SiddonSingleRay(const float global_factor, const float d_epps, const
 				denominator(local_ele, ax, localInd, d_N, d_OSEM);
 
 #else // Implementation 3
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).w);
 #endif
 				if (d_N3 == 1)
 					localInd.x++;
@@ -585,7 +585,7 @@ void proj123SiddonSingleRay(const float global_factor, const float d_epps, const
 
 #else // Implementation 3
 
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).w);
 
 #endif
 				if (d_N3 == 1)
@@ -994,7 +994,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifdef MATRIX
 			local_ele /= L;
 #ifdef ATN
-			local_ele *= native_exp(local_ele * -read_imagef(d_atten, samplerSiddon, localInd).x));
+			local_ele *= native_exp(local_ele * -read_imagef(d_atten, samplerSiddon, localInd).w));
 #endif
 #ifdef NORM
 			local_ele *= local_norm;
@@ -1007,7 +1007,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 			values[idx * maxLOR + ii] = local_ele;
 #else
 #ifdef ATN
-			jelppi += (local_ele * -read_imagef(d_atten, samplerSiddon, localInd).x);
+			jelppi += (local_ele * -read_imagef(d_atten, samplerSiddon, localInd).w);
 #endif
 #if defined(TOF) && (defined(DEC) || defined(FP))
 			const float TOFSum = TOFLoop(DD, local_ele, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
@@ -1029,7 +1029,7 @@ orthDistancePerpendicularMulti3D(xcenter, center2, z_center, &temp, &axOSEM,
 #ifdef TOF
 				denominatorTOF(ax, local_ele, d_OSEM, localInd, TOFSum, store_elements, DD, TOFCenter, sigma_x, &D, ii* NBINS, d_epps, d_N);
 #else
-				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).x);
+				denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerSiddon, localInd).w);
 #endif
 
 #endif

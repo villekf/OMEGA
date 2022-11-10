@@ -247,7 +247,7 @@ __kernel void NLM(__global float* restrict grad, __read_only image3d_t restrict 
 	int4 xyzJ = { 0, 0, 0, 0 };
 	float weight_sum = 0.f;
 	float output = 0.f;
-	const float uj = read_imagef(u, samplerNLM, xyz).x;
+	const float uj = read_imagef(u, samplerNLM, xyz).w;
 	for (int k = -search_window.z; k <= search_window.z; k++) {
 		xyzN.z = xyz.z + k;
 		for (int j = -search_window.y; j <= search_window.y; j++) {
@@ -255,7 +255,7 @@ __kernel void NLM(__global float* restrict grad, __read_only image3d_t restrict 
 			for (int i = -search_window.x; i <= search_window.x; i++) {
 				xyzN.x = xyz.x + i;
 				//const int dim_n = z_n * Nxy + y_n * convert_int(N.x) + x_n;
-				const float uk = read_imagef(u, samplerNLM, xyzN).x;
+				const float uk = read_imagef(u, samplerNLM, xyzN).w;
 				float distance = 0.f;
 				float weight = 0.f;
 
@@ -272,11 +272,11 @@ __kernel void NLM(__global float* restrict grad, __read_only image3d_t restrict 
 							xyzK.x = (xyzN.x + px);
 							xyzJ.x = (xyz.x + px);
 #ifdef NLMREF
-							const float Pj = read_imagef(u_ref, samplerNLM, xyzK).x;
-							const float Pk = read_imagef(u_ref, samplerNLM, xyzJ).x;
+							const float Pj = read_imagef(u_ref, samplerNLM, xyzK).w;
+							const float Pk = read_imagef(u_ref, samplerNLM, xyzJ).w;
 #else
-							const float Pj = read_imagef(u, samplerNLM, xyzK).x;
-							const float Pk = read_imagef(u, samplerNLM, xyzJ).x;
+							const float Pj = read_imagef(u, samplerNLM, xyzK).w;
+							const float Pk = read_imagef(u, samplerNLM, xyzJ).w;
 #endif
 							distance += gg * (Pj - Pk) * (Pj - Pk);
 						}
@@ -313,10 +313,10 @@ __kernel void RDPKernel(__global float* restrict grad, __read_only image3d_t u, 
 	if (any(xyz < N) || any(xyz >= N))
 		return;
 	const uint n = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
-	const float uj = read_imagef(u, samplerRDP, xyz).x;
-	const float2 ux = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z, 0)).x };
-	const float2 uy = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z, 0)).x };
-	const float2 uz = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z + 1, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z - 1, 0)).x };
+	const float uj = read_imagef(u, samplerRDP, xyz).w;
+	const float2 ux = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z, 0)).w };
+	const float2 uy = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z, 0)).w };
+	const float2 uz = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z - 1, 0)).w };
 	const float2 uj_ux = uj - ux;
 	const float2 uj_uy = uj - uy;
 	const float2 uj_uz = uj - uz;

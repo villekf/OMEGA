@@ -128,7 +128,7 @@ const ulong cumsum) {
 	//#if !defined(PET) && !defined(CT) && !defined(SPECT) && !defined(LISTMODE)
 	//	i.x = i.y * d_size_x;
 	//#endif
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).x;
+	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
 	if (maskVal == 0)
 		return;
 #endif
@@ -367,7 +367,7 @@ const ulong cumsum) {
 					if ((MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && local_sino != 0.f && d_alku == 0u) {
 						for (uint k = 0u; k < d_N1; k++)
 							//axCOSEM += (d_d2 * d_OSEM[apu + k * d_N3]);
-							axCOSEM += (d_d2 * read_imagef(d_OSEM, samplerIm, localInd).x);
+							axCOSEM += (d_d2 * read_imagef(d_OSEM, samplerIm, localInd).w);
 						if (d_N3 == 1)
 							localInd.x++;
 						else
@@ -380,7 +380,7 @@ const ulong cumsum) {
 							//denominator(d_d2, ax, apu + k * d_N3, d_N, d_OSEM);
 							denominator(d_d2, ax, localInd, d_N, d_OSEM);
 #else
-							axOSEM += (d_d2 * read_imagef(d_OSEM, samplerIm, localInd).x);
+							axOSEM += (d_d2 * read_imagef(d_OSEM, samplerIm, localInd).w);
 #endif
 							if (d_N3 == 1)
 								localInd.x++;
@@ -470,7 +470,7 @@ const ulong cumsum) {
 							local_ele = compute_element(&tx0, &tc, LL[lor], txu, ux, &tempi, &temp);
 						}
 #ifdef ATN
-						jelppi += (local_ele * -read_imagef(d_atten, samplerIm, localInd).x);
+						jelppi += (local_ele * -read_imagef(d_atten, samplerIm, localInd).w);
 #endif
 #ifdef TOF
 						const float TOFSum = TOFLoop(DD[lor], local_ele, store_elements, TOFCenter, sigma_x, &D, ii * NBINS, d_epps);
@@ -495,8 +495,8 @@ const ulong cumsum) {
 							denominator(local_ele, ax, localInd, d_N, d_OSEM);
 #else
 							//denominator_multi(local_ele, &axOSEM, &d_OSEM[local_ind]);
-							apuvar += read_imagef(d_OSEM, samplerIm, localInd).x;
-							denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerIm, localInd).x);
+							apuvar += read_imagef(d_OSEM, samplerIm, localInd).w;
+							denominator_multi(local_ele, &axOSEM, read_imagef(d_OSEM, samplerIm, localInd).w);
 #endif
 #endif
 						}
@@ -681,7 +681,7 @@ const ulong cumsum) {
 #endif
 							}
 							if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-								axACOSEM += (d_d.x * temp * read_imagef(d_OSEM, samplerIm, localInd).x);
+								axACOSEM += (d_d.x * temp * read_imagef(d_OSEM, samplerIm, localInd).w);
 #else
 							if (no_norm == 0u)
 #ifdef ATOMIC
@@ -794,7 +794,7 @@ const ulong cumsum) {
 #endif
 							}
 							if ((MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM == 1) && d_alku > 0u)
-								axACOSEM += (d_d.y * temp * read_imagef(d_OSEM, samplerIm, localInd).x);
+								axACOSEM += (d_d.y * temp * read_imagef(d_OSEM, samplerIm, localInd).w);
 #else
 #if defined(FP) && defined(BP)
 							if (local_sino != 0.f) {

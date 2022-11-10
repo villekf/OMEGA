@@ -222,7 +222,7 @@ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, floa
 #endif
 		}
 		else
-			*axACOSEM += (local_ele * read_imagef(d_COSEM, samplerSiddon, ind).x);
+			*axACOSEM += (local_ele * read_imagef(d_COSEM, samplerSiddon, ind).w);
 			//*axACOSEM += (local_ele * d_COSEM[local_ind]);
 	}
 	else {
@@ -230,7 +230,7 @@ void computeIndicesOrth_cosem(const bool RHS, float local_ele, float* temp, floa
 		*temp += local_ele;
 #endif
 		if (local_sino != 0.f && (MethodListOpenCL.COSEM == 1 || MethodListOpenCL.ECOSEM == 1 || MethodListOpenCL.ACOSEM == 1 || MethodListOpenCL.OSLCOSEM > 0) && d_alku == 0) {
-			*axACOSEM += (local_ele * read_imagef(d_COSEM, samplerSiddon, ind).x);
+			*axACOSEM += (local_ele * read_imagef(d_COSEM, samplerSiddon, ind).w);
 			//*axCOSEM += (local_ele * d_COSEM[local_ind]);
 		}
 	}
@@ -292,7 +292,7 @@ void computeIndicesOrth(const bool RHS, const bool SUMMA, float local_ele, float
 #ifdef BP
 		if (local_sino != 0.f) {
 #endif
-			denominator_multi(local_ele, ax, read_imagef(d_OSEM, samplerSiddon, ind).x);
+			denominator_multi(local_ele, ax, read_imagef(d_OSEM, samplerSiddon, ind).w);
 #ifdef BP
 		}
 #endif
