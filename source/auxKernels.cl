@@ -303,6 +303,34 @@ __kernel void NLM(__global float* restrict grad, __read_only image3d_t restrict 
 }
 #endif
 
+#ifdef RDP
+__constant sampler_t samplerRDP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+
+__kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
+__kernel void RDPKernel(__global float* restrict grad, __read_only image3d_t u, const uint3 N, const float gamma, const float epps) {
+
+	int3 xyz = { get_global_id(0) , get_global_id(1), get_global_id(2) };
+	if (any(xyz < N) || any(xyz >= N))
+		return;
+	const uint n = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
+	const float uj = read_imagef(u, samplerRDP, xyz).x;
+	const float2 ux = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z, 0)).x };
+	const float2 uy = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z, 0)).x };
+	const float2 uz = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z + 1, 0)).x, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y, xyz.z - 1, 0)).x };
+	const float2 uj_ux = uj - ux;
+	const float2 uj_uy = uj - uy;
+	const float2 uj_uz = uj - uz;
+
+	const float2 divPow2X = (uj + ux + gamma * fabs(uj_ux) + epps);
+	const float2 divPow2Y = (uj + uy + gamma * fabs(uj_uy) + epps);
+	const float2 divPow2Z = (uj + uz + gamma * fabs(uj_uz) + epps);
+	const float2 output = uj_ux * (gamma * fabs(uj_ux) + uj + 3.f * ux + 2.f * epps) / (divPow2X * divPow2X) 
+		+ uj_uy * (gamma * fabs(uj_uy) + uj + 3.f * uy + 2.f * epps) / (divPow2Y * divPow2Y)
+		+ uj_uz * (gamma * fabs(uj_uz) + uj + 3.f * uz + 2.f * epps) / (divPow2Z * divPow2Z);
+	grad[n] = output.x + output.y;
+}
+#endif
+
 #ifdef MEDIAN
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
 __kernel void medianFilter3D(const __global float* grad, __global float* output, const uint Nx, const uint Ny, const uint Nz) {
@@ -339,5 +367,99 @@ __kernel void medianFilter3D(const __global float* grad, __global float* output,
 			break;
 	}
 	output[xid + yid * get_global_size(0) + zid * get_global_size(0) * get_global_size(1)] = medianF[koko / 2];
+}
+#endif
+
+#ifdef CPTV
+#ifndef DIFFTYPE 
+#define DIFFTYPE 0
+#endif
+//__kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
+__kernel void CPTVq(__global float* input, const float alpha) {
+	ulong idx = get_global_id(0);
+	input[idx] = input[idx] * alpha / fmax(fabs(input[idx]), alpha);
+}
+
+__kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
+__kernel void CPTVDivergence(const ulong3 N, const __global float* restrict im, __global float* input) {
+	ulong3 xyz = { get_global_id(0) , get_global_id(1), get_global_id(2) };
+	if (any(xyz < N) || any(xyz >= N))
+		return;
+	const ulong x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
+	const ulong imDim = (N.x * N.y * N.z);
+	ulong xx = x;
+	float apuVal = 0.f;
+#if DIFFTYPE == 0
+	//if (any(xyz == 0) || any(xyz == N - 1)) {
+		ulong xh = ((xyz.x - 1) + xyz.y * N.x + xyz.z * N.x * N.y);
+		if (xyz.x == 0)
+			apuVal += im[xx];
+		else
+			apuVal += (im[xx] - im[xh]);
+		xx *= imDim;
+		xh = ((xyz.x) + (xyz.y - 1) * N.x + xyz.z * N.x * N.y) * imDim;
+		if (xyz.y == 0)
+			apuVal += im[xx];
+		else
+			apuVal += (im[xx] - im[xh]);
+		xx *= imDim;
+		xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y) * imDim * 2;
+		if (xyz.z == 0)
+			apuVal += im[xx];
+		else
+			apuVal += (im[xx] - im[xh]);
+	//}
+	//else {
+	//	ulong xh = ((xyz.x - 1) + xyz.y * N.x + xyz.z * N.x * N.y);
+	//	apuVal -= (im[xx] - im[xh]);
+	//	xx *= imDim;
+	//	xh *= imDim;
+	//	apuVal -= (im[xx] - im[xh]);
+	//	xx *= imDim;
+	//	xh *= imDim;
+	//	apuVal -= (im[xx] - im[xh]);
+	//}
+#elif DIFFTYPE == 1
+#else
+#endif
+	input[x] -= apuVal;
+}
+
+__kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
+__kernel void CPTVGradient(const ulong3 N, const __global float* restrict im, __global float* input, const float sigma2) {
+	ulong3 xyz = { get_global_id(0) , get_global_id(1), get_global_id(2) };
+	if (any(xyz < N) || any(xyz >= N))
+		return;
+	const ulong x = xyz.x + xyz.y * N.x + xyz.z * N.x * N.y;
+	const ulong imDim = (N.x * N.y * N.z);
+	ulong xx = x;
+	float apuVal = 0.f;
+#if DIFFTYPE == 0
+	float imApu = im[x];
+	ulong xh = ((xyz.x + 1) + xyz.y * N.x + xyz.z * N.x * N.y);
+	if (xyz.x == N.x - 1)
+		apuVal -= imApu;
+	else
+		apuVal += (im[xh] - imApu);
+	input[xx] += apuVal * sigma2;
+	apuVal = 0.f;
+	xx *= imDim;
+	xh = ((xyz.x) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y);
+	if (xyz.y == 0)
+		apuVal -= imApu;
+	else
+		apuVal += (im[xh] - imApu);
+	input[xx] += apuVal * sigma2;
+	apuVal = 0.f;
+	xx *= imDim;
+	xh = ((xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y);
+	if (xyz.z == 0)
+		apuVal -= imApu;
+	else
+		apuVal += (im[xh] - imApu);
+	input[xx] += apuVal * sigma2;
+#elif DIFFTYPE == 1
+#else
+#endif
 }
 #endif

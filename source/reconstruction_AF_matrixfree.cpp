@@ -89,9 +89,11 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 
 	// Number of measurements at each subset
 	std::vector<int64_t> length(inputScalars.subsets);
+	std::vector<int64_t> totLength(1);
 
 	for (uint32_t kk = 0; kk < inputScalars.subsets; kk++)
 		length[kk] = pituus[kk + 1u] - pituus[kk];
+	totLength[0] = pituus[inputScalars.subsets];
 
 	array D, apu_sum, E, indices, rowInd, values, meanBP, meanFP, outputFP;
 	std::vector<array> Summ;
@@ -147,14 +149,8 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 				n_rekos--;
 		}
 		vec.im_os = constant(0.f, inputScalars.im_dim * n_rekos2);
+		vec.rhs_os.resize(1);
 		//vec.rhs_os = constant(0.f, inputScalars.im_dim * n_rekos2, 1);
-		for (uint32_t kk = 0U; kk < n_rekos2; kk++) {
-#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
-			vec.im_os(seq(kk * inputScalars.im_dim, (kk + 1) * inputScalars.im_dim - 1), 1, 1) = array(inputScalars.im_dim, (float*)mxGetSingles(getField(options, 0, "x0")), afHost);
-#else
-			vec.im_os(seq(kk * inputScalars.im_dim, (kk + 1) * inputScalars.im_dim - 1), 1, 1) = array(inputScalars.im_dim, (float*)mxGetData(getField(options, 0, "x0")), afHost);
-#endif
-		}
 		//if (Nt > 1) {
 		//	//for (uint32_t tt = 1U; tt < Nt; tt++) {
 		//		for (uint32_t kk = 0U; kk < n_rekos2; kk++) {
@@ -174,6 +170,10 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 
 	// Load the necessary data from the MATLAB input and form the necessary variables
 	form_data_variables(vec, beta, w_vec, options, inputScalars, MethodList, data, Nt, iter0, imEstimates);
+
+	uint64_t fullMSize = pituus[inputScalars.subsets];
+	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+		fullMSize *= (static_cast<uint64_t>(w_vec.size_x) * static_cast<uint64_t>(w_vec.size_y));
 
 	ProjectorClass proj;
 	if (inputScalars.projector_type != 6)
@@ -353,6 +353,7 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 	if (status != 0)
 		return;
 	af::sync();
+	proj.setDynamicKernelData(inputScalars, w_vec);
 
 	//af_print_mem_info("mem info alussa", -1);
 
@@ -383,6 +384,13 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 					}
 				}
 				proj.no_norm = 1u;
+		}
+		for (uint32_t kk = 0U; kk < inputScalars.nRekos2; kk++) {
+#if defined(MX_HAS_INTERLEAVED_COMPLEX) && TARGET_API_VERSION > 700
+			vec.im_os(seq(kk * inputScalars.im_dim, (kk + 1) * inputScalars.im_dim - 1), 1, 1) = array(inputScalars.im_dim, (float*)mxGetSingles(getField(options, 0, "x0")), afHost);
+#else
+			vec.im_os(seq(kk * inputScalars.im_dim, (kk + 1) * inputScalars.im_dim - 1), 1, 1) = array(inputScalars.im_dim, (float*)mxGetData(getField(options, 0, "x0")), afHost);
+#endif
 		}
 
 		// Load the measurement and randoms data from the cell arrays
@@ -448,12 +456,13 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 //			}
 //			w_vec.epsilon_mramla = MBSREM_epsilon(Sino, epps, inputScalars.randoms_correction, rand, E, inputScalars.TOF, inputScalars.nBins, inputScalars.CT);
 //		}
-		if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM)) {
+		//if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM)) {
+		if (DEBUG) {
 			mexPrintf("w_vec.epsilon_mramla = %f\n", w_vec.epsilon_mramla);
+			mexPrintf("proj.computeD = %d\n", proj.computeD);
 			mexEvalString("pause(.0001);");
 		}
 		// Set kernel parameters
-		proj.setDynamicKernelData(inputScalars, w_vec);
 		//array testi2 = constant(0.f, inputScalars.im_dim);
 		//array fLSQR = array(inputScalars.im_dim, (float*)mxGetSingles(getField(options, 0, "x0")), afHost);
 
@@ -470,6 +479,43 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 		//if (DEBUG) {
 		//	mexPrintf("Sens image allocated\n");
 		//}
+		if (tt == 0) {
+			if (proj.computeD) {
+				//initializeRHS(vec, inputScalars);
+				if (inputScalars.atomic_64bit)
+					D = constant(0LL, inputScalars.im_dim, 1, s64);
+				else if (inputScalars.atomic_32bit)
+					D = constant(0, inputScalars.im_dim, 1, s32);
+				else
+					D = constant(0.f, inputScalars.im_dim, 1);
+				af::array oneInput = constant(1.f, fullMSize);
+				if (inputScalars.projector_type == 6)
+					backprojectionSPECT(oneInput, Summ, w_vec, vec, inputScalars, totLength[0], 0, 0, 0, 0, 0);
+				else
+					status = proj.backwardProjection(vec, inputScalars, w_vec, oneInput, 0, totLength, 0, fullMSize, meanBP, true);
+				if (status != 0) {
+					vec.rhs_os[0].unlock();
+					oneInput.unlock();
+					return;
+				}
+				af::sync();
+				vec.rhs_os[0].unlock();
+				oneInput.unlock();
+				af::sync();
+				af::array Dy = vec.rhs_os[0];
+				D = Dy.copy();
+				if (inputScalars.use_psf) {
+					D = computeConvolution(D, g, inputScalars, w_vec);
+					//af::sync();
+				}
+				proj.releaseBuffer(inputScalars);
+			}
+			if ((MethodList.CPLS || MethodList.CPTV) && w_vec.tauCP == 0.f)
+				status = powerMethod(inputScalars, w_vec, length, fullMSize, proj, vec, g, MethodList);
+			if (status != 0) {
+				return;
+			}
+		}
 
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < inputScalars.Niter; iter++) {
@@ -517,10 +563,11 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 							proj.transferSensitivityImage(Summ[0]);
 						else if (compute_norm_matrix == 2u && proj.no_norm == 0)
 							proj.transferSensitivityImage(Summ[osa_iter]);
-						initializeRHS(vec, inputScalars);
 					}
 
-					initializationStep(w_vec, mData[osa_iter], vec, proj, inputScalars, length, m_size, st, MethodList, iter, g, meanBP, Summ);
+					status = initializationStep(w_vec, mData[osa_iter], vec, proj, inputScalars, length, m_size, st, MethodList, iter, g, meanBP, Summ);
+					if (status != 0)
+						return;
 					if (DEBUG) {
 						mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
 						mexEvalString("pause(.0001);");
@@ -566,13 +613,13 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 					//	d_values = cl::Buffer(*values.device<cl_mem>(), true);
 					//	d_rowInd = cl::Buffer(*rowInd.device<cl_mem>(), true);
 					//}
-					if (inputScalars.projector_type != 6) {
-						af::sync();
-						status = proj.update_opencl_inputs(vec, inputScalars);
-						proj.transferRHS(vec);
-						if (status != 0)
-							return;
-					}
+					//if (inputScalars.projector_type != 6) {
+					//	af::sync();
+					//	status = proj.update_opencl_inputs(vec, inputScalars);
+					//	proj.transferRHS(vec);
+					//	if (status != 0)
+					//		return;
+					//}
 
 					af::sync();
 
@@ -581,23 +628,23 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 
 						outputFP = constant(0.f, m_size);
 						af::sync();
-						status = proj.forwardProjection(inputScalars, w_vec, outputFP, osa_iter, length, st, m_size);
+						status = proj.forwardProjection(vec, inputScalars, w_vec, outputFP, osa_iter, length, st, m_size);
 						if (status != 0) {
-							if (compute_norm_matrix == 1u) {
-								Summ[0].unlock();
-							}
-							else if (compute_norm_matrix == 2) {
-								if (proj.no_norm == 0u) {
-									Summ[osa_iter].unlock();
-								}
-								//else
-								//	apu_sum.unlock();
-							}
+							//if (compute_norm_matrix == 1u) {
+							//	Summ[0].unlock();
+							//}
+							//else if (compute_norm_matrix == 2) {
+							//	if (proj.no_norm == 0u) {
+							//		Summ[osa_iter].unlock();
+							//	}
+							//	//else
+							//	//	apu_sum.unlock();
+							//}
 							if (inputScalars.use_psf)
 								vec.im_os_blurred.unlock();
 							else
 								vec.im_os.unlock();
-							vec.rhs_os.unlock();
+							//vec.rhs_os.unlock();
 							outputFP.unlock();
 							return;
 						}
@@ -622,13 +669,13 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 						}
 						//vec.im_os(seq((w_vec.size_x)* (w_vec.size_y) * 2, (w_vec.size_x)* (w_vec.size_y) * 3 - 1)) = mData[osa_iter](seq(0, (w_vec.size_x) * (w_vec.size_y) - 1));
 						//af::sync();
-						computeForwardStep(MethodList, mData[osa_iter], outputFP, m_size, inputScalars, w_vec, aRand[osa_iter]);
+						computeForwardStep(MethodList, mData[osa_iter], outputFP, m_size, inputScalars, w_vec, aRand[osa_iter], vec);
 						////af::eval(outputFP);
 						////vec.im_os(seq((w_vec.size_x) * (w_vec.size_y), (w_vec.size_x) * (w_vec.size_y) * 2 - 1)) = outputFP(seq(0, (w_vec.size_x) * (w_vec.size_y) - 1));
 						computeIntegralImage(inputScalars, w_vec, length[osa_iter], outputFP, meanBP);
 						af::sync();
 
-						status = proj.backwardProjection(inputScalars, w_vec, outputFP, osa_iter, length, st, m_size, meanBP);
+						status = proj.backwardProjection(vec, inputScalars, w_vec, outputFP, osa_iter, length, st, m_size, meanBP);
 						if (status != 0) {
 							//getErrorString(status);
 							if (compute_norm_matrix == 1u) {
@@ -641,11 +688,11 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 								//else
 								//	apu_sum.unlock();
 							}
-							if (inputScalars.use_psf)
-								vec.im_os_blurred.unlock();
-							else
-								vec.im_os.unlock();
-							vec.rhs_os.unlock();
+							//if (inputScalars.use_psf)
+							//	vec.im_os_blurred.unlock();
+							//else
+							//	vec.im_os.unlock();
+							vec.rhs_os[0].unlock();
 							outputFP.unlock();
 							if (inputScalars.meanBP)
 								meanBP.unlock();
@@ -656,7 +703,7 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 						outputFP.unlock();
 						if (inputScalars.meanBP)
 							meanBP.unlock();
-						vec.rhs_os.unlock();
+						vec.rhs_os[0].unlock();
 						//vec.im_os = vec.rhs_os;
 						//vec.im_os(seq(0, (w_vec.size_x + 1) * (w_vec.size_y + 1))) = outputFP(seq(0, (w_vec.size_x + 1) * (w_vec.size_y + 1)));
 					}
@@ -664,13 +711,13 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 						
 						array fProj = constant(0.f, inputScalars.size_x, w_vec.size_y, length[osa_iter]);
 						forwardProjectionSPECT(fProj, w_vec, vec, inputScalars, length[osa_iter], uu);
-						computeForwardStep(MethodList, mData[osa_iter], fProj, m_size, inputScalars, w_vec, aRand[osa_iter]); 
+						computeForwardStep(MethodList, mData[osa_iter], fProj, m_size, inputScalars, w_vec, aRand[osa_iter], vec); 
 						backprojectionSPECT(fProj, Summ, w_vec, vec, inputScalars, length[osa_iter], uu, osa_iter, iter, compute_norm_matrix, iter0);
 						uu += length[osa_iter];
 					}
 					if (inputScalars.projector_type < 4) {
 						//af::array outputFP;
-						status = proj.backwardProjection(inputScalars, w_vec, outputFP, osa_iter, length, st, m_size, meanBP);
+						status = proj.backwardProjection(vec, inputScalars, w_vec, outputFP, osa_iter, length, st, m_size, meanBP);
 
 						if (status != 0) {
 							//getErrorString(status);
@@ -686,11 +733,11 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 								//else
 								//	apu_sum.unlock();
 							}
-							if (inputScalars.use_psf)
-								vec.im_os_blurred.unlock();
-							else
-								vec.im_os.unlock();
-							vec.rhs_os.unlock();
+							//if (inputScalars.use_psf)
+							//	vec.im_os_blurred.unlock();
+							//else
+							//	vec.im_os.unlock();
+							vec.rhs_os[0].unlock();
 							return;
 						}
 					}
@@ -776,21 +823,21 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 						//vec.rhs_os.unlock();
 						af::sync();
 						if (DEBUG && inputScalars.atomic_64bit) {
-							mexPrintf("min(rhs_os) = %d\n", af::min<int64_t>(vec.rhs_os));
+							mexPrintf("min(rhs_os) = %d\n", af::min<int64_t>(vec.rhs_os[0]));
 							mexPrintf("inputScalars.atomic_64bit = %d\n", inputScalars.atomic_64bit);
 							mexEvalString("pause(.0001);");
 						}
 						if (inputScalars.atomic_64bit)
-							vec.rhs_os = vec.rhs_os.as(f32) / TH;
+							vec.rhs_os[0] = vec.rhs_os[0].as(f32) / TH;
 						else if (inputScalars.atomic_32bit)
-							vec.rhs_os = vec.rhs_os.as(f32) / TH32;
+							vec.rhs_os[0] = vec.rhs_os[0].as(f32) / TH32;
 						if (inputScalars.use_psf) {
 							//mexPrintf("min(rhs_os) = %f\n", af::min<float>(vec.rhs_os));
-							vec.rhs_os = computeConvolution(vec.rhs_os, g, inputScalars, w_vec);
+							vec.rhs_os[0] = computeConvolution(vec.rhs_os[0], g, inputScalars, w_vec);
 							//af::sync();
 						}
-						if (!MethodList.LSQR && !MethodList.CGLS && !MethodList.CPLS)
-							vec.rhs_os(vec.rhs_os < inputScalars.epps && vec.rhs_os >= 0.f) = inputScalars.epps;
+						if (!MethodList.LSQR && !MethodList.CGLS && !MethodList.CPLS && !MethodList.CPTV)
+							vec.rhs_os[0](vec.rhs_os[0] < inputScalars.epps && vec.rhs_os[0] >= 0.f) = inputScalars.epps;
 
 					}
 					else {
@@ -803,8 +850,8 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 							mexPrintf("min(Summ) = %f\n", af::min<float>(*testi));
 						}
 						mexPrintf("vec.im_os = %f\n", af::sum<float>(vec.im_os));
-						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os));
-						mexPrintf("min(rhs_os) = %f\n", af::min<float>(vec.rhs_os));
+						mexPrintf("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os[0]));
+						mexPrintf("min(rhs_os) = %f\n", af::min<float>(vec.rhs_os[0]));
 						//af::array apu1 = (vec.im_os / *testi * vec.rhs_os);
 						//mexPrintf("apu1 = %f\n", af::sum<float>(apu1));
 						//mexPrintf("erotus = %f\n", af::sum<float>(af::abs(*testi - vec.rhs_os)));
@@ -816,7 +863,7 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 					//if (osa_iter < inputScalars.subsets - 1 || iter < Niter - 1)
 					//if (osa_iter < inputScalars.subsets - 1)
 					computeOSEstimates(vec, w_vec, MethodList, testi, iter, osa_iter, inputScalars, beta, data, length, break_iter,  
-						pituus, Summ, E, g, D, Sin, proj);
+						pituus, Summ, E, g, D, Sin, proj, mData[osa_iter], m_size, uu);
 
 
 					if (DEBUG) {
@@ -834,12 +881,16 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 					}
 
 					//st += length[osa_iter];
+					if (inputScalars.projector_type == 6)
+						uu += length[osa_iter];
 
 					//status = af_queue.finish();
 
 					if (break_iter)
 						break;
 
+					//if (inputScalars.subsets > 1)
+					//	vec.rhs_os.clear();
 					//af::deviceGC();
 				}
 				//vec.im_os.lock();
@@ -880,11 +931,16 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 				//}
 				//fLSQR.lock();
 				//fLSQR.unlock();
-				//af_print_mem_info("mem info", -1);
+				af_print_mem_info("mem info", -1);
 				//vec.wLSQR = vec.im_os - vec.wLSQR;
 
 				//if (inputScalars.saveIter || iter == inputScalars.Niter - 1)
 					computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, beta, data, imEstimates, proj, g);
+					//if (DEBUG) {
+					//	mexPrintf("vec.im_os.dims(0) = %d\n", vec.im_os.dims(0));
+					//	mexPrintf("vec.im_os.dims(1) = %d\n", vec.im_os.dims(1));
+					//	mexEvalString("pause(.0001);");
+					//}
 				
 				//if (use_psf && w_vec.deconvolution && osem_bool && (saveIter || (!saveIter && iter == Niter - 1))) {
 				//	computeDeblur(vec, g, Nx, Ny, Nz, w_vec, MethodList, iter, deblur_iterations, epps, saveIter);
@@ -897,6 +953,8 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 					mexPrintf("Iteration %d complete\n", iter + 1u);
 					mexEvalString("pause(.0001);");
 				}
+				//if (inputScalars.subsets == 1)
+				//	vec.rhs_os.clear();
 				af::deviceGC();
 			if (break_iter)
 				break;

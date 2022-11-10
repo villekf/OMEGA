@@ -279,7 +279,7 @@ class ProjectorClass {
 		//	os_optionsBP += " -DBP";
 		//	status = buildProgram(inputScalars.verbose, contentFP, af_context, af_device_id, programOSBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_optionsBP);
 		//}
-		if (MethodList.NLM || MethodList.MRP) {
+		if (MethodList.NLM || MethodList.MRP || MethodList.CPTV || MethodList.RDP) {
 			std::string auxKernelPath = kernelFile + "auxKernels.cl";
 			std::ifstream sourceFileAux(auxKernelPath.c_str());
 			std::string contentAux((std::istreambuf_iterator<char>(sourceFileAux)), std::istreambuf_iterator<char>());
@@ -294,6 +294,18 @@ class ProjectorClass {
 			if (MethodList.NLM) {
 				options += " -DNLM_";
 			}
+			if (MethodList.RDP) {
+				options += " -DRDP";
+			}
+			if (MethodList.CPTV || MethodList.CPTVKL) {
+				options += " -DCPTV";
+			}
+			if (local_size[1] > 0ULL) {
+				options += (" -DLOCAL_SIZE=" + std::to_string(local_size[0]));
+				options += (" -DLOCAL_SIZE2=" + std::to_string(local_size[1]));
+			}
+			else
+				options += (" -DLOCAL_SIZE=" + std::to_string(local_size[0]));
 			status = buildProgram(inputScalars.verbose, contentAux, af_context, af_device_id, programAux, inputScalars.atomic_64bit, inputScalars.atomic_32bit, options);
 		}
 		return status;
@@ -353,7 +365,7 @@ class ProjectorClass {
 				program = cl::Program(af_context, source);
 				//try {
 				status = program.build(options.c_str());
-				if (status == CL_SUCCESS) {
+				if (status == CL_SUCCESS && DEBUG) {
 					mexPrintf("OpenCL program (64-bit atomics) built\n");
 				}
 				//}
@@ -400,7 +412,7 @@ class ProjectorClass {
 			program = cl::Program(af_context, source);
 			//try {
 			status = program.build(options.c_str());
-			if (status == CL_SUCCESS) {
+			if (status == CL_SUCCESS && DEBUG) {
 				mexPrintf("OpenCL program built\n");
 			}
 			//}
@@ -567,6 +579,34 @@ class ProjectorClass {
 				mexEvalString("pause(.0001);");
 			}
 		}
+		if (MethodList.RDP) {
+			kernelRDP = cl::Kernel(programAux, "RDPKernel", &status);
+
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrintf("Failed to create RDP kernel\n");
+				return -1;
+			}
+			else if (DEBUG || inputScalars.verbose == 2) {
+				mexPrintf("RDP kernel successfully created\n");
+				mexEvalString("pause(.0001);");
+			}
+		}
+		if (MethodList.CPTV || MethodList.CPTVKL) {
+			kernelCPTVq = cl::Kernel(programAux, "CPTVq", &status);
+			kernelCPTVDiv = cl::Kernel(programAux, "CPTVDivergence", &status);
+			kernelCPTVGrad = cl::Kernel(programAux, "CPTVGradient", &status);
+
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrintf("Failed to create CPTV kernel\n");
+				return -1;
+			}
+			else if (DEBUG || inputScalars.verbose == 2) {
+				mexPrintf("CPTV kernel successfully created\n");
+				mexEvalString("pause(.0001);");
+			}
+		}
 		return status;
 	}
 public:
@@ -574,12 +614,14 @@ public:
 	cl::Device af_device_id;
 	cl::CommandQueue af_queue;
 	OpenCL_im_vectors vec_opencl;
-	cl::Kernel kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP;
+	cl::Kernel kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelCPTVq, kernelCPTVDiv, kernelCPTVGrad;
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_reko_type, d_V, d_TOFCenter, d_Summ, d_output, d_meanBP, d_meanFP;
 	//cl::Buffer d_indices, d_values, d_rowInd;
 	cl::Image2D d_maskFP, d_maskBP;
 	cl::Image3D d_inputImage, d_imageX, d_imageY, d_atten, d_uref;
+	bool computeD = false;
 
+	std::vector<cl::Buffer> d_lorFull, d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<cl::Buffer> d_lor;
 	std::vector<cl::Buffer> d_L;
 	std::vector<cl::Buffer> d_zindex;
@@ -591,6 +633,7 @@ public:
 	std::vector<cl::Buffer> d_x;
 	std::vector<cl::Buffer> d_z;
 	cl_uchar no_norm = 0;
+	~ProjectorClass() {	}
 	// Create the projector object
 	inline int addProjector(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, const char* k_path,
 		const char* header_directory, const bool find_lors) {
@@ -643,9 +686,9 @@ public:
 			mexPrintf("OpenCL kernels successfully created\n");
 			mexEvalString("pause(.0001);");
 		}
-		format.image_channel_order = CL_R;
+		format.image_channel_order = CL_A;
 		format.image_channel_data_type = CL_FLOAT;
-		formatMask.image_channel_order = CL_R;
+		formatMask.image_channel_order = CL_A;
 		formatMask.image_channel_data_type = CL_UNSIGNED_INT8;
 
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
@@ -658,7 +701,8 @@ public:
 		}
 
 
-		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || inputScalars.projector_type == 14 || MethodList.NLM) {
+		if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || inputScalars.projector_type == 14 || MethodList.NLM 
+			|| MethodList.CPTV || MethodList.CPTVKL || MethodList.RDP) {
 			erotusBP[0] = inputScalars.Nx % local_size[0];
 			erotusBP[1] = inputScalars.Ny % local_size[1];
 			if (erotusBP[0] > 0)
@@ -667,6 +711,9 @@ public:
 				erotusBP[1] = (local_size[1] - erotusBP[1]);
 		}
 		local = { local_size[0] , local_size[1] };
+		if (MethodList.PKMA || MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM
+			|| MethodList.MBSREM || MethodList.MRAMLA)
+			computeD = true;
 		//kernelIndBP = 0;
 		//kernelIndFP = 0;
 		//kernelIndFPSubIter = 0;
@@ -691,7 +738,7 @@ public:
 			getErrorString(status);
 			return -1;
 		}
-		if (!inputScalars.CT && inputScalars.listmode == 0) {
+		if ((!inputScalars.CT && inputScalars.listmode == 0)) {
 			d_x[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -768,6 +815,58 @@ public:
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
+			}
+		}
+		if (computeD) {
+			d_xFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			d_zFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			if (inputScalars.size_norm > 1) {
+				d_normFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_norm, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.size_scat > 1) {
+				d_scatFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_scat, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.raw && inputScalars.listmode != 1) {
+				d_LFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * inputScalars.sizeL, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && inputScalars.subsets > 1)) {
+				d_xyindexFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint32_t) * inputScalars.sizeXY, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				d_zindexFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * inputScalars.sizeZ, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.precompute) {
+				d_lorFull.push_back(cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(uint16_t) * inputScalars.sizeLOR, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
 			}
 		}
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -1042,6 +1141,58 @@ public:
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
+			}
+		}
+		if (computeD) {
+			status = af_queue.enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			status = af_queue.enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			if (inputScalars.size_norm > 1) {
+				status = af_queue.enqueueWriteBuffer(d_normFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_norm, norm);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.size_scat > 1) {
+				status = af_queue.enqueueWriteBuffer(d_scatFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_scat, scat);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.raw && inputScalars.listmode != 1) {
+				status = af_queue.enqueueWriteBuffer(d_LFull[0], CL_FALSE, 0, sizeof(uint16_t) * inputScalars.sizeL, L);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && inputScalars.subsets > 1)) {
+				status = af_queue.enqueueWriteBuffer(d_xyindexFull[0], CL_FALSE, 0, sizeof(uint32_t) * inputScalars.sizeXY, xy_index);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				status = af_queue.enqueueWriteBuffer(d_zindexFull[0], CL_FALSE, 0, sizeof(uint16_t) * inputScalars.sizeZ, z_index);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.precompute) {
+				status = af_queue.enqueueWriteBuffer(d_lorFull[0], CL_FALSE, 0, sizeof(uint16_t) * inputScalars.sizeLOR, lor1);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
 			}
 		}
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -1645,11 +1796,15 @@ public:
 		return 0;
 	}
 
-	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, const uint32_t osa_iter,
+	inline int forwardProjection(AF_im_vectors& vec, const scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, const uint32_t osa_iter,
 		const std::vector<int64_t>& length, const uint64_t st, const uint64_t m_size) {
 		kernelIndFPSubIter = kernelIndFP;
 		cl_int status = CL_SUCCESS;
 		d_output = cl::Buffer(*outputFP.device<cl_mem>(), true);
+		status = update_opencl_inputs(vec, inputScalars);
+		if (status != CL_SUCCESS) {
+			return -1;
+		}
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			global = { w_vec.size_x + erotus[0], w_vec.size_y + erotus[1], static_cast<size_t>(length[osa_iter]) };
 		else
@@ -1831,12 +1986,18 @@ public:
 		return 0;
 	}
 
-	inline int backwardProjection(scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, const uint32_t osa_iter,
-		const std::vector<int64_t>& length, const uint64_t st, const uint64_t m_size, af::array& meanBP) {
+	inline int backwardProjection(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, const uint32_t osa_iter,
+		const std::vector<int64_t>& length, const uint64_t st, const uint64_t m_size, af::array& meanBP, const bool compSens = false) {
 		cl_int status = CL_SUCCESS;
 		kernelIndBPSubIter = kernelIndBP;
 
+		initializeRHS(vec, inputScalars);
 		status = af_queue.finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		transferRHS(vec);
 		if (inputScalars.projector_type >= 4)
 			d_output = cl::Buffer(*outputFP.device<cl_mem>(), true);
 		if (inputScalars.projector_type < 4 || inputScalars.projector_type == 41 || inputScalars.projector_type == 11 || inputScalars.projector_type == 22u || inputScalars.projector_type == 33u) {
@@ -1880,40 +2041,72 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if (inputScalars.listmode == 0 && !inputScalars.CT)
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
-			else
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
+			if (compSens)
+				status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull);
+			else {
+				if (inputScalars.listmode == 0 && !inputScalars.CT)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
+			}
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.CT || inputScalars.PET) && inputScalars.listmode == 0)
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-			else
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
+			if (compSens)
+				status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull);
+			else {
+				if ((inputScalars.CT || inputScalars.PET) && inputScalars.listmode == 0)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
+			}
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
-			if (inputScalars.normalization_correction)
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
-			if (inputScalars.scatter)
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
+			if (compSens) {
+				if (inputScalars.normalization_correction)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_normFull);
+				if (inputScalars.scatter)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_scatFull);
+			}
+			else {
+				if (inputScalars.normalization_correction)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
+				if (inputScalars.scatter)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
+			}
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
 			status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
 			kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_uchar>(2));
-			if (inputScalars.precompute)
-				kernelBP.setArg(kernelIndBPSubIter++, d_lor[osa_iter]);
-			if (inputScalars.subsetType < 8 && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
-				kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
-				kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
+			if (compSens) {
+				if (inputScalars.precompute)
+					kernelBP.setArg(kernelIndBPSubIter++, d_lorFull);
+				if (inputScalars.subsetType < 8 && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+					kernelBP.setArg(kernelIndBPSubIter++, d_xyindexFull);
+					kernelBP.setArg(kernelIndBPSubIter++, d_zindexFull);
+				}
+				if (inputScalars.raw)
+					kernelBP.setArg(kernelIndBPSubIter++, d_LFull);
 			}
-			if (inputScalars.raw)
-				kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
+			else {
+				if (inputScalars.precompute)
+					kernelBP.setArg(kernelIndBPSubIter++, d_lor[osa_iter]);
+				if (inputScalars.subsetType < 8 && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
+					kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
+				}
+				if (inputScalars.raw)
+					kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
+			}
 			if (inputScalars.TOF && !inputScalars.loadTOF)
 				kernelBP.setArg(kernelIndBPSubIter++, d_Sino[0]);
 			else
@@ -2013,24 +2206,36 @@ public:
 					getErrorString(status);
 					return -1;
 				}
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
+				if (compSens)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
+				if (compSens)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
 			}
 			else {
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
+				if (compSens)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
+				if (compSens)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull);
+				else
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -2169,9 +2374,148 @@ public:
 
 	inline void transferRHS(AF_im_vectors& vec) {
 		af::sync();
-		vec_opencl.d_rhs_os = cl::Buffer(*vec.rhs_os.device<cl_mem>(), true);
+		vec_opencl.d_rhs_os = cl::Buffer(*vec.rhs_os[0].device<cl_mem>(), true);
 		af_queue.finish();
 	}
 
-};
+	inline float computeSum(const std::vector<int64_t>& length, const uint32_t osa_iter) {
+		const af::array u1 = afcl::array(length[osa_iter], d_Sino[osa_iter](), f32, true);
+		return af::sum<float>(u1);
+	}
 
+	inline void releaseBuffer(const scalarStruct& inputScalars) {
+		d_xFull.clear();
+		d_zFull.clear();
+		if (inputScalars.size_norm > 1) {
+			d_normFull.clear();
+		}
+		if (inputScalars.size_scat > 1) {
+			d_scatFull.clear();
+		}
+		if (inputScalars.raw && inputScalars.listmode != 1) {
+			d_LFull.clear();
+		}
+		else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && inputScalars.subsets > 1)) {
+			d_xyindexFull.clear();
+			d_zindexFull.clear();
+		}
+		if (inputScalars.precompute) {
+			d_lorFull.clear();
+		}
+	}
+
+	inline int CPTVHelperq(af::array& q, const float alpha) {
+		cl_int status = CL_SUCCESS;
+		size_t kernelIndCPTV = 0ULL;
+		cl::NDRange globalQ = { static_cast<cl::size_type>(q.elements()) };
+		cl_mem* qq = q.device<cl_mem>();
+		cl::Buffer d_q = cl::Buffer(*qq, true);
+		kernelCPTVq.setArg(kernelIndCPTV++, d_q);
+		kernelCPTVq.setArg(kernelIndCPTV++, alpha);
+		// Compute the kernel
+		status = (af_queue).enqueueNDRangeKernel(kernelCPTVq, cl::NullRange, globalQ, cl::NullRange);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			q.unlock();
+			delete qq;
+			mexPrintf("Failed to launch the CPTV kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+
+		status = (af_queue).finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			q.unlock();
+			delete qq;
+			mexPrintf("Queue finish failed after kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+		delete qq;
+		q.unlock();
+		return 0;
+	}
+
+	inline int CPTVDiv(const af::array& im, af::array& input, const scalarStruct& inputScalars) {
+		cl_int status = CL_SUCCESS;
+		size_t kernelIndCPTV = 0ULL;
+		cl_ulong3 d_NN = { static_cast<cl_ulong>(d_N.s[0]), static_cast<cl_ulong>(d_N.s[0]), static_cast<cl_ulong>(d_N.s[0]) };
+		global = { inputScalars.Nx + erotusBP[0], inputScalars.Ny + erotusBP[1], inputScalars.Nz };
+		cl_mem* qq = im.device<cl_mem>();
+		cl::Buffer d_im = cl::Buffer(*qq, true);
+		cl_mem* ii = input.device<cl_mem>();
+		cl::Buffer d_input = cl::Buffer(*ii, true);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_NN);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_im);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_input);
+		// Compute the kernel
+		status = (af_queue).enqueueNDRangeKernel(kernelCPTVDiv, cl::NullRange, global, local);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			im.unlock();
+			input.unlock();
+			delete qq, ii;
+			mexPrintf("Failed to launch the CPTV divergence kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+
+		status = (af_queue).finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			im.unlock();
+			input.unlock();
+			delete qq, ii;
+			mexPrintf("Queue finish failed after divergence kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+		delete qq, ii;
+		im.unlock();
+		input.unlock();
+		return 0;
+	}
+
+	inline int CPTVGrad(const af::array& im, af::array& input, const scalarStruct& inputScalars, const float sigma2) {
+		cl_int status = CL_SUCCESS;
+		size_t kernelIndCPTV = 0ULL;
+		cl_ulong3 d_NN = { static_cast<cl_ulong>(d_N.s[0]), static_cast<cl_ulong>(d_N.s[0]), static_cast<cl_ulong>(d_N.s[0]) };
+		global = { inputScalars.Nx + erotusBP[0], inputScalars.Ny + erotusBP[1], inputScalars.Nz };
+		cl_mem* qq = im.device<cl_mem>();
+		cl::Buffer d_im = cl::Buffer(*qq, true);
+		cl_mem* ii = input.device<cl_mem>();
+		cl::Buffer d_input = cl::Buffer(*ii, true);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_NN);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_im);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, d_input);
+		kernelCPTVDiv.setArg(kernelIndCPTV++, sigma2);
+		// Compute the kernel
+		status = (af_queue).enqueueNDRangeKernel(kernelCPTVDiv, cl::NullRange, global, local);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			im.unlock();
+			input.unlock();
+			delete qq, ii;
+			mexPrintf("Failed to launch the CPTV divergence kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+
+		status = (af_queue).finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			im.unlock();
+			input.unlock();
+			delete qq, ii;
+			mexPrintf("Queue finish failed after divergence kernel\n");
+			mexEvalString("pause(.0001);");
+			return -1;
+		}
+		delete qq, ii;
+		im.unlock();
+		input.unlock();
+		return 0;
+	}
+
+};

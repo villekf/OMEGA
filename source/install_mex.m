@@ -282,10 +282,18 @@ end
 folder = fileparts(which('install_mex.m'));
 folder = strrep(folder, '\','/');
 
-opencl_include_path = strrep(opencl_include_path, '\','/');
-opencl_lib_path = strrep(opencl_lib_path, '\','/');
-af_path = strrep(af_path, '\','/');
-root_path = strrep(root_path, '\','/');
+if ~isempty(opencl_include_path)
+    opencl_include_path = strrep(opencl_include_path, '\','/');
+end
+if ~isempty(opencl_lib_path)
+    opencl_lib_path = strrep(opencl_lib_path, '\','/');
+end
+if ~isempty(af_path)
+    af_path = strrep(af_path, '\','/');
+end
+if ~isempty(root_path)
+    root_path = strrep(root_path, '\','/');
+end
 if ~isempty(root_path) && strcmp(root_path(end),'/')
     root_path = [root_path 'bin/root-config'];
 else
@@ -1084,7 +1092,8 @@ else
         end
         try
             mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
-                ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'])
+                ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'],[folder '/opencl_error.cpp'],...
+                    [folder '/mexFunktio.cpp'])
             
             mkoctfile('--mex', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I' cuda_path '/include'], ['-I' opencl_include_path], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_matrixfree_multi_gpu.cpp'], ...

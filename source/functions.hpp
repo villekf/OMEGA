@@ -19,28 +19,9 @@
 #pragma once
 #include "ProjectorClass.h"
 //#include "mexFunktio.h"
-#ifdef OPENCL
-#else
-#include <nvrtc.h>
-#include <cublas.h>
-#include <cuda.h>
-#include <string>
-#include <iostream>
-#include <fstream>
-
-const char* getErrorString(CUresult error);
-
-#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(CUresult code, const char* file, int line, bool abort = true)
-{
-	if (code != CUDA_SUCCESS)
-	{
-		const char* errstr;
-		cuGetErrorString(code, &errstr);
-		mexPrintf("GPUassert: %s %s %d\n", errstr, file, line);
-	}
-}
-#endif
+//#ifdef OPENCL
+//#else
+//#endif
 //#include "ProjectorClass.h"
 
 #pragma pack(1) 
@@ -146,10 +127,16 @@ af::array MAP(const af::array &im, const float lam, const float beta, const af::
 
 af::array COSEM(const af::array &im, const af::array &C_co, const af::array &D, const float h, const uint32_t COSEM_TYPE);
 
-af::array PKMA(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const float* alpha, const float* sigma, const af::array& D,
+af::array PKMA(const af::array& im, const af::array& Summ, const af::array& rhs, Weighting& w_vec, const af::array& D,
 	const uint32_t iter, const uint32_t osa_iter, const uint32_t subsets, const float epps, const float beta, const af::array& dU);
 
 void LSQR(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec);
+
+void CGLS(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec);
+
+void CPLS(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec);
+
+void CPTV(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj);
 
 // Priors
 af::array MRP(const af::array &im, const uint32_t medx, const uint32_t medy, const uint32_t medz, const scalarStruct& inputScalars, 
@@ -192,7 +179,7 @@ void reconstruction_AF_matrixfree(const uint16_t* lor1, const float* z_det, cons
 	const float* y_center, const float* z_center, const char* header_directory, const uint32_t device, uint32_t n_rekos,
 	const uint8_t* reko_type, const float* V, const float* gaussian, const size_t size_gauss, const float* TOFCenter);
 
-af::array computeConvolution(const af::array& vec, const af::array& g, scalarStruct& inputScalars, const Weighting& w_vec,
+af::array computeConvolution(const af::array& vec, const af::array& g, const scalarStruct& inputScalars, const Weighting& w_vec,
 	const uint32_t nRekos = 1);
 
 void deblur(af::array& vec, const af::array& g, const scalarStruct& inputScalars, const Weighting& w_vec);
@@ -213,18 +200,18 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 af::array NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars);
 
 void computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars,
-	Weighting& w_vec, const af::array& randomsData);
+	Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec);
 
 void computeIntegralImage(const scalarStruct& inputScalars, const Weighting& w_vec, const int64_t length, af::array& outputFP, af::array& meanBP);
 
 void computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, af::array* testi, const uint32_t iter,
 	const uint32_t osa_iter, const scalarStruct& inputScalars, const std::vector<float>& beta, const TVdata& data, std::vector<int64_t>& length,
 	bool& break_iter, const int64_t* pituus, std::vector<af::array>& Summ, af::array& E, const af::array& g, const af::array& D, const mxArray* Sin,
-	ProjectorClass& proj);
+	ProjectorClass& proj, const af::array& mData, const uint64_t m_size, const uint32_t subSum);
 
-void initializeRHS(AF_im_vectors& vec, scalarStruct& inputScalars);
+//void initializeRHS(AF_im_vectors& vec, const scalarStruct& inputScalars);
 
-void initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars,
+int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars,
 	std::vector<int64_t> length, uint64_t m_size, uint64_t st, const RecMethods& MethodList, uint32_t curIter, const af::array& g, 
 	af::array& meanBP, std::vector<af::array>& Summ);
 
@@ -234,3 +221,15 @@ void forwardProjectionSPECT(af::array& fProj, const Weighting& w_vec, AF_im_vect
 void backprojectionSPECT(af::array& fProj, std::vector<af::array>& Summ, const Weighting& w_vec, AF_im_vectors& vec,
 	const scalarStruct& inputScalars, const int64_t length, const uint32_t uu, const uint32_t osa_iter, const uint32_t iter,
 	const uint8_t compute_norm_matrix, const uint32_t iter0);
+
+int computeACOSEMWeight(const scalarStruct& inputScalars, const std::vector<int64_t>& length, float& uu, const uint32_t osa_iter, const af::array& mData,
+	const uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t subSum);
+
+int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, const std::vector<int64_t>& length, const uint64_t m_size, ProjectorClass& proj,
+	AF_im_vectors& vec, const af::array& g, const RecMethods& MethodList);
+
+void computeGradient(const af::array& im, const scalarStruct& inputScalars, af::array& f, af::array& g, af::array& h, const int type);
+
+void computeSecondOrderGradient(af::array& f, af::array& g, af::array& h, const int type);
+
+void computeDivergence(af::array rhs, const af::array& im, const scalarStruct& inputScalars, const int type);

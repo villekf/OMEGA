@@ -439,8 +439,8 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         % These values are needed in order to vectorize the calculation of
         % certain priors
         % Specifies the indices of the center pixel and its neighborhood
-        if (options.MRP && ((options.implementation == 2 && options.use_CUDA) || ~license('test', 'image_toolbox'))) || options.L || options.FMH || ...
-                (options.TV && options.TVtype == 3) || (options.RDP)
+        if (options.MRP && (options.implementation ~= 2 && ~license('test', 'image_toolbox'))) || options.L || options.FMH || ...
+                (options.TV && options.TVtype == 3) || (options.RDP && options.implementation ~= 2)
             options = computeOffsets(options);
         else
             options.tr_offsets = uint32(0);

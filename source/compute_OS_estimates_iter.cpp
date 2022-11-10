@@ -11,7 +11,16 @@ void computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMetho
 			mexPrintf("Starting LSQR\n");
 			mexEvalString("pause(.0001);");
 		}
-		LSQR(vec.im_os, vec.rhs_os, inputScalars, w_vec, iter, vec);
+		LSQR(vec.im_os, vec.rhs_os[0], inputScalars, w_vec, iter, vec);
+	}
+	if (MethodList.CGLS) {
+		CGLS(vec.im_os, vec.rhs_os[0], inputScalars, w_vec, iter, vec);
+	}
+	if (MethodList.CPLS || MethodList.CPLSKL) {
+		CPLS(vec.im_os, vec.rhs_os[0], inputScalars, w_vec, vec);
+	}
+	if (MethodList.CPTV || MethodList.CPTVKL) {
+		CPTV(vec.im_os, vec.rhs_os[0], inputScalars, w_vec, vec, proj);
 	}
 	// Compute BSREM and ROSEMMAP updates if applicable
 	// Otherwise simply save the current iterate

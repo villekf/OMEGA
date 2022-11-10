@@ -132,22 +132,22 @@ void projectorType4Forward(const uint3 d_N, const float3 b, const uint d_size_x,
 
     const float tStart = fmax(fmax(tMin.x, tMin.y), tMin.z);
     const float tEnd = fmin(fmin(tMax.x, tMax.y), tMax.z);
-    if (i.x == 102 && i.y == 80 && i.z == 10) {
-        printf("tStart = %f\n", tStart);
-        printf("tEnd = %f\n", tEnd);
-        printf("tMin.x = %f\n", tMin.x);
-        printf("tMin.y = %f\n", tMin.y);
-        printf("tMin.z = %f\n", tMin.z);
-        printf("tMax.x = %f\n", tMax.x);
-        printf("tMax.y = %f\n", tMax.y);
-        printf("tMax.z = %f\n", tMax.z);
-        printf("s.x = %f\n", s.x);
-        printf("s.y = %f\n", s.y);
-        printf("s.z = %f\n", s.z);
-        printf("d.x = %f\n", d.x);
-        printf("d.y = %f\n", d.y);
-        printf("d.z = %f\n", d.z);
-    }
+    //if (i.x == 102 && i.y == 80 && i.z == 10) {
+    //    printf("tStart = %f\n", tStart);
+    //    printf("tEnd = %f\n", tEnd);
+    //    printf("tMin.x = %f\n", tMin.x);
+    //    printf("tMin.y = %f\n", tMin.y);
+    //    printf("tMin.z = %f\n", tMin.z);
+    //    printf("tMax.x = %f\n", tMax.x);
+    //    printf("tMax.y = %f\n", tMax.y);
+    //    printf("tMax.z = %f\n", tMax.z);
+    //    printf("s.x = %f\n", s.x);
+    //    printf("s.y = %f\n", s.y);
+    //    printf("s.z = %f\n", s.z);
+    //    printf("d.x = %f\n", d.x);
+    //    printf("d.y = %f\n", d.y);
+    //    printf("d.z = %f\n", d.z);
+    //}
     if (tStart >= tEnd)
         return;
     const float tStep = native_divide(dL, length(v));
