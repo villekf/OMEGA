@@ -23,7 +23,7 @@
 #include <string>
 #include <cmath>
 
-#define DEBUG true
+#define DEBUG false
 
 void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const int cpu_device, const cl::Context& context, const std::vector<cl::CommandQueue>& commandQueues,
 	const size_t koko, const uint16_t* lor1, const float* z_det, const float* x, const float* y, const mxArray* Sin, const mxArray* sc_ra, scalarStruct inputScalars, const mxArray* options,
