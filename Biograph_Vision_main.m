@@ -19,7 +19,7 @@ options.blocks_per_ring = (38);
 % number of crystal rings. 
 % NOTE: Vision has 8 rings of 10 axial crystals, but since cryst_per_block
 % below is 20, this number is halved
-options.linear_multip = (4);
+options.linear_multip = (8);
 
 %%% Number of detectors on the side of R-sector/block/module (transaxial
 %%% direction)
