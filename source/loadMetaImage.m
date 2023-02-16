@@ -161,19 +161,23 @@ for kk = 1 : length(M)
     end
 end
 
-
-D = dir(filename);
-filename = [D.folder '/' raw_filename];
-fid = fopen(filename);
-if fid < 0
-    error(['Could not find ' filename])
+if strcmpi(raw_filename, 'local')
+    skip = -1;
+    fid = fopen(filename);
+else
+    D = dir(filename);
+    filename = [D.folder '/' raw_filename];
+    fid = fopen(filename);
+    if fid < 0
+        error(['Could not find ' filename])
+    end
 end
 if skip == -1
     D = dir(filename);
-    skip = D.bytes - n_bytes.(type) * prod(Dims);
+    skip = D.bytes - n_bytes.(type) * prod(Dims) ;
+    fread(fid, skip, '*uint8');
 end
-
-output = fread(fid, prod(Dims), [type '=>' type], skip, endian);
+output = fread(fid, prod(Dims), [type '=>' type], endian);
 output = reshape(output, Dims');
 % if isempty(transformmatrix)
 %     transformmatrix = reshape(eye(NDims), 1,NDims*NDims);
