@@ -34,6 +34,18 @@ if ~isempty(varargin) && ~isempty(varargin{1})
 else
     tyyppi = false;
 end
+<<<<<<< Updated upstream
+=======
+if options.subset_type >= 8 && options.subsets > 1
+    koko = koko * options.Nang * options.Ndist;
+end
+if isa(uu, 'double')
+    uu = single(uu);
+end
+if isa(SinD, 'double')
+    SinD = single(SinD);
+end
+>>>>>>> Stashed changes
 
 if options.projector_type == 1
     if options.CT
