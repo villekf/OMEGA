@@ -83,7 +83,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Coordinates of the detectors in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* z_det = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* z_det = (float*)mxGetData(prhs[ind]);
@@ -92,7 +92,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Coordinates of the detectors in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* x = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* x = (float*)mxGetData(prhs[ind]);
@@ -101,7 +101,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Coordinates of the detectors in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* y = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* y = (float*)mxGetData(prhs[ind]);
@@ -136,7 +136,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Detector pair numbers, for raw list-mode data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint16_t* L = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 	const uint16_t* L = (uint16_t*)mxGetData(prhs[ind]);
@@ -145,7 +145,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Location (ring numbers) of pseudo rings, if present
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint32_t* pseudos = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 	const uint32_t* pseudos = (uint32_t*)mxGetData(prhs[ind]);
@@ -170,7 +170,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Centers of the TOF-bins
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* TOFCenter = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* TOFCenter = (float*)mxGetData(prhs[ind]);
@@ -250,7 +250,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		uint16_t* lor = (uint16_t*)mxGetUint16s(plhs[0]);
 #else
 		uint16_t* lor = (uint16_t*)mxGetData(plhs[0]);
@@ -264,7 +264,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	else if (type < 2) {
 
 		// attenuation values
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* atten = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* atten = (float*)mxGetData(prhs[ind]);
@@ -273,7 +273,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Normalization coefficients
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* norm = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* norm = (float*)mxGetData(prhs[ind]);
@@ -282,7 +282,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Number of measurements/LORs
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const int64_t* pituus = (int64_t*)mxGetInt64s(prhs[ind]);
 #else
 		const int64_t* pituus = (int64_t*)mxGetData(prhs[ind]);
@@ -298,7 +298,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Number of voxels the current LOR/ray traverses
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint16_t* lor1 = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 		const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[ind]);
@@ -306,7 +306,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// XY-indices of the detector coordinates of each LOR
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint32_t* xy_index = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 		const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[ind]);
@@ -315,7 +315,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Z-indices of the detector coordinates of each LOR
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint16_t* z_index = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 		const uint16_t* z_index = (uint16_t*)mxGetData(prhs[ind]);
@@ -331,7 +331,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Center coordinates of voxels in the X-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* x_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* x_center = (float*)mxGetData(prhs[ind]);
@@ -340,7 +340,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Center coordinates of voxels in the Y-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* y_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* y_center = (float*)mxGetData(prhs[ind]);
@@ -349,7 +349,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		ind++;
 
 		// Center coordinates of voxels in the Z-dimension
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* z_center = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* z_center = (float*)mxGetData(prhs[ind]);
@@ -408,7 +408,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 				mexErrMsgTxt("Incorrect number of input arguments. There has to be 65.");
 
 			// Right hand side for forward or backprojections
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const float* rhs = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* rhs = (float*)mxGetData(prhs[ind]);
@@ -432,7 +432,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const float Vmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const float* V = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* V = (float*)mxGetData(prhs[ind]);
@@ -489,7 +489,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			ind++;
 
 			// Which reconstruction methods are used
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const uint8_t* rekot = (uint8_t*)mxGetSingles(prhs[ind]);
 #else
 			const uint8_t* rekot = (uint8_t*)mxGetData(prhs[ind]);
@@ -525,7 +525,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const float Vmax = getScalarFloat(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const float* V = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* V = (float*)mxGetData(prhs[ind]);
@@ -533,7 +533,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			const size_t size_V = mxGetNumberOfElements(prhs[ind]);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const float* gaussian = (float*)mxGetSingles(prhs[ind]);
 #else
 			const float* gaussian = (float*)mxGetData(prhs[ind]);

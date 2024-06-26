@@ -54,7 +54,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 		dPitch = (float)mxGetScalar(mxGetField(options, 0, "dPitch"));
 		nProjections = (int64_t)mxGetScalar(mxGetField(options, 0, "nProjections"));
 		size_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "xSize"));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
 #else
 		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
@@ -79,13 +79,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	if (atomic_64bit) {
 		// Output matrix
 		output_m = mxCreateNumericMatrix(size_output, 1, mxINT64_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		output_64 = (int64_t*)mxGetInt64s(output_m);
 #else
 		output_64 = (int64_t*)mxGetData(output_m);
 #endif
 		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxINT64_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		normalizer_64 = (int64_t*)mxGetInt64s(normalizer_m);
 #else
 		normalizer_64 = (int64_t*)mxGetData(normalizer_m);
@@ -94,13 +94,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	else if (atomic_32bit) {
 		// Output matrix
 		output_m = mxCreateNumericMatrix(size_output, 1, mxINT32_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		output_32 = (int32_t*)mxGetInt64s(output_m);
 #else
 		output_32 = (int32_t*)mxGetData(output_m);
 #endif
 		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxINT32_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		normalizer_32 = (int32_t*)mxGetInt64s(normalizer_m);
 #else
 		normalizer_32 = (int32_t*)mxGetData(normalizer_m);
@@ -108,13 +108,13 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 	}
 	else {
 		output_m = mxCreateNumericMatrix(size_output, 1, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		output_f = (float*)mxGetSingles(output_m);
 #else
 		output_f = (float*)mxGetData(output_m);
 #endif
 		normalizer_m = mxCreateNumericMatrix(im_dim, 1, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		normalizer_f = (float*)mxGetSingles(normalizer_m);
 #else
 		normalizer_f = (float*)mxGetData(normalizer_m);
@@ -450,7 +450,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 
 	cl::Kernel kernel_ = kernel;
 	cl::Kernel kernel_sum_ = kernel_sum;
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* Sino = (float*)mxGetSingles(mxGetCell(Sin, static_cast<mwIndex>(0)));
 #else
 	const float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(0)));
@@ -742,7 +742,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		if (randoms_correction == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* S_R = (float*)mxGetSingles(mxGetCell(sc_ra, static_cast<mwIndex>(0)));
 #else
 			float* S_R = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -761,7 +761,7 @@ void f_b_project(const cl_uint& num_devices_context, const float kerroin, const 
 			}
 		}
 		if (scatter == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterFB"), static_cast<mwIndex>(0)));
 #else
 			float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterFB"), 0));

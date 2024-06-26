@@ -142,7 +142,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	//create_matlab_output(ArrayList, dimmi, MethodList, 4);
 
 	// Initial value
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	array x00(Nx * Ny * Nz, (float*)mxGetSingles(mxGetField(options, 0, "x0")), afHost);
 #else
 	array x00(Nx * Ny * Nz, (float*)mxGetData(mxGetField(options, 0, "x0")), afHost);
@@ -245,7 +245,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	float* scat = nullptr;
 	const uint32_t scatter = static_cast<uint32_t>((bool)mxGetScalar(mxGetField(options, 0, "scatter")));
 	size_t size_scat = 1ULL;
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
 #else
 	scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
@@ -327,7 +327,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	std::vector<cl::Buffer> d_norm(subsets);
 	std::vector<cl::Buffer> d_scat(subsets);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
 #else
 	float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
@@ -335,7 +335,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 	size_t ind = mxGetNumberOfElements(mxGetCell(Sin, 0));
 	float* angles = nullptr;
 	if (CT)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
 #else
 		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
@@ -553,7 +553,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		uint32_t alku = 0u;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint64_t* randSize = (uint64_t*)mxGetUint64s(mxGetField(options, 0, "randSize"));
 #else
 		const uint64_t* randSize = (uint64_t*)mxGetData(mxGetField(options, 0, "randSize"));
@@ -608,7 +608,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		// Load precomputed sensitivity image
 		if (computeSensImag && listmode == 1) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* apu = (float*)mxGetSingles(mxGetField(options, 0, "Summ"));
 #else
 			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
@@ -638,7 +638,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		// Load the measurement and randoms data from the cell arrays
 		if (tt > 0u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* apu = (float*)mxGetSingles(mxGetCell(Sin, tt));
 #else
 			float* apu = (float*)mxGetData(mxGetCell(Sin, tt));
@@ -663,7 +663,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						return;
 					}
 					if (randoms_correction) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 						float* ra_apu = (float*)mxGetSingles(mxGetCell(sc_ra, tt));
 #else
 						float* ra_apu = (float*)mxGetData(mxGetCell(sc_ra, tt));
@@ -678,7 +678,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 						return;
 					}
 					if (scatter == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 						scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
 #else
 						scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
@@ -702,7 +702,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					return;
 				}
 				if (randoms_correction) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 					float* ra_apu = (float*)mxGetSingles(mxGetCell(sc_ra, tt));
 #else
 					float* ra_apu = (float*)mxGetData(mxGetCell(sc_ra, tt));
@@ -716,7 +716,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 					return;
 				}
 				if (scatter == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 					scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
 #else
 					scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
@@ -736,14 +736,14 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 		// Compute values needed for MBSREM and MRAMLA
 		if ((MethodList.MBSREM || MethodList.MRAMLA) && Nt > 1U) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			array Sino = array(koko, (float*)mxGetSingles(mxGetCell(Sin, tt)), afHost);
 #else
 			array Sino = array(koko, (float*)mxGetData(mxGetCell(Sin, tt)), afHost);
 #endif
 			array rand;
 			if (randoms_correction)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 				rand = array(koko, (float*)mxGetSingles(mxGetCell(sc_ra, tt)), afHost);
 #else
 				rand = array(koko, (float*)mxGetData(mxGetCell(sc_ra, tt)), afHost);
@@ -841,7 +841,7 @@ void reconstruction_AF_matrixfree(const size_t koko, const uint16_t* lor1, const
 
 					if (osa_iter > osa_iter0 && TOF && !loadTOF) {
 						d_Sino[0] = cl::Buffer(af_context, CL_MEM_READ_ONLY, sizeof(float) * length[osa_iter] * nBins, NULL, &status);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 						float* apu = (float*)mxGetSingles(mxGetCell(Sin, tt));
 #else
 						float* apu = (float*)mxGetData(mxGetCell(Sin, tt));

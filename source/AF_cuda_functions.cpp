@@ -576,7 +576,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 				std::cerr << getErrorString(status) << std::endl;
 				return status;
 			}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
 #else
 			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -625,7 +625,7 @@ CUresult createAndWriteBuffers(CUdeviceptr& d_x, CUdeviceptr& d_y, CUdeviceptr& 
 			std::cerr << getErrorString(status) << std::endl;
 			return status;
 		}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
 #else
 		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -822,7 +822,7 @@ void MRAMLA_prepass_CUDA(const uint32_t subsets, const uint32_t im_dim, const in
 			}
 			if (TOF && !loadTOF && osa_iter > 0) {
 				gpuErrchk(cuMemFree(d_Sino[0]));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 				float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
 #else
 				float* apu = (float*)mxGetData(mxGetCell(Sin, 0));

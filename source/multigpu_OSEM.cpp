@@ -66,7 +66,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 
 	// Output matrix
 	mxArray* mlem = mxCreateNumericArray(2, dimmi, mxSINGLE_CLASS, mxREAL);
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	float* ele_ml = (float*)mxGetSingles(mlem);
 #else
 	float* ele_ml = (float*)mxGetData(mlem);
@@ -80,7 +80,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		dPitch = (float)mxGetScalar(mxGetField(options, 0, "dPitch"));
 		nProjections = (int64_t)mxGetScalar(mxGetField(options, 0, "nProjections"));
 		size_y = (uint32_t)mxGetScalar(mxGetField(options, 0, "xSize"));
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		angles = (float*)mxGetSingles(mxGetField(options, 0, "angles"));
 #else
 		angles = (float*)mxGetData(mxGetField(options, 0, "angles"));
@@ -556,7 +556,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					getErrorString(status);
 					return;
 				}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
 #else
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));
@@ -748,7 +748,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 	// If the normalization constant is only computed during the first iteration, create a sufficiently large buffer and fill it with zeros
 	if (compute_norm_matrix == 0u || (listmode == 1 && computeSensImag)) {
 		if (listmode == 1 && computeSensImag) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* apu = (float*)mxGetSingles(mxGetField(options, 0, "Summ"));
 #else
 			float* apu = (float*)mxGetData(mxGetField(options, 0, "Summ"));
@@ -825,7 +825,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 			no_norm = 1u;
 
 		// Measurement data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		float* Sino = (float*)mxGetSingles(mxGetCell(Sin, static_cast<mwIndex>(tt)));
 #else
 		float* Sino = (float*)mxGetData(mxGetCell(Sin, static_cast<mwIndex>(tt)));
@@ -869,7 +869,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 				}
 				// Randoms
 				if (randoms_correction == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 					float* S_R = (float*)mxGetSingles(mxGetCell(sc_ra, static_cast<mwIndex>(tt)));
 #else
 					float* S_R = (float*)mxGetData(mxGetCell(sc_ra, tt));
@@ -890,7 +890,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 				if (scatter == 1u) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
 #else
 					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), tt));
@@ -903,7 +903,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 					}
 				}
 				else {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 					float* scat = (float*)mxGetSingles(mxGetCell(mxGetField(options, 0, "ScatterC"), static_cast<mwIndex>(0)));
 #else
 					float* scat = (float*)mxGetData(mxGetCell(mxGetField(options, 0, "ScatterC"), 0));
@@ -927,7 +927,7 @@ void OSEM_MLEM(const cl_uint& num_devices_context, const float kerroin, const in
 		// Reset the estimate with the initial value in the next time step
 		if (tt > 0u) {
 			for (cl_uint i = 0u; i < num_devices_context; i++) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetSingles(mxGetField(options, 0, "x0")));
 #else
 				status = commandQueues[i].enqueueWriteBuffer(d_mlem[i], CL_FALSE, 0, sizeof(float) * im_dim, (float*)mxGetData(mxGetField(options, 0, "x0")));

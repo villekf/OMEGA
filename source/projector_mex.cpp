@@ -87,7 +87,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Coordinates of the detectors in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* z_det = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* z_det = (double*)mxGetData(prhs[ind]);
@@ -97,7 +97,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Coordinates of the detectors in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* x = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* x = (double*)mxGetData(prhs[ind]);
@@ -105,7 +105,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Coordinates of the detectors in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* y = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* y = (double*)mxGetData(prhs[ind]);
@@ -117,7 +117,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Coordinates of the pixel planes (boundaries of the pixels) in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* yy = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* yy = (double*)mxGetData(prhs[ind]);
@@ -128,7 +128,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Coordinates of the pixel planes (boundaries of the pixels) in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* xx = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* xx = (double*)mxGetData(prhs[ind]);
@@ -154,7 +154,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// attenuation values (attenuation images)
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* atten = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* atten = (double*)mxGetData(prhs[ind]);
@@ -162,7 +162,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Normalization coefficients
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* norm_coef = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* norm_coef = (float*)mxGetData(prhs[ind]);
@@ -170,7 +170,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Randoms
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const float* randoms = (float*)mxGetSingles(prhs[ind]);
 #else
 	const float* randoms = (float*)mxGetData(prhs[ind]);
@@ -198,7 +198,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Scatter data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* scatter_coef = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* scatter_coef = (double*)mxGetData(prhs[ind]);
@@ -210,7 +210,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Number of voxels the current LOR/ray traverses, precomputed data ONLY
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint16_t* lor1 = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 	const uint16_t* lor1 = (uint16_t*)mxGetData(prhs[ind]);
@@ -218,7 +218,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// For sinogram data, the indices of the detectors corresponding to the current sinogram bin
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint32_t* xy_index = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 	const uint32_t* xy_index = (uint32_t*)mxGetData(prhs[ind]);
@@ -226,7 +226,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Same as above, but for z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint16_t* z_index = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 	const uint16_t* z_index = (uint16_t*)mxGetData(prhs[ind]);
@@ -238,7 +238,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Detector pair numbers, for raw list-mode data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint16_t* L = (uint16_t*)mxGetUint16s(prhs[ind]);
 #else
 	const uint16_t* L = (uint16_t*)mxGetData(prhs[ind]);
@@ -247,7 +247,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Location (ring numbers) of pseudo rings, if present
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const uint32_t* pseudos = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 	const uint32_t* pseudos = (uint32_t*)mxGetData(prhs[ind]);
@@ -272,7 +272,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 	ind++;
 
 	// Centers of the TOF-bins
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 	const double* TOFCenter = (double*)mxGetDoubles(prhs[ind]);
 #else
 	const double* TOFCenter = (double*)mxGetData(prhs[ind]);
@@ -327,7 +327,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		// Total number of voxels traversed by the LORs at the specific LOR
 		// e.g. if the first LOR traverses through 10 voxels then at the second lor the value is 10
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint64_t* lor2 = (uint64_t*)mxGetUint64s(prhs[ind]);
 #else
 		const uint64_t* lor2 = (uint64_t*)mxGetData(prhs[ind]);
@@ -356,7 +356,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		plhs[0] = mxCreateSparse(N, rows, nzmax, mxREAL);
 
 		// Non-zero elements of the matrix
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* elements = (double*)mxGetDoubles(plhs[0]);
 #else
 		double* elements = (double*)mxGetData(plhs[0]);
@@ -377,7 +377,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		else
 			plhs[1] = mxCreateNumericMatrix(1, 1, mxDOUBLE_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* ll = (double*)mxGetDoubles(plhs[1]);
 #else
 		double* ll = (double*)mxGetData(plhs[1]);
@@ -393,7 +393,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -401,7 +401,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -409,7 +409,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -444,7 +444,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -452,7 +452,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -460,7 +460,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -479,7 +479,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const double Vmax = getScalarDouble(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* V = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* V = (double*)mxGetData(prhs[ind]);
@@ -489,7 +489,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* angles = (double*)mxGetData(prhs[ind]);
@@ -541,7 +541,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -549,7 +549,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -557,7 +557,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -576,7 +576,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const double Vmax = getScalarDouble(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* V = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* V = (double*)mxGetData(prhs[ind]);
@@ -587,7 +587,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* angles = (double*)mxGetData(prhs[ind]);
@@ -645,7 +645,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Measurement data
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const float* Sino = (float*)mxGetSingles(prhs[ind]);
 #else
 		const float* Sino = (float*)mxGetData(prhs[ind]);
@@ -685,7 +685,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		plhs[0] = mxCreateNumericMatrix(imDim, 1, mxDOUBLE_CLASS, mxREAL);
 
 		// Normalization constants
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* Summ = (double*)mxGetDoubles(plhs[0]);
 #else
 		double* Summ = (double*)mxGetData(plhs[0]);
@@ -697,7 +697,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			plhs[1] = mxCreateNumericMatrix(N, 1, mxDOUBLE_CLASS, mxREAL);
 
 		// Right-hand side
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* rhs = (double*)mxGetDoubles(plhs[1]);
 #else
 		double* rhs = (double*)mxGetData(plhs[1]);
@@ -717,7 +717,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -725,7 +725,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -733,7 +733,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -781,7 +781,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* angles = (double*)mxGetData(prhs[ind]);
@@ -822,7 +822,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 				mexErrMsgTxt("Incorrect number of input arguments. There has to be 60.");
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -830,7 +830,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -838,7 +838,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -858,7 +858,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* V = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* V = (double*)mxGetData(prhs[ind]);
@@ -869,7 +869,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 			ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* angles = (double*)mxGetData(prhs[ind]);
@@ -931,7 +931,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Subset indices
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const uint32_t* index = (uint32_t*)mxGetUint32s(prhs[ind]);
 #else
 		const uint32_t* index = (uint32_t*)mxGetData(prhs[ind]);
@@ -946,7 +946,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		// 51
 
 		// Voxel numbers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* iij = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* iij = (double*)mxGetData(prhs[ind]);
@@ -955,7 +955,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Voxel numbers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* jji = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* jji = (double*)mxGetData(prhs[ind]);
@@ -964,7 +964,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Voxel numbers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* kkj = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* kkj = (double*)mxGetData(prhs[ind]);
@@ -976,7 +976,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* angles = (double*)mxGetData(prhs[ind]);
@@ -1014,7 +1014,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		plhs[0] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		uint16_t* lor = (uint16_t*)mxGetUint16s(plhs[0]);
 #else
 		uint16_t* lor = (uint16_t*)mxGetData(plhs[0]);
@@ -1054,7 +1054,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 			
 			// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* x_center = (double*)mxGetData(prhs[ind]);
@@ -1062,7 +1062,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			double* y_center = (double*)mxGetData(prhs[ind]);
@@ -1070,7 +1070,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			ind++;
 
 			// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 			const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -1106,7 +1106,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		plhs[1] = mxCreateNumericMatrix(indices.size(), outSize2, mxUINT32_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		uint32_t* outputMatrix2 = (uint32_t*)mxGetUint32s(plhs[1]);
 #else
 		uint32_t* outputMatrix2 = (uint32_t*)mxGetData(plhs[1]);
@@ -1118,7 +1118,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 
 		plhs[2] = mxCreateNumericMatrix(elements.size(), outSize2, mxDOUBLE_CLASS, mxREAL);
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* outputMatrix3 = (double*)mxGetDoubles(plhs[2]);
 #else
 		double* outputMatrix3 = (double*)mxGetData(plhs[2]);
@@ -1163,7 +1163,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* x_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 		double* x_center = (double*)mxGetData(prhs[ind]);
@@ -1171,7 +1171,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Coordinates of the pixel centers in x-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		double* y_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 		double* y_center = (double*)mxGetData(prhs[ind]);
@@ -1179,7 +1179,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Coordinates of the pixel centers in z-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* z_center = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* z_center = (double*)mxGetData(prhs[ind]);
@@ -1202,7 +1202,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		ind++;
 
 		// Coordinates of the pixel centers in y-direction
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* V = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* V = (double*)mxGetData(prhs[ind]);
@@ -1216,7 +1216,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 		const uint32_t subsets = getScalarUInt32(prhs[ind], ind);
 		ind++;
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		const double* angles = (double*)mxGetDoubles(prhs[ind]);
 #else
 		const double* angles = (double*)mxGetData(prhs[ind]);
@@ -1267,7 +1267,7 @@ void mexFunction(int nlhs, mxArray* plhs[],
 			plhs[2] = mxCreateNumericMatrix(loop_var_par, 1, mxUINT16_CLASS, mxREAL);
 		}
 
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		lor = (uint16_t*)mxGetUint16s(plhs[0]);
 		lor_orth = (uint16_t*)mxGetUint16s(plhs[1]);
 		lor_vol = (uint16_t*)mxGetUint16s(plhs[2]);

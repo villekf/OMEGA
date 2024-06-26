@@ -663,7 +663,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 				getErrorString(status);
 				return status;
 			}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 			float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
 #else
 			float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -720,7 +720,7 @@ cl_int createAndWriteBuffers(cl::Buffer& d_x, cl::Buffer& d_y, cl::Buffer& d_z, 
 			getErrorString(status);
 			return status;
 		}
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		float* apu = (float*)mxGetSingles(mxGetCell(sc_ra, 0));
 #else
 		float* apu = (float*)mxGetData(mxGetCell(sc_ra, 0));
@@ -928,7 +928,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 					apu_aco = af::constant(0.f, 1, 1);
 			}
 			if (TOF && !loadTOF && osa_iter > 0) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 				float* apuS = (float*)mxGetSingles(mxGetCell(Sin, 0));
 #else
 				float* apuS = (float*)mxGetData(mxGetCell(Sin, 0));
@@ -1203,7 +1203,7 @@ void MRAMLA_prepass(const uint32_t subsets, const uint32_t im_dim, const int64_t
 		af::deviceGC();
 	}
 	if (TOF && !loadTOF) {
-#ifdef MX_HAS_INTERLEAVED_COMPLEX
+#if MX_HAS_INTERLEAVED_COMPLEX
 		float* apu = (float*)mxGetSingles(mxGetCell(Sin, 0));
 #else
 		float* apu = (float*)mxGetData(mxGetCell(Sin, 0));
