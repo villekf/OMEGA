@@ -244,8 +244,9 @@ folder = strrep(folder, '\','/');
 
 opencl_include_path = strrep(opencl_include_path, '\','/');
 opencl_lib_path = strrep(opencl_lib_path, '\','/');
-af_path = strrep(af_path, '\','/');
 af_path_include = [af_path '\include'];
+af_path = strrep(af_path, '\','/');
+af_path_include = strrep(af_path_include, '\','/');
 root_path = strrep(root_path, '\','/');
 if ~isempty(root_path) && strcmp(root_path(end),'/')
     root_path = [root_path 'bin/root-config'];
