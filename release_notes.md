@@ -1,5 +1,296 @@
 # Release notes
 
+## OMEGA v2.0.0
+
+### Breaking changes
+
+- Support for raw data format dropped
+  - If you need the raw data format, use version 1.2.1 instead
+  - Similar functionality can be achieved by using "listmode" data, i.e. inputting coordinates for each measurement or using the new index-based reconstruction
+  - Might be re-added in future
+  - Code still largely exists, but is not used (and is untested)
+  
+- Precomputation removed
+  - Implementation 1 uses precomputation exclusively now and it is always on
+  - Other implementations now longer support precomputation phase
+  - Similar effect can be achieved by inputting a mask for the forward projection
+  - This also includes precomputing the observation/system matrix
+  - The class object can still be used to construct an actual system matrix
+  
+- Support for custom prior computations removed
+  - Custom prior(s) can still be implemented by using the forward/backward projector class
+  - This is most conveniantly achieved nowadays by using the Python version
+  
+- All implementations now support only one algorithm and (optional) prior combination at a time
+
+- Several variables now have different names
+  - Backwards compatibility should be preserved
+  - Many variables now only have one name, for example the regularization parameter is now only beta and is used for all priors
+  - Relaxation parameters are now only defined in parameter lambda (or lambdaN in Python) which is used by all algorithms using relaxation
+  
+- Orthogonal and volume-of-intersection based projectors are no longer supported by implementation 1
+
+- Multi-GPU/heterogenous computing support has been dropped for implementation 3
+  - You can, however, select the platform and the device now rather than having the device selected automatically
+
+- Changed the name of the class objects to `projectorClass`
+  - Defaults to PET data
+  - CT can be used by putting `options.CT = true`
+  - SPECT similarly with `options.SPECT = true`
+  - Using the options-struct is recommended
+  
+- (CB)CT reconstructions are much more efficient now than before as long as GPU computing is used
+
+### New features
+  
+- Added (limited) support for Python
+  - Only a subset of features are implemented
+  - All core components have been implemented though
+  - Supports only implementation 2 and the class object
+  - Custom algorithms can be computed fully in the GPU by using ArrayFire arrays (OpenCL), PyTorch tensors (CUDA) or CuPy arrays (CUDA)
+  - The OMEGA forward and/or backward projection operators thus accept ArrayFire arrays, PyTorch tensors or CuPy arrays
+
+- Added new implementation, implementation 5
+  - Essentially the same as previously computing the forward and/or backward projections with the class object
+  - Computes only the forward and/or backward projections in OpenCL, rest in MATLAB/Octave
+  - Does not require the installation of ArrayFire, only OpenCL
+  - Supports the same features as implementations 1 and 4
+  - With discrete GPU, should be faster than implementations 1 and 4, but slower than 2
+
+- Added two new projectors for CT data
+  - Projector type 4 is an interpolation-based GPU-only projector
+  - Projector type 5 is the branchless distance-driven projector (GPU only)
+  - Only supported by implementations 2 and 5
+  
+- Added one new projector for PET data
+  - Projector type 4 is an interpolation-based GPU-only projector
+  - Only supported by implementations 2 and 5
+  
+- Added support for SPECT reconstruction
+  - Supports also GATE projection data
+  - Supports parallel hole collimators
+  - Built-in support for hexagonal and circular holes for the detector-response function
+  - Forward/backward projection class object is CPU (implementation 4) only in MATLAB/Octave, OpenCL and CUDA only in Python
+  - Supported only by implementations 2 and 4
+  - Rotation-based projector
+  
+- Added support for direction-vector based reconstruction in CT
+  - Added support for pitch/roll/yaw/tilt of the detector panel for cone-beam CT
+  - Useful for cases where the detector panel gets (intentionally or unintentionally) rotated in all three dimensions
+  
+- Added support for multi-resolution reconstruction
+  - Certain regions can be reconstructed with reduced accuracy (larger voxel size)
+  - Recommended for CT only, but should work with PET data as well
+  - Resolution can be chosen freely with `options.multiResolutionScale`, for example the default value of 1/4 means that the multi-resolution region has 4 times larger voxel size
+  
+- Structural/anatomical reference images can now be set as variables rather than as mat-files
+  - Previously the reference image had to be stored in a mat-file
+  - Mat-file support still exists
+
+- Added subset selection based on projection images/sinograms
+  - I.e. every Nth projection image/sinogram is selected
+  - Alternatively the projections/sinograms can be selected randomly, by golden angle sampling or with prime factor method
+  - Python supports only Nth, random and prime factor, as well as subset types 1-5
+
+- Added support for dual-layer PET reconstruction
+  - Supports both with and without detector offset
+  - Automatic GATE data import (ROOT only), with crystal offset, the outermost layer should be set as a submodule and innermost as a crystal (both as crystal when without offset)
+  - Triple or more layers are not supported inherently
+  - Triple or more can be used with custom detector coordinates, i.e. "listmode" format (see below for index-based one)
+  - Still experimental feature
+  - Supports only span of 1
+  - Computing of normalization coefficients are not supported
+  - "Listmode" format is still highly recommended
+  
+- Added an index-based reconstruction method
+  - Basically a "listmode" reconstruction method
+  - The user inputs the transaxial detector coordinate indices (`options.trIndex`) and axial coordinate indices (`options.axIndex`)
+  - The indices need to be for each measurement and two per measurement (source and detector, or detector 1 and detector 2 with PET)
+  - Mainly intended for PET data, especially dual/multi-layer, but should work with other types of data too
+  - The index should correspond to a coordinate, for transaxial stored in `options.x` and for axial stored in `options.z`
+  - For example trIndex values [2,7] would use the `options.x` coordinate values from indices 2 and 7.
+  - Zero-based indexing!
+  - Built-in support for GATE (ROOT only!) and Inveon
+  - With symmetric cases should use 66% less memory than the coordinate-based (list-mode) reconstruction
+  - Does not support dynamic data yet!
+  - Index numbers cannot be larger than 65535
+  - Implementation 2 only!
+  
+- Added support for 32-bit float (single precision) computations with implementation 4
+  - This is now the default setting as well
+  - Slightly more memory efficient and also faster
+  - Double precision can be selected by setting `options.useSingles = false` (implementation 4 only)
+  - Implementations 2, 3 and 5 are single precision only, while implementation 1 is double precision only
+  
+- Added ROOT support for Windows
+  - This uses "legacy" load that causes crashes on Linux systems with Matlab, but works on Windows
+  - Requires 64-bit version of ROOT and thus at least Visual Studio 2022
+  
+- RDP and total variation are now faster to compute with implementation 2 and use much less memory
+  
+- NLM is now faster to compute with implementation 2
+  
+- Orthogonal distance-based and volume of intersection based projectors are faster to compute
+  - Speed-ups of 6x or more are possible
+
+- Removed MLEM as a separate algorithm
+  - MLEM can still be computed by selecting OSEM with 1 subset
+  - Any subset-supporting algorithm can now be run without subsets
+  - MRAMLA and RAMLA are still separated from MBSREM and BSREM though
+  
+- Only one algorithm/prior can be selected at a time with any implementation
+  - Previously implementation 2 allowed multiple different algorithms/priors
+  
+- Added seven different image-based preconditioners and two measurement-based preconditioners
+  - For image-based these include diagonal, EM, IEM, momentum, normalized gradient, filtering, and curvature based preconditioners
+  - For measuremented-based, only diagonal and filtering-based preconditioners are available
+  - Support is limited to only a few algorithms (MBSREM, PKMA, PDHG (and its variations), FISTA)
+  
+- Added several new algorithms
+  - These include primal-dual hybrid gradient (PDHG), FISTA, LSQR, CGLS, primal-dual Davis-Yin (PDDY)
+  - PDHG contains several different variations with and without regularization
+  - Works with any input data (PET, CT, SPECT)
+  - For CT, these use linearized data, with linearization done automatically (if the data is already linearized, put `options.usingLinearizedData = true` before reconstruction)
+  
+- Added power method to automatically compute the largest singular/eigenvalue
+  - Can be used to automatically compute the step-size parameters in PDHG/FISTA
+  - Available in both Matlab/Octave and Python
+  
+- Added an adaptive primal/dual step-size computation method for PDHG
+
+- Added generalized Gaussian random Markov field (GGMRF) prior
+
+- Added several non-local variations of previous priors
+  - Non-local RDP
+  - Non-local GGMRF
+  - Non-local Lange prior
+
+- Added proximal total generalized variation (TGV)
+  - Replaced the previous iterative TGV
+  - Only supported by PDHG and its variants, and PKMA
+
+- Added proximal TV
+  - Separate from the "gradient"-based TV
+  - Enable with `options.proxTV = true`
+  - Only supported by PDHG and its variants, and PKMA
+
+- Added weighted TV
+  - Enabled by using `options.TVtype = 6` along with `options.TV = true`
+
+- Added modified hyperbolic prior
+  - Implementation 2 only
+  
+- Renamed TVtype 4 to modified Lange prior
+  - Setting `options.TV = true` and `options.TVtype = 4` uses modified Lange prior instead of TV
+
+- Added new visualization function `volume3Dviewer`
+  - Thanks to Nargiza Djurabekova for the first version
+  - Functionally very similar to the MATLAB function `sliceViewer` (which requires image processing/medical imaging toolbox)
+  - Works on Octave too, though scrolling doesn't update the figure immediately
+  
+- Added ramp-filtering with several different windowing functions
+  - Window functions include Hamming, Hann, Blackman, Nuttal, Parzen, cosine, Gaussian, and Shepp-Logan
+  
+- Added support for experimental FDK/FBP
+  - Values in the reconstructed image are not scaled optimally, especially when using PET data
+  - CT, by default, uses FDK weights (`options.useFDKWeights = true`), but they can be turned off as well
+  - Should be used mainly for testing purposes
+  - Works with PET and CT data
+  - Thanks to Hannu Siikonen for help on the FDK implementation
+  
+- Added the ability to use mask images to limit LORs/measurements and/or voxels to take into account during reconstructions
+  - It is possible, for example, to only reconstruct a cylindrical region instead of the whole rectangular volume by inputing a cylindrical mask
+  - Alternatively, it is possible to take into account only measurements from a certain region
+  - Can improve computation speed
+  - Masks should be logical (boolean) or uint8 2D images
+  
+- Added support for hybrid projectors
+  - Not all combinations are tested (such as projector_type 3 and 5, i.e. 35)
+  - Forward projector can thus be different from backprojection (this is already default with projector type 4 when using CT data)
+  - The first value is the forward projector, while the second one is backprojection, i.e. 41 uses type 4 for forward and type 1 for backward
+  - Combinations involving 1, 4 and 5 should be safe (note that 5 is CT only!)
+
+- For non-Poisson-based algorithms, positivity can be enforced with `options.enforcePositivity = true`
+
+- Added support for object offset
+  - I.e. FOV does not need to be in the origin
+  
+- Combined all regularization parameters into one variable
+  - Rather than have separate regularization parameters for ALL function and prior combinations, only one `options.beta` is now used
+  - The change, however, is backwards compatible, i.e. you can keep using the old ones as well
+  - All new algorithms, however, only use the `options.beta` value
+  - Should reduce clutter in the main-files
+  
+- The above change was also done for relaxation parameter lambda (lambdaN in Python)
+
+- Removed support for PKMA sigma value
+  - Code still remains, although commented
+  
+- Implementations 2, 3 and 4 can now be used in custom C++ code
+  - Can be compiled into shared/dynamic libraries
+  - Python uses implementation 2 through a dynamic library
+  
+- Almost complete code overhaul
+  - Number of code lines has been reduced significantly
+  - main-files continue to function as before
+  - Certain cases can be slightly slower to compute than before while others faster than before
+  
+- Complete rework of the example-files
+  - Also added several Python examples
+  
+- Changed coordinate system to be centered on origin
+  - Previously the built-in coordinates were always in the positive x/y/z-axis
+  - Any type of coordinates can still be used when using custom coordinates and object offset
+  
+- Listmode reconstruction is now slightly more memory efficient
+
+- The user can now select which iterations to save
+  - Previously only all or last iteration could be saved
+  - Now any iteration can be saved
+  - E.g. `options.saveNIter = [9;19]` stores iterations 10 and 20 (iteration 0 is the first computed iteration) as well as the last one
+  
+- Forward projections can be now saved by setting `options.storeFP = true`
+  - Stores all subiterations/iterations
+  - Not affected by the setting described above
+  
+- Implementation 2 should be more memory efficient, i.e. use less memory
+
+- Projector type 1 might be slightly slower than before
+
+- In CT, the variables for detector and source offset should be clearer now
+
+- Added support for gaps in PET rings
+  - Instead of pseudo rings, you can now add manual gap after certain rings
+  - The gap is always the size of one detector pitch in the axial direction
+  - `options.ringGaps` should include the ring(s) that are BEFORE the gap(s)
+  - E.g. `options.ringGaps = [5;10];` has gaps after rings 5 and 10
+  - One-based indexing, i.e. `options.ringGaps = 1;` would refer to the first ring
+  
+- Added support for high-dimensional CT
+  - Even dozens of gigabytes large µCT can be reconstructed on GPUs
+  - Supports also very large image sizes
+  - Only a subset of the data and image are sent and computed on the GPU at time
+  - Depends on the number of subsets, i.e. the data is divided into NumberOfSubsets chunks
+  - Limited support of features
+  - Supports FDK, PDHG and PKMA only
+  - Image-based preconditioners are not supported
+  - Activate by setting `options.largeDim = true;`
+  - Supported also in Python
+  - Implementation 2 only
+  
+- Added support for subset-based measurement splitting
+  - Only the measurement data of the current subset is transfered to the GPU
+  - Can help reconstruct large datasets which don't have large image volumes but have large measurement dimensions, such as PET TOF data
+  - Activate by setting `options.loadTOF = false;`
+  - Supported also in Python
+  - Unlike above, only affects measurement data
+  - Supported by all algorithms
+  - Implementation 2 only
+
+### Bug fixes and enhancements
+
+- Fixed normalization coefficient calculations when using DOI
+
 ## OMEGA v1.2.1
 
 ### Bug fixes and enhancements
@@ -35,6 +326,8 @@
   - `options.axial_multip` can now be used to specify axial repetition with modules/submodules when R-sectors are already axially repeated
   
 - Implementation 4 is now usable when verbosity is set to 0
+  
+- Fix crashes in certain cases, for example with certain Biograph data, when using implementation 4
 
 ## OMEGA v1.2.0
 

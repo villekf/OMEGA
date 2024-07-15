@@ -1,6 +1,8 @@
 %% Visualization for the PET reconstructions
 % Each section has a visualization code for a different purpose
 % Only a specific section should be run at a time
+% This visualization file is no longer maintained. It is recommended to
+% use volume3Dviewer instead. See help volume3Dviewer
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2020 Ville-Veikko Wettenhovi

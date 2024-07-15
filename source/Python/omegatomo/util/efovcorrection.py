@@ -1,0 +1,114 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Mar  7 14:08:02 2024
+
+@author: Ville-Veikko Wettenhovi
+"""
+import numpy as np
+
+def CTEFOVCorrection(options):
+    if options.useExtrapolation:
+        print('Extrapolating the projections')
+        Pn = int(np.floor(options.SinM.shape[0] * options.extrapLength))
+        if options.transaxialExtrapolation:
+            size1 = options.SinM.shape[0] + Pn * 2
+        else:
+            size1 = options.SinM.shape[0]
+        if options.axialExtrapolation:
+            size2 = options.SinM.shape[1] + Pn * 2
+        else:
+            size2 = options.SinM.shape[1]
+        erotus1 = size1 - options.SinM.shape[0]
+        erotus2 = size2 - options.SinM.shape[1]
+        newProj = np.zeros((size1, size2, options.SinM.shape[2]), dtype=options.SinM.dtype)
+        newProj[erotus1 // 2 : options.SinM.shape[0] + erotus1 // 2, erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = options.SinM
+        if options.transaxialExtrapolation:
+            apu = np.tile(options.SinM[0,:,:], (erotus1 // 2, 1, 1)) + 1e-10
+            apu = np.log(np.single(options.flat) / apu)
+            pituus = int(np.round(apu.shape[0] / (6/6)))
+            pituus2 = apu.shape[0] - pituus
+            if pituus2 == 0:
+                apu = apu * (np.log(np.linspace(1, np.exp(1), pituus)).reshape((-1, 1, 1)) + 1e-10)
+            else:
+                apu = apu * (np.concatenate((np.zeros((pituus2), dtype=apu.dtype), np.log(np.linspace(1, np.exp(1), pituus)))).reshape((-1, 1, 1)) + 1e-10)
+            apu = np.single(options.flat) / np.exp(apu)
+            newProj[0: erotus1 // 2, erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = apu
+            apu = np.tile(options.SinM[-1,:,:], (erotus1 // 2, 1, 1)) + 1e-10
+            apu = np.log(np.single(options.flat) / apu)
+            if pituus2 == 0:
+                apu = apu * (np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1) + 1e-10)
+            else:
+                apu = apu * (np.concatenate((np.log(np.linspace(np.exp(1), 1, pituus))), np.zeros((pituus2), dtype=apu.dtype)).reshape(-1, 1, 1) + 1e-10)
+            apu = np.single(options.flat) / np.exp(apu)
+            newProj[options.SinM.shape[0] + erotus1 // 2 : , erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = apu
+        if options.axialExtrapolation:
+            apu = np.tile(newProj[:,erotus2 // 2, :].reshape(newProj.shape[0], 1, newProj.shape[2]), (1, erotus2 // 2, 1)) + 1e-10
+            apu = np.log(np.single(options.flat) / apu)
+            apu = apu * (np.log(np.linspace(1, np.exp(1), apu.shape[1])).reshape(1, -1, 1) + 1e-10)
+            apu = np.single(options.flat) / np.exp(apu)
+            newProj[:, : erotus2 // 2, :] = apu
+            apu = np.tile(newProj[:,options.SinM.shape[1] + erotus2 // 2 - 1, :].reshape(newProj.shape[0], 1, newProj.shape[2]), (1, erotus2 // 2, 1)) + 1e-10
+            apu = np.log(np.single(options.flat) / apu)
+            apu = apu * (np.log(np.linspace(np.exp(1), 1, apu.shape[1])).reshape(1, -1, 1) + 1e-10)
+            apu = np.single(options.flat) / np.exp(apu)
+            newProj[:, options.SinM.shape[1] + erotus2 // 2 : , :] = apu
+        options.SinM = newProj
+        options.nRowsDOrig = options.nRowsD
+        options.nColsDOrig = options.nColsD
+        options.nRowsD = options.SinM.shape[0]
+        options.nColsD = options.SinM.shape[1]
+        if options.scatter_correction and options.corrections_during_reconstruction:
+            newProj = np.zeros((size1, size2, options.ScatterC.shape[2]), dtype=options.ScatterC.dtype)
+            newProj[erotus1 // 2 : options.ScatterC.shape[0] + erotus1 // 2, erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2,:] = options.ScatterC
+            if options.transaxialExtrapolation:
+                apu = np.tile(np.reshape(options.ScatterC[0,:,:], (1, options.ScatterC.shape[1], options.ScatterC.shape[2])), (erotus1 // 2, 1, 1))
+                apu = np.log(np.single(options.flat) / apu)
+                pituus = int(np.round(apu.shape[0] / (6/6)))
+                pituus2 = apu.shape[0] - pituus
+                apu = apu * np.log(np.linspace(1, np.exp(1), pituus)).reshape(-1, 1, 1)
+                apu = np.single(options.flat) / np.exp(apu)
+                newProj[0: erotus1 // 2, erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2, :] = apu
+                apu = np.tile(options.ScatterC[-1,:,:], (erotus1 // 2, 1, 1))
+                apu = np.log(np.single(options.flat) / apu)
+                apu = apu * np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1)
+                apu = np.single(options.flat) / np.exp(apu)
+                newProj[options.ScatterC.shape[0] + erotus1 // 2 : , erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2, :] = apu
+            if options.axialExtrapolation:
+                apu = np.tile(np.reshape(newProj[:,erotus2 // 2, :], (newProj.shape[0], 1, newProj.shape[2])), (1, erotus2 // 2, 1))
+                apu = np.log(np.single(options.flat) / apu)
+                apu = apu * np.reshape(np.log(np.linspace(1, np.exp(1), apu.shape[1])), (1, -1, 1))
+                apu = np.single(options.flat) / np.exp(apu)
+                newProj[:, 0: erotus2 // 2, :] = apu
+                apu = np.tile(np.reshape(newProj[:,options.ScatterC.shape[1] + erotus2 // 2, :], (newProj.shape[0], 1, newProj.shape[2])), (1, erotus2 // 2, 1))
+                apu = np.log(np.single(options.flat) / apu)
+                apu = apu * np.reshape(np.log(np.linspace(np.exp(1), 1, apu.shape[1])), (1, -1, 1))
+                apu = np.single(options.flat) / np.exp(apu)
+                newProj[:, options.ScatterC.shape[1] + erotus2 // 2 : , :] = apu
+            options.ScatterC = newProj
+    if options.useEFOV:
+        print('Extending the FOV')
+        eFOVLength = 0.4
+        if options.transaxialEFOV:
+            nTransaxial = int(np.floor(options.Nx * eFOVLength)) * 2
+            options.NxOrig = options.Nx
+            options.NyOrig = options.Ny
+            options.Nx += nTransaxial
+            options.Ny += nTransaxial
+            options.FOVxOrig = options.FOVa_x
+            options.FOVyOrig = options.FOVa_y
+            options.FOVa_x += options.FOVa_x / options.NxOrig * nTransaxial
+            options.FOVa_y += options.FOVa_y / options.NyOrig * nTransaxial
+        else:
+            options.FOVxOrig = options.FOVa_x
+            options.FOVyOrig = options.FOVa_y
+            options.NxOrig = options.Nx
+            options.NyOrig = options.Ny
+        if options.axialEFOV:
+            nAxial = int(np.floor(options.Nz * eFOVLength)) * 2
+            options.NzOrig = options.Nz
+            options.Nz += nAxial
+            options.axialFOVOrig = options.axial_fov
+            options.axial_fov += options.axial_fov / options.NzOrig * nAxial
+        else:
+            options.axialFOVOrig = options.axial_fov
+            options.NzOrig = options.Nz
