@@ -143,7 +143,6 @@ options.flip_image = true;
 %%% How much is the image rotated (radians)?
 % The angle (in radians) on how much the image is rotated BEFORE
 % reconstruction, i.e. the rotation is performed in the detector space.
-% options.offangle = (3*pi)/2;
 options.offangle = (3*pi)/2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -235,18 +234,6 @@ options.platform = 0;
 % clear mex
 options.use_device = 0;
 
-% Implementation 2 ONLY
-%%% Use CUDA
-% Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built. Recommended only for
-% Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
-options.use_CUDA = false;
-
-% Implementation 2 ONLY
-%%% Use CPU
-% Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-options.use_CPU = false;
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = Improved/accelerated Siddon's algorithm
@@ -295,7 +282,7 @@ options.dL = 0.5;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 4;
+options.Niter = 10;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
 options.subsets = 1;
@@ -321,7 +308,7 @@ options.subsets = 1;
 options.subset_type = 8;
 
 %%% Initial value for the reconstruction
-options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
+options.x0 = ones(options.Nx, options.Ny, options.Nz,'single') * 1e-4;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -502,13 +489,6 @@ toc
 %     else
 %         ff = reshape(u2, A.param.Nx,A.param.Ny,A.param.Nz);
 %     end
-%     figure(1)
-%     clim = [0 max(max(ff(:,:,255)))];
-%     if clim(2) == 0
-%         clim =  [min(min(ff(:,:,255))) max(max(ff(:,:,255)))];
-%     end
-%     ff = int16(ff * 55000) - 1000;
-%     ff = flipud(rot90(ff,1));
 %     figure(1)
 %     clim = [0 max(max(ff(:,:,255)))];
 %     imagesc(flipud(ff(:,:,255)),clim)

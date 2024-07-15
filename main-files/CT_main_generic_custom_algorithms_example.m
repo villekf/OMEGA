@@ -2,17 +2,17 @@
 % This example contains a simplified example for custom algorithm
 % reconstruction using TIFF projection CBCT data. Currently the support for
 % some of the additional features is limited. The default configuration
-% uses CGLS without multi-resolution reconstruction, but PDHG with
-% multi-resolution is included below CGLS, but has been commented. PDHG
-% should also work without multi-resolution reconstruction.
+% uses PDHG with multi-resolution, but CGLS is also included (use without
+% multi-resolution!). PDHG should also work without multi-resolution 
+% reconstruction.
 % You can use the FIPS walnut data as an example data:
 % https://zenodo.org/record/1254206
 
 % Note that custom algorithm refers to your own algorithms and not the
-% built-in algorithms. This example merely has the CGLDS/PDHG algorithms
+% built-in algorithms. This example merely has the CGLS/PDHG algorithms
 % shown as examples. The forward and/or backward projections of OMEGA are
-% utilized for the computation of these algorithms. PDHG has been commented
-% by default.
+% utilized for the computation of these algorithms. CGLS has been commented
+% by default and this example uses multi-resolution reconstruction w/ PDHG.
 
 clear
 clear mex
@@ -371,194 +371,187 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%% CGLS
+% %% CGLS
+
+% % Required for CT data
+% options.CT = true;
+% % Linearize the input data
+% raw_SinM = log(single(options.flat)./single(options.SinM));
+% % CGLS doesn't support subsets
+% options.subsets = 1;
+% % Create the class object
+% A = projectorClass(options);
+% f = options.x0(:);
+% r = raw_SinM(:);
+% s = A' * r;
+% p = s;
+% gamma = norm(s)^2;
+% tic
+% for iter = 1 : options.Niter
+    % q = A * p;
+    % q = reshape(q, size(raw_SinM));
+    % q = q(:);
+
+    % alpha = gamma / norm(q)^2;
+    % f_old = reshape(f, options.Nx,options.Ny,options.Nz);
+    % f = f + alpha * p;
+    % r = r - alpha * q;
+    % s = A' * r;
+    % gamma_ = norm(s)^2;
+    % beta = gamma_ / gamma;
+    % p = s + beta * p;
+    % gamma = gamma_;
+    % ff = reshape(f, options.Nx,options.Ny,options.Nz);
+    % figure(1)
+    % clim = [0 max(max(ff(:,:,200)))];
+    % imagesc(flipud(ff(:,:,200)),clim)
+    % axis image
+% end
+% toc
+
+%% PDHG (multi-resolution support)
 
 % Required for CT data
 options.CT = true;
-% Linearize the input data
-raw_SinM = log(single(options.flat)./single(options.SinM));
-% CGLS doesn't support subsets
-options.subsets = 1;
-% Create the class object
+options.subsets = 10;
+options.powerIterations = 10;
 A = projectorClass(options);
-f = options.x0(:);
-r = raw_SinM(:);
-s = A' * r;
-p = s;
-gamma = norm(s)^2;
-tic
-for iter = 1 : options.Niter
-    q = A * p;
-    q = reshape(q, size(raw_SinM));
-    q = q(:);
+raw_SinM = log(single(options.flat)./single(options.SinM));
+if A.param.nMultiVolumes > 0
+    u = cell(A.param.nMultiVolumes + 1, 1);
+    for kk = 1 : A.param.nMultiVolumes + 1
+        N = prod(A.param.N(kk));
+        u{kk} = zeros(N,1,'single')*1e-4;
+    end
+else
+    N = prod(A.param.N(1));
+    u = zeros(N,1,'single')*1e-4;
+end
+u2 = u;
+uO = u;
+tau = 1./powerMethod(A);
+sigma = 1;
+theta = 1;
+L1 = false;
 
-    alpha = gamma / norm(q)^2;
-    f_old = reshape(f, options.Nx,options.Ny,options.Nz);
-    f = f + alpha * p;
-    r = r - alpha * q;
-    s = A' * r;
-    gamma_ = norm(s)^2;
-    beta = gamma_ / gamma;
-    p = s + beta * p;
-    gamma = gamma_;
-    ff = reshape(f, options.Nx,options.Ny,options.Nz);
+% Data dual term
+if options.subsets == 1
+    M = size(raw_SinM,1) * size(raw_SinM,2) * A.nMeas(2);
+    p = zeros(M,options.subsets,'single');
+    pO = p;
+else
+    p = cell(options.subsets,1);
+    for s = 1 : options.subsets
+        M = A.nMeasSubset(s);
+        p{s} = zeros(M,1,'single');
+    end
+    pO = p;
+end
+if options.subsets == 1
+    raw_SinM = raw_SinM(:);
+else
+    raw_SinM = raw_SinM(:,:,A.index);
+end
+
+tic
+for ii = 1:options.Niter
+    for osa_iter = 1 : options.subsets
+        uPrev = u;
+
+        if options.subsets > 1
+            A.subset = osa_iter;
+        end
+        temp2 = A * u2;
+        if options.subsets == 1
+            res = (temp2)-raw_SinM;
+        else
+            rr = raw_SinM(:,:,A.nMeas(osa_iter) + 1 : A.nMeas(osa_iter + 1));
+            rr = rr(:);
+            res = (temp2)-rr;
+        end
+        res = res(:);
+        % Dual variable updates
+        if options.subsets > 1
+            p{osa_iter} = (pO{osa_iter} + sigma.*res);
+        else
+            p = (p + sigma.*res);
+        end
+        if L1
+            if options.subsets == 1
+                p = p ./ max(1, abs(p));
+            else
+                p{osa_iter} = p{osa_iter} ./ max(1, abs(p{osa_iter}));
+            end
+        else
+            if options.subsets == 1
+                p = p ./ (1 + sigma);
+            else
+                p{osa_iter} = p{osa_iter}./(1 + sigma);
+            end
+        end
+        if osa_iter == 1
+            if options.subsets == 1
+                uUpd = (A'*((p)));
+            else
+                deltaZ = A'*(p{osa_iter} - pO{osa_iter});
+            end
+        else
+            deltaZ = A'*(p{osa_iter} - pO{osa_iter});
+        end
+        if options.subsets > 1
+            pO{osa_iter} = p{osa_iter};
+            if A.param.nMultiVolumes > 0
+                for kk = 1 : A.param.nMultiVolumes + 1
+                    u{kk} = u{kk} + deltaZ{kk};
+                    uO{kk} = u{kk} + options.subsets * deltaZ{kk};
+                    u2{kk} = u2{kk} - tau(kk) .* uO{kk};
+                end
+            else
+                u = u + deltaZ;
+                uO = u + options.subsets * deltaZ;
+                u2 = u2 - tau .* uO;
+            end
+        end
+        if options.subsets == 1
+            if A.param.nMultiVolumes > 0
+                for kk = 1 : A.param.nMultiVolumes + 1
+                    u{kk} = u{kk} - tau(kk) .* uUpd{kk};
+                    u2{kk} = u{kk} + theta * (u{kk} - uPrev{kk});
+                end
+            else
+                u = u - tau .* uUpd;
+                u2 = u + theta * (u - uPrev);
+            end
+        else
+            %     u2 = u;
+        end
+        if A.param.nMultiVolumes > 0
+            if sum(u{1} - uPrev{1}) == 0
+                break;
+            end
+            if sum(isnan(u{1}(:))) > 0
+                break;
+            end
+        else
+            if sum(u - uPrev) == 0
+                break;
+            end
+            if sum(isnan(u(:))) > 0
+                break;
+            end
+        end
+    end
+
+    % likelihood2(ii) = 1/2*norm((res(:)))^2;
+    if A.param.nMultiVolumes > 0
+        ff = reshape(u2{1}, A.param.Nx(1),A.param.Ny(1),A.param.Nz(1));
+    else
+        ff = reshape(u2, A.param.Nx,A.param.Ny,A.param.Nz);
+    end
     figure(1)
-    clim = [0 max(max(ff(:,:,200)))];
-    imagesc(flipud(ff(:,:,200)),clim)
+    clim = [0 max(max(ff(:,:,255)))];
+    imagesc(flipud(ff(:,:,255)),clim)
     axis image
+    title([num2str(ii)])
 end
 toc
-
-% %% PDHG (multi-resolution support)
-% 
-% % Required for CT data
-% options.CT = true;
-% options.subsets = 10;
-% options.powerIterations = 10;
-% A = projectorClass(options);
-% raw_SinM = log(single(options.flat)./single(options.SinM));
-% if A.param.nMultiVolumes > 0
-%     u = cell(A.param.nMultiVolumes + 1, 1);
-%     for kk = 1 : A.param.nMultiVolumes + 1
-%         N = prod(A.param.N(kk));
-%         u{kk} = zeros(N,1,'single')*1e-4;
-%     end
-% else
-%     N = prod(A.param.N(1));
-%     u = zeros(N,1,'single')*1e-4;
-% end
-% u2 = u;
-% uO = u;
-% tau = 1./powerMethod(A);
-% sigma = 1;
-% theta = 1;
-% L1 = false;
-% 
-% % Data dual term
-% if options.subsets == 1
-%     M = size(raw_SinM,1) * size(raw_SinM,2) * A.nMeas(2);
-%     p = zeros(M,options.subsets,'single');
-%     pO = p;
-% else
-%     p = cell(options.subsets,1);
-%     for s = 1 : options.subsets
-%         M = A.nMeasSubset(s);
-%         p{s} = zeros(M,1,'single');
-%     end
-%     pO = p;
-% end
-% if options.subsets == 1
-%     raw_SinM = raw_SinM(:);
-% else
-%     raw_SinM = raw_SinM(:,:,A.index);
-% end
-% 
-% tic
-% for ii = 1:options.Niter
-%     for osa_iter = 1 : options.subsets
-%         uPrev = u;
-% 
-%         if options.subsets > 1
-%             A.subset = osa_iter;
-%         end
-%         temp2 = A * u2;
-%         if options.subsets == 1
-%             res = (temp2)-raw_SinM;
-%         else
-%             rr = raw_SinM(:,:,A.nMeas(osa_iter) + 1 : A.nMeas(osa_iter + 1));
-%             rr = rr(:);
-%             res = (temp2)-rr;
-%         end
-%         res = res(:);
-%         % Dual variable updates
-%         if options.subsets > 1
-%             p{osa_iter} = (pO{osa_iter} + sigma.*res);
-%         else
-%             p = (p + sigma.*res);
-%         end
-%         if L1
-%             if options.subsets == 1
-%                 p = p ./ max(1, abs(p));
-%             else
-%                 p{osa_iter} = p{osa_iter} ./ max(1, abs(p{osa_iter}));
-%             end
-%         else
-%             if options.subsets == 1
-%                 p = p ./ (1 + sigma);
-%             else
-%                 p{osa_iter} = p{osa_iter}./(1 + sigma);
-%             end
-%         end
-%         if osa_iter == 1
-%             if options.subsets == 1
-%                 uUpd = (A'*((p)));
-%             else
-%                 deltaZ = A'*(p{osa_iter} - pO{osa_iter});
-%             end
-%         else
-%             deltaZ = A'*(p{osa_iter} - pO{osa_iter});
-%         end
-%         if options.subsets > 1
-%             pO{osa_iter} = p{osa_iter};
-%             if A.param.nMultiVolumes > 0
-%                 for kk = 1 : A.param.nMultiVolumes + 1
-%                     u{kk} = u{kk} + deltaZ{kk};
-%                     uO{kk} = u{kk} + options.subsets * deltaZ{kk};
-%                     u2{kk} = u2{kk} - tau(kk) .* uO{kk};
-%                 end
-%             else
-%                 u = u + deltaZ;
-%                 uO = u + options.subsets * deltaZ;
-%                 u2 = u2 - tau .* uO;
-%             end
-%         end
-%         if options.subsets == 1
-%             if A.param.nMultiVolumes > 0
-%                 for kk = 1 : A.param.nMultiVolumes + 1
-%                     u{kk} = u{kk} - tau(kk) .* uUpd{kk};
-%                     u2{kk} = u{kk} + theta * (u{kk} - uPrev{kk});
-%                 end
-%             else
-%                 u = u - tau .* uUpd;
-%                 u2 = u + theta * (u - uPrev);
-%             end
-%         else
-%             %     u2 = u;
-%         end
-%         if A.param.nMultiVolumes > 0
-%             if sum(u{1} - uPrev{1}) == 0
-%                 break;
-%             end
-%             if sum(isnan(u{1}(:))) > 0
-%                 break;
-%             end
-%         else
-%             if sum(u - uPrev) == 0
-%                 break;
-%             end
-%             if sum(isnan(u(:))) > 0
-%                 break;
-%             end
-%         end
-%     end
-% 
-%     % likelihood2(ii) = 1/2*norm((res(:)))^2;
-%     if A.param.nMultiVolumes > 0
-%         ff = reshape(u2{1}, A.param.Nx(1),A.param.Ny(1),A.param.Nz(1));
-%     else
-%         ff = reshape(u2, A.param.Nx,A.param.Ny,A.param.Nz);
-%     end
-%     figure(1)
-%     clim = [0 max(max(ff(:,:,255)))];
-%     if clim(2) == 0
-%         clim =  [min(min(ff(:,:,255))) max(max(ff(:,:,255)))];
-%     end
-%     ff = int16(ff * 55000) - 1000;
-%     ff = flipud(rot90(ff,1));
-%     figure(1)
-%     clim = [0 max(max(ff(:,:,255)))];
-%     imagesc(flipud(ff(:,:,255)),clim)
-%     axis image
-%     title([num2str(ii)])
-% end
-% toc
