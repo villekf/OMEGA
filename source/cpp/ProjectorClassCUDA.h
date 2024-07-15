@@ -241,6 +241,7 @@ class ProjectorClass {
 		else if (inputScalars.SPECT)
 			options.push_back("-DSPECT");
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
+		options.push_back(buffer1);
 		if (inputScalars.listmode == 1)
 			options.push_back("-DLISTMODE");
 		else if (inputScalars.listmode == 2)
