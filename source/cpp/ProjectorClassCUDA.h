@@ -209,7 +209,7 @@ class ProjectorClass {
 		if (inputScalars.maskBP)
 			options.push_back("-DMASKBP");
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
-			options.push_back("- DFDK");
+			options.push_back("-DFDK");
 		if (inputScalars.offset)
 			options.push_back("-DOFFSET");
 		//if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
