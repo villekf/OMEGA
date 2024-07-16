@@ -270,7 +270,7 @@ class ProjectorClass {
 			std::snprintf(buffer5, 30, "-DLOCAL_SIZE=%d", static_cast<int32_t>(local_size[0]));
 			options.push_back(buffer5);
 		}
-		if (inputScalars.subsets > 1) {
+		if (inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 			std::snprintf(buffer7, 30, "-DSTYPE=%d", static_cast<int32_t>(inputScalars.subsetType));
 			options.push_back(buffer7);
 			std::snprintf(buffer8, 30, "-DNSUBSETS=%d", static_cast<int32_t>(inputScalars.subsets));
@@ -288,7 +288,6 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::vector<const char*> os_options = options;
-			os_options.push_back("-DAF");
 			//if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.TOF) && inputScalars.dec > 0)
 			//	os_options += (" -DDEC=" + std::to_string(inputScalars.dec));
 			//os_options += (" -DN_REKOS=" + std::to_string(inputScalars.nRekos));
@@ -357,7 +356,6 @@ class ProjectorClass {
 			//	os_options += (" -DSTYPE=" + std::to_string(inputScalars.subsetType));
 			//if (inputScalars.projector_type == 41)
 			//	os_options.push_back("-DPTYPE41");
-			os_options.push_back("-DAF");
 			os_options.push_back("-DPTYPE4");
 			if (!inputScalars.largeDim) {
 				std::snprintf(buffer9, 30, "-DNVOXELS=%d", static_cast<int32_t>(NVOXELS));
@@ -409,7 +407,6 @@ class ProjectorClass {
 				os_options.push_back("-DFP");
 			if (inputScalars.BPType == 5)
 				os_options.push_back("-DBP");
-			os_options.push_back("-DAF");
 			if (inputScalars.pitch) {
 				std::snprintf(buffer9, 30, "-DNVOXELS5=%d", static_cast<int32_t>(1));
 				os_options.push_back(buffer9);
@@ -1797,7 +1794,7 @@ public:
 				memAlloc.zSteps++;
 			}
 			else {
-				if (inputScalars.CT || inputScalars.PET) {
+				if (inputScalars.PET && inputScalars.listmode == 0) {
 					if (inputScalars.nLayers > 1)
 						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 3);
 					else
@@ -2051,8 +2048,13 @@ public:
 				}
 			}
 			else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-				if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
+				if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF) {
 					status = cuMemcpyHtoD(d_x[kk], &w_vec.listCoord[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
+					if (status != CUDA_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
 			}
 			if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 				status = cuMemcpyHtoD(d_T[kk], &inputScalars.T[pituus[kk]], sizeof(float) * length[kk]);
@@ -2338,6 +2340,12 @@ public:
 					BPArgs.emplace_back(&d_maskBPB);
 				else
 					BPArgs.emplace_back(&d_maskBP);
+				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+					if (inputScalars.useBuffers)
+						SensArgs.emplace_back(&d_maskBPB);
+					else
+						SensArgs.emplace_back(&d_maskBP);
+				}
 			}
 		}
 		//if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
@@ -2612,7 +2620,7 @@ public:
 				kTemp.emplace_back(&d_x[0]);
 			else
 				kTemp.emplace_back(&d_x[osa_iter]);
-			if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
+			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
@@ -2787,8 +2795,14 @@ public:
 				mexPrintBase("local[1] = %u\n", local[1]);
 				mexPrintBase("global[1] = %u\n", global[1]);
 				mexPrintBase("global[2] = %u\n", global[2]);
-				mexPrintBase("erotus[0] = %u\n", erotus[0]);
-				mexPrintBase("erotus[1] = %u\n", erotus[1]);
+				if (inputScalars.listmode > 0 && compSens) {
+					mexPrintBase("erotusSens[0] = %u\n", erotusSens[0]);
+					mexPrintBase("erotusSens[1] = %u\n", erotusSens[1]);
+				}
+				else {
+					mexPrintBase("erotus[0] = %u\n", erotus[0]);
+					mexPrintBase("erotus[1] = %u\n", erotus[1]);
+				}
 				mexPrintBase("kernelIndBPSubIter = %u\n", BPArgs.size());
 				mexPrintBase("m_size = %u\n", m_size);
 				mexPrintBase("size_x = %u\n", inputScalars.nRowsD);
@@ -2797,6 +2811,7 @@ public:
 				mexPrintBase("listmode = %u\n", inputScalars.listmode);
 				mexPrintBase("im_dim = %u\n", inputScalars.im_dim[ii]);
 				mexPrintBase("no_norm = %u\n", no_norm);
+				mexPrintBase("compSens = %u\n", compSens);
 				mexEval();
 				//mexEvalString("pause(2);");
 			}
