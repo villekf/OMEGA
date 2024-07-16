@@ -914,7 +914,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
 
 				// Load TOF data if it wasn't preloaded
-				if ((osa_iter > inputScalars.osa_iter0 && !inputScalars.loadTOF) || inputScalars.largeDim) {
+				if (((osa_iter > inputScalars.osa_iter0 || iter > iter0) && !inputScalars.loadTOF) || inputScalars.largeDim) {
 					if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
 						mData[0] = af::constant(0.f, length[osa_iter] * inputScalars.nBins);
 					else
