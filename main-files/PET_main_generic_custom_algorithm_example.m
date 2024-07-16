@@ -773,16 +773,18 @@ A = initCorrections(A);
 % This is important if you use subsets!
 A.param.normalization = A.param.normalization(A.index);
 % Load the input data
-load('Inveon_open_PET_data_sinograms_combined_static_128x160x4319_span3_listmode.mat','raw_SinM')
+input = load_data(options);
+% load('Inveon_open_PET_data_sinograms_combined_static_128x160x4319_span3_listmode.mat','raw_SinM')
+% input = raw_SinM;
 % Alternatively, if your measurement data is in other format, you can use
 % e.g. loadMeasurementData-function to load the data. The data is in this
 % case saved to the variable options.SinM in the case of sinogram data. In
 % this case, replace all raw_SinM variables with options.SinM.
 % options = loadMeasurementData(options);
 if options.implementation == 1
-    input = double(raw_SinM(A.index));
+    input = double(input(A.index));
 else
-    input = single(raw_SinM(A.index));
+    input = single(input(A.index));
 end
 
 % Compute the OSEM-estimate for the specified number of iterations and

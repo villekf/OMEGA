@@ -2,7 +2,9 @@
 % This example show cases a "generic" PET example. The example data is the
 % Inveon preclinical list-mode PET data
 % (https://zenodo.org/records/3528056), but any sinogram PET data can be
-% used.
+% used. https://doi.org/10.5281/zenodo.4646897 works also
+% Note that https://doi.org/10.5281/zenodo.4646897 has better attenuation
+% correction
 
 clear
 
@@ -301,7 +303,7 @@ options.scatter_smoothing = false;
 % = '', then the user will be automatically prompted for the .atn-files
 % from which the attenuation images will be automatically created and
 % saved (filename is saved in the attenuation_datafile field).
-options.attenuation_correction = true;
+options.attenuation_correction = false;
 
 %%% CT-image attenuation
 % Use CT-images (UMAP-image) for the attenuation. If set to false, uses the

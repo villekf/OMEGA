@@ -3,6 +3,8 @@
 % omitted parameters will thus use default values. For the list of all
 % adjustable parameters see main_PET_full.m file.
 % You can use https://doi.org/10.5281/zenodo.12743218 as example data
+% Only reconstructions are performed. If you want to load ROOT/ASCII data
+% set options.only_reconstructions = false below.
  
 clear
  
@@ -588,14 +590,14 @@ end
 % If this is set to true, running this file will only produce the
 % measurement data matrices (sinograms and raw data). Also computes the
 % normalization coefficients if they have been selected.
-options.only_sinos = true;
+options.only_sinos = false;
 
 %%% Compute only the reconstructions
 % If this file is run with this set to true, then the data load and
 % sinogram formation steps are always skipped. Precomputation step is
 % only performed if precompute_lor = true and precompute_all = true
 % (below). Normalization coefficients are not computed even if selected.
-options.only_reconstructions = false;
+options.only_reconstructions = true;
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
