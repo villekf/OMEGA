@@ -144,7 +144,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	CONSTANT float* d_z,
 #endif
 #ifdef SENS
-	const int rings,
+	const uint rings,
 #endif
 	///////////////////////// END LISTMODE DATA /////////////////////////
 	///////////////////////// PET NORMALIZATION DATA /////////////////////////
