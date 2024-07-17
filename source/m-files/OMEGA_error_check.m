@@ -503,6 +503,17 @@ end
 if (options.projector_type == 6) && options.use_CUDA
     error('CUDA is not supported with projector type 6!')
 end
+if (options.projector_type == 6)
+    if options.Nx(1) ~= options.nRowsD
+        error('options.Nx has to be the same as options.nRowsD when using projector type 6')
+    end
+    if options.Ny(1) ~= options.nRowsD
+        error('options.Ny has to be the same as options.nRowsD when using projector type 6')
+    end
+    if options.Nz(1) ~= options.nColsD
+        error('options.Nz has to be the same as options.nColsD when using projector type 6')
+    end
+end
 % if (options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 5 || options.projector_type == 6) && options.precompute_lor
 %     warning('Precomputation is not available for projector types 4, 5 and 6. No precomputation will be performed.')
 %     options.precompute_lor = false;
