@@ -97,7 +97,7 @@ end
 nN = suffix - (t + 1);
 suffix = file(suffix+1:end);
 pFile = file(1:t);
-ch = [];
+ch = '';
 for uu = 1 : nN - 1
     ch = [ch,'0'];
 end
