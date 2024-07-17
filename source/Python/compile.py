@@ -290,13 +290,13 @@ class CommandLine:
                 rlib = result = os.popen('root-config --libdir').read()
                 rlib = rlib[:-1]
                 
-                lib1 = '-L' + rlib
-                lib2 = '-libCore'
-                lib3 = '-libRIO'
-                lib4 = '-libTree'
-                lib5 = '-ldl'
-                link = '-olibRoot.so'
-                files = '' + sdir + '/loadRootData.cpp'
+            lib1 = '-L' + rlib
+            lib2 = '-lCore'
+            lib3 = '-lRIO'
+            lib4 = '-lTree'
+            lib5 = '-ldl'
+            link = '-olibRoot.so'
+            files = '' + sdir + '/loadRootData.cpp'
             try:
                 result = subprocess.run([compiler, '-shared', '-fPIC', '-pthread', '-std=c++17', '-m64', '-I' + rpath, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
             except Exception:
