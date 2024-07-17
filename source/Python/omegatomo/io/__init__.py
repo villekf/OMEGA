@@ -6,7 +6,6 @@ Created on Thu Mar  7 13:12:10 2024
 """
 
 from .loadGATESPECTData import loadGATESPECTData
-from .loadPlanmecaData import loadPlanmecaData
 from .loadNikonData import loadNikonData
 from .loadSkyscanData import loadSkyscanData
 from .loadInterfile import loadInterfile
@@ -16,4 +15,4 @@ from .loadProjectionImages import loadProjectionImages
 from .loadData import loadROOT
 from .loadInveon import loadInveonData
 
-__all__ = ["loadPlanmecaData", "loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData"]
+__all__ = ["loadGATESPECTData", "loadInterfile", "loadProjectionData", "loadProjectionImages", "loadROOT", "loadNikonData", "loadSkyscanData", "loadSPECTInterfile", "loadInveonData"]

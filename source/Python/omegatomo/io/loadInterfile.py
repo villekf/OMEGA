@@ -2,7 +2,7 @@
 """
 Created on Thu Mar  7 13:36:22 2024
 
-@author: Mad Gigerdi
+@author: Ville-Veikko Wettenhovi
 """
 import re
 import numpy as np

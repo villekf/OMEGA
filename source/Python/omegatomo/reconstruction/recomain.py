@@ -375,7 +375,7 @@ def reconstructions_main(options):
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
     if ~options.CT and ~options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
         ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
-    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK) and not options.largeDim:
+    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True

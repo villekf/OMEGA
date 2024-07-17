@@ -267,15 +267,19 @@ options.offsetCorrection = False
 ### OpenCL/CUDA device used
 options.deviceNum = 0
 
-### Use CUDA
-# Selecting this to True will use CUDA kernels/code instead of OpenCL. This
-# only works if the CUDA code was successfully built. Recommended only for
-# Siddon as the orthogonal/volume-based ray tracer are slower in CUDA.
-options.useCUDA = False
+# If True, uses CUDA
+options.useCUDA = True
 
-### Use CPU
-# Selecting this to True will use CPU-based code instead of OpenCL or CUDA.
-options.useCPU = False
+# Assumes that PyTorch tensors are input as for forward and backward projections
+# NOTE: PyTorch is row-major while OMEGA is column-major! The example reconstruction will work fine, but if you input your own data, make sure the data is structured correctly!
+# For details, see https://en.wikipedia.org/wiki/Row-_and_column-major_order
+# The above means that if column-major 3D array has dimensions (dim1, dim2, dim3), in PyTorch you would need this to be (dim3, dim2, dim1) to preserve the data structure
+options.useTorch = True
+
+# If True, assumes that CuPy arrays are the input for forward and backward projections, unless useTorch = True
+# Requires useCUDA = True
+# Default is False
+options.useCuPy = True
 
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix

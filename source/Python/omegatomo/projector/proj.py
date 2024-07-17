@@ -118,7 +118,7 @@ class projectorClass:
     cryst_per_block_axial = cryst_per_block
     transaxial_multip = 1
     blocks_per_ring = 1
-    diameter = 1.
+    diameter = 0.
     flip_image = False
     use_machine = 0
     use_ASCII = False
@@ -780,7 +780,7 @@ class projectorClass:
         
         
     def OMEGAErrorCheck(self):
-        if not self.CT and not self.SPECT and (self.FOVa_x >= self.diameter or self.FOVa_y >= self.diameter):
+        if not self.CT and not self.SPECT and (self.FOVa_x >= self.diameter or self.FOVa_y >= self.diameter) and self.diameter > 0:
             raise ValueError(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
         if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz):
             raise ValueError("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
@@ -811,7 +811,7 @@ class projectorClass:
         if not self.CT and not self.SPECT and self.ring_difference < 0 and not self.use_raw_data:
             raise ValueError("Ring difference has to be at least 0!")
         
-        if not self.CT and not self.SPECT and self.Nang > self.det_w_pseudo / 2 and not self.use_raw_data:
+        if not self.CT and not self.SPECT and self.Nang > self.det_w_pseudo / 2 and not self.use_raw_data and self.Nang > 1:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
         
         if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
@@ -975,6 +975,17 @@ class projectorClass:
         
         if self.projector_type == 6 and not self.SPECT:
             raise ValueError('Projector type 6 is only supported with SPECT data!')
+        
+        if self.projector_type == 6 and self.useCUDA:
+            raise ValueError('Projector type 6 does not support CUDA!')
+        
+        if self.projector_type == 6:
+            if self.Nx != self.nRowsD:
+                raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
+            if self.Ny != self.nRowsD:
+                raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
+            if self.Nz != self.nColsD:
+                raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
         
         if self.FDK and (self.Niter > 1 or self.subsets > 1):
             if self.largeDim:
@@ -1489,6 +1500,17 @@ class projectorClass:
         loadCorrections(self)
         parseInputs(self, mDataFound)
         prepassPhase(self)
+        if self.listmode > 0 and self.subsets > 1 and self.subsetType > 0:
+            if self.useIndexBasedReconstruction:
+                self.trIndex = self.trIndex[:,self.index]
+                self.axIndex = self.axIndex[:,self.index]
+            # else:
+            #     self.x = np.reshape(self.x, [6, -1], order='F')
+            #     self.x = self.x[:,self.index]
+            #     self.x = self.x.ravel('F')
+        if self.useIndexBasedReconstruction and self.listmode > 0:
+            self.trIndex = self.trIndex.ravel('F')
+            self.axIndex = self.axIndex.ravel('F')
 
         if self.projector_type in [1, 11, 14, 15, 12, 13]:
             self.FPType = 1
@@ -2141,6 +2163,9 @@ class projectorClass:
                                 self.d_z[i] = cp.asarray(apu[self.nMeas[i] * kerroin : self.nMeas[i + 1] * kerroin])
                         elif self.listmode == 0 or (self.listmode > 0 and self.useIndexBasedReconstruction):
                             self.d_z[0] = cp.asarray(self.z.ravel())
+                        else:
+                            for i in range(self.subsets):
+                                self.d_z[i] = cp.asarray(np.zeros(1,dtype=np.float32))
                     if (self.attenuation_correction and not self.CTAttenuation):
                         self.d_atten = [None] * self.subsets
                         for i in range(self.subsets):
@@ -2230,11 +2255,11 @@ class projectorClass:
                         with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
                             lines = f.read()
                         lines = hlines + lines
-                        bOpt += ('-DCAST=float')
-                        bOpt += ('-DPSF')
-                        bOpt += ('-DLOCAL_SIZE=' + str(localSize[0]))
-                        bOpt += ('-DLOCAL_SIZE2=' + str(localSize[1]))
-                        cp.RawModule(code=lines, options=bOpt)
+                        bOpt += ('-DCAST=float',)
+                        bOpt += ('-DPSF',)
+                        bOpt += ('-DLOCAL_SIZE=' + str(localSize[0]),)
+                        bOpt += ('-DLOCAL_SIZE2=' + str(localSize[1]),)
+                        mod = cp.RawModule(code=lines, options=bOpt)
                         self.knlPSF = mod.get_function('Convolution3D_f')
                         self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
                         
@@ -2513,7 +2538,7 @@ class projectorClass:
                     apu = self.x.ravel()
                     for i in range(self.subsets):
                         self.d_x[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                elif self.listamode > 0 and not self.useIndexBasedReconstruction:
+                elif self.listmode > 0 and not self.useIndexBasedReconstruction:
                     apu = self.x.ravel()
                     for i in range(self.subsets):
                         if self.loadTOF:
@@ -2537,6 +2562,9 @@ class projectorClass:
                             self.d_z[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * kerroin : self.nMeas[i + 1] * kerroin])
                     elif self.listmode == 0 or (self.listmode > 0 and self.useIndexBasedReconstruction):
                         self.d_z[0] = cl.array.to_device(self.queue, self.z.ravel())
+                    else:
+                        for i in range(self.subsets):
+                            self.d_z[i] = cl.array.to_device(self.queue, np.zeros(1,dtype=np.float32))
                 if (self.attenuation_correction and not self.CTAttenuation):
                     self.d_atten = [None] * self.subsets
                     for i in range(self.subsets):
@@ -2756,7 +2784,7 @@ class projectorClass:
         else:
             if self.useCUDA:
                 if self.useTorch:
-                    output = torch.zeros(self.N[ii].item(), dtype=torch.float32)
+                    output = torch.zeros(self.N[ii].item(), dtype=torch.float32, device='cuda')
                 elif self.useCuPy:
                     output = cp.zeros(self.N[ii].item(), dtype=cp.float32)
                 else:
@@ -2769,7 +2797,7 @@ class projectorClass:
             if self.useCuPy:
                 fD = cp.asarray(f)
                 outputD = cp.asarray(output)
-                self.knlPSF((globalSize[0], globalSize[1], globalSize[2]), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
+                self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 16), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
             else:
                 if self.useTorch:
                     class Holder(cuda.driver.PointerHolderBase):
@@ -2784,6 +2812,8 @@ class projectorClass:
                     self.knlPSF(fD, outputD, self.d_gaussPSF.gpudata, np.int32(self.g_dim_x), np.int32(self.g_dim_y), np.int32(self.g_dim_z), block=(16,16,1), grid=(globalSize[0], globalSize[1], globalSize[2]))
                 else:
                     self.knlPSF(f.gpudata, output.gpudata, self.d_gaussPSF.gpudata, np.int32(self.g_dim_x), np.int32(self.g_dim_y), np.int32(self.g_dim_z), block=(16,16,1), grid=(globalSize[0], globalSize[1], globalSize[2]))
+            if self.useTorch:
+                torch.cuda.synchronize()
         else:
             kInd += 1
             if self.useAF:
@@ -2846,14 +2876,14 @@ class projectorClass:
                         else:
                             apuArr = torch.reshape(f, (self.Nz[ii].item(), self.Ny[ii].item(), self.Nx[ii].item()))
                         for kk in range(self.nProjSubset[subset].item()):
-                            kuvaRot = rotate(apuArr, -self.angles[u1].item(), InterpolationMode=InterpolationMode.BILINEAR)
-                            kuvaRot = kuvaRot.unsqueeze(4).unsqueeze(1)
-                            # kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
-                            kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2))
-                            kuvaRot = kuvaRot.squeeze(4).squeeze(1)
+                            kuvaRot = rotate(apuArr, -self.angles[u1].item(), InterpolationMode.BILINEAR)
+                            kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
+                            kuvaRot = kuvaRot.unsqueeze(0)
+                            kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2), groups=kuvaRot.shape[1])
+                            kuvaRot = kuvaRot.squeeze(0)
                             kuvaRot = kuvaRot[self.blurPlanes[u1].item():, :, :]
-                            # kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             kuvaRot = torch.sum(kuvaRot, 0)
+                            kuvaRot = torch.permute(kuvaRot, (1, 0))
                             y[kk, :, :] += kuvaRot
                             u1 += 1
                     y = y.ravel()
@@ -3020,7 +3050,7 @@ class projectorClass:
                         elif self.FPType in [1, 2, 3]:
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
-                            if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                            if (((self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
                                 kIndLoc += (self.d_x[0],)
                             else:
                                 kIndLoc += (self.d_x[subset], )
@@ -3498,9 +3528,10 @@ class projectorClass:
                             kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2))
                             kuvaRot = kuvaRot.squeeze(0)
                             kuvaRot = kuvaRot[self.blurPlanes[u1].item():, :,:]
+                            kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             # kuvaRot = cp.transpose(kuvaRot, (2, 1, 0))
-                            fApu[self.blurPlanes[u1].item():,:,:] = kuvaRot
-                            fApu = rotate(fApu, self.angles[u1], InterpolationMode=InterpolationMode.BILINEAR)
+                            fApu[:,:,self.blurPlanes[u1].item():] = kuvaRot
+                            fApu = rotate(fApu, self.angles[u1].item(), InterpolationMode.BILINEAR)
                             if isinstance(f, list):
                                 f[ii][kk,:] = torch.ravel(fApu)
                             else:
@@ -3580,23 +3611,10 @@ class projectorClass:
                                 else:
                                     kIndLoc += (self.d_trIndex[subset],)
                                     kIndLoc += (self.d_axIndex[subset],)
-                            if self.useImages:
-                                chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                                array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nProjSubset[subset].item())
-                                if self.useTorch:
-                                    array.copy_from(yD.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
-                                else:
-                                    array.copy_from(y.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
-                                res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                        filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=1)
-                                yy = cp.cuda.texture.TextureObject(res, tdes)
-                                kIndLoc += (yy,)
+                            if self.useTorch:
+                                kIndLoc += (yD,)
                             else:
-                                if self.useTorch:
-                                    kIndLoc += (yD,)
-                                else:
-                                    kIndLoc += (y,)
+                                kIndLoc += (y,)
                             if self.useTorch:
                                 kIndLoc += (fD,)
                             else:

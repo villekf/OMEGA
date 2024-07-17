@@ -128,7 +128,7 @@ def loadCorrections(options):
         options.normalization_correction = False
         
 def parseInputs(options, mDataFound = False):
-    if options.subsets > 1:
+    if options.subsets > 1 and options.subsetType > 0:
         if mDataFound and not options.largeDim:
             if options.Nt > 1:
                 for ff in range(1, options.Nt + 1):
