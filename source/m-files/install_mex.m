@@ -1173,15 +1173,6 @@ else
                         warning('CUDA support not supported on Octave on Windows')
                     end
                 end
-                %%%%%%%%%%%%%%%%%%%%%% Implementations 2 & 5 %%%%%%%%%%%%%%%%%%%%%%
-                %%%%%%%%%%%%%%%%%%%%%% Implementation 5 %%%%%%%%%%%%%%%%%%%%%%%
-                % try
-                %     mkoctfile('--mex', '-DOPENCL -Wno-ignored-attributes', ['-I"' af_path_include '"'], ['-I"' opencl_path '/include/"'], ['-L"' af_path '/lib64/"'], ...
-                %         ['-L"' af_path '\lib"'], ['-L"' opencl_path 'lib/x64/"'], '-lafopencl', '-lOpenCL', ...
-                %         [folder '/improved_Siddon_openCL.cpp'])
-                %     movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-                % end
-
                 %%%%%%%%%%%%%%%%%%%%%% Implementation 2 %%%%%%%%%%%%%%%%%%%%%%%
                 [~, sys] = mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', '-Wno-ignored-attributes', '-lafopencl', '-lOpenCL', ...
                     ['-L' af_path '\lib64'], ['-L' af_path '\lib'],['-L' opencl_lib_path ''], ['-I' folder ''], ['-I' opencl_include_path ''], ['-I' af_path_include], ...
@@ -1242,7 +1233,7 @@ else
                 end
                 syst = syst + sys;
                 if syst == 0
-                    movefile('CPU_matrixfree.mex', [folder '/CPU_matrixfree.mex'],'f');
+                    movefile('OpenCL_matrixfree.mex', [folder '/CPU_matrixfree.mex'],'f');
                     disp('Implementation 2 built with CPU support')
                 else
                     warning(['Unable to build CPU support for implementation 2! If ArrayFire has been installed in a non-standard path, it can be added manually '...
@@ -1299,46 +1290,12 @@ else
             end
         end
 
-        %         try
-        %             mkoctfile('--mex', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L"' cuda_path '/lib64"'], ['-L"' opencl_lib_path '"'], ...
-        %                 '-L/opt/AMDAPPSDK-3.0/lib/x86_64' , '-L/opt/amdgpu-pro/lib64',['-I ' folder], ['-I' af_path_include], ['-I"' cuda_path '/include"'], ['-I"' opencl_include_path '"'], ...
-        %                 '-I/opt/AMDAPPSDK-3.0/include', '"-DOPENCL"', [folder '/improved_Siddon_openCL.cpp'], [folder '/functions.cpp'],[folder '/opencl_error.cpp'], [folder '/precomp.cpp'],...
-        %                 [folder '/AF_opencl_functions.cpp'])
-        %             movefile('improved_Siddon_openCL.mex', [folder '/improved_Siddon_openCL.mex'],'f');
-        %         end
-        try
-            mkoctfile('--mex', cxxflags, '-lafopencl', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
-                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
-                '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
-
-            mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', cxxflags, '-lOpenCL', '-lafopencl', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
-                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
-                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
-
-            movefile('ArrayFire_OpenCL_device_info.mex', [folder '/ArrayFire_OpenCL_device_info.mex'],'f');
-            movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree.mex'],'f');
-
-            mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
-                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
-                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
-            movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint16.mex'],'f');
-            disp('Implementation 2 built')
-        catch ME
-            if verbose
-                warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
-                    'Compiler error:']);
-                disp(ME.message)
-            else
-                warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
-                    'Compiler error is shown with install_mex(1). If OpenCL SDK and/or ArrayFire has been installed in a non-standard path, they can be added manually '...
-                    'by using install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIB/X64'', ''/PATH/TO/ARRAYFIRE'')']);
-            end
-        end
         setenv('CXXFLAGS',cxxflags);
         setenv('LDFLAGS','-fopenmp');
         try
             mkoctfile('--mex', '-DMATLAB', '-DAF', '-DCPU', cxxflags, '-lafcpu', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-I ' folder], ['-I' af_path_include], ...
                 [folder '/OpenCL_matrixfree.cpp']);
+            movefile('OpenCL_matrixfree.mex', [folder '/CPU_matrixfree.mex'],'f');
             disp('Implementation 2 built with CPU support')
         catch ME
             if verbose
@@ -1352,6 +1309,34 @@ else
         end
         setenv('CXXFLAGS',joku);
         setenv('LDFLAGS',jokuL);
+        try
+            mkoctfile('--mex', cxxflags, '-lafopencl', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64' ,['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
+                '-I/opt/AMDAPPSDK-3.0/include', [folder '/ArrayFire_OpenCL_device_info.cpp'])
+            movefile('ArrayFire_OpenCL_device_info.mex', [folder '/ArrayFire_OpenCL_device_info.mex'],'f');
+
+            mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', '-DMTYPE', cxxflags, '-lafopencl', '-lOpenCL', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
+                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
+            movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree_uint16.mex'],'f');
+
+            mkoctfile('--mex', '-DMATLAB', '-DAF', '-DOPENCL', cxxflags, '-lOpenCL', '-lafopencl', ['-L' af_path '/lib64'], ['-L' af_path '/lib'], ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], ...
+                '-L/opt/amdgpu-pro/lib64', '-L/opt/AMDAPPSDK-3.0/lib/x86_64', ['-I ' folder], ['-I' af_path_include], ['-I' cuda_path '/include'], ['-I' opencl_include_path], ...
+                '-I/opt/AMDAPPSDK-3.0/include', '-DOPENCL', [folder '/OpenCL_matrixfree.cpp']);
+
+            movefile('OpenCL_matrixfree.mex', [folder '/OpenCL_matrixfree.mex'],'f');
+            disp('Implementation 2 built')
+        catch ME
+            if verbose
+                warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
+                    'Compiler error:']);
+                disp(ME.message)
+            else
+                warning(['Unable to build OpenCL files for implementation 2! If you do not need implementation 2 (matrix free OpenCL with ArrayFire) ignore this warning. '...
+                    'Compiler error is shown with install_mex(1). If OpenCL SDK and/or ArrayFire has been installed in a non-standard path, they can be added manually '...
+                    'by using install_mex(0, ''/PATH/TO/OPENCL/INCLUDE'', ''/PATH/TO/OPENCL/LIB/X64'', ''/PATH/TO/ARRAYFIRE'')']);
+            end
+        end
         try
             mkoctfile('--mex', '-DOPENCL', cxxflags, '-lOpenCL', ['-L' cuda_path '/lib64'], ['-L' opencl_lib_path], '-L/opt/AMDAPPSDK-3.0/lib/x86_64', '-L/opt/amdgpu-pro/lib64', ...
                 ['-I' cuda_path '/include'], ['-I' opencl_include_path ''], '-I/opt/AMDAPPSDK-3.0/include', [folder '/OpenCL_device_info.cpp'])
