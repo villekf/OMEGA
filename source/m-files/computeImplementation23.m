@@ -16,10 +16,10 @@ res = [];
 if options.use_32bit_atomics && options.use_64bit_atomics
     options.use_32bit_atomics = false;
 end
-if options.use_64bit_atomics && (options.use_CPU || options.use_CUDA)
+if options.use_64bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
     options.use_64bit_atomics = false;
 end
-if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA)
+if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
     options.use_32bit_atomics = false;
 end
 % if type <= 0
