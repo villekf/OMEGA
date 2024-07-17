@@ -89,12 +89,14 @@ options.machine_name = 'Prospecta';
 
 %%% Reconstructed image pixel count (X-direction)
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
+% If you're using projector_type = 6, this should be options.nRowsD
 options.Nx = 128;
 
 %%% Y-direction
 options.Ny = 128;
 
 %%% Z-direction (number of slices) (axial)
+% If you're using projector_type = 6, this HAS to be same as options.nColsD
 options.Nz = 96;
 
 %%% Flip the image (in vertical direction)?
