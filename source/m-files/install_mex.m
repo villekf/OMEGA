@@ -1118,7 +1118,7 @@ else
 %        end
     else
         try
-            mkoctfile(['"$(' root_path '  --cflags)"'], ['"-Wl,-lCore -lTree -ldl $(' root_path ' --libs)"'], ...
+            mkoctfile(['"$(' root_path '  --cflags)"'], '-DOCTAVE', ['"-Wl,-lCore -lTree -lRIO -ldl $(' root_path ' --libs)"'], ...
                 [folder '/GATE_root_matlab_oct.cpp'])
             movefile('GATE_root_matlab_oct.oct', [folder '/GATE_root_matlab_oct.oct'],'f');
             disp('ROOT support enabled')
@@ -1256,7 +1256,7 @@ else
                 ['-I' opencl_include_path], [folder '/OpenCL_device_info.cpp']);
             syst = 0;
             if sys ~= 0
-                [charArray, ~] = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L' opencl_lib_path], ['-I' folder], ...
+                [charArray, ~] = mkoctfile('--mex', '-v', '-DOPENCL', '-Wno-ignored-attributes', '-lOpenCL', ['-L"' opencl_lib_path '"'], ['-I' folder], ...
                     ['-I' opencl_include_path], [folder '/OpenCL_device_info.cpp']);
                 sys = makeOCT(charArray);
             end

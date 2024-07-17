@@ -34,9 +34,9 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	uint16NDArray ringPos2 = prhs(1).uint16_array_value();
 	uint16NDArray ringNumber1 = prhs(2).uint16_array_value();
 	uint16NDArray ringNumber2 = prhs(3).uint16_array_value();
-	const boolNDArray truesIndex = prhs(4).bool_array_value();
-	const boolNDArray scatterIndex = prhs(5).bool_array_value();
-	const boolNDArray randomsIndex = prhs(6).bool_array_value();
+	boolNDArray truesIndex = prhs(4).bool_array_value();
+	boolNDArray scatterIndex = prhs(5).bool_array_value();
+	boolNDArray randomsIndex = prhs(6).bool_array_value();
 	const uint64_t sinoSize = prhs(7).uint64_scalar_value();
 	const uint32_t Ndist = prhs(8).uint32_scalar_value();
 	const uint32_t Nang = prhs(9).uint32_scalar_value();
@@ -82,9 +82,9 @@ DEFUN_DLD(createSinogramASCIIOct, prhs, nargout, "ASCII to sinogram help") {
 	const uint32_t* seg_p = reinterpret_cast<uint32_t*>(seg.fortran_vec());
 	const uint16_t* bins_p = reinterpret_cast<uint16_t*>(bins.fortran_vec());
 	const uint16_t* tPoint = reinterpret_cast<uint16_t*>(time.fortran_vec());
-	const bool* tIndex = truesIndex.fortran_vec();
-	const bool* cIndex = scatterIndex.fortran_vec();
-	const bool* rIndex = randomsIndex.fortran_vec();
+	bool* tIndex = truesIndex.fortran_vec();
+	bool* cIndex = scatterIndex.fortran_vec();
+	bool* rIndex = randomsIndex.fortran_vec();
 
 
 	/* Assign pointers to the various parameters */
