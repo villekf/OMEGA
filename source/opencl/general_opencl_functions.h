@@ -116,6 +116,7 @@
 #define MFLOAT3(a, b, c) {a, b, c}
 #define CMFLOAT3 (float3)
 #define CMINT3 (int3)
+#define CMINT4 (int4)
 #define BARRIER barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
 #define KERNEL __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
 #define KERNEL2 __kernel __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
@@ -191,6 +192,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define MFLOAT2(a, b) make_float2(a, b)
 #define CMFLOAT3 make_float3
 #define CMINT3 make_int3
+#define CMINT4 make_int4
 #define KERNEL extern "C" __global__
 #define KERNEL2 KERNEL
 #define KERNEL3 KERNEL

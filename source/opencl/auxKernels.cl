@@ -72,7 +72,7 @@ void forward(CLGLOBAL float* d_outputFP, const CLGLOBAL float* CLRESTRICT meas
 void conv(const int3 ind, const CLGLOBAL CAST* CLRESTRICT input, const CLGLOBAL CAST* CLRESTRICT sens, CONSTANT float* convolution_window, 
 	const int window_size_x, const int window_size_y, const int window_size_z, const uchar no_norm, float* result, float* resultS) {
 	int c = 0;
-	int3 ind_uus = (int3)(0, 0, 0);
+	int3 ind_uus = CMINT3(0, 0, 0);
 	const uint Nyx = GSIZE0 * GSIZE1;
 	for (int k = -window_size_z; k <= window_size_z; k++) {
 		if (ind.z < window_size_z) {
@@ -141,9 +141,13 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 #endif
 	) {
 
-	int3 ind = (int3)(GID0, GID1, GID2);
+	int3 ind = CMINT3(GID0, GID1, GID2);
 	size_t idx = GID0 + GID1 * GSIZE0 + GID2 * GSIZE0 * GSIZE1;
+#ifdef CUDA
+	if (ind.x >= d_N.x || ind.y >= d_N.y || ind.z >= d_N.z)
+#else
 	if (any(ind >= d_N))
+#endif
 		return;
 	float apu = d_im[idx];
 #ifdef CT
@@ -168,8 +172,8 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 KERN
 void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
 	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
-	int4 ind = (int4)(GID0, GID1, GID2, 0);
-	int4 ind_uus = (int4)(0, 0, 0, 0);
+	int4 ind = CMINT4(GID0, GID1, GID2, 0);
+	int4 ind_uus = CMINT4(0, 0, 0, 0);
 	const uint Nyx = GSIZE0 * GSIZE1;
 	float result = 0.f;
 	int c = 0;
@@ -249,8 +253,8 @@ void Convolution3D(const CLGLOBAL CAST* input, CLGLOBAL CAST* output,
 KERNEL3
 void Convolution3D_f(const CLGLOBAL float* input, CLGLOBAL float* output,
 	CONSTANT float* convolution_window, int window_size_x, int window_size_y, int window_size_z) {
-	int4 ind = (int4)(GID0, GID1, GID2, 0);
-	int4 ind_uus = (int4)(0, 0, 0, 0);
+	int4 ind = CMINT4(GID0, GID1, GID2, 0);
+	int4 ind_uus = CMINT4(0, 0, 0, 0);
 	float result = 0.f;
 	const uint Nyx = GSIZE0 * GSIZE1;
 	//int radius_x = floor((float)window_size_x / 2.0f);
@@ -870,7 +874,11 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 			LTYPE indX = LID0;
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #ifdef USEIMAGES
+#ifdef CUDA
+				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
+#else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerNLM, (int4)(xx, yy, zz, 0)).w;
+#endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
 					lCache[indX][indY][indZ] = 0.f;
@@ -1816,7 +1824,11 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 			LTYPE indX = LID0;
 			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
 #ifdef USEIMAGES
+#ifdef CUDA
+				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
+#else
 				lCache[indX][indY][indZ] = read_imagef(u, samplerTV, (int4)(xx, yy, zz, 0)).w;
+#endif
 #else
 				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
 					lCache[indX][indY][indZ] = 0.f;
