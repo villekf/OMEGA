@@ -136,6 +136,17 @@ def loadROOT(options, store_coordinates = False):
     else:
         files = glob.glob(os.path.join(options.fpath, '*.root'))
         nFiles = len(files)
+    if nFiles == 0:
+        print('No files found! Please select a ROOT file')
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
+        root = tk.Tk()
+        root.withdraw()
+        filename = askopenfilename(title='Select first ROOT file',filetypes=([('ROOT Files','*.root')]))
+        if not filename:
+            raise ValueError('No file was selected')
+        files = glob.glob(os.path.join(os.path.split(filename)[0], '*.root'))
+        nFiles = len(files)
         
     
     
