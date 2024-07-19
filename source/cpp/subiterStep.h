@@ -85,7 +85,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 	//vec.im_os[0].eval();
 	//if (DEBUG) {
 	//	//mexPrintBase("dU.dims(0) = %d\n", dU.dims(0));
-	//	af::deviceGC();
+	//	//af::deviceGC();
 	//	af_print_mem_info("mem info", -1);
 	//	//mexEval();
 	//}
@@ -307,6 +307,15 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing CGLS");
 			CGLS(inputScalars, w_vec, iter, vec);
+		}
+		else if (MethodList.SART) {
+			if (inputScalars.verbose >= 3)
+				mexPrint("Computing SART");
+			if (DEBUG) {
+				mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
+				mexEval();
+			}
+			vec.im_os[ii] = SART(vec.im_os[ii], *Sens, vec.rhs_os[ii], w_vec.lambda[iter]);
 		}
 		//else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) {
 		//	if (inputScalars.verbose >= 3)

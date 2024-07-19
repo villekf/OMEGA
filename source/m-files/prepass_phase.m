@@ -105,7 +105,7 @@ if options.precondTypeImage(3)
 end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
-        || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM ...
+        || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM || options.SART ...
         || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA...
         || options.RDP || options.SPS || options.ProxNLM || options.GGMRF ||options.hyperbolic)
 
@@ -134,12 +134,12 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     end
 
     % Lambda values (relaxation parameters)
-    if (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS) && (~isfield(options,'lambda') || isempty(options.lambda) || sum(options.lambda) == 0)
+    if (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART) && (~isfield(options,'lambda') || isempty(options.lambda) || sum(options.lambda) == 0)
         lambda = zeros(options.Niter,1);
         for i = 1 : options.Niter
             lambda(i) = 1 / ((i - 1)/20 + 1);
         end
-        if options.CT
+        if options.CT && ~options.SART
             lambda = lambda / 10000;
         end
         if options.implementation == 2 || options.useSingles || options.implementation == 5
@@ -147,12 +147,12 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lambda = lambda;
         end
-    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS) && numel(options.lambda) == 1 && options.Niter > 1
+    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART) && numel(options.lambda) == 1 && options.Niter > 1
         lambdaT = zeros(options.Niter,1);
         for i = 1 : options.Niter
             lambdaT(i) = options.lambda / ((i - 1)/20 + 1);
         end
-        if options.CT
+        if options.CT && ~options.SART
             lambdaT = lambdaT / 10000;
         end
         if options.implementation == 2 || options.useSingles || options.implementation == 5
@@ -160,7 +160,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lambda = lambdaT;
         end
-    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS)
+    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART)
         if numel(options.lambda) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations!')
         end

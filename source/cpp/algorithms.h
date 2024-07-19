@@ -288,6 +288,10 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
+inline af::array SART(const af::array& im, const af::array& Summ, const af::array& rhs, const float lam) {
+	return (im + lam * (rhs / Summ));
+}
+
 inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t subIter = 0, const int ii = 0) {
 	if (inputScalars.adaptiveType == 1)
 		vec.rhsCP[ii] = rhs.copy();

@@ -82,7 +82,7 @@ typedef struct Weighting_ {
 // Struct for boolean operators indicating whether a certain method is selected
 typedef struct RecMethods_ {
 	bool OSEM = false, MRAMLA = false, RAMLA = false, ROSEM = false, RBI = false, DRAMA = false, COSEM = false, ECOSEM = false,
-		ACOSEM = false, LSQR = false, CGLS = false;
+		ACOSEM = false, LSQR = false, CGLS = false, SART = false;
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
 		ProxTV = false, ProxTGV = false, ProxRDP = false, ProxNLM = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,

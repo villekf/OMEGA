@@ -354,7 +354,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.computeD = true;
 	}
 
-	if (w_vec.precondTypeMeas[0])
+	if (w_vec.precondTypeMeas[0] || MethodList.SART)
 		w_vec.computeM = true;
 #endif
 
@@ -544,7 +544,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
 	// Relaxation parameters
-	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP)
+	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART)
 		w_vec.lambda = getSingles(options, "lambda");
 	if (MethodList.PKMA) {
 		w_vec.alphaM = getSingles(options, "alpha_PKMA");
@@ -651,6 +651,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.ACOSEM = getScalarBool(getField(options, 0, "ACOSEM"), -61);
 	MethodList.LSQR = getScalarBool(getField(options, 0, "LSQR"), -61);
 	MethodList.CGLS = getScalarBool(getField(options, 0, "CGLS"), -61);
+	MethodList.SART = getScalarBool(getField(options, 0, "SART"), -61);
 	MethodList.FISTA = getScalarBool(getField(options, 0, "FISTA"), -61);
 	MethodList.FISTAL1 = getScalarBool(getField(options, 0, "FISTAL1"), -61);
 	if (MethodList.LSQR || MethodList.CGLS)

@@ -10,6 +10,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	af::array indeksit;
 	bool indS = false;
 	uint32_t kk = subIter + iter * inputScalars.subsets;
+	if (DEBUG) {
+		mexPrintBase("y.dims(0) = %d\n", y.dims(0));
+		mexPrintBase("input.dims(0) = %d\n", input.dims(0));
+		mexEval();
+	}
 	if (!inputScalars.CT)
 		input(input > 0.f) += inputScalars.epps;
 	if (w_vec.precondTypeMeas[1] && w_vec.filterIter > 0 && kk == w_vec.filterIter) {
@@ -178,11 +183,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	else if (MethodList.LSQR) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing LSQR");
-		if (DEBUG) {
-			mexPrintBase("y.dims(0) = %d\n", y.dims(0));
-			mexPrintBase("input.dims(0) = %d\n", input.dims(0));
-			mexEval();
-		}
 		input -= w_vec.alphaLSQR * y;
 		w_vec.betaLSQR = af::norm(input);
 		input = input / w_vec.betaLSQR;
@@ -199,6 +199,13 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
+	}
+	else if (MethodList.SART) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Computing SART");
+		input = y - input;
+		input /= w_vec.M[subIter];
+		input.eval();
 	}
 	else if (MethodList.PDHG || MethodList.PDDY) {
 		if (inputScalars.verbose >= 3)

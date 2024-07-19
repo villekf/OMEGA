@@ -287,6 +287,7 @@ struct inputStruct {
     bool OSEM = false;
     bool LSQR = false;
     bool CGLS = false;
+    bool SART = false;
     bool FISTA = false;
     bool FISTAL1 = false;
     bool MRAMLA = false;
@@ -438,6 +439,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.ACOSEM = options.ACOSEM;
     MethodList.LSQR = options.LSQR;
     MethodList.CGLS = options.CGLS;
+    MethodList.SART = options.SART;
     MethodList.FISTA = options.FISTA;
     MethodList.FISTAL1 = options.FISTAL1;
     if (MethodList.LSQR || MethodList.CGLS)
@@ -944,7 +946,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
         w_vec.computeD = true;
 
-    if (w_vec.precondTypeMeas[0])
+    if (w_vec.precondTypeMeas[0] || MethodList.SART)
         w_vec.computeM = true;
 #endif
 
@@ -1116,7 +1118,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.U = options.U;
     }
     // Relaxation parameters
-    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP)
+    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART)
         w_vec.lambda = options.lambdaN;
     if (MethodList.PKMA) {
         w_vec.alphaM = options.alpha_PKMA;

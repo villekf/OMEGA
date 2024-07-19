@@ -160,6 +160,7 @@ def transferData(options):
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)
+    options.param.SART = ctypes.c_bool(options.SART)
     options.param.FISTA = ctypes.c_bool(options.FISTA)
     options.param.FISTAL1 = ctypes.c_bool(options.FISTAL1)
     options.param.MRAMLA = ctypes.c_bool(options.MRAMLA)
@@ -375,7 +376,7 @@ def reconstructions_main(options):
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
     if ~options.CT and ~options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
         ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
-    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK) and not options.largeDim and options.CT:
+    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True

@@ -348,6 +348,7 @@ class projectorClass:
     OSEM = False
     LSQR = False
     CGLS = False
+    SART = False
     FISTA = False
     FISTAL1 = False
     MRAMLA = False
@@ -4408,6 +4409,7 @@ class projectorClass:
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),
+            ('SART', ctypes.c_bool),
             ('FISTA', ctypes.c_bool),
             ('FISTAL1', ctypes.c_bool),
             ('MRAMLA', ctypes.c_bool),
