@@ -134,7 +134,14 @@ class ProjectorClass {
 		char buffer8[30];
 		char buffer9[30];
 		char buffer10[30];
-		char buffer11[30];
+		char spectBuffer1[30];
+		char spectBuffer2[30];
+		char spectBuffer3[30];
+		char spectBuffer4[30];
+		char spectBuffer5[30];
+		char spectBuffer6[30];
+		char spectBuffer7[30];
+
 		std::snprintf(buffer0, 35, "--gpu-architecture=compute_%d%d", compMajor, compMinor);
 		options.push_back(buffer0);
 		options.push_back("-DCUDA");
@@ -238,8 +245,32 @@ class ProjectorClass {
 			options.push_back("-DCT");
 		else if (inputScalars.PET)
 			options.push_back("-DPET");
-		else if (inputScalars.SPECT)
+		else if (inputScalars.SPECT) {
 			options.push_back("-DSPECT");
+			std::snprintf(spectBuffer1, 30, "-DCOL_D=%f", inputScalars.colD);
+			options.push_back(spectBuffer1);
+			std::snprintf(spectBuffer2, 30, "-DCOL_L=%f", inputScalars.colL);
+			options.push_back(spectBuffer2);
+			std::snprintf(spectBuffer3, 30, "-DDSEPTAL=%f", inputScalars.dSeptal);
+			options.push_back(spectBuffer3);
+			std::snprintf(spectBuffer4, 30, "-DHEXORIENTATION=%u", static_cast<uint8_t>(inputScalars.hexOrientation));
+			options.push_back(spectBuffer4);
+			std::snprintf(spectBuffer5, 30, "-DCONEMETHOD=%u", static_cast<uint8_t>(inputScalars.coneMethod));
+			options.push_back(spectBuffer5);
+			if (inputScalars.coneMethod == 1) {
+				uint32_t nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
+				std::snprintf(spectBuffer6, 30, "-DNHEXSPECT=%u", static_cast<uint16_t>(nHexSPECT));
+				options.push_back(spectBuffer6);
+			} else if (inputScalars.coneMethod == 3) {
+				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
+			}
+			std::snprintf(spectBuffer7, 30, "-DNRAYSPECT=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+			options.push_back(spectBuffer7);
+
+			inputScalars.n_rays = 1;
+			inputScalars.n_rays3D = 1;
+		}
+
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
 		options.push_back(buffer1);
 		if (inputScalars.listmode == 1)
@@ -288,6 +319,7 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::vector<const char*> os_options = options;
+			os_options.push_back("-DAF");
 			//if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.TOF) && inputScalars.dec > 0)
 			//	os_options += (" -DDEC=" + std::to_string(inputScalars.dec));
 			//os_options += (" -DN_REKOS=" + std::to_string(inputScalars.nRekos));
@@ -2509,16 +2541,16 @@ public:
 			}
 		}
 		else {
-			getErrorString(cuMemFree(d_x[0]));
-			status = cuMemAlloc(&d_x[0], sizeof(float) * length * 6);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			status = cuMemcpyHtoD(d_x[0], listCoord, sizeof(float) * length * 6);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
+		getErrorString(cuMemFree(d_x[0]));
+		status = cuMemAlloc(&d_x[0], sizeof(float) * length * 6);
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		status = cuMemcpyHtoD(d_x[0], listCoord, sizeof(float) * length * 6);
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			return -1;
 			}
 		}
 		return 0;
@@ -2804,8 +2836,8 @@ public:
 					mexPrintBase("erotusSens[1] = %u\n", erotusSens[1]);
 				}
 				else {
-					mexPrintBase("erotus[0] = %u\n", erotus[0]);
-					mexPrintBase("erotus[1] = %u\n", erotus[1]);
+				mexPrintBase("erotus[0] = %u\n", erotus[0]);
+				mexPrintBase("erotus[1] = %u\n", erotus[1]);
 				}
 				mexPrintBase("kernelIndBPSubIter = %u\n", BPArgs.size());
 				mexPrintBase("m_size = %u\n", m_size);
@@ -2859,10 +2891,10 @@ public:
 			kTemp.emplace_back(&d[ii]);
 			kTemp.emplace_back(&b[ii]);
 			kTemp.emplace_back(&bmax[ii]);
-			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
-				kTemp.emplace_back(&d_xyindex[osa_iter]);
-				kTemp.emplace_back(&d_zindex[osa_iter]);
-			}
+				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+					kTemp.emplace_back(&d_xyindex[osa_iter]);
+					kTemp.emplace_back(&d_zindex[osa_iter]);
+				}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
 					kTemp.emplace_back(&d_trIndex[0]);
@@ -2873,8 +2905,8 @@ public:
 					kTemp.emplace_back(&d_axIndex[osa_iter]);
 				}
 			}
-			if (inputScalars.raw)
-				kTemp.emplace_back(&d_L[osa_iter]);
+				if (inputScalars.raw)
+					kTemp.emplace_back(&d_L[osa_iter]);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
 			kTemp.emplace_back(reinterpret_cast<void*>(&vec_opencl.d_rhs_os[uu]));
 			kTemp.emplace_back(&no_norm);

@@ -48,6 +48,9 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Image size in x-direction
 	param.Nx = getScalarUInt32(prhs[ind], ind);
 	ind++;
+	
+	if (DEBUG)
+		mexPrintf("param.Nx = %u\n", param.Nx);
 
 	// Image size in y-direction
 	param.Ny = getScalarUInt32(prhs[ind], ind);
@@ -190,21 +193,36 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	//46
 
 	const bool CT = getScalarBool(getField(options, 0, "CT"), ind);
+	const bool SPECT = getScalarBool(getField(options, 0, "SPECT"), ind);
+
 	param.pitch = getScalarBool(getField(options, 0, "pitch"), ind);
 	param.subsetType = getScalarInt32(getField(options, 0, "subset_type"), ind);
 	param.subsets = getScalarUInt32(getField(options, 0, "subsets"), ind);
 	if (CT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarFloat(getField(options, 0, "dPitchY"), ind);
-	}
-	else {
+	} else if (SPECT) {
+		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
+		param.dPitchXY = getScalarFloat(getField(options, 0, "crXY"), ind);
+		param.colL = getScalarFloat(getField(options, 0, "collimatorLength"), ind);
+		param.colD = getScalarFloat(getField(options, 0, "collimatorDiameter"), ind);
+		param.dSeptal = getScalarFloat(getField(options, 0, "dSeptal"), ind);
+		param.nRaySPECT = getScalarFloat(getField(options, 0, "nRaySPECT"), ind);
+		param.hexOrientation = getScalarFloat(getField(options, 0, "hexOrientation"), ind);
+		param.coneMethod = getScalarFloat(getField(options, 0, "coneMethod"), ind);
+	} else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarFloat(getField(options, 0, "cr_p"), ind);
 	}
+	
+	if (DEBUG)
+		mexPrintf("param.colD = %f\n", param.colD);
 	param.nRays2D = getScalarUInt16(options, 0, "n_rays_transaxial");
 	param.nRays3D = getScalarUInt16(options, 0, "n_rays_axial");
 	param.useMaskFP = getScalarBool(options, 0, "useMaskFP");
 	param.useMaskBP = getScalarBool(options, 0, "useMaskBP");
+	if (DEBUG)
+		mexPrintf("param.nRays2D = %d\n", param.nRays2D);
 	if (param.useMaskFP)
 		param.maskFP = getUint8s(options, "maskFP");
 	if (param.useMaskBP)
@@ -212,12 +230,22 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const uint32_t nLayers = getScalarUInt32(options, 0, "nLayers");
 	if (nLayers > 1)
 		param.nLayers = true;
+	if (DEBUG)
+		mexPrintf("param.nLayers = %d\n", param.nLayers);
 	param.computeSensIm = getScalarBool(getField(options, 0, "compute_sensitivity_image"), ind);
 	param.rings = getScalarInt32(getField(options, 0, "rings"), ind);
+	if (DEBUG)
+		mexPrintf("param.rings = %d\n", param.rings);
 
 	if (param.listMode > 0 && !param.computeSensIm) {
+		if (DEBUG)
+			mexPrintf("param.listMode = %d\n", param.listMode);
 		const uint64_t* index = getUint64s(options, "summa");
+		if (DEBUG)
+			mexPrintf("index = %d\n", index[0]);
 		x = getSingles(options, "x", 0);
+		if (DEBUG)
+			mexPrintf("x = %f\n", x[0]);
 		x = &x[index[param.currentSubset] * 6LL];
 	}
 	// Number of measurements/LORs
@@ -315,7 +343,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
-		projectorType123Implementation4(param, loop_var_par, output, x, z, input, CT, fp, SensIm, detIndices);
+		projectorType123Implementation4(param, loop_var_par, output, x, z, input, CT, SPECT, fp, SensIm, detIndices);
 
 		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 
