@@ -38,6 +38,7 @@ The algorithms implemented so far are:
 - FDK [40]
 - LSQR [46]
 - CGLS [47]
+- SART [48,49]
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Huber prior [45]
 - Median Root Prior (MRP) [16]
@@ -376,3 +377,7 @@ This work was supported by a grant from [Jane and Aatos Erkko foundation](https:
 46. Christopher C. Paige and Michael A. Saunders. 1982. "LSQR: An Algorithm for Sparse Linear Equations and Sparse Least Squares," ACM Trans. Math. Softw. 8, 1 (March 1982), 43–71. https://doi.org/10.1145/355984.355989
 
 47. Hestenes, Magnus R. and Eduard Stiefel. "Methods of conjugate gradients for solving linear systems," Journal of research of the National Bureau of Standards 49 (1952): 409-435. https://doi.org/10.6028/jres.049.044
+
+48. A.H. Andersen, A.C. Kak, "Simultaneous Algebraic Reconstruction Technique (SART): A superior implementation of the ART algorithm," Ultrasonic Imaging, Volume 6, Issue 1, 1984, Pages 81-94, https://doi.org/10.1016/0161-7346(84)90008-7
+
+49. G. Wang, and M. Jiang, "Ordered-Subset simultaneous algebraic reconstruction techniques (OS-SART)," Journal of X-Ray Science and Technology, 2004, 12, pp. 169-177.

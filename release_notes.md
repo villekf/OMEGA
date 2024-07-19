@@ -147,7 +147,7 @@
   - Support is limited to only a few algorithms (MBSREM, PKMA, PDHG (and its variations), FISTA)
   
 - Added several new algorithms
-  - These include primal-dual hybrid gradient (PDHG), FISTA, LSQR, CGLS, primal-dual Davis-Yin (PDDY)
+  - These include primal-dual hybrid gradient (PDHG), FISTA, LSQR, CGLS, primal-dual Davis-Yin (PDDY), SART
   - PDHG contains several different variations with and without regularization
   - Works with any input data (PET, CT, SPECT)
   - For CT, these use linearized data, with linearization done automatically (if the data is already linearized, put `options.usingLinearizedData = true` before reconstruction)
