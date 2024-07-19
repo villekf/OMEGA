@@ -1994,13 +1994,19 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 				proj.memSize += (sizeof(float) * m_size) / 1048576ULL;
 				af::sync();
-				af::array outputFP = af::constant(0.f, m_size);
+				af::array outputFP;
 				//af::array outputFP = af::constant(0.f, m_size);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					if (inputScalars.projector_type == 6)
+					if (inputScalars.projector_type == 6) {
+						outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 						forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, ii);
-					else
+						outputFP.eval();
+						outputFP = af::flat(outputFP);
+					}
+					else {
+						outputFP = af::constant(0.f, m_size);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
+					}
 					af::sync();
 					if (status != 0)
 						return -1;
@@ -2125,10 +2131,16 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			af::array outputFP = af::constant(0.f, m_size);
 			af::sync();
-			if (inputScalars.projector_type == 6)
+			if (inputScalars.projector_type == 6) {
+				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, 0);
-			else
+				outputFP.eval();
+				outputFP = af::flat(outputFP);
+			}
+			else {
+				outputFP = af::constant(0.f, m_size);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
+			}
 			af::sync();
 			if (status != 0)
 				return -1;
@@ -2163,13 +2175,19 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 		if (inputScalars.nMultiVolumes > 0) {
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
-				af::array outputFP = af::constant(0.f, m_size);
+				af::array outputFP;
 				af::sync();
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					if (inputScalars.projector_type == 6)
+					if (inputScalars.projector_type == 6) {
+						outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 						forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, ii);
-					else
+						outputFP.eval();
+						outputFP = af::flat(outputFP);
+					}
+					else {
+						outputFP = af::constant(0.f, m_size);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
+					}
 					af::sync();
 					if (status != 0)
 						return -1;
