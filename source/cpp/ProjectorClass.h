@@ -1315,80 +1315,11 @@ public:
 		const scalarStruct& inputScalars, const Weighting& w_vec, const RecMethods& MethodList) {
 		cl_int status = CL_SUCCESS;
 		size_t vecSize = 1;
-		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
-			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
-		// Create the necessary buffers
-		if (MethodList.GGMRF) {
-			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1), NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		else if (MethodList.hyperbolic) {
-			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		// Detector coordinates
-		if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
-			d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			if (inputScalars.nLayers > 1)
-				d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
-				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x / 2, NULL, &status));
-			else
-				d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-		//	d_xcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_x, NULL, &status);;
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	d_ycenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_y, NULL, &status);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	d_zcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_z, NULL, &status);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//}
-		// Attenuation data for image-based attenuation
 		cl::size_type imX = inputScalars.Nx[0];
 		cl::size_type imY = inputScalars.Ny[0];
 		cl::size_type imZ = inputScalars.Nz[0];
-		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-			if (inputScalars.useBuffers)
-				d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-			else
-				d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
+		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
+			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages)
 				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
@@ -1409,39 +1340,16 @@ public:
 				}
 			}
 		}
-		//if (inputScalars.offset) {
-		//	imX = inputScalars.nRowsD;
-		//	imY = inputScalars.nColsD;
-		//	d_maskOffset = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//}
-		if (inputScalars.maskFP || inputScalars.maskBP) {
-			if (inputScalars.useBuffers) {
-				if (inputScalars.maskFP)
-					d_maskFPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status);
-				if (inputScalars.maskBP)
-					d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], NULL, &status);
+		// Create the necessary buffers
+		if (MethodList.GGMRF) {
+			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1), NULL, &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
 			}
-			else {
-				if (inputScalars.maskFP) {
-					imX = inputScalars.nRowsD;
-					imY = inputScalars.nColsD;
-					d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-				}
-				if (inputScalars.maskBP) {
-					imX = inputScalars.Nx[0];
-					imY = inputScalars.Ny[0];
-					if (DEBUG) {
-						mexPrintBase("imX = %u\n", imX);
-						mexPrintBase("imY = %u\n", imY);
-						mexEval();
-					}
-					d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-				}
-			}
+		}
+		else if (MethodList.hyperbolic) {
+			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
@@ -1461,138 +1369,232 @@ public:
 				return -1;
 			}
 		}
-		if (inputScalars.eFOV) {
-			d_eFOVIndices = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0], NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
-			d_angle = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		// TOF bin centers
-		if (inputScalars.TOF) {
-			d_TOFCenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			if (inputScalars.nLayers > 1)
-				d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
-				//d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z / 2, NULL, &status));
-			else
-				d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
-		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			if (DEBUG) {
-				mexPrintBase("length[kk] = %u\n", length[kk]);
-				mexPrintBase("kk = %u\n", kk);
-				mexPrintBase("vecSize = %u\n", vecSize);
-				mexEval();
-			}
-			if (inputScalars.CT && inputScalars.listmode != 1) {
-				if (inputScalars.pitch)
-					d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-				else
-					d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
+		if (inputScalars.projector_type != 6) {
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+				d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
 			}
-			else {
-				if (inputScalars.PET && inputScalars.listmode == 0)
-					if (inputScalars.nLayers > 1)
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 3, NULL, &status);
+			// Detector coordinates
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+				if (inputScalars.nLayers > 1)
+					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
+				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x / 2, NULL, &status));
+				else
+					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			//	d_xcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_x, NULL, &status);;
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//	d_ycenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_y, NULL, &status);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//	d_zcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_z, NULL, &status);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//}
+			// Attenuation data for image-based attenuation
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				if (inputScalars.useBuffers)
+					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+				else
+					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			//if (inputScalars.offset) {
+			//	imX = inputScalars.nRowsD;
+			//	imY = inputScalars.nColsD;
+			//	d_maskOffset = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//}
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.useBuffers) {
+					if (inputScalars.maskFP)
+						d_maskFPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status);
+					if (inputScalars.maskBP)
+						d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], NULL, &status);
+				}
+				else {
+					if (inputScalars.maskFP) {
+						imX = inputScalars.nRowsD;
+						imY = inputScalars.nColsD;
+						d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+					}
+					if (inputScalars.maskBP) {
+						imX = inputScalars.Nx[0];
+						imY = inputScalars.Ny[0];
+						if (DEBUG) {
+							mexPrintBase("imX = %u\n", imX);
+							mexPrintBase("imY = %u\n", imY);
+							mexEval();
+						}
+						d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+					}
+				}
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.eFOV) {
+				d_eFOVIndices = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0], NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
+				d_angle = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			// TOF bin centers
+			if (inputScalars.TOF) {
+				d_TOFCenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+				if (inputScalars.nLayers > 1)
+					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
+				//d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z / 2, NULL, &status));
+				else
+					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+				if (DEBUG) {
+					mexPrintBase("length[kk] = %u\n", length[kk]);
+					mexPrintBase("kk = %u\n", kk);
+					mexPrintBase("vecSize = %u\n", vecSize);
+					mexEval();
+				}
+				if (inputScalars.CT && inputScalars.listmode != 1) {
+					if (inputScalars.pitch)
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					else
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
-				else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
-					d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
-				else
-					d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-				d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-				if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0))
-					d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-				d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-				d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
-			if (inputScalars.raw && inputScalars.listmode != 1) {
-				d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
-				d_xyindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-				if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-					d_trIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
 					}
-					d_axIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+				}
+				else {
+					if (inputScalars.PET && inputScalars.listmode == 0)
+						if (inputScalars.nLayers > 1)
+							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 3, NULL, &status);
+						else
+							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
+					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
+					else
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
+					}
+				}
+				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0))
+						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
+					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
+					d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+					d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
+				if (inputScalars.raw && inputScalars.listmode != 1) {
+					d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
+					d_xyindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+						d_trIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+						d_axIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
 					}
 				}
 			}
@@ -1625,86 +1627,6 @@ public:
 			}
 			memSize += (sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1)) / 1048576ULL;
 		}
-		if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_V, CL_FALSE, 0, sizeof(float) * inputScalars.size_V, inputScalars.V);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
-		}
-		if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(float) * inputScalars.size_of_x) / 1048576ULL;
-		}
-		if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-			if (inputScalars.nLayers > 1) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-				//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[inputScalars.det_per_ring * 2]);
-				//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[0]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-				//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[inputScalars.rings]);
-				//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[0]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			else {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-		}
-		//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-		//	status = CLCommandQueue[0].enqueueWriteBuffer(d_xcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_x, inputScalars.x_center);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	status = CLCommandQueue[0].enqueueWriteBuffer(d_ycenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_y, inputScalars.y_center);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	status = CLCommandQueue[0].enqueueWriteBuffer(d_zcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_z, inputScalars.z_center);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	memSize += (sizeof(float) * inputScalars.size_center_x + sizeof(float) * inputScalars.size_center_y + sizeof(float) * inputScalars.size_center_z) / 1048576ULL;
-		//}
-		if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
-			if (inputScalars.useBuffers)
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
-			else {
-				cl::detail::size_t_array region = { { 0, 0, 0 } };
-				region[0] = inputScalars.Nx[0];
-				region[1] = inputScalars.Ny[0];
-				region[2] = inputScalars.Nz[0];
-				status = CLCommandQueue[0].enqueueWriteImage(d_attenIm, CL_FALSE, origin, region, 0, 0, atten);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
-		}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			cl::detail::size_t_array region = { { 0, 0, 0 } };
 			region[0] = inputScalars.Nx[0];
@@ -1715,27 +1637,6 @@ public:
 			else
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_uref, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
 			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
-		}
-		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_angle, CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, w_vec.angles);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(float) * inputScalars.nProjections) / 1048576ULL;
-		}
-		if (inputScalars.TOF) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFCenter, CL_FALSE, 0, sizeof(float) * inputScalars.nBins, inputScalars.TOFCenter);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(float) * inputScalars.nBins) / 1048576ULL;
-		}
-		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
 		}
 		if (inputScalars.maskFP || inputScalars.maskBP || inputScalars.useExtendedFOV) {
 			if (inputScalars.useBuffers) {
@@ -1785,151 +1686,254 @@ public:
 				memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
 			}
 		}
-		if (inputScalars.eFOV) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_eFOVIndices, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
-		}
-		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			if (inputScalars.CT && inputScalars.listmode == 0) {
-				int64_t kerroin = 2;
-				if (inputScalars.pitch)
-					kerroin = 6;
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+		if (inputScalars.projector_type != 6) {
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_V, CL_FALSE, 0, sizeof(float) * inputScalars.size_V, inputScalars.V);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
-				memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
+				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
 			}
-			else {
-				if (inputScalars.PET && inputScalars.listmode == 0) {
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(float) * inputScalars.size_of_x) / 1048576ULL;
+			}
+			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+				if (inputScalars.nLayers > 1) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+					//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[inputScalars.det_per_ring * 2]);
+					//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[0]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
+					//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[inputScalars.rings]);
+					//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[0]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				else {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+			}
+			//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_xcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_x, inputScalars.x_center);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_ycenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_y, inputScalars.y_center);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_zcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_z, inputScalars.z_center);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return -1;
+			//	}
+			//	memSize += (sizeof(float) * inputScalars.size_center_x + sizeof(float) * inputScalars.size_center_y + sizeof(float) * inputScalars.size_center_z) / 1048576ULL;
+			//}
+			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				if (inputScalars.useBuffers)
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
+				else {
+					cl::detail::size_t_array region = { { 0, 0, 0 } };
+					region[0] = inputScalars.Nx[0];
+					region[1] = inputScalars.Ny[0];
+					region[2] = inputScalars.Nz[0];
+					status = CLCommandQueue[0].enqueueWriteImage(d_attenIm, CL_FALSE, origin, region, 0, 0, atten);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
+			}
+			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_angle, CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, w_vec.angles);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(float) * inputScalars.nProjections) / 1048576ULL;
+			}
+			if (inputScalars.TOF) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFCenter, CL_FALSE, 0, sizeof(float) * inputScalars.nBins, inputScalars.TOFCenter);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(float) * inputScalars.nBins) / 1048576ULL;
+			}
+			status = CLCommandQueue[0].finish();
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			if (inputScalars.eFOV) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_eFOVIndices, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
+			}
+			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+				if (inputScalars.CT && inputScalars.listmode == 0) {
 					int64_t kerroin = 2;
-					if (inputScalars.nLayers > 1)
-						int64_t kerroin = 3;
+					if (inputScalars.pitch)
+						kerroin = 6;
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
 					memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
 				}
-				else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-					memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
-				}
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.CT && inputScalars.listmode == 0) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
-			}
-			else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
-				if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
-			}
-			if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_T[kk], CL_FALSE, 0, sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
-			if (inputScalars.raw) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_L[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-			}
-			else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
-			}
-			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-				if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2]);
+				else {
+					if (inputScalars.PET && inputScalars.listmode == 0) {
+						int64_t kerroin = 2;
+						if (inputScalars.nLayers > 1)
+							int64_t kerroin = 3;
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+						memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
+					}
+					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
+						memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
+					}
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
 					}
-					memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2]);
+				}
+				if (inputScalars.CT && inputScalars.listmode == 0) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
+				}
+				else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
+				}
+				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_T[kk], CL_FALSE, 0, sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.raw) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_L[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
 					}
 					memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 				}
-			}
-			//if (inputScalars.precompute)
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_lor[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * vecSize, &lor1[pituus[kk] * vecSize]);
-			status = CLCommandQueue[0].finish();
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
+				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
+				}
+				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
+					}
+				}
+				//if (inputScalars.precompute)
+				//	status = CLCommandQueue[0].enqueueWriteBuffer(d_lor[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * vecSize, &lor1[pituus[kk] * vecSize]);
+				status = CLCommandQueue[0].finish();
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
-				memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-			}
-			if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize]);
+				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+				}
+				if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+				}
+				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_atten[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+				}
+				if (DEBUG) {
+					mexPrintBase("length[kk] = %d\n", length[kk]);
+					if (inputScalars.pitch && kk > 0) {
+						mexPrintBase("z_det[pituus[kk] * 6] = %f\n", z_det[pituus[kk] * 6 - 1]);
+						mexPrintBase("pituus[kk] * 6 = %d\n", pituus[kk] * 6 - 1);
+					}
+					mexPrintBase("pituus[kk] = %d\n", pituus[kk]);
+					mexPrintBase("erotus = %d\n", pituus[kk + 1] - pituus[kk]);
+					mexPrintBase("kk = %d\n", kk);
+					mexPrintBase("memSize = %u\n", memSize);
+					mexEval();
+				}
+				status = CLCommandQueue[0].finish();
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
 				}
-				memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-			}
-			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_atten[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
-			}
-			if (DEBUG) {
-				mexPrintBase("length[kk] = %d\n", length[kk]);
-				if (inputScalars.pitch && kk > 0) {
-					mexPrintBase("z_det[pituus[kk] * 6] = %f\n", z_det[pituus[kk] * 6 - 1]);
-					mexPrintBase("pituus[kk] * 6 = %d\n", pituus[kk] * 6 - 1);
-				}
-				mexPrintBase("pituus[kk] = %d\n", pituus[kk]);
-				mexPrintBase("erotus = %d\n", pituus[kk + 1] - pituus[kk]);
-				mexPrintBase("kk = %d\n", kk);
-				mexPrintBase("memSize = %u\n", memSize);
-				mexEval();
-			}
-			status = CLCommandQueue[0].finish();
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
 			}
 		}
 
@@ -1994,8 +1998,10 @@ public:
 			d_scat.resize(inputScalars.subsetsUsed);
 		if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 			d_atten.resize(inputScalars.subsetsUsed);
-		d_x.resize(inputScalars.subsetsUsed);
-		d_z.resize(inputScalars.subsetsUsed);
+		if (inputScalars.projector_type != 6) {
+			d_x.resize(inputScalars.subsetsUsed);
+			d_z.resize(inputScalars.subsetsUsed);
+		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
 		//d_Sino.resize(inputScalars.TOFsubsets);
@@ -2665,7 +2671,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
+			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
@@ -2901,8 +2907,14 @@ public:
 				mexPrintBase("local[1] = %u\n", local[1]);
 				mexPrintBase("global[1] = %u\n", global[1]);
 				mexPrintBase("global[2] = %u\n", global[2]);
-				mexPrintBase("erotus[0] = %u\n", erotus[0]);
-				mexPrintBase("erotus[1] = %u\n", erotus[1]);
+				if (inputScalars.listmode > 0 && compSens) {
+					mexPrintBase("erotusSens[0] = %u\n", erotusSens[0]);
+					mexPrintBase("erotusSens[1] = %u\n", erotusSens[1]);
+				}
+				else {
+					mexPrintBase("erotus[0] = %u\n", erotus[0]);
+					mexPrintBase("erotus[1] = %u\n", erotus[1]);
+				}
 				mexPrintBase("global.dimensions() = %u\n", global.dimensions());
 				mexPrintBase("local.dimensions() = %u\n", local.dimensions());
 				mexPrintBase("kernelIndBPSubIter = %u\n", kernelIndBPSubIter);

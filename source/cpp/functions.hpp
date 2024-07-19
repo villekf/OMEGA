@@ -1321,6 +1321,7 @@ inline void forwardProjectionSPECT(af::array& fProj, const Weighting& w_vec, AF_
 	const af::array apuArr = af::moddims(vec.im_os[ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
 	for (int kk = 0; kk < length; kk++) {
 		af::array kuvaRot = af::rotate(apuArr, -w_vec.angles[u1], true, AF_INTERP_BILINEAR);
+		//af::array kuvaRot = apuArr.copy();
 		kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
 		kuvaRot = af::convolve2(kuvaRot, w_vec.gFilter(af::span, af::span, af::span, u1));
 		kuvaRot = kuvaRot(af::span, af::span, af::seq(w_vec.distInt[u1], af::end));
@@ -1328,6 +1329,11 @@ inline void forwardProjectionSPECT(af::array& fProj, const Weighting& w_vec, AF_
 		kuvaRot = af::reorder(af::sum(kuvaRot, 0), 1, 2, 0);
 		fProj(af::span, af::span, kk) += kuvaRot;
 		u1++;
+		//af::sync();
+		//if (DEBUG) {
+		//	mexPrintBase("u1 = %d\n", u1);
+		//	mexEval();
+		//}
 	}
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("SPECT forward projection complete");
@@ -1342,6 +1348,11 @@ inline void backprojectionSPECT(af::array& fProj, const Weighting& w_vec, AF_im_
 	fProj = af::moddims(fProj, inputScalars.nRowsD, inputScalars.nColsD, length);
 	af::array apuBP2 = af::constant(0.f, inputScalars.Nx[ii] * inputScalars.Ny[ii] * inputScalars.Nz[ii], length);
 	int64_t u1 = uu;
+	if (DEBUG) {
+		mexPrintBase("ii = %d\n", ii);
+		mexPrintBase("length = %d\n", length);
+		mexEval();
+	}
 	for (int kk = 0; kk < length; kk++) {
 		af::array apuBP = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
 		af::array kuvaRot = fProj(af::span, af::span, kk);
@@ -1354,6 +1365,12 @@ inline void backprojectionSPECT(af::array& fProj, const Weighting& w_vec, AF_im_
 		apuBP = af::rotate(apuBP, w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 		apuBP2(af::span, kk) = af::flat(apuBP);
 		u1++;
+	}
+	if (DEBUG) {
+		mexPrintBase("u1 = %d\n", u1);
+		mexPrintBase("af::sum(apuBP2) = %f\n", af::sum<float>(apuBP2));
+		mexPrintBase("vec.rhs_os[ii].dims(0) = %d\n", vec.rhs_os[ii].dims(0));
+		mexEval();
 	}
 	vec.rhs_os[ii] = af::sum(apuBP2, 1);
 	vec.rhs_os[ii](vec.rhs_os[ii] < inputScalars.epps&& vec.rhs_os[ii] >= 0.f) = inputScalars.epps;
@@ -1372,6 +1389,10 @@ inline void backprojectionSPECT(af::array& fProj, const Weighting& w_vec, AF_im_
 			apuSumm = af::rotate(apuSumm, w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 			apuBP2(af::span, kk) = af::flat(apuSumm);
 			u1++;
+		}
+		if (DEBUG) {
+			mexPrintBase("af::sum(apuBP2, 1) = %f\n", af::sum(apuBP2, 1));
+			mexEval();
 		}
 		if (compute_norm_matrix == 2) {
 			vec.Summ[ii][osa_iter] = af::sum(apuBP2, 1);
@@ -1922,11 +1943,17 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			proj.memSize += (sizeof(float) * m_size) / 1048576ULL;
 			af::sync();
-			af::array outputFP = af::constant(0.f, m_size);
-			if (inputScalars.projector_type == 6)
+			af::array outputFP;
+			if (inputScalars.projector_type == 6) {
+				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, 0);
-			else
+				outputFP.eval();
+				outputFP = af::flat(outputFP);
+			}
+			else {
+				outputFP = af::constant(0.f, m_size);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
+			}
 			af::sync();
 			if (status != 0)
 				return -1;

@@ -378,12 +378,12 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 	// Randoms + Scatter
 	std::vector<af::array> aRand(inputScalars.TOFsubsets);
 
-	if (inputScalars.projector_type != 6) {
+	//if (inputScalars.projector_type != 6) {
 		// Create OpenCL buffers, CUDA arrays or OneAPI buffers
 		status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList);
 		if (status != 0)
 			return;
-	}
+	//}
 
 	if (inputScalars.largeDim)
 		largeDimCreate(inputScalars);
@@ -654,6 +654,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 				w_vec.D.resize(inputScalars.nMultiVolumes + 1);
 				uint8_t apuN = proj.no_norm;
 				proj.no_norm = 1;
+				int64_t uu = 0;
 				//if (w_vec.computeD) {
 				//	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 				//		w_vec.D[ii] = af::constant(0.f, inputScalars.im_dim[ii], 1);
@@ -705,7 +706,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							//af::array oneInput = af::constant(1.f, fullMSize);
 							oneInput.eval();
 							if (inputScalars.projector_type == 6)
-								backprojectionSPECT(oneInput, w_vec, vec, inputScalars, length[subIter], 0, subIter, 0, 0, 0, ii);
+								backprojectionSPECT(oneInput, w_vec, vec, inputScalars, length[subIter], uu, subIter, 0, 0, 0, ii);
 							else {
 								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, length, m_size, meanBP, g, proj, false, ii, pituus);
 								if (status != 0) {
@@ -720,6 +721,8 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 								w_vec.D[ii] += vec.rhs_os[ii].as(f32);
 							}
 							w_vec.D[ii].eval();
+							if (inputScalars.projector_type == 6)
+								uu += length[subIter];
 						}
 					}
 				}
