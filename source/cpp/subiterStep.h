@@ -75,7 +75,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		mexPrint("Priori\n");
 		mexEval();
 	}
-	if (!MethodList.BSREM && !MethodList.ROSEMMAP) {
+	if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS) {
 		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix);
 		if (status != 0)
 			return -1;
@@ -308,7 +308,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexPrint("Computing CGLS");
 			CGLS(inputScalars, w_vec, iter, vec);
 		}
-		else if (MethodList.SART) {
+		else if (MethodList.SART || MethodList.POCS) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing SART");
 			if (DEBUG) {
@@ -316,6 +316,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexEval();
 			}
 			vec.im_os[ii] = SART(vec.im_os[ii], *Sens, vec.rhs_os[ii], w_vec.lambda[iter]);
+			if (MethodList.POCS)
+				POCS(vec.im_os[ii], inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
 		}
 		//else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) {
 		//	if (inputScalars.verbose >= 3)

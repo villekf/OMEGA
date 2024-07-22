@@ -612,7 +612,7 @@ def prepassPhase(options):
         
     # Check if any of the regularization options are selected
     if (options.MRP or options.quad or options.Huber or options.TV or options.FMH or options.L or options.weighted_mean or options.APLS or options.BSREM
-        or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM or options.DRAMA or options.ROSEM_MAP or options.ECOSEM or options.SART 
+        or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM or options.DRAMA or options.ROSEM_MAP or options.ECOSEM or options.SART or options.ASD_POCS 
         or options.COSEM or options.ACOSEM or options.AD or np.any(options.OSL_COSEM) or options.NLM or options.OSL_RBI or options.RBI or options.PKMA
         or options.RDP or options.SPS or options.ProxNLM or options.GGMRF):
     
@@ -631,14 +631,14 @@ def prepassPhase(options):
                 options.U = 10000.
     
         # Lambda values (relaxation parameters)
-        if (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART) and np.size(options.lambdaN) == 0:
+        if (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS) and np.size(options.lambdaN) == 0:
             lambda_vals = np.zeros(options.Niter, dtype=np.float32)
             for i in range(options.Niter):
                 lambda_vals[i] = 1. / (i / 20. + 1.)
             options.lambdaN = lambda_vals
-            if options.CT == True and not options.SART:
+            if options.CT == True and not options.SART and not options.ASD_POCS:
                 options.lambdaN = options.lambdaN / 10000.
-        elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART):
+        elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS):
             if np.size(options.lambdaN) < options.Niter:
                 raise ValueError('The number of relaxation values needs to be at least equal to the number of iterations!')
             elif np.size(options.lambdaN) > options.Niter:

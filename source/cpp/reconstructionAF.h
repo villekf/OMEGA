@@ -146,6 +146,9 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 		length[kk] = pituus[kk + 1u] - pituus[kk];
 	totLength[0] = pituus[inputScalars.subsets];
 
+	//inputScalars.pituus = pituus;
+	//inputScalars.length = length.data();
+
 	af::array apu_sum, E, indices, rowInd, values, meanBP, meanFP, OSEMapu;
 
 	if ((MethodList.MRAMLA || MethodList.MBSREM) && inputScalars.Nt > 1U)
@@ -239,10 +242,10 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 	const int64_t mem = proj.getGlobalMem();
 	// Is the sensitivity image needed?
 	if (((static_cast<float>(mem) * mem_portions) < image_bytes && !MethodList.CUSTOM) && inputScalars.listmode == 0) {
-		if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART))
+		if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS))
 			compute_norm_matrix = 1u;
 	}
-	else if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART ||
+	else if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS ||
 		(inputScalars.listmode == 1 && inputScalars.computeSensImag)))
 		compute_norm_matrix = 2u;
 #else
@@ -250,7 +253,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 	//	if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP))
 	//		compute_norm_matrix = 1u;
 	//}
-	if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART ||
+	if ((MethodList.OSEM || MethodList.ECOSEM || MethodList.ROSEM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA || MethodList.OSLOSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS ||
 		(inputScalars.listmode == 1 && inputScalars.computeSensImag)))
 		compute_norm_matrix = 2u;
 

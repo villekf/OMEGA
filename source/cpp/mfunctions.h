@@ -354,7 +354,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.computeD = true;
 	}
 
-	if (w_vec.precondTypeMeas[0] || MethodList.SART)
+	if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
 		w_vec.computeM = true;
 #endif
 
@@ -544,7 +544,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
 	// Relaxation parameters
-	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART)
+	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS)
 		w_vec.lambda = getSingles(options, "lambda");
 	if (MethodList.PKMA) {
 		w_vec.alphaM = getSingles(options, "alpha_PKMA");
@@ -635,6 +635,13 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		inputScalars.DSC = getScalarFloat(getField(options, 0, "sourceToCRot"), -63);
 	}
 	w_vec.derivType = getScalarUInt32(getField(options, 0, "derivativeType"), -63);
+	if (MethodList.POCS) {
+		w_vec.ng = getScalarUInt32(getField(options, 0, "POCS_NgradIter"), -63);
+		w_vec.alphaPOCS = getScalarFloat(getField(options, 0, "POCS_alpha"), -63);
+		w_vec.rMaxPOCS = getScalarFloat(getField(options, 0, "POCS_rMax"), -63);
+		w_vec.POCSalphaRed = getScalarFloat(getField(options, 0, "POCS_alphaRed"), -63);
+		w_vec.POCSepps = getScalarFloat(getField(options, 0, "POCSepps"), -63);
+	}
 }
 
 // Obtain the reconstruction methods used
@@ -691,6 +698,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.PDHGL1 = getScalarBool(getField(options, 0, "PDHGL1"), -61);
 	MethodList.CV = getScalarBool(getField(options, 0, "CV"), -61);
 	MethodList.PDDY = getScalarBool(getField(options, 0, "PDDY"), -61);
+	MethodList.POCS = getScalarBool(getField(options, 0, "ASD_POCS"), -61);
 
 	// Whether MAP/prior-based algorithms are used
 	MethodList.MAP = getScalarBool(getField(options, 0, "MAP"), -61);

@@ -820,6 +820,21 @@ end
 if ~isfield(options,'hyperbolicDelta')
     options.hyperbolicDelta = 1;
 end
+if ~isfield(options,'POCS_NgradIter')
+    options.POCS_NgradIter = 20;
+end
+if ~isfield(options,'POCS_alpha')
+    options.POCS_alpha = 0.2;
+end
+if ~isfield(options,'POCS_rMax')
+    options.POCS_rMax = .95;
+end
+if ~isfield(options,'POCS_alphaRed')
+    options.POCS_alphaRed = .95;
+end
+if ~isfield(options,'POCSepps')
+    options.POCSepps = 1e-4;
+end
 % if ~isfield(options,'trIndex')
 %     options.trIndex = [];
 % end

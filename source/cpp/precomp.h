@@ -74,6 +74,7 @@ typedef struct structForScalars {
 	float* x_center = nullptr, *y_center = nullptr, *z_center = nullptr;
 	float* gaussian = nullptr;
 	float* TOFCenter = nullptr;
+	uint64_t* pituus, length;
 	std::vector<uint32_t> usedDevices;
 	largeDimStruct lDimStruct;
 } scalarStruct;

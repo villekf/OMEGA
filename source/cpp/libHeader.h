@@ -115,6 +115,7 @@ struct inputStruct {
     uint32_t TVtype = 1;
     uint32_t FluxType;
     uint32_t DiffusionType;
+    uint32_t POCS_NgradIter;
     // Number of projections
     int64_t nProjections = 1;
     // Number of TOF bins
@@ -195,6 +196,10 @@ struct inputStruct {
     float hyperbolicDelta;
     // Source to detector distance for FDK weights
     float sourceToCRot = 0.f;
+    float POCS_alpha = 0.2f;
+    float POCS_rMax = 0.95f;
+    float POCS_alphaRed = 0.95f;
+    float POCSepps = 1e-4f;
     // Is PSF smoothing used
     bool use_psf = false;
     // Is TOF used
@@ -311,6 +316,7 @@ struct inputStruct {
     bool PDHGL1 = false;
     bool PDDY = false;
     bool CV = false;
+    bool POCS = false;
     bool FDK = false;
     bool MRP = false;
     bool quad = false;
@@ -479,6 +485,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.PDHGL1 = options.PDHGL1;
     MethodList.CV = options.CV;
     MethodList.PDDY = options.PDDY;
+    MethodList.POCS = options.POCS;
 
     // Whether MAP/prior-based algorithms are used
     MethodList.MAP = options.MAP;
@@ -946,7 +953,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
         w_vec.computeD = true;
 
-    if (w_vec.precondTypeMeas[0] || MethodList.SART)
+    if (w_vec.precondTypeMeas[0] || MethodList.SART || MethodList.POCS)
         w_vec.computeM = true;
 #endif
 
@@ -1118,7 +1125,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.U = options.U;
     }
     // Relaxation parameters
-    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART)
+    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS)
         w_vec.lambda = options.lambdaN;
     if (MethodList.PKMA) {
         w_vec.alphaM = options.alpha_PKMA;
@@ -1214,6 +1221,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         mexPrintBase("options.compute_sensitivity_image = %d\n", options.compute_sensitivity_image);
         mexPrintBase("options.OSEM = %d\n", options.OSEM);
         mexEval();
+    }
+    if (MethodList.POCS) {
+        w_vec.ng = options.POCS_NgradIter;
+        w_vec.alphaPOCS = options.POCS_alpha;
+        w_vec.rMaxPOCS = options.POCS_rMax;
+        w_vec.POCSalphaRed = options.POCS_alphaRed;
+        w_vec.POCSepps = options.POCSepps;
     }
 }
 

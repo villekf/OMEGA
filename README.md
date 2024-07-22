@@ -249,6 +249,10 @@ Only implementation 2 is supported.
 
 Status messages, such as the current iteration number, might be displayed only after the computation is already done.
 
+### Intel
+
+Intel GPUs do not support forward and/or backward projection masks. 
+
 
 ## Upcoming Features
 

@@ -69,6 +69,7 @@ def transferData(options):
     options.param.TVtype = ctypes.c_uint32(options.TVtype)
     options.param.FluxType = ctypes.c_uint32(options.FluxType)
     options.param.DiffusionType = ctypes.c_uint32(options.DiffusionType)
+    options.param.POCS_NgradIter = ctypes.c_uint32(options.POCS_NgradIter)
     options.param.nProjections = ctypes.c_int64(options.nProjections)
     options.param.TOF_bins = ctypes.c_int64(options.TOF_bins)
     options.param.tau = ctypes.c_float(options.tau)
@@ -113,6 +114,10 @@ def transferData(options):
     options.param.APLSsmoothing = ctypes.c_float(options.APLSsmoothing)
     options.param.hyperbolicDelta = ctypes.c_float(options.hyperbolicDelta)
     options.param.sourceToCRot = ctypes.c_float(options.sourceToCRot)
+    options.param.POCS_alpha = ctypes.c_float(options.POCS_alpha)
+    options.param.POCS_rMax = ctypes.c_float(options.POCS_rMax)
+    options.param.POCS_alphaRed = ctypes.c_float(options.POCS_alphaRed)
+    options.param.POCSepps = ctypes.c_float(options.POCSepps)
     options.param.use_psf = ctypes.c_bool(options.use_psf)
     options.param.TOF = ctypes.c_bool(options.TOF)
     options.param.pitch = ctypes.c_bool(options.pitch)
@@ -184,6 +189,7 @@ def transferData(options):
     options.param.PDHGL1 = ctypes.c_bool(options.PDHGL1)
     options.param.PDDY = ctypes.c_bool(options.PDDY)
     options.param.CV = ctypes.c_bool(options.CV)
+    options.param.POCS = ctypes.c_bool(options.ASD_POCS)
     options.param.FDK = ctypes.c_bool(options.FDK)
     options.param.MRP = ctypes.c_bool(options.MRP)
     options.param.quad = ctypes.c_bool(options.quad)
@@ -376,7 +382,7 @@ def reconstructions_main(options):
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
     if ~options.CT and ~options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
         ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
-    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART) and not options.largeDim and options.CT:
+    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True

@@ -200,9 +200,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
 	}
-	else if (MethodList.SART) {
+	else if (MethodList.SART || MethodList.POCS) {
 		if (inputScalars.verbose >= 3)
-			mexPrint("Computing SART");
+			mexPrint("Computing SART or ASD-POCS");
+		if (MethodList.POCS)
+			vec.f0POCS = vec.im_os;
 		input = y - input;
 		input /= w_vec.M[subIter];
 		input.eval();

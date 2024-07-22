@@ -568,7 +568,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	//	dU = &w_vec.D[0];
 	if (iter)
 		dU = &vec.im_os[0];
-	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM) {
+	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS) {
 		vec.dU = af::constant(0.f, vec.im_os[0].elements());
 		dU = &vec.dU;
 	}

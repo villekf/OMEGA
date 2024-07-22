@@ -372,6 +372,7 @@ class projectorClass:
     PDHGL1 = False
     PDDY = False
     CV = False
+    ASD_POCS = False
     FDK = False
     MRP = False
     quad = False
@@ -434,6 +435,11 @@ class projectorClass:
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
+    POCS_alpha = 0.2
+    POCS_rMax = 0.95
+    POCS_alphaRed = 0.95
+    POCSepps = 1e-4
+    POCS_NgradIter = 20
     def __init__(self):
         # C-struct
         self.param = self.parameters()
@@ -4318,6 +4324,7 @@ class projectorClass:
             ('TVtype', ctypes.c_uint32),
             ('FluxType', ctypes.c_uint32),
             ('DiffusionType', ctypes.c_uint32),
+            ('POCS_NgradIter', ctypes.c_uint32),
             ('nProjections', ctypes.c_int64),
             ('TOF_bins', ctypes.c_int64),
             ('tau', ctypes.c_float),
@@ -4362,6 +4369,10 @@ class projectorClass:
             ('APLSsmoothing', ctypes.c_float),
             ('hyperbolicDelta', ctypes.c_float),
             ('sourceToCRot', ctypes.c_float),
+            ('POCS_alpha', ctypes.c_float),
+            ('POCS_rMax', ctypes.c_float),
+            ('POCS_alphaRed', ctypes.c_float),
+            ('POCSepps', ctypes.c_float),
             ('use_psf', ctypes.c_bool),
             ('TOF', ctypes.c_bool),
             ('pitch', ctypes.c_bool),
@@ -4431,8 +4442,9 @@ class projectorClass:
             ('PDHG', ctypes.c_bool),
             ('PDHGKL', ctypes.c_bool),
             ('PDHGL1', ctypes.c_bool),
-            ('PDDY', ctypes.c_bool),
             ('CV', ctypes.c_bool),
+            ('PDDY', ctypes.c_bool),
+            ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('MRP', ctypes.c_bool),
             ('quad', ctypes.c_bool),
