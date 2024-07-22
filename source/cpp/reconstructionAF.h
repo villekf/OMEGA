@@ -700,7 +700,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 								oneInput = af::flat(mData[subIter]);
 							//oneInput = af::array(m_size, getSingles(Sin, "", tt), AFTYPE);
 							else
-								oneInput = af::constant(1.f, m_size);
+								oneInput = af::constant(1.f, m_size * inputScalars.nBins);
 							computeIntegralImage(inputScalars, w_vec, length[subIter], oneInput, meanBP);
 							af::sync();
 							//af::array oneInput = af::constant(1.f, fullMSize);

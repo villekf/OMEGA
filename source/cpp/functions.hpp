@@ -1951,7 +1951,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size);
+				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -2004,7 +2004,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						outputFP = af::constant(0.f, m_size);
+						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
 					}
 					af::sync();
@@ -2049,7 +2049,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	else {
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
-			af::array outputFP = af::constant(0.f, m_size);
+			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 			if (DEBUG) {
 				mexPrint("Starting largeDim\n");
 			}
@@ -2129,7 +2129,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			vec.im_os[ii] = vec.im_os[ii] / af::norm(vec.im_os[ii]);
 		}
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
-			af::array outputFP = af::constant(0.f, m_size);
+			af::array outputFP;
 			af::sync();
 			if (inputScalars.projector_type == 6) {
 				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
@@ -2138,7 +2138,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size);
+				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -2185,7 +2185,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						outputFP = af::constant(0.f, m_size);
+						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
 					}
 					af::sync();
