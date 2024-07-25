@@ -142,6 +142,7 @@ class ProjectorClass {
 		char spectBuffer5[30];
 		char spectBuffer6[30];
 		char spectBuffer7[30];
+		char spectBuffer8[30];
 
 		std::snprintf(buffer0, 35, "--gpu-architecture=compute_%d%d", compMajor, compMinor);
 		options.push_back(buffer0);
@@ -268,8 +269,17 @@ class ProjectorClass {
 			std::snprintf(spectBuffer7, 30, "-DNRAYSPECT=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
 			options.push_back(spectBuffer7);
 
-			inputScalars.n_rays = 1;
-			inputScalars.n_rays3D = 1;
+			//inputScalars.n_rays = 1;
+			//inputScalars.n_rays3D = 1;
+
+			if (inputScalars.coneMethod != 1) {
+				std::snprintf(spectBuffer8, 30, "-DN_RAYS=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+				options.push_back(spectBuffer8);
+			} else {
+				options.push_back("-DN_RAYS=1");
+			}
+			options.push_back("-DN_RAYS2D=1");
+			options.push_back("-DN_RAYS3D=1");
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));

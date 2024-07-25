@@ -1166,6 +1166,10 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, cons
 #endif
 
 #if defined(SPECT)
+#ifndef M_PI
+    #define M_PI 3.14159265358979323846
+#endif
+
 DEVICE float sind(float arg) {
 	arg *= M_PI / 180;
 	return sin(arg);
