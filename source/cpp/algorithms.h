@@ -297,6 +297,11 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 	if (inputScalars.adaptiveType == 1)
 		vec.rhsCP[ii] = rhs.copy();
 	if (inputScalars.subsets > 1) {
+		//const float t = w_vec.tFISTA;
+		//if (subIter == 0) {
+		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+		//}
+		//w_vec.thetaCP[subIter] = (t - 1.f) / w_vec.tFISTA;
 		if (DEBUG) {
 			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
@@ -339,6 +344,11 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	else {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
+		//const float t = w_vec.tFISTA;
+		//if (subIter == 0) {
+		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+		//}
+		//w_vec.thetaCP[kk] = (t - 1.f) / w_vec.tFISTA;
 		//const af::array uPrev = vec.uCP.copy();
 		//vec.uCP -= w_vec.tauCP * rhs;
 		//vec.uCP.eval();

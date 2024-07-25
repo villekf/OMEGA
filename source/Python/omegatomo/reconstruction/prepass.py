@@ -350,7 +350,7 @@ def TVPrepass(options):
                 try:
                     from pymatreader import read_mat
                     apu = read_mat(options.TV_referenceImage)
-                    options.TV_referenceImage = np.array(next(iter(apu.items()))[1])
+                    options.TV_referenceImage = np.array(apu[list(apu)[-1]])
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             else:
@@ -398,7 +398,7 @@ def APLSPrepass(options):
             try:
                 from pymatreader import read_mat
                 apu = read_mat(options.APLS_ref_image)
-                options.APLS_ref_image = np.array(next(iter(apu.items()))[1])
+                options.APLS_ref_image = np.array(apu[list(apu)[-1]])
             except ModuleNotFoundError:
                 print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
         else:
@@ -467,15 +467,15 @@ def computeWeights(options, GGMRF):
         
 def quadWeights(options, isEmpty):
     if isEmpty:
-        non_inf_weights_sum = np.nansum(options.weights)
+        non_inf_weights_sum = np.sum(options.weights[~np.isinf(options.weights)])
         options.weights_quad = options.weights / non_inf_weights_sum
         if not options.GGMRF:
             half_len = np.size(options.weights_quad) // 2
             options.weights_quad = np.concatenate((options.weights_quad[:half_len], options.weights_quad[half_len + 1:]))
     else:
         options.weights_quad = options.weights
-    if not options.GGMRF:
-        options.weights_quad = options.weights_quad[~np.isinf(options.weights_quad)]
+    # if not options.GGMRF:
+    options.weights_quad = options.weights_quad[~np.isinf(options.weights_quad)]
     options.weights_quad = options.weights_quad.astype(dtype=np.float32)
         
 def huberWeights(options):
@@ -513,7 +513,7 @@ def NLMPrepass(options):
                 try:
                     from pymatreader import read_mat
                     apu = read_mat(options.NLM_referenceImage)
-                    options.NLM_referenceImage = np.array(next(iter(apu.items()))[1])
+                    options.NLM_referenceImage = np.array(apu[list(apu)[-1]])
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             else:
@@ -542,7 +542,7 @@ def prepassPhase(options):
                 try:
                     from pymatreader import read_mat
                     apu = read_mat(options.referenceImage)
-                    options.referenceImage = np.array(next(iter(apu.items()))[1])
+                    options.referenceImage = np.array(apu[list(apu)[-1]])
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             else:
@@ -686,7 +686,7 @@ def prepassPhase(options):
             #         options.medx = options.Ndx * 2 + 1
             #         options.medy = options.Ndy * 2 + 1
             #         options.medz = options.Ndz * 2 + 1
-            if options.quad or (options.TV and options.TVtype == 3) or options.GGMRF or options.hyperbolic:
+            if options.quad or (options.TV and options.TVtype == 3) or options.GGMRF or options.hyperbolic or (options.RDP and options.RDPIncludeCorners):
                 quadWeights(options, options.empty_weight)
             if options.Huber:
                 huberWeights(options)
@@ -705,6 +705,22 @@ def prepassPhase(options):
                     options.inffi = np.floor(options.weights.size / 2)[0]
             if options.weighted_mean:
                 weightedWeights(options)
+            if options.RDP and options.RDPIncludeCorners and options.RDP_use_anatomical:
+                if isinstance(options.RDP_referenceImage, str):
+                    if len(options.RDP_referenceImage) == 0:
+                        raise ValueError('RDP with anatomical weighting selected, but no reference image provided!')
+                    if options.RDP_referenceImage[len(options.RDP_referenceImage)-3:len(options.RDP_referenceImage)+1:1] == 'mat':
+                        try:
+                            from pymatreader import read_mat
+                            apu = read_mat(options.RDP_referenceImage)
+                            options.RDP_referenceImage = np.array(apu[list(apu)[-1]])
+                        except ModuleNotFoundError:
+                            print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
+                    else:
+                        apu = np.load(options.RDP_referenceImage, allow_pickle=True)
+                        variables = list(apu.keys())
+                        options.RDP_referenceImage = apu[variables[0]]
+                options.RDP_referenceImage = options.RDP_referenceImage.ravel('F').astype(dtype=np.float32)
             if options.verbose:
                 print('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
         if (options.NLM and options.MAP):

@@ -766,7 +766,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					uint64_t m_size = length[ll];
 					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 						m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[ll];
-					w_vec.M.push_back(af::constant(0.f, m_size, 1));
+					w_vec.M.push_back(af::constant(0.f, m_size * inputScalars.nBins, 1));
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 						af::array oneInput;
 						if (inputScalars.use_psf) {
@@ -826,6 +826,80 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					mexPrintBase("inputScalars.im_dim[ii] = %d\n", inputScalars.im_dim[ii]);
 					mexEval();
 				}
+			}
+		}
+
+		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
+			int64_t uu = 0;
+			w_vec.RDPref = af::constant(0.f, inputScalars.im_dim[0]);
+			for (uint32_t ll = 0; ll < inputScalars.subsetsUsed; ll++) {
+				uint64_t m_size = length[ll];
+				if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+					m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[ll];
+				af::array oneInput1, oneInput2;
+				//if (inputScalars.use_psf) {
+				//	vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+				//}
+				//else
+				//	vec.im_os[ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+				af::array temp = vec.im_os[0].copy();
+				vec.im_os[0] = af::constant(1.f, inputScalars.im_dim[0]);
+				if (inputScalars.projector_type == 6) {
+					oneInput1 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[ll]);
+					forwardProjectionSPECT(oneInput1, w_vec, vec, inputScalars, length[ll], uu, 0);
+					uu += length[ll];
+				}
+				else {
+					oneInput1 = af::constant(1.f, m_size * inputScalars.nBins, 1);
+					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, g, m_size, proj, 0, pituus);
+					if (status != 0) {
+						return;
+					}
+					af::sync();
+				}
+				vec.im_os[0] = af::array(inputScalars.im_dim[0], w_vec.RDP_ref);
+				if (inputScalars.projector_type == 6) {
+					oneInput2 = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[ll]);
+					forwardProjectionSPECT(oneInput2, w_vec, vec, inputScalars, length[ll], uu, 0);
+					uu += length[ll];
+				}
+				else {
+					oneInput2 = af::constant(1.f, m_size * inputScalars.nBins, 1);
+					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput2, ll, length, g, m_size, proj, 0, pituus);
+					if (status != 0) {
+						return;
+					}
+					af::sync();
+				}
+				vec.im_os[0] = temp.copy();
+				af::array apuData = af::constant(0.f, length[ll] * inputScalars.nBins);
+				if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8)
+					for (int64_t to = 0; to < inputScalars.nBins; to++)
+						apuData = af::array(length[ll], &Sin[pituus[ll] + inputScalars.koko * to + inputScalars.koko * inputScalars.nBins * tt], AFTYPE);
+				else
+					for (int64_t to = 0; to < inputScalars.nBins; to++)
+						apuData = af::array(length[ll] * inputScalars.nRowsD * inputScalars.nColsD, &Sin[pituus[ll] * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.koko * to + inputScalars.koko * inputScalars.nBins * tt], AFTYPE);
+				oneInput1 = (apuData / (oneInput2 * oneInput2)) * oneInput1;
+				af::eval(oneInput1);
+				if (inputScalars.projector_type == 6)
+					backprojectionSPECT(oneInput1, w_vec, vec, inputScalars, length[ll], uu, ll, 0, 0, 0, 0);
+				else {
+					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, m_size, meanBP, g, proj, false, 0, pituus);
+					if (status != 0) {
+						return;
+					}
+					af::sync();
+				}
+				w_vec.RDPref += af::sqrt(vec.rhs_os[0] + inputScalars.epps);
+				af::eval(w_vec.RDPref);
+			}
+			if (DEBUG) {
+				mexPrintBase("w_vec.RDPref = %f\n", af::sum<float>(w_vec.RDPref));
+				mexEval();
+				if (af::anyTrue<bool>(af::isNaN(w_vec.RDPref)))
+					return;
+				if (af::anyTrue<bool>(af::isInf(w_vec.RDPref)))
+					return;
 			}
 		}
 

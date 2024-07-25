@@ -18,9 +18,9 @@ else
     options.weights_quad = options.weights;
 end
 if options.implementation == 2
-    if ~options.GGMRF
-        options.weights_quad(isinf(options.weights_quad)) = [];
-    end
+    % if ~options.GGMRF
+    options.weights_quad(isinf(options.weights_quad)) = [];
+    % end
     options.weights_quad = single(options.weights_quad);
     clear weights_quad
 else

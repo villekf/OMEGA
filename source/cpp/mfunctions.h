@@ -66,6 +66,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.largeDim = getScalarBool(options, 0, "largeDim");
 	inputScalars.loadTOF = getScalarBool(options, 0, "loadTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
+	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
 	if (inputScalars.scatter == 1U) {
 		inputScalars.size_scat = mxGetNumberOfElements(mxGetCell(getField(options, 0, "ScatterC"), 0));
 	}
@@ -452,8 +453,14 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
 		w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		w_vec.RDPLargeNeighbor = getScalarBool(getField(options, 0, "RDPIncludeCorners"), -29);
+		w_vec.RDP_anatomical = getScalarBool(getField(options, 0, "RDP_use_anatomical"), -29);
+		if (w_vec.RDP_anatomical)
+			w_vec.RDP_ref = getSingles(options, "RDP_ref", 0);
+		if (w_vec.RDPLargeNeighbor)
+			w_vec.weights = getSingles(options, "weights_quad");
 		if (DEBUG) {
 			mexPrint("RDP loaded");
+			mexPrintBase("w_vec.RDPLargeNeighbor = %d\n", w_vec.RDPLargeNeighbor);
 		}
 	}
 	if (MethodList.GGMRF) {

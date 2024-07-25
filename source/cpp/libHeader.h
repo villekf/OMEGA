@@ -218,6 +218,7 @@ struct inputStruct {
     bool loadTOF = true;
     // If true, stores the primal-dual gap values
     bool storeResidual = false;
+    bool FISTA_acceleration = false;
     // Remove the DC-component from the BDD forward projection
     bool meanFP = false;
     // Remove the DC-component from the BDD backward projection
@@ -274,6 +275,7 @@ struct inputStruct {
     bool TV_use_anatomical = false;
     // Include neighboring corners with RDP
     bool RDPIncludeCorners = false;
+    bool RDP_use_anatomical = false;
     // Use L2 ball with PDHG
     bool useL2Ball = true;
     // Save the sensitivity image
@@ -422,6 +424,7 @@ struct inputStruct {
     float* alpha_PKMA;
     float* alphaPrecond;
     float* NLM_ref;
+    float* RDP_ref;
     float* tauCP;
     float* tauCPFilt;
     float* sigmaCP;
@@ -687,6 +690,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.largeDim = options.largeDim;
     inputScalars.loadTOF = options.loadTOF;
     inputScalars.storeResidual = options.storeResidual;
+    inputScalars.FISTAAcceleration = options.FISTA_acceleration;
     if (inputScalars.scatter == 1U) {
         inputScalars.size_scat = options.sizeScat;
     }
@@ -1033,6 +1037,11 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if ((MethodList.RDP && MethodList.MAP) || MethodList.ProxRDP) {
         w_vec.RDP_gamma = options.RDP_gamma;
         w_vec.RDPLargeNeighbor = options.RDPIncludeCorners;
+        w_vec.RDP_anatomical = options.RDP_use_anatomical;
+        if (w_vec.RDP_anatomical)
+            w_vec.RDP_ref = options.RDP_ref;
+        if (w_vec.RDPLargeNeighbor)
+            w_vec.weights = options.weights_quad;
         if (DEBUG) {
             mexPrint("RDP loaded");
         }

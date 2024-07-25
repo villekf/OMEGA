@@ -10,7 +10,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 
 	int status = 0;
 
-	af::array OSEMApu, COSEMApu, PDDYApu;
+	af::array OSEMApu, COSEMApu, PDDYApu, FISTAApu;
 
 	if (DEBUG) {
 		mexPrint("Algo start\n");
@@ -27,6 +27,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		mexEval();
 	}
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+		if (inputScalars.FISTAAcceleration)
+			FISTAApu = vec.im_os[ii].copy();
 
 		//af::array* Sens;
 		//if (compute_norm_matrix == 1u) {
@@ -339,6 +341,25 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing FISTAL1");
 			status = FISTAL1(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, w_vec.beta, proj, osa_iter + inputScalars.subsets * iter, ii);
+		}
+		if (inputScalars.FISTAAcceleration) {
+			//if (osa_iter == 0) {
+				//const uint32_t it = iter + 1;
+				//w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				//if (w_vec.betaFISTA <= 0.f) {
+				//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
+				//	w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
+				//	w_vec.tNFista = w_vec.tFISTA;
+				//}
+				//vec.im_os[ii] = vec.im_os[ii] + w_vec.betaFISTA * (vec.im_os[ii] - FISTAApu);
+			const float t = w_vec.tFISTA;
+			if (osa_iter == 0) {
+				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+			}
+			vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu);
+			//vec.im_os[ii](vec.im_os[ii] < inputScalars.epps) = inputScalars.epps;
+			//}
+			af::eval(vec.im_os[ii]);
 		}
 	}
 	if (inputScalars.verbose >= 3)

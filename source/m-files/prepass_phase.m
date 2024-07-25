@@ -215,7 +215,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     % Compute the weights
     if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic) && options.MAP
         if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic
-            if options.GGMRF
+            if options.GGMRF %|| (options.RDP && options.RDPIncludeCorners && options.implementation == 2)
                 options = computeWeights(options, true);
             else
                 options = computeWeights(options, false);
@@ -240,13 +240,13 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 options.medz = options.Ndz*2 + 1;
             end
         end
-        if options.quad || options.hyperbolic || options.GGMRF
+        if options.quad || options.hyperbolic || options.GGMRF || (options.RDP && options.RDPIncludeCorners && options.implementation == 2)
             options = quadWeights(options, options.empty_weight);
         end
         if options.Huber
             options = huberWeights(options);
         end
-        if options.RDP
+        if options.RDP && options.implementation ~= 2
             options = RDPWeights(options);
         end
         if options.L
@@ -272,6 +272,19 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
         if verbose
             disp('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
+        end
+        if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && options.implementation == 2
+            if ischar(options.RDP_reference_image)
+                apu = load(options.RDP_reference_image);
+                variables = fieldnames(apu);
+                options.RDP_ref = double(apu.(variables{1}));
+            else
+                options.RDP_ref = options.RDP_reference_image;
+            end
+            options.RDP_ref = reshape(options.RDP_ref, options.Nx(1), options.Ny(1), options.Nz(1));
+            if options.implementation == 2 || options.implementation == 3
+                options.RDP_ref = single(options.RDP_ref);
+            end
         end
     end
     if options.AD && options.MAP
