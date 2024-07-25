@@ -1,3 +1,4 @@
 .vscode/
-
+data/
 *.mexa64
+mat-files/*.mat
