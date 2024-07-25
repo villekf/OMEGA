@@ -134,6 +134,7 @@ class ProjectorClass {
 		char buffer8[30];
 		char buffer9[30];
 		char buffer10[30];
+		char buffer11[30];
 		char spectBuffer1[30];
 		char spectBuffer2[30];
 		char spectBuffer3[30];

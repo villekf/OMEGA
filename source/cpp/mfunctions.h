@@ -363,6 +363,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 		w_vec.computeD = true;
+	}
 
 	if (w_vec.precondTypeMeas[0] || MethodList.SART)
 		w_vec.computeM = true;
