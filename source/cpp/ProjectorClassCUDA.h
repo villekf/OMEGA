@@ -622,8 +622,17 @@ class ProjectorClass {
 			}
 			if (MethodList.RDP) {
 				optionsAux.push_back("-DRDP");
-				if (w_vec.RDPLargeNeighbor)
+				if (w_vec.RDPLargeNeighbor) {
 					optionsAux.push_back("-DRDPCORNERS");
+					std::snprintf(buffer11, 30, "-DSWINDOWX=%d", static_cast<int32_t>(w_vec.Ndx));
+					optionsAux.push_back(buffer11);
+					std::snprintf(buffer12, 30, "-DSWINDOWY=%d", static_cast<int32_t>(w_vec.Ndy));
+					optionsAux.push_back(buffer12);
+					std::snprintf(buffer13, 30, "-DSWINDOWZ=%d", static_cast<int32_t>(w_vec.Ndz));
+					optionsAux.push_back(buffer13);
+				}
+				if (w_vec.RDP_anatomical)
+					optionsAux.push_back("-DRDPREF");
 			}
 			if (MethodList.ProxRDP && w_vec.RDPLargeNeighbor)
 				optionsAux.push_back("-DRDPCORNERS");
@@ -1119,13 +1128,13 @@ public:
 	CUmodule programFP, programBP, programAux, programSens;
 	CUdeviceptr d_angle, d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, *d_output, *d_meanBP, *d_meanFP, d_eFOVIndices, d_weights, *d_inputB, *d_W, *d_gaussianNLM;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
-	CUtexObject d_inputImage, d_imageX, d_imageY, d_attenIm, d_urefIm, d_inputI;
+	CUtexObject d_inputImage, d_imageX, d_imageY, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
 	CUarray atArray, uRefArray, maskArrayFP, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	CUdeviceptr *d_qX, *d_qY, *d_qZ;
 	CUdeviceptr *d_rX, *d_rY, *d_rXY, *d_rZ, *d_rXZ, *d_rYZ;
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
 	CUdeviceptr *d_vector, *d_input;
-	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskFPB, d_maskBPB;
+	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskFPB, d_maskBPB, *d_RDPref;
 	//CUdeviceptr d_outputCT;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
@@ -1482,22 +1491,22 @@ public:
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		// Create the necessary buffers
-		if (MethodList.GGMRF) {
-			status = cuMemAlloc(&d_weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1));
+		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
+			status = cuMemAlloc(&d_weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
 			memAlloc.GGMRF = true;
 		}
-		else if (MethodList.hyperbolic) {
-			status = cuMemAlloc(&d_weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memAlloc.GGMRF = true;
-		}
+		//else if (MethodList.hyperbolic) {
+		//	status = cuMemAlloc(&d_weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
+		//	if (status != CUDA_SUCCESS) {
+		//		getErrorString(status);
+		//		return -1;
+		//	}
+		//	memAlloc.GGMRF = true;
+		//}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages) {
 				std::memset(&texDesc, 0, sizeof(texDesc));
@@ -1955,20 +1964,20 @@ public:
 
 
 		// assign values to the buffers
-		if (MethodList.GGMRF) {
-			status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1));
+		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
+			status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
 		}
-		else if (MethodList.hyperbolic) {
-			status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
+		//else if (MethodList.hyperbolic) {
+		//	status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
+		//	if (status != CUDA_SUCCESS) {
+		//		getErrorString(status);
+		//		return -1;
+		//	}
+		//}
 		if (inputScalars.projector_type != 6) {
 			status = cuMemcpyHtoD(d_V, inputScalars.V, sizeof(float) * inputScalars.size_V);
 			if (status != CUDA_SUCCESS) {
@@ -3463,7 +3472,7 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, float gamma, float beta) {
+	inline int computeRDP(const scalarStruct& inputScalars, float gamma, float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA RDP gradient computation");
 		std::vector<void*> kArgs;
@@ -3499,6 +3508,14 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (RDPLargeNeighbor) {
+			kArgs.emplace_back(&d_weights);
+			if (useRDPRef)
+				if (inputScalars.useImages)
+					kArgs.emplace_back(&d_RDPrefI);
+				else
+					kArgs.emplace_back(reinterpret_cast<void*>(&d_RDPref));
+		}
 		// Compute the kernel
 		status = cuLaunchKernel(kernelRDP, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		if (status != CUDA_SUCCESS) {
@@ -3521,6 +3538,12 @@ public:
 			status = cuArrayDestroy(imArray);
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
+			}
+			if (RDPLargeNeighbor && useRDPRef) {
+				status = cuTexObjectDestroy(d_RDPrefI);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+				}
 			}
 		}
 		if (inputScalars.verbose >= 3)
@@ -4260,7 +4283,7 @@ public:
 		return 0;
 	}
 
-	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input) {
+	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input, const bool RDP = false) {
 
 		CUresult status = CUDA_SUCCESS;
 		CUDA_TEXTURE_DESC texDesc;
@@ -4309,7 +4332,10 @@ public:
 		viewDesc.width = inputScalars.Ny[0];
 		viewDesc.depth = inputScalars.Nz[0];
 		viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
-		status = cuTexObjectCreate(&d_inputI, &resDesc, &texDesc, &viewDesc);
+		if (RDP)
+			status = cuTexObjectCreate(&d_RDPrefI, &resDesc, &texDesc, &viewDesc);
+		else
+			status = cuTexObjectCreate(&d_inputI, &resDesc, &texDesc, &viewDesc);
 		if (status != CUDA_SUCCESS) {
 			getErrorString(status);
 			mexPrint("NLM image copy failed\n");

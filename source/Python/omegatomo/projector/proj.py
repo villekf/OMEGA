@@ -372,6 +372,7 @@ class projectorClass:
     PDHGL1 = False
     PDDY = False
     CV = False
+    ASD_POCS = False
     FDK = False
     MRP = False
     quad = False
@@ -413,6 +414,7 @@ class projectorClass:
     APLS_ref_image = ''
     TV_referenceImage = ''
     NLM_referenceImage = ''
+    RDP_referenceImage = ''
     storeMultiResolution = False
     extrapLength = 0.2
     axialExtrapolation = False
@@ -434,6 +436,13 @@ class projectorClass:
     useIndexBasedReconstruction = False
     trIndex = np.empty(0, dtype = np.uint16)
     axIndex = np.empty(0, dtype = np.uint16)
+    POCS_alpha = 0.2
+    POCS_rMax = 0.95
+    POCS_alphaRed = 0.95
+    POCSepps = 1e-4
+    POCS_NgradIter = 20
+    FISTA_acceleration = False
+    RDP_use_anatomical = False
     def __init__(self):
         # C-struct
         self.param = self.parameters()
@@ -910,8 +919,14 @@ class projectorClass:
             raise FileNotFoundError('Anatomical reference image for TV was not found on path!')
         if self.NLM_use_anatomical and self.NLM and not os.path.exists(self.NLM_referenceImage) and self.MAP and not isinstance(self.NLM_referenceImage, np.ndarray):
             raise FileNotFoundError('Anatomical reference image for NLM was not found on path!')
+        if self.RDP_use_anatomical and self.RDP and self.RDPIncludeCorners and not os.path.exists(self.RDP_referenceImage) and self.MAP and not isinstance(self.RDP_referenceImage, np.ndarray):
+            raise FileNotFoundError('Reference image for RDP was not found on path!')
         if self.precondTypeImage[2] and not os.path.exists(self.referenceImage) and not isinstance(self.referenceImage, np.ndarray):
             raise FileNotFoundError('Reference image for precondititiong was not found on path!')
+        if self.RDP_use_anatomical and self.RDP and not self.RDPIncludeCorners:
+            raise ValueError('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
+        if self.implementation == 2 and self.useCPU and self.RDP and self.RDPIncludeCorners:
+            raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
             raise ValueError('Using TV type = 2, but no anatomical reference set. Use options.TVtype = 1 if anatomical weighting is not used!')
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 21, 22, 31, 32, 33, 41, 51, 15, 44, 45, 54, 55]:
@@ -4318,6 +4333,7 @@ class projectorClass:
             ('TVtype', ctypes.c_uint32),
             ('FluxType', ctypes.c_uint32),
             ('DiffusionType', ctypes.c_uint32),
+            ('POCS_NgradIter', ctypes.c_uint32),
             ('nProjections', ctypes.c_int64),
             ('TOF_bins', ctypes.c_int64),
             ('tau', ctypes.c_float),
@@ -4362,6 +4378,10 @@ class projectorClass:
             ('APLSsmoothing', ctypes.c_float),
             ('hyperbolicDelta', ctypes.c_float),
             ('sourceToCRot', ctypes.c_float),
+            ('POCS_alpha', ctypes.c_float),
+            ('POCS_rMax', ctypes.c_float),
+            ('POCS_alphaRed', ctypes.c_float),
+            ('POCSepps', ctypes.c_float),
             ('use_psf', ctypes.c_bool),
             ('TOF', ctypes.c_bool),
             ('pitch', ctypes.c_bool),
@@ -4371,6 +4391,7 @@ class projectorClass:
             ('largeDim', ctypes.c_bool),
             ('loadTOF', ctypes.c_bool),
             ('storeResidual', ctypes.c_bool),
+            ('FISTA_acceleration', ctypes.c_bool),
             ('meanFP', ctypes.c_bool),
             ('meanBP', ctypes.c_bool),
             ('useMaskFP', ctypes.c_bool),
@@ -4399,6 +4420,7 @@ class projectorClass:
             ('NLM_use_anatomical', ctypes.c_bool),
             ('TV_use_anatomical', ctypes.c_bool),
             ('RDPIncludeCorners', ctypes.c_bool),
+            ('RDP_use_anatomical', ctypes.c_bool),
             ('useL2Ball', ctypes.c_bool),
             ('saveSens', ctypes.c_bool),
             ('use_64bit_atomics', ctypes.c_bool),
@@ -4431,8 +4453,9 @@ class projectorClass:
             ('PDHG', ctypes.c_bool),
             ('PDHGKL', ctypes.c_bool),
             ('PDHGL1', ctypes.c_bool),
-            ('PDDY', ctypes.c_bool),
             ('CV', ctypes.c_bool),
+            ('PDDY', ctypes.c_bool),
+            ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('MRP', ctypes.c_bool),
             ('quad', ctypes.c_bool),
@@ -4531,6 +4554,7 @@ class projectorClass:
             ('alpha_PKMA', ctypes.POINTER(ctypes.c_float)),
             ('alphaPrecond', ctypes.POINTER(ctypes.c_float)),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
+            ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
             ('tauCP', ctypes.POINTER(ctypes.c_float)),
             ('tauCPFilt', ctypes.POINTER(ctypes.c_float)),
             ('sigmaCP', ctypes.POINTER(ctypes.c_float)),

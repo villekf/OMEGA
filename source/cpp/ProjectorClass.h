@@ -568,8 +568,14 @@ class ProjectorClass {
 			}
 			if (MethodList.RDP) {
 				options += " -DRDP";
-				if (w_vec.RDPLargeNeighbor)
+				if (w_vec.RDPLargeNeighbor) {
 					options += " -DRDPCORNERS";
+					options += (" -DSWINDOWX=" + std::to_string(w_vec.Ndx));
+					options += (" -DSWINDOWY=" + std::to_string(w_vec.Ndy));
+					options += (" -DSWINDOWZ=" + std::to_string(w_vec.Ndz));
+				}
+				if (w_vec.RDP_anatomical)
+					options += " -DRDPREF";
 			}
 			if (MethodList.ProxRDP && w_vec.RDPLargeNeighbor)
 				options += " -DRDPCORNERS";
@@ -1090,13 +1096,13 @@ public:
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
-	cl::Image3D d_inputImage, d_attenIm, d_urefIm, d_inputI;
+	cl::Image3D d_inputImage, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
 	cl::Buffer d_qX, d_qY, d_qZ;
 	cl::Buffer d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
 	cl::Buffer d_vX, d_vY, d_vZ;
 	cl::Buffer d_angle;
 	cl::Buffer d_vector, d_input;
-	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm;
+	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm, d_RDPref;
 	cl::Buffer d_outputCT, d_maskFPB, d_maskBPB, d_attenB;
 	size_t memSize = 0ULL;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
@@ -1364,21 +1370,31 @@ public:
 				}
 			}
 		}
+		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
+			if (inputScalars.useImages) {
+				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
+				if (status != 0) {
+					getErrorString(status);
+					mexPrint("Failed to create RDP reference image\n");
+					return -1;
+				}
+			}
+		}
 		// Create the necessary buffers
-		if (MethodList.GGMRF) {
-			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1), NULL, &status);
+		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
+			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
 		}
-		else if (MethodList.hyperbolic) {
-			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-		}
+		//else if (MethodList.hyperbolic) {
+		//	d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), NULL, &status);
+		//	if (status != CL_SUCCESS) {
+		//		getErrorString(status);
+		//		return -1;
+		//	}
+		//}
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			imX = inputScalars.Nx[0];
 			imY = inputScalars.Ny[0];
@@ -1635,22 +1651,22 @@ public:
 
 
 		// assign values to the buffers
-		if (MethodList.GGMRF) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1), w_vec.weights);
+		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
+			status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
 			}
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
 		}
-		else if (MethodList.hyperbolic) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), w_vec.weights);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			memSize += (sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1)) / 1048576ULL;
-		}
+		//else if (MethodList.hyperbolic) {
+		//	status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), w_vec.weights);
+		//	if (status != CL_SUCCESS) {
+		//		getErrorString(status);
+		//		return -1;
+		//	}
+		//	memSize += (sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1)) / 1048576ULL;
+		//}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			cl::detail::size_t_array region = { { 0, 0, 0 } };
 			region[0] = inputScalars.Nx[0];
@@ -3604,7 +3620,7 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta) {
+	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL RDP gradient computation");
 		CLCommandQueue[0].finish();
@@ -3627,6 +3643,7 @@ public:
 			mexPrintBase("globalPrior[0] = %d\n", globalPrior[0]);
 			mexPrintBase("globalPrior[1] = %d\n", globalPrior[1]);
 			mexPrintBase("globalPrior[2] = %d\n", globalPrior[2]);
+			mexPrintBase("RDPLargeNeighbor = %d\n", RDPLargeNeighbor);
 			mexEval();
 		}
 		status = kernelRDP.setArg(kernelIndRDP++, d_W);
@@ -3653,6 +3670,14 @@ public:
 			kernelRDP.setArg(kernelIndRDP++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelRDP.setArg(kernelIndRDP++, d_eFOVIndices);
+		if (RDPLargeNeighbor) {
+			kernelRDP.setArg(kernelIndRDP++, d_weights);
+			if (useRDPRef)
+				if (inputScalars.useImages)
+					kernelRDP.setArg(kernelIndRDP++, d_RDPrefI);
+				else
+					kernelRDP.setArg(kernelIndRDP++, d_RDPref);
+		}
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
 		if (status != CL_SUCCESS) {

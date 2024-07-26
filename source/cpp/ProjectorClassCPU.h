@@ -255,7 +255,7 @@ public:
 		return 0;
 	}
 
-	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta) {
+	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenMP RDP gradient computation");
 		RDPKernel(d_W, d_inputB, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], inputScalars.NxOrig, inputScalars.NyOrig, inputScalars.NzOrig, gamma, inputScalars.epps, beta);

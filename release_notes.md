@@ -42,6 +42,31 @@
 - (CB)CT reconstructions are much more efficient now than before as long as GPU computing is used
 
 ### New features
+
+- Added FISTA-based acceleration for every algorithm
+  - Seems to work well with subset-based reconstructions, but there is a risk of completely failed reconstruction
+  
+- Overhauled relative difference prior for implementation 2
+  - Like before there are two different RDP methods
+  - The default is basically the original RDP, where only the left/right/top/bottom/front/back voxels are taken into account with no weighting
+  - Second method, enabled with `options.RDPIncludeCorners`, on the other hand is dependent on the neighborhood size that you specify, as well as uses the same weights as quadratic prior
+  - The second method can have a neigborhood of any size, though non-cubic ones might not work
+  - The second method also includes an optional "reference image" weighting
+  - When using other implementations, the functionality is similar to the second method but the functionality is limited (no reference image weighting) and performance can be poor
+  
+- Added SART and ASD-POCS
+  - Latter can use any of the non-proximal priors though functionality is not guaranteed
+  - Unlike the original ASD-POCS, `options.beta` affects the regularization strength as well
+  
+### Bug fixes and enhancements
+
+- Projector type 6 should now work with filtering-based preconditioner
+
+- TOF should now work with image-based preconditioners and power method
+
+## OMEGA v2.0.0 Release Candidate
+
+### New features
   
 - Added (limited) support for Python
   - Only a subset of features are implemented

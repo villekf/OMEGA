@@ -215,19 +215,26 @@ end
 if options.TV_use_anatomical && options.TV && exist(options.TV_reference_image,'file') ~= 2 && MAP && exist(options.TV_reference_image,'var') ~= 1
     error('Anatomical reference image for TV was not found on the specified path!')
 end
-if options.NLM_use_anatomical && options.NLM && exist(options.NLM_reference_image,'file') ~= 2 && MAP && exist(options.NLM_reference_image,'var') ~= 1
+if options.NLM_use_anatomical && options.NLM && MAP && exist(options.NLM_reference_image,'file') ~= 2 && exist(options.NLM_reference_image,'var') ~= 1
     error('Anatomical reference image for NLM was not found on the specified path!')
+end
+if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && options.implementation == 2 && exist(options.RDP_reference_image,'file') ~= 2 && MAP && exist(options.RDP_reference_image,'var') ~= 1
+    error('Reference image for RDP was not found on the specified path!')
+end
+if options.RDP_use_anatomical && options.RDP && ~options.RDPIncludeCorners
+    warning('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
 end
 if options.precondTypeImage(3) && exist(options.referenceImage,'file') ~= 2 && exist(options.referenceImage,'var') ~= 1
     error('Reference image for precondititiong was not found on the specified path!')
 end
 if options.TV && options.TVtype == 2 && ~options.TV_use_anatomical
-    error('Using TV type = 2, but no anatomical reference set. Use options.TVtype = 1 if anatomical weighting is not used!')
+    warning('Using TV type = 2, but no anatomical reference set. Using TV type 1 instead.')
+    options.TVtype = 1;
 end
 if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
         options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
-        && options.projector_type ~= 54&& options.projector_type ~= 55 && options.projector_type ~= 44
+        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44
     error('The selected projector type is not supported!')
 end
 if options.use_CPU && (options.projector_type == 5 || options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 45 ...
@@ -391,6 +398,12 @@ if options.implementation == 3 && NMLOS
 end
 if options.implementation == 3 && ~MLOS
     error(['Implementation ' num2str(options.implementation) ' selected, but OSEM algorithm has not been selected.'])
+end
+if options.implementation ~= 2 && options.RDP && options.RDPIncludeCorners
+    error('RDP with include corners is supported only by implementation 2!')
+end
+if options.implementation == 2 && options.use_CPU && options.RDP && options.RDPIncludeCorners
+    error('RDP with include corners is supported only on OpenCL and CUDA!')
 end
 % if options.implementation == 4 && (options.MRAMLA || options.MBSREM)
 %     error(['Implementation ' num2str(options.implementation) ' selected with unsupported algorithm. MRAMLA or MBSREM are not supported!'])

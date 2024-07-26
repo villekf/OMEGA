@@ -233,9 +233,6 @@ end
 if ~isfield(options, 'cpu_to_gpu_factor')
     options.cpu_to_gpu_factor = 1;
 end
-if ~isfield(options, 'RDPIncludeCorners')
-    options.RDPIncludeCorners = false;
-end
 if ~isfield(options,'meanFP')
     options.meanFP = false;
 end
@@ -691,6 +688,12 @@ end
 if ~isfield(options, 'RDP_gamma')
     options.RDP_gamma = 1;
 end
+if ~isfield(options, 'RDPIncludeCorners')
+    options.RDPIncludeCorners = false;
+end
+if ~isfield(options, 'RDP_use_anatomical')
+    options.RDP_use_anatomical = false;
+end
 if ~isfield(options, 'NLM_use_anatomical')
     options.NLM_use_anatomical = false;
 end
@@ -819,6 +822,24 @@ if ~isfield(options, 'Nf')
 end
 if ~isfield(options,'hyperbolicDelta')
     options.hyperbolicDelta = 1;
+end
+if ~isfield(options,'POCS_NgradIter')
+    options.POCS_NgradIter = 20;
+end
+if ~isfield(options,'POCS_alpha')
+    options.POCS_alpha = 0.2;
+end
+if ~isfield(options,'POCS_rMax')
+    options.POCS_rMax = .95;
+end
+if ~isfield(options,'POCS_alphaRed')
+    options.POCS_alphaRed = .95;
+end
+if ~isfield(options,'POCSepps')
+    options.POCSepps = 1e-4;
+end
+if ~isfield(options, 'FISTA_acceleration')
+    options.FISTA_acceleration = false;
 end
 % if ~isfield(options,'trIndex')
 %     options.trIndex = [];

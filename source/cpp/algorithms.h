@@ -1,5 +1,6 @@
 #pragma once
 #include "functions.hpp"
+#include "priors.h"
 
 inline af::array EM(const af::array& im, const af::array& Summ, const af::array& rhs)
 {
@@ -296,6 +297,11 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 	if (inputScalars.adaptiveType == 1)
 		vec.rhsCP[ii] = rhs.copy();
 	if (inputScalars.subsets > 1) {
+		//const float t = w_vec.tFISTA;
+		//if (subIter == 0) {
+		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+		//}
+		//w_vec.thetaCP[subIter] = (t - 1.f) / w_vec.tFISTA;
 		if (DEBUG) {
 			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
@@ -338,6 +344,11 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	else {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
+		//const float t = w_vec.tFISTA;
+		//if (subIter == 0) {
+		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+		//}
+		//w_vec.thetaCP[kk] = (t - 1.f) / w_vec.tFISTA;
 		//const af::array uPrev = vec.uCP.copy();
 		//vec.uCP -= w_vec.tauCP * rhs;
 		//vec.uCP.eval();
@@ -541,4 +552,52 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 	apu(apu == 0.f) = 1.f;
 	im = apu * (af::max)(af::abs(im) - a, 0.f);
 	return 0;
+}
+
+inline void POCS(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
+	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
+	im(im < 0.f) = 0.f;
+	if (DEBUG)
+		mexPrint("Computing POCS");
+	bool subsets = true;
+	if (inputScalars.subsets > 1)
+		subsets = osa_iter < inputScalars.subsets - 1;
+	if (iter < inputScalars.Niter - 1 && subsets) {
+		uint64_t m_size = length[osa_iter];
+		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+			m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
+		af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+		int status = 0;
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
+		if (status != 0) {
+			return;
+		}
+		const float dd = static_cast<float>(af::norm(outputFP - mData));
+		const float dp = static_cast<float>(af::norm(im - vec.f0POCS[ii]));
+		if (DEBUG) {
+			mexPrintBase("dd = %f\n", dd);
+			mexEval();
+		}
+		if (iter == 0 && osa_iter == 0)
+			w_vec.dtvg = w_vec.alphaPOCS * dp;
+		vec.f0POCS[ii] = im;
+		if (DEBUG) {
+			mexPrintBase("dp = %f\n", dp);
+			mexEval();
+		}
+		if (ii == 0) {
+			for (int kk = 0; kk < w_vec.ng; kk++) {
+				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter);
+				if (status != 0)
+					return;
+				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
+				im -= w_vec.dtvg * vec.dU;
+				af::eval(im);
+				af::eval(vec.dU);
+			}
+			const float dg = static_cast<float>(af::norm(im - vec.f0POCS[ii]));
+			if (dg > w_vec.rMaxPOCS && dd > w_vec.POCSepps)
+				w_vec.dtvg *= w_vec.POCSalphaRed;
+		}
+	}
 }

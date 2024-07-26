@@ -17,7 +17,7 @@
 #define NLTYPE 0
 #endif
 #endif
-#if defined(GGMRF) || defined(HYPER)
+#if defined(GGMRF) || defined(HYPER) || defined(RDPCORNERS)
 #define SIZEX LOCAL_SIZE + SWINDOWX * 2
 #define SIZEY LOCAL_SIZE2 + SWINDOWY * 2
 #define SIZEZ LOCAL_SIZE3 + SWINDOWZ * 2
@@ -583,8 +583,11 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef USEIMAGES
 CONSTANT sampler_t samplerRDP = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
 #endif
-
+#ifdef RDPCORNERS
+__kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
+#else
 __kernel __attribute__((vec_type_hint(float2))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, LOCAL_SIZE3)))
+#endif
 #else
 extern "C" __global__
 #endif
@@ -600,9 +603,71 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
 #endif
+#ifdef RDPCORNERS
+	, CONSTANT float* weight
+#endif
+#ifdef RDPREF
+#ifdef USEIMAGES
+	, IMAGE3D u_ref
+#else
+	, const CLGLOBAL float* CLRESTRICT u_ref
+#endif
+#endif
 ) {
 
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+#ifdef RDPCORNERS // START RDPCORNERS
+	float output = 0.f;
+	LTYPE startX = GRID0 * LSIZE0 - SWINDOWX + LID0;
+	LTYPE startY = GRID1 * LSIZE1 - SWINDOWY + LID1;
+	LTYPE startZ = GRID2 * LSIZE2 - SWINDOWZ + LID2;
+	LTYPE endX = (GRID0 + 1) * LSIZE0 + SWINDOWX;
+	LTYPE endY = (GRID1 + 1) * LSIZE1 + SWINDOWY;
+	LTYPE endZ = (GRID2 + 1) * LSIZE2 + SWINDOWZ;
+	LOCAL float lCache[SIZEX][SIZEY][SIZEZ];
+#ifdef RDPREF
+	LOCAL float lCacheRef[SIZEX][SIZEY][SIZEZ];
+#endif
+	LTYPE indZ = LID2;
+	for (LTYPE zz = startZ; zz < endZ; zz += LSIZE2) {
+		LTYPE indY = LID1;
+		for (LTYPE yy = startY; yy < endY; yy += LSIZE1) {
+			LTYPE indX = LID0;
+			for (LTYPE xx = startX; xx < endX; xx += LSIZE0) {
+#if defined(RDPREF) // START RDPREF
+#ifdef USEIMAGES
+#ifdef CUDA
+				lCacheRef[indX][indY][indZ] = tex3D<float>(u_ref, xx, yy, zz);
+#else
+				lCacheRef[indX][indY][indZ] = read_imagef(u_ref, samplerRDP, (int4)(xx, yy, zz, 0)).w;
+#endif
+#else
+				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
+					lCacheRef[indX][indY][indZ] = 0.f;
+				else
+					lCacheRef[indX][indY][indZ] = u_ref[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+#endif
+#endif // END RDPREF
+#ifdef USEIMAGES
+#ifdef CUDA
+				lCache[indX][indY][indZ] = tex3D<float>(u, xx, yy, zz);
+#else
+				lCache[indX][indY][indZ] = read_imagef(u, samplerRDP, (int4)(xx, yy, zz, 0)).w;
+#endif
+#else
+				if (xx < 0 || yy < 0 || zz < 0 || xx >= N.x || yy >= N.y || zz >= N.z)
+					lCache[indX][indY][indZ] = 0.f;
+				else
+					lCache[indX][indY][indZ] = u[(xx) + (yy) * N.x + (zz) * N.x * N.y];
+#endif
+				indX += LSIZE0;
+			}
+			indY += LSIZE1;
+		}
+		indZ += LSIZE2;
+	}
+	BARRIER
+#endif // END RDPCORNERS
 #ifdef CUDA
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
 #else
@@ -628,6 +693,36 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 // #else
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 // #endif
+#ifdef RDPCORNERS // START RDPCORNERS
+	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
+#if defined(RDPREF) // START RDPREF
+	const float kj = lCacheRef[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+#endif // END RDPREF
+	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+	int uu = 0;
+	for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
+		for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
+			for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
+				if (i == 0 && j == 0 && k == 0)
+					continue;
+				const float uk = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
+#if defined(RDPREF) // START RDPREF
+				const float kk = lCacheRef[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
+#endif // END RDPREF
+				const float delta = uj - uk;
+				const float divPow2 = FMAD(gamma, fabs(delta), uj + uk);
+#if defined(RDPREF) // START RDPREF
+				output += weight[uu++] * SQRT(kk * kj) * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+#else
+				output += weight[uu++] * delta * (gamma * fabs(delta) + uj + 3.f * uk + epps * epps) / (divPow2 * divPow2 + epps);
+#endif // END RDPREF
+			}
+		}
+	}
+	if (isnan(output))
+		output = 0.f;
+	grad[n] += beta * output;
+#else
 #ifdef USEIMAGES
 #ifdef CUDA
 	// Current voxel
@@ -677,109 +772,6 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 	// Front-back
 	// const float2 uz = { u[(xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y] };
 #endif
-#ifdef RDPCORNERS // START RDPCORNERS
-#ifdef USEIMAGES
-#ifdef CUDA
-	float2 uxy = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y + 1, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y + 1, xyz.z));
-	float2 uyx = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y - 1, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y - 1, xyz.z));
-	float2 uxz = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z + 1), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z + 1));
-	float2 uzx = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z - 1), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z - 1));
-	float2 uyz = make_float2(tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z + 1), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z + 1));
-	float2 uzy = make_float2(tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z - 1), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z - 1));
-#else
-	float2 uxy = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z, 0)).w };
-	float2 uyx = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z, 0)).w };
-	float2 uxz = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z + 1, 0)).w };
-	float2 uzx = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z - 1, 0)).w };
-	float2 uyz = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z + 1, 0)).w };
-	float2 uzy = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z - 1, 0)).w };
-#endif
-	// const float8 uzz1 = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z + 1, 0)).w, 
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z + 1, 0)).w, 
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z + 1, 0)).w,read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z + 1, 0)).w,
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z + 1, 0)).w};
-	// const float8 uzz2 = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z - 1, 0)).w, 
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z - 1, 0)).w, 
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z - 1, 0)).w,
-	// 	read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z - 1, 0)).w};
-	// const float2 uxy1 =  { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z, 0)).w};
-	// const float2 uxy2 =  { read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z, 0)).w};
-#else
-	float2 uxy = MFLOAT2(0.f, 0.f);
-	float2 uyx = MFLOAT2(0.f, 0.f);
-	float2 uxz = MFLOAT2(0.f, 0.f);
-	float2 uzx = MFLOAT2(0.f, 0.f);
-	float2 uyz = MFLOAT2(0.f, 0.f);
-	float2 uzy = MFLOAT2(0.f, 0.f);
-	if (xyz.x < N.x - 1 && xyz.y < N.y - 1)
-		uxy.x = u[(xyz.x + 1) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y];
-	if (xyz.x > 0 && xyz.y < N.y - 1)
-		uxy.y = u[(xyz.x - 1) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y];
-	if (xyz.y > 0 && xyz.x < N.x - 1)
-		uyx.x = u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y];
-	if (xyz.y > 0 && xyz.x > 0)
-		uyx.y = u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y];
-	if (xyz.z < N.z - 1 && xyz.x < N.x - 1)
-		uxz.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
-	if (xyz.z < N.z - 1 && xyz.x > 0)
-		uxz.y = u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
-	if (xyz.x < N.x - 1 && xyz.z > 0)
-		uzx.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y];
-	if (xyz.x > 0 && xyz.z > 0)
-		uzx.y = u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y];
-	if (xyz.y < N.y - 1 && xyz.z < N.z - 1)
-		uyz.x = u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y];
-	if (xyz.y > 0 && xyz.z < N.z - 1)
-		uyz.y = u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y];
-	if (xyz.z > 0 && xyz.y < N.y - 1)
-		uzy.x = u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y];
-	if (xyz.y > 0 && xyz.z > 0)
-		uzy.y = u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y];
-	// const float8 uzz1 = { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y],
-	// 	u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y], 
-	// 	u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y],
-	// 	u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y]};
-	// const float8 uzz2 = { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y],
-	// 	u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y], 
-	// 	u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y],
-	// 	u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y]};
-	// const float2 uxy1 =  { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z) * N.x * N.y]};
-	// const float2 uxy2 =  { u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y], u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y]};
-#endif
-	// const float8 uj_uzz1 = uj - uzz1;
-	// const float8 uj_uzz2 = uj - uzz2;
-	// const float2 uj_uxy1 = uj - uxy1;
-	// const float2 uj_uxy2 = uj - uxy2;
-	const float2 uuxy = (uj - uxy);
-	const float2 uuyx = (uj - uyx);
-	const float2 uuxz = (uj - uxz);
-	const float2 uuzx = (uj - uzx);
-	const float2 uuyz = (uj - uyz);
-	const float2 uuzy = (uj - uzy);
-#ifndef USEMAD // START FMAD
-	// const float8 divPow2ZZ1 = (uj + uzz1 + gamma * fabs(uj_uzz1) + epps);
-	// const float8 divPow2ZZ2 = (uj + uzz2 + gamma * fabs(uj_uzz2) + epps);
-	// const float2 divPow2XY1 = (uj + uxy1 + gamma * fabs(uj_uxy1) + epps);
-	// const float2 divPow2XY2 = (uj + uxy2 + gamma * fabs(uj_uxy2) + epps);
-	const float2 divPow2XY = (uj + uuxy + gamma * fabs(uuxy));
-	const float2 divPow2YX = (uj + uuyx + gamma * fabs(uuyx));
-	const float2 divPow2XZ = (uj + uuxz + gamma * fabs(uuxz));
-	const float2 divPow2ZX = (uj + uuzx + gamma * fabs(uuzx));
-	const float2 divPow2YZ = (uj + uuyz + gamma * fabs(uuyz));
-	const float2 divPow2ZY = (uj + uuzy + gamma * fabs(uuzy));
-#else
-	const float2 divPow2XY = FMAD2(gamma, fabs(uuxy), uj + uuxy);
-	const float2 divPow2YX = FMAD2(gamma, fabs(uuyx), uj + uuyx);
-	const float2 divPow2XZ = FMAD2(gamma, fabs(uuxz), uj + uuxz);
-	const float2 divPow2ZX = FMAD2(gamma, fabs(uuzx), uj + uuzx);
-	const float2 divPow2YZ = FMAD2(gamma, fabs(uuyz), uj + uuyz);
-	const float2 divPow2ZY = FMAD2(gamma, fabs(uuzy), uj + uuzy);
-	// const float8 divPow2ZZ1 = FMAD(gamma, fabs(uj_uzz1), uj + uzz1 + epps);
-	// const float8 divPow2ZZ2 = FMAD(gamma, fabs(uj_uzz2), uj + uzz2 + epps);
-	// const float8 divPow2XY1 = FMAD(gamma, fabs(uj_uxy1), uj + uxy1 + epps);
-	// const float8 divPow2XY2 = FMAD(gamma, fabs(uj_uxy2), uj + uxy2 + epps);
-#endif // END FMAD
-#endif // END RDPCORNERS
 	const float2 uj_ux = uj - ux;
 	const float2 uj_uy = uj - uy;
 	const float2 uj_uz = uj - uz;
@@ -790,25 +782,6 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 	float2 output = uj_ux * (gamma * fabs(uj_ux) + uj + 3.f * ux + epps * epps) / (divPow2X * divPow2X + epps) 
 		+ uj_uy * (gamma * fabs(uj_uy) + uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
 		+ uj_uz * (gamma * fabs(uj_uz) + uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
-	// if (isnan(output.x) && xyz.x == 401 && xyz.z == 1200 && xyz.y == 406) {
-	// // if (isnan(output.x)) {
-	// 	printf("uj = %f\n", uj);
-	// 	// printf("epps = %.9f\n", epps);
-	// 	printf("ux.x = %f\n", ux.x);
-	// 	printf("ux.y = %f\n", ux.y);
-	// 	printf("uy.x = %f\n", uy.x);
-	// 	printf("uy.y = %f\n", uy.y);
-	// 	printf("uz.x = %f\n", uz.x);
-	// 	printf("uz.y = %f\n", uz.y);
-	// 	printf("divPow2X.x = %f\n", divPow2X.x);
-	// 	printf("divPow2X.y = %f\n", divPow2X.y);
-	// 	printf("output.x = %f\n", output.x);
-	// 	printf("output.y = %f\n", output.y);
-	// 	printf("idx = %d\n", xyz.x + xyz.y * N.x + xyz.z * N.x * N.y);
-	// 	// printf("xyz.x = %d\n", xyz.x);
-	// 	// printf("xyz.y = %d\n", xyz.y);
-	// 	// printf("xyz.z = %d\n", xyz.z);
-	// }
 #else
 	const float2 divPow2X = FMAD2(gamma, fabs(uj_ux), uj + ux);
 	const float2 divPow2Y = FMAD2(gamma, fabs(uj_uy), uj + uy);
@@ -817,28 +790,132 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 		+ uj_uy * FMAD2(gamma, fabs(uj_uy), uj + 3.f * uy + epps * epps) / (divPow2Y * divPow2Y + epps)
 		+ uj_uz * FMAD2(gamma, fabs(uj_uz), uj + 3.f * uz + epps * epps) / (divPow2Z * divPow2Z + epps);
 #endif // END FMAD
-#ifdef RDPCORNERS // START RDPCORNERS
-#ifndef USEMAD // START FMAD
-	// const float8 apu = uj_uzz1 * (gamma * fabs(uj_uzz1) + uj + 3.f * uzz1 + epps * epps) / (divPow2ZZ1 * divPow2ZZ1) + uj_uzz2 * (gamma * fabs(uj_uzz2) + uj + 3.f * uzz2 + epps * epps) / (divPow2ZZ2 * divPow2ZZ2);
-	// const float4 apu4 = apu.hi * (0.5773503f) + apu.lo * M_SQRT1_2_F;
-	// output += apu4.hi + apu4.lo + M_SQRT1_2_F * (uj_uxy1 * (gamma * fabs(uj_uxy1) + uj + 3.f * uxy1 + epps * epps) / (divPow2XY1 * divPow2XY1) + uj_uxy2 * (gamma * fabs(uj_uxy2) + uj + 3.f * uxy2 + epps * epps) / (divPow2XY2 * divPow2XY2));
-	output += uuxy * (gamma * fabs(uuxy) + uj + 3.f * uxy + epps * epps) / (divPow2XY * divPow2XY + epps) * M_SQRT1_2_F + uuyx * (gamma * fabs(uuyx) + uj + 3.f * uyx + epps * epps) / (divPow2YX * divPow2YX + epps) * M_SQRT1_2_F +
-		uuxz * (gamma * fabs(uuxz) + uj + 3.f * uxz + epps * epps) / (divPow2XZ * divPow2XZ + epps) * M_SQRT1_2_F + uuzx * (gamma * fabs(uuzx) + uj + 3.f * uzx + epps * epps) / (divPow2ZX * divPow2ZX + epps) * M_SQRT1_2_F +
-		uuyz * (gamma * fabs(uuyz) + uj + 3.f * uyz + epps * epps) / (divPow2YZ * divPow2YZ + epps) * M_SQRT1_2_F + uuzy * (gamma * fabs(uuzy) + uj + 3.f * uzy + epps * epps) / (divPow2ZY * divPow2ZY + epps) * M_SQRT1_2_F;
-#else
-	// const float8 apu = uj_uzz1 * FMAD(gamma, fabs(uj_uzz1), uj + 3.f * uzz1 + epps * epps) / (divPow2ZZ1 * divPow2ZZ1) + uj_uzz2 * FMAD(gamma, fabs(uj_uzz2), uj + 3.f * uzz2 + epps * epps) / (divPow2ZZ2 * divPow2ZZ2);
-	// const float4 apu4 = apu.hi * (0.5773503f) + apu.lo * M_SQRT1_2_F;
-	// output += apu4.hi + apu4.lo + M_SQRT1_2_F * (uj_uxy1 * FMAD(gamma, fabs(uj_uxy1), uj + 3.f * uxy1 + epps * epps) / (divPow2XY1 * divPow2XY1) + uj_uxy2 * FMAD(gamma, fabs(uj_uxy2), uj + 3.f * uxy2 + epps * epps) / (divPow2XY2 * divPow2XY2));
-	output += uuxy * FMAD2(gamma, fabs(uuxy), uj + 3.f * uxy + epps * epps) / (divPow2XY * divPow2XY + epps) * M_SQRT1_2_F + uuyx * FMAD2(gamma, fabs(uuyx), uj + 3.f * uyx + epps * epps) / (divPow2YX * divPow2YX + epps) * M_SQRT1_2_F +
-		uuxz * FMAD2(gamma, fabs(uuxz), uj + 3.f * uxz + epps * epps) / (divPow2XZ * divPow2XZ + epps) * M_SQRT1_2_F + uuzx * FMAD2(gamma, fabs(uuzx), uj + 3.f * uzx + epps * epps) / (divPow2ZX * divPow2ZX + epps) * M_SQRT1_2_F +
-		uuyz * FMAD2(gamma, fabs(uuyz), uj + 3.f * uyz + epps * epps) / (divPow2YZ * divPow2YZ + epps) * M_SQRT1_2_F + uuzy * FMAD2(gamma, fabs(uuzy), uj + 3.f * uzy + epps * epps) / (divPow2ZY * divPow2ZY + epps) * M_SQRT1_2_F;
-#endif // END FMAD
-#endif // END RDPCORNERS
 	if (isnan(output.x))
 		output.x = 0.f;
 	if (isnan(output.y))
 		output.y = 0.f;
 	grad[n] += beta * (output.x + output.y);
+#endif // END RDPCORNERS
+// #ifdef RDPCORNERS // START RDPCORNERS
+// #ifdef USEIMAGES
+// #ifdef CUDA
+// 	float2 uxy = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y + 1, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y + 1, xyz.z));
+// 	float2 uyx = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y - 1, xyz.z), tex3D<float>(u, xyz.x - 1, xyz.y - 1, xyz.z));
+// 	float2 uxz = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z + 1), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z + 1));
+// 	float2 uzx = make_float2(tex3D<float>(u, xyz.x + 1, xyz.y, xyz.z - 1), tex3D<float>(u, xyz.x - 1, xyz.y, xyz.z - 1));
+// 	float2 uyz = make_float2(tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z + 1), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z + 1));
+// 	float2 uzy = make_float2(tex3D<float>(u, xyz.x, xyz.y + 1, xyz.z - 1), tex3D<float>(u, xyz.x, xyz.y - 1, xyz.z - 1));
+// #else
+// 	float2 uxy = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z, 0)).w };
+// 	float2 uyx = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z, 0)).w };
+// 	float2 uxz = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z + 1, 0)).w };
+// 	float2 uzx = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z - 1, 0)).w };
+// 	float2 uyz = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z + 1, 0)).w };
+// 	float2 uzy = { read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z - 1, 0)).w };
+// #endif // END CUDA
+// 	// const float8 uzz1 = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z + 1, 0)).w, 
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z + 1, 0)).w, 
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z + 1, 0)).w,read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z + 1, 0)).w,
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z + 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z + 1, 0)).w};
+// 	// const float8 uzz2 = { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z - 1, 0)).w, 
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z - 1, 0)).w, 
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y + 1, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y, xyz.z - 1, 0)).w,
+// 	// 	read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y, xyz.z - 1, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x, xyz.y - 1, xyz.z - 1, 0)).w};
+// 	// const float2 uxy1 =  { read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y + 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y + 1, xyz.z, 0)).w};
+// 	// const float2 uxy2 =  { read_imagef(u, samplerRDP, (int4)(xyz.x - 1, xyz.y - 1, xyz.z, 0)).w, read_imagef(u, samplerRDP, (int4)(xyz.x + 1, xyz.y - 1, xyz.z, 0)).w};
+// #else
+// 	float2 uxy = MFLOAT2(0.f, 0.f);
+// 	float2 uyx = MFLOAT2(0.f, 0.f);
+// 	float2 uxz = MFLOAT2(0.f, 0.f);
+// 	float2 uzx = MFLOAT2(0.f, 0.f);
+// 	float2 uyz = MFLOAT2(0.f, 0.f);
+// 	float2 uzy = MFLOAT2(0.f, 0.f);
+// 	if (xyz.x < N.x - 1 && xyz.y < N.y - 1)
+// 		uxy.x = u[(xyz.x + 1) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y];
+// 	if (xyz.x > 0 && xyz.y < N.y - 1)
+// 		uxy.y = u[(xyz.x - 1) + (xyz.y + 1) * N.x + xyz.z * N.x * N.y];
+// 	if (xyz.y > 0 && xyz.x < N.x - 1)
+// 		uyx.x = u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y];
+// 	if (xyz.y > 0 && xyz.x > 0)
+// 		uyx.y = u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y];
+// 	if (xyz.z < N.z - 1 && xyz.x < N.x - 1)
+// 		uxz.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
+// 	if (xyz.z < N.z - 1 && xyz.x > 0)
+// 		uxz.y = u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
+// 	if (xyz.x < N.x - 1 && xyz.z > 0)
+// 		uzx.x = u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y];
+// 	if (xyz.x > 0 && xyz.z > 0)
+// 		uzx.y = u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y];
+// 	if (xyz.y < N.y - 1 && xyz.z < N.z - 1)
+// 		uyz.x = u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y];
+// 	if (xyz.y > 0 && xyz.z < N.z - 1)
+// 		uyz.y = u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y];
+// 	if (xyz.z > 0 && xyz.y < N.y - 1)
+// 		uzy.x = u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y];
+// 	if (xyz.y > 0 && xyz.z > 0)
+// 		uzy.y = u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y];
+// 	// const float8 uzz1 = { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y],
+// 	// 	u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y], 
+// 	// 	u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y],
+// 	// 	u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y], u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z + 1) * N.x * N.y]};
+// 	// const float8 uzz2 = { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y],
+// 	// 	u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y], 
+// 	// 	u[(xyz.x) + (xyz.y + 1) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x + 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y],
+// 	// 	u[(xyz.x - 1) + (xyz.y) * N.x + (xyz.z - 1) * N.x * N.y], u[(xyz.x) + (xyz.y - 1) * N.x + (xyz.z - 1) * N.x * N.y]};
+// 	// const float2 uxy1 =  { u[(xyz.x + 1) + (xyz.y + 1) * N.x + (xyz.z) * N.x * N.y], u[(xyz.x - 1) + (xyz.y + 1) * N.x + (xyz.z) * N.x * N.y]};
+// 	// const float2 uxy2 =  { u[(xyz.x - 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y], u[(xyz.x + 1) + (xyz.y - 1) * N.x + (xyz.z) * N.x * N.y]};
+// #endif // END USEIMAGES
+// 	// const float8 uj_uzz1 = uj - uzz1;
+// 	// const float8 uj_uzz2 = uj - uzz2;
+// 	// const float2 uj_uxy1 = uj - uxy1;
+// 	// const float2 uj_uxy2 = uj - uxy2;
+// 	const float2 uuxy = (uj - uxy);
+// 	const float2 uuyx = (uj - uyx);
+// 	const float2 uuxz = (uj - uxz);
+// 	const float2 uuzx = (uj - uzx);
+// 	const float2 uuyz = (uj - uyz);
+// 	const float2 uuzy = (uj - uzy);
+// #ifndef USEMAD // START FMAD
+// 	// const float8 divPow2ZZ1 = (uj + uzz1 + gamma * fabs(uj_uzz1) + epps);
+// 	// const float8 divPow2ZZ2 = (uj + uzz2 + gamma * fabs(uj_uzz2) + epps);
+// 	// const float2 divPow2XY1 = (uj + uxy1 + gamma * fabs(uj_uxy1) + epps);
+// 	// const float2 divPow2XY2 = (uj + uxy2 + gamma * fabs(uj_uxy2) + epps);
+// 	const float2 divPow2XY = (uj + uuxy + gamma * fabs(uuxy));
+// 	const float2 divPow2YX = (uj + uuyx + gamma * fabs(uuyx));
+// 	const float2 divPow2XZ = (uj + uuxz + gamma * fabs(uuxz));
+// 	const float2 divPow2ZX = (uj + uuzx + gamma * fabs(uuzx));
+// 	const float2 divPow2YZ = (uj + uuyz + gamma * fabs(uuyz));
+// 	const float2 divPow2ZY = (uj + uuzy + gamma * fabs(uuzy));
+// #else
+// 	const float2 divPow2XY = FMAD2(gamma, fabs(uuxy), uj + uuxy);
+// 	const float2 divPow2YX = FMAD2(gamma, fabs(uuyx), uj + uuyx);
+// 	const float2 divPow2XZ = FMAD2(gamma, fabs(uuxz), uj + uuxz);
+// 	const float2 divPow2ZX = FMAD2(gamma, fabs(uuzx), uj + uuzx);
+// 	const float2 divPow2YZ = FMAD2(gamma, fabs(uuyz), uj + uuyz);
+// 	const float2 divPow2ZY = FMAD2(gamma, fabs(uuzy), uj + uuzy);
+// 	// const float8 divPow2ZZ1 = FMAD(gamma, fabs(uj_uzz1), uj + uzz1 + epps);
+// 	// const float8 divPow2ZZ2 = FMAD(gamma, fabs(uj_uzz2), uj + uzz2 + epps);
+// 	// const float8 divPow2XY1 = FMAD(gamma, fabs(uj_uxy1), uj + uxy1 + epps);
+// 	// const float8 divPow2XY2 = FMAD(gamma, fabs(uj_uxy2), uj + uxy2 + epps);
+// #endif // END FMAD
+// #endif // END RDPCORNERS
+// #ifdef RDPCORNERS // START RDPCORNERS
+// #ifndef USEMAD // START FMAD
+// 	// const float8 apu = uj_uzz1 * (gamma * fabs(uj_uzz1) + uj + 3.f * uzz1 + epps * epps) / (divPow2ZZ1 * divPow2ZZ1) + uj_uzz2 * (gamma * fabs(uj_uzz2) + uj + 3.f * uzz2 + epps * epps) / (divPow2ZZ2 * divPow2ZZ2);
+// 	// const float4 apu4 = apu.hi * (0.5773503f) + apu.lo * M_SQRT1_2_F;
+// 	// output += apu4.hi + apu4.lo + M_SQRT1_2_F * (uj_uxy1 * (gamma * fabs(uj_uxy1) + uj + 3.f * uxy1 + epps * epps) / (divPow2XY1 * divPow2XY1) + uj_uxy2 * (gamma * fabs(uj_uxy2) + uj + 3.f * uxy2 + epps * epps) / (divPow2XY2 * divPow2XY2));
+// 	// output += uuxy * (gamma * fabs(uuxy) + uj + 3.f * uxy + epps * epps) / (divPow2XY * divPow2XY + epps) * M_SQRT1_2_F + uuyx * (gamma * fabs(uuyx) + uj + 3.f * uyx + epps * epps) / (divPow2YX * divPow2YX + epps) * M_SQRT1_2_F +
+// 	// 	uuxz * (gamma * fabs(uuxz) + uj + 3.f * uxz + epps * epps) / (divPow2XZ * divPow2XZ + epps) * M_SQRT1_2_F + uuzx * (gamma * fabs(uuzx) + uj + 3.f * uzx + epps * epps) / (divPow2ZX * divPow2ZX + epps) * M_SQRT1_2_F +
+// 	// 	uuyz * (gamma * fabs(uuyz) + uj + 3.f * uyz + epps * epps) / (divPow2YZ * divPow2YZ + epps) * M_SQRT1_2_F + uuzy * (gamma * fabs(uuzy) + uj + 3.f * uzy + epps * epps) / (divPow2ZY * divPow2ZY + epps) * M_SQRT1_2_F;
+// #else
+// 	// const float8 apu = uj_uzz1 * FMAD(gamma, fabs(uj_uzz1), uj + 3.f * uzz1 + epps * epps) / (divPow2ZZ1 * divPow2ZZ1) + uj_uzz2 * FMAD(gamma, fabs(uj_uzz2), uj + 3.f * uzz2 + epps * epps) / (divPow2ZZ2 * divPow2ZZ2);
+// 	// const float4 apu4 = apu.hi * (0.5773503f) + apu.lo * M_SQRT1_2_F;
+// 	// output += apu4.hi + apu4.lo + M_SQRT1_2_F * (uj_uxy1 * FMAD(gamma, fabs(uj_uxy1), uj + 3.f * uxy1 + epps * epps) / (divPow2XY1 * divPow2XY1) + uj_uxy2 * FMAD(gamma, fabs(uj_uxy2), uj + 3.f * uxy2 + epps * epps) / (divPow2XY2 * divPow2XY2));
+// 	output += uuxy * FMAD2(gamma, fabs(uuxy), uj + 3.f * uxy + epps * epps) / (divPow2XY * divPow2XY + epps) * M_SQRT1_2_F + uuyx * FMAD2(gamma, fabs(uuyx), uj + 3.f * uyx + epps * epps) / (divPow2YX * divPow2YX + epps) * M_SQRT1_2_F +
+// 		uuxz * FMAD2(gamma, fabs(uuxz), uj + 3.f * uxz + epps * epps) / (divPow2XZ * divPow2XZ + epps) * M_SQRT1_2_F + uuzx * FMAD2(gamma, fabs(uuzx), uj + 3.f * uzx + epps * epps) / (divPow2ZX * divPow2ZX + epps) * M_SQRT1_2_F +
+// 		uuyz * FMAD2(gamma, fabs(uuyz), uj + 3.f * uyz + epps * epps) / (divPow2YZ * divPow2YZ + epps) * M_SQRT1_2_F + uuzy * FMAD2(gamma, fabs(uuzy), uj + 3.f * uzy + epps * epps) / (divPow2ZY * divPow2ZY + epps) * M_SQRT1_2_F;
+// #endif // END FMAD
+// #endif // END RDPCORNERS
 }
 #endif // END RDP
 
@@ -893,7 +970,11 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 		indZ += LSIZE2;
 	}
 	BARRIER
+#ifdef CUDA
+	if (ii.x >= N.x || ii.y >= N.y || ii.z >= N.z)
+#else
 	if (any(ii >= N))
+#endif
 		return;
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
@@ -907,7 +988,8 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 				const float delta = uj - uk;
 				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
 				if (delta != 0.f)
-					output += weight[uu++] * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - pqc * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+					output += weight[uu] * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - pqc * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+				uu++;
 			}
 		}
 	}
@@ -1855,8 +1937,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 					continue;
 				const float u = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
 				const float ux = (uj - u) / sigma;
-				output += (ux / sigma) / SQRT(1.f + ux * ux) * w[uu];
-				uu++;
+				output += (ux / sigma) / SQRT(1.f + ux * ux) * w[uu++];
 			}
 		}
 	}

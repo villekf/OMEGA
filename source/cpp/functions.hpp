@@ -573,6 +573,8 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 				mexPrint("Image copy failed\n");
 				return -1;
 			}
+			else if (DEBUG)
+				mexPrint("Input copy succeeded\n");
 		}
 #else
 		if (inputScalars.use_psf)
@@ -750,7 +752,8 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	return status;
 }
 
-inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float gamma, const af::array& weights_RDP, ProjectorClass& proj, const float beta) {
+inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, const float beta, const af::array& RDPref, 
+	const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 	im.eval();
 	int status = 0;
 	proj.d_W = transferAF(grad);
@@ -759,6 +762,10 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 #ifdef CUDA
 		CUdeviceptr* input = im.device<CUdeviceptr>();
 		status = proj.transferTex(inputScalars, input);
+		if (RDPLargeNeighbor && useRDPRef) {
+			CUdeviceptr* inputRef = RDPref.device<CUdeviceptr>();
+			status = proj.transferTex(inputScalars, inputRef, true);
+		}
 #else
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
@@ -768,24 +775,39 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 			mexPrint("Failed to copy RDP image\n");
 			return -1;
 		}
+		if (RDPLargeNeighbor && useRDPRef) {
+			status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*RDPref.device<cl_mem>(), true), proj.d_RDPrefI, 0, proj.origin, proj.region);
+			if (status != 0) {
+				getErrorString(status);
+				im.unlock();
+				grad.unlock();
+				mexPrint("Failed to copy RDP image\n");
+				return -1;
+			}
+		}
 #endif
 	}
 	else {
 		proj.d_inputB = transferAF(im);
+		if (RDPLargeNeighbor && useRDPRef)
+			proj.d_RDPref = transferAF(RDPref);
 	}
 	if (DEBUG) {
 		mexPrintBase("im.elements() = %u\n", im.elements());
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
 		mexEval();
 	}
-	status = proj.computeRDP(inputScalars, gamma, beta);
+	status = proj.computeRDP(inputScalars, gamma, beta, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
 	im.unlock();
+	if (RDPLargeNeighbor && useRDPRef)
+		RDPref.unlock();
 	if (status != 0) {
 		return -1;
 	}
 #else
 	proj.d_inputB = transferAF(im);
+	status = proj.computeRDP(inputScalars, gamma, beta, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
 	im.unlock();
 #endif
@@ -1951,7 +1973,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size);
+				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -1996,15 +2018,17 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				af::sync();
 				af::array outputFP;
 				//af::array outputFP = af::constant(0.f, m_size);
+				if (inputScalars.projector_type == 6)
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
+				else
+					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 						forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, ii);
 						outputFP.eval();
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						outputFP = af::constant(0.f, m_size);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
 					}
 					af::sync();
@@ -2049,7 +2073,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	else {
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
-			af::array outputFP = af::constant(0.f, m_size);
+			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 			if (DEBUG) {
 				mexPrint("Starting largeDim\n");
 			}
@@ -2129,7 +2153,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			vec.im_os[ii] = vec.im_os[ii] / af::norm(vec.im_os[ii]);
 		}
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
-			af::array outputFP = af::constant(0.f, m_size);
+			af::array outputFP;
 			af::sync();
 			if (inputScalars.projector_type == 6) {
 				outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
@@ -2138,7 +2162,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size);
+				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -2185,7 +2209,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						outputFP = af::constant(0.f, m_size);
+						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
 					}
 					af::sync();

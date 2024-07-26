@@ -105,7 +105,7 @@ if options.precondTypeImage(3)
 end
 
 if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH || options.L || options.weighted_mean || options.APLS || options.BSREM ...
-        || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM || options.SART ...
+        || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM || options.DRAMA || options.ROSEM_MAP || options.ECOSEM || options.SART || options.ASD_POCS ...
         || options.COSEM || options.ACOSEM || options.AD || any(options.OSL_COSEM) || options.NLM || options.OSL_RBI || options.RBI || options.PKMA...
         || options.RDP || options.SPS || options.ProxNLM || options.GGMRF ||options.hyperbolic)
 
@@ -134,12 +134,12 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     end
 
     % Lambda values (relaxation parameters)
-    if (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART) && (~isfield(options,'lambda') || isempty(options.lambda) || sum(options.lambda) == 0)
+    if (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART || options.ASD_POCS) && (~isfield(options,'lambda') || isempty(options.lambda) || sum(options.lambda) == 0)
         lambda = zeros(options.Niter,1);
         for i = 1 : options.Niter
             lambda(i) = 1 / ((i - 1)/20 + 1);
         end
-        if options.CT && ~options.SART
+        if options.CT && ~options.SART && ~options.ASD_POCS
             lambda = lambda / 10000;
         end
         if options.implementation == 2 || options.useSingles || options.implementation == 5
@@ -147,12 +147,12 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lambda = lambda;
         end
-    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART) && numel(options.lambda) == 1 && options.Niter > 1
+    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART || options.ASD_POCS) && numel(options.lambda) == 1 && options.Niter > 1
         lambdaT = zeros(options.Niter,1);
         for i = 1 : options.Niter
             lambdaT(i) = options.lambda / ((i - 1)/20 + 1);
         end
-        if options.CT && ~options.SART
+        if options.CT && ~options.SART && ~options.ASD_POCS
             lambdaT = lambdaT / 10000;
         end
         if options.implementation == 2 || options.useSingles || options.implementation == 5
@@ -160,7 +160,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lambda = lambdaT;
         end
-    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART)
+    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART || options.ASD_POCS)
         if numel(options.lambda) < options.Niter
             error('The number of relaxation values needs to be at least equal to the number of iterations!')
         end
@@ -215,7 +215,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
     % Compute the weights
     if (options.quad || options.L || options.FMH || options.weighted_mean || options.MRP || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic) && options.MAP
         if options.quad || options.L || options.FMH || options.weighted_mean || (options.TV && options.TVtype == 3 && options.TV_use_anatomical) || options.Huber || options.RDP || options.GGMRF ||options.hyperbolic
-            if options.GGMRF
+            if options.GGMRF %|| (options.RDP && options.RDPIncludeCorners && options.implementation == 2)
                 options = computeWeights(options, true);
             else
                 options = computeWeights(options, false);
@@ -240,13 +240,13 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
                 options.medz = options.Ndz*2 + 1;
             end
         end
-        if options.quad || options.hyperbolic || options.GGMRF
+        if options.quad || options.hyperbolic || options.GGMRF || (options.RDP && options.RDPIncludeCorners && options.implementation == 2)
             options = quadWeights(options, options.empty_weight);
         end
         if options.Huber
             options = huberWeights(options);
         end
-        if options.RDP
+        if options.RDP && options.implementation ~= 2
             options = RDPWeights(options);
         end
         if options.L
@@ -272,6 +272,19 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         end
         if verbose
             disp('Prepass phase for MRP, quadratic prior, L-filter, FMH, RDP and weighted mean completed')
+        end
+        if options.RDP_use_anatomical && options.RDP && options.RDPIncludeCorners && options.implementation == 2
+            if ischar(options.RDP_reference_image)
+                apu = load(options.RDP_reference_image);
+                variables = fieldnames(apu);
+                options.RDP_ref = double(apu.(variables{1}));
+            else
+                options.RDP_ref = options.RDP_reference_image;
+            end
+            options.RDP_ref = reshape(options.RDP_ref, options.Nx(1), options.Ny(1), options.Nz(1));
+            if options.implementation == 2 || options.implementation == 3
+                options.RDP_ref = single(options.RDP_ref);
+            end
         end
     end
     if options.AD && options.MAP

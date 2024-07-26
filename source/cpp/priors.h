@@ -493,7 +493,8 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 //	return -grad;
 //}
 
-inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& weights_RDP = af::constant(0.f, 1, 1)) {
+inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, 
+	const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 
 	//af::array grad = af::constant(0.f, im.elements(), 1);
 	int status = 0;
@@ -503,7 +504,7 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 		mexPrintBase("isnan(im_RDP) = %d\n", af::anyTrue<bool>(af::isNaN(im)));
 		mexEval();
 	}
-	status = RDPAF(dU, im, inputScalars, gamma, weights_RDP, proj, beta);
+	status = RDPAF(dU, im, inputScalars, gamma, proj, beta, RDPref, RDPLargeNeighbor, useRDPRef);
 	if (DEBUG) {
 		mexPrintBase("grad = %f\n", af::sum<float>(dU));
 		mexPrintBase("min(grad) = %f\n", af::min<float>(dU));
@@ -568,7 +569,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	//	dU = &w_vec.D[0];
 	if (iter)
 		dU = &vec.im_os[0];
-	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM) {
+	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS) {
 		vec.dU = af::constant(0.f, vec.im_os[0].elements());
 		dU = &vec.dU;
 	}
@@ -656,7 +657,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
-		status = RDP(vec.im_os[0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.weights_RDP);
+		status = RDP(vec.im_os[0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical);
 	}
 	else if (MethodList.GGMRF) {
 		if (inputScalars.verbose >= 3)

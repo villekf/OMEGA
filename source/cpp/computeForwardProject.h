@@ -200,9 +200,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
 	}
-	else if (MethodList.SART) {
+	else if (MethodList.SART || MethodList.POCS) {
 		if (inputScalars.verbose >= 3)
-			mexPrint("Computing SART");
+			mexPrint("Computing SART or ASD-POCS");
+		if (MethodList.POCS)
+			vec.f0POCS = vec.im_os;
 		input = y - input;
 		input /= w_vec.M[subIter];
 		input.eval();
@@ -291,6 +293,14 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			}
 			input.eval();
 		}
+		//if (inputScalars.FISTAAcceleration) {
+		//	const float t = w_vec.tNFista;
+		//	if (subIter == 0) {
+		//		w_vec.tNFista = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
+		//	}
+		//	input = input + (t - 1.f) / w_vec.tNFista * (input - vec.pCP[subIter]);
+		//	af::eval(input);
+		//}
 		vec.pCP[subIter] = input.copy();
 		if (DEBUG) {
 			//mexPrintBase("vec.uCP = %f\n", af::sum<float>(vec.uCP));
