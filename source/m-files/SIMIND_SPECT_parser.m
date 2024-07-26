@@ -78,4 +78,9 @@ function options = SIMIND_SPECT_parser(fname)
     % Number of columns in a projection image
     options.nColsD = size(options.SinM, 2);
 
+    % Distance from collimator to the detector (mm)
+    options.colD = 0;
+
+    % Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
+    options.hexOrientation = 1;
 end

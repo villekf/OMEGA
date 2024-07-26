@@ -65,61 +65,12 @@ options.flip_image = false;
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
-options.offangle = 0;%(3*pi)/2;
+options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%% COLLIMATOR PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-%%% SPECT EDIT
-% Number of rays traced per collimator hole
-options.nRaySPECT = 1;
-% Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal
-% diameter smaller
-options.hexOrientation = 1;
-% Method for tracing rays inside collimator hole: 1 for accurate location
-% of rays, 2 for one cone at center of pixel, 3 for generic model
-options.coneMethod = 3;
-%%% END SPECT EDIT
-
-%%% Collimator-detector response function (CDRF)
-% You can either input the (Gaussian) PSF filter, or the standard
-% deviations for both transaxial and axial directions or simply the
-% collimator parameters (see below) for an analytic solution for round (and
-% hexagonal) holes (this may be unoptimal).
-% Distance from collimator to the detector
-options.colD = 0;
-
-% If you have the standard deviations for transaxial (XY) and axial (Z)
-% directions, you can input them here instead of the above values (the
-% dimensions need to be options.nProjections x options.Nx):
-% Transaxial standard deviation
-% options.sigmaXY = repmat(0, options.nProjection, options.Nx);
-% Axial standard deviation
-% options.sigmaZ = repmat(0, options.nProjection, options.Nx);
-
-% Lastly, you can input the filter for the CDRF directly. This should be
-% filterSizeXY x filterSizeZ x options.nProjections:
-% options.gFilter = ones(10,10,options.nProjections);
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -186,10 +137,18 @@ options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
+% 1 = (Improved) Siddon ray-based projector
 % 6 = Rotation-based projector
-% See the doc for more information:
+% See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 6;
+options.projector_type = 1;
+
+% For Siddon ray-based projector:
+% Number of rays traced per collimator hole
+options.nRaySPECT = 1;
+% Method for tracing rays inside collimator hole: 1 for accurate location
+% of rays, 2 for one cone at center of pixel, 3 for generic model
+options.coneMethod = 3;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -218,7 +177,7 @@ options.subsets = 8;
 options.subset_type = 8;
 
 %%% Initial value for the reconstruction
-options.x0 = single(ones(options.Nx, options.Ny, options.Nz));
+options.x0 = ones(options.Nx, options.Ny, options.Nz);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
