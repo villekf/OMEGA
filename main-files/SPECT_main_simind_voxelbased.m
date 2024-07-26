@@ -57,7 +57,7 @@ options.Ny = 128;
 options.Nz = 128;
 
 %%% Flip the image (in vertical direction)?
-options.flip_image = true;
+options.flip_image = false;
 
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
@@ -165,7 +165,7 @@ options.verbose = 1;
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
-options.implementation = 4;
+options.implementation = 2;
 
 % Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
@@ -177,7 +177,7 @@ options.use_device = 0;
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
 % only works if the CUDA code was successfully built.
-options.use_CUDA = false;
+options.use_CUDA = true;
 
 % Implementation 2 ONLY
 %%% Use CPU
@@ -191,16 +191,16 @@ options.use_CPU = false;
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
-if (options.projector_type == 1) % Use with projector_type=1
-    options.x = single(sinogramToX( ...
-        (0:(options.nProjections - 1)) * options.angleIncrement + options.startAngle, ...
-        options.radiusPerProj, ...
-        size(options.SinM, 1), ...
-        size(options.SinM, 2), ...
-        options.crXY ...
-    ));
-end
-options.largeDim = false;
+% if (options.projector_type == 1) % Use with projector_type=1
+%     options.x = single(sinogramToX( ...
+%         (0:(options.nProjections - 1)) * options.angleIncrement + options.startAngle, ...
+%         options.radiusPerProj, ...
+%         size(options.SinM, 1), ...
+%         size(options.SinM, 2), ...
+%         options.crXY ...
+%     ));
+% end
+% options.largeDim = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -782,5 +782,4 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
 %% Plot
-volumeViewer(pz)
-%volumeViewer(pz(:, :, 3:124))
+volume3Dviewer(pz, [min(pz, [], "all"), max(pz, [], "all")], [0 0 1])
