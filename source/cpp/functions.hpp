@@ -2329,9 +2329,9 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
 	const uint32_t osa_iter = 0, const int ii = 0) {
 	// Transfer memory control back to ArrayFire
-	if (no_norm == 0u) {
-		if (compute_norm_matrix == 1u) {
-			vec.Summ[ii][0].unlock();
+	if (compute_norm_matrix == 1u) {
+		vec.Summ[ii][0].unlock();
+		if (no_norm == 0u) {
 #ifdef OPENCL
 			if (inputScalars.atomic_64bit)
 				vec.Summ[ii][0] = vec.Summ[ii][0].as(f32) / TH;
@@ -2343,12 +2343,15 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 			}
 			// Prevent division by zero
 			vec.Summ[ii][0](vec.Summ[ii][0] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[ii][0].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 1 done\n");
 			}
 		}
-		else if (compute_norm_matrix == 2) {
-			vec.Summ[ii][osa_iter].unlock();
+	}
+	else if (compute_norm_matrix == 2) {
+		vec.Summ[ii][osa_iter].unlock();
+		if (no_norm == 0u) {
 #ifdef OPENCL
 			if (inputScalars.atomic_64bit) {
 				vec.Summ[ii][osa_iter] = vec.Summ[ii][osa_iter].as(f32) / TH;
@@ -2362,6 +2365,7 @@ inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars
 				af::sync();
 			}
 			vec.Summ[ii][osa_iter](vec.Summ[ii][osa_iter] < inputScalars.epps) = inputScalars.epps;
+			vec.Summ[ii][osa_iter].eval();
 			if (DEBUG) {
 				mexPrint("Sens image steps 2 done\n");
 			}
