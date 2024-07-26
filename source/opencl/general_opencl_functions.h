@@ -1312,9 +1312,9 @@ DEVICE uint computeSpectHexShifts(float hexShifts[][6], float3* s, float3* d, co
 				float tmpX = (float)col * d_horizontal_s; // Hex center X
 				float tmpY = (float)row * d_vertical_s; // Hex center Y
 				#if (HEXORIENTATION == 1) // Vertical diameter is smaller
-					tmpY += fmod((float)col, 2.) * d_vertical_s / 2.; // The columns overlap half the hexagon size 
+					tmpY += fmod((float)col, 2.f) * d_vertical_s / 2.f; // The columns overlap half the hexagon size 
 				#elif (HEXORIENTATION == 2) // Horizontal diameter is smaller
-					tmpX += fmod((float)row, 2.) * d_horizontal_s / 2.; // The rows overlap half the hexagon size
+					tmpX += fmod((float)row, 2.f) * d_horizontal_s / 2.f; // The rows overlap half the hexagon size
 				#endif
 
 				if ((tmpX >= (xMin - d_horizontal / 2.)) && (tmpX <= (xMax + d_horizontal / 2.))) { // Check pixel boundaries X
