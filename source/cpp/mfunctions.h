@@ -158,7 +158,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
-	} else if (inputScalars.SPECT) {
+	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
 		inputScalars.colL = getScalarFloat(getField(options, 0, "collimatorLength"));
@@ -234,7 +234,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "dPitchX"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "dPitchY"));
-	} else if (inputScalars.SPECT) {
+	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "crXY"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "crXY"));
