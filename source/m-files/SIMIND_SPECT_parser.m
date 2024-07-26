@@ -46,10 +46,9 @@ function options = SIMIND_SPECT_parser(fname)
     options.collimatorLength = str2double(hdr{ind});
     options.colL = str2double(hdr{ind});
 
-    % Collimator hole diameter (mm), larger inner radius
+    % Collimator hole radius (mm), larger inner radius
     ind = find(contains(hdr, ';# Collimator hole diameter')) + 1;
-    options.collimatorDiameter = 2 / sqrt(3) * str2double(hdr{ind});
-    options.colR = 0.5 * options.collimatorDiameter;
+    options.colR = 0.5 * str2double(hdr{ind});
 
     % Septal thickness (mm)
     ind = find(contains(hdr, ';# Collimator hole septa')) + 1;  

@@ -161,8 +161,8 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-		inputScalars.colL = getScalarFloat(getField(options, 0, "collimatorLength"));
-		inputScalars.colD = getScalarFloat(getField(options, 0, "collimatorDiameter"));
+		inputScalars.colL = getScalarFloat(getField(options, 0, "colL"));
+		inputScalars.colD = 2 * getScalarFloat(getField(options, 0, "colR"));
 		inputScalars.dSeptal = getScalarFloat(getField(options, 0, "dSeptal"));
 		inputScalars.nRaySPECT = getScalarFloat(getField(options, 0, "nRaySPECT"));
 		inputScalars.hexOrientation = getScalarFloat(getField(options, 0, "hexOrientation"));

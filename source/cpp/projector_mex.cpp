@@ -200,8 +200,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	} else if (SPECT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "crXY"), ind);
-		param.colL = getScalarDouble(getField(options, 0, "collimatorLength"), ind);
-		param.colD = getScalarDouble(getField(options, 0, "collimatorDiameter"), ind);
+		param.colL = getScalarDouble(getField(options, 0, "colL"), ind);
+		param.colD = 2 * getScalarDouble(getField(options, 0, "colR"), ind);
 		param.dSeptal = getScalarDouble(getField(options, 0, "dSeptal"), ind);
 		param.nRaySPECT = getScalarDouble(getField(options, 0, "nRaySPECT"), ind);
 		param.hexOrientation = getScalarDouble(getField(options, 0, "hexOrientation"), ind);
