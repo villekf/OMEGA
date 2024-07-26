@@ -4,7 +4,7 @@
 % and new section below reconstruction parameters (and above OpenCL device
 % info)
 % You can use the FIPS walnut data as an example data:
-% https://zenodo.org/record/1254206
+% https://zenodo.org/records/6986012
  
 clear
 
@@ -85,7 +85,7 @@ options.only_reconstructions = false;
 % These are e.g. time elapsed on various functions and what steps have been
 % completed. It is recommended to keep this 1.  Maximum value of 3 is
 % supported.
-options.verbose = 1;
+options.verbose = 3;
 
 % Note that non-square transaxial FOV sizes should work, but might not work
 % always. Square transaxial FOV is thus recommended.
@@ -383,12 +383,12 @@ options.projector_type = 4;
 % If nonempty, the mask will be applied. If empty, or completely omitted, no
 % mask will be considered.
 % Create a circle that fills the FOV:
-[columnsInImage, rowsInImage] = meshgrid(1:options.Nx, 1:options.Ny);
-centerX = options.Nx/2;
-centerY = options.Ny/2;
-radius = options.Nx/2;
-options.maskBP = uint8((rowsInImage - centerY).^2 ...
-    + (columnsInImage - centerX).^2 <= radius.^2);
+% % [columnsInImage, rowsInImage] = meshgrid(1:options.Nx, 1:options.Ny);
+% % centerX = options.Nx/2;
+% % centerY = options.Ny/2;
+% % radius = options.Nx/2;
+% % options.maskBP = uint8((rowsInImage - centerY).^2 ...
+    % % + (columnsInImage - centerX).^2 <= radius.^2);
 
 %%% Interpolation length (projector type = 4 only)
 % This specifies the length after which the interpolation takes place. This
