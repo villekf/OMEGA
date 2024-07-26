@@ -965,7 +965,6 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 				}
 			}
 		}
-
 		// Loop through each iteration
 		for (uint32_t iter = iter0; iter < inputScalars.Niter; iter++) {
 

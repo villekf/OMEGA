@@ -91,6 +91,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("PET mode");
 			input = y / (input);
 		}
+		input.eval();
 	}
 	else if (MethodList.RAMLA || MethodList.BSREM || MethodList.RBI || MethodList.RBIOSL || MethodList.DRAMA) {
 		if (inputScalars.verbose >= 3)
@@ -116,6 +117,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			//else
 				input = y / (input) - 1.f;
 		}
+		input.eval();
 	}
 	else if (MethodList.PKMA) {
 		if (inputScalars.verbose >= 3)
@@ -141,6 +143,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			//else
 				input = 1.f - y / (input);
 		}
+		input.eval();
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
 		if (status != 0)
 			return -1;
@@ -176,6 +179,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			else
 				input = y / (input) - 1.f;
 		}
+		input.eval();
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
 		if (status != 0)
 			return -1;
