@@ -1371,6 +1371,16 @@ DEVICE void computeSpectSquareShifts(float hexShifts[][6], float3* s, float3* d,
 	const float pixelCenterX = i.x * cr.x - d_Nxyz.x * cr.x / 2. + cr.x / 2.;
 	const float pixelCenterY = i.y * cr.y - d_Nxyz.y * cr.y / 2. + cr.y / 2.;
 
+
+	float detectorShifts[(int)NRAYSPECT][2];
+	float sourceShifts[(int)NRAYSPECT][2];
+
+	#if (NRAYSPECT == 1)
+	detectorShifts[0][0] = pixelCenterX;
+	detectorShifts[0][1] = pixelCenterY;
+	sourceShifts[0][0] = pixelCenterX;
+	sourceShifts[0][1] = pixelCenterY;
+	#else 
 	// Pixel boundary in local (detector )coordinates
 	const float xdMin = pixelCenterX - cr.x / 2.;
 	const float xdMax = pixelCenterX + cr.x / 2.;
@@ -1381,15 +1391,6 @@ DEVICE void computeSpectSquareShifts(float hexShifts[][6], float3* s, float3* d,
 	const float ysMin = ydMin - COL_D;
 	const float ysMax = ydMax + COL_D;
 
-	float detectorShifts[(int)NRAYSPECT][2];
-	float sourceShifts[(int)NRAYSPECT][2];
-
-	#if (NRAYSPECT == 1)
-		detectorShifts[0][0] = pixelCenterX;
-		detectorShifts[0][1] = pixelCenterY;
-		sourceShifts[0][0] = pixelCenterX;
-		sourceShifts[0][1] = pixelCenterY;
-	#else 
 	for (int x = 0; x < sqrt((float)NRAYSPECT); x++) {
 		for (int y = 0; y < sqrt((float)NRAYSPECT); y++) {
 			const float tmpXd = xdMin + x / (float)(sqrt((float)NRAYSPECT) - 1) * (xdMax - xdMin);
