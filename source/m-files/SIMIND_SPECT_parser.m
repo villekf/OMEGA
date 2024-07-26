@@ -23,7 +23,10 @@ function options = SIMIND_SPECT_parser(fname)
     extRot = str2double(hdr{ind});
 
     % Angle increment per view
-    options.angleIncrement = extRot / options.nProjections;
+    angleIncrement = extRot / options.nProjections;
+
+    % Projection angles
+    options.angles = (0:(options.nProjections - 1)) * angleIncrement + options.startAngle;
 
     % Detector pixel count X
     ind = find(contains(hdr, '!matrix size [1]')) + 1;

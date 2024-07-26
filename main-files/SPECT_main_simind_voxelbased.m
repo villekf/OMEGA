@@ -177,7 +177,7 @@ options.use_device = 0;
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
 % only works if the CUDA code was successfully built.
-options.use_CUDA = true;
+options.use_CUDA = false;
 
 % Implementation 2 ONLY
 %%% Use CPU
@@ -189,18 +189,7 @@ options.use_CPU = false;
 % 6 = Rotation-based projector
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 1;
-
-% if (options.projector_type == 1) % Use with projector_type=1
-%     options.x = single(sinogramToX( ...
-%         (0:(options.nProjections - 1)) * options.angleIncrement + options.startAngle, ...
-%         options.radiusPerProj, ...
-%         size(options.SinM, 1), ...
-%         size(options.SinM, 2), ...
-%         options.crXY ...
-%     ));
-% end
-% options.largeDim = false;
+options.projector_type = 6;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -226,7 +215,7 @@ options.subsets = 8;
 % PET)
 % 11 = Use prime factor sampling to select the projection images
 % Most of the time subset_type 8 is sufficient.
-options.subset_type = 3;
+options.subset_type = 8;
 
 %%% Initial value for the reconstruction
 options.x0 = single(ones(options.Nx, options.Ny, options.Nz));
