@@ -1,4 +1,5 @@
 function options = SIMIND_SPECT_parser(fname)
+    contains = @(str, pattern) ~cellfun('isempty', strfind(str, pattern));
     % Load header
     options.fpath = strcat(fname, '.h00');
     fid = fopen(options.fpath);
@@ -9,7 +10,7 @@ function options = SIMIND_SPECT_parser(fname)
     % Number of projections
     ind = find(contains(hdr, '!number of projections')) + 1;
     options.nProjections = str2double(hdr{ind});
-    
+
     % Start angle
     ind = find(contains(hdr, 'start angle')) + 1;
     options.startAngle = str2double(hdr{ind});
@@ -43,7 +44,7 @@ function options = SIMIND_SPECT_parser(fname)
     % Crystal thickness (mm)
     ind = find(contains(hdr, ';# Crystal Thickness')) + 1;
     options.cr_p = str2double(hdr{ind});
-    
+
     % Collimator hole length (mm)
     ind = find(contains(hdr, ';# Collimator thickness')) + 1;
     options.collimatorLength = str2double(hdr{ind});
@@ -54,11 +55,11 @@ function options = SIMIND_SPECT_parser(fname)
     options.colR = 0.5 * str2double(hdr{ind});
 
     % Septal thickness (mm)
-    ind = find(contains(hdr, ';# Collimator hole septa')) + 1;  
+    ind = find(contains(hdr, ';# Collimator hole septa')) + 1;
     options.dSeptal = str2double(hdr{ind});
 
     % Intrinsic resolution
-    ind = find(contains(hdr, ';# Intrinsic FWHM for the camera')) + 1;  
+    ind = find(contains(hdr, ';# Intrinsic FWHM for the camera')) + 1;
     options.iR = str2double(hdr{ind});
 
     % Load detector radius per projection
@@ -74,7 +75,7 @@ function options = SIMIND_SPECT_parser(fname)
 
     % Number of rows in a projection image
     options.nRowsD = size(options.SinM, 1);
-    
+
     % Number of columns in a projection image
     options.nColsD = size(options.SinM, 2);
 

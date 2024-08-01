@@ -18,7 +18,7 @@ options = SIMIND_SPECT_parser('nema1');
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x = 4.664*128;
+options.FOVa_x = 364;%4.664*128;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -26,7 +26,7 @@ options.FOVa_y = options.FOVa_x;
 
 %%% Axial FOV (mm)
 % This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 4.664*128;
+options.axial_fov = 412.5;%4.664*128;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -174,7 +174,7 @@ options.subsets = 8;
 % PET)
 % 11 = Use prime factor sampling to select the projection images
 % Most of the time subset_type 8 is sufficient.
-options.subset_type = 8;
+options.subset_type = 3;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
@@ -730,4 +730,4 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
 %% Plot
-volume3Dviewer(pz, [min(pz, [], "all"), max(pz, [], "all")], [0 0 1])
+% volume3Dviewer(pz, 'fit')

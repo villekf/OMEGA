@@ -315,23 +315,26 @@ class ProjectorClass {
 			options += (" -DDSEPTAL=" + std::to_string(inputScalars.dSeptal));
 			options += (" -DHEXORIENTATION=" + std::to_string((uint8_t)inputScalars.hexOrientation));
 			options += (" -DCONEMETHOD=" + std::to_string((uint8_t)inputScalars.coneMethod));
-			if (inputScalars.coneMethod == 1) {
-				uint32_t nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
-				options += (" -DNHEXSPECT=" + std::to_string(nHexSPECT));
-			} else if (inputScalars.coneMethod == 3) {
+
+			if (inputScalars.coneMethod == 3) {
 				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
 			}
 			options += (" -DNRAYSPECT=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
 
+			uint32_t nHexSPECT;
 			if (inputScalars.coneMethod != 1) {
 				options += (" -DN_RAYS=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
 				options += (" -DN_RAYS2D=1");
 				options += (" -DN_RAYS3D=1");
+				nHexSPECT = 1;
 			} else {
 				options += (" -DN_RAYS=1");
 				options += (" -DN_RAYS2D=1");
 				options += (" -DN_RAYS3D=1");
+
+				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
 			}
+			options += (" -DNHEXSPECT=" + std::to_string(nHexSPECT));
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));

@@ -1,4 +1,7 @@
 .vscode/
 data/
 *.mexa64
+*.mex
+*.pyc
+*.oct
 mat-files/*.mat

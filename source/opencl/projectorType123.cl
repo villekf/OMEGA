@@ -264,7 +264,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 	#if (CONEMETHOD == 1) | (CONEMETHOD == 2)
 		#if (CONEMETHOD == 1)
-			float hexShifts[(int)NRAYSPECT * NHEXSPECT][6];
+			float hexShifts[(int)NRAYSPECT * (int)NHEXSPECT][6];
 		#else
 			float hexShifts[(int)NRAYSPECT][6];
 		#endif
@@ -285,7 +285,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 #if defined(N_RAYS) && defined(FP)
 	#ifdef SPECT 
-	float ax[NBINS * (int)NRAYSPECT];
+	float ax[NBINS * (int)NRAYSPECT * (int)NHEXSPECT];
 	#else
 	float ax[NBINS * N_RAYS];
 	#endif

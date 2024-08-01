@@ -259,27 +259,30 @@ class ProjectorClass {
 			options.push_back(spectBuffer4);
 			std::snprintf(spectBuffer5, 30, "-DCONEMETHOD=%u", static_cast<uint8_t>(inputScalars.coneMethod));
 			options.push_back(spectBuffer5);
-			if (inputScalars.coneMethod == 1) {
-				uint32_t nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
-				std::snprintf(spectBuffer6, 30, "-DNHEXSPECT=%u", static_cast<uint16_t>(nHexSPECT));
-				options.push_back(spectBuffer6);
-			} else if (inputScalars.coneMethod == 3) {
+
+			if (inputScalars.coneMethod == 3) {
 				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
 			}
-			std::snprintf(spectBuffer7, 30, "-DNRAYSPECT=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
-			options.push_back(spectBuffer7);
+			std::snprintf(spectBuffer6, 30, "-DNRAYSPECT=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+			options.push_back(spectBuffer6);
 
-			//inputScalars.n_rays = 1;
-			//inputScalars.n_rays3D = 1;
 
+			uint32_t nHexSPECT;
 			if (inputScalars.coneMethod != 1) {
-				std::snprintf(spectBuffer8, 30, "-DN_RAYS=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
-				options.push_back(spectBuffer8);
+				std::snprintf(spectBuffer7, 30, "-DN_RAYS=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+				options.push_back(spectBuffer7);
+				options.push_back("-DN_RAYS2D=1");
+				options.push_back("-DN_RAYS3D=1");
+				nHexSPECT = 1;
 			} else {
 				options.push_back("-DN_RAYS=1");
+				options.push_back("-DN_RAYS2D=1");
+				options.push_back("-DN_RAYS3D=1");
+				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
 			}
-			options.push_back("-DN_RAYS2D=1");
-			options.push_back("-DN_RAYS3D=1");
+
+			std::snprintf(spectBuffer8, 30, "-DNHEXSPECT=%u", static_cast<uint16_t>(nHexSPECT));
+			options.push_back(spectBuffer8);
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
