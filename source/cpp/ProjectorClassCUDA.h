@@ -1858,10 +1858,11 @@ public:
 						memAlloc.zType = 1;
 						memAlloc.zSteps++;
 					}
-					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
+					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
 						status = cuMemAlloc(&d_z[kk], sizeof(float) * inputScalars.size_z);
-					memAlloc.zType = 0;
-					memAlloc.zSteps = kk;
+						memAlloc.zType = 0;
+						memAlloc.zSteps = kk;
+					}
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
 						return -1;

@@ -180,6 +180,7 @@ inline af::array computeConvolution(const af::array& vec, const af::array& g, co
 /// <param name="apuSum the sensitivity image"></param>
 /// <returns></returns>
 inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
+	apuSum.eval();
 	af::sync();
 	if (proj.d_Summ.size() < 1)
 		proj.d_Summ.emplace_back(transferAF(apuSum));
@@ -682,6 +683,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 #endif
 	if (inputScalars.use_psf)
 		vec.rhs_os[ii] = computeConvolution(vec.rhs_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);
+	vec.rhs_os[ii].eval();
+	outputFP.eval();
 	return status;
 }
 

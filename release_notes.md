@@ -64,6 +64,8 @@
 
 - TOF should now work with image-based preconditioners and power method
 
+- Fix memory leak with (at least) OSEM and ROSEM
+
 ## OMEGA v2.0.0 Release Candidate
 
 ### New features
