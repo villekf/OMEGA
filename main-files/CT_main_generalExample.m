@@ -1,7 +1,7 @@
 %% MATLAB codes for CT reconstruction
 % This example outlines a "general" example for the (CB)CT case. This means
 % that all CT-related adjustable parameters are present, though for the
-% example data case (https://zenodo.org/record/1254206) these are mainly
+% example data case (https://zenodo.org/records/6986012) these are mainly
 % not needed. However, not all adjustable parameters are present in this
 % example file. See CT_main_full.m for all the parameters.
 

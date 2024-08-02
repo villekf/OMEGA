@@ -17,10 +17,10 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Header file location
-info = dicominfo('D:\MAT-tiedostot\SPECT\pro_specta\DICOM\24050711\23550000\45931349');
+info = dicominfo('45931349');
 
 % Load projection images
-options.SinM = squeeze(dicomread('D:\MAT-tiedostot\SPECT\pro_specta\DICOM\24050711\23550000\45931349'));
+options.SinM = squeeze(dicomread('45931349'));
 
 options.SinM = permute(options.SinM, [2 1 3]);
 
@@ -29,12 +29,15 @@ options.SinM = options.SinM(:,64/4+1:128-64/4,:);
 %%% Crystal thickness (mm)
 options.cr_p = 9.525;
 
+%%% Crystal width (mm)
+options.crXY = 4.7952;
+
 %%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
 % of the FOV
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x = 4.7952*128;
+options.FOVa_x =  4.7952*128;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -100,7 +103,7 @@ options.Ny = 128;
 options.Nz = 96;
 
 %%% Flip the image (in vertical direction)?
-options.flip_image = true;
+options.flip_image = false;
 
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
@@ -126,21 +129,24 @@ options.offangle = (3*pi)/2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Collimator-detector response function (CDRF)
-% You can either input the (Gaussian) PSF filter, or the standard
-% deviations for both transaxial and axial directions or simply the
-% collimator parameters (see below) for an analytic solution for round (and
-% hexagonal) holes (this may be unoptimal).
-
-% If you want to compute the CDRF analytically, input the following values:
 % Collimator hole length (mm)
 options.colL = 24.05;
-% Collimator hole radius
+% Collimator hole radius (mm)
 options.colR = 1.11/2;
-% Distance from collimator to the detector
+% Distance from collimator to the detector (mm)
 options.colD = 0;
-% Intrinsic resolution
+% Septal thickness (mm)
+options.dSeptal = 0.1;
+% Intrinsic resolution (mm)
 options.iR = 3.8;
+% Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
+options.hexOrientation = 1;
+
+%%% Collimator-detector response function (CDRF)
+% You can either input either:
+% the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
+% the (Gaussian) PSF filter,
+% or the standard deviations for both transaxial and axial directions
 
 % If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values (the
@@ -226,10 +232,18 @@ options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
+% 1 = (Improved) Siddon ray-based projector
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 6;
+
+% For Siddon ray-based projector:
+% Number of rays traced per collimator hole
+options.nRaySPECT = 1;
+% Method for tracing rays inside collimator hole: 1 for accurate location
+% of rays, 2 for one cone at center of pixel, 3 for generic model
+options.coneMethod = 3;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -825,4 +839,4 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
 % save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
-volume3Dviewer(pz, [], [0 0 1])
+volume3Dviewer(pz, [min(pz, [], "all"), max(pz, [], "all")], [0 0 1])

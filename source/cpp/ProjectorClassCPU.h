@@ -8,6 +8,8 @@
 #include "GGMRF.h"
 #include "hyperbolicPrior.h"
 
+// #define DEBUG false
+
 class ProjectorClass {
 	paramStruct<float> param;
 
@@ -71,6 +73,14 @@ public:
 			param.maskFP = w_vec.maskFP;
 		if (param.useMaskBP)
 			param.maskBP = w_vec.maskBP;
+		// SPECT EDIT
+		param.colL = inputScalars.colL;
+		param.colD = inputScalars.colD;
+		param.dSeptal = inputScalars.dSeptal;
+		param.nRaySPECT = inputScalars.nRaySPECT;
+		param.hexOrientation = inputScalars.hexOrientation;
+		param.coneMethod = inputScalars.coneMethod;
+		// END SPECT EDIT
 		return 0;
 	}
 
@@ -105,6 +115,7 @@ public:
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		if (DEBUG) {
+			mexPrintBase("nRaySPECT = %f\n", inputScalars.nRaySPECT);
 			mexPrintBase("FPType = %u\n", inputScalars.FPType);
 			mexPrintBase("nRowsD = %u\n", inputScalars.nRowsD);
 			mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
@@ -144,7 +155,7 @@ public:
 		param.computeSensIm = false;
 		param.projType = inputScalars.FPType;
 
-		projectorType123Implementation4<float>(param, length[osa_iter] * vecSize, d_output, d_x, d_z, vec_opencl.d_im_os, inputScalars.CT, 1, SensIm, detIndices);
+		projectorType123Implementation4<float>(param, length[osa_iter] * vecSize, d_output, d_x, d_z, vec_opencl.d_im_os, inputScalars.CT, inputScalars.SPECT, 1, SensIm, detIndices);
 
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Forward projection completed");
@@ -205,7 +216,7 @@ public:
 		param.currentSubset = osa_iter;
 		param.nMeas = length[osa_iter];
 
-		projectorType123Implementation4<float>(param, nMeas, vec_opencl.d_rhs_os[ii], d_x, d_z, d_output, inputScalars.CT, 2, d_Summ[uu], detIndices);
+		projectorType123Implementation4<float>(param, nMeas, vec_opencl.d_rhs_os[ii], d_x, d_z, d_output, inputScalars.CT, inputScalars.SPECT, 2, d_Summ[uu], detIndices);
 		return 0;
 	}
 

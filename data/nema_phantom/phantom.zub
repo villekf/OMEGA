@@ -1,0 +1,245 @@
+== V8.0 Code Section 1 vox_man/vox_man3 
+adrenals                  21  1025   1
+bladder                   40  1040   25
+blood pool                23  1060   1
+bone marrow               26  1030   1
+brain                      2  1040   20
+cartilage                 30  1100   1
+cerebellum                77  1040   20
+cerebral aquaduct        122  1040   20
+cerebral falx            113  1040   20
+colon                     19  1030   1
+dens of axis              70  1180   1
+diaphragm                 39  1030   1
+esophagus                 16  1030   1
+eye                      119  1070   1
+fat                       22   950   1
+feces                     33  1010   1
+fluid (bowel)             25  1007   1
+gall bladder              13  1026   1
+gas (bowel)               24   260   1
+hard palate               76  1680   1
+heart                     11  1060   10
+jaw bone                  71  1680   20
+kidney                    14  1050   15
+lacrimal glands           74  1045   1
+lens                     121  1070   1
+lesion                    63  1060   1
+liver                     12  1060   1
+long bones                 8  1330   23
+lungs                     10   260   1
+lymph nodes               27  1030   1
+medulla oblongota         85  1420   1
+optic nerve              106  1070   1
+outside phantom            1  0000   1
+pancreas                  20  1040   1
+pelvis                     7  1290   20
+pharynx                   15  1000   1
+pons                      91  1000   1
+prostate                  35  1045   1
+rectum                    37  1030   1
+rib cage & sternum         6  1410   20
+sinuses                  104  1000   1
+skeletal muscle            9  1050   1
+skin                       1  1090   1
+skull                      4  1610   20
+small bowel               18  1030   1
+spinal canal              75  1038   1
+spinal cord                3  1038   1
+spine                      5  1330   20
+spleen                    31  1060   1
+stomach                   17  1030   1
+teeth                    125  1920   1
+testes                    34  1040   1
+thyroid                   28  1050   1
+tongue                    78  1000   1
+trachea                   29  1000   1
+uncus(ear bones)          99  1180   1
+urine                     32  1030   8
+= Code Section 2 vox_brn phantom
+outside phantom            0  0000   0
+skin                       1  1040   2
+brain                      2  1040   1
+spinal cord                3  1040   2
+skull                      4  1300   1
+spine                      5  1300   1
+dens of axis              70  1300   1
+jaw bone                  71  1300   1
+parotid gland             72  1040   8
+skeletal muscle            9  1040   2
+lacrimal glands           74  1040   2
+spinal canal              75  1040   1
+hard palate               76  1300   1
+cerebellum                77  1040   12
+tongue                    78  1040   2
+pharynx                   15  1040   2
+esophagus                 16  1040   2
+horn of mandible          81  1300   1
+nasal septum              82   600   1
+white matter              83  1040   4
+superior sagital sinus    84  1040   1
+medulla oblongota         85  1040   4
+fat                       22  1040   1
+blood pool                23  1040   2
+artificial lesion         88  1040   12
+frontal lobes             89  1040   12
+bone marrow               26  1040   2
+pons                      91  1040   12
+third ventricle           92  1040   1
+trachea                   29  1040   1
+cartilage                 30  1040   1
+occipital lobes           95  1040   12
+hippocampus               96  1040   12
+pituitary gland           97  1040   12
+cerebral fluid            98  1040   1
+uncus(ear bones)          99  1300   1
+turbinates               100   600   1
+caudate nucleus          101  1040   12
+zygoma                   102  1040   2
+insula cortex            103  1040   12
+sinuses/mouth cavity     104   600   2
+putamen                  105  1040   12
+optic nerve              106  1040   4
+internal capsul          107  1040   4
+septum pellucidium       108  1040   4
+thalamus                 109  1040   12
+eyeball                  110  1040   1
+corpus collosum          111  1040   4
+special region frontlobe 112  1040   12
+cerebral falx            113  1040   4
+temporal lobes           114  1040   12
+fourth ventricle         115  1040   1
+frontal portion eyes     116  1040   2
+parietal lobes           117  1040   12
+amygdala                 118  1040   12
+eye                      119  1040   1
+globus pallidus          120  1040   12
+lens                     121  1040   1
+cerebral aquaduct        122  1040   1
+lateral ventricles       123  1040   1
+prefrontal lobes         124  1040   12
+teeth                    125  1300   1
+lesion                    63  1040   1
+== V8.0 Code Section 3 nema (nema.dat,364x364x110,8bit,1mmx1mx3.75mm)
+outside                    0  1000   0
+sphere 1                   1  1000   60
+sphere 2                   2  1000   50
+sphere 3                   3  1000   45
+sphere 4                   4  1000   40
+sphere 5                   5  1000   35
+sphere 6                   6  1000   30
+background                 7  1000   2
+spine/lung                 8   300   5
+walls                      9  1185   0
+== V8.0 Code Section 4 xcat Section phantoms
+myoLV                      1  1050   1
+myoRV                      2  1050   1
+myoLA                      3  1050   1
+myoRA                      4  1050   1
+bldplLV                    5  1060   10
+bldplRV                    6  1060   10
+bldplLA                    7  1060   10
+bldplRA                    8  1060   10
+coronary_art               9  1060   1
+coronary_vein             10  1060   1
+body                      11   950   1
+skin                      12  1090   1
+rbreast                   13   970   1
+lbreast                   14   970   1
+muscle                    15  1050   1
+brain                     16  1050   1
+sinus                     17  1060   1
+liver                     18  1050   1
+gall_bladder              19  1030   1
+r_lung                    20   260   1
+l_lung                    21   260   1
+esophagus                 22  1040   1
+esophagus_cont            23  1060   1
+laryngopharynx            24  1026   1
+larynx                    25  1040   1
+st_wall                   26  1040   1
+st_cnts                   27  1000   1
+pancreas                  28  1050   1
+r_kidney_cortex           29  1050   15
+r_kidney_medulla          30  1050   5
+l_kidney_cortex           31  1050   15
+l_kidney_medulla          32  1050   5
+adrenal                   33  1065   1
+r_renal_pelvis            34  1050   1
+l_renal_pelvis            35  1050   1
+spleen                    36  1040   1
+rib                       37  1920   20
+cortical_bone             38  1920   20
+spine                     39  1920   20
+spinal_cord               40  1030   1
+bone_marrow               41  1040   1
+art                       42  1060   1
+vein                      43  1060   1
+bladder                   44  1040   25 
+prostate                  45  1030   1
+asc_li                    46  1060   1
+trans_li                  47  1060   1
+desc_li                   48  1030   1
+sm_intest                 49  1020   1
+rectum                    50  1026   1
+sem                       51  1032   1
+vas_def                   52  1028   1
+test                      53  1040   1
+penis                     54  1033   1
+epididymus                55  1000   1
+ejac_duct                 56  1030   1
+pericardium               57  1040   1
+cartilage                 58  1100   1
+intest_air                59  1040   1
+ureter                    60  1040   1
+urethra                   61  1030   1
+lymph                     62  1030   1
+lymph_abnormal            63  1030   1
+trach_bronch              64  1030   1
+airway                    65  0002   1
+uterus                    66  1030   1
+vagina                    67  1030   1
+right_ovary               68  1030   1
+left_ovary                69  1030   1
+fallopian_tubes           70  1030   1
+parathyroid               71  1020   1
+thyroid                   72  1040   1  
+thymus                    73  1030   1
+salivary                  74  1030   1
+pituitary                 75  1050   1
+eye                       76  1050   1
+lens                      77  1050   1
+lesn                      78  1030   1
+Corpus_Callosum           79  1030   1
+Caudate                   80  1075   1
+Internal_capsule          81  1030   1
+Putamen                   82  1030   1
+Globus_pallidus           83  1030   1
+Thalamus                  84  1030   1
+Fornix                    85  1030   1
+Anterior_commissure       86  1030   1
+Amygdala                  87  1030   1
+Hippocampus               88  1030   1
+Lateral_ventricle         89  1030   1
+Third_ventricle           90  1030   1
+Fourth_ventricle          91  1030   1
+Cerebral_aqueduct         92  1030   1
+Mamillary_bodies          93  1030   1
+Cerebral_peduncles        94  1030   1
+Superior_colliculus       95  1030   1
+Inferior_colliculus       96  1030   1
+Pineal_gland              97  1030   1
+Periacq_grey_outer        98  1030   1
+Periacq_grey              99  1030   1
+Pons                     100  1030   1
+Sup_cerebellar_peduncle  101  1030   1
+Mid_cerebellar_peduncle  102  1030   1
+Substantia_nigra         103  1030   1
+Medulla                  104  1030   1
+Medullary_pyramids       105  1030   1
+Inferior_olive           106  1030   1
+Tegmentum_of_midbrain    107  1030   1
+Midbrain                 108  1030   1
+cerebellum               109  1030   1
+white_matter             110  1030   1
+grey_matter              111  1030   1

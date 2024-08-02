@@ -1,0 +1,43 @@
+!INTERFILE :=
+!imaging modality := nucmed
+;# imaging modality 2 := EMS
+!originating system := simind
+!version of keys := 3.3
+program author := M Ljungberg, Lund University
+program version := V8.0
+  
+!GENERAL DATA :=
+original institution := Medical Radiation Physics
+contact person := M Ljungberg
+!data offset in bytes := 0
+!name of data file := nema1.ict
+patient name := SMC_nema1.a00
+!study ID := Aligned CT Map
+exam type := CT DATA
+!patient ID := SIMIND
+  
+!GENERAL IMAGE DATA :=
+!type of data := tomographic
+study date := 2024:07:10
+study time := 14:30:00
+imagedata byte order := LITTLEENDIAN
+!total number of images := 128
+  
+!SPECT STUDY (General) :=
+!matrix size [1] := 128
+!matrix size [2] := 128
+!matrix size [3] := 128
+scaling factor (mm/pixel) [1] := 4.664000
+scaling factor (mm/pixel) [2] := 4.664000
+scaling factor (mm/pixel) [3] := 4.664000
+;# Image Position First image := -298.4960 -298.4960 298.496000
+;# Image Orientation := 1.0 0.0 0.0 0.0 1.0 0.0
+!number of images/energy window := 128
+;# CT Images interpolated to ECT Images := 1
+;# CT Spacing between slices := 4.664000
+!process status := reconstructed
+!number of bytes per pixel := 2
+!number format := unsigned integer
+;# Units of data (ECT) := g/dm3
+  
+!END OF INTERFILE :=

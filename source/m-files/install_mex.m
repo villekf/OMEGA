@@ -417,7 +417,7 @@ if ~isempty(root_path) && strcmp(root_path(end),'/')
     root_path = [root_path 'bin/root-config'];
 else
     if isempty(root_path)
-        root_path = [root_path 'root-config'];
+        root_path = [root_path '/opt/root/bin/root-config'];
     else
         root_path = [root_path '/bin/root-config'];
     end

@@ -13,6 +13,19 @@ function [pz,varargout] = reconstructions_mainSPECT(options)
 %     ll = ll + options.(var{kk});
 %     kk = kk +1;
 % end
+if (options.projector_type == 1) % Use with projector_type=1
+    options.x = sinogramToX( ...
+        options.angles, ...
+        options.radiusPerProj, ...
+        size(options.SinM, 1), ...
+        size(options.SinM, 2), ...
+        options.crXY ...
+    );
+
+    options.colR = 2 / sqrt(3) * options.colR; %The larger radius is used
+end
+
+
 options.NSinos = options.nProjections;
 options.TotSinos = options.nProjections;
 options.span = 3;
