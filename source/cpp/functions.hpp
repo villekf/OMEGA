@@ -2204,15 +2204,17 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 				af::array outputFP;
 				af::sync();
+				if (inputScalars.projector_type == 6)
+					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
+				else
+					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
-						outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 						forwardProjectionSPECT(outputFP, w_vec, vec, inputScalars, length[0], 0, ii);
 						outputFP.eval();
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
 					}
 					af::sync();
@@ -2325,7 +2327,7 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 			vec.vProxTGV[kk].eval();
 		}
 	}
-	if (MethodList.CPType && inputScalars.adaptiveType == 1)
+	if (MethodList.CPType && inputScalars.adaptiveType >= 1)
 		vec.rhsCP.resize(inputScalars.nMultiVolumes + 1);
 }
 
