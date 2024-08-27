@@ -55,7 +55,7 @@
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu, I. (1998). A Fast Algorithm to Calculate the Exact Radiological 
 * Path through a Pixel or Voxel Space. Journal of computing and information technology, 6 (1), 89-94.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

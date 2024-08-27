@@ -2,7 +2,7 @@
 * General functions for all the OpenCL kernel files. Contains functions that compute the necessary source and detector coordinates, atomics,
 * forward and backward projections. Special functions are available for different cases such as TOF, listmode data, CT data, etc.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

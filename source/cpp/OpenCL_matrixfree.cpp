@@ -6,7 +6,7 @@
 * This uses ArrayFire functions and thus requires the installation of the ArrayFire library.
 * Note that in the current version, this same file is used for both OpenCL and CUDA backends despite the name suggesting otherwise.
 * 
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.

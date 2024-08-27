@@ -7,7 +7,7 @@
 * to compute either the forward or backward projection. Use paramStruct
 * struct to input the necessary and optinal input parameters.
 *
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
