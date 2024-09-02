@@ -2,7 +2,7 @@
 * MATLAB/Octave related functions.
 * This file contains functions to load data from MATLAB/Octave structs.
 *
-* Copyright (C) 2023-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2023-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -158,8 +158,16 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
-	}
-	else {
+	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
+		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
+		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
+		inputScalars.colL = getScalarFloat(getField(options, 0, "colL"));
+		inputScalars.colD = 2 * getScalarFloat(getField(options, 0, "colR"));
+		inputScalars.dSeptal = getScalarFloat(getField(options, 0, "dSeptal"));
+		inputScalars.nRaySPECT = getScalarFloat(getField(options, 0, "nRaySPECT"));
+		inputScalars.hexOrientation = getScalarFloat(getField(options, 0, "hexOrientation"));
+		inputScalars.coneMethod = getScalarFloat(getField(options, 0, "coneMethod"));
+	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));
 	}
@@ -226,8 +234,11 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "dPitchX"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "dPitchY"));
-	}
-	else {
+	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
+		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
+		w_vec.dPitchX = getScalarFloat(getField(options, 0, "crXY"));
+		w_vec.dPitchY = getScalarFloat(getField(options, 0, "crXY"));
+	} else {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
 		// Detector pitch
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "cr_p"));

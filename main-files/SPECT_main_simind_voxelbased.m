@@ -1,11 +1,9 @@
-%% MATLAB codes for CT reconstruction
-% This example outlines a "general" example for the (CB)CT case. This means
-% that all CT-related adjustable parameters are present, though for the
-% example data case (https://zenodo.org/records/6986012) these are mainly
-% not needed. However, not all adjustable parameters are present in this
-% example file. See CT_main_full.m for all the parameters.
+%% MATLAB codes for SPECT reconstruction from interfile data
+% This example uses SPECT data from an interfile
 
 clear
+
+options = SIMIND_SPECT_parser('nema1');
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -15,172 +13,29 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Binning
-% The level of binning used for the raw data. For example binning of 2
-% reduces the size of the projections by two from both dimensions (e.g.
-% 2048x3072 becomes 1024x1536).
-options.binning = 4;
-
-%%% Number of detector pixels (vertical/row direction)
-% The number of detector pixels in the detector panel (vertical
-% direction/number of rows)
-% NOTE: if you use binning, this value has to use the final binned
-% dimensions
-options.nRowsD = 2240/options.binning;
-
-%%% Number of detector pixels (horizontal/column direction)
-% The number of detector pixels in the detector panel (horizontal
-% direction/number of columns)
-% NOTE: if you use binning, this value has to use the final binned
-% dimensions
-options.nColsD = 2368/options.binning;
-
-%%% Number of projections
-% Total number of projections used
-options.nProjections = 721;
-
-%%% Projection angles (degree or radian)
-% The angles corresponding to the projections
-options.angles = -linspace(0, 360, options.nProjections);
-
-%%% Detector pixel pitch/size (mm), row direction
-% The size of the detector/distance between adjacent detectors
-% NOTE: if you use binning, this value has to use the final binned
-% dimensions
-options.dPitchX = 0.05*options.binning;
-
-%%% Detector pixel pitch/size (mm), column direction
-% The size of the detector/distance between adjacent detectors
-% NOTE: if you use binning, this value has to use the final binned
-% dimensions
-options.dPitchY = 0.05*options.binning;
-
-%%% Source to detector distance (mm)
-% The orthogonal distance from the source to the detector panel
-options.sourceToDetector = 553.74;
-
-%%% Source to center of rotation distance (mm)
-% The distance from the source to the center of rotation/object/origin
-options.sourceToCRot = 210.66;
-
-%%% Name of current datafile/examination
-% This is used for naming purposes only
-options.name = 'Walnut3DCT_data';
-
-%%% Compute only the reconstructions
-% If this file is run with this set to true, then the data load will be
-% skipped if the options.SinM variable exists
-options.only_reconstructions = false;
-
-%%% Show status messages
-% These are e.g. time elapsed on various functions and what steps have been
-% completed. It is recommended to keep this 1.  Maximum value of 3 is
-% supported.
-options.verbose = 1;
-
-% Note that non-square transaxial FOV sizes should work, but might not work
-% always. Square transaxial FOV is thus recommended.
-%%% Transaxial FOV size (mm), this is the length of the vertical side
+%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
 % of the FOV
-options.FOVa_x = 40.1;
+% Note that with SPECT data using projector_type = 6, this is not exactly
+% used as the FOV size but rather as the value used to compute the voxel
+% size
+options.FOVa_x = 364;%4.664*128;
 
-%%% Transaxial FOV size (mm), this is the length of the horizontal side
+%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
 options.FOVa_y = options.FOVa_x;
 
-% The above recommendation doesn't apply to axial FOV, i.e. this can be
-% different from the transaxial FOV size(s).
 %%% Axial FOV (mm)
-options.axial_fov = 40;
+% This is unused if projector_type = 6. Cubic voxels are always assumed!
+options.axial_fov = 412.5;%4.664*128;
 
-%%% Source row offset (mm)
-% The center of rotation is not exactly in the origin. With this parameter
-% the source location can be offset by the specifed amount (row direction).
-% This has a similar effect as circulary shifting the projection images.
-% Use vector values if these vary with each projection (this is untested at
-% the moment).
-% NOTE: The default value has been obtained experimentally and is not based
-% on any known value.
-options.sourceOffsetRow = -0.16;
-
-%%% Source column offset (mm)
-% Same as above, but for column direction.
-options.sourceOffsetCol = 0;
-
-%%% Detector panel row offset (mm)
-% Same as above, but the offset value for the detector panel.
-options.detOffsetRow = 0;
-
-%%% Detector panel column offset (mm)
-% Same as above, but for column direction.
-options.detOffsetCol = 0;
-
-%%% Bed offset (mm)
-% The offset values for multi-bed step-and-shoot examinations. Each bed
-% position should have its own offset value.
-options.bedOffset = [];
-
-%%% Pitch/roll angles for the detector panel (radian)
-% Sometimes the detector panel is slightly rotated in all three directions.
-% The main rotation is included in the above options.angles, but the other
-% two directions can be included here. pitchRoll should be column vector,
-% where the first column corresponds to the rotation in the XY-plane and
-% the second to rotation in the ZY-plane.
-options.pitchRoll = [];
-
-%%% Direction vectors (normalized)
-% This one is optional, but you can also input straight the direction
-% vectors for all dimensions. The number of required dimensions depends on
-% the axes where rotation occurs. If pitchRoll would be empty, i.e.
-% rotation is only in the XY-plane (angles) then only two dimensions are
-% needed, one for X- and one for Y-direction (row direction). Z-direction
-% (column direction) is handled automatically. If the other two rotations
-% are included, then six dimensions are needed. The first three are the
-% direction vectors for the placement in the row-direction. I.e. they are
-% used to determine the current detector pixel location in the
-% row-direction. The latter three are for the detector pixel location in
-% the column direction. The dimensions should be such that the number of
-% rows for uV should be either 2 or 6, while the number of columns should
-% equal the number of projections. Note that these values have to be
-% normalized values as they are later multiplied with the size of the
-% detector pixel. If you input the above pitchRoll, these are computed
-% automatically or if there is no rotation other than the general rotation
-% of angles, then this is also generally not required.
-options.uV = [];
-
-% Note: Origin is assumed to be at the center. If this is not the case, you
-% can shift it with options.oOffsetX, options.oOffsetY and options.oOffsetZ
-% options.oOffsetX = 0;
-% options.oOffsetY = 0;
-% options.oOffsetZ = 0;
-
+%%% Scanner name
+% Used for naming purposes (measurement data)
+options.machine_name = 'Two_Heads_SPECT_example';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-options.fpath = '/path/to/20201111_walnut_0001.tif';
-
-if ~options.only_reconstructions || ~isfield(options,'SinM')
-    options.SinM = loadProjectionImages(options.nProjections,options.binning,options.fpath);
-    % options.SinM = single(options.SinM) ./ single(max(max(max(options.SinM(4:end-3,:,:)))));
-    % options.SinM(options.SinM > 1) = single(1);
-    options.SinM = permute(options.SinM, [2 1 3]);
-end
-% NOTE: If you want to reduce the number of projections, you need to do
-% this manually as outlined below:
-% options.SinM = options.SinM(:,:,1:4:options.nProjections);
-% options.angles = options.angles(1:4:numel(options.angles));
-% options.pitchRoll = pitchRoll(1:4:options.nProjections, :);
-% options.uV = options.uV(:, 1:4:options.nProjections);
-% options.nProjections = numel(options.angles);
-
-
-% Flat value
-% Needed for both linearized and Poisson-based data
-% If omitted, the maximum value will be used automatically
-% options.flat = [];
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -191,82 +46,58 @@ end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Note that non-square transaxial image sizes can be unreliable just as the
-% non-square transaxial FOV, but they should, generally, work
 %%% Reconstructed image pixel count (X-direction)
-options.Nx = 280*2;
+% NOTE: Non-square image sizes (X- and Y-direction) may not work
+options.Nx = 128;
 
 %%% Y-direction
-options.Ny = 280*2;
+options.Ny = 128;
 
-% The above, again, doesn't apply to axial direction
 %%% Z-direction (number of slices) (axial)
-options.Nz = 280*2;
+options.Nz = 128;
 
-%%% Flip the image (in horizontal direction)?
+%%% Flip the image (in vertical direction)?
 options.flip_image = false;
 
-%%% How much is the image rotated (radians)?
-% The angle (in radians) on how much the image is rotated BEFORE
-% reconstruction, i.e. the rotation is performed in the detector space.
-% Positive values perform the rotation in counter-clockwise direction
-options.offangle = (2*pi)/2;
+%%% How much is the image rotated?
+% You need to run the precompute phase again if you modify this
+% NOTE: The rotation is done in the detector space (before reconstruction).
+% This current setting is for systems whose detector blocks start from the
+% right hand side when viewing the device from front.
+% Positive values perform the rotation in clockwise direction
+options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Use projection extrapolation
-% If true, extrapolates the projection data. You can select below whether
-% this extrapolation is done only in the axial or transaxial directions, or
-% both. Default extrapolation length is 20% of the original length, for
-% both sides. For example if axial extrapolation is enabled, then the left
-% and right regions of the projection get 20% increase in size. This value
-% can be adjusted in CTEFOVCorrection. The values are scaled to air with
-% the use of logarithmic scaling.
-options.useExtrapolation = false;
 
-%%% Use extended FOV
-% Similar to above, but expands the FOV. The benefit of expanding the FOV
-% this way is to enable to the use of multi-resolution reconstruction or
-% computation of the priors/regularization only in the original FOV. The
-% default extension is 40% per side.
-options.useEFOV = false;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MISC PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Use transaxial extended FOV (this is off by default)
-options.transaxialEFOV = false;
+%%% Name of current datafile/examination
+% This is used to name the saved measurement data and also load it in
+% future sessions.
+options.name = 'spect_example';
 
-% Use axial extended FOV (this is on by default. If both this and
-% transaxialEFOV are false but useEFOV is true, the axial EFOV will be
-% turned on)
-options.axialEFOV = false;
+%%% Show status messages
+% These are e.g. time elapsed on various functions and what steps have been
+% completed. It is recommended to keep this 1.  Maximum value of 3 is
+% supported.
+options.verbose = 1;
 
-% Same as above, but for extrapolation. Same default behavior exists.
-options.transaxialExtrapolation = false;
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Same as above, but for extrapolation. Same default behavior exists.
-options.axialExtrapolation = false;
 
-% Setting this to true uses multi-resolution reconstruction when using
-% extended FOV. Only applies to extended FOV!
-options.useMultiResolutionVolumes = true;
-
-% This is the scale value for the multi-resolution volumes. The original
-% voxel size is divided by this value and then used as the voxel size for
-% the multi-resolution volumes. Default is 1/4 of the original voxel size.
-% This means that the multi-resolution regions have smaller voxel sizes if
-% this is < 1.
-options.multiResolutionScale = 1/4;
-
-% Performs the extrapolation and adjusts the image size accordingly
-options = CTEFOVCorrection(options);
-
-% Use offset-correction
-% If you use offset imaging, i.e. the center of rotation is not in the
-% origin but rather a circle around the origin, you can enable automatic
-% offset weighting by setting this to true.
-options.offsetCorrection = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -279,35 +110,18 @@ options.offsetCorrection = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% IMPLEMENTATIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Reconstruction implementation used
-% 1 = Reconstructions in MATLAB (projector in a MEX-file), uses matrices.
-% (Slow and memory intensive)
 % 2 = Matrix-free reconstruction with OpenCL/ArrayFire (Recommended)
 % (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
 % with MinGW as well (cannot use the prebuilt binaries)).
-% 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
-% 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the wiki for more information:
+% See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
 
-% Applies to implementations 3 and 5 ONLY
-%%% OpenCL platform used
-% NOTE: Use OpenCL_device_info() to determine the platform numbers and
-% their respective devices with implementations 3 or 5.
-options.platform = 0;
-
-% Applies to implementations 2, 3 and 5 ONLY
+% Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
 % with implementation 2.
-% NOTE: Use OpenCL_device_info() to determine the platform numbers and
-% their respective devices with implementations 3 or 5.
-% NOTE: The device numbers might be different between implementation 2 and
-% implementations 3 and 5
-% NOTE: if you switch devices then you need to run the below line
-% (uncommented) as well:
-% clear mex
 options.use_device = 0;
 
 % Implementation 2 ONLY
@@ -321,88 +135,49 @@ options.use_CUDA = false;
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
 options.use_CPU = false;
 
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
-% 1 = Improved/accelerated Siddon's algorithm
-% 2 = Orthogonal distance based ray tracer (not recommended in CT)
-% 3 = Volume of intersection based ray tracer (not recommended in CT)
-% 4 = Interpolation-based projector (ray- and voxel-based)
-% 5 = Branchless distance-driven projector
-% See the documentation for more information:
+% 1 = (Improved) Siddon ray-based projector
+% 6 = Rotation-based projector
+% See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 4;
+options.projector_type = 1;
 
-%%% Use mask
-% The mask needs to be a binary mask (uint8 or logical) where 1 means that
-% the pixel is included while 0 means it is skipped. Separate masks can be
-% used for both forward and backward projection and either one or both can
-% be utilized at the same time. E.g. if only backprojection mask is input,
-% then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice.
-% Forward projection mask
-% If nonempty, the mask will be applied. If empty, or completely omitted, no
-% mask will be considered.
-% options.maskFP = true(options.nRowsD,options.nColsD);
-% Backprojection mask
-% If nonempty, the mask will be applied. If empty, or completely omitted, no
-% mask will be considered.
-% Create a circle that fills the FOV:
-[columnsInImage, rowsInImage] = meshgrid(1:options.Nx, 1:options.Ny);
-centerX = options.Nx/2;
-centerY = options.Ny/2;
-radius = options.Nx/2;
-options.maskBP = uint8((rowsInImage - centerY).^2 ...
-    + (columnsInImage - centerX).^2 <= radius.^2);
-
-%%% Interpolation length (projector type = 4 only)
-% This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that 1 means that
-% the interpolation length corresponds to a single voxel (transaxial)
-% length. Larger values lead to faster computation but at the cost of
-% accuracy. Recommended values are between [0.5 1].
-options.dL = 0.5;
-
+% For Siddon ray-based projector:
+% Number of rays traced per collimator hole
+options.nRaySPECT = 1;
+% Method for tracing rays inside collimator hole: 1 for accurate location
+% of rays, 2 for one cone at center of pixel, 3 for generic model
+options.coneMethod = 3;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 2;
-
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
 % that this uses zero-based indexing, i.e. 0 is the first iteration (not
-% the initial value). By default only the last iteration is saved.
+% the initial value). By default only the last iteration is saved. Only
+% full iterations (epochs) can be saved.
 options.saveNIter = [];
 % Alternatively you can save ALL intermediate iterations by setting the
-% below to true and uncommenting it
+% below to true and uncommenting it. As above, only full iterations
+% (epochs) are saved.
 % options.save_iter = false;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
-options.subsets = 1;
+options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% 1 = Every nth (column) measurement is taken
-% 2 = Every nth (row) measurement is taken (e.g. if subsets = 3, then
-% first subset has measurements 1, 4, 7, etc., second 2, 5, 8, etc.)
-% 3 = Measurements are selected randomly
-% 4 = (Sinogram only) Take every nth column in the sinogram
-% 5 = (Sinogram only) Take every nth row in the sinogram
-% 6 = Sort the LORs according to their angle with positive X-axis, combine
-% n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see GitHub wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-settings
-% 7 = Form the subsets by using golden angle sampling
-% 8 = Use every nth sinogram
-% 9 = Randomly select the full sinograms
+% 8 = Use every nth projection image
+% 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
-% 11 = Use prime factor sampling to select the full sinograms
+% 11 = Use prime factor sampling to select the projection images
 % Most of the time subset_type 8 is sufficient.
-options.subset_type = 8;
+options.subset_type = 3;
 
 %%% Initial value for the reconstruction
-options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
+options.x0 = ones(options.Nx, options.Ny, options.Nz);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -419,69 +194,97 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
 % Reconstruction algorithms to use (choose only one algorithm and
 % optionally one prior)
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ML-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NON-REGULARIZED %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
 %%% Expectation Maximization (MLEM) (if subsets = 1)
 % Supported by all implementations
-options.OSEM = false;
+options.OSEM = true;
 
 %%% Modified Row-Action Maximum Likelihood Algorithm (MRAMLA)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.MRAMLA = false;
 
 %%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.RAMLA = false;
 
 %%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.ROSEM = false;
 
 %%% LSQR
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.LSQR = false;
 
 %%% Conjugate Gradient Least-squares (CGLS)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.CGLS = false;
 
-%%% Feldkamp-Davis-Kress (FDK)
-% Supported by implementation 2
-options.FDK = true;
+%%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
+% Supported by implementations 2, and 4
+options.RBI = false;
+
+%%% Dynamic RAMLA (DRAMA)
+% Supported by implementations 2, and 4
+options.DRAMA = false;
+
+%%% Complete data OSEM (COSEM)
+% Supported by implementations 2, and 4
+options.COSEM = false;
+
+%%% Enhanced COSEM (ECOSEM)
+% Supported by implementations 2, and 4
+options.ECOSEM = false;
+
+%%% Accelerated COSEM (ACOSEM)
+% Supported by implementations 2, and 4
+options.ACOSEM = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Any algorithm selected here will utilize any of the priors selected below
-% this. Note that only one algorithm and prior combination is allowed! You
-% can also use most of these algorithms without priors (such as PKMA or
-% PDHG).
+% These algorithms can utilize any of the selected priors, though only one
+% prior can be used at a time
+
 %%% One-Step Late OSEM (OSL-OSEM)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.OSL_OSEM = false;
 
 %%% Modified BSREM (MBSREM)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.MBSREM = false;
 
 %%% Block Sequential Regularized Expectation Maximization (BSREM)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.BSREM = false;
 
 %%% ROSEM-MAP
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.ROSEM_MAP = false;
 
+%%% RBI-OSL
+% Supported by implementations 2, and 4
+options.OSL_RBI = false;
+
+%%% (A)COSEM-OSL
+% 0/false = No COSEM-OSL, 1/true = ACOSEM-OSL, 2 = COSEM-OSL
+% Supported by implementations 2, and 4
+options.OSL_COSEM = false;
+
 %%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.PKMA = false;
 
 %%% Primal-dual hybrid gradient (PDHG)
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.PDHG = false;
 
 %%% Primal-dual hybrid gradient (PDHG) with L1 minimization
-% Supported by implementations 1, 2, 4, and 5
+% Supported by implementations 2, and 4
 options.PDHGL1 = false;
+
+%%% Primal-dual hybrid gradient (PDHG) with Kullback-Leibler minimization
+% Supported by implementations 2, and 4
+options.PDHGKL = false;
 
 %%% Primal-dual Davis-Yin (PDDY)
 % Supported by implementation 2
@@ -516,11 +319,11 @@ options.AD = false;
 %%% Asymmetric Parallel Level Set (APLS) prior
 options.APLS = false;
 
-%%% Hyperbolic prior
-options.hyperbolic = false;
-
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
+
+%%% Proximal TV
+options.ProxTV = false;
 
 %%% Non-local Means (NLM) prior
 options.NLM = false;
@@ -555,7 +358,7 @@ options.lambda = 1;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%% MRAMLA & MBSREM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%
-%%% Upper bound for MRAMLA/MBSREM (use 0 for default value)
+%%% Upper bound for MRAMLA/MBSREM (use 0 for default (computed) value)
 options.U = 0;
 
 
@@ -580,6 +383,15 @@ options.rho_PKMA = 0.95;
 % This value is ignored if a vector input is used with alpha_PKMA
 options.delta_PKMA = 1;
 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%% DRAMA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Beta_0 value
+options.beta0_drama = 0.1;
+%%% Beta value
+options.beta_drama = 1;
+%%% Alpha value
+options.alpha_drama = 0.1;
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Primal value
 % If left zero, or empty, it will be automatically computed
@@ -597,7 +409,7 @@ options.thetaCP = 1;
 % Currently only one method available
 % Setting this to 1 uses an adaptive update for both the primal and dual
 % variables.
-% Can lead to unstable behavior with multi-resolution
+% Can lead to unstable behavior with using multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
 
@@ -607,7 +419,7 @@ options.PDAdaptiveType = 0;
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
-options.precondTypeMeas = [false;true];
+options.precondTypeMeas = [false;false];
 
 % Image-based preconditioners
 % Setting options.precondTypeImage(2) = true when using PKMA, MRAMLA or
@@ -838,7 +650,7 @@ options.alpha1TGV = 2;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NLM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Filter parameter
-options.sigma = 6e-3;
+options.sigma = 10;
 
 %%% Patch radius
 options.Nlx = 1;
@@ -846,7 +658,7 @@ options.Nly = 1;
 options.Nlz = 1;
 
 %%% Standard deviation of the Gaussian filter
-options.NLM_gauss = 0.75;
+options.NLM_gauss = 1;
 
 % Search window radius is controlled by Ndx, Ndy and Ndz parameters
 % Use anatomical reference image for the patches
@@ -890,10 +702,6 @@ options.GGMRF_c = 5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Store the intermediate forward projections. Unlike image estimates, this
-% also stores subiteration results.
-options.storeFP = false;
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -906,34 +714,20 @@ options.storeFP = false;
 %%% Implementation 2
 % Uncomment the below line and run it to determine the available device
 % numbers
-% ArrayFire_OpenCL_device_info()
-
-%%% Implementation 3
-% Uncomment the below line and run it to determine the available platforms,
-% their respective numbers and device numbers
-% OpenCL_device_info()
+% ArrayFire_OpenCL_device_info();
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%
 
-% 2D (sinogram) reconstruction can be enabled with the following changes:
-% options.SinM = squeeze(sum(options.SinM,2));
-% options.xSize = 1;
-% options.axial_fov = options.dPitch;
-% options.Nz = 1;
-% options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-2;
+%% Reconstructions
+tStart = tic;
+pz = reconstructions_mainSPECT(options);
+tElapsed = toc(tStart);
+disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
-%%
+% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
+%     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
-% pz contains the 3D or 4D image
-% recPar contains certain reconstruction parameters in a struct that can be
-% easily included with the reconstruction
-% options is the modified options struct (some modifications might be
-% applied before reconstruction)
-% fp are the stored forward projections, if options.storeFP = true
-[pz,recPar,options,fp] = reconstructions_mainCT(options);
-
-
-volume3Dviewer(pz, [], [0 0 1])
+%% Plot
+% volume3Dviewer(pz, 'fit')

@@ -1,7 +1,7 @@
 /*******************************************************************************************************************************************
 * Class object for forward and backward projections.
 *
-* Copyright (C) 2022-2023 Ville-Veikko Wettenhovi
+* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify  it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or  (at your option) any later version.
@@ -299,7 +299,7 @@ class ProjectorClass {
 			if (inputScalars.listmode > 0 && inputScalars.indexBased)
 				options += (" -DNLAYERS=" + std::to_string(inputScalars.nLayers));
 			else
-				options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
+			options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
 			//options += " -DNLAYERS";
 		if (inputScalars.TOF) {
 			options += " -DTOF";
@@ -308,8 +308,35 @@ class ProjectorClass {
 			options += " -DCT";
 		else if (inputScalars.PET)
 			options += " -DPET";
-		else if (inputScalars.SPECT)
+		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
+			options += (" -DCOL_D=" + std::to_string(inputScalars.colD));
+			options += (" -DCOL_L=" + std::to_string(inputScalars.colL));
+			options += (" -DDSEPTAL=" + std::to_string(inputScalars.dSeptal));
+			options += (" -DHEXORIENTATION=" + std::to_string((uint8_t)inputScalars.hexOrientation));
+			options += (" -DCONEMETHOD=" + std::to_string((uint8_t)inputScalars.coneMethod));
+
+			if (inputScalars.coneMethod == 3) {
+				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
+			}
+			options += (" -DNRAYSPECT=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
+
+			uint32_t nHexSPECT;
+			if (inputScalars.coneMethod != 1) {
+				options += (" -DN_RAYS=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
+				options += (" -DN_RAYS2D=1");
+				options += (" -DN_RAYS3D=1");
+				nHexSPECT = 1;
+			} else {
+				options += (" -DN_RAYS=1");
+				options += (" -DN_RAYS2D=1");
+				options += (" -DN_RAYS3D=1");
+
+				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
+			}
+			options += (" -DNHEXSPECT=" + std::to_string(nHexSPECT));
+		}
+
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
 		if (inputScalars.listmode == 1)
 			options += " -DLISTMODE";
@@ -2415,15 +2442,15 @@ public:
 			}
 		}
 		else {
-			d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
+		d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
 			}
 		}
 		return 0;
@@ -2908,7 +2935,7 @@ public:
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
 					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers)};
 				else
-					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
+				global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
 			else {
 				erotus[0] = length[osa_iter] % local_size[0];
 

@@ -1,0 +1,8 @@
+.vscode/
+data/
+*.mexa64
+*.mex
+*.pyc
+*.oct
+*.asv
+mat-files/*.mat

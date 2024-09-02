@@ -12,7 +12,7 @@
 * 
 * Both implementations use OpenMP for parallellization (if available, otherwise the code will be sequential with no parallelization).
 * 
-* Copyright (C) 2022 Ville-Veikko Wettenhovi
+* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -190,14 +190,23 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	//46
 
 	const bool CT = getScalarBool(getField(options, 0, "CT"), ind);
+	const bool SPECT = getScalarBool(getField(options, 0, "SPECT"), ind);
 	param.pitch = getScalarBool(getField(options, 0, "pitch"), ind);
 	param.subsetType = getScalarInt32(getField(options, 0, "subset_type"), ind);
 	param.subsets = getScalarUInt32(getField(options, 0, "subsets"), ind);
 	if (CT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "dPitchY"), ind);
-	}
-	else {
+	} else if (SPECT) {
+		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
+		param.dPitchXY = getScalarDouble(getField(options, 0, "crXY"), ind);
+		param.colL = getScalarDouble(getField(options, 0, "colL"), ind);
+		param.colD = 2 * getScalarDouble(getField(options, 0, "colR"), ind);
+		param.dSeptal = getScalarDouble(getField(options, 0, "dSeptal"), ind);
+		param.nRaySPECT = getScalarDouble(getField(options, 0, "nRaySPECT"), ind);
+		param.hexOrientation = getScalarDouble(getField(options, 0, "hexOrientation"), ind);
+		param.coneMethod = getScalarDouble(getField(options, 0, "coneMethod"), ind);
+	} else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "cr_p"), ind);
 	}
@@ -377,7 +386,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 
-		projectorType123Implementation4(param, loop_var_par, output, x, z, input, CT, fp, SensIm, detIndices);
+		projectorType123Implementation4(param, loop_var_par, output, x, z, input, CT, SPECT, fp, SensIm, detIndices);
 
 		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
 

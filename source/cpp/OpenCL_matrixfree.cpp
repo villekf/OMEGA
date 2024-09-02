@@ -6,7 +6,7 @@
 * This uses ArrayFire functions and thus requires the installation of the ArrayFire library.
 * Note that in the current version, this same file is used for both OpenCL and CUDA backends despite the name suggesting otherwise.
 * 
-* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -374,7 +374,13 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	// Output dimensions
 	const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2), static_cast<mwSize>(inputScalars.Nt) }; 
+
 	loadInput(inputScalars, options);
+	if (DEBUG) {
+		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 1 = %f\n", inputScalars.nRaySPECT);
+		mexEval();
+	}
+
 	inputScalars.subsetsUsed = inputScalars.subsets;
 
 	if (inputScalars.verbose >= 3) {
@@ -422,9 +428,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			w_vec.axIndex = getUint16s(options, "axIndex", 0);
 		}
 		else
-			w_vec.listCoord = getSingles(options, "x", 0);
+		w_vec.listCoord = getSingles(options, "x", 0);
 
 	if (DEBUG) {
+		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 2 = %f\n", inputScalars.nRaySPECT);
 		mexPrintBase("ind = %u\n", ind);
 		mexPrintBase("koko = %u\n", inputScalars.koko);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);
