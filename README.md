@@ -38,7 +38,8 @@ The algorithms implemented so far are:
 - FDK [40]
 - LSQR [46]
 - CGLS [47]
-- SART [48,49]
+- (OS-)SART [48,49]
+- ASD-POCS [50]
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Huber prior [45]
 - Median Root Prior (MRP) [16]
@@ -385,3 +386,5 @@ This work was supported by a grant from [Jane and Aatos Erkko foundation](https:
 48. A.H. Andersen, A.C. Kak, "Simultaneous Algebraic Reconstruction Technique (SART): A superior implementation of the ART algorithm," Ultrasonic Imaging, Volume 6, Issue 1, 1984, Pages 81-94, https://doi.org/10.1016/0161-7346(84)90008-7
 
 49. G. Wang, and M. Jiang, "Ordered-Subset simultaneous algebraic reconstruction techniques (OS-SART)," Journal of X-Ray Science and Technology, 2004, 12, pp. 169-177.
+
+50. Emil Y. Sidky and Xiaochuan Pan, "Image reconstruction in circular cone-beam computed tomography by constrained, total-variation minimization," Phys. Med. Biol., 2008, 53, 4777, http://dx.doi.org/10.1088/0031-9155/53/17/021
