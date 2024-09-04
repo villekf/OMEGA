@@ -45,6 +45,7 @@ if tyyppi == 0
     disp('Preparing for reconstruction...')
 end
 
+% Crate the class object
 options = projectorClass(inputStruct);
 
 if numel(options.param.partitions) > 1
@@ -152,10 +153,6 @@ if ~options.param.usingLinearizedData
         end
     end
 end
-% vector to identify the reconstruction algorithms
-% rekot = reko_maker(options.param);
-
-% diameter = options.param.diameter;
 
 if ~options.param.listmode
     % Load correction data

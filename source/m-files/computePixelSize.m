@@ -11,15 +11,9 @@ bx = zeros(1,size(FOV,2));
 by = zeros(1,size(FOV,2));
 bz = zeros(1,size(FOV,2));
 for kk = size(FOV,2) : - 1 : 1
-%     if implementation == 2 || implementation == 3 || implementation == 5
-%         xx = single(linspace(etaisyys(1,kk) + offset(1), -etaisyys(1,kk) + offset(1), N(1,kk) + 1));
-%         yy = single(linspace(etaisyys(2,kk) + offset(2), -etaisyys(2,kk) + offset(2), N(2,kk) + 1));
-%         zz = single(linspace(etaisyys(3,kk) + offset(3), -etaisyys(3,kk) + offset(3), N(3,kk) + 1));
-%     else
-        xx = double(linspace(etaisyys(1,kk) + offset(1), -etaisyys(1,kk) + offset(1), N(1,kk) + 1));
-        yy = double(linspace(etaisyys(2,kk) + offset(2), -etaisyys(2,kk) + offset(2), N(2,kk) + 1));
-        zz = double(linspace(etaisyys(3,kk) + offset(3), -etaisyys(3,kk) + offset(3), N(3,kk) + 1));
-%     end
+    xx = double(linspace(etaisyys(1,kk) + offset(1), -etaisyys(1,kk) + offset(1), N(1,kk) + 1));
+    yy = double(linspace(etaisyys(2,kk) + offset(2), -etaisyys(2,kk) + offset(2), N(2,kk) + 1));
+    zz = double(linspace(etaisyys(3,kk) + offset(3), -etaisyys(3,kk) + offset(3), N(3,kk) + 1));
 
     % Distance of adjacent pixels
     dx(kk) = diff(xx(1:2));
