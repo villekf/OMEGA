@@ -86,8 +86,6 @@ typedef struct _OpenCL_im_vectors {
 	cl::Buffer d_meanFP, d_meanBP;
 	cl::Buffer	d_im;
 	std::vector<cl::Buffer> d_rhs_os;
-	//cl::Buffer d_rhs_os2;
-	//std::vector<cl::Image3D> d_image_os, d_image_os_int;
 	cl::Image3D d_image_os, d_image_os_int;
 } OpenCL_im_vectors;
 #elif defined(CUDA)

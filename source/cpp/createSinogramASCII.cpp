@@ -2,7 +2,7 @@
 * Constructs a 3D/4D/5D sinogram from the input ring number and positions.
 * This code uses the old C MEX API. For MATLAB 2017b and older.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -116,7 +116,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	plhs[1] = mxCreateSharedDataCopy(prhs[20]);
 	plhs[2] = mxCreateSharedDataCopy(prhs[21]);
 	plhs[3] = mxCreateSharedDataCopy(prhs[22]);
-	//getUint16s(plhs[0], "solu");
 	uint16_t* Sino = getUint16s(plhs[0], "solu");
 	uint16_t* SinoT = getUint16s(plhs[1], "solu");
 	uint16_t* SinoC = getUint16s(plhs[2], "solu");

@@ -65,11 +65,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	size_t mDim = options.measElem / static_cast<size_t>(inputScalars.Nt);
 
-	//if (inputScalars.raw)
-	//	inputScalars.koko = numRows / 2;
-	//else {
 	inputScalars.koko = mDim / inputScalars.nBins;
-	//}
 	if (inputScalars.listmode) {
 		if (inputScalars.indexBased) {
 			w_vec.trIndex = options.trIndices;

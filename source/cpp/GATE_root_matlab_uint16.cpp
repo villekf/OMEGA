@@ -253,13 +253,6 @@ public:
 		outputs[25] = std::move(layerD1);
 		outputs[26] = std::move(layerD2);
 
-		//mexEvalString("pause(.001);");
-
-		//std::ostringstream stream1;
-		//stream1 << "Outputs formed" << std::endl;
-		//displayOnMATLAB(stream1);
-		//gROOT->Reset();
-
 	}
 
 	void checkArguments(matlab::mex::ArgumentList& outputs, matlab::mex::ArgumentList& inputs) {

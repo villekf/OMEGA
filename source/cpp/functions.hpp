@@ -1,7 +1,7 @@
 /**************************************************************************
 * Header for ArrayFire functions. Used by implementation 2.
 *
-* Copyright(C) 2019-2023 Ville - Veikko Wettenhovi
+* Copyright(C) 2019-2024 Ville - Veikko Wettenhovi
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@
 #pragma pack(1) 
 #pragma warning(disable : 4996)
 
-
+// This function sets the variables needed for the special large dimensional reconstruction method
 inline void largeDimCreate(scalarStruct& inputScalars) {
 	inputScalars.lDimStruct.Nz.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.imDim.resize(inputScalars.subsets);
@@ -175,9 +175,10 @@ inline af::array computeConvolution(const af::array& vec, const af::array& g, co
 }
 
 /// <summary>
-/// Transfer the sensitivity image from an ArrayFire array to an OpenCL buffer
+/// Transfer the sensitivity image from an ArrayFire array to an OpenCL buffer or CUDA device pointer
 /// </summary>
 /// <param name="apuSum the sensitivity image"></param>
+/// <param name="proj the projector class object"></param>
 /// <returns></returns>
 inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
 	apuSum.eval();
@@ -185,14 +186,14 @@ inline void transferSensitivityImage(af::array& apuSum, ProjectorClass& proj) {
 	if (proj.d_Summ.size() < 1)
 		proj.d_Summ.emplace_back(transferAF(apuSum));
 	else
-		//proj.d_Summ[0] = transferAF(apuSum);
 		proj.d_Summ[0] = transferAF(apuSum);
 }
 
 /// <summary>
-/// Transfer the backprojection from an ArrayFire array to an OpenCL buffer
+/// Transfer the backprojection from an ArrayFire array to an OpenCL buffer or CUDA device pointer
 /// </summary>
 /// <param name="rhs_os the backprojection"></param>
+/// <param name="proj the projector class object"></param>
 /// <returns></returns>
 inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 	af::sync();
@@ -204,7 +205,6 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 		proj.vec_opencl.d_rhs_os.emplace_back(transferAF(rhs_os));
 	else
 		proj.vec_opencl.d_rhs_os[0] = transferAF(rhs_os);
-		//proj.vec_opencl.d_rhs_os2 = transferAF(rhs_os);
 	if (DEBUG) {
 		mexPrintBase("proj.vec_opencl.d_rhs_os.size() = %u\n", proj.vec_opencl.d_rhs_os.size());
 		mexEval();
@@ -213,10 +213,12 @@ inline int transferRHS(af::array& rhs_os, ProjectorClass& proj) {
 }
 
 /// <summary>
-/// Copy the current estimates from an ArrayFire array to an OpenCL image. For branchless distance-driven, compute the integral images before copy
+/// Copy the current estimates from an ArrayFire array to an OpenCL image/CUDA texture. For branchless distance-driven, compute the integral images before copy
 /// </summary>
 /// <param name="vec image estimates and backprojection"></param>
 /// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
+/// <param name="proj the projector class object"></param>
+/// <param name="ii optional multi-resolution volume number, default is 0 (main volume)"></param>
 /// <returns></returns>
 inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0) {
 
@@ -544,7 +546,6 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			proj.CLCommandQueue[0].finish();
 		}
 		else {
-			//if (!proj.imExist) {
 			proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -553,8 +554,6 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			}
 			else if (DEBUG)
 				mexPrint("Input image created\n");
-			//proj.imExist = true;
-		//}
 			cl_mem* im;
 			if (inputScalars.use_psf)
 				im = vec.im_os_blurred[ii].device<cl_mem>();
@@ -588,7 +587,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 	return 0;
 }
 
-
+// Helper function to transfer AF arrays into device vectors, call the actual forward projection function and move memory management back to AF
 inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, uint32_t osa_iter,
 	std::vector<int64_t>& length, const af::array& g, uint64_t m_size, ProjectorClass& proj, const int ii = 0, const int64_t* pituus = nullptr) {
 	int status = 0;
@@ -628,6 +627,7 @@ inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScal
 	return status;
 }
 
+// Same as above, but for backprojection
 inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, uint32_t osa_iter,
 	std::vector<int64_t>& length, uint64_t m_size, af::array& meanBP, const af::array& g, ProjectorClass& proj, const bool compSens = false, const int ii = 0, 
 	const int64_t* pituus = nullptr, const bool FDK = false) {
@@ -652,12 +652,8 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	}
 	status = transferRHS(vec.rhs_os[ii], proj);
 	if (status != 0) {
-	//	getErrorString(status);
-	//	mexPrint("Queue finish failed after transfer\n");
-	//	outputFP.unlock();
 		return -1;
 	}
-	//else 
 	 if (DEBUG)
 		mexPrint("Backprojection output transfered\n");
 #ifndef CPU
@@ -688,6 +684,7 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	return status;
 }
 
+// Computes custom median root prior, OpenCL, CUDA or CPU
 inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScalars, ProjectorClass& proj, const uint32_t medx, const uint32_t medy, const uint32_t medz) {
 
 	int status = 0;
@@ -712,6 +709,7 @@ inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScal
 	return status;
 }
 
+// NLM
 inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const float beta) {
 
 	int status = 0;
@@ -755,6 +753,7 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	return status;
 }
 
+// RDP
 inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, const float beta, const af::array& RDPref, 
 	const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 	im.eval();
@@ -817,6 +816,7 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	return status;
 }
 
+// GGMRF
 inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, const float beta) {
 	im.eval();
 	int status = 0;
@@ -860,6 +860,7 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	return status;
 }
 
+// TV
 inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, const TVdata& data, ProjectorClass& proj, const float beta) {
 	im.eval();
 	int status = 0;
@@ -922,6 +923,8 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	return status;
 }
 
+// Hyperbolic prior
+// No CPU support
 inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, ProjectorClass& proj, const float beta) {
 	im.eval();
 	int status = 0;
@@ -965,6 +968,7 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 
 
 #ifndef CPU
+// Proximal TV
 inline int proxQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
 	int status = 0;
 	uint64_t globalQ = q[0].elements();
@@ -982,6 +986,7 @@ inline int proxQAF(std::vector<af::array>& q, const float alpha, ProjectorClass&
 	return status;
 }
 
+// Proximal TV
 inline int proxTVQAF(std::vector<af::array>& q, const float alpha, ProjectorClass& proj) {
 	int status = 0;
 	uint64_t globalQ = q[0].elements();
@@ -1003,6 +1008,7 @@ inline int proxTVQAF(std::vector<af::array>& q, const float alpha, ProjectorClas
 	return status;
 }
 
+// Proximal TGV
 inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalars, const float alpha, ProjectorClass& proj) {
 	int status = 0;
 	uint64_t globalQ = r[0].elements();
@@ -1037,6 +1043,7 @@ inline int proxTGVQAF(std::vector<af::array>& r, const scalarStruct& inputScalar
 	return status;
 }
 
+// Proximal TV divergence
 inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, const scalarStruct& inputScalars, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
@@ -1061,6 +1068,7 @@ inline int proxTVDivAF(const std::vector<af::array>& grad, af::array& input, con
 	return status;
 }
 
+// Proximal TV gradient
 inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const scalarStruct& inputScalars, const float sigma2, const std::vector<af::array>& v, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
@@ -1107,6 +1115,7 @@ inline int proxTVGradAF(const af::array& im, std::vector<af::array>& grad, const
 	return status;
 }
 
+// Proximal TGV symmetric derivative
 inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::array>& q, const scalarStruct& inputScalars, const float sigma2, ProjectorClass& proj) {
 	int status = 0;
 	if (DEBUG) {
@@ -1159,6 +1168,7 @@ inline int proxTGVSymmDerivAF(const std::vector<af::array>& v, std::vector<af::a
 	return status;
 }
 
+// Proximal TGV divergence
 inline int proxTGVDivAF(const std::vector<af::array>& q, std::vector<af::array>& v, std::vector<af::array>& p, const scalarStruct& inputScalars,
 	const float theta, const float tau, ProjectorClass& proj) {
 	int status = 0;
@@ -1208,6 +1218,7 @@ inline int proxTGVDivAF(const std::vector<af::array>& q, std::vector<af::array>&
 	return status;
 }
 
+// Computes elementwise multiplication or division, depending on mult-variable
 inline int elementWiseAF(const af::array& vector, af::array& input, const bool mult, ProjectorClass& proj, const bool D2 = false) {
 	int status = 0;
 	uint64_t gSize[3] = { static_cast<uint64_t>(input.dims(0)), static_cast<uint64_t>(input.dims(1)), static_cast<uint64_t>(input.dims(2)) };
@@ -1222,6 +1233,7 @@ inline int elementWiseAF(const af::array& vector, af::array& input, const bool m
 	return status;
 }
 
+// Poisson-estimate update kernel call for PKMA, MBSREM and BSREM
 inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, const float lambda, const float epps, const float alpha, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	proj.d_im = transferAF(im);
@@ -1235,6 +1247,7 @@ inline int poissonUpdateAF(af::array& im, const af::array& rhs, const scalarStru
 	return status;
 }
 
+// Same as above, but for PDHG
 inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct& inputScalars, AF_im_vectors& vec, const float epps, const float theta, const float tau, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	proj.d_im = transferAF(im);
@@ -1346,7 +1359,6 @@ inline void forwardProjectionSPECT(af::array& fProj, const Weighting& w_vec, AF_
 	const af::array apuArr = af::moddims(vec.im_os[ii], inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
 	for (int kk = 0; kk < length; kk++) {
 		af::array kuvaRot = af::rotate(apuArr, -w_vec.angles[u1], true, AF_INTERP_BILINEAR);
-		//af::array kuvaRot = apuArr.copy();
 		kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
 		kuvaRot = af::convolve2(kuvaRot, w_vec.gFilter(af::span, af::span, af::span, u1));
 		kuvaRot = kuvaRot(af::span, af::span, af::seq(w_vec.distInt[u1], af::end));
@@ -1354,11 +1366,6 @@ inline void forwardProjectionSPECT(af::array& fProj, const Weighting& w_vec, AF_
 		kuvaRot = af::reorder(af::sum(kuvaRot, 0), 1, 2, 0);
 		fProj(af::span, af::span, kk) += kuvaRot;
 		u1++;
-		//af::sync();
-		//if (DEBUG) {
-		//	mexPrintBase("u1 = %d\n", u1);
-		//	mexEval();
-		//}
 	}
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("SPECT forward projection complete");
@@ -1438,7 +1445,6 @@ inline void backprojectionSPECT(af::array& fProj, const Weighting& w_vec, AF_im_
 // 1D filtering
 inline int filtering(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
 	int status = 0;
-	//const dim_t inDim0 = input.dims(0);
 	af::array temp = af::fft(input, dimmi);
 	temp.eval();
 	if (DEBUG) {
@@ -1494,7 +1500,6 @@ inline int filtering2D(const af::array& filter, af::array& input, ProjectorClass
 // 1D filtering with division
 inline int filteringInverse(const af::array& filter, af::array& input, ProjectorClass& proj, const dim_t dimmi) {
 	int status = 0;
-	//const dim_t inDim0 = input.dims(0);
 	af::array temp = af::fft(input, dimmi);
 	temp.eval();
 #ifndef CPU
@@ -1886,11 +1891,6 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexPrintBase("subIter = %d\n", subIter);
 				mexEval();
 			}
-			//if (inputScalars.subsets > 1 && ii == 0) {
-			//	vec.p0CP.emplace_back(af::constant(0.f, m_size));
-			//	//vec.fpCP.emplace_back(af::constant(0.f, m_size));
-			//	proj.memSize += (sizeof(float) * m_size * 2) / 1048576ULL;
-			//}
 			if (subIter == 0 && !inputScalars.largeDim) {
 				vec.uCP.emplace_back(vec.im_os[ii].copy());
 				proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
@@ -2013,14 +2013,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			proj.memSize -= (sizeof(float) * m_size) / 1048576ULL;
 		}
 		if (inputScalars.nMultiVolumes > 0) {
-			//for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-			//	tauCP[ii] = tauCP[0];
-			//for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
 			for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 				proj.memSize += (sizeof(float) * m_size) / 1048576ULL;
 				af::sync();
 				af::array outputFP;
-				//af::array outputFP = af::constant(0.f, m_size);
 				if (inputScalars.projector_type == 6)
 					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				else
@@ -2100,7 +2096,6 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			if (status != 0)
 				return -1;
 			float upper = 0.f, lower = 0.f;
-			//computeIntegralImage(inputScalars, w_vec, length[0], outputFP, meanBP);
 			for (int ii = 0; ii < inputScalars.subsets; ii++) {
 				largeDimFirst(inputScalars, proj, ii);
 				vec.im_os[0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost);
@@ -2110,7 +2105,6 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					return -1;
 				upper += af::dot<float>(vec.im_os[0], vec.rhs_os[0]);
 				lower += af::dot<float>(vec.im_os[0], vec.im_os[0]);
-				//tauCP[0] += (af::dot<float>(vec.im_os[0], vec.rhs_os[0]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[0], vec.im_os[0]));
 				vec.im_os[0] = vec.rhs_os[0];
 				vec.im_os[0] /= (af::norm(vec.im_os[0]) * static_cast<float>(inputScalars.subsets));
 				vec.im_os[0].host(&F[inputScalars.lDimStruct.cumDim[ii]]);
@@ -2128,14 +2122,6 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			af::sync();
 		}
 	}
-	//float maksimi = 0.f;
-	//for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-	//	if (tauCP[ii] > maksimi)
-	//		maksimi = tauCP[ii];
-	//}
-	//for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
-	//	tauCP[ii] = maksimi * 4;
-	//}
 	std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP);
 	if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) && w_vec.filterIter < inputScalars.subsets * inputScalars.Niter) {
 		bool apuM = false;
@@ -2294,6 +2280,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	return 0;
 }
 
+// Allocate vectors for proximal TV, TGV and PDHG
 inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruct& inputScalars, AF_im_vectors& vec) {
 	if (MethodList.ProxTV || MethodList.ProxTGV) {
 		vec.qProxTV.resize(3);
@@ -2331,9 +2318,9 @@ inline void initializeProxPriors(const RecMethods& MethodList, const scalarStruc
 		vec.rhsCP.resize(inputScalars.nMultiVolumes + 1);
 }
 
+// Transfer memory control back to ArrayFire
 inline void transferControl(AF_im_vectors& vec, const scalarStruct& inputScalars, const af::array& g, const Weighting& w_vec, const uint8_t compute_norm_matrix = 2, const uint8_t no_norm = 1,
 	const uint32_t osa_iter = 0, const int ii = 0) {
-	// Transfer memory control back to ArrayFire
 	if (compute_norm_matrix == 1u) {
 		vec.Summ[ii][0].unlock();
 		if (no_norm == 0u) {

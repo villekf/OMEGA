@@ -92,8 +92,6 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 	static int tag;
 
 	double ms = 0;		// seconds
-	//fprintf(stdout, "%s", argv);
-	//fflush(stdout);
 
 #if (defined(WIN32) || defined(_WIN32) || (defined(__WIN32) && !defined(__CYGWIN__)) || defined(_WIN64)) && defined(_MSC_VER)
 	errno_t err;
@@ -129,9 +127,6 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 	int ll = 0;
 	int dd = 0;
 	double aika = alku;
-	//bool begin = false;
-	//if (outsize2 > 1)
-	//	begin = true;
 
 #ifdef MATLAB
 	mexPrintf("File opened \n");
@@ -149,11 +144,6 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 			if (ms >= alku) {
 				prompt = (ew1 >> (42)) & 1;
 				if (prompt) {
-					//if (begin) {
-					//	tpoints[mscount] = ll;
-					//	mscount++;
-					//	begin = false;
-					//}
 					L1 = (ew1 >> 19) & 0x1ffff;
 					L2 = ew1 & 0x1ffff;
 					if (L1 >= detectors || L2 >= detectors)
@@ -166,13 +156,8 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 							L1 = L2;
 							L2 = L3;
 						}
-						//if (outsize2 == 1 && !storeCoordinates) {
-						//	LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
-						//}
-						//else {
 						LL1[ll] = static_cast<uint16_t>(L1 + 1);
 						LL2[ll] = static_cast<uint16_t>(L2 + 1);
-						//}
 						if (Nt > 1)
 							tpoints[ll] = tPoint + 1;
 						ll++;
@@ -192,31 +177,10 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 							L1 = L2;
 							L2 = L3;
 						}
-						//if (outsize2 == 1 && !storeCoordinates) {
-						//	LL1[L1 * detectors + L2] = LL1[L1 * detectors + L2] + static_cast<uint16_t>(1);
-						//}
-						//else {
 						DD1[dd] = static_cast<uint16_t>(L1 + 1);
 						DD2[dd] = static_cast<uint16_t>(L2 + 1);
-						//}
 						dd++;
 					}
-					//if (saveRawData) {
-					//	if (L2 > L1) {
-					//		const uint32_t L3 = L1;
-					//		L1 = L2;
-					//		L2 = L3;
-					//	}
-					//	if (saveRawData) {
-					//		if (outsize2 == 1 && !storeCoordinates) {
-					//			DD1[L1 * detectors + L2] = DD1[L1 * detectors + L2] + static_cast<uint16_t>(1);
-					//		}
-					//		else {
-					//			DD1[ll] = static_cast<uint16_t>(L1 + 1);
-					//			DD2[ll] = static_cast<uint16_t>(L2 + 1);
-					//		}
-					//	}
-					//}
 				}
 			}
 		}
@@ -239,7 +203,6 @@ int histogram(uint16_t* LL1, uint16_t* LL2, uint16_t* tpoints, const char* argv,
 #else
 	printf("End time %f\n", ms);
 #endif
-	//tpoints[mscount] = ll;
 	fclose(streami);
 	return 1;
 }

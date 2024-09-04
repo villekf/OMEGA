@@ -2,6 +2,13 @@
 #include "functions.hpp"
 #include "priors.h"
 
+/// <summary>
+/// Computes the final MLEM/OSEM update
+/// </summary>
+/// <param name="im Current image estimate"></param>
+/// <param name="Summ Sensitivity image for the current subset"></param>
+/// <param name="rhs Backprojection"></param>
+/// <returns>MLEM/OSEM image</returns>
 inline af::array EM(const af::array& im, const af::array& Summ, const af::array& rhs)
 {
 	return (im / Summ * rhs);
@@ -12,7 +19,6 @@ inline af::array EM(const af::array& im, const af::array& Summ, const af::array&
 /// </summary>
 /// <param name="Summ Sensitivity image for the current subset"></param>
 /// <param name="dU Gradient of the selected prior"></param>
-/// <param name="beta Regularization parameter"></param>
 /// <param name="epps Small value used to prevent division by zero"></param>
 /// <returns>OSL regularized sensitivity image</returns>
 inline af::array OSL(const af::array& Summ, const af::array& dU, const float epps)
@@ -20,6 +26,8 @@ inline af::array OSL(const af::array& Summ, const af::array& dU, const float epp
 	return (Summ + dU + epps);
 }
 
+// Computes the final MBSREM update
+// Can use image-based preconditioners which are applied before the final update
 inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam, const uint32_t iter, const uint32_t osa_iter,
 	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0)
 {
@@ -27,8 +35,6 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam
 	const uint32_t kk = iter * inputScalars.subsets + osa_iter;
 	af::array output;
 	const af::array pp = im >= (U / 2.f);
-	//if (beta != 0.f)
-	//	rhs -= beta * dU;
 	if (af::anyTrue<bool>(pp)) {
 		af::array apuIm = im;
 		apuIm(pp) = U - apuIm(pp);
@@ -46,6 +52,7 @@ inline int MBSREM(af::array& im, af::array& rhs, const float U, const float* lam
 	return status;
 }
 
+// BSREM subset update
 inline int BSREM(af::array& im, const af::array& rhs, const float* lam, const uint32_t iter, const scalarStruct& inputScalars, ProjectorClass& proj, const int ii = 0)
 {
 	int status = 0;
@@ -62,12 +69,9 @@ inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, c
 	const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + osa_iter;
-	//if (beta != 0.f)
-	//	rhs -= beta * dU;
 	if (DEBUG) {
 		mexPrintBase("U = %f\n", U);
 		mexPrintBase("iter = %d\n", iter);
-		//mexPrintBase("beta = %f\n", beta);
 		mexPrintBase("lam[iter] = %f\n", lam[iter]);
 		mexPrintBase("w_vec.dP = %f\n", af::sum<float>(w_vec.dP[ii]));
 		mexEval();
@@ -77,10 +81,10 @@ inline int SPS(af::array& im, af::array& rhs, const float U, const float* lam, c
 		return -1;
 	im += lam[iter] * rhs * w_vec.dP[ii];
 	im(im <= 0) = inputScalars.epps;
-	//im(im > U) = U;
 	return 0;
 }
 
+// ECOSEM update
 inline af::array ECOSEM(const af::array& im, const af::array& D, const af::array& OSEM_apu, const af::array& COSEM_apu, const float epps)
 {
 	float alpha_eco = 1.f;
@@ -97,11 +101,13 @@ inline af::array ECOSEM(const af::array& im, const af::array& D, const af::array
 	return output;
 }
 
+// ROSEM update
 inline af::array ROSEM(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter)
 {
 	return (im + lam[iter] * im / Summ * (rhs - Summ));
 }
 
+// RBI update
 inline af::array RBI(const af::array& im, const af::array& Summ, const af::array& rhs, const af::array& D = af::constant(0.f, 1, 1), const float beta = 0.f, const af::array& dU = af::constant(0.f, 1, 1))
 {
 	af::array output = im;
@@ -116,15 +122,16 @@ inline af::array RBI(const af::array& im, const af::array& Summ, const af::array
 	return output;
 }
 
+// DRAMA update
 inline af::array DRAMA(const af::array& im, const af::array& Summ, const af::array& rhs, const float* lam, const uint32_t iter, const uint32_t sub_iter, const uint32_t subsets)
 {
 	return (im + lam[iter * subsets + sub_iter] * im / Summ * rhs);
 }
 
 // MAP-phase for BSREM and ROSEM-MAP
+// Iteration update
 inline af::array MAP(const af::array& im, const float lam, const af::array& dU, const float epps)
 {
-	//af::array output = im - beta * dU;
 	af::array output = im - lam * im * dU;
 	output(output < epps) = epps;
 	return output;
@@ -142,26 +149,15 @@ inline af::array COSEM(const af::array& im, const af::array& C_co, const af::arr
 	return output;
 }
 
+// PKMA
+// Can use image-based preconditioners which are applied before the final update
 inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStruct& inputScalars,
 	const uint32_t iter, const uint32_t osa_iter, ProjectorClass& proj, const int ii = 0) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + osa_iter;
-	//const af::array im_ = im.copy();
-	//if (DEBUG) {
-	//	mexPrintBase("im = %f\n", af::sum<float>(im));
-	//	mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
-	//	//mexPrintBase("dU = %f\n", af::sum<float>(dU));
-	//	mexEval();
-	//}
-	//if (beta != 0.f)
-	//	rhs += beta * dU;
 	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
-	//if (ii > 0)
-	//	status = proj.PoissonUpdate(im, rhs, inputScalars, w_vec.lambda[iter] * (55.f), inputScalars.epps, w_vec.alphaM[kk], ii);
-	//else
 	if (inputScalars.computeRelaxation) {
 		if (kk == 0 && ii == 0) {
-		//if (iter == 0 && ii == 0) {
 			w_vec.lambda[iter] = af::norm(im) / af::norm(rhs) * .25f;
 			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
 			const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
@@ -198,16 +194,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 		const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
 		const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs * w_vec.lambda[iter]));
 		const float kerroin3 = af::median<float>(im) / af::median<float>(rhs * w_vec.lambda[iter]);
-		//if (kerroin < 1.5f && kerroin > 0.f)
-		//	w_vec.lambda[iter] *= (kerroin / 1.5f);
-		//if (iter == 0) {
 			if (kerroin < 1.5f && kerroin > 0.f)
 				w_vec.lambda[iter] *= (kerroin / 1.5f);
-		//}
-		//else {
-		//	//if (kerroin2 < 2.f && kerroin > 0.f)
-		//		w_vec.lambda[iter] *= (kerroin2 / 2.f);
-		//}
 		if (DEBUG) {
 			mexPrintBase("kerroin = %f\n", kerroin);
 			mexPrintBase("kerroinMax = %f\n", kerroin2);
@@ -219,25 +207,10 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 #ifndef CPU
 	status = poissonUpdateAF(im, rhs, inputScalars, w_vec.lambda[iter], inputScalars.epps, w_vec.alphaM[kk], proj, ii);
 #else
-	//const af::array im_ = im.copy();
-	//af_print_mem_info("mem pre", -1);
 	af::array im_apu = im - w_vec.lambda[iter] * rhs;
-	//af_print_mem_info("mem imapu1", -1);
-	////if (DEBUG) {
-	////	mexPrintBase("im_apu = %f\n", af::sum<float>(im_apu));
-	////	mexPrintBase("rhs2 = %f\n", af::sum<float>(rhs));
-	////	mexEval();
-	////}
 	if (inputScalars.enforcePositivity)
 		im_apu(im_apu < inputScalars.epps) = inputScalars.epps;
-	//af_print_mem_info("mem imapu2", -1);
-	////im_apu = (1.f - w_vec.alphaM[kk]) * im_ + w_vec.alphaM[kk] * (w_vec.sigma_PKMA[kk] * im_apu);
 	im = (1.f - w_vec.alphaM[kk]) * im + w_vec.alphaM[kk] * im_apu;
-	//if (DEBUG) {
-	//	mexPrintBase("kerroin = %f\n", kerroin);
-	//	//mexPrintBase("dU = %f\n", af::sum<float>(dU));
-	//	mexEval();
-	//}
 #endif
 	return status;
 }
@@ -293,15 +266,11 @@ inline af::array SART(const af::array& im, const af::array& Summ, const af::arra
 	return (im + lam * (rhs / Summ));
 }
 
+// Necessary PDHG step, when using subsets, before regularization is applied
 inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const uint32_t subIter = 0, const int ii = 0) {
-	if (inputScalars.adaptiveType == 1)
+	if (inputScalars.adaptiveType >= 1)
 		vec.rhsCP[ii] = rhs.copy();
 	if (inputScalars.subsets > 1) {
-		//const float t = w_vec.tFISTA;
-		//if (subIter == 0) {
-		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
-		//}
-		//w_vec.thetaCP[subIter] = (t - 1.f) / w_vec.tFISTA;
 		if (DEBUG) {
 			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
@@ -316,11 +285,14 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 	}
 }
 
-inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0) {
+// Final PDHG update step
+// Different methods for subset and non-subset cases
+inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, 
+	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, std::vector<int64_t>& length = std::vector<int64_t>(0)) {
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + subIter;
 	af::array im_old;
-	if (inputScalars.adaptiveType == 1)
+	if (inputScalars.adaptiveType >= 1)
 		im_old = im.copy();
 	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
 	if (status != 0)
@@ -328,10 +300,6 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	if (inputScalars.subsets > 1) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
-		//im -= w_vec.tauCP * rhs;
-		//im.eval();
-		//if (inputScalars.enforcePositivity)
-		//	im(im < inputScalars.epps) = inputScalars.epps;
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[ii], proj, ii);
 #else
@@ -344,17 +312,6 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	else {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
-		//const float t = w_vec.tFISTA;
-		//if (subIter == 0) {
-		//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
-		//}
-		//w_vec.thetaCP[kk] = (t - 1.f) / w_vec.tFISTA;
-		//const af::array uPrev = vec.uCP.copy();
-		//vec.uCP -= w_vec.tauCP * rhs;
-		//vec.uCP.eval();
-		//if (inputScalars.enforcePositivity)
-		//	vec.uCP(vec.uCP < inputScalars.epps) = inputScalars.epps;
-		//im = vec.uCP + w_vec.thetaCP[kk] * (vec.uCP - uPrev);
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[ii], proj, ii);
 #else
@@ -365,24 +322,10 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 			vec.uCP[ii](vec.uCP[ii] < inputScalars.epps) = inputScalars.epps;
 		im = vec.uCP[ii] + w_vec.thetaCP[kk] * (vec.uCP[ii] - uPrev);
 #endif
-		//im = rhs.copy();
 	}
-	//if (DEBUG) {
-	//	mexPrintBase("vec.im_os = %f\n", af::sum<float>(im));
-	//	mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
-	//	mexPrintBase("w_vec.tauCP[ii] = %f\n", w_vec.tauCP[ii]);
-	//	mexPrintBase("inputScalars.epps = %f\n", inputScalars.epps);
-	//	mexEval();
-	//}
 	if (ii == 0 && inputScalars.adaptiveType == 1) {
 		const af::array q = (im_old - im) / w_vec.tauCP[ii] + inputScalars.subsets * vec.rhsCP[ii];
 		const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
-		//const float q = af::sum<float>(af::abs((im_old - im) / w_vec.tauCP[ii] + inputScalars.subsets * vec.rhsCP[ii]));
-		//float w;
-		//if (iter == 0 && subIter == 0)
-		//	w = inputscalars.subsets * af::sum<float>(af::abs(-vec.pPrevCP / w_vec.sigmaCP[ii] + vec.fpCP[subIter]));
-		//else
-			//w = inputScalars.subsets * af::sum<float>(af::abs(-vec.pPrevCP / w_vec.sigmaCP[ii] - vec.fpCP[subIter]));
 		if (w < 0.f) {
 			w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f + w_vec.alphaCP[ii]);
 			w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[ii]);
@@ -394,125 +337,36 @@ inline int PDHG2(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 			w_vec.alphaCP[ii] *= 0.99f;
 		}
 		if (inputScalars.verbose >= 3) {
-			//mexPrintBase("w = %f\n", w);
-			//mexPrintBase("q = %f\n", q);
 			mexPrintBase("w_vec.alphaCP[ii] = %f\n", w_vec.alphaCP[ii]);
 			mexPrintBase("w_vec.tauCP = %f\n", w_vec.tauCP[ii]);
 			mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
 			mexEval();
 		}
 	}
-	//if (q > w_vec.LCP[ii] * w * 1.01f) {
-	//	w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f - w_vec.alphaCP[ii]);
-	//	w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[ii]);
-	//	w_vec.alphaCP[ii] *= 0.99f;
-	//}
-	//else if (q < w_vec.LCP[ii] * w / 1.01f) {
-	//	w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[ii]);
-	//	w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f - w_vec.alphaCP[ii]);
-	//	w_vec.alphaCP[ii] *= 0.99f;
-	//}
-	//if (inputScalars.verbose >= 3) {
-	//	//mexPrintBase("vec.uCP = %f\n", af::sum<float>(vec.uCP));
-	//	//mexPrintBase("im = %f\n", af::sum<float>(im));
-	//	//mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
-	//	mexPrintBase("w_vec.tauCP = %f\n", w_vec.tauCP[ii]);
-	//	mexPrintBase("w_vec.LCP = %f\n", w_vec.LCP[ii]);
-	//	mexPrintBase("w_vec.thetaCP[kk] = %f\n", w_vec.thetaCP[kk]);
-	//	mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
-	//	mexEval();
-	//}
+	else if (ii == 0 && inputScalars.adaptiveType == 2) {
+		const af::array apu = vec.im_os[ii].copy();
+		vec.im_os[ii] = (im_old - im);
+		const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsets * vec.rhsCP[ii]));
+		af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
+		if (status != 0) {
+			return status;
+		}
+		const float w = inputScalars.subsets * af::sum<float>(af::abs(-vec.adapTypeA / w_vec.sigmaCP[ii] - outputFP));
+		if (q > w * 1.01f * std::sqrt(w_vec.LCP[ii])) {
+			w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f - w_vec.alphaCP[ii]);
+			w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f - w_vec.alphaCP[ii]);
+			w_vec.alphaCP[ii] *= 0.99f;
+		}
+		else if (q < (w * std::sqrt(w_vec.LCP[ii])) / 1.01f) {
+			w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] / (1.f - w_vec.alphaCP[ii]);
+			w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f - w_vec.alphaCP[ii]);
+			w_vec.alphaCP[ii] *= 0.99f;
+		}
+		vec.im_os[ii] = apu.copy();
+	}
 	return status;
 }
-
-//int CPTV(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter) {
-//	int status = 0;
-//	af::sync();
-//	status = proj.CPTVHelperQ(vec.qProxTV, w_vec.betaReg, w_vec.UseL2Ball);
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	status = proj.CPTVDiv(vec.qProxTV, rhs, inputScalars, w_vec.betaReg);
-//	if (DEBUG) {
-//		mexPrintBase("w_vec.betaReg = %f\n", w_vec.betaReg);
-//		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP);
-//		mexPrintBase("vec.qProxTV = %f\n", af::sum<float>(vec.qProxTV));
-//		mexEval();
-//	}
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	CPLS(im, rhs, inputScalars, w_vec, vec, proj, iter, subIter);
-//	status = proj.CPTVGrad(im, vec.qProxTV, inputScalars, w_vec.sigma2CP, vec.apu);
-//	if (status != 0)
-//		return -1;
-//	if (DEBUG) {
-//		mexPrintBase("vec.qCPTVgrad = %f\n", af::sum<float>(vec.qProxTV));
-//		mexEval();
-//	}
-//	return 0;
-//}
-//
-//int CPTGV(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter) {
-//	int status = 0;
-//	status = proj.CPTVGrad(im, vec.qProxTV, inputScalars, w_vec.sigma2CP, vec.vProxTGV);
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	status = proj.CPTVHelperQ(vec.qProxTV, w_vec.alpha0CPTGV, w_vec.UseL2Ball);
-//	if (status != 0)
-//		return -1;
-//	if (DEBUG) {
-//		mexPrintBase("vec.qProxTV = %f\n", af::sum<float>(vec.qProxTV));
-//		mexEval();
-//	}
-//	status = proj.CPTGVSymmDeriv(vec.vProxTGV, vec.qProxTGV, vec.qCPTGV2, inputScalars, w_vec.sigma2CP);
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	status = proj.CPTGVHelperQ(vec.qProxTGV, vec.qCPTGV2, w_vec.alpha1CPTGV, w_vec.UseL2Ball);
-//	if (DEBUG) {
-//		mexPrintBase("vec.qCPTGV2 = %f\n", af::sum<float>(vec.qCPTGV2));
-//		mexEval();
-//	}
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	status = proj.CPTVDiv(vec.qProxTV, rhs, inputScalars, w_vec.alpha1CPTGV);
-//	if (DEBUG) {
-//		mexPrintBase("w_vec.alpha0CPTGV = %f\n", w_vec.alpha0CPTGV);
-//		mexPrintBase("w_vec.alpha1CPTGV = %f\n", w_vec.alpha1CPTGV);
-//		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP);
-//		mexPrintBase("vec.qProxTGV = %f\n", af::sum<float>(vec.qProxTGV));
-//		mexEval();
-//	}
-//	af::sync();
-//	if (status != 0)
-//		return -1;
-//	CPLS(im, rhs, inputScalars, w_vec, vec, proj, iter, subIter);
-//	status = proj.CPTGVDiv(vec.qProxTGV, vec.qCPTGV2, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.alpha0CPTGV, w_vec.thetaCP, w_vec.tauCP);
-//	if (status != 0)
-//		return -1;
-//	if (DEBUG) {
-//		mexPrintBase("vec.vProxTGV = %f\n", af::sum<float>(vec.vProxTGV));
-//		mexEval();
-//	}
-//	return 0;
-//}
-//
-//
-//int CPGrad(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter, 
-//	const float beta, const af::array& dU) {
-//	int status = 0;
-//	rhs += beta * dU;
-//	if (DEBUG) {
-//		mexPrintBase("dU = %f\n", af::sum<float>(dU));
-//		mexEval();
-//	}
-//	rhs.eval();
-//	status = CPLS(im, rhs, inputScalars, w_vec, vec, proj, iter, subIter);
-//	return status;
-//}
 
 inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const int ii = 0) {
 	int status = 0;
@@ -537,6 +391,8 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 	return 0;
 }
 
+
+// FISTA with L1 regularization
 inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t iter = 0, const int ii = 0) {
 	int status = 0;
 	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, iter, ii);
@@ -554,11 +410,12 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 	return 0;
 }
 
+// ASD-POCS
 inline void POCS(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
 	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
 	im(im < 0.f) = 0.f;
 	if (DEBUG)
-		mexPrint("Computing POCS");
+		mexPrint("Computing ASD-POCS");
 	bool subsets = true;
 	if (inputScalars.subsets > 1)
 		subsets = osa_iter < inputScalars.subsets - 1;

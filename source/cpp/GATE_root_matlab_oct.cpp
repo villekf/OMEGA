@@ -1,3 +1,4 @@
+// Load ROOT data in Octave
 #include <octave/oct.h>
 #include "TChain.h"
 #include "rootImport.h"
@@ -72,21 +73,9 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 
 	const bool dynamic = Nt > 1;
 
-	// Count inputs and check for char type
-	//const char *argv;
-	//if (!mxIsChar(prhs[0]))
-	//	mexErrMsgTxt("Input argument is not char");
-
 	/* Pointer to character array */
-	//argv = mxArrayToString(prhs[0]);
-	//charNDArray apu = prhs(0).char_array_value();
 	charMatrix apu = prhs(0).char_matrix_value();
 	std::string tmp = apu.row_as_string(0);
-	//const char* argv = prhs(0).string_value().c_str();
-	//const char* argv = apu.fortran_vec();
-
-	//octave_stdout << argv << std::endl;
-	//octave_stdout << tmp.c_str() << std::endl;
 
 	TChain *Coincidences = new TChain("Coincidences");
 	Coincidences->Add(tmp.c_str());
@@ -94,7 +83,6 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	int64_t Nentries = Coincidences->GetEntries();
 	TChain* delay = nullptr;
 	int64_t Ndelays = 0LL;
-	//bool dynamic = false;
 
 	if (randoms_correction) {
 		delay = new TChain("delay");
@@ -107,96 +95,18 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	delete Coincidences;
 
 	/* Assign pointers to the various parameters */
-	//uint16NDArray LL1;
-	//uint16NDArray LL2;
-	//uint16NDArray Ltrues;
-	//uint16NDArray Lrandoms;
-	//uint16NDArray Lscatter;
 	uint16NDArray trIndex;
 	uint16NDArray axIndex;
 	uint16NDArray DtrIndex;
 	uint16NDArray DaxIndex;
 	FloatNDArray coord;
 	FloatNDArray Dcoord;
-	//FloatNDArray x2;
-	//FloatNDArray y1;
-	//FloatNDArray y2;
-	//FloatNDArray z1;
-	//FloatNDArray z2;
-	//if (outsize2 == 1) {
-	//	if (storeRawData) {
-	//		LL1.resize(dim_vector(detectors, detectors));
-	//		LL2.resize(dim_vector(1, 1));
-	//	}
-	//	else {
-	//		LL1.resize(dim_vector(1, 1));
-	//		LL2.resize(dim_vector(1, 1));
-	//	}
-	//	if (obtain_trues && storeRawData) {
-	//		Ltrues.resize(dim_vector(detectors, detectors));
-	//	}
-	//	else
-	//		Ltrues.resize(dim_vector(1, 1));
-	//	if (store_randoms && storeRawData)
-	//		Lrandoms.resize(dim_vector(detectors, detectors));
-	//	else
-	//		Lrandoms.resize(dim_vector(1, 1));
-	//	if (store_scatter && storeRawData)
-	//		Lscatter.resize(dim_vector(detectors, detectors));
-	//	else
-	//		Lscatter.resize(dim_vector(1, 1));
-	//	if (randoms_correction && storeRawData) {
-	//		Ldelay1.resize(dim_vector(detectors, detectors));
-	//		Ldelay2.resize(dim_vector(1, 1));
-	//	}
-	//	else {
-	//		Ldelay1.resize(dim_vector(1, 1));
-	//		Ldelay2.resize(dim_vector(1, 1));
-	//	}
-	//}
-	//else {
-	//	if (storeRawData) {
-	//		LL1.resize(dim_vector(Nentries, 1));
-	//		LL2.resize(dim_vector(Nentries, 1));
-	//	}
-	//	else {
-	//		LL1.resize(dim_vector(1, 1));
-	//		LL2.resize(dim_vector(1, 1));
-	//	}
-	//	if (obtain_trues && storeRawData) {
-	//		Ltrues.resize(dim_vector(Nentries, 1));
-	//	}
-	//	else
-	//		Ltrues.resize(dim_vector(1, 1));
-	//	if (store_randoms && storeRawData)
-	//		Lrandoms.resize(dim_vector(Nentries, 1));
-	//	else
-	//		Lrandoms.resize(dim_vector(1, 1));
-	//	if (store_scatter && storeRawData)
-	//		Lscatter.resize(dim_vector(Nentries, 1));
-	//	else
-	//		Lscatter.resize(dim_vector(1, 1));
-	//	if (randoms_correction && storeRawData) {
-	//		Ldelay1.resize(dim_vector(Ndelays, 1));
-	//		Ldelay2.resize(dim_vector(Ndelays, 1));
-	//	}
-	//	else {
-	//		Ldelay1.resize(dim_vector(1, 1));
-	//		Ldelay2.resize(dim_vector(1, 1));
-	//	}
-	//	dynamic = true;
-	//}
 	if (store_coordinates) {
 		coord.resize(dim_vector(6, Nentries));
 		if (randoms_correction)
 			Dcoord.resize(dim_vector(6, Nentries));
 		else
 			Dcoord.resize(dim_vector(1, 1));
-		//x2.resize(dim_vector(Nentries, 1));
-		//y1.resize(dim_vector(Nentries, 1));
-		//y2.resize(dim_vector(Nentries, 1));
-		//z1.resize(dim_vector(Nentries, 1));
-		//z2.resize(dim_vector(Nentries, 1));
 	}
 	else {
 		coord.resize(dim_vector(1, 1));
@@ -213,11 +123,6 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 			DtrIndex.resize(dim_vector(1, 1));
 			DaxIndex.resize(dim_vector(1, 1));
 		}
-		//x2.resize(dim_vector(Nentries, 1));
-		//y1.resize(dim_vector(Nentries, 1));
-		//y2.resize(dim_vector(Nentries, 1));
-		//z1.resize(dim_vector(Nentries, 1));
-		//z2.resize(dim_vector(Nentries, 1));
 	}
 	else {
 		trIndex.resize(dim_vector(1, 1));
@@ -249,35 +154,16 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 	else
 		tIndex.resize(dim_vector(1, 1));
 
-	//octave_uint16* LL1_p = LL1.fortran_vec();
-	//octave_uint16* LL2_p = LL2.fortran_vec();
 	uint16_t* tIndex_p = reinterpret_cast<uint16_t*>(tIndex.fortran_vec());
-	//bool* trues_loc_p, * randoms_loc_p, * scatter_loc_p;
 	uint16_t* S_p = reinterpret_cast<uint16_t*>(S.fortran_vec());
 	uint16_t* RA_p = reinterpret_cast<uint16_t*>(RA.fortran_vec());
 	uint16_t* SC_p = reinterpret_cast<uint16_t*>(SC.fortran_vec());
-	//octave_int32* int_loc_p = int_loc.fortran_vec();
-	//octave_uint16* Ltrues_p = Ltrues.fortran_vec();
-	//octave_uint16* Lrandoms_p = Lrandoms.fortran_vec();
-	//octave_uint16* Lscatter_p = Lscatter.fortran_vec();
-	//trues_loc_p = trues_loc.fortran_vec();
-	//randoms_loc_p = randoms_loc.fortran_vec();
-	//scatter_loc_p = scatter_loc.fortran_vec();
-	//octave_uint16* Ldelay1_p = Ldelay1.fortran_vec();
-	//octave_uint16* Ldelay2_p = Ldelay2.fortran_vec();
-	//octave_int32* int_loc_delay_p = int_loc_delay.fortran_vec();
-	//octave_uint32* tpoints_delay_p = tpoints_delay.fortran_vec();
 	float* coordP = coord.fortran_vec();
 	float* DcoordP = Dcoord.fortran_vec();
 	uint16_t* trIndexP = reinterpret_cast<uint16_t*>(trIndex.fortran_vec());
 	uint16_t* axIndexP = reinterpret_cast<uint16_t*>(axIndex.fortran_vec());
 	uint16_t* DtrIndexP = reinterpret_cast<uint16_t*>(DtrIndex.fortran_vec());
 	uint16_t* DaxIndexP = reinterpret_cast<uint16_t*>(DaxIndex.fortran_vec());
-	//float* x2_p = x2.fortran_vec();
-	//float* y1_p = y1.fortran_vec();
-	//float* y2_p = y2.fortran_vec();
-	//float* z1_p = z1.fortran_vec();
-	//float* z2_p = z2.fortran_vec();
 	uint16_t* Sino = reinterpret_cast<uint16_t*>(SinoO.fortran_vec());
 	uint16_t* SinoT = reinterpret_cast<uint16_t*>(SinoOT.fortran_vec());
 	uint16_t* SinoR = reinterpret_cast<uint16_t*>(SinoOR.fortran_vec());
@@ -290,11 +176,6 @@ DEFUN_DLD(GATE_root_matlab_oct, prhs, nargout, "GATE ROOT help") {
 		scatter_components_p, randoms_correction, coordP, DcoordP, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
 		seg_p, Nt, TOFSize, nDistSide, Sino, SinoT, SinoC, SinoR, SinoD, detWPseudo, nPseudos, binSize, FWHM, verbose, nLayers, dx, dy, dz, bx, by, bz, Nx, Ny, Nz, dualLayerSubmodule, imDim, indexBased, tIndex_p, matlabPtr);
 
-
-	//if (randoms_correction)
-	//	delete delay;
-	//mexEvalString("pause(.001);");
-	//gROOT->Reset();
 
 
 	octave_value_list retval(nargout);

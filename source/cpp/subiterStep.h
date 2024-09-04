@@ -30,14 +30,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		if (inputScalars.FISTAAcceleration)
 			FISTAApu = vec.im_os[ii].copy();
 
-		//af::array* Sens;
-		//if (compute_norm_matrix == 1u) {
-		//	Sens = &vec.Summ[ii][0];
-		//}
-		//else if (compute_norm_matrix == 2u) {
-		//	Sens = &vec.Summ[ii][osa_iter];
-		//}
-
 		if (w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter  == w_vec.filterIter) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Image-based filter iterations complete.");
@@ -84,13 +76,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 	}
 	if (MethodList.PDDY && MAP)
 		vec.im_os[0] = PDDYApu.copy();
-	//vec.im_os[0].eval();
-	//if (DEBUG) {
-	//	//mexPrintBase("dU.dims(0) = %d\n", dU.dims(0));
-	//	//af::deviceGC();
-	//	af_print_mem_info("mem info", -1);
-	//	//mexEval();
-	//}
 
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		af::array* Sens = nullptr;
@@ -119,7 +104,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		if (MethodList.MRAMLA) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing MRAMLA");
-			//vec.im_os[ii] = MBSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.U, w_vec.lambda, iter, osa_iter, inputScalars, w_vec, proj);
 			status = MBSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.U, w_vec.lambda, iter, osa_iter, inputScalars, w_vec, proj, ii);
 		}
 
@@ -127,7 +111,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		if (MethodList.RAMLA || MethodList.BSREM) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing RAMLA");
-			//vec.im_os[ii] = BSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.lambda, iter, *Sens);
 			status = BSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.lambda, iter, inputScalars, proj, ii);
 		}
 
@@ -200,8 +183,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			}
 			float uu;
 			vec.im_os[ii] = COSEM(vec.im_os[ii], vec.C_co, w_vec.D[ii], w_vec.h_ACOSEM, 1u);
-			//if (inputScalars.use_psf)
-			//	vec.im_os_blurred[ii] = computeConvolution(vec.im_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);
 			status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, g);
 			if (inputScalars.CT)
 				vec.im_os[ii] *= (w_vec.ACOSEM_rhs / uu);
@@ -231,13 +212,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		else if (MethodList.BSREM) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing BSREM");
-			//vec.im_os[ii] = BSREM(vec.im_os[ii], vec.rhs_os[ii],	w_vec.lambda, iter, *Sens);
 			status = BSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.lambda, iter, inputScalars, proj, ii);
 		}
 		else if (MethodList.MBSREM) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing MBSREM");
-			//vec.im_os[ii] = MBSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.U, w_vec.lambda, iter, osa_iter, inputScalars, w_vec, proj);
 			status = MBSREM(vec.im_os[ii], vec.rhs_os[ii], w_vec.U, w_vec.lambda, iter, osa_iter, inputScalars, w_vec, proj, ii);
 		}
 		else if (MethodList.ROSEMMAP) {
@@ -269,8 +248,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				vec.im_os[ii] = COSEM(vec.im_os[ii], vec.C_co, w_vec.D[ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				float uu = 0.f;
-				//if (inputScalars.use_psf)
-				//	vec.im_os_blurred[ii] = computeConvolution(vec.im_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);
 				status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, g);
 				if (status != 0)
 					return -1;
@@ -292,7 +269,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		else if (MethodList.PKMA) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing PKMA");
-			//vec.im_os[ii] = PKMA(vec.im_os[ii], vec.rhs_os[ii], w_vec, inputScalars, iter, osa_iter, proj);
 			status = PKMA(vec.im_os[ii], vec.rhs_os[ii], w_vec, inputScalars, iter, osa_iter, proj, ii);
 		}
 		else if (MethodList.SPS) {
@@ -321,16 +297,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			if (MethodList.POCS)
 				POCS(vec.im_os[ii], inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
 		}
-		//else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1) {
-		//	if (inputScalars.verbose >= 3)
-		//		mexPrint("Computing PDHG/PDHGKL/PDHGL1");
-		//	status = CPLS(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter);
-		//}	
 		else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
 			status = PDHG2(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii, pituus, g, m_size, length);
-			//vec.im_os[ii] = vec.rhs_os[ii];
 		}
 		else if (MethodList.FISTA) {
 			if (inputScalars.verbose >= 3)
@@ -343,22 +313,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			status = FISTAL1(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, w_vec.beta, proj, osa_iter + inputScalars.subsets * iter, ii);
 		}
 		if (inputScalars.FISTAAcceleration) {
-			//if (osa_iter == 0) {
-				//const uint32_t it = iter + 1;
-				//w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-				//if (w_vec.betaFISTA <= 0.f) {
-				//	w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-				//	w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
-				//	w_vec.tNFista = w_vec.tFISTA;
-				//}
-				//vec.im_os[ii] = vec.im_os[ii] + w_vec.betaFISTA * (vec.im_os[ii] - FISTAApu);
 			const float t = w_vec.tFISTA;
 			if (osa_iter == 0) {
 				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
 			}
 			vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu);
-			//vec.im_os[ii](vec.im_os[ii] < inputScalars.epps) = inputScalars.epps;
-			//}
 			af::eval(vec.im_os[ii]);
 		}
 	}

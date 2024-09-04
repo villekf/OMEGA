@@ -2,7 +2,7 @@
 * Loads the Siemens Inveon 48-bit list-mode data and stores the detector
 * indices of prompts and delays at specific time steps.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -53,39 +53,18 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	const uint64_t NT = (uint64_t)mxGetScalar(prhs[14]);
 	const int32_t nDistSide = (int32_t)mxGetScalar(prhs[15]);
 	const bool storeCoordinates = (bool)mxGetScalar(prhs[16]);
-	//double energy_low1 = (double)mxGetScalar(prhs[7]);
-	//double energy_low2 = (double)mxGetScalar(prhs[8]);
-	//double energy_high1 = (double)mxGetScalar(prhs[9]);
-	//double energy_high2 = (double)mxGetScalar(prhs[10]);
-	//double energy_normal1 = (double)mxGetScalar(prhs[11]);
-	//double energy_normal2 = (double)mxGetScalar(prhs[12]);
-	//size_t outsize2 = (loppu - alku) / vali;
 
 	if (storeCoordinates) {
-		//if (outsize2 == 1 && !storeCoordinates) {
-		//	plhs[0] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-		//	plhs[1] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		//	if (randoms_correction) {
-		//		plhs[3] = mxCreateNumericMatrix(detectors, detectors, mxUINT16_CLASS, mxREAL);
-		//		plhs[4] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		//	}
-		//	else {
-		//		plhs[3] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		//		plhs[4] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-		//	}
-		//}
-		//else {
-			plhs[0] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
-			plhs[1] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
-			if (randoms_correction) {
-				plhs[3] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
-				plhs[4] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
-			}
-			else {
-				plhs[3] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-				plhs[4] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
-			}
-		//}
+		plhs[0] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
+		plhs[1] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
+		if (randoms_correction) {
+			plhs[3] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
+			plhs[4] = mxCreateNumericMatrix(pituus, 1, mxUINT16_CLASS, mxREAL);
+		}
+		else {
+			plhs[3] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+			plhs[4] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
+		}
 	}
 	else {
 		plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);

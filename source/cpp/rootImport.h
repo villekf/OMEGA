@@ -1,5 +1,4 @@
 #pragma once
-//#define MATLABC
 #define NOMINMAX
 #include <thread>
 #include <TROOT.h>
@@ -45,9 +44,6 @@ void disp(const char* txt, const T nullPar = NULL) {
 	printf("\n");
 }
 #endif
-//#ifdef _OPENMP
-//omp_lock_t getEventLock;
-//#endif
 
 template <typename T>
 void formSourceImage(const float bx, const float by, const float bz, const float dx, const float dy, const float dz, const int64_t Nx, const int64_t Ny, const int64_t Nz, 
@@ -116,26 +112,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 		int n_threads = std::thread::hardware_concurrency();
 		omp_set_num_threads(n_threads);
 	}
-	//if (omp_get_num_threads() >= nthreads)
-	//	nthreads = omp_get_num_threads();
-	//else
-		//omp_set_num_threads(nthreads);
 #endif
-	//omp_set_num_threads(nthreads);
-	//std::string str{ "xx" };
-	//std::to_chars(str.data(), str.data() + str.size(), omp_get_num_threads());
-	//disp(str.c_str(), mPtr);
-	//str = { "xx" };
-	//std::to_chars(str.data(), str.data() + str.size(), std::thread::hardware_concurrency());
-	//disp(str.c_str(), mPtr);
-	//str = { "xx" };
-	//std::to_chars(str.data(), str.data() + str.size(), omp_get_max_threads());
-	//disp(str.c_str(), mPtr);
 
 	Int_t moduleID1F = 0, moduleID2F = 0, submoduleID1F = 0, submoduleID2F = 0;
-
-	//ROOT::EnableThreadSafety();
-	//ROOT::EnableImplicitMT();
 
 	TTree* Coincidences;
 	TFile* inFile = new TFile(rootFile, "read");
@@ -143,7 +122,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 
 
 	int64_t Nentries;
-//#pragma omp threadprivate(Nentries)
 	Nentries = Coincidences->GetEntries();
 
 	if (Coincidences->GetBranchStatus("moduleID1"))
@@ -165,8 +143,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 		if (summa > 0 && summaS > 0)
 			break;
 	}
-
-	//Coincidences->SetImplicitMT(false);
 
 	int any = 0;
 	int next = 0;
@@ -274,7 +250,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 		}
 	}
 	if (obtain_trues || store_scatter || store_randoms) {
-		//if (scatter_components[0]) {
 		if (!Coincidences->GetBranchStatus("comptonPhantom1"))
 			any++;
 		if (!Coincidences->GetBranchStatus("comptonPhantom2"))
@@ -377,17 +352,10 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 
 	}
 
-	//Int_t nbytes = 0;
-	//int ll = 0, jj = -1;
-	//int pa = 0;
-	//double aika = 0.;
-
 #ifdef _OPENMP
-	//omp_init_lock(&getEventLock);
 #pragma omp parallel for schedule(static), num_threads(nthreads), shared(Coincidences)
 #endif
 	for (int64_t kk = 0; kk < Nentries; kk++) {
-	//for (int64_t kk = 0; kk < 200; kk++) {
 
 		Int_t crystalID1 = 0, crystalID2 = 0, moduleID1 = 0, moduleID2 = 0, submoduleID1 = 0, submoduleID2 = 0, rsectorID1, rsectorID2, eventID1, eventID2, comptonPhantom1 = 0, comptonPhantom2 = 0,
 			comptonCrystal1 = 0, comptonCrystal2 = 0, RayleighPhantom1 = 0, RayleighPhantom2 = 0, RayleighCrystal1 = 0, RayleighCrystal2 = 0, layerID1 = 0, layerID2 = 0;
@@ -395,17 +363,9 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 		Double_t time1 = alku, time2 = alku;
 		int64_t tPoint = 0LL;
 #ifdef _OPENMP
-//		omp_set_lock(&getEventLock);
 #pragma omp critical 
 		{
 #endif
-			//std::string str{ "xx" };
-			//std::to_chars(str.data(), str.data() + str.size(), omp_get_thread_num());
-			//disp(str.c_str(), mPtr); 
-			//str = { "xx" };
-			//std::to_chars(str.data(), str.data() + str.size(), omp_get_num_threads());
-			//disp(str.c_str(), mPtr);
-			//#endif
 			Coincidences->SetBranchAddress("rsectorID1", &rsectorID1);
 			Coincidences->SetBranchAddress("rsectorID2", &rsectorID2);
 			Coincidences->SetBranchAddress("crystalID1", &crystalID1);
@@ -469,7 +429,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 			Coincidences->GetEntry(kk);
 #ifdef _OPENMP
 		}
-//		omp_unset_lock(&getEventLock);
 #endif
 		///*
 		if (!no_time && time2 < alku)
@@ -477,54 +436,14 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 		else if (!no_time && time2 > loppu) {
 			continue;
 		}
-		//if (std::floor(static_cast<double>(kk) / static_cast<double>(Nentries) * 100.) == 25. || std::floor(static_cast<double>(kk) / static_cast<double>(Nentries) * 100.) == 50.)
-		//	disp("Progress mark", mPtr);
-		//if (dynamic && !TOF)
-		//	TP[kk] = time2;
-		//else if (dynamic && TOF)
-		//	TP[kk][0] = time2;if (layerSubmodule) {
 		if (nLayers > 1 && layerID1 > 0 && layerSubmodule)
 			crystalID1 = submoduleID1;
 		if (nLayers > 1 && layerID2 > 0 && layerSubmodule)
 			crystalID2 = submoduleID2;
-		//if (layerID1 > 0)
-		//	continue;
-		//if (layerID2 > 0)
-		//	continue;
-		//dispf("layerID1 = %d", layerID1);
-		//dispf("layerID2 = %d", layerID2);
-		//dispf("sinoSize[1] = %d", sinoSize[1]);
-		//dispf("Nang[1] = %d", Nang[1]);
-		//dispf("rings[1] = %d", rings[1]);
-		//dispf("detWPseudo[1] = %d", detWPseudo[1]);
-		//dispf("linear_multip = %d", linear_multip);
-		//dispf("no_modules = %d", no_modules);
-		//dispf("no_submodules = %d", no_submodules);
 		uint32_t ring_number1 = 0, ring_number2 = 0, ring_pos1 = 0, ring_pos2 = 0;
 		detectorIndices(ring_number1, ring_number2, ring_pos1, ring_pos2, blocks_per_ring, linear_multip, no_modules, no_submodules, moduleID1, moduleID2, submoduleID1,
 			submoduleID2, rsectorID1, rsectorID2, crystalID1, crystalID2, cryst_per_block[layerID1], cryst_per_block[layerID2], cryst_per_block_z[layerID1], cryst_per_block_z[layerID2], transaxial_multip, rings[layerID1]);
 		uint64_t bins = 0;
-
-		//if (TOF) {
-		//	double aika = (time2 - time1);
-		//	if (ring_pos2 > ring_pos1)
-		//		aika = -aika;
-		//	//TP[kk] = aika;
-		//}
-		//else if (dynamic && TOF) {
-		//	double aika = (time2 - time1);
-		//	if (ring_pos2 > ring_pos1)
-		//		aika = -aika;
-		//	TP[kk][1] = aika;
-		//}
-		//if (begin) {
-		//	while (time2 >= time_intervals[pa])
-		//		pa++;
-		//	begin = false;
-		//	tpoints[ll++] = 0u;
-		//	aika = time_intervals[pa];
-		//	int_loc[0] = pa;
-		//}
 		bool event_true = true;
 		bool event_scattered = true;
 		bool store_scatter_event = false;
@@ -558,72 +477,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 					event_scattered = false;
 			}
 		}
-		// Detector numbers
-		//uint64_t L1 = static_cast<uint64_t>(ring_number1) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos1);
-		//uint64_t L2 = static_cast<uint64_t>(ring_number2) * static_cast<uint64_t>(det_per_ring) + static_cast<uint64_t>(ring_pos2);
-//		if (L2 > L1 && !large_case) {
-//			const uint64_t L3 = L1;
-//			L1 = L2;
-//			L2 = L3;
-//		}
-//		if (nLayers > 1) {
-//			layer1[kk] = layerID2;
-//			layer2[kk] = layerID1;
-//		}
-//		if (obtain_trues || store_scatter || store_randoms) {
-//			if ((event_true && obtain_trues) || (store_scatter_event && store_scatter)) {
-//				if (outsize2 == 1ULL) {
-//					if (event_true && obtain_trues) {
-//						if (large_case)
-//							Ltrues[kk] = 1u;
-//						else
-//#pragma omp atomic
-//							Ltrues[L1][L2]++;
-//					}
-//					else if (store_scatter_event && store_scatter) {
-//						if (large_case)
-//							Lscatter[kk] = 1u;
-//						else
-//#pragma omp atomic
-//							Lscatter[L1][L2]++;
-//					}
-//				}
-//				else {
-//					if (event_true && obtain_trues)
-//						Ltrues[kk] = 1u;
-//					else if (store_scatter_event && store_scatter)
-//						Lscatter[kk] = 1u;
-//				}
-//			}
-//			else if (!event_true && store_randoms && !event_scattered) {
-//				if (outsize2 == 1ULL) {
-//					if (large_case)
-//						Lrandoms[kk] = 1u;
-//					else
-//#pragma omp atomic
-//						Lrandoms[L1][L2]++;
-//				}
-//				else
-//					Lrandoms[kk] = 1u;
-//			}
-//		}
-//		if (outsize2 == 1) {
-//			if (large_case) {
-//				LL1[kk] = static_cast<uint32_t>(L1 + 1);
-//				LL2[kk] = static_cast<uint32_t>(L2 + 1);
-//			}
-//			else
-//#pragma omp atomic
-//				LL1[L1][L2]++;
-//		}
-//		else {
-//			LL1[kk] = static_cast<uint32_t>(L1 + 1);
-//			LL2[kk] = static_cast<uint32_t>(L2 + 1);
-//		}
-		//if (outsize2 > 1ULL && time2 >= aika) {
-		//	tpoints[ll++] = jj;
-		//	aika = time_intervals[++pa];
-		//}
 		if (dynamic) {
 			double time = alku;
 			for (int64_t ll = 0; ll < Nt; ll++) {
@@ -696,19 +549,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 			bool swap = false;
 			const int64_t sinoIndex = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize[0], Ndist, Nang[0], ringDifference, span, seg, TOFSize,
 				detWPseudo[0], rings[0], bins, nDistSide, swap, tPoint, layer, nLayers);
-			//dispf("crystalID1 = %d", crystalID1);
-			//dispf("crystalID2 = %d", crystalID2);
-			//dispf("rsectorID1 = %d", rsectorID1);
-			//dispf("rsectorID2 = %d", rsectorID2);
-			//dispf("moduleID1 = %d", moduleID1);
-			//dispf("moduleID2 = %d", moduleID2);
-			//dispf("ring_number1 = %d", ring_number1);
-			//dispf("ring_number2 = %d", ring_number2);
-			//dispf("ring_pos1 = %d", ring_pos1);
-			//dispf("ring_pos2 = %d", ring_pos2);
-			//dispf("sinoIndex = %d", sinoIndex);
-			//dispf("no_modules = %d", no_modules);
-			//dispf("no_submodules = %d", no_submodules);
 			if (sinoIndex >= 0) {
 #ifdef _OPENMP
 #pragma omp atomic
@@ -747,18 +587,6 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 				if (!event_true && !event_scattered && store_randoms) {
 					formSourceImage(bx, by, bz, dx, dy, dz, Nx, Ny, Nz, imDim, sourcePosX1, sourcePosX2, sourcePosY1, sourcePosY2, sourcePosZ1, sourcePosZ2, tPoint, RA);
 				}
-				//if (event_true && obtain_trues)
-				//	trues_loc[kk] = true;
-				//else if (store_scatter_event && store_scatter)
-				//	scatter_loc[kk] = true;
-				//else if (!event_true && !event_scattered && store_randoms)
-				//	randoms_loc[kk] = true;
-				//S[kk] = sourcePosX1;
-				//S[kk + Nentries] = sourcePosY1;
-				//S[kk + Nentries * 2] = sourcePosZ1;
-				//S[kk + Nentries * 3] = sourcePosX2;
-				//S[kk + Nentries * 4] = sourcePosY2;
-				//S[kk + Nentries * 5] = sourcePosZ2;
 			}
 			if (store_coordinates) {
 				coord[kk * 6] = globalPosX1;
@@ -767,34 +595,11 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 				coord[kk * 6 + 3] = globalPosX2;
 				coord[kk * 6 + 4] = globalPosY2;
 				coord[kk * 6 + 5] = globalPosZ2;
-				//x1[kk] = globalPosX1;
-				//x2[kk] = globalPosX2;
-				//y1[kk] = globalPosY1;
-				//y2[kk] = globalPosY2;
-				//z1[kk] = globalPosZ1;
-				//z2[kk] = globalPosZ2;
 				if (dynamic)
 					tIndex[kk] = static_cast<uint16_t>(tPoint);
 			}
 		}
-	//*/
 	}
-//#ifdef _OPENMP
-//	omp_destroy_lock(&getEventLock);
-//#endif
-	//if (pa == 0)
-	//	pa++;
-	//if (ll == 0)
-	//	ll++;
-	//int_loc[1] = pa;
-	//tpoints[ll] = static_cast<uint32_t>(jj);
-	//if (begin) {
-	//	int_loc[0] = 0;
-	//	int_loc[1] = 0;
-	//}
-	//std::ostringstream stream5;
-	//stream5 << "ROOT file load finished" << std::endl;
-	//displayOnMATLAB(stream5);
 
 
 	if (randoms_correction) {

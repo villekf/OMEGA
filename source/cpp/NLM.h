@@ -12,6 +12,7 @@
 #endif
 #include "projector_functions.h"
 
+// Non-local means
 template <typename T>
 void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32_t search_window_x, const int32_t search_window_y,
 	const int32_t search_window_z, const int32_t patch_window_x, const int32_t patch_window_y, const int32_t patch_window_z, const uint32_t Nx, 
@@ -44,7 +45,6 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 		const int z = n / Nxy;
 		const int y = (n - z * Nxy) / static_cast<int32_t>(Nx);
 		const int x = n - z * Nxy - y * static_cast<int32_t>(Nx);
-		//const int dim = z * Nxy + y * static_cast<int32_t>(Nx) + x;
 		if (z < min_z || z >= max_z || x < min_x || x >= max_x || y < min_y || y >= max_y)
 			continue;
 		T weight_sum = (T)0.;
@@ -73,7 +73,6 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 							int dim_g = (pz + patch_window_z) * (patch_window_x * 2 + 1) * (patch_window_y * 2 + 1) + (py + patch_window_y) * (patch_window_x * 2 + 1);
 							for (int px = -patch_window_x; px <= patch_window_x; px++) {
 								const T gg = gaussian[dim_g++];
-								//const T gg = 1.;
 								const int x_k = x_n + px;
 								const int dim_k = z_k + y_k + x_k;
 								const T Pj = u_ref[dim_k];

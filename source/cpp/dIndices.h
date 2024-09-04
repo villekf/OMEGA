@@ -5,7 +5,6 @@
 #include <random>
 #ifdef _OPENMP
 #include <omp.h>
-//#define nChunks 1000
 #endif
 
 template<typename T>
@@ -56,7 +55,6 @@ void detectorIndices(uint32_t& ring_number1, uint32_t& ring_number2, uint32_t& r
 			ring_number2 = (moduleID2 % linear_multip) * cryst_per_block_z2 + crystalID2 / cryst_per_block2;
 		}
 	}
-	// uint16(mod(M(:,rsector_ind1), blocks_per_ring) * cryst_per_block * transaxial_multip + mod(M(:,crs_ind1), cryst_per_block) + mod(M(:,ascii_ind.module_ind1), transaxial_multip) * cryst_per_block);
 	// Detector number transaxially
 	if (transaxial_multip > 1) {
 		if (no_submodules) {

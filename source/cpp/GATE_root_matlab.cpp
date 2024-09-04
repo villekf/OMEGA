@@ -2,7 +2,7 @@
 * ROOT file import into MATLAB. This file contains the C++ implementation.
 * Requires MATLAB 2019a or later.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -21,6 +21,7 @@
 #include "TChain.h"
 #include <type_traits>
 
+// source: https://se.mathworks.com/matlabcentral/answers/436916-how-to-access-raw-data-via-the-mex-c-api#answer_415645
 //! Extracts the pointer to underlying data from the non-const iterator (`TypedIterator<T>`).
 /*! This function does not throw any exceptions. */
 template <typename T>
@@ -131,15 +132,9 @@ public:
 		matlab::data::TypedArray<uint16_t> axIndex = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> DtrIndex = factory.createArray<uint16_t>({ 1, 1 });
 		matlab::data::TypedArray<uint16_t> DaxIndex = factory.createArray<uint16_t>({ 1, 1 });
-		//matlab::data::TypedArray<float> x2 = factory.createArray<float>({ 1, 1 });
-		//matlab::data::TypedArray<float> y1 = factory.createArray<float>({ 1, 1 });
-		//matlab::data::TypedArray<float> y2 = factory.createArray<float>({ 1, 1 });
-		//matlab::data::TypedArray<float> z1 = factory.createArray<float>({ 1, 1 });
-		//matlab::data::TypedArray<float> z2 = factory.createArray<float>({ 1, 1 });
 
 		TChain* delay = nullptr;
 		int64_t Ndelays = 0LL;
-		//bool dynamic = false;
 
 		if (randoms_correction) {
 			delay = new TChain("delay");
@@ -158,16 +153,6 @@ public:
 				Dcoord = factory.createArray<float>({ 6, Nentries });
 				std::fill(Dcoord.begin(), Dcoord.end(), 0.f);
 			}
-			//x2 = factory.createArray<float>({ Nentries, 1 });
-			//std::fill(x2.begin(), x2.end(), 0.f);
-			//y1 = factory.createArray<float>({ Nentries, 1 });
-			//std::fill(y1.begin(), y1.end(), 0.f);
-			//y2 = factory.createArray<float>({ Nentries, 1 });
-			//std::fill(y2.begin(), y2.end(), 0.f);
-			//z1 = factory.createArray<float>({ Nentries, 1 });
-			//std::fill(z1.begin(), z1.end(), 0.f);
-			//z2 = factory.createArray<float>({ Nentries, 1 });
-			//std::fill(z2.begin(), z2.end(), 0.f);
 		}
 		if (indexBased) {
 			trIndex = factory.createArray<uint16_t>({ 2, Nentries });
@@ -190,10 +175,6 @@ public:
 		matlab::data::TypedArray<uint16_t> S = factory.createArray<uint16_t>({ 1, 1 }, { 0 });
 		matlab::data::TypedArray<uint16_t> SC = factory.createArray<uint16_t>({ 1, 1 }, { 0 });
 		matlab::data::TypedArray<uint16_t> RA = factory.createArray<uint16_t>({ 1, 1 }, { 0 });
-		//if (randoms_correction) {
-		//	tpoints_delay = factory.createArray<uint32_t>({ outsize2 + 2, 1 });
-		//	std::fill(tpoints_delay.begin(), tpoints_delay.end(), 0U);
-		//}
 
 		if (source) {
 			S = factory.createArray<uint16_t>({ static_cast<uint64_t>(imDim * Nt), 1 });
@@ -219,11 +200,6 @@ public:
 		uint16_t* axIndexPtr = getPointer(axIndex);
 		uint16_t* DtrIndexPtr = getPointer(DtrIndex);
 		uint16_t* DaxIndexPtr = getPointer(DaxIndex);
-		//float* x2P = getPointer(x2);
-		//float* y1P = getPointer(y1);
-		//float* y2P = getPointer(y2);
-		//float* z1P = getPointer(z1);
-		//float* z2P = getPointer(z2);
 		const uint32_t* segP = getPointer(seg);
 		const uint32_t* detectors = getPointer(detectorsP);
 		const uint32_t* cryst_per_block = getPointer(cryst_per_blockP);
@@ -261,18 +237,6 @@ public:
 		outputs[12] = std::move(axIndex);
 		outputs[13] = std::move(DtrIndex);
 		outputs[14] = std::move(DaxIndex);
-		//outputs[10] = std::move(x2);
-		//outputs[11] = std::move(y1);
-		//outputs[12] = std::move(y2);
-		//outputs[13] = std::move(z1);
-		//outputs[14] = std::move(z2);
-
-		//mexEvalString("pause(.001);");
-
-		//std::ostringstream stream1;
-		//stream1 << "Outputs formed" << std::endl;
-		//displayOnMATLAB(stream1);
-		//gROOT->Reset();
 
 	}
 
