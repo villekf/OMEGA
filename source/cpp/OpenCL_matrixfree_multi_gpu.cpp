@@ -1,18 +1,11 @@
 ﻿/**************************************************************************
-* Matrix free computations for OMEGA for the multi-GPU/device case.
-* Supports heterogeneous computing, but only on the same platform (i.e. if 
-* you have a CPU and an integrated GPU from the same vendor and OpenCL
-* runtime for both you can utilize both of them at the same time). Mixing
-* CPU and GPU requires the optimization of the GPU to CPU value.
-* This code can also be run for single device.
+* Matrix free computations for OMEGA for implementations 3 and 5.
 * This code is very similar to the other matrix-free code, but this one
 * can also be run without installing ArrayFire, i.e. this uses pure OpenCL.
-* For purely OSEM or MLEM reconstructions this code should be the fastest,
-* regardless of the amount of devices used.
 * Unlike the non-OpenCL versions, this one uses (32-bit) floats and thus
 * can be slightly more inaccurate.
 * 
-* Copyright(C) 2020 Ville-Veikko Wettenhovi
+* Copyright(C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -50,7 +43,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	int ind = 0;
 	scalarStruct inputScalars;
 	// Load the input arguments
-	// These are mainly same as with implementation 3 (check the comments in OpenCL_matrixfree_multi_gpu.cpp)
 
 	if (DEBUG) {
 		mexPrintBase("ind0 = %u\n", ind);
@@ -61,21 +53,18 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	size_t sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Nx = getUint32s(prhs[ind], "solu");
 	inputScalars.Nx = std::vector<uint32_t>(Nx, Nx + sX);
-	//inputScalars.Nx[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// The number of y-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Ny = getUint32s(prhs[ind], "solu");
 	inputScalars.Ny = std::vector<uint32_t>(Ny, Ny + sX);
-	//inputScalars.Ny[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// The number of z-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Nz = getUint32s(prhs[ind], "solu");
 	inputScalars.Nz = std::vector<uint32_t>(Nz, Nz + sX);
-	//inputScalars.Nz[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	if (DEBUG) {
@@ -87,42 +76,36 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dx = getSingles(prhs[ind], "solu");
 	inputScalars.dx = std::vector<float>(dx, dx + sX);
-	//inputScalars.dx[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The size of y-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dy = getSingles(prhs[ind], "solu");
 	inputScalars.dy = std::vector<float>(dy, dy + sX);
-	//inputScalars.dy[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The size of z-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dz = getSingles(prhs[ind], "solu");
 	inputScalars.dz = std::vector<float>(dz, dz + sX);
-	//inputScalars.dz[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (x-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* bx = getSingles(prhs[ind], "solu");
 	inputScalars.bx = std::vector<float>(bx, bx + sX);
-	//inputScalars.bx[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (y-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* by = getSingles(prhs[ind], "solu");
 	inputScalars.by = std::vector<float>(by, by + sX);
-	//inputScalars.by[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (z-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* bz = getSingles(prhs[ind], "solu");
 	inputScalars.bz = std::vector<float>(bz, bz + sX);
-	//inputScalars.bz[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	if (DEBUG) {
@@ -195,8 +178,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	inputScalars.raw = getScalarUInt8(prhs[ind], ind);
 	ind++;
 
-	//af::setDevice(device);
-
 	inputScalars.use_psf = getScalarBool(prhs[ind], ind);
 	ind++;
 
@@ -208,11 +189,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind6 = %u\n", ind);
 		mexEval();
 	}
-
-	//inputScalars.bzb = inputScalars.bz + static_cast<float>(inputScalars.Nz) * inputScalars.dz;
-
-	//if (nrhs != 74)
-	//	mexErrMsgTxt("Invalid number of input arguments. There must be 74.");
 
 	// attenuation values
 	const float* atten = getSingles(prhs[ind], "solu");
@@ -260,11 +236,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind8 = %u\n", ind);
 		mexEval();
 	}
-
-	// Number of voxels the current LOR/ray traverses
-	//const uint16_t* lor1 = getUint16s(prhs[ind], "solu");
-	//inputScalars.sizeLOR = mxGetNumberOfElements(prhs[ind]);
-	//ind++;
 
 	// XY-indices of the detector coordinates of each LOR
 	const uint32_t* xy_index = getUint32s(prhs[ind], "solu");
@@ -337,7 +308,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	ind++;
 
 	// Number of time steps
-	//inputScalars.Nt = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// Use 64-bit integer atomic functions if possible
@@ -348,15 +318,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind12 = %u\n", ind);
 		mexEval();
 	}
-
-	// Number of OS-reconstruction algorithms (including priors)
-	//const uint32_t n_rekos = getScalarUInt32(prhs[ind], ind);
-	//ind++;
-
-	// What type of reconstruction, needed for the OpenCL kernel
-	// E.g. 2 means COSEM (different computations)
-	//const uint8_t* reko_type = getUint8s(prhs[ind], "solu");
-	//ind++;
 
 	inputScalars.bmin = getScalarFloat(prhs[ind], ind);
 	ind++;
@@ -397,7 +358,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const size_t outSize2 = Ni + 1ULL;
 
 	// Output dimensions
-	//const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2), static_cast<mwSize>(inputScalars.Nt) };
 	const mwSize dim[4] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2) };
 
 	loadInput(inputScalars, options, type);
@@ -406,9 +366,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		inputScalars.osa_iter0 = getScalarUInt32(getField(options, 0, "currentSubset"));
 		inputScalars.subsetsUsed = inputScalars.osa_iter0 + 1;
 	}
-
-	//if (inputScalars.listmode)
-	//	x = getSingles(options, "x", 0);
 
 
 	if (DEBUG) {
@@ -440,10 +397,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("mDim = %u\n", mDim[0]);
 		mexEval();
 	}
-	//mxArray* cell_array_ptr, * FPptr;
-	//if (CELL)
-	//	cell_array_ptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.nMultiVolumes) + 1, 1);
-	//else
 	mxArray* array_ptr = nullptr;
 	mxArray* sens_ptr = nullptr;
 	if (type == 1) {
@@ -473,16 +426,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		else
 			sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
 	}
-	//if (inputScalars.raw)
-	//	inputScalars.koko = numRows / 2;
-	//else {
-	//	inputScalars.koko = mDim / inputScalars.nBins;
-	//}
-	//if (inputScalars.storeFP) {
-	//	FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets * inputScalars.Niter), 1);
-	//}
-	//else
-	//	FPptr = mxCreateCellMatrix(1, 1);
 
 	if (DEBUG) {
 		mexPrint("Output vector set");

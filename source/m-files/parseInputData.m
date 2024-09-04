@@ -1,12 +1,14 @@
 function options = parseInputData(options, index)
-%PARSEINPUTDATA Summary of this function goes here
-%   Detailed explanation goes here
+%PARSEINPUTDATA Perform subset data division
+%   Since certain subset types require the input measurement and correction
+%   data to be ordered in a specific way, this function makes sure that the
+%   data is correctly ordered. Not all subset types require this reordering
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
 else
     partitions = options.partitions;
 end
-if options.subsets > 1
+if options.subsets > 1 && options.subset_type > 0
     if ~options.largeDim
         if partitions > 1
             for ff = 1 : partitions
@@ -171,46 +173,6 @@ if options.subsets > 1
             end
         end
     end
-    % if options.scatter_correction && options.corrections_during_reconstruction && ~options.reconstruct_trues && ~options.reconstruct_scatter
-    %     if partitions > 1 && iscell(options.ScatterC) && length(options.ScatterC) > 1
-    %         for ff = 1 : partitions
-    %             if ~options.use_raw_data
-    %                 temp = options.ScatterC{ff};
-    %                 if options.NSinos ~= options.TotSinos
-    %                     temp = temp(:,:,1:options.NSinos);
-    %                 end
-    %             else
-    %                 temp = single(full(options.ScatterC{ff}));
-    %             end
-    %             if options.subset_type >= 8
-    %                 temp = temp(:,:,index);
-    %                 temp = temp(:);
-    %             else
-    %                 temp = temp(index);
-    %             end
-    %             options.ScatterC{ff} = temp;
-    %         end
-    %         clear temp
-    %     else
-    %         if iscell(options.ScatterC)
-    %             if options.subset_type >= 8
-    %                 options.ScatterC{1} = reshape(options.ScatterC{1}, options.nRowsD, options.nColsD, []);
-    %                 options.ScatterC{1} = options.ScatterC{1}(:,:,index);
-    %                 options.ScatterC{1} = options.ScatterC{1}(:);
-    %             else
-    %                 options.ScatterC = options.ScatterC{1}(index);
-    %             end
-    %         else
-    %             if options.subset_type >= 8
-    %                 options.ScatterC = reshape(options.ScatterC, options.nRowsD, options.nColsD, []);
-    %                 options.ScatterC = options.ScatterC(:,:,index);
-    %                 options.ScatterC = options.ScatterC(:);
-    %             else
-    %                 options.ScatterC = options.ScatterC(index);
-    %             end
-    %         end
-    %     end
-    % end
     if options.attenuation_correction && ~options.CT_attenuation
         if numel(options.vaimennus) ~= options.Nx(1) * options.Ny(1) * options.Nz(1) || (options.nRowsD == options.Nx(1) && options.nColsD == options.Ny(1))
             if options.subset_type >= 8

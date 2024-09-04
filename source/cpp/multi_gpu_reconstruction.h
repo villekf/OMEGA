@@ -1,7 +1,7 @@
 /**************************************************************************
 * These functions handle the device selection, queue creation, program
 * building and kernel creation, as well as the output data and kernel 
-* release.
+* release. Used by implementations 3 and 5.
 *
 * Copyright(C) 2020-2024 Ville-Veikko Wettenhovi
 *
@@ -19,13 +19,12 @@
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
 #pragma once
-//#include "functions_multigpu.hpp"
 #include "ProjectorClass.h"
 
-// Main reconstruction function for implementation 3
+// Main reconstruction function for implementations 3 and 5
 template <typename T>
 inline void reconstruction_multigpu(const float* z_det, const float* x, scalarStruct& inputScalars, Weighting& w_vec, RecMethods& MethodList, const int64_t* pituus,
-	const char* header_directory, const float* meas, const float* im, T* output, T* sensIm, const int type = 0, const int no_norm = 1, const float* rand = nullptr, const float* atten = nullptr, 
+	const char* header_directory, const float* meas, const float* im, T* output, T* sensIm, const int type = 0, const int no_norm = 1, const float* rand = nullptr, const float* atten = nullptr,
 	const float* norm = nullptr, const float* extraCorr = nullptr, const size_t size_gauss = 0, const uint32_t* xy_index = nullptr,
 	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr) {
 
@@ -54,7 +53,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		return;
 	proj.no_norm = no_norm;
 
-	// Create OpenCL buffers, CUDA arrays or OneAPI buffers
+	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList, type);
 	if (status != 0)
 		return;
@@ -71,6 +70,9 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 
 	if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 		m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[inputScalars.osa_iter0];
+	// type 0 = Implementation 3
+	// type 1 = Implementation 5 forward projection
+	// type 2 = Implementation 5 backprojection
 	if (type == 1) {
 		if (DEBUG) {
 			mexPrintBase("m_size = %u\n", m_size);
@@ -85,20 +87,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 		}
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 			imTot += (inputScalars.Ny[ii] + 1) * (inputScalars.Nz[ii] + 1) * inputScalars.Nx[ii];
-		//cl::detail::size_t_array region = { { 0, 0, 0 } };
-		//size_t uu = 0;
-		//for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-		//	region[0] = inputScalars.Nx[ii];
-		//	region[1] = inputScalars.Ny[ii];
-		//	region[2] = inputScalars.Nz[ii];
-		//	proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
-		//	status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os, CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return;
-		//	}
-		//	uu += inputScalars.im_dim[ii];
-		//}
 		status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_output, 0.f, 0, sizeof(float) * m_size * inputScalars.nBins);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
@@ -163,12 +151,6 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			region[0] = inputScalars.Nx[ii];
 			region[1] = inputScalars.Ny[ii];
 			region[2] = inputScalars.Nz[ii];
-			//status = proj.CLCommandQueue[0].enqueueWriteImage(proj.vec_opencl.d_image_os[ii], CL_FALSE, proj.origin, region, 0, 0, &im[uu]);
-			//if (status != CL_SUCCESS) {
-			//	getErrorString(status);
-			//	return;
-			//}
-			//uu += inputScalars.im_dim[ii];
 			proj.d_imFinal.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(float) * inputScalars.im_dim[ii], NULL, &status));
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -181,7 +163,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					return;
 				}
 			}
-			proj.vec_opencl.d_rhs_os.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(T)* inputScalars.im_dim[ii], NULL, &status));
+			proj.vec_opencl.d_rhs_os.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status));
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
@@ -437,14 +419,11 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	else if (type == 0) {
 		size_t uu = 0;
 		int ii = 0;
-		//for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-			status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_imFinal[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &output[uu]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
-		//	uu += inputScalars.im_dim[ii];
-		//}
+		status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_imFinal[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &output[uu]);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return;
+		}
 	}
 
 	for (cl_uint i = 0ULL; i < proj.CLCommandQueue.size(); i++) {

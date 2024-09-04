@@ -6,7 +6,6 @@
 #else
 #define DLL_FUNCTION  __attribute__((visibility("default")))
 #endif
-//#include <cstdint>
 #include "rootImport.h"
 
 extern "C" DLL_FUNCTION

@@ -4,7 +4,7 @@
 * row) and A*x and A^Ty (forward and backward projections), where A is the system matrix, y data in the measurement space and x data in the 
 * image space.
 *
-* Used by implementations 2 and 3.
+* Used by implementations 2, 3 and 5.
 *
 * This file contains three different projectors (Siddon, orthogonal, volume-based). Preprocessor commands are used to separate
 * different areas of code for the different projectors. Furthermore the forward-backward projection example uses this same file. 
@@ -16,32 +16,35 @@
 * parameters the kernel should be loaded from cache leading to a slightly faster startup time.
 *
 * INPUTS:
-* global_factor = a global correction factor, e.g. dead time
-* d_epps = a small constant to prevent division by zero,
-* d_size_x = the number of detector elements,
-* d_det_per_ring = number of detectors per ring,
-* d_Nxy = d_Nx * d_Ny,
+* global_factor = a global correction factor, e.g. dead time, can be 1.f
+* d_epps = a small constant to prevent division by zero, 
+* d_size_x = the number of detector elements (rows),
+* d_det_per_ring = number of detectors per ring, (only for listmode data sensitivity image computation, can be any value otherwise)
+* sigma_x = TOF STD, can be any value otherwise
+* crystalSize = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
 * orthWidth = the width of of the tube used for orthogonal distance based projector (3D), or the radious of the tube with volume projector
 * bmin = smaller orthogonal distances than this are fully inside the TOR, volume projector only,
 * bmax = Distances greater than this do not touch the TOR, volume projector only,
 * Vmax = Full volume of the spherical "voxel", volume projector only,
 * maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * x/y/z_center = Cartesian coordinates for the center of the voxels (x/y/z-axis),
 * V = Precomputed volumes for specific orthogonal distances, volume projector only
-* d_sizey = the number of detector elements,
-* d_atten = attenuation data (images),
+* d_sizey = the number of detector elements (columns),
+* d_atten = attenuation data (images, if USEIMAGES is defined, or buffer),
 * d_nProjections = Number of projections/sinograms,
 * d_xy/z = detector x/y/z-coordinates,
+* rings = Number of detector rings, PET only and only when computing listmode sensitivity image,
 * d_norm = normalization coefficients,
-* d_scat = scatter coefficients when using the system matrix method, 
+* d_scat = scatter coefficients when using the system matrix method (multiplication), 
 * d_Summ = buffer for d_Summ (sensitivity image),
-* d_Nxyz = image size in x/y/z- dimension,
-* d_d = distance between adjecent voxels in z/x/y-dimension,
-* d_b = distance from the pixel space to origin (z/x/y-dimension),
-* d_bmax = part in parenthesis of equation (9) in [1] precalculated when k = Nz,
-* d_xy/zindex = for sinogram format they determine the detector indices corresponding to each sinogram bin (unused with raw data),
-* d_L = detector numbers for raw data (unused for sinogram format),
+* d_Nxyz = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_d = distance between adjecent voxels in z/x/y-dimension, float3 or three floats (if PYTHON is defined),
+* d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
+* d_bmax = part in parenthesis of equation (9) in [1] precalculated when k = Nz, float3 or three floats (if PYTHON is defined),
+* d_xy/zindex = for sinogram format they determine the detector indices corresponding to each sinogram bin (subset type 3/6/7 only),
+* d_L = detector numbers for raw data (unused for sinogram or listmode format),
 * d_OSEM = image for current estimates or the input buffer for backward projection,
 * d_output = forward or backward projection,
 * no_norm = If 1, sensitivity image is not computed,
@@ -50,7 +53,7 @@
 *
 * OUTPUTS:
 * d_output = forward or backward projection,
-* d_Summ = Sensitivity image
+* d_Summ = Sensitivity image (optional, though must be present)
 *
 * [1] Jacobs, F., Sundermann, E., De Sutter, B., Christiaens, M. Lemahieu, I. (1998). A Fast Algorithm to Calculate the Exact Radiological 
 * Path through a Pixel or Voxel Space. Journal of computing and information technology, 6 (1), 89-94.
@@ -302,7 +305,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
 #endif
-	// const float input = d_OSEM[idx];
 #else
 #if defined(N_RAYS) && defined(FP)
 #ifndef __CUDACC__ 
@@ -335,9 +337,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 #if defined(N_RAYS) //////////////// MULTIRAY ////////////////
 	int lor = -1;
-	// bool pass = true;
 	// Load the next detector index
-	// raw list-mode data
+	// raw data
 
 #ifdef SPECT ///////////////////////////// SPECT LOOP //////////////////////////////////
 	#if (CONEMETHOD == 1)
@@ -348,9 +349,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	int lorZ = 0u;
 	int lorXY = 0u;
 #else
-	//#pragma unroll N_RAYS3D
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
-//#pragma unroll N_RAYS2D
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
 #endif ////////////////////////////// END SPECT LOOP ///////////////////////////////////
 			lor++;
@@ -449,23 +448,6 @@ if (lor == 0) { // First ray in hexagon
 
 	// Calculate the x, y and z distances of the detector pair
 	float3 diff = d - s;
-	// if (GID0 == 85) {
-// #ifdef SENS
-// 	if (i.z == 2 && i.y == 4 && i.x == 100) {
-// 		printf("diff.x = %f\n", diff.x);
-// 		printf("diff.y = %f\n", diff.y);
-// 		printf("diff.z = %f\n", diff.z);
-// 		printf("d.x = %f\n", d.x);
-// 		printf("d.y = %f\n", d.y);
-// 		printf("d.z = %f\n", d.z);
-// 		printf("s.x = %f\n", s.x);
-// 		printf("s.y = %f\n", s.y);
-// 		printf("s.z = %f\n", s.z);
-// 		printf("d_z[indz.x] = %f\n", d_z[indz.x]);
-// 		printf("indz.x = %d\n", indz.x);
-// 		printf("indz.y = %d\n", indz.y);
-// 	}
-// #endif
 
 #ifdef CUDA
 	if ((diff.x == 0.f && diff.y == 0.f && diff.z == 0.f) || (diff.x == 0.f && diff.y == 0.f) || isinf(diff.x) || isinf(diff.y) || isinf(diff.z) || isnan(diff.x) || isnan(diff.y) || isnan(diff.z))
@@ -500,11 +482,8 @@ if (lor == 0) { // First ray in hexagon
 	float local_ele = 0.f;
 
 #ifdef ORTH //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-	//uchar xyz = 0u;
 	bool XY = false;
 	float kerroin = 0.f;
-	// CONSTANT float* xcenter = x_center;
-	// CONSTANT float* ycenter = y_center;
 #if !defined(VOL) // Orthogonal
 	kerroin = L * orthWidth;
 #elif defined(VOL) // Volume-based
@@ -512,22 +491,16 @@ if (lor == 0) { // First ray in hexagon
 	float TotV = L * M_1_PI_F * orthWidth * orthWidth;
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
-	// if (idx < 1)
-	// 	d_output[idx] = 2.f;
-	// return;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 	if (fabs(diff.z) < 1e-6f && (fabs(diff.y) < 1e-6f || fabs(diff.x) < 1e-6f)) {
 
 
 		tempk = CINT(fabs(s.z - b.z) / d_d.z);
-		// if (tempk < 0 || tempk >= d_Nxyz.z)
 			return;
 
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-		// CONSTANT float* center2;
 		int indO = 0;
-		// float temp = 0.f;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 		float d_b, dd, d_db, d_d2;
 		int apuX1, apuX2;
@@ -574,8 +547,6 @@ if (lor == 0) { // First ray in hexagon
 			dd = d.y;
 			d_db = d_d.y;
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			// center2 = x_center;
-			// xcenter = y_center;
 			b1 = b.y;
 			b2 = b.x;
 			d1 = d_d.y;
@@ -633,7 +604,6 @@ if (lor == 0) { // First ray in hexagon
 			d_b = b.x;
 			dd = d.x;
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			// center2 = y_center;
 			b1 = b.x;
 			b2 = b.y;
 			d1 = d_d.x;
@@ -648,22 +618,13 @@ if (lor == 0) { // First ray in hexagon
 #else
 		    return;
 #endif  //////////////// END MULTIRAY ////////////////
-// #if defined(SIDDON) //////////////// SIDDON ////////////////
-	// if (GID0 < 10000 && i.z == 2 && i.y == 4) {
-	// 	printf("i.x = %d\n", i.x);
-	// 	printf("i.y = %d\n", i.y);
-	// 	printf("i.z = %d\n", i.z);
-	// }
-		//printf("templ_ijk = %f\n", templ_ijk);
 		localInd.z = tempk;
 		local_ind = CLONG_rtz(tempk);
-		//uint z_loop = 0u;
 		perpendicular_elements(d_b, d_db, d_N0, dd, d_d2, d_N1, &temp, &localInd, &local_ind, d_N2, d_N3, idx, global_factor, local_scat, 
 #if !defined(CT) && (defined(ATN) || defined(ATNM))
 			d_atten, aa, 
 #endif
 		    local_norm, L);
-		// local_ind = tempk;
 #if defined(ORTH)
 #if defined(VOL)
 		temp *= (1.f / TotV);
@@ -900,23 +861,18 @@ if (lor == 0) { // First ray in hexagon
 			diff_b = diff.x;
 			diff.x = diff.y;
 			diff.y = diff_b;
-			// xcenter = y_center;
-			// ycenter = x_center;
 			d_NN.x = d_Nxyz.y;
 			d_NN.y = d_Nxyz.x;
 			d_N0 = d_Nxyz.y;
 			d_N1 = d_Nxyz.x;
 			d_N2 = d_Nxyz.x;
 			d_N3 = 1;
-			//XY = false;
 		}
 		else {
 			b1 = b.x;
 			b2 = b.y;
 			d1 = d_d.x;
 			d2 = d_d.y;
-			// xcenter = x_center;
-			// ycenter = y_center;
 			d_N0 = d_Nxyz.x;
 			d_N1 = d_Nxyz.y;
 			d_N2 = 1;
@@ -925,9 +881,6 @@ if (lor == 0) { // First ray in hexagon
 		tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
 #endif
-	// printf("tempi = %d\n", tempi);
-	// printf("tempj = %d\n", tempj);
-	// printf("tempk = %d\n", tempk);
 
 #if !defined(CT)
 #ifdef ORTH
@@ -969,9 +922,6 @@ if (lor == 0) { // First ray in hexagon
 			LONG localInd2 = local_ind;
 #endif
 #endif
-			// if (local_ind == 63 + 128 * 128 * 30 && idx != 23469565)
-			// 	return;
-				// printf("idx = %u\n", idx);
 #ifdef ORTH
 			tx0_a = tx0;
 			ty0_a = ty0;

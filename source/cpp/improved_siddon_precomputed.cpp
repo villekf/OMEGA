@@ -4,11 +4,11 @@
 * traverses needs to be known in advance.
 * This version computes the system matrix column indices and elements for
 * the preallocated MATLAB sparse matrix. Due to MATLAB's CSC format, this
-* is essentially a transposed version of the system matrix.
+* is a transposed version of the system matrix!
 *
 * Uses OpenMP for parallelization.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -55,7 +55,6 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 #endif
 #endif
 	for (int64_t lo = 0LL; lo < nMeas; lo++) {
-		//mexPrintf("lo = %d\n", lo);
 		int64_t ix = lo, iy = 0, iz = 0;
 		if (param.subsets > 1 && param.subsetType == 1) {
 			ix *= param.subsets;
@@ -103,14 +102,10 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 				ix = (ix / param.size_y) % param.size_x;
 			}
 		}
-		//int64_t idx = ix + iy * (int64_t)param.size_x + iz * (int64_t)param.size_y * (int64_t)param.size_x;
 		Det<double> detectors;
 
 		if (!CT) {
-			//if (param.raw)
-			//	get_detector_coordinates_raw(param.det_per_ring, x, z, detectors, detIndex, lo, param.listMode, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
-			//else
-				get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
+			get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
 		}
 		else
 			get_detector_coordinates_CT(x, z, param.size_x, detectors, lo, param.subsets, param.size_y, ix, iy, iz, param.dPitchZ, param.nProjections, param.listMode, param.pitch);
@@ -210,15 +205,6 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 				skip = siddon_pre_loop_3D(param.bx, param.by, param.bz, x_diff, y_diff, z_diff, bmaxx, bmaxy, bmaxz, param.dx, param.dy, param.dz, param.Nx, param.Ny, param.Nz, tempi, tempj, tempk, tyu, txu, tzu,
 					Np, TYPE, detectors, tc, iu, ju, ku, tx0, ty0, tz0, param.projType, XY);
 			}
-			//if (lo == 5903704) {
-			//	mexPrintf("tempj = %d\n", tempj);
-			//	mexPrintf("tempi = %d\n", tempi);
-			//	mexPrintf("tempk = %d\n", tempk);
-			//	mexPrintf("skip = %d\n", skip);
-			//	mexPrintf("x_diff = %f\n", x_diff);
-			//	mexPrintf("y_diff = %f\n", y_diff);
-			//	mexPrintf("z_diff = %f\n", z_diff);
-			//}
 			if (!CT) {
 				temp = 1. / L;
 				if (param.normalizationCorrection)
@@ -234,15 +220,6 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 			// Compute the indices and matrix elements
 			for (uint64_t ii = 0ULL; ii < Np; ii++) {
 				local_ind = compute_ind(tempj, tempi, tempk, d_N3, Nyx);
-				//if (local_ind >= Nyx * param.Nz) {
-				//	mexPrintf("tempj = %d\n", tempj);
-				//	mexPrintf("tempi = %d\n", tempi);
-				//	mexPrintf("tempk = %d\n", tempk);
-				//	mexPrintf("Np = %u\n", Np);
-				//	mexPrintf("ii = %d\n", ii);
-				//	mexPrintf("lo = %d\n", lo);
-				//	break;
-				//}
 
 				indices[N2 + ii] = static_cast<size_t>(local_ind);
 				// Apply attenuation correction
@@ -259,15 +236,6 @@ void improved_siddon_precomputed(paramStruct<double>& param, const int64_t nMeas
 					compute_attenuation(local_ele, local_ind, param.atten, jelppi);
 
 				elements[N2 + ii] = local_ele;
-				//if (std::isnan(local_ele)) {
-				//	mexPrintf("local_ele = %f\n", local_ele);
-				//	mexPrintf("local_ind = %d\n", local_ind);
-				//	mexPrintf("tempj = %d\n", tempj);
-				//	mexPrintf("tempi = %d\n", tempi);
-				//	mexPrintf("tempk = %d\n", tempk);
-				//	mexPrintf("lo = %d\n", lo);
-				////	mexPrintf("Np = %u\n", Np);
-				//}
 			}
 
 			if (!CT) {

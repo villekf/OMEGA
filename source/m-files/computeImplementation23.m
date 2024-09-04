@@ -102,9 +102,12 @@ elseif options.projector_type == 5 || options.projector_type == 51 || options.pr
     filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'projectorType5','');
 elseif options.projector_type == 6
-    kernel_path = '';
-    filename = '';
-    header_directory = '';
+    kernel_file = 'projectorType123.cl';
+    kernel_path = which(kernel_file);
+    kernel_path = strrep(kernel_path, '\', '/');
+    kernel_path = strrep(kernel_path, '.cl', '');
+    filename = 'OMEGA_matrix_free_OpenCL_binary_device';
+    header_directory = strrep(kernel_path,'projectorType123','');
 else
     error('Invalid projector for OpenCL')
 end

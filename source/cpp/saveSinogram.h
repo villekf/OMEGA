@@ -3,7 +3,7 @@
 * ring number and position values to compute the corresponding sinogram
 * index value. This index value is the output of this function.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -33,10 +33,6 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 	uint64_t binN = 0ULL;
 	// Initial index value, negative value means the LOR does not belong to the sinogram FOV
 	int64_t indeksi = -1;
-	// Compute the real time step if using dynamic data
-	//if (NT > 1) {
-	//	tPoint = static_cast<uint64_t>(std::floor((time - alku) / vali));
-	//}
 	const int32_t xa = std::max(ring_pos1, ring_pos2);
 	const int32_t ya = std::min(ring_pos1, ring_pos2);
 	int32_t j = ((xa + ya + det_per_ring / 2 + 1) % det_per_ring) / 2;
@@ -101,9 +97,6 @@ int64_t saveSinogram(const int32_t ring_pos1, const int32_t ring_pos2, int32_t r
 			}
 		}
 		// Final index number
-		//indeksi = static_cast<int64_t>(i) + static_cast<int64_t>(j) * static_cast<int64_t>(Ndist) +
-		//	static_cast<int64_t>(sinoIndex) * static_cast<int64_t>(Ndist) * static_cast<int64_t>(Nang)
-		//	+ sinoSize * binN + TOFSize * static_cast<int64_t>(tPoint);
 		indeksi = static_cast<int64_t>(i) + static_cast<int64_t>(j) * static_cast<int64_t>(Ndist) +
 			static_cast<int64_t>(sinoIndex) * static_cast<int64_t>(Ndist) * static_cast<int64_t>(Nang) + sinoSize * static_cast<int64_t>(layer)
 			+ sinoSize * binN * nLayers * nLayers + TOFSize * static_cast<int64_t>(tPoint) * nLayers * nLayers;

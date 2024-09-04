@@ -26,7 +26,4 @@ else
 end
 
 V = cast(V, options.cType);
-% Vmax = cast(Vmax, cType);
-% bmin = cast(bmin, cType);
-% bmax = cast(bmax, cType);
 end

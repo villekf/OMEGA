@@ -19,10 +19,6 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, iter, 0, true);
 		if (status != 0)
 			return -1;
-		//const af::array dU = priorGradient(vec, w_vec, MethodList, inputScalars, proj, iter, status);
-		//if (status != 0)
-		//	return - 1;
-
 		// MAP/Prior-algorithms
 		// Special case for BSREM and ROSEM-MAP
 		vec.im_os[0] = MAP(im, w_vec.lambda[iter], vec.im_os[0], inputScalars.epps);
@@ -45,7 +41,6 @@ int computeOSEstimatesIter(AF_im_vectors& vec, Weighting& w_vec, const RecMethod
 		float* jelppi = output;
 #endif
 		if (inputScalars.saveIter && iter == 0) {
-			//const float* x0 = getSingles(options, "x0");
 			std::memcpy(&jelppi[tt], &x0[0], inputScalars.im_dim[0] * sizeof(float));
 			tt += inputScalars.im_dim[0];
 		}

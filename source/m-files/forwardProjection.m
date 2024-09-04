@@ -1,20 +1,5 @@
 function [outputFP, A] = forwardProjection(options, recApu, x, z, koko, nMeas, xy_index, z_index, norm_input, corr_input, L_input, TOF, lor2, lor1, summa, loopVar, subIter, varargin)
-% FORWARDPROJECTION Computes the forward projection for implementations 1
-% or 4
-%   Outputs the x-, y- and z-coordinates for the current machine, depending
-%   on whether sinogram or raw data is used
-%
-% EXAMPLES:
-%   [x, y, z, options] = get_coordinates(options)
-%   [x, y, z, options] = get_coordinates(options, rings, pseudot)
-% INPUTS:
-%   options = Machine properties, sinogram properties and whether raw data
-%   is used are needed.
-%   rings = Number of crystal rings (required only for raw data)
-%   pseudot = The numbers of the pseudo rings (required only for raw data)
-%
-% See also sinogram_coordinates_2D, sinogram_coordinates_3D,
-% detector_coordinates, getMultirayCoordinates
+% FORWARDPROJECTION Computes the forward projection
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2023-2024 Ville-Veikko Wettenhovi
@@ -83,7 +68,6 @@ if options.projector_type == 6
             kuvaRot = imrotate(apuArr, -options.angles(u1), 'bilinear','crop');
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
             for ll = 1 : size(kuvaRot,3)
-                % kuvaRot(:,:,ll) = imgaussfilt(kuvaRot(:,:,ll), [options.sigmaZ(kk,ll);options.sigmaXY(kk,ll)]);
                 apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1));
                 if size(apu,1) > size(kuvaRot,1) || size(apu,2) > size(kuvaRot,2)
                     apu = apu((size(apu,1) - size(kuvaRot,1))/2 + 1 : end - (size(apu,1) - size(kuvaRot,1))/2, (size(apu,2) - size(kuvaRot,2))/2 + 1 : end - (size(apu,2) - size(kuvaRot,2))/2);

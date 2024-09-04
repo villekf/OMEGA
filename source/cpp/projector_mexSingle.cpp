@@ -168,8 +168,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Number of physical CPU cores
 	const uint32_t nCores = getScalarUInt32(prhs[ind], ind);
 	ind++;
-	//if (DEBUG)
-	//	mexPrintf("nCores = %u\n", nCores);
 
 	// Is raw list-mode data used
 	param.raw = getScalarBool(prhs[ind], ind);
@@ -325,11 +323,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		// Right-hand side
 		float* output = getSingles(plhs[0], "solu");
-
-		//clock_t time = clock();
-
-		//if (nrhs < 56)
-		//	mexErrMsgTxt("Incorrect number of input arguments. There has to be 56.");
 
 		// Crystal pitch in z-direction (for multi-ray)
 		param.dPitchXY = getScalarFloat(prhs[ind], ind);

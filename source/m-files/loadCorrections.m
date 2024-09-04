@@ -85,9 +85,6 @@ if ~options.use_raw_data && options.randoms_correction
     end
 end
 
-
-% options.use_psf = false;
-% block1 = 0;
 if options.attenuation_correction
     if ~isfield(options,'vaimennus') || isempty(options.vaimennus)
         if ~isempty(options.attenuation_datafile) && strcmp(options.attenuation_datafile(end-2:end), 'mhd')
@@ -184,9 +181,6 @@ if options.scatter_correction && options.normalize_scatter
                 end
             end
             options.normalization = options.normalization(:);
-            %         if any(strfind(file, '.nrm'))
-            %             normalization = 1 ./ normalization;
-            %         end
         else
             if options.use_raw_data
                 norm_file = [folder options.machine_name '_normalization_listmode.mat'];
@@ -197,8 +191,6 @@ if options.scatter_correction && options.normalize_scatter
                 options.normalization = loadStructFromFile(norm_file,'normalization');
             else
                 error('Normalization correction selected, but no normalization data found')
-                %             normalization_coefficients(options);
-                %             normalization = loadStructFromFile(norm_file,'normalization');
             end
             options.normalization = options.normalization(:);
         end
@@ -225,11 +217,6 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
     elseif r_exist && isfield(options,'SinDelayed') && iscell(options.SinDelayed) && numel(options.SinDelayed{1}) == 1 && randoms_correction
         r_exist = false;
     end
-    % if options.scatter_correction
-    %     options.scatter = true;
-    % else
-    %     options.scatter = false;
-    % end
     if exist('RandProp','var') == 0 || isempty(RandProp)
         RandProp.smoothing = false;
         RandProp.variance_reduction = false;
@@ -250,10 +237,6 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
         options = loadDelayedData(options);
         r_exist = true;
     end
-    % if options.scatter_correction && ~s_exist
-    %     options = loadScatterData(options);
-    %     s_exist = true;
-    % end
     if options.scatter_correction && ((~isfield(options,'ScatterC') || numel(options.ScatterC) == 0) || (ScatterProp.normalization && ~options.normalize_scatter) || ...
             (ScatterProp.smoothing && ~options.scatter_smoothing) || (ScatterProp.variance_reduction && ~options.scatter_variance_reduction))
         if ScatterProp.normalization && ~options.normalize_scatter
@@ -355,8 +338,6 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
                     options.SinDelayed = options.SinDelayed(1:options.NSinos*options.Ndist*options.Nang);
                 end
             end
-            % Sino = Sino + SinDelayed;
-            % SinDelayed = 2 * SinDelayed;
             if options.scatter_correction && isfield(options,'ScatterC')
                 if isempty(ScatterProp)
                     ScatterProp.smoothing = false;
@@ -446,8 +427,6 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
     else
         if options.randoms_correction && iscell(options.SinDelayed)
             for kk = 1 : options.partitions
-                % SinM{kk} = SinM{kk} + SinDelayed{kk};
-                % SinDelayed{kk} = 2 * SinDelayed{kk};
                 if options.variance_reduction && ~RandProp.variance_reduction
                     options.SinDelayed{kk} = Randoms_variance_reduction(single(options.SinDelayed{kk}), options);
                 end
@@ -520,16 +499,11 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
             if options.use_raw_data == false && options.NSinos ~= options.TotSinos
                 options.SinDelayed = options.SinDelayed(1:options.NSinos*options.Ndist*options.Nang);
             end
-            % Sino = Sino + SinDelayed;
-            % SinDelayed = 2 * SinDelayed;
             if options.scatter_correction && isfield(options,'ScatterC')
                 if sum(size(options.ScatterC)) > 1 && ~iscell(options.ScatterC)
                     if size(options.ScatterC,1) ~= options.Ndist && ~options.use_raw_data
                         options.ScatterC = permute(options.ScatterC,[2 1 3]);
                     end
-                    % if options.variance_reduction
-                    %    options.ScatterC = Randoms_variance_reduction(double(options.ScatterC), options);
-                    % end
                     if options.normalization_correction && options.normalize_scatter && ~ScatterProp.normalization
                         if isfield(options,'InveonScatter') && isfield(options,'InveonNorm')
                             options.ScatterC = single(options.ScatterC) .* reshape(options.normalization, size(options.ScatterC, 1), size(options.ScatterC, 2), size(options.ScatterC, 3));
@@ -646,11 +620,6 @@ if (options.randoms_correction || options.scatter_correction) && options.correct
         options.SinDelayed = interpolateSinog(options.SinDelayed, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
         options.SinDelayed = options.SinDelayed(:);
     end
-    % if ~options.subtract_scatter && options.scatter_correction && options.sampling > 1 && options.corrections_during_reconstruction
-    %     options.ScatterC = reshape(options.ScatterC, options.Ndist, options.Nang, options.NSinos);
-    %     options.ScatterC = interpolateSinog(options.ScatterC, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
-    %     options.ScatterC = options.ScatterC(:);
-    % end
 elseif (options.randoms_correction || options.scatter_correction) && ~options.reconstruct_trues && ~options.reconstruct_scatter
     r_exist = isfield(options,'SinDelayed');
     if r_exist && isfield(options,'SinDelayed') && ~iscell(options.SinDelayed) && numel(options.SinDelayed) == 1 && options.randoms_correction
@@ -767,7 +736,6 @@ elseif options.normalization_correction && options.use_user_normalization && opt
                 error('Size mismatch between the current data and the normalization data file')
             end
             options.InveonNorm = true;
-            %             options.normalization = 1 ./ options.normalization;
         else
             data = load(fullfile(fpath, file));
             variables = fieldnames(data);
@@ -831,9 +799,6 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
                 end
             end
             options.normalization = options.normalization(:);
-            %         if any(strfind(file, '.nrm'))
-            %             normalization = 1 ./ normalization;
-            %         end
         else
             if options.use_raw_data
                 norm_file = [folder options.machine_name '_normalization_listmode.mat'];
@@ -844,8 +809,6 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
                 options.normalization = loadStructFromFile(norm_file,'normalization');
             else
                 error('Normalization correction selected, but no normalization data found')
-                %             normalization_coefficients(options);
-                %             normalization = loadStructFromFile(norm_file,'normalization');
             end
             options.normalization = options.normalization(:);
         end
@@ -875,6 +838,7 @@ elseif options.normalization_correction && ~options.corrections_during_reconstru
         end
     else
         if options.TOF_bins > 1
+            options.SinM = options.SinM(:);
             for uu = 1 : options.TOF_bins
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
                     options.SinM(NN * (uu - 1) + 1: NN * uu) = single(full(options.SinM(NN * (uu - 1) + 1: NN * uu))) .* single(options.normalization);
@@ -909,15 +873,6 @@ end
 if ~isfield(options,'global_correction_factor') || isempty(options.global_correction_factor) || options.global_correction_factor <= 0
     options.global_correction_factor = 1;
 end
-% if options.use_raw_data && ~options.corrections_during_reconstruction && ~options.listmode
-%     if iscell(options.SinM)
-%         for kk = 1 : options.partitions
-%             options.SinM{kk} = options.SinM{kk} * options.global_correction_factor;
-%         end
-%     else
-%         options.SinM = options.SinM * options.global_correction_factor;
-%     end
-% end
 if ~isfield(options, 'ScatterC')
     if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
         options.ScatterC = {single(0)};

@@ -477,11 +477,7 @@ inline void get_detector_coordinates_CT(const T* x,const T* z, const uint32_t si
 		detectors.zd = x[lo * 6 + 5];
 	}
 	else {
-		//const int iz = lo / (size_x * size_y);
-		//const int ix = (lo - iz * size_x * size_y) % size_x;
-		//const int iy = (lo - iz * size_x * size_y) / size_y;
 		const int id = iz * 6;
-		//mexPrintf("id = %d\n", id);
 		detectors.xs = x[id];
 		detectors.ys = x[id + 1];
 		detectors.zs = x[id + 2];
@@ -498,7 +494,6 @@ inline void get_detector_coordinates_CT(const T* x,const T* z, const uint32_t si
 		}
 		else {
 			const int idz = iz * 2;
-			//mexPrintf("idz = %d\n", idz);
 			detectors.xd += z[idz] * indeksi1;
 			detectors.yd += z[idz + 1] * indeksi1;
 			detectors.zd += dPitch * indeksi2;
@@ -595,8 +590,6 @@ inline void denominator(std::vector<T>& ax, const uint32_t local_ind, T local_el
 			else
 				ax[to] += apu * joku / TOFSum;
 		}
-		//if (projType == 1)
-		//	D -= std::copysign(element, DD);
 	}
 	if (nRays > 1)
 		ax[lor] += apu;
@@ -669,17 +662,6 @@ inline void d_g_s(const T tmin, const T t_min, const T tmax, const T t_max, uint
 		// (12)
 		v_min = static_cast<uint32_t>(ceil((p_t - b) / d));
 	}
-	//if (tmax == t_max)
-	//	// (13)
-	//	v_max = N;
-	//else {
-	//	// (2) and (19)
-	//	p_t = s + tmax * (diff);
-	//	// (14)
-	//	v_max = static_cast<int>(floor((p_t - b) / d));
-	//}
-	// (9)
-	//tx0 = (bx + static_cast<double>(imin) * dx - xs) / (x_diff);
 	t_0 += static_cast<T>(v_min) * d / (diff);
 	//  (29)
 	v_u = 1;
@@ -699,17 +681,7 @@ inline void s_g_d(const T tmin, const T t_min, const T tmax, const T t_max, uint
 		// (16)
 		v_max = static_cast<uint32_t>(floor((p_t - b) / d));
 	}
-	//if (tmax == t_max)
-	//	// (17)
-	//	v_min = 0;
-	//else {
-	//	// (2) and (19)
-	//	p_t = s + tmax * (diff);
-	//	// (18)
-	//	v_min = static_cast<int>(ceil((p_t - b) / d));
-	//}
 	// (9)
-	//tx0 = (bx + static_cast<double>(imax) * dx - xs) / (x_diff);
 	t_0 += static_cast<T>(v_max) * d / (diff);
 	// (29)
 	v_u = -1;
@@ -739,7 +711,6 @@ inline void d_g_s_precomp(const T tmin, const T t_min, const T tmax, const T t_m
 		v_max = static_cast<uint32_t>(floor((p_t - b) / d));
 	}
 	// (9)
-	//tx0 = (bx + static_cast<double>(imin) * dx - xs) / (x_diff);
 	t_0 += static_cast<T>(v_min) * d / (diff);
 	//  (29)
 	v_u = 1;
@@ -769,7 +740,6 @@ inline void s_g_d_precomp(const T tmin, const T t_min, const T tmax, const doubl
 		v_min = static_cast<uint32_t>(ceil((p_t - b) / d));
 	}
 	// (9)
-	//tx0 = (bx + static_cast<double>(imax) * dx - xs) / (x_diff);
 	t_0 += static_cast<T>(v_max) * d / (diff);
 	// (29)
 	v_u = -1;
@@ -858,12 +828,6 @@ inline bool siddon_pre_loop_2D(const T b1, const T b2, const T diff1, const T di
 	temp1 = voxel_index(pt, diff1, d1, apu_tx);
 	// (27)
 	temp2 = voxel_index(pt, diff2, d2, apu_ty);
-	//if (temp2 > N2) {
-	//	mexPrintf("pt = %f\n", pt);
-	//	mexPrintf("diff2 = %f\n", diff2);
-	//	mexPrintf("d2 = %f\n", d2);
-	//	mexPrintf("apu_ty = %f\n", apu_ty);
-	//}
 
 	if (TYPE == 0) {
 		if (temp1 < 0 || temp1 >= N1 || temp2 < 0 || temp2 >= N2)
@@ -976,29 +940,18 @@ template <typename T>
 inline T compute_element_orth_3D(const T xs, const T ys, const T zs, const T xl, const T yl, const T zl, const T crystal_size_z,
 	const T xp, const int projType) {
 
-	//T x1, y1, z1, x0, y0, z0;
-
-	//const T y0 = yp - ys;
-	//const T z0 = zp - zs;
 	const T x0 = xp - xs;
 
 	// Cross product
-	//const T x1 = yl * z0 - zl * y0;
-	//const T y1 = zl * x0 - xl;
-	//const T z1 = ys - yl * x0;
 	const T y1 = zl * x0 - xl;
 	const T z1 = -yl * x0 + ys;
-	// const T y1 = zl * x0 - xl * z0;
-	// const T z1 = xl * y0 - yl * x0;
 
-	//const T normi = e_norm(zs, y1, z1);
 	const T normi = norm(zs, y1, z1);
 
 	if (projType == 3)
 		return (normi / crystal_size_z);
 	else
 		return (1.f - normi / crystal_size_z);
-	//return x0;
 }
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer
@@ -1090,15 +1043,11 @@ inline int orthDistance3D(const uint32_t tempi, const T diff1, const T diff2, co
 		}
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
-		//temp2 -= uy;
 	}
-	//temp2 = tempj;
 	for (int zz = tempk - 1; zz >= minimiZ; zz--) {
 		const T z0 = centerZ[zz] - sZ;
 		const T l1 = diff2 * z0 - apu1;
 		const T l2 = diff1 * z0;
-		//int hh1 = 2;
-		//int hh2 = 2;
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2[uu1], bmin, bmax, Vmax, V,
 				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, useMaskBP, maskBP);
@@ -1117,7 +1066,6 @@ inline int orthDistance3D(const uint32_t tempi, const T diff1, const T diff2, co
 		}
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
-		//temp2 -= uy;
 	}
 	return uu;
 }
@@ -1565,9 +1513,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 	const T bmaxy = static_cast<T>(param.Ny) * param.dy + param.by;
 	const T bmaxx = static_cast<T>(param.Nx) * param.dx + param.bx;
 
-	// Distance between rays in multi-ray Siddon
-	//const double dc_z = cr_pz / static_cast<double>(n_rays3D + 1);
-
 	int64_t lo = 0LL;
 //#ifdef _OPENMP
 //	size_t threads = omp_get_max_threads();
@@ -1578,17 +1523,8 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 //	if (DEBUG)
 //		mexPrintf("threads = %u\n", threads);
 //#endif
-	//if (DEBUG)
-	//	mexPrintf("nCores = %u\n", nCores);
-	//mexPrintf("param.projType = %d\n", param.projType);
-	//mexPrintf("param.subsets = %d\n", param.subsets);
-	//mexPrintf("param.subsetType = %d\n", param.subsetType);
-	//mexPrintf("param.currentSubset = %d\n", param.currentSubset);
-	//mexPrintf("param.size_y = %d\n", param.size_y);
-	//mexPrintf("param.size_x = %d\n", param.size_x);
 
 	uint32_t nRays = param.nRays2D * param.nRays3D;
-	//std::vector<T> TOFVal(nRays * param.nBins * threads, 0.);
 #ifdef _OPENMP
 #pragma omp parallel
 	{
@@ -1597,7 +1533,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 #pragma omp for schedule(monotonic:dynamic, nChunks)
 #else
 #pragma omp for schedule(dynamic, nChunks)
-	//#pragma omp parallel for
 #endif
 #else
 	std::vector<T> ax(param.nBins);

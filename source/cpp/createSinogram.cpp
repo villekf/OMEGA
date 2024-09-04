@@ -1,3 +1,4 @@
+// Sinogram creation for, e.g., Python
 #if defined(_MSC_VER)
 #define DLL_FUNCTION __declspec(dllexport)
 #endif

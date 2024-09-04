@@ -28,11 +28,6 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 		const int64_t z = n / Nxy;
 		const int64_t y = (n - z * Nxy) / static_cast<int64_t>(Nx);
 		const int64_t x = n - z * Nxy - y * static_cast<int64_t>(Nx);
-		//if (fovIndices[z] == 0)
-		//	return;
-		//const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(x, y)).w;
-		//if (maskVal == 0)
-		//	return;
 		const T uijk = u[n];
 		if (type == 4) { // START JPTV || SATV
 			float2<T> ux;
@@ -90,7 +85,6 @@ void TVKernel(T* grad, const T* u, const int Nx, const int Ny, const int Nz, con
 				uk.x = u[(x + 1) + (y)*Nx + (z - 1) * Nxy];
 			if (z > 0 && y < Ny - 1)
 				uk.y = u[(x)+(y + 1) * Nx + (z - 1) * Nxy];
-			//const T pvalijk = distance(uijkP, uijkM) + eppsSqrt;
 			float3<T> u1;
 			float3<T> u2;
 			float3<T> u3;

@@ -1,6 +1,7 @@
 #pragma once
 #include "functions.hpp"
 
+// Computes all computations using the forward projection and outputting a measurement-domain vector
 inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::array& input, const int64_t length, const scalarStruct& inputScalars,
 	Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, 
 	float* residual = nullptr) {
@@ -34,6 +35,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 				if (inputScalars.adaptiveType == 1)
 					w_vec.alphaCP[ii] = 1.f;
+				else if (inputScalars.adaptiveType == 2)
+					w_vec.alphaCP[ii] = .95f;
 			}
 			w_vec.LCP = w_vec.LCP2;
 		}
@@ -77,10 +80,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			//if (inputScalars.randoms_correction) {
-			//	input = (af::exp(-input) + randomsData) / y;
-			//}
-			//else
 			if (MethodList.OSEM || MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP)
 				input = af::exp(-input);
 			else
@@ -88,7 +87,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 		else {
 			if (inputScalars.verbose >= 3)
-				mexPrint("PET mode");
+				mexPrint("PET/SPECT mode");
 			input = y / (input);
 		}
 		input.eval();
@@ -104,17 +103,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction)
 				input = af::exp(-input) * inputScalars.flat - (y * af::exp(-input)) / (af::exp(-input) + randomsData);
-				//input = (af::exp(-input) + randomsData) / y - 1.f;
 			else
 				input = af::exp(-input) * inputScalars.flat - y;
-				//input = af::exp(-input) / y - 1.f;
 		}
 		else {
 			if (inputScalars.verbose >= 3)
-				mexPrint("PET mode");
-			//if (inputScalars.randoms_correction)
-			//	input = y / (input + randomsData) - 1.f;
-			//else
+				mexPrint("PET/SPECT mode");
 				input = y / (input) - 1.f;
 		}
 		input.eval();
@@ -130,17 +124,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("Adding scatter data to forward projection");
 			if (inputScalars.randoms_correction)
 				input = (y * af::exp(-input)) / (af::exp(-input) + randomsData) - af::exp(-input) * inputScalars.flat;
-				//input = 1.f - (af::exp(-input) + randomsData) / y;
 			else
 				input = y - af::exp(-input) * inputScalars.flat;
-				//input = 1.f - af::exp(-input) / y;
 		}
 		else {
 			if (inputScalars.verbose >= 3)
-				mexPrint("PET mode");
-			//if (inputScalars.randoms_correction)
-			//	input = 1.f - y / (input + randomsData);
-			//else
+				mexPrint("PET/SPECT mode");
 				input = 1.f - y / (input);
 		}
 		input.eval();
@@ -157,21 +146,14 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrint("CT mode");
 			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
 				mexPrint("Adding scatter data to forward projection");
-			//if (inputScalars.randoms_correction && indS) {
-			//	input(indeksit) = std::exp(-w_vec.epsilon_mramla) / y(indeksit) - 1.f - (std::exp(-w_vec.epsilon_mramla) / y(indeksit)) * (input(indeksit) - w_vec.epsilon_mramla);
-			//	input(!indeksit) = af::exp(-1.f * input(!indeksit)) / y(!indeksit) - 1.f;
-			//}
-			//else
 			if (inputScalars.randoms_correction)
 				input = af::exp(-input) * inputScalars.flat - (y * af::exp(-input)) / (af::exp(-input) + randomsData);
-			//input = (af::exp(-input) + randomsData) / y - 1.f;
 			else
 				input = af::exp(-input) * inputScalars.flat - y;
-			//input = af::exp(-input) / y - 1.f;
 		}
 		else {
 			if (inputScalars.verbose >= 3)
-				mexPrint("PET mode");
+				mexPrint("PET/SPECT mode");
 			if (inputScalars.randoms_correction && indS) {
 				input(indeksit) = y(indeksit) / w_vec.epsilon_mramla - 1.f - (y(indeksit) / (w_vec.epsilon_mramla * w_vec.epsilon_mramla)) * (input(indeksit) - w_vec.epsilon_mramla);
 				input(!indeksit) = y(!indeksit) / (input(!indeksit) + inputScalars.epps) - 1.f;
@@ -231,7 +213,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			af::array ressa = res.copy();
 			status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, subIter);
 			residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
-			//residual[kk] = static_cast<float>(af::norm(res) * af::norm(ressa) * .5);
 		}
 		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, subIter);
 		if (status != 0)
@@ -254,7 +235,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				}
 				else
 					input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, length / (inputScalars.nRowsD * inputScalars.nColsD));
-				if (inputScalars.adaptiveType == 1 && ii == 0) {
+				if (inputScalars.adaptiveType >= 1 && ii == 0) {
 					w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[ii];
 					w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
 					w_vec.Ffilter = af::real(af::fft(w_vec.Ffilter));
@@ -264,9 +245,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					return -1;
 			}
 			else {
-				//af::array apu = af::ifft(w_vec.filter, inputScalars.nRowsD);
 				af::array apu = af::tile(w_vec.filter, res.elements() / w_vec.filter.elements());
-				//apu = af::tile(apu, res.elements() / apu.elements());
 				if (DEBUG) {
 					mexPrintBase("dim(0) = %d\n", apu.dims(0));
 					mexPrintBase("dim(1) = %d\n", apu.dims(1));
@@ -277,7 +256,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					mexPrintBase("res.elements() / w_vec.filter.elements() = %d\n", res.elements() / apu.elements());
 					mexEval();
 				}
-				//input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res) / (1.f + w_vec.sigmaCP[ii] * apu);
 				input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res);
 			}
 			if (inputScalars.storeResidual)
@@ -297,19 +275,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			}
 			input.eval();
 		}
-		//if (inputScalars.FISTAAcceleration) {
-		//	const float t = w_vec.tNFista;
-		//	if (subIter == 0) {
-		//		w_vec.tNFista = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-		//	}
-		//	input = input + (t - 1.f) / w_vec.tNFista * (input - vec.pCP[subIter]);
-		//	af::eval(input);
-		//}
 		vec.pCP[subIter] = input.copy();
 		if (DEBUG) {
-			//mexPrintBase("vec.uCP = %f\n", af::sum<float>(vec.uCP));
-			//mexPrintBase("im = %f\n", af::sum<float>(im));
-			//mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexPrintBase("w_vec.sigmaCP = %f\n", w_vec.sigmaCP[ii]);
 			mexEval();
 		}
@@ -317,8 +284,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	else if (MethodList.PDHGKL) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PDHG/CV with KL");
-		//if (inputScalars.randoms_correction)
-		//	input += randomsData;
 		if (w_vec.precondTypeMeas[0] || w_vec.precondTypeMeas[1]) {
 			if (w_vec.precondTypeMeas[1]) {
 				af::array apu1 = y.copy();
@@ -359,12 +324,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PDHG with subsets");
 		input -= vec.p0CP;
-		//input -= vec.p0CP[subIter];
-		//vec.p0CP[subIter] = vec.pCP[subIter].copy();
-		//vec.p0CP2 = vec.pCP[subIter].copy();
 		input.eval();
-		//vec.p0CP[subIter].eval();
-		//vec.p0CP.eval();
 	}
 	if (MethodList.FISTA || MethodList.FISTAL1) {
 		if (inputScalars.verbose >= 3)

@@ -115,6 +115,7 @@ struct inputStruct {
     uint32_t TVtype = 1;
     uint32_t FluxType;
     uint32_t DiffusionType;
+    // POCS TV iteration number
     uint32_t POCS_NgradIter;
     // Number of projections
     int64_t nProjections = 1;
@@ -196,6 +197,7 @@ struct inputStruct {
     float hyperbolicDelta;
     // Source to detector distance for FDK weights
     float sourceToCRot = 0.f;
+    // POCS parameters
     float POCS_alpha = 0.2f;
     float POCS_rMax = 0.95f;
     float POCS_alphaRed = 0.95f;
@@ -218,6 +220,7 @@ struct inputStruct {
     bool loadTOF = true;
     // If true, stores the primal-dual gap values
     bool storeResidual = false;
+    // If true, uses FISTA acceleration for the selected algorithm
     bool FISTA_acceleration = false;
     // Remove the DC-component from the BDD forward projection
     bool meanFP = false;
@@ -275,6 +278,7 @@ struct inputStruct {
     bool TV_use_anatomical = false;
     // Include neighboring corners with RDP
     bool RDPIncludeCorners = false;
+    // If true, uses a reference image as a weight in RDP
     bool RDP_use_anatomical = false;
     // Use L2 ball with PDHG
     bool useL2Ball = true;
@@ -552,11 +556,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     inputScalars.verbose = options.verbose;
 
-    // Detector pair numbers, for raw data
-    //const uint16_t* L = options.prhs;
-    //const size_t numRows = mxGetM(prhs[ind]);
-    //inputScalars.sizeL = mxGetNumberOfElements(prhs[ind]);
-
     // Is TOF data used?
     inputScalars.TOF = options.TOF;
 
@@ -711,7 +710,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
     if (inputScalars.offset)
         inputScalars.T = options.offsetVal;
-    //inputScalars.T = options.OffsetLimit;
     inputScalars.nProjections = options.nProjections;
     inputScalars.subsetType = options.subsetType;
     if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 5) {
@@ -726,7 +724,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
             dSizeX = options.dSizeX;
             dSizeY = options.dSizeY;
-            //float* dSizeZ = options.dSizeZ;
             dScaleX = options.dScaleX;
             dScaleY = options.dScaleY;
             dScaleZ = options.dScaleZ;
@@ -735,11 +732,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             inputScalars.d_Scale4[ii].x = dScaleX4[ii];
             inputScalars.d_Scale4[ii].y = dScaleY4[ii];
             inputScalars.d_Scale4[ii].z = dScaleZ4[ii];
-            //inputScalars.d_Scale.s[3] = 0.f;
             if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
                 inputScalars.dSize[ii].x = dSizeX[ii];
                 inputScalars.dSize[ii].y = dSizeY[ii];
-                //inputScalars.dSize[ii].z = dSizeZ[ii];
                 inputScalars.d_Scale[ii].x = dScaleX[ii];
                 inputScalars.d_Scale[ii].y = dScaleY[ii];
                 inputScalars.d_Scale[ii].z = dScaleZ[ii];
@@ -765,9 +760,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.TGV2D = options.use2DTGV;
     inputScalars.adaptiveType = options.PDAdaptiveType;
     inputScalars.storeFP = options.storeFP;
-    //const uint32_t* devPointer = options.use_device;
-    //size_t devLength = mxGetNumberOfElements(mxGetField(options, 0, "use_device"));
-    //inputScalars.usedDevices = std::vector<uint32_t>(devPointer, devPointer + devLength);
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
@@ -814,22 +806,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.maskFP = options.maskFP;
     if (inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
         w_vec.maskBP = options.maskBP;
-        //const size_t nMask = mxGetNumberOfElements(getField(options, 0, "maskBP"));
-        //if (DEBUG) {
-        //    mexPrintBase("nMask = %d\n", nMask);
-        //    mexEval();
-        //}
     }
-    //if (inputScalars.offset)
-    //	w_vec.maskOffset = options.maskOffset;
     if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.eFOVIndices = options.eFOVIndices;
     if (inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.maskPrior = options.maskPrior;
     else if (inputScalars.maskBP)
         w_vec.maskPrior = options.maskBP;
-    //if (MethodList.NLM || MethodList.MRP || MethodList.CPTV || MethodList.CPTVL1 || MethodList.CPTVKL || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical)
-    //	|| MethodList.CPTGV || MethodList.CPTGVKL || MethodList.CPTGVL1)
     // CT-related variables such as number of projection images
     if (inputScalars.CT) {
         w_vec.nProjections = options.nProjections;
@@ -1006,12 +989,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexPrint("Neighborhood loaded");
         }
     }
-//#ifdef AF
-//    if ((MethodList.L || MethodList.FMH) && MethodList.MAP) {
-//        // Index values for the neighborhood
-//        w_vec.tr_offsets = af::array(inputScalars.im_dim[0], w_vec.dimmu, getUint32s(options, "tr_offsets", 0), afHost);
-//    }
-//#endif
     if (MethodList.FMH || MethodList.Quad || MethodList.Huber)
         w_vec.inffi = options.inffi;
     // Weights for the quadratic prior
@@ -1071,15 +1048,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexPrint("Huber loaded");
         }
     }
-    //if (MethodList.L && MethodList.MAP)
-    //    w_vec.a_L = af::array(w_vec.dimmu, options.a_L, afHost);
-    //if (MethodList.FMH && MethodList.MAP) {
-    //    if (inputScalars.Nz[0] == 1 || w_vec.Ndz == 0)
-    //        w_vec.fmh_weights = af::array(w_vec.Ndx * 2 + 1, 4, options.fmh_weights, afHost);
-    //    else
-    //        w_vec.fmh_weights = af::array((std::max)(w_vec.Ndz * 2 + 1, w_vec.Ndx * 2 + 1), 13, options.fmh_weights, afHost);
-    //    w_vec.alku_fmh = options.inffi;
-    //}
     if (MethodList.WeightedMean && MethodList.MAP) {
         w_vec.weighted_weights = af::moddims(af::array(w_vec.dimmu, options.weighted_weights, afHost), w_vec.Ndx * 2U + 1U, w_vec.Ndy * 2U + 1U, w_vec.Ndz * 2U + 1U);
         // Type of mean used (arithmetic, harmonic or geometric)
@@ -1155,11 +1123,6 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.h_ACOSEM = options.h_ACOSEM;
         w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
     }
-    //if (MethodList.TGV && MethodList.MAP) {
-    //	w_vec.data.TGVAlpha = options.alpha1TGV;
-    //	w_vec.data.TGVBeta = options.beta;
-    //	w_vec.data.NiterTGV = options.NiterTGV;
-    //}
     if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
         w_vec.NLM_anatomical = options.NLM_use_anatomical;
         w_vec.NLTV = options.NLTV;
@@ -1210,10 +1173,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.alpha0CPTGV = options.alpha0TGV;
         w_vec.alpha1CPTGV = options.alpha1TGV;
         w_vec.UseL2Ball = options.useL2Ball;
-        if (inputScalars.adaptiveType == 1) {
-            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
-                //w_vec.alphaCP.emplace_back(.3f);
-                w_vec.alphaCP.emplace_back(1.f);
+        if (inputScalars.adaptiveType >= 1) {
+            for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+                if (inputScalars.adaptiveType == 1)
+                    w_vec.alphaCP.emplace_back(1.f);
+                else if (inputScalars.adaptiveType == 2)
+                    w_vec.alphaCP.emplace_back(.95f);
+            }
         }
         if (DEBUG) {
             mexPrint("CPType loaded");
@@ -1284,7 +1250,6 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
         }
         else {
             if (MethodList.FDK && inputScalars.largeDim) {
-                //vec.rhs_os[0].host(&output[oo]);
             }
             else if (MethodList.FDK && !inputScalars.largeDim) {
                 vec.rhs_os[0].host(&output[oo]);

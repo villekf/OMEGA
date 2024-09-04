@@ -10,8 +10,7 @@
 #define NVOXELS5 1
 #define NVOXELSFP 8
 
-//const char* getErrorString(CUresult error);
-
+// Source: https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 inline void gpuAssert(CUresult code, const char* file, int line)
 {

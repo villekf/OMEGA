@@ -62,25 +62,6 @@ else
     if options.use_raw_data == false
         [~, ~, xp, yp] = detector_coordinates(options);
         if options.nLayers > 1
-            % x = Inf(options.det_w_pseudo * options.nLayers,1);
-            % insert_indices = setdiff(1:length(x)/2, options.cryst_per_block(end):options.cryst_per_block(end):length(x)/2);
-            % x(insert_indices) = xp(1 : length(insert_indices));
-            % koko = numel(x)/2;
-            % x(koko + 1:end) = xp(length(insert_indices) + 1 : end);
-            % xp = x;
-            % y = Inf(options.det_w_pseudo * options.nLayers,1);
-            % y(insert_indices) = yp(1 : length(insert_indices));
-            % y(koko + 1:end) = yp(length(insert_indices) + 1 : end);
-            % yp = y;
-            % x = zeros(options.Ndist * options.Nang * 4, 2);
-            % y = zeros(options.Ndist * options.Nang * 4, 2);
-            % if options.cryst_per_block(1) < options.cryst_per_block(2)
-            %     xp(options.cryst_per_block(end) : options.cryst_per_block(end) : koko) = inf;
-            %     yp(options.cryst_per_block(end) : options.cryst_per_block(end) : koko) = inf;
-            % elseif options.cryst_per_block(1) > options.cryst_per_block(2)
-            %     xp(koko + options.cryst_per_block(end) : options.cryst_per_block(end) : end) = inf;
-            %     yp(koko + options.cryst_per_block(end) : options.cryst_per_block(end) : end) = inf;
-            % end
             for kk = 1 : options.nLayers^2
                 if kk == 1
                     [x1, y1] = sinogram_coordinates_2D(options, xp, yp, [1, 1]);
@@ -88,35 +69,17 @@ else
                 elseif kk == 2
                     [x2, y2] = sinogram_coordinates_2D(options, xp, yp, [1, 2]);
                     z2 = sinogram_coordinates_3D(options, [1, 2]);
-                    % [x2, y2] = sinogram_coordinates_2D(options, xp, yp, [1, 1]);
                 elseif kk == 3
                     [x3, y3] = sinogram_coordinates_2D(options, xp, yp, [2, 1]);
                     z3 = sinogram_coordinates_3D(options, [2, 1]);
-                    % [x3, y3] = sinogram_coordinates_2D(options, xp, yp, [1, 1]);
                 elseif kk == 4
                     [x4, y4] = sinogram_coordinates_2D(options, xp, yp, [2, 2]);
                     z4 = sinogram_coordinates_3D(options, [2, 2]);
                 end
-                %     if kk == 2
-                %         [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko), options.nLayers);
-                %     else
-                %         [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
-                %     end
-                % end
-                % x1(ismember(x1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(x1, [0 0], 'rows')), 1);
-                % y1(ismember(y1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(y1, [0 0], 'rows')), 1);
-                % x(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = x1;
-                % y(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = y1;
             end
             x = [x1;x2;x3;x4];
             y = [y1;y2;y3;y4];
             z = [z1;z2;z3;z4];
-            % ind2 = 1 + options.Ndist * options.Nang * 3;
-            % ind1 = options.Ndist * options.Nang;
-            % x(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [x(ind2:end,1) x(1 : ind1, 2)];
-            % y(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [y(ind2:end,1) y(1 : ind1, 2)];
-            % x(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [x(1 : ind1, 1) x(ind2:end,2)];
-            % y(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [y(1 : ind1, 1) y(ind2:end,2)];
         else
             [x, y] = sinogram_coordinates_2D(options, xp, yp);
             z = sinogram_coordinates_3D(options);
@@ -126,7 +89,6 @@ else
         end
 
         if options.arc_correction && ~options.precompute_lor
-            %             [~, ~, xp, yp] = detector_coordinates(options);
             [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
         end
         if options.sampling > 1 && ~options.precompute_lor

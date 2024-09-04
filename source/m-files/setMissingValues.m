@@ -841,9 +841,3 @@ end
 if ~isfield(options, 'FISTA_acceleration')
     options.FISTA_acceleration = false;
 end
-% if ~isfield(options,'trIndex')
-%     options.trIndex = [];
-% end
-% if ~isfield(options,'axIndex')
-%     options.axIndex = [];
-% end

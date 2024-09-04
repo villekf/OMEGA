@@ -1,20 +1,5 @@
 function [output, sensIm] = backwardProjection(options, input, x, z, koko, nMeas, xy_index, z_index, norm_input, corr_input, L_input, TOF, noSensIm, subIter, varargin)
-% FORWARDPROJECTION Computes the forward projection for implementations 1
-% or 4
-%   Outputs the x-, y- and z-coordinates for the current machine, depending
-%   on whether sinogram or raw data is used
-%
-% EXAMPLES:
-%   [x, y, z, options] = get_coordinates(options)
-%   [x, y, z, options] = get_coordinates(options, rings, pseudot)
-% INPUTS:
-%   options = Machine properties, sinogram properties and whether raw data
-%   is used are needed.
-%   rings = Number of crystal rings (required only for raw data)
-%   pseudot = The numbers of the pseudo rings (required only for raw data)
-%
-% See also sinogram_coordinates_2D, sinogram_coordinates_3D,
-% detector_coordinates, getMultirayCoordinates
+% BACKWARDPROJECTION Computes the backprojection
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % Copyright (C) 2023-2024 Ville-Veikko Wettenhovi
@@ -74,21 +59,14 @@ if options.projector_type == 6
         apu = kuvaRot;
         uu = 1;
         for ll = 1 : options.Ny
-            % kuvaRot(:,:,ll) = imgaussfilt(apu, [options.sigmaZ(kk,ll);options.sigmaXY(kk,ll)]);
             kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             uu = uu + 1;
         end
-        % kuvaRot = convn(kuvaRot, options.gFilter(:, :, :, u1));
-        % if size(kuvaRot,1) > options.Nx || size(kuvaRot,2) > options.Ny
-        %     kuvaRot = kuvaRot((size(kuvaRot,1) - options.Nx) / 2 + 1 : end - (size(kuvaRot,1) - options.Nx) / 2,(size(kuvaRot,2) - options.Ny) / 2 + 1 : end - (size(kuvaRot,2) - options.Ny) / 2,:);
-        % end
         kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
         apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
         apuBP = imrotate(apuBP, options.angles(u1), 'bilinear','crop');
         apuBP2(:, kk) = apuBP(:);
-        % figure; sliceViewer(apuBP)
-        % pause
         u1 = u1 + 1;
     end
     output = sum(apuBP2, 2);
@@ -99,13 +77,8 @@ if options.projector_type == 6
         for kk = 1 : koko
             apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
             kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
-            % kuvaRot = convn(kuvaRot, options.gFilter(:, :, :, u1));
-            % if size(kuvaRot,1) > options.Nx
-            %     kuvaRot = kuvaRot((size(kuvaRot,1) - options.Nx) / 2 : end - (size(kuvaRot,1) - options.Nx) / 2 - 1,(size(kuvaRot,2) - options.Ny) / 2 : end - (size(kuvaRot,2) - options.Ny) / 2 - 1,:);
-            % end
             apu = kuvaRot(:,:,1);
             for ll = 1 : options.Ny
-                % kuvaRot(:,:,ll) = imgaussfilt(apu, [options.sigmaZ(kk,ll);options.sigmaXY(kk,ll)]);
                 kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             end
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
@@ -211,7 +184,6 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isfield(options, 'vaimennus')
         options.vaimennus = single(0);
     end
-    % options.x0 = single(0);
     options.x0 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), 1, 'single');
     options.use_device = uint32(options.use_device);
 

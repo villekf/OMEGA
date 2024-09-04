@@ -114,12 +114,6 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         options = TVPrepass(options);
     end
 
-    %     if options.TV && options.MAP && options.implementation == 2
-    %         options.alphaTGV = single(options.alphaTGV);
-    %         options.betaTGV = single(options.betaTGV);
-    %         options.NiterTGV = uint32(options.NiterTGV);
-    %     end
-
     % Load necessary variables for the APLS regularization
     if options.APLS && options.MAP
         options = APLSPrepass(options);
@@ -327,13 +321,6 @@ if options.precondTypeImage(4)
                     error('delta1Precond value is missing!')
                 end
             end
-            % if ~isfield(options,'delta2Precond')
-            %     if isfield(options,'delta2_PKMA')
-            %         options.delta2Precond = options.delta2_PKMA;
-            %     else
-            %         error('delta2Precond value is missing!')
-            %     end
-            % end
             oo = 1;
             for kk = 0 : options.Niter - 1
                 for ll = 1 : options.subsets
@@ -395,9 +382,7 @@ if options.PDHG || options.PDHGKL || options.PDHGL1 || options.ProxTV || options
 end
 
 if options.precondTypeImage(6)
-    %     if options.useZeroPadding
     options.Nf = double(2^nextpow2(options.Nx(1)));
-    %     end
     if options.implementation == 2 || options.useSingles || options.implementation == 5
         options.filterIm = single(rampFilt(options.Nf,options.filterWindow, options.cutoffFrequency, options.normalFilterSigma, true));
     else
@@ -405,13 +390,11 @@ if options.precondTypeImage(6)
     end
 end
 if options.precondTypeMeas(2)
-    %     if options.useZeroPadding
     if options.subsets > 1 && options.subset_type == 5
         options.Nf = 2^nextpow2(options.nColsD);
     else
         options.Nf = 2^nextpow2(options.nRowsD);
     end
-    %     end
     options.filter = rampFilt(options.Nf,options.filterWindow, options.cutoffFrequency, options.normalFilterSigma);
     options.filter(1) = 1e-6;
     options.Ffilter = ifft(options.filter) .* options.sigmaCP(1);
@@ -425,7 +408,6 @@ if options.precondTypeMeas(2)
     else
         options.filter2 = ifft(rampFilt(options.nRowsD,options.filterWindow, options.cutoffFrequency, options.normalFilterSigma));
     end
-    %     options.filter = 1 ./ options.filter;
 end
 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5 || options.useSingles
     options.thetaCP = single(options.thetaCP);
@@ -451,30 +433,6 @@ if (options.PKMA || options.MBSREM || options.SPS || options.RAMLA || options.BS
     end
 end
 if options.FDK && options.CT && options.useFDKWeights
-    % if options.largeDim
-    %     [X, Y] = meshgrid(0:options.nColsD-1, 0:options.nRowsD-1);
-    %     X = single(X - options.nColsD / 2);
-    %     Y = single(Y - options.nRowsD / 2);
-    %     for kk = 1 : options.nProjections
-    %         if size(options.uV,1) == 2
-    %             grid_points = options.x(4:6,kk)' + X(:) .* [options.uV(1,kk);options.dPitchX;options.dPitchX]' + Y(:) .* [options.dPitchX,options.uV(2,kk),options.dPitchX];
-    %         else
-    %             grid_points = options.x(4:6,kk)' + X(:) .* options.uV(1:3,kk)' + Y(:) .* options.uV(4:6,kk)';
-    %         end
-    %         options.FDKWeights = sqrt(sum((options.x(4:6,kk) - options.x(1:3,kk)).^2,2)) ./ squeeze(sqrt(sum((grid_points - options.x(1:3,kk)').^2, 2)));
-    %         options.SinM(:,:,kk) = options.SinM(:,:,kk) .* reshape(options.FDKWeights, size(options.SinM,1), size(options.SinM,2));
-    %     end
-    % else
-    %     [X, Y] = meshgrid(0:options.nColsD-1, 0:options.nRowsD-1);
-    %     X = single(X - options.nColsD / 2);
-    %     Y = single(Y - options.nRowsD / 2);
-    %     grid_points = permute(options.x(4:6,:)',[3 2 1]) + X(:) .* permute(options.uV(1:3,:)',[3 2 1]) + Y(:) .* permute(options.uV(4:6,:)',[3 2 1]);
-    %     options.FDKWeights = sqrt(sum((permute(options.x(4:6,:),[3 2 1]) - permute(options.x(1:3,:),[3 2 1])).^2,3)) ./ squeeze(sqrt(sum((grid_points - permute(options.x(1:3,:)',[3 2 1])).^2, 2)));
-    %     options.FDKWeights = options.FDKWeights(:);
-    %     options.SinM = options.SinM .* reshape(options.FDKWeights, size(options.SinM)) ./ 2;
-    % end
     options.angles = single(options.angles);
     options.sourceToCRot = options.sourceToDetector;
-    % options.sourceToCRot = mean(norm(options.x(1:3)));
-    % distances = reshape(distances, options.nRowsD, options.nColsD, options.nProjections);
 end

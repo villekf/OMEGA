@@ -1,8 +1,63 @@
 
-//CONSTANT sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_NONE;
-//#ifdef SPECTMASK
-//CONSTANT sampler_t sampler_SPECT = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
-//#endif
+/*******************************************************************************************************************************************
+* Matrix free projectors for forward and backward projections. This is the interpolation-based projector and contains a ray-based forward
+* projector and a voxel-based backprojector. The ray-based forward projector can be used with any data while the backprojector should be
+* used for CT-like data only (i.e. projection-type data). The ray-based forward projector does support backprojection as well but as with
+* projector types 1-3, it is not efficient backprojector, though it is completely adjoint. The voxel-based backprojector is not exactly
+* adjonit with the forward projection, but the difference is less than 1%.
+*
+* Used by implementations 2, 3 and 5.
+*
+* The forward and backward projections are separate kernels. 
+*
+* Compiler preprocessing is utilized heavily, for example all the corrections are implemented as compiler preprocesses. The code for 
+* specific correction is thus only applied if it has been selected. The kernels are always compiled on-the-fly, though when using same input 
+* parameters the kernel should be loaded from cache leading to a slightly faster startup time.
+* 
+* The ray-based forward projection projects a ray from the source to each detector pixel. Once the ray enters the FOV, the values are
+* linearly interpolated at each d_L step, weighted by the fixed length of d_L. The ray-based forward projector works for all data.
+*
+* INPUTS:
+* d_size_x = the number of detector elements (rows),
+* d_sizey = the number of detector elements (columns),
+* d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
+* d_L = Interpolation length, i.e. the length that is moved everytime the interpolation is done, forward projection only
+* global_factor = a global correction factor, e.g. dead time, can be simply 1.f
+* maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* d_TOFCenter = Offset of the TOF center from the first center of the FOV,
+* sigma_x = TOF STD, 
+* d_atten = attenuation data (images, if USEIMAGES is defined, or buffer),
+* d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
+* d_bmax = part in parenthesis of equation (9) in [1] precalculated when k = Nz, float3 or three floats (if PYTHON is defined),
+* d_scale = precomputed scaling value, float3 or three floats (if PYTHON is defined), see computeProjectorScalingValues.m
+* d_OSEM = image for current estimates or the input buffer for backward projection,
+* d_output = forward or backward projection,
+* d_xy/z = detector x/y/z-coordinates,
+* rings = Number of detector rings, PET only and only when computing listmode sensitivity image,
+* d_det_per_ring = number of detectors per ring, (only for listmode data sensitivity image computation, can be any value otherwise)
+* d_norm = normalization coefficients,
+* d_scat = scatter coefficients when using the system matrix method (multiplication), 
+* d_Summ = buffer for d_Summ (sensitivity image),
+* no_norm = If 1, sensitivity image is not computed,
+* m_size = Total number of LORs/measurements for this subset,
+* currentSubset = current subset
+* aa = The current volume, for multi-resolution reconstruction, 0 can be used when not using multi-resolution
+*
+* OUTPUTS:
+* d_output = forward projection,
+*
+* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+*
+* This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+*
+* This program is distributed in the hope that it wiL be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*******************************************************************************************************************************************/
 
 #ifndef NVOXELS
 #define NVOXELS 1
@@ -143,7 +198,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
 #endif
-	// const float input = d_OSEM[idx];
 #else
 #if defined(N_RAYS) && defined(FP)
 #ifndef __CUDACC__ 
@@ -174,12 +228,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 	int lor = -1;
-	// bool pass = true;
 	// Load the next detector index
 	// raw list-mode data
-//#pragma unroll N_RAYS3D
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
-//#pragma unroll N_RAYS2D
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
 			lor++;
 #endif  //////////////// END MULTIRAY ////////////////
@@ -219,11 +270,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
     float3 v = d - s;
     const float3 bmin = b;
-    //const float3 bmax = CFLOAT(d_N) * d_d + b;
     const float3 tBack = (bmin - s) / v;
     const float3 tFront = (bmax - s) / v;
-    //const float3 tBack = DIVIDE(bmin - s, v);
-    //const float3 tFront = DIVIDE(bmax - s, v);
 
     const float3 tMin = fmin(tFront, tBack);
     const float3 tMax = fmax(tFront, tBack);
@@ -264,7 +312,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
         const float3 p = FMAD(t, v, s);
 #endif
-		compute_attenuation(dL, p, d_atten, &jelppi, aa, d_N);
+		compute_attenuation(dL, p, d_atten, &jelppi, aa);
         t += tStep;
         if (t >= tEnd)
             break;
@@ -297,18 +345,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
         const float3 p = FMAD3(t, v, s);
 #endif
-
-    // if (idx == 8000) {
-        // printf("v.x = %f\n", v.x);
-        // printf("v.y = %f\n", v.y);
-        // printf("v.z = %f\n", v.z);
-        // printf("s.x = %f\n", s.x);
-        // printf("s.y = %f\n", s.y);
-        // printf("s.z = %f\n", s.z);
-        // printf("t = %f\n", t);
-    // }
 #if defined(ATN) && defined(FP)
-		compute_attenuation(dL, p, d_atten, &jelppi, aa, d_N);
+		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
 			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f);
@@ -322,13 +360,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			, lor
 #endif
 			);
-    // if (idx == 8000) {
-        // printf("ax[0] = %f\n", ax[0]);
-        // printf("dL = %f\n", dL);
-        // printf("p.x = %f\n", p.x);
-        // printf("p.y = %f\n", p.y);
-        // printf("p.z = %f\n", p.z);
-    // }
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
             const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
@@ -360,10 +391,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
         if (t > tEnd)
             break;
     }
-    // if (idx == 8000) {
-    //     printf("ax[0] = %f\n", ax[0]);
-    //     printf("d_output[idx] = %f\n", d_output[idx]);
-    // }
 #if defined(ATN) && defined(FP)
 		temp *= EXP(jelppi);
 #endif
@@ -377,9 +404,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			idx += m_size;
 #endif
 		}
-    // if (idx == 8000) {
-    //     printf("d_output[idx] = %f\n", d_output[idx]);
-    // }
 #elif defined(FP) && defined(N_RAYS)
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
@@ -415,18 +439,40 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     }
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
-    // if (idx == 8000) {
-    //     printf("d_output[idx] = %f\n", d_output[idx]);
-    // }
 }
 #endif // END FP
 
+/*******************************************************************************************************************************************
+* Voxel-based backprojection. A ray is projected from the source through the center of each voxel and onto the detector panel. This is
+* repeated for each projection. Linear or nearest neighbor interpolation is used at the detector panel (linear is default). CT-type data
+* only!
+*
+* INPUTS:
+* d_size_x = the number of detector elements (rows),
+* d_sizey = the number of detector elements (columns),
+* d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
+* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* T = redundancy weights for offset imaging,
+* d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
+* d_d = distance between adjecent voxels in z/x/y-dimension, float3 or three floats (if PYTHON is defined),
+* kerroin = precomputed scaling value, see computeProjectorScalingValues.m
+* d_forw = forward projection
+* angle = Projection angles for FDK reconstruction
+* DSC = Detector to center of rotation distance
+* d_OSEM = backward projection,
+* d_xy/z = detector x/y/z-coordinates,
+* d_uv = Direction coordinates for the detector panel,
+* d_Summ = buffer for d_Summ (sensitivity image),
+* no_norm = If 1, sensitivity image is not computed,
+* d_nProjections = Number of projections/sinograms,
+* ii = The current volume, for multi-resolution reconstruction, 0 can be used when not using multi-resolution
+*
+* OUTPUTS:
+* d_OSEM = backprojection,
+*******************************************************************************************************************************************/
+
 #if defined(BP) && defined(CT)// START BP
-//#define MAX(a,b) (a>b?a:b)
-//#define MIN(a,b) (a<b?a:b)
-// #undef PITCH
-// #undef NA
-// #define NA 6
 KERNEL2
 void projectorType4Backward(const uint d_size_x, const uint d_sizey, 
 #ifdef PYTHON
@@ -444,9 +490,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
 #endif
 #ifdef OFFSET
-    // const float T, //const float R, 
-    CONSTANT float* T, //const float R, 
-//     IMAGE2D maskOffset,
+    CONSTANT float* T, 
 #endif
 #ifdef PYTHON
 	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float bx, const float by, const float bz, 
@@ -496,61 +540,34 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #endif
     float temp[NVOXELS];
     float wSum[NVOXELS];
-// #ifdef OFFSET
-//     __private float tempOff[NVOXELS];
-//     __private float wSumOff[NVOXELS];
-// #endif
     for (int zz = 0; zz < NVOXELS; zz++) {
         temp[zz] = 0.f;
         if (no_norm == 0u)
             wSum[zz] = 0.f;
     }
-// #ifdef OFFSET
-//     __private float TT[600] = {11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.398f,11.12f,11.12f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.12f,11.398f,11.398f,11.12f,11.12f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.12f,11.398f,11.398f,11.398f,11.398f,11.12f,11.12f,11.12f,11.12f,11.398f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.398f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,10.842f,11.12f,11.12f,10.842f,11.12f,10.842f,10.842f,11.12f,10.842f,10.842f,11.12f,10.842f,11.12f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,11.12f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,10.842f,11.12f,11.12f,10.842f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,10.842f,11.12f,10.842f,11.12f,11.12f,10.842f,11.12f,11.12f,11.12f,11.12f,10.842f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f,11.12f};
-// #endif
-    //const float nZ = 1.f / CFLOAT(d_nProjections);
-    //float pz = nZ / 2.f;
     float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
     const float2 koko = MFLOAT2(CFLOAT(d_size_x) * d_dPitch.x, CFLOAT(d_sizey) * d_dPitch.y );
     const float2 indeksi = MFLOAT2(CFLOAT(d_size_x) / 2.f, CFLOAT(d_sizey) / 2.f );
-    //float apuZ = d_d.z / 2.f + b.z;
-//#pragma unroll NPROJECTIONS
     for (int kk = 0; kk < d_nProjections; kk++) {
         float3 d1, d2, d3;
         float3 s;
-        //const float kulmaXY = d_angles[kk * NA];
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
         d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
-// #ifdef OFFSET
-//         const float R = distance(s, d1);
-// #endif
-        //s = vload3(kk * 2, d_xyz);
-
-        //d1 = vload3(kk * 2, &d_xyz[3]);
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
         const float3 apuY = CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
-        //d2.x = d1.x + indeksi.x * d_uv[kk * NA] + indeksi.y * d_uv[kk * NA + 1];
-        //d3.x = d1.x - indeksi.x * d_uv[kk * NA] - indeksi.y * d_uv[kk * NA + 1];
-        //d2.y = d1.y + indeksi.x * d_uv[kk * NA + 2] + indeksi.y * d_uv[kk * NA + 3];
-        //d3.y = d1.y - indeksi.x * d_uv[kk * NA + 2] - indeksi.y * d_uv[kk * NA + 3];
-        //d2.z = d1.z + indeksi.x * d_uv[kk * NA + 4] + indeksi.y * d_uv[kk * NA + 5];
-        //d3.z = d1.z - indeksi.x * d_uv[kk * NA + 4] - indeksi.y * d_uv[kk * NA + 5];
 #else
         const float3 apuX = MFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
         const float3 apuY = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
 #endif
         d2 = apuX - apuY;
         d3 = d1 - apuX - apuY;
-        //const float3 normX = normalize(apuX);
-        //const float3 normY = normalize(apuY);
         const float3 normX = normalize(apuX) / koko.x;
         const float3 normY = normalize(apuY) / koko.y;
         const float3 cP = cross(d2, d3 - d1);
         const float upperPart = dot(cP, s - d1);
         float3 v = dV - s;
         float lowerPart = -dot(v, cP);
-        //const float3 dMin = d2 - d3;
 #ifndef USEMAD
         const float vApu = v.x * v.x + v.y * v.y;
 #else
@@ -562,7 +579,6 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #pragma unroll NVOXELS
 #endif
         for (int zz = 0; zz < NVOXELS; zz++) {
-            //d.z = dV.z;
             const uint ind = i.z + zz;
             if (ind >= d_N.z)
                 break;
@@ -575,19 +591,13 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             const float l1 = FMAD(v.z, v.z, vApu);
 #endif
 #ifdef FDK
-            // float weight = (DSC + dV.x * SINF(angle[kk]) - dV.y * COSF(angle[kk]));
             float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
             weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
-            // weight = (DSC * DSC) / (weight * weight) * (2.f * M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
-            // const float L = distance(p, s);
-            // const float weight = (L * L * L) / (l1)*kerroin / 6.f;
 #else
             const float L = distance(p, s);
-            //const float l1 = v.x * v.x + v.y * v.y + v.z * v.z;
             const float weight = (L * L * L) / (l1)*kerroin;
 #endif
             p -= d3;
-            //const float yVar = read_imagef(d_forw, samplerIm, CFLOAT4(dot(p, normX) / koko.x, dot(p, normY) / koko.y, pz, 0.f)).x;
             float px = dot(p, normX);
             float py = dot(p, normY);
             float yVar = 0.f;
@@ -607,21 +617,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 yVar = d_forw[indX + indY + indZ];
             }
 #endif
-			// if (idx == 25824640) {
-				// printf("yVar = %f\n", yVar);
-				// printf("px = %f\n", px);
-				// printf("py = %f\n", py);
-				// printf("weight = %f\n", weight);
-				// printf("p.x = %f\n", p.x);
-				// printf("p.y = %f\n", p.y);
-				// printf("p.z = %f\n", p.z);
-			// }
 #ifdef OFFSET
-            // const int offsetMask = read_imageui(maskOffset, sampler_Offset, (float2)(px, py)).w;
-            // const int offsetMask = 1;
-            // const float TT = 0.278f * 50.f;
-            // const float R = 1.083999e3f;
-            // const float apx = px;
             float TT;
             float Tloc = T[kk];
             if (Tloc > koko.x / 2.f) {
@@ -632,131 +628,39 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 TT = Tloc;
             px *= koko.x;
             px -= TT;
-            // px -= TT[kk];
-            // p -= T;
 #endif
-                // if (ii == 3 && i.x == 15 && i.y == 80 && i.z == 112) {
-                //     printf("yVar = %f\n", yVar);
-                //     printf("weight = %f\n", weight);
-                // }
-            //const float yVar = read_imagef(d_forw, sampler, CFLOAT4(p.x, p.z, pz, 0.f)).x;
-            //const float yVar = p.x;
             if (yVar != 0.f) {
-//                 float LO = 63.f;
-//                 py *= koko.y;
-//                 py -= koko.y / 2.f;
-//                 py += LO;
-//                 LO = koko.y / 2.f - LO;
-// #ifdef MASKBP
-                // if (maskVal > 0)
-                // temp[zz] += yVar * weight *.5f;
-                // else
-// #endif
-//                 float W2 = 1.f;
-//                 if (py <= LO || py >= -LO)
-//                     W2 = cos(M_PI_4_F * (atan(py / 700.f) / atan(LO / 700.f) - 1.f));
-                // if (ii == 3 && i.x == 15 && i.y == 80 && i.z == 13) {
-                //     // printf("dot(p, normX) = %f\n", dot(p, normX));
-                //     // printf("dot(p, normY) = %f\n", dot(p, normY));
-                //     printf("yVar = %f\n", yVar);
-                //     printf("weight = %f\n", weight);
-                //     // printf("px = %f\n", px);
-                //     // printf("W2 = %f\n", W2);
-                //     // printf("LO = %f\n", LO);
-                //     // printf("koko.x = %f\n", koko.x);
-                //     // printf("koko.y = %f\n", koko.y);
-                //     // printf("kk = %d\n", kk);
-                //     // printf("zz = %d\n", zz);
-                // }
-                // temp[zz] += yVar * weight * W2 * W2;
 #ifdef OFFSET
-                // if (ii < 3 && px <= TT[kk] && px >= -TT[kk]) {
                 if (px <= TT && px >= -TT) {
-                // if (px <= TT + 18.648f - 273.5040f && px >= TT - 273.5040f) {
-                // if (px <= 273.5040f - 200.f && px >= -TT + 273.5040f) {
-                    // px += TT;
-                    // const float w = .5f * (SINF((M_PI_F * atan(px / R)) / (2.f * atan(TT[kk] / R))) + 1.f);
-                    // const float w = .5f * (SINF((M_PI_F * atan(px / R)) / (2.f * atan(TT / R))) + 1.f);
-                    // const float w = (.5f * (SINF((M_PI_F * atan2(px, R)) / (2.f * atan2(TT, R))) + 1.f));
-                    // float w = SINF(M_PI_2_F * ((px + TT) / (2.f * TT)));
-                    // w *= w;
                     float w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
-                    // w /= 2.f;
-                    // float w = .5f;
-                    // float w = 10.f;
-                    // temp[zz] += w * weight;
                     temp[zz] += w * yVar * weight;
-                    //temp += yVar;
                     if (no_norm == 0u)
                         wSum[zz] += w * weight;
-                // if (ind == 262 && i.y < 500 && i.y > 400 && i.x < 500 && i.x > 400) {
-                //     printf("px = %f\n", px);
-                //     printf("apx = %f\n", apx);
-                //     printf("koko.x = %f\n", koko.x);
-                //     printf("T = %f\n", T);
-                //     printf("R = %f\n", R);
-                //     printf("w = %f\n", w);
-                //     printf("i.x = %d\n", i.x);
-                //     printf("i.y = %d\n", i.y);
-                // }
                 }
-                // else if (ii < 3 && px < -TT[kk]) {
                 else if (px < -TT) {
-                // else if (px < TT - 273.5040f) {
-                // else if (px < -TT + 273.5040f) {
                 }
                 else {
 #endif
-                    // temp[zz] += weight;
                     temp[zz] += yVar * weight;
                     if (no_norm == 0u)
                         wSum[zz] += weight;
-                    // if (i.x == 700 && i.y == 700 && ind == 50)  {
-                    //    printf("px = %f\n", px);
-                    //    printf("py = %f\n", py);
-                    //    printf("pz = %f\n", pz);
-                    //    printf("weight = %f\n", weight);
-                    //    printf("yVar = %f\n", yVar);
-                    //    printf("temp[zz] = %f\n", temp[zz]);
-                    // }
 #ifdef OFFSET
                 }
 #endif
             }
             v.z += d_d.z;
-            //lowerPart -= d_d.z * cP.z;
             lowerPart -= dApu;
         }
-        //pz += nZ;
-        //break;
-//#endif
     }
-// #ifdef BP
     for (int zz = 0; zz < NVOXELS; zz++) {
         const uint ind = i.z + zz;
         if (ind >= d_N.z)
             break;
-                // if (ii == 3 && i.x == 15 && i.y == 80 && i.z == 112) {
-                //     printf("temp[zz] = %f\n", temp[zz]);
-                //     printf("zz = %d\n", zz);
-                // }
-// #ifdef OFFSET
-//         if (temp[zz] != 0.f) {
-// #endif
             d_OSEM[idx] += temp[zz];
 
             if (no_norm == 0u)
                 d_Summ[idx] = wSum[zz];
-// #ifdef OFFSET
-//         }
-//         else {
-//             d_OSEM[idx] = tempOff[zz];
-//             if (no_norm == 0u)
-//                 d_Summ[idx] = wSumOff[zz];
-//         }
-// #endif
         idx += d_N.y * d_N.x;
     }
-// #endif
 }
 #endif // END BP

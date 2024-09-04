@@ -21,11 +21,6 @@ void hyperbolicKernel(T* grad, const T* u, const T* w, const int Nx, const int N
 		const int64_t z = n / Nxy;
 		const int64_t y = (n - z * Nxy) / static_cast<int64_t>(Nx);
 		const int64_t x = n - z * Nxy - y * static_cast<int64_t>(Nx);
-		//if (fovIndices[xyz.z] == 0)
-		//	return;
-		//const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
-		//if (maskVal == 0)
-		//	return;
 		T output = (T)0.;
 		const T uj = u[n];
 		int uu = 0;

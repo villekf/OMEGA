@@ -2,13 +2,12 @@
 * This function is used to check for the number of voxels each LOR/ray
 * traverses and also whether the LOR/ray actually intersects with the pixel
 * space.
-* Raw list-mode data and sinogram data have slightly different versions.
 * Output is the number of voxels the ray has traversed (if the LOR does not
 * traverse the pixel space, this value will be 0).
 *
 * Uses OpenMP for parallelization.
 *
-* Copyright (C) 2020 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -23,7 +22,6 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-//#define ORTH
 #include "projector_functions.h"
 
 const static int TYPE = 0;
@@ -45,14 +43,6 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 
 	param.subsets = 1;
 
-	//mexPrintf("param.projType = %d\n", param.projType);
-	//mexPrintf("param.size_y = %d\n", param.size_y);
-	//mexPrintf("param.size_x = %d\n", param.size_x);
-	//mexPrintf("param.listMode = %d\n", param.listMode);
-	//mexPrintf("param.pitch = %d\n", param.pitch);
-	//mexPrintf("param.subsets = %d\n", param.subsets);
-	//mexPrintf("param.subsetType = %d\n", param.subsetType);
-
 #ifdef _OPENMP
 #if _OPENMP >= 201511 && defined(MATLAB)
 #pragma omp parallel for schedule(monotonic:dynamic, nChunks)
@@ -62,30 +52,13 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 #endif
 	for (int64_t lo = 0LL; lo < nMeas; lo++) {
 		int64_t ix = lo, iy = 0, iz = 0;
-		//if (param.subsetType >= 8 || param.subsets == 1) {
-			iz = lo / ((int64_t)param.size_x * (int64_t)param.size_y);
-			ix = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) % (int64_t)param.size_x;
-			iy = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) / (int64_t)param.size_x;
-		//}
-		//else {
-		//	if (!CT) {
-		//		ix = lo;
-		//		iy = 0;
-		//		iz = 0;
-		//	}
-		//	else {
-		//		iz = ix / ((int64_t)param.size_x * (int64_t)param.size_y);
-		//		iy = ix % param.size_y;
-		//		ix = (ix / param.size_y) % param.size_x;
-		//	}
-		//}
+		iz = lo / ((int64_t)param.size_x * (int64_t)param.size_y);
+		ix = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) % (int64_t)param.size_x;
+		iy = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) / (int64_t)param.size_x;
 		Det<double> detectors;
 
 		if (!CT) {
-			//if (param.raw)
-			//	get_detector_coordinates_raw(param.det_per_ring, x, z, detectors, detIndex, lo, param.listMode, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
-			//else
-				get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
+			get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, 1, 1, param.dPitchZ, param.dPitchXY);
 		}
 		else
 			get_detector_coordinates_CT(x, z, param.size_x, detectors, lo, param.subsets, param.size_y, ix, iy, iz, param.dPitchZ, param.nProjections, param.listMode, param.pitch);
@@ -96,18 +69,6 @@ void improved_siddon_precomputation_phase(paramStruct<double>& param, const int6
 		const double z_diff = (detectors.zd - detectors.zs);
 		if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.) || std::isinf(y_diff) || std::isinf(x_diff))
 			continue;
-
-		//if (lo == 841) {
-			//mexPrintf("lo = %d\n", lo);
-		//	mexPrintf("detectors.xs = %f\n", detectors.xs);
-		//	mexPrintf("detectors.ys = %f\n", detectors.ys);
-		//	mexPrintf("detectors.xd = %f\n", detectors.xd);
-		//	mexPrintf("detectors.yd = %f\n", detectors.yd);
-		//	mexPrintf("z_diff = %f\n", z_diff);
-		//	mexPrintf("y_diff = %f\n", y_diff);
-		//	mexPrintf("x_diff = %f\n", x_diff);
-		//	return;
-		//}
 		bool XY = false;
 		uint16_t temp_koko = 0u;
 

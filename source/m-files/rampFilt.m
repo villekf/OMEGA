@@ -1,6 +1,10 @@
 function filt = rampFilt(N,varargin)
 %RAMPFILT Outputs the (optionally) windowed ramp filter
-%   Detailed explanation goes here
+%   Hamming, Hann, Blackman, Nuttal, Gaussian, Shepp-Logan, cosine and
+%   Parzen windowing methods available (second input). Third input is the
+%   optional cut-off frequency value. Fourth is the optional STD for the
+%   Gaussian filter. Fift input is the optional boolean for 2D filtering,
+%   i.e. if true 2D filter is output instead.
 if nargin > 2 && ~isempty(varargin) && ~isempty(varargin{2})
     c = varargin{2};
 else
@@ -21,19 +25,6 @@ if nargin > 4 && ~isempty(varargin) && ~isempty(varargin{4})
 else
     use2D = false;
 end
-% nn = -(N/2):N/2-1;
-% filt = zeros(N,1);
-% filt(N/2 + 1) = 1/4;
-% filt(2:2:end) = -1 ./ (pi * nn(2:2:end)).^2;
-% filt = abs(fft(filt))*2;
-% filt = filt(1:N/2+1);
-% X = 1 : N;
-% Y = 1 : N;
-% [XX,YY] = meshgrid(Y,X);
-% M = N;
-% % N = N;
-% dist = fftshift(sqrt((XX-M/2).^2 + (YY-N/2).^2));
-% dist = dist ./ max(dist(:));
 
 filt = linspace(0, N, N / 2 + 1)' ./ N;
 w = 2 * pi * (0:size(filt,1) - 1)' / N;
@@ -75,16 +66,5 @@ if use2D
     filt = repmat(filt, 1, N);
     filt = filt .* filt';
     filt = filt ./ max(filt(:));
-    % filt = ones(size(filt),'single');
 end
 end
-
-% nn = -(N/2):N/2-1;
-% mm = -(N/2):N/2-1;
-% [NN, MM] = meshgrid(nn, mm);
-% % filt = zeros(N,N);
-% % filt = -1 ./ (2*pi.^2 * MM.^2 .* sinc(-pi * NN));
-% filt = -1 ./ (2*pi.^2 * (MM.^2 .* NN.^2));
-% filt(N/2 + 1,:) = 0;
-% filt(:,N/2 + 1) = 0;
-% filt(N/2 + 1,N/2 + 1) = 1/4;

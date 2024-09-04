@@ -51,21 +51,18 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	size_t sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Nx = getUint32s(prhs[ind], "solu");
 	inputScalars.Nx = std::vector<uint32_t>(Nx, Nx + sX);
-	//inputScalars.Nx[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// The number of y-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Ny = getUint32s(prhs[ind], "solu");
 	inputScalars.Ny = std::vector<uint32_t>(Ny, Ny + sX);
-	//inputScalars.Ny[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	// The number of z-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	uint32_t* Nz = getUint32s(prhs[ind], "solu");
 	inputScalars.Nz = std::vector<uint32_t>(Nz, Nz + sX);
-	//inputScalars.Nz[0] = getScalarUInt32(prhs[ind], ind);
 	ind++;
 
 	if (DEBUG) {
@@ -77,42 +74,36 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dx = getSingles(prhs[ind], "solu");
 	inputScalars.dx = std::vector<float>(dx, dx + sX);
-	//inputScalars.dx[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The size of y-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dy = getSingles(prhs[ind], "solu");
 	inputScalars.dy = std::vector<float>(dy, dy + sX);
-	//inputScalars.dy[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The size of z-voxels in the estimated image
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* dz = getSingles(prhs[ind], "solu");
 	inputScalars.dz = std::vector<float>(dz, dz + sX);
-	//inputScalars.dz[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (x-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* bx = getSingles(prhs[ind], "solu");
 	inputScalars.bx = std::vector<float>(bx, bx + sX);
-	//inputScalars.bx[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (y-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* by = getSingles(prhs[ind], "solu");
 	inputScalars.by = std::vector<float>(by, by + sX);
-	//inputScalars.by[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	// The distance from the origin to the corner of the image (z-direction)
 	sX = mxGetNumberOfElements(prhs[ind]);
 	float* bz = getSingles(prhs[ind], "solu");
 	inputScalars.bz = std::vector<float>(bz, bz + sX);
-	//inputScalars.bz[0] = getScalarFloat(prhs[ind], ind);
 	ind++;
 
 	if (DEBUG) {
@@ -186,8 +177,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	inputScalars.raw = getScalarUInt8(prhs[ind], ind);
 	ind++;
 
-	//af::setDevice(device);
-
 	inputScalars.use_psf = getScalarBool(prhs[ind], ind);
 	ind++;
 
@@ -199,11 +188,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind6 = %u\n", ind);
 		mexEval();
 	}
-
-	//inputScalars.bzb = inputScalars.bz + static_cast<float>(inputScalars.Nz) * inputScalars.dz;
-
-	//if (nrhs != 74)
-	//	mexErrMsgTxt("Invalid number of input arguments. There must be 74.");
 
 	// attenuation values
 	const float* atten = getSingles(prhs[ind], "solu");
@@ -222,7 +206,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	// Number of measurements/LORs
 	const int64_t* pituus = getInt64s(prhs[ind], "solu");
-	//const size_t nPituus = mxGetNumberOfElements(prhs[ind]);
 	ind++;
 
 	// Is the attenuation correction included
@@ -246,11 +229,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind8 = %u\n", ind);
 		mexEval();
 	}
-
-	// Number of voxels the current LOR/ray traverses
-	//const uint16_t* lor1 = getUint16s(prhs[ind], "solu");
-	//inputScalars.sizeLOR = mxGetNumberOfElements(prhs[ind]);
-	//ind++;
 
 	// XY-indices of the detector coordinates of each LOR
 	const uint32_t* xy_index = getUint32s(prhs[ind], "solu");
@@ -334,15 +312,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		mexPrintBase("ind12 = %u\n", ind);
 		mexEval();
 	}
-
-	// Number of OS-reconstruction algorithms (including priors)
-	//const uint32_t n_rekos = getScalarUInt32(prhs[ind], ind);
-	//ind++;
-
-	// What type of reconstruction, needed for the OpenCL kernel
-	// E.g. 2 means COSEM (different computations)
-	//const uint8_t* reko_type = getUint8s(prhs[ind], "solu");
-	//ind++;
 
 	inputScalars.bmin = getScalarFloat(prhs[ind], ind);
 	ind++;
@@ -498,7 +467,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		// Clear ArrayFire memory
 		af::deviceGC();
-		//af_print_mem_info("mem info final", -1);
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Reconstruction completed successfully!");
 	}

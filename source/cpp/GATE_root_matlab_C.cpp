@@ -1,7 +1,7 @@
 /**************************************************************************
 * ROOT file import into MATLAB. This file contains the C implementation.
 *
-* Copyright (C) 2019  Ville-Veikko Wettenhovi
+* Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -26,7 +26,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	int nrhs, const mxArray*prhs[])
 
 {
-
 
 	/* Check for proper number of arguments */
 
@@ -101,7 +100,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 
 	TChain *delay = nullptr;
 	int64_t Ndelays = 0LL;
-	//bool dynamic = false;
 
 	if (randoms_correction) {
 		delay = new TChain("delay");
@@ -132,21 +130,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
 			plhs[10] = mxCreateNumericMatrix(6, Ndelays, mxSINGLE_CLASS, mxREAL);
 		else
 			plhs[10] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[10] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[11] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[12] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[13] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[14] = mxCreateNumericMatrix(Nentries, 1, mxSINGLE_CLASS, mxREAL);
 	}
 	else {
 		plhs[8] = mxCreateNumericMatrix(1, 1, mxUINT16_CLASS, mxREAL);
 		plhs[9] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 		plhs[10] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[10] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[11] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[12] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[13] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
-		//plhs[14] = mxCreateNumericMatrix(1, 1, mxSINGLE_CLASS, mxREAL);
 	}
 	if (indexBased) {
 		plhs[11] = mxCreateNumericMatrix(2, Nentries, mxUINT16_CLASS, mxREAL);
@@ -176,7 +164,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	uint16_t* axIndex = nullptr;
 	uint16_t* DtrIndex = nullptr;
 	uint16_t* DaxIndex = nullptr;
-	//float* x1 = nullptr, * x2 = nullptr, * y1 = nullptr, * y2 = nullptr, * z1 = nullptr, * z2 = nullptr;
 	float* coord = nullptr, * Dcoord = nullptr;
 	if (source) {
 		S = (uint16_t*)mxGetData(plhs[5]);
@@ -187,11 +174,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 		coord = (float*)mxGetData(plhs[9]);
 		if (randoms_correction)
 			Dcoord = (float*)mxGetData(plhs[10]);
-		//x2 = (float*)mxGetData(plhs[10]);
-		//y1 = (float*)mxGetData(plhs[11]);
-		//y2 = (float*)mxGetData(plhs[12]);
-		//z1 = (float*)mxGetData(plhs[13]);
-		//z2 = (float*)mxGetData(plhs[14]);
 	}
 	if (indexBased) {
 		trIndex = (uint16_t*)mxGetData(plhs[11]);

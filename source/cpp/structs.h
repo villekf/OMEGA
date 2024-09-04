@@ -27,7 +27,6 @@
 // Struct for the TV-prior
 typedef struct TVdata_ {
 #ifdef AF
-	//af::array s1, s2, s3, s4, s5, s6, s7, s8, s9, reference_image, APLSReference;
 	af::array refIm;
 #endif
 	bool TV_use_anatomical = false;
@@ -40,7 +39,7 @@ typedef struct TVdata_ {
 // Struct for the various ArrayFire arrays
 typedef struct AF_im_vectors_ {
 	af::array C_co, dU;
-	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP;
+	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
 	std::vector<af::array> im_os, im_os_blurred, rhs_os, pCP, qProxTGV, vProxTGV, qProxTV, qProx;
 	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS;
 	std::vector<std::vector<af::array>> Summ;
@@ -72,7 +71,6 @@ typedef struct Weighting_ {
 	bool med_no_norm = false, MBSREM_prepass = false, NLM_MRP = false, NLTV = false, NLRD = false, NLLange = false, NLM_anatomical = false, computeD = false,
 		precondIm = false, precondMeas = false, computeM = false, RDPLargeNeighbor = false, UseL2Ball = true, NLLangeFiltered = false, filteringOrig = false, NLGGMRF = false, RDP_anatomical = false;
 	std::vector<bool> precondTypeMeas{ false, false }, precondTypeIm{ false, false, false, false, false, false, false };
-	//uint32_t nRowsD = 0U, nColsD = 0U;
 	int64_t nProjections = 0LL;
 	uint32_t nPriors = 0U, nMAP = 0U, nMAPML = 0U, nMLEM = 0U, nOS = 0U, nTot = 0U, nMAPOS = 0U, nPriorsTot = 0U, ng = 20U;
 	std::vector<int32_t> mIt;

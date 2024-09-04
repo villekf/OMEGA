@@ -1,7 +1,7 @@
 /**************************************************************************
 * Header for OpenCL error list
 *
-* Copyright(C) 2022 Ville - Veikko Wettenhovi
+* Copyright(C) 2022-2024 Ville-Veikko Wettenhovi
 *
 * This program is free software : you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -26,16 +26,24 @@
 #include "opencl.hpp"
 #include <iostream>
 
+// For 64-bit integer atomics
 #define TH 100000000000.f
+// For 32-bit integer atomics
 #define TH32 100000.f
+// For projector type 4 backprojection
+// How many voxels are computed per thread
 #define NVOXELS 8
+// How many voxels are computed per thread for BDD forward projection
 #define NVOXELS5 1
+// How many slices are computed in the same thread for BDD forward projection
 #define NVOXELSFP 8
 
+// Source: https://stackoverflow.com/questions/14038589/what-is-the-canonical-way-to-check-for-errors-using-the-cuda-runtime-api
 #define getErrorString(ans) { gpuAssert((ans), __FILE__, __LINE__); }
 
 inline const char* gpuErrchk(cl_int error)
 {
+	// source: https://stackoverflow.com/questions/24326432/convenient-way-to-show-opencl-error-codes
 	switch (error) {
 		// run-time and JIT compiler errors
 	case 0: return "CL_SUCCESS";

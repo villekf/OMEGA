@@ -17,8 +17,6 @@
 classdef projectorClass
     %PROJECTORCLASS A MATLAB class for computing the backward and
     %forward projections in OMEGA or forming the entire system matrix
-    %   Simplified version of the forward_backward_projections_example.m
-    %   (an example of this class is included in the same file).
 
     properties
         param
@@ -68,17 +66,17 @@ classdef projectorClass
             %   can be changed as well. Only one device is used at all
             %   times.
             %   Examples:
-            %       proj = forwardBackwardProjectCT(obj.param);
-            %       proj = forwardBackwardProjectCT(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot);
-            %       proj = forwardBackwardProjectCT(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
+            %       proj = projectorClass(options);
+            %       proj = projectorClass(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot);
+            %       proj = projectorClass(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
             %           sourceOffsetRow, bedOffset);
-            %       proj = forwardBackwardProjectCT(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
+            %       proj = projectorClass(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
             %           sourceOffsetRow, bedOffset, subsets);
-            %       proj = forwardBackwardProjectCT(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
+            %       proj = projectorClass(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
             %           sourceOffsetRow, bedOffset, subsets, implementation, use_device);
-            %       proj = forwardBackwardProjectCT(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
+            %       proj = projectorClass(angles, Prows, Pcolumns, Nx, Ny, Nz, FOV_tr, axial_fov, dPitch, sourceToDetector, sourceToCRot,
             %           [], [], [], implementation, use_device);
-            %       proj = forwardBackwardProjectCT(x, y, z, Nx, Ny, Nz, FOV_tr, axial_fov, subsets, implementation, use_device);
+            %       proj = projectorClass(x, y, z, Nx, Ny, Nz, FOV_tr, axial_fov, subsets, implementation, use_device);
             %   INPUTS:
             %       angles = The angles corresponding to the projections,
             %       can be either degrees or radians (degrees will be
@@ -432,17 +430,8 @@ classdef projectorClass
             % Initial work on TOF by Jonna Kangasniemi
             if obj.param.TOF
                 if obj.param.TOF_bins_used ~= obj.param.TOF_bins
-                    % if iscell(obj.param.SinM)
-                    %     for kk = 1 : obj.param.partitions
-                    %         obj.param.SinM{kk} = sum(obj.param.SinM{kk},4,'native');
-                    %     end
-                    % else
-                    %     obj.param.SinM = sum(obj.param.SinM,4,'native');
-                    % end
                     obj.param.sigma_x = 0;
                     TOFCenter = 0;
-                    % obj.param.TOF = false;
-                    % obj.param.TOF_bins = 1;
                 else
                     c = 2.99792458e11;
                     obj.param.sigma_x = (c*obj.param.TOF_FWHM/2) / (2 * sqrt(2 * log(2)));
@@ -634,23 +623,6 @@ classdef projectorClass
             [obj.param, obj.param.lor_a, obj.param.xy_index, obj.param.z_index, obj.param.LL, obj.param.summa] = form_subset_indices(obj.param, obj.nMeas, obj.index, y, ...
                 obj.param.lor_a, obj.param.LL);
             if obj.param.listmode
-                % if (obj.param.subset_type == 1 || obj.param.subset_type == 3) && obj.param.subsets > 1
-                %     obj.param.x = reshape(obj.param.x, 6, []);
-                %     obj.param.x = obj.param.x(:,obj.index);
-                %     obj.param.x = obj.param.x(:);
-                % elseif obj.param.subsets == 1
-                %     obj.nMeas = int64([0;numel(obj.param.x) / 6]);
-                % end
-                % if size(x_det,1) > 2
-                %     x_det = [x_det'; y'; z_det'];
-                % else
-                %     x_det = [x_det; y; z_det];
-                % end
-                % clear y z_det
-                % obj.param = rmfield(obj.param,'x');
-                % obj.param = rmfield(obj.param,'y');
-                % obj.param = rmfield(obj.param,'z');
-                % obj.param.x = obj.param.x(obj.index,:);
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
                     if obj.param.CT
@@ -728,12 +700,6 @@ classdef projectorClass
                     || obj.param.projector_type == 42 || obj.param.projector_type == 43 || obj.param.projector_type == 24 || obj.param.projector_type == 34
                 obj.param = computeProjectorScalingValues(obj.param);
             end
-
-            % if exist('feature','builtin') == 5
-            %     nCores = uint32(feature('numcores'));
-            % else
-            %     nCores = uint32(1);
-            % end
 
             if obj.param.use_raw_data && obj.param.sampling_raw > 1
                 obj.param.det_per_ring = obj.param.det_per_ring * obj.param.sampling_raw;
@@ -900,15 +866,15 @@ classdef projectorClass
             %   Output is stored in the f-vector. PSF blurring is performed
             %   if it has been selected.
             % Inputs:
-            %   obj = The forwardBackwardProject object created by
-            %   forwardBackwardProject
+            %   obj = The projectorClass object created by
+            %   projectorClass
             %   input = The input vector, i.e. this computes A' * input
             %   subset_number = Current subset, used to select the correct
             %   LORs. Applicable only when using subsets, omit otherwise.
             % Outputs:
             %   f = The result of f = A' * input
-            %   obj = The modified object. Sensitivity image is stored in
-            %   sens. Can be omitted if sensitivity image is not required.
+            %   sens = Sensitivity image. Can be omitted if sensitivity
+            %   image is not required. 
 
             if nargin >=3 && ~isempty(varargin{1})
                 obj.subset = varargin{1};

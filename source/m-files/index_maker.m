@@ -45,19 +45,6 @@ function [index, pituus, subsets] = index_maker(options)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
-% if nargin - 3 < 3 && ~use_raw_data
-%     error('Sinogram data selected, but not enough sinogram size information input')
-% end
-% if nargin - 3 >= 3 && ~isempty(varargin) && ~isempty(varargin{1}) && ~isempty(varargin{2}) && ~isempty(varargin{3})
-%     Nang = varargin{1};
-%     Ndist = varargin{2};
-%     NSinos = varargin{3};
-%     
-%     if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
-%         Ndist = Ndist * options.sampling;
-%     end
-% end
-
 if ~isfield(options,'sampling_raw')
     options.sampling_raw = 1;
 end
@@ -141,9 +128,6 @@ if subsets > 1 && options.subset_type < 8
         % Every nth measurements
     elseif options.subset_type == 2
         for i=1:subsets
-%             index1 = cast(i:subsets:Ndist, tyyppi)';
-%             index1 = repmat(index1, Nang, 1) + repelem(cast(Ndist * (0 : Nang - 1)', tyyppi), numel(index1));
-%             index1 = repmat(index1, NSinos, 1) + repelem(cast((0 : Nang * Ndist :  Nang * Ndist * (NSinos - 1))', tyyppi), numel(index1));
             index1 = cast(i:subsets:totalLength, tyyppi)';
             if options.use_raw_data && ~options.precompute_lor && options.ring_difference_raw < options.rings
                 index1 = index1(ismember(index1,ind));
@@ -317,11 +301,5 @@ elseif options.subset_type > 11
     error('Invalid subset type!')
 end
 if ~iscell(index) && size(index,1) == 1 && ~options.precompute_lor
-%     index = true(pituus,1);
     index = 0;
-%     if options.CT
-%         index = uint64(1 : pituus)';
-%     else
-%         index = uint32(1 : pituus)';
-%     end
 end

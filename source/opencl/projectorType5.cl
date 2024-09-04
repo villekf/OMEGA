@@ -1,4 +1,44 @@
 
+/*******************************************************************************************************************************************
+* Matrix free projectors for forward and backward projections. This is the branchless distance-driven projector. 
+* Based on: https://doi.org/10.1109/TCI.2017.2675705
+*
+* Used by implementations 2, 3 and 5.
+*
+* The forward and backward projections are separate kernels. 
+* 
+*
+* INPUTS:
+* d_nRows = the number of detector elements (rows),
+* d_nCols = the number of detector elements (columns),
+* d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
+* maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
+* d_Size = precomputed scaling value, float2 or two floats (if PYTHON is defined), see computeProjectorScalingValues.m
+* d_d = distance between adjecent voxels in z/x/y-dimension, float3 or three floats (if PYTHON is defined),
+* d_scale = precomputed scaling value, float3 or three floats (if PYTHON is defined), see computeProjectorScalingValues.m
+* d_xy/z = detector x/y/z-coordinates,
+* d_uv = Direction coordinates for the detector panel,
+* d_IImageY = Integral image of the image volume for XZ-plane,
+* d_IImageX = Integral image of the image volume for YZ-plane,
+* d_forw = forward projection,
+* d_meanV = mean values for each integral image slice, first for d_IImageY
+* d_nProjections = Number of projections/sinograms,
+*
+* OUTPUTS:
+* d_forw = forward projection,
+*
+* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+*
+* This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+*
+* This program is distributed in the hope that it wiL be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+*******************************************************************************************************************************************/
 #ifdef OPENCL
 CONSTANT sampler_t sampler2 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
@@ -119,17 +159,6 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
             apu += area2;
 #endif
             temp[0] += apu / area;
-            // if (i.x == 200 && i.y == 200 && i.z == 0) {
-                // printf("apu = %f\n", apu);
-                // printf("d_scale.x = %f\n", d_scale.x);
-                // printf("d_scale.z = %f\n", d_scale.z);
-                // printf("d_Size.y = %f\n", d_Size.y);
-                // printf("dy = %f\n", dy);
-                // printf("X.x = %f\n", X.x);
-                // printf("X.y = %f\n", X.y);
-                // printf("Z.x = %f\n", Z.x);
-                // printf("Z.y = %f\n", Z.y);
-            // }
             const float xInterval = fabs(zUD.x - zUD.y);
             for (int zz = 1; zz < NVOXELSFP; zz++) {
                 const uint ind = i.y + zz;
@@ -201,20 +230,6 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
             apu += (area2);
 #endif
             temp[0] += apu / area;
-            // if (i.x == 200 && i.y == 200 && i.z == 0) {
-                // printf("apu = %f\n", apu);
-                // printf("d_scale.y = %f\n", d_scale.y);
-                // printf("d_scale.z = %f\n", d_scale.z);
-                // printf("d_Size.x = %f\n", d_Size.x);
-                // printf("dx = %f\n", dx);
-                // printf("Y.x = %f\n", Y.x);
-                // printf("Y.y = %f\n", Y.y);
-                // printf("Z.x = %f\n", Z.x);
-                // printf("Z.y = %f\n", Z.y);
-            // }
-            // if (i.x == 300 && i.y == 300 && i.z == 0) {
-            //     printf("apu = %f\n", apu);
-            // }
             const float yInterval = fabs(zUD.x - zUD.y);
             for (int zz = 1; zz < NVOXELSFP; zz++) {
                 const uint ind = i.y + zz;
@@ -255,6 +270,33 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
 #define NVOXELS5 1
 #endif
 
+/*******************************************************************************************************************************************
+* BDD backprojection.
+*
+* INPUTS:
+* d_nRows = the number of detector elements (rows),
+* d_nCols = the number of detector elements (columns),
+* d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
+* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* T = redundancy weights for offset imaging,
+* d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
+* d_d = distance between adjecent voxels in z/x/y-dimension, float3 or three floats (if PYTHON is defined),
+* d_scale = precomputed scaling value, float3 or three floats (if PYTHON is defined), see computeProjectorScalingValues.m
+* d_Size = precomputed scaling value, float2 or two floats (if PYTHON is defined), see computeProjectorScalingValues.m
+* d_xy/z = detector x/y/z-coordinates,
+* d_uv = Direction coordinates for the detector panel,
+* d_IImage = Integral image of the forward projections,
+* d_forw = backward projection,
+* d_Summ = buffer for d_Summ (sensitivity image),
+* d_meanV = mean values for each integral image slice, 
+* d_nProjections = Number of projections/sinograms,
+* ii = The current volume, for multi-resolution reconstruction, 0 can be used when not using multi-resolution
+*
+* OUTPUTS:
+* d_forw = backprojection,
+*******************************************************************************************************************************************/
+
 #ifdef OPENCL
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
 #else
@@ -270,7 +312,6 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
     IMAGE2D maskBP,
 #endif
 #ifdef OFFSET
-    // const float OffT,
     CONSTANT float* T,
 #endif
 #ifdef PYTHON
@@ -286,16 +327,13 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
     CONSTANT float* d_meanV,
 #endif
     const uchar no_norm, const LONG d_nProjections, const int ii) {
-
 	const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS5);
-
 #ifdef PYTHON
 	const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
 #endif
     if (i.x >= d_N.x || i.y >= d_N.y || i.z >= d_N.z)
         return;
     size_t idx = GID0 + GID1 * d_N.x + GID2 * NVOXELS5 * d_N.y * d_N.x;
-
 #ifdef MASKBP
     if (ii == 0) {
 #ifdef CUDA
@@ -321,7 +359,6 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
         if (no_norm == 0u)
             wSum[zz] = 0.f;
     }
-    // float area = 0.f;
 #ifdef USEMAD
     const float3 dV = FMAD3(CFLOAT3(i), d_d, d_d / 2.f + b);
 #else
@@ -333,7 +370,6 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
     float3 dV2 = dV;
     for (int kk = 0; kk < d_nProjections; kk++) {
         float3 vLU, vRD;
-        // float3 d2, d3;
         const int id = kk * 6;
         const float3 s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
         const float3 d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
@@ -464,7 +500,6 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
                 else if (coordD.x < -OffTT)
                     wD = 0.f;
                     
-                // float apu = (A * wA + D * wD - C * wC - B * wB);
                 const float w = (wA + wB + wC + wD) / 4.f;
         float apu = (A + D - C - B) * w;
 #else
@@ -490,14 +525,12 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
                 break;
             vRD.z += d_d.z;
             vLU.z += d_d.z;
-            // dV2.z += d_d.z;
             dV2.z = CFLOAT(i.z + zz) * d_d.z + d_d.z / 2.f + b.z;
             float3 v2 = normalize(dV2 - s);
             if (fabs(s.x) <= fabs(s.y))
                 kerroin = d_d.y / fabs(v2.y);
             else
                 kerroin = d_d.x / fabs(v2.x);
-            // kerroin = d_d.x / (kerroin1);
             tLU = upperPart / (dot(-vLU, crossP));
             tRD = upperPart / (dot(-vRD, crossP));
 #ifdef USEMAD
@@ -509,10 +542,8 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
 #endif
             pRD -= d3;
             pLU -= d3;
-            // Ax = dot(pLU, normX) + d_dPitch.x / 2.f;
             Ay = dot(pLU, normY) + d_dPitch.y / 2.f;
             Dy = dot(pRD, normY) + d_dPitch.y / 2.f;
-            // Dx = dot(pRD, normX) + d_dPitch.x / 2.f;
             if (Dy > Ay) {
                 const float yA = Ay;
                 Ay = Dy;

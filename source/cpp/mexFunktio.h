@@ -1,12 +1,10 @@
 #pragma once
-//#define DEBUG false
 #include "mex.h"
 #include <string>
 #include <cstring>
 #ifndef TARGET_API_VERSION
 #define TARGET_API_VERSION 0
 #endif
-//#undef MX_HAS_INTERLEAVED_COMPLEX
 
 inline mxArray* getField(const mxArray* in, mwIndex i, const char* name) {
     const int field_num = mxGetFieldNumber(in, name);

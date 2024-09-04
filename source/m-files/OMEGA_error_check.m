@@ -29,7 +29,6 @@ options = convertOptions(options);
 % Determine whether various different reconstruction modes are used (e.g.
 % MAP reconstruction and any prior)
 MAP = checkAlgorithmsPriors(options, 2);
-% MAPOS = checkAlgorithmsPriors(options, 8);
 PRIOR = checkAlgorithmsPriors(options, 1);
 PRIOR_summa = checkAlgorithmsPriors(options, 1, 0);
 OS = checkAlgorithmsPriors(options, 6);
@@ -69,9 +68,6 @@ if ~preCondMeasAlg && any(options.precondTypeMeas)
     disp(recNames(8))
     options.precondTypeMeas = [false;false];
 end
-% if (options.axial_fov) > (options.linear_multip * options.cryst_per_block * options.cr_pz + options.axial_fov/options.Nz*2 + options.cr_pz*sum(options.pseudot))
-%     error('Axial FOV is too large, not all the slices have LORs going through them')
-% end
 if ~options.CT && ~options.SPECT && options.use_LMF && options.data_bytes < 10
     error('Too little data bytes in LMF format, minimum allowed is 10 bytes (time + detector indices)!')
 end
@@ -85,9 +81,6 @@ end
 if ~options.CT && ~options.SPECT && options.span > options.ring_difference && options.NSinos > 1 && ~options.use_raw_data
     error(['Span value cannot be larger than ring difference (' num2str(options.ring_difference) ')!'])
 end
-% if ~options.CT && ~options.SPECT && options.span == 1 && ~options.use_raw_data
-%     warning('Span value of 1 is not recommended. Use raw data if you want uncompressed reconstruction!')
-% end
 if ~options.CT && ~options.SPECT && (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data
     error('Span value has to be odd and positive!')
 end
@@ -148,10 +141,6 @@ end
 if isfield(options, 'maskFP') && numel(options.maskFP) > 1 && (options.subset_type == 3 || options.subset_type == 6 || options.subset_type == 7)
     error('Forward projection mask is only available with subset types 1, 2, 4, 5, and >= 8')
 end
-% if options.subset_type >= 8 && options.subsets > 1 && options.precompute_lor
-%     error('Subset type 8-11 do not support implementation 1!')
-%     % options.precompute_lor = false;
-% end
 if options.implementation == 1 && options.useMultiResolutionVolumes
     error('Multi-resolution reconstruction is not supported with implementation 1!')
 end
@@ -165,13 +154,6 @@ end
 if options.FDK && options.storeFP
     warning('Forward projections cannot be stored with FDK/FBP!')
 end
-% if options.useMultiResolutionVolumes && options.projector_type < 4
-%     error('Multi-resolution reconstruction is only supported with projector types 4 and higher!')
-% end
-% if options.subsets < 2 && OS
-%     warning('Number of subsets is less than two. Subset has to be at least 2 when using OS-methods. Using 2 subsets.')
-%     options.subsets = 2;
-% end
 if ~options.CT && ~options.SPECT && options.det_per_ring(1) == options.det_w_pseudo(1) && options.fill_sinogram_gaps
     error('Gap filling is only supported with pseudo detectors!')
 end
@@ -195,19 +177,6 @@ if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3)
     apuVar = (apuVar^(1/3));
     options.x0 = imresize3(reshape(options.x0, round(options.Nx * apuVar), round(options.Ny * apuVar), ceil(options.Nz * apuVar)), [options.Nx, options.Ny, options.Nz]);
 end
-% if isunix
-%     if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
-%         options.fpath = [options.fpath '/'];
-%     end
-% elseif ispc
-%     if length(options.fpath) > 1 && ~strcmp('\',options.fpath(end)) && ~strcmp('/',options.fpath(end))
-%         options.fpath = [options.fpath '\'];
-%     end
-% else
-%     if length(options.fpath) > 1 && ~strcmp('/',options.fpath(end))
-%         options.fpath = [options.fpath '/'];
-%     end
-% end
 if ~options.CT && ~options.SPECT && options.use_LMF && options.randoms_correction
     warning('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
     options.randoms_correction = false;
@@ -243,29 +212,7 @@ if options.use_CPU && (options.projector_type == 5 || options.projector_type == 
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM) && ~options.largeDim
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
-    % disp('Press any key to continue reconstruction without any preconditioner')
-    % pause
 end
-% if options.precondTypeImage(3) && (~isfield(options, 'referenceImage') || (isfield(options, 'referenceImage') && isempty(options.referenceImage)))
-%     error('If IEM preconditioner is selected, a reference image must be input to options.referenceImage!')
-% end
-% if isfield(options, 'referenceImage') && numel(options.referenceImage) ~= options.Nx * options.Ny * options.Nz
-%     error('The size of the reference image does not match the reconstructed image!')
-% end
-% if isfield(options, 'referenceImage') && ~isa(options.referenceImage, 'single')
-%     options.referenceImage = single(options.referenceImage);
-% end
-% if options.scatter_correction && ~options.only_reconstructions && ~options.use_raw_data
-%     if iscell(options.ScatterC)
-%         if size(options.ScatterC{1},1)*size(options.ScatterC{1},2)*size(options.ScatterC{1},3) ~= options.Nang*options.Ndist*options.NSlices
-%             error('Size mismatch between scatter sinogram and the specified sinogram')
-%         end
-%     else
-%         if size(options.ScatterC,1)*size(options.ScatterC,2)*size(options.ScatterC,3) ~= options.Nang*options.Ndist*options.NSlices
-%             error('Size mismatch between scatter sinogram and the specified sinogram')
-%         end
-%     end
-% end
 if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
     error('APLS selected, but the anatomical reference image was not found on path!')
 end
@@ -280,9 +227,6 @@ end
 if ~options.CT && ~options.SPECT && options.store_scatter && sum(options.scatter_components) <= 0
     error('Store scatter selected, but no scatter components have been selected!')
 end
-% if options.CT && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1)
-%     error('Multiray Siddon is not supported with CT data!')
-% end
 if options.implementation == 1 && ~options.precompute_lor && (options.n_rays_transaxial > 1 || options.n_rays_axial > 1)
     error('Multiray Siddon is not supported with implementation 1!')
 end
@@ -292,23 +236,6 @@ end
 if options.precondTypeMeas(2) && (options.subset_type < 8 && options.subset_type ~= 4)
     error('Filtering-based preconditioner only works for subset types 4 and 8-11!')
 end
-% if options.implementation == 3 && options.projector_type > 3
-%     error('Only projector types 1-3 are supported with implementation 3!')
-% end
-% if options.implementation == 3
-%     if options.OSEM && options.MLEM
-%         warning('Both OSEM and MLEM selected with implementation 3, using only MLEM');
-%         options.OSEM = false;
-%     end
-%     if options.MLEM && options.subsets > 1 && (options.implementation == 3 || options.implementation == 1)
-%         options.subsets = 1;
-%     end
-% end
-% if options.OSEM && options.subsets == 1
-%     warning('OSEM selected with only 1 subset. Switching to MLEM instead')
-%     options.OSEM = false;
-%     options.MLEM = true;
-% end
 if options.hyperbolic && options.implementation ~= 2
     error('Hyperbolic prior is only available when using implementation 2!')
 elseif options.implementation == 2 && options.TV && options.TVtype == 3
@@ -323,12 +250,6 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-% if (options.blank || options.transmission_scan) && options.attenuation_correction
-%     error('Both transmission and image based attenuation correction selected. Use only one correction method.')
-% end
-% if options.source && options.use_ASCII && (options.source_index1 == 0 || isempty(options.source_index1) || options.source_index2 == 0 || isempty(options.source_index2))
-%     error('Source image selected with ASCII data, but no source index column numbers are provided.')
-% end
 if options.useIndexBasedReconstruction && options.projector_type > 3
     error('Index-based recpnstruction only supports projector types 1-3!')
 end
@@ -339,9 +260,6 @@ end
 if options.implementation == 1 && exist('projector_mex','file') ~= 3
     warning('MEX-file for implementation 1 not found. It is recommended to run install_mex first.')
 end
-% if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_oct','file') ~= 3 && options.precompute_lor
-%     warning('OCT-file for implementation 1 not found. It is recommended to run install_mex first.')
-% end
 if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
@@ -353,21 +271,6 @@ if options.subsets <= 0
     warning('Subsets set to 0 or less than 0. Setting subsets to 1.')
     options.subsets = 1;
 end
-% if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_oct','file') ~= 3
-%     error('OCT-file for implementation 4 not found. Run install_mex first.')
-% end
-% if options.implementation == 1 && exist('projector_mexCT','file') ~= 3 && options.precompute_lor
-%     error('MEX-file for implementation 1 not found. Run install_mex first.')
-% end
-% if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 1 && exist('projector_octCT','file') ~= 3 && options.precompute_lor
-%     error('OCT-file for implementation 1 not found. Run install_mex first.')
-% end
-% if options.implementation == 4 && exist('projector_mexCT','file') ~= 3
-%     error('MEX-file for implementation 4 not found. Run install_mex first.')
-% end
-% if exist('OCTAVE_VERSION','builtin') == 5 && options.implementation == 4 && exist('projector_octCT','file') ~= 3
-%     error('OCT-file for implementation 4 not found. Run install_mex first.')
-% end
 if exist('OCTAVE_VERSION','builtin') == 0 && options.use_root && ((exist('GATE_root_matlab','file') ~= 3 && ~verLessThan('matlab', '9.6')) ...
         || (exist('GATE_root_matlab_C','file') ~= 3 && verLessThan('matlab', '9.6'))) && options.use_machine == 0 && ~options.CT
     warning(['ROOT selected, but no MEX-file for ROOT data load found. Run install_mex to build ROOT MEX-file. Ignore this warning if you are ' ...
@@ -405,73 +308,11 @@ end
 if options.implementation == 2 && options.use_CPU && options.RDP && options.RDPIncludeCorners
     error('RDP with include corners is supported only on OpenCL and CUDA!')
 end
-% if options.implementation == 4 && (options.MRAMLA || options.MBSREM)
-%     error(['Implementation ' num2str(options.implementation) ' selected with unsupported algorithm. MRAMLA or MBSREM are not supported!'])
-% end
-% if options.implementation == 4 && PRIOR_summa > 1 && MAP
-%     error(['Implementation ' num2str(options.implementation) ' supports only one prior at a time.'])
-% end
 if PRIOR_summa > 1 && MAP
     error('Only one prior at a time can be used!')
 end
 if OS_I4_summa > 1
 
-    reko = {};
-    %     if options.MLEM
-    %         reko = [reko;{'MLEM'}];
-    %     end
-    %     if options.OSEM
-    %         reko = [reko;{'OSEM'}];
-    %     end
-    %     if options.RAMLA
-    %         reko = [reko;{'RAMLA'}];
-    %     end
-    %     if options.MRAMLA
-    %         reko = [reko;{'MRAMLA'}];
-    %     end
-    %     if options.ROSEM
-    %         reko = [reko;{'ROSEM'}];
-    %     end
-    %     if options.RBI
-    %         reko = [reko;{'RBI'}];
-    %     end
-    %     if options.DRAMA
-    %         reko = [reko;{'DRAMA'}];
-    %     end
-    %     if options.COSEM
-    %         reko = [reko;{'COSEM'}];
-    %     end
-    %     if options.ACOSEM
-    %         reko = [reko;{'ACOSEM'}];
-    %     end
-    %     if options.ECOSEM
-    %         reko = [reko;{'ECOSEM'}];
-    %     end
-    %     if options.OSL_MLEM && PRIOR
-    %         reko = [reko;{'MLEM-OSL'}];
-    %     end
-    %     if options.OSL_OSEM && PRIOR
-    %         reko = [reko;{'OSEM-OSL'}];
-    %     end
-    %     if options.BSREM && PRIOR
-    %         reko = [reko;{'BSREM'}];
-    %     end
-    %     if options.MBSREM && PRIOR
-    %         reko = [reko;{'MBSREM'}];
-    %     end
-    %     if options.ROSEM_MAP && PRIOR
-    %         reko = [reko;{'ROSEM-MAP'}];
-    %     end
-    %     if options.OSL_RBI && PRIOR
-    %         reko = [reko;{'RBI-OSL'}];
-    %     end
-    %     if any(options.OSL_COSEM) && PRIOR
-    %         if options.OSL_COSEM == 1 && PRIOR
-    %             reko = [reko;{'ACOSEM-OSL'}];
-    %         elseif options.OSL_COSEM == 2 && PRIOR
-    %             reko = [reko;{'COSEM-OSL'}];
-    %         end
-    %     end
     reko = recNames(0);
     for kk = 1 : length(reko)
         if kk == 1
@@ -489,7 +330,6 @@ if OS_I4_summa > 1
 end
 if options.TOF_bins > 1 && options.TOF_bins_used == 1 && ~options.CT && ~options.SPECT
     disp('Summing TOF bins.')
-    % options.TOF_bins = options.TOF_bins_used;
 end
 if options.implementation == 1 && ~options.CT
     if options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 31 || options.projector_type == 32 || options.projector_type == 21 || options.projector_type == 12
@@ -498,8 +338,6 @@ if options.implementation == 1 && ~options.CT
     if options.TOF_bins_used > 1
         error('TOF is not supported with implementation 1!')
     end
-    % warning(['Implementation 1 without precomputation is NOT recommended as it is extremely memory demanding and slow! It is highly recommended to either set '...
-    %     'options.precompute_lor = true or use another implementation.'])
 end
 if options.projector_type == 2 && options.implementation == 1 && options.precompute_lor
     warning('Orthogonal distance-based projector is not recommended with implementation 1!')
@@ -527,10 +365,6 @@ if (options.projector_type == 6)
         error('options.Nz has to be the same as options.nColsD when using projector type 6')
     end
 end
-% if (options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 5 || options.projector_type == 6) && options.precompute_lor
-%     warning('Precomputation is not available for projector types 4, 5 and 6. No precomputation will be performed.')
-%     options.precompute_lor = false;
-% end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
     if options.largeDim
         options.Niter = 1;
@@ -543,9 +377,6 @@ end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
-% if options.TOF_bins_used > 1 && options.implementation == 1 && ~options.CT && ~options.SPECT
-%     error('TOF is currently not supported with implementation 1!')
-% end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
         && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14) && ~options.CT && ~options.SPECT
     error('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
@@ -676,19 +507,8 @@ if options.verbose > 0
         varNonMAP = [recNames(6)];
         for kk = 1 : numel(varNonMAP)
             if options.OSEM && options.subsets == 1
-                % if (options.implementation == 1 && ~options.precompute_obs_matrix) || options.implementation == 5
-                % error('MLEM is not supported with implementation 1 or with implementation 5 without precomputed observation matrix.')
-                %                     options.MLEM = false;
-                %                     if ~OS && ~MAPOS
-                %                         error('No other reconstruction algorithms selected. Select a subset algorithm.')
-                %                     end
-                % else
-                %                     if ~OS || (options.implementation ~= 2 && options.implementation ~= 4)
-                %                         options.subsets = 1;
-                %                     end
                 reko = [reko;{'MLEM'}];
                 break
-                % end
             elseif options.(varNonMAP{kk})
                 ch = strrep(varNonMAP{kk},'_','-');
                 reko = [reko;ch];
@@ -702,23 +522,16 @@ if options.verbose > 0
         varMAP = recNames(2);
         for kk = 1 : numel(varMAP)
             if options.OSL_OSEM && PRIOR && options.subsets == 1
-                %                 if options.implementation == 1 || options.implementation == 3
-                %                     error('MLEM-OSL is not supported with implementations 1 and 3.')
-                % %                     options.OSL_MLEM = false;
-                %                 else
                 reko = [reko;{'MLEM-OSL'}];
-                % end
             elseif options.(varMAP{kk}) && strcmp(options.(varMAP{kk}),'OSL_COSEM')
                 if options.OSL_COSEM == 1 && PRIOR
                     reko = [reko;{'ACOSEM-OSL'}];
                 elseif options.OSL_COSEM == 1 && ~PRIOR
                     error('ACOSEM-OSL selected, but no prior has been selected.')
-                    %                     options.OSL_COSEM = 0;
                 elseif options.OSL_COSEM == 2 && PRIOR
                     reko = [reko;{'COSEM-OSL'}];
                 elseif options.OSL_COSEM == 2 && ~PRIOR
                     error('COSEM-OSL selected, but no prior has been selected.')
-                    %                     options.OSL_COSEM = 0;
                 elseif options.OSL_COSEM > 2 || options.OSL_COSEM < 0
                     error('Unsupported COSEM-OSL method selected!')
                 end
@@ -731,11 +544,8 @@ if options.verbose > 0
             elseif options.(varMAP{kk}) && ~PRIOR
                 ch = strrep(varMAP{kk},'_','-');
                 warning([ch ' selected, but no prior has been selected.'])
-                %                 warning('Press any key to continue to perform non-MAP reconstruction. Press CTRL+C to abort.')
-                %                 pause
                 reko = [reko;ch];
                 options.beta = 0;
-                %                 options.(varMAP{kk}) = false;
             end
         end
         for kk = 1 : length(reko)
@@ -744,11 +554,7 @@ if options.verbose > 0
             else
                 dispi = [dispi, ', ' reko{kk}];
             end
-            %             if kk == length(reko) && length(reko) > 1
-            %                 dispi = [dispi, ' reconstruction methods selected.'];
-            %             elseif kk == length(reko) && length(reko) == 1
             dispi = [dispi, ' reconstruction method selected.'];
-            %             end
         end
         if ~isempty(reko)
             disp(dispi)
@@ -829,11 +635,6 @@ if options.verbose > 0
         if ~OS && ~MAP && ~options.MLEM && ~(options.only_sinos || options.compute_normalization)
             error('No reconstruction algorithm selected.')
         end
-        % if options.precompute_lor
-        %     disp('Precomputed LOR voxel counts used.')
-        % else
-        %     disp('No precomputed data will be used.')
-        % end
         if options.projector_type == 1 && ~options.precompute_lor
             if options.implementation == 1
                 disp('Improved Siddon''s algorithm selected with 1 ray.')
@@ -1108,7 +909,7 @@ if options.verbose > 0
             elseif options.subset_type == 2
                 disp(['Every ' num2str(options.subsets) 'th row measurement is taken per subset.'])
             elseif options.subset_type == 3
-                disp(['Using random subset sampling.'])
+                disp('Using random subset sampling.')
             elseif options.subset_type == 4
                 disp(['Every ' num2str(options.subsets) 'th sinogram column is taken per subset.'])
             elseif options.subset_type == 5
@@ -1134,8 +935,5 @@ if options.verbose > 0
     elseif options.CT
         disp(['Using an image (matrix) size of ' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) ' with ' num2str(options.Niter) ...
             ' iterations and ' num2str(options.subsets) ' subsets.'])
-        % if options.use_CUDA && options.projector_type > 1
-        %     warning('CUDA is not recommended with orthogonal or volume-based projectors and not supported by projectors 4, 5 and 6')
-        % end
     end
 end

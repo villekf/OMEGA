@@ -25,20 +25,11 @@ function [varargout] = lor_pixel_count_prepass(options, z, x, detIndices)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% if nargout > 4
-%     error('Too many output arguments')
-% end
 listmode = false;
 nMeas = options.size_x * options.size_y * options.nProjections;
 folder = fileparts(which('lor_pixel_count_prepass.m'));
 folder = [folder(1:end-(6 + 8)), 'mat-files/'];
 folder = strrep(folder, '\','/');
-
-% if exist('feature','builtin') == 5
-%     nCores = uint32(feature('numcores'));
-% else
-%     nCores = uint32(1);
-% end
 
 %% Raw data
 if options.use_raw_data

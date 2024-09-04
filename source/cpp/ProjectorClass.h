@@ -88,79 +88,6 @@ class ProjectorClass {
 			getErrorString(status);
 			return status;
 		}
-		// Ignore devices with less than 2GB of memory
-		// Also check global memory size and the feasibility of storing the normalization constants
-		//cl_int n_ignores = 0;
-		//cl_int n_gpus = 0;
-		//int nn = 0;
-		//std::vector<cl_int> ignores(devices2.size());
-		//std::fill(ignores.begin(), ignores.end(), 1);
-		//if (devices2.size() > 1ULL) {
-		//	cl_ulong mem_max = 0ULL;
-		//	for (size_t i = 0ULL; i < devices2.size(); i++) {
-		//		cl_ulong mem;
-		//		status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
-		//		if (mem > mem_max)
-		//			mem_max = mem;
-		//	}
-		//	for (size_t i = 0ULL; i < devices2.size(); i++) {
-		//		cl_device_type type;
-		//		cl_ulong mem;
-		//		status = devices2[i].getInfo(CL_DEVICE_TYPE, &type);
-		//		switch (type) {
-		//		case CL_DEVICE_TYPE_GPU:
-		//			status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
-		//			if (status != CL_SUCCESS) {
-		//				getErrorString(status);
-		//				return status;
-		//			}
-		//			if ((mem / (1024ULL * 1024ULL)) < 2000ULL) {
-		//				n_ignores++;
-		//			}
-		//			else if (nn >= usedDevices.size() || i != usedDevices[nn]) {
-		//				n_ignores++;
-		//			}
-		//			else {
-		//				ignores[i] = 0;
-		//				nn++;
-		//			}
-		//			n_gpus++;
-		//			continue;
-		//		case CL_DEVICE_TYPE_CPU:
-		//			status = devices2[i].getInfo(CL_DEVICE_GLOBAL_MEM_SIZE, &mem);
-		//			if (status != CL_SUCCESS) {
-		//				getErrorString(status);
-		//				return status;
-		//			}
-		//			ignores[i] = 0;
-		//			break;
-		//		case CL_DEVICE_TYPE_ACCELERATOR:
-		//			break;
-		//		}
-		//	}
-		//}
-		//else {
-		//	ignores[0] = 0;
-		//}
-		//if (DEBUG) {
-		//	mexPrintBase("n_ignores = %u\n", n_ignores);
-		//	mexEval();
-		//}
-
-		// Get the number of devices
-		//status = context.getInfo(CL_CONTEXT_NUM_DEVICES, &num_devices_context);
-		//if (status != CL_SUCCESS) {
-		//	getErrorString(status);
-		//	return status;
-		//}
-
-		// Remove devices that were ignored above
-		//uint32_t ll = 0u;
-		//for (size_t i = 0; i < devices2.size(); i++) {
-		//	if (ignores[i] == 0) {
-		//		devices.push_back(devices2[i]);
-		//	}
-		//}
 		devices.push_back(devices2[usedDevices[0]]);
 		if (DEBUG) {
 			mexPrintBase("devices.size() = %u\n", devices.size());
@@ -231,11 +158,8 @@ class ProjectorClass {
 				options += " -DCRYSTXY";
 			if (inputScalars.orthZ)
 				options += " -DCRYSTZ";
-			//std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
-			//std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
 			std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 			std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
-			//contentHeader += contentHeader1 + contentHeader3;
 			contentHeader += contentHeader3;
 		}
 
@@ -243,9 +167,6 @@ class ProjectorClass {
 		kernel_pathBP = kernelFile;
 		if (inputScalars.FPType > 0) {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
-				//	kernel_path += "multidevice_siddon_no_precomp.cl";
-				//else
 				kernel_path += "projectorType123.cl";
 			}
 			else if (inputScalars.FPType == 4)
@@ -258,9 +179,6 @@ class ProjectorClass {
 		}
 		if (inputScalars.BPType > 0) {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
-				//	kernel_pathBP += "multidevice_siddon_no_precomp.cl";
-				//else
 				kernel_pathBP += "projectorType123.cl";
 			}
 			else if (inputScalars.BPType == 4)
@@ -300,7 +218,6 @@ class ProjectorClass {
 				options += (" -DNLAYERS=" + std::to_string(inputScalars.nLayers));
 			else
 			options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
-			//options += " -DNLAYERS";
 		if (inputScalars.TOF) {
 			options += " -DTOF";
 		}
@@ -374,13 +291,6 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::string os_options = options;
-			//if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.TOF) && inputScalars.dec > 0)
-			//	os_options += (" -DDEC=" + std::to_string(inputScalars.dec));
-			//os_options += (" -DN_REKOS=" + std::to_string(inputScalars.nRekos));
-			//if (inputScalars.nRekos == 1)
-			//	os_options += " -DNREKOS1";
-			//else if (inputScalars.nRekos == 2)
-			//	os_options += " -DNREKOS2";
 			os_options += " -DSIDDON";
 			os_options += " -DATOMICF";
 			std::string os_optionsFP = os_options;
@@ -389,17 +299,6 @@ class ProjectorClass {
 				os_optionsFP += " -DVOL";
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
 				os_optionsFP += " -DORTH";
-			//if (inputScalars.projector_type < 4) {
-			//	os_optionsFP += " -DBP";
-			//	if (MethodList.MRAMLA || MethodList.MBSREM)
-			//		os_optionsFP += " -DMRAMLA";
-			//	if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0u || MethodList.ECOSEM)
-			//		os_optionsFP += " -DCOSEM";
-			//}
-
-			//if (inputScalars.projector_type < 4)
-			//	status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_optionsFP);
-			//else {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (DEBUG) {
 					mexPrint("Trying to build FP 1-3 program\n");
@@ -434,10 +333,6 @@ class ProjectorClass {
 				inputScalars.atomic_64bit = false;
 				inputScalars.atomic_32bit = false;
 			}
-			//if (inputScalars.subsets > 1)
-			//	os_options += (" -DSTYPE=" + std::to_string(inputScalars.subsetType));
-			//if (inputScalars.projector_type == 41)
-			//	os_options += " -DPTYPE41";
 			os_options += " -DPTYPE4";
 			if (!inputScalars.largeDim)
 				os_options += (" -DNVOXELS=" + std::to_string(NVOXELS));
@@ -1064,8 +959,6 @@ class ProjectorClass {
 			kernelForward = cl::Kernel(programAux, "forward", &status);
 			if (inputScalars.use_psf)
 				kernelPSFf = cl::Kernel(programAux, "Convolution3D_f", &status);
-			//kernelDiv = cl::Kernel(programAux, "vectorDiv", &status);
-			//kernelMult = cl::Kernel(programAux, "vectorMult", &status);
 
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -1111,10 +1004,8 @@ public:
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
 	std::vector<cl_int3> d_N;
-	//bool imExist = false;
 
 	std::vector<cl::Buffer> d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;
-	//std::vector<cl::Buffer> d_lor;
 	std::vector<cl::Buffer> d_L;
 	std::vector<cl::Buffer> d_Summ;
 	std::vector<cl::Buffer> d_meas;
@@ -1125,8 +1016,6 @@ public:
 	std::vector<cl::Buffer> d_xyindex;
 	std::vector<cl::Buffer> d_trIndex;
 	std::vector<cl::Buffer> d_axIndex;
-	//std::vector<cl::Buffer> d_Sino;
-	//std::vector<cl::Buffer> d_sc_ra;
 	std::vector<cl::Buffer> d_norm;
 	std::vector<cl::Buffer> d_scat;
 	std::vector<cl::Buffer> d_x;
@@ -1187,14 +1076,12 @@ public:
 			return -1;
 		}
 		CLDeviceID.push_back(devices[0]);
-		//cl::CommandQueue CLCommand(afcl::getQueue(true));
 		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), true));
 #else
 		status = clGetPlatformsContext(inputScalars.platform, CLContext, CLCommandQueue, inputScalars.usedDevices, CLDeviceID);
 #endif
 		// For NVIDIA cards, 32 local size seems more optimal with 1D kernelFP
 		std::string deviceName = CLDeviceID[0].getInfo<CL_DEVICE_VENDOR>(&status);
-		//std::string deviceName3 = devices[1].getInfo<CL_DEVICE_NAME>(&status);
 		std::string NV("NVIDIA Corporation");
 		if (NV.compare(deviceName) == 0 && (inputScalars.projector_type == 1 || inputScalars.projector_type == 11) && local_size[1] == 1ULL)
 			local_size[0] = 32ULL;
@@ -1204,10 +1091,8 @@ public:
 			cl_uint apu2 = CLDeviceID[0].getInfo<CL_DEVICE_ADDRESS_BITS>(&status);
 			mexPrintBase("CL_DEVICE_MAX_MEM_ALLOC_SIZE = %llu\n", apu);
 			mexPrintBase("CL_DEVICE_ADDRESS_BITS = %u\n", apu2);
-			//mexPrintBase("devices.size() = %u\n", devices.size());
 			mexPrint(deviceName.c_str());
 			mexPrint(deviceName2.c_str());
-			//mexPrint(deviceName3.c_str());
 			mexEval();
 		}
 
@@ -1316,8 +1201,6 @@ public:
 				erotusSens[0] = (local_size[0] - erotusSens[0]);
 		}
 		region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
-		//vec_opencl.d_rhs_os.resize(1);
-		//d_Summ.resize(1);
 		return 0;
 	}
 
@@ -1391,13 +1274,6 @@ public:
 				return -1;
 			}
 		}
-		//else if (MethodList.hyperbolic) {
-		//	d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), NULL, &status);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//}
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			imX = inputScalars.Nx[0];
 			imY = inputScalars.Ny[0];
@@ -1439,23 +1315,6 @@ public:
 					return -1;
 				}
 			}
-			//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			//	d_xcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_x, NULL, &status);;
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//	d_ycenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_y, NULL, &status);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//	d_zcenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_center_z, NULL, &status);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.useBuffers)
@@ -1467,15 +1326,6 @@ public:
 					return -1;
 				}
 			}
-			//if (inputScalars.offset) {
-			//	imX = inputScalars.nRowsD;
-			//	imY = inputScalars.nColsD;
-			//	d_maskOffset = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
 					if (inputScalars.maskFP)
@@ -1530,7 +1380,6 @@ public:
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1)
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
-				//d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z / 2, NULL, &status));
 				else
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
 				if (status != CL_SUCCESS) {
@@ -1662,14 +1511,6 @@ public:
 			}
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
 		}
-		//else if (MethodList.hyperbolic) {
-		//	status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1), w_vec.weights);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	memSize += (sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1)) / 1048576ULL;
-		//}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			cl::detail::size_t_array region = { { 0, 0, 0 } };
 			region[0] = inputScalars.Nx[0];
@@ -1749,15 +1590,11 @@ public:
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-					//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[inputScalars.det_per_ring * 2]);
-					//status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x / 2, &x[0]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
 					}
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-					//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[inputScalars.rings]);
-					//status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z / 2, &z_det[0]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -1776,24 +1613,6 @@ public:
 					}
 				}
 			}
-			//if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_xcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_x, inputScalars.x_center);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_ycenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_y, inputScalars.y_center);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_zcenter, CL_FALSE, 0, sizeof(float) * inputScalars.size_center_z, inputScalars.z_center);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//	memSize += (sizeof(float) * inputScalars.size_center_x + sizeof(float) * inputScalars.size_center_y + sizeof(float) * inputScalars.size_center_z) / 1048576ULL;
-			//}
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.useBuffers)
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
@@ -1929,8 +1748,6 @@ public:
 						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 					}
 				}
-				//if (inputScalars.precompute)
-				//	status = CLCommandQueue[0].enqueueWriteBuffer(d_lor[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * vecSize, &lor1[pituus[kk] * vecSize]);
 				status = CLCommandQueue[0].finish();
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -2021,8 +1838,6 @@ public:
 		const uint16_t* z_index, const uint16_t* L, const int64_t* pituus, const float* atten, const float* norm, const float* extraCorr, 
 		const std::vector<int64_t>& length, const RecMethods& MethodList, const int type = 0) {
 		cl_int status = CL_SUCCESS;
-		//if (inputScalars.precompute)
-		//	d_lor.resize(inputScalars.subsets);
 		if (inputScalars.raw)
 			d_L.resize(inputScalars.subsetsUsed);
 		if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1) {
@@ -2033,8 +1848,6 @@ public:
 			d_trIndex.resize(inputScalars.subsetsUsed);
 			d_axIndex.resize(inputScalars.subsetsUsed);
 		}
-		//if (inputScalars.randoms_correction)
-		//	d_sc_ra.resize(inputScalars.subsets);
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
 		if (inputScalars.scatter)
@@ -2047,22 +1860,6 @@ public:
 		}
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
-		//d_Sino.resize(inputScalars.TOFsubsets);
-		//if (type < 2) {
-		//	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-		//		cl::size_type imX = inputScalars.Nx[ii];
-		//		cl::size_type imY = inputScalars.Ny[ii];
-		//		cl::size_type imZ = inputScalars.Nz[ii];
-		//		if (inputScalars.FPType == 5) {
-		//			vec_opencl.d_image_os_int = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imY + 1, imZ + 1, imX, 0, 0, NULL, &status);
-		//			imX++;
-		//			cl::size_type aY = imY;
-		//			imY = imZ + 1;
-		//			imZ = aY;
-		//		}
-		//		vec_opencl.d_image_os = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-		//	}
-		//}
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
 		if (status != CL_SUCCESS) {
@@ -2091,8 +1888,6 @@ public:
 		}
 
 		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
-			//kernelBP.setArg(kernelIndBP++, d_N);
-			//kernelBP.setArg(kernelIndBP++, b);
 			kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD);
 			kernelBP.setArg(kernelIndBP++, inputScalars.nColsD);
 			kernelBP.setArg(kernelIndBP++, dPitch);
@@ -2103,9 +1898,7 @@ public:
 			}
 		}
 		if (inputScalars.FPType == 4) {
-			//kernelFP.setArg(kernelIndFP++, bmax);
 			kernelFP.setArg(kernelIndFP++, inputScalars.dL);
-			//kernelFP.setArg(kernelIndFP++, inputScalars.d_Scale4);
 			status = kernelFP.setArg(kernelIndFP++, inputScalars.global_factor);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -2134,7 +1927,6 @@ public:
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.epps));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.nRowsD));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.det_per_ring));
-			//getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.Nxy));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.sigma_x));
 			getErrorString(kernelFP.setArg(kernelIndFP++, dPitch));
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2162,7 +1954,6 @@ public:
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.epps));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.det_per_ring));
-			//getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.Nxy));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.sigma_x));
 			getErrorString(kernelBP.setArg(kernelIndBP++, dPitch));
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
@@ -2185,7 +1976,6 @@ public:
 				kernelSensList.setArg(kernelIndSens++, inputScalars.epps);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.nRowsD);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.det_per_ring);
-				//kernelSensList.setArg(kernelIndSens++, inputScalars.Nxy);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.sigma_x);
 				kernelSensList.setArg(kernelIndSens++, dPitch);
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
@@ -2221,7 +2011,6 @@ public:
 				}
 			}
 			if (inputScalars.maskBP) {
-				//if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)
 				if (inputScalars.useBuffers)
 					status = kernelBP.setArg(kernelIndBP++, d_maskBPB);
 				else
@@ -2242,14 +2031,6 @@ public:
 				}
 			}
 		}
-		//if (inputScalars.offset) {
-		//	if (inputScalars.projector_type == 4 || inputScalars.projector_type == 5 || inputScalars.projector_type == 14 || inputScalars.projector_type == 15 || inputScalars.projector_type == 54 || inputScalars.projector_type == 45)
-		//		status = kernelBP.setArg(kernelIndBP++, d_maskOffset);
-		//	if (status != CL_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//}
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			if (DEBUG) {
 				mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
@@ -2259,12 +2040,8 @@ public:
 				status = kernelFP.setArg(kernelIndFP++, d_TOFCenter);
 			}
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				//kernelFP.setArg(kernelIndFP++, d_xcenter);
-				//kernelFP.setArg(kernelIndFP++, d_ycenter);
-				//kernelFP.setArg(kernelIndFP++, d_zcenter);
 				status = kernelFP.setArg(kernelIndFP++, d_V);
 			}
-			//status = kernelFP.setArg(kernelIndFP++, d_reko_type);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
@@ -2279,9 +2056,6 @@ public:
 			if (inputScalars.TOF)
 				kernelBP.setArg(kernelIndBP++, d_TOFCenter);
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-				//kernelBP.setArg(kernelIndBP++, d_xcenter);
-				//kernelBP.setArg(kernelIndBP++, d_ycenter);
-				//kernelBP.setArg(kernelIndBP++, d_zcenter);
 				kernelBP.setArg(kernelIndBP++, d_V);
 			}
 			status = kernelBP.setArg(kernelIndBP++, inputScalars.nColsD);
@@ -2293,9 +2067,6 @@ public:
 				if (inputScalars.TOF)
 					kernelSensList.setArg(kernelIndSens++, d_TOFCenter);
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-					//kernelSensList.setArg(kernelIndSens++, d_xcenter);
-					//kernelSensList.setArg(kernelIndSens++, d_ycenter);
-					//kernelSensList.setArg(kernelIndSens++, d_zcenter);
 					kernelSensList.setArg(kernelIndSens++, d_V);
 				}
 				status = kernelSensList.setArg(kernelIndSens++, inputScalars.nColsD);
@@ -2304,7 +2075,6 @@ public:
 					return -1;
 				}
 			}
-			//kernelBP.setArg(kernelIndBP++, d_reko_type);
 		}
 		if ((inputScalars.BPType == 4 || inputScalars.FPType == 4) && !inputScalars.CT && inputScalars.TOF) {
 			if (inputScalars.FPType == 4) {
@@ -2342,30 +2112,6 @@ public:
 
 		cl_int status = CL_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-			//if (inputScalars.TOF) {
-			//	if (!inputScalars.loadTOF && kk == 0) {
-			//		d_Sino[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * inputScalars.nBins, NULL, &status);
-			//		for (int64_t to = 0LL; to < inputScalars.nBins; to++)
-			//			status = CLCommandQueue[0].enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sino[pituus[kk] + inputScalars.koko * to]);
-			//	}
-			//	else if (inputScalars.loadTOF) {
-			//		for (int64_t to = 0LL; to < inputScalars.nBins; to++)
-			//			status = CLCommandQueue[0].enqueueWriteBuffer(d_Sino[kk], CL_FALSE, sizeof(float) * length[kk] * to, sizeof(float) * length[kk], &Sino[pituus[kk] + inputScalars.koko * to]);
-			//	}
-			//}
-			//else
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_Sino[kk], CL_TRUE, 0, sizeof(float) * length[kk], &Sino[pituus[kk]]);
-			//if (status != CL_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//if (inputScalars.randoms_correction) {
-			//	status = CLCommandQueue[0].enqueueWriteBuffer(d_sc_ra[kk], CL_TRUE, 0, sizeof(float) * length[kk], &randomsData[pituus[kk]]);
-			//	if (status != CL_SUCCESS) {
-			//		getErrorString(status);
-			//		return -1;
-			//	}
-			//}
 			if (inputScalars.scatter == 1u) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt]);
 				if (status != CL_SUCCESS) {
@@ -2456,26 +2202,6 @@ public:
 		return 0;
 	}
 
-	/// <summary>
-	/// Loads TOF data
-	/// </summary>
-	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
-	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
-	/// <param name="Sino measurement data (sinograms or projections)"></param>
-	/// <param name="pituus cumulative sum of length"></param>
-	/// <returns></returns>
-	//inline int loadTOFData(scalarStruct& inputScalars, const float* Sino, const int64_t length, const int64_t pituus) {
-	//	cl_int status = CL_SUCCESS;
-	//	d_Sino[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * inputScalars.nBins, NULL, &status);
-	//	for (int64_t to = 0LL; to < inputScalars.nBins; to++)
-	//		status = CLCommandQueue[0].enqueueWriteBuffer(d_Sino[0], CL_FALSE, sizeof(float) * length * to, sizeof(float) * length, &Sino[pituus + inputScalars.koko * to]);
-	//	if (status != CL_SUCCESS) {
-	//		getErrorString(status);
-	//		return -1;
-	//	}
-	//	return 0;
-	//}
-
 	int computeConvolution(const scalarStruct& inputScalars, const int ii = 0) {
 		int status = CL_SUCCESS;
 		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
@@ -2550,7 +2276,6 @@ public:
 		cl_uint kernelInd = 0U;
 		kernelEstimate.setArg(kernelInd++, d_Summ[ii]);
 		kernelEstimate.setArg(kernelInd++, vec_opencl.d_rhs_os[ii]);
-		//kernelEstimate.setArg(kernelInd++, vec_opencl.d_rhs_os2);
 		kernelEstimate.setArg(kernelInd++, d_imFinal[ii]);
 		kernelEstimate.setArg(kernelInd++, inputScalars.epps);
 		kernelEstimate.setArg(kernelInd++, d_N[ii]);
@@ -2627,7 +2352,6 @@ public:
 			mexPrintBase("bmax[ii].s0 = %f\n", bmax[ii].s[0]);
 			mexPrintBase("bmax[ii].s1 = %f\n", bmax[ii].s[1]);
 			mexPrintBase("bmax[ii].s2 = %f\n", bmax[ii].s[2]);
-			//mexPrintBase("d_Scale[ii] = %f\n", inputScalars.d_Scale4[ii]);
 			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
 			mexPrintBase("local.dimensions() = %u\n", local.dimensions());
 			mexPrintBase("kernelIndFPSubIter = %u\n", kernelIndFPSubIter);
@@ -2972,7 +2696,6 @@ public:
 				mexPrintBase("memSize = %u\n", memSize);
 				mexPrintBase("compSens = %u\n", compSens);
 				mexEval();
-				//mexEvalString("pause(2);");
 			}
 
 			// Set kernelBP arguments
@@ -3043,15 +2766,6 @@ public:
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, b[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, bmax[ii]));
-			//if (compSens) {
-			//	if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
-			//		kernelBP.setArg(kernelIndBPSubIter++, d_xyindexFull[0]);
-			//		kernelBP.setArg(kernelIndBPSubIter++, d_zindexFull[0]);
-			//	}
-			//	if (inputScalars.raw)
-			//		kernelBP.setArg(kernelIndBPSubIter++, d_LFull[0]);
-			//}
-			//else {
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]));
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]));
@@ -3068,10 +2782,8 @@ public:
 				}
 				if (inputScalars.raw)
 					kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
-			//}
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_output));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]));
-			//kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os2);
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, no_norm));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_ulong>(m_size)));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, osa_iter));
@@ -3148,11 +2860,9 @@ public:
 						mexPrintBase("kerroin4[ii] = %f\n", w_vec.kerroin4[ii]);
 					}
 					mexEval();
-					//mexEvalString("pause(2);");
 				}
 				if (inputScalars.offset)
 					kernelBP.setArg(kernelIndBPSubIter++, d_T[osa_iter]);
-				//kernelBP.setArg(kernelIndBPSubIter++, inputScalars.T);
 				if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_N[ii]));
 					status = kernelBP.setArg(kernelIndBPSubIter++, b[ii]);
@@ -3312,7 +3022,6 @@ public:
 					mexPrintBase("osa_iter = %u\n", osa_iter);
 					mexPrintBase("memSize = %u\n", memSize);
 					mexEval();
-					//mexEvalString("pause(2);");
 				}
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_N[ii]));
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, b[ii]));
@@ -3324,7 +3033,6 @@ public:
 					return -1;
 				}
 				status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]);
-				//status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os2);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -3435,16 +3143,6 @@ public:
 		if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
 			d_scatFull.clear();
 		}
-		//if (inputScalars.raw && inputScalars.listmode != 1) {
-		//	d_LFull.clear();
-		//}
-		//else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
-		//	d_xyindexFull.clear();
-		//	d_zindexFull.clear();
-		//}
-		//if (inputScalars.precompute) {
-		//	d_lorFull.clear();
-		//}
 	}
 
 	/// <summary>
@@ -3562,7 +3260,6 @@ public:
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
 			mexEval();
-			//mexEvalString("pause(2);");
 		}
 		kernelNLM.setArg(kernelIndNLM++, d_W);
 		if (inputScalars.useImages) {
@@ -3572,8 +3269,6 @@ public:
 			kernelNLM.setArg(kernelIndNLM++, d_inputB);
 		}
 		kernelNLM.setArg(kernelIndNLM++, d_gaussianNLM);
-		//kernelNLM.setArg(kernelIndNLM++, searchWindow);
-		//kernelNLM.setArg(kernelIndNLM++, patchWindow);
 		kernelNLM.setArg(kernelIndNLM++, d_N[0]);
 		kernelNLM.setArg(kernelIndNLM++, d_NOrig);
 		kernelNLM.setArg(kernelIndNLM++, w_vec.h2);
@@ -4194,7 +3889,6 @@ public:
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
 		status = (CLCommandQueue[0]).finish();
-		//cl::detail::size_t_array region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("beta = %f\n", beta);
