@@ -1,6 +1,13 @@
 /*******************************************************************************************************************************************
-* General functions for all the OpenCL kernel files. Contains functions that compute the necessary source and detector coordinates, atomics,
-* forward and backward projections. Special functions are available for different cases such as TOF, listmode data, CT data, etc.
+* General functions for all the OpenCL and CUDA kernel files. Contains functions that compute the necessary source and detector coordinates, 
+* atomics, forward, backward projections, etc. Special functions are available for different cases such as TOF, listmode data, CT data, 
+* etc.
+*
+* Note that all functions are used for both OpenCL and CUDA. To achieve this, preprocessor definitions are used VERY extensively. This can
+* make following the code sometimes difficult. The start of the file contains the preprocessor definitions for OpenCL and then for CUDA.
+* Note that these definitions are also used in the projector kernel files and in the "auxliary" kernel file.
+*
+* USEIMAGES specifies whether OpenCL images or CUDA textures are used. If it is not defined, regular buffers are used. Default is ON.
 *
 * Copyright (C) 2019-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
@@ -15,15 +22,11 @@
 
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
-//#define TH 100000000000.f
 #endif
 #define THR 0.01f
 #ifndef N_REKOS
 #define N_REKOS 1
 #endif
-// #ifndef NBINS
-// #define NBINS 1
-// #endif
 #define NROLLS (N_REKOS * NBINS)
 #ifdef PRECOMPUTE
 #define TYPE 1
@@ -107,7 +110,6 @@
 #define LID1 get_local_id(1)
 #define LID2 get_local_id(2)
 #define CFLOAT4 (float4)
-// #define CFLOAT3 (float3)
 #define CFLOAT2 (float2)
 #define MUINT2(a, b) {a, b}
 #define MINT3(a, b, c) {a, b, c}
@@ -184,7 +186,6 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define LID2 threadIdx.z
 #define IMAGE3D cudaTextureObject_t
 #define IMAGE2D cudaTextureObject_t
-// #define CFLOAT2 (float2)
 #define MUINT2(a, b) make_uint2(a, b)
 #define MINT3(a, b, c) make_int3(a, b, c)
 #define MUINT3(a, b, c) make_uint3(a, b, c)
@@ -461,7 +462,6 @@ DEVICE float normPDF(const float x, const float mu, const float sigma) {
 }
 
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
-	// *D = LL / 2.f - length(diff * tc);
 	*D = length(diff * tc) - LL / 2.f;
 	*DD = *D;
 }
@@ -569,9 +569,6 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 		ax[to] += apu * joku / TOFSum;
 #endif
 	}
-// #if !defined(ORTH)
-// 	*D -= (element * sign(DD));
-// #endif
 #else
 #ifdef N_RAYS
 	ax[lor] += apu;
@@ -602,20 +599,6 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 		const float apu = local_ele * ((TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 		val += apu;
 		yaxTOF += apu * ax[to];
-		// if (local_ind == 229341) {
-		// // if (yaxTOF > 20.f) {
-		// 	printf("element = %f\n", element);
-		// 	printf("dX = %f\n", dX);
-		// 	printf("TOFSum = %f\n", TOFSum);
-		// 	printf("TOFCenter[to] = %f\n", TOFCenter[to]);
-		// 	printf("sigma_x = %f\n", sigma_x);
-		// 	printf("DD = %f\n", DD);
-		// 	printf("D = %f\n", *D);
-		// 	printf("apu = %f\n", apu);
-		// 	printf("ax[to] = %f\n", ax[to]);
-		// 	printf("yaxTOF = %f\n", yaxTOF);
-		// 	printf("local_ind = %u\n", local_ind);
-		// }
 	}
 #else
 	const float yaxTOF = ax[0] * local_ele;
@@ -636,9 +619,6 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #else
 		atomicAdd(&d_Summ[local_ind], val);
 #endif
-// #if defined(TOF) && !defined(ORTH)
-// *D -= (element * sign(DD));
-// #endif
 }
 #endif
 
@@ -823,7 +803,6 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 	const int id = (i.x + i.y * d_size_x) * 4;
 	const int idz = i.z * 2;
 #if defined(NLAYERS)
-	// const int layer = CINT(d_z[idz]);
 	*s = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4], d_xy[id + layer * d_size_x * d_sizey * 4 + 1], d_z[idz]);
 	*d = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4 + 2], d_xy[id + layer * d_size_x * d_sizey * 4 + 3], d_z[idz + 1]);
 #else

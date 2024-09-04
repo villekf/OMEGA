@@ -17,36 +17,22 @@
 // For orthogonal distance-based ray tracer, the distance is normalized
 DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
 	const float xp) {
-
-	//float x1, y1, z1, x0, y0, z0;
-
-	//const float y0 = yp - ys;
-	//const float z0 = zp - zs;
 	const float x0 = xp - xs;
 
 	// Cross product
-	//const float x1 = yl * z0 - zl * y0;
-	//const float y1 = zl * x0 - xl;
-	//const float z1 = ys - yl * x0;
 #ifdef USEMAD
 	const float y1 = FMAD(zl, x0, - xl);
 	const float z1 = FMAD(-yl, x0, ys);
 #else
 	const float y1 = zl * x0 - xl;
 	const float z1 = -yl * x0 + ys;
-	// const float y1 = zl * x0 - xl * z0;
-	// const float z1 = xl * y0 - yl * x0;
 #endif
-
-	//const float normi = e_norm(zs, y1, z1);
 	const float normi = length(CMFLOAT3(zs, y1, z1));
-
 #ifdef VOL
 	return (normi / crystal_size_z);
 #else
 	return (1.f - normi / crystal_size_z);
 #endif
-	//return x0;
 }
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer
@@ -235,16 +221,12 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #ifdef CRYSTZ
 	if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 		break;
-	//temp2 -= uy;
 	}
-	//temp2 = tempj;
 	for (int zz = tempk - 1; zz >= minimiZ; zz--) {
 		const float centerZ = bz + CFLOAT(zz) * dz + dz / 2.f;
 		const float z0 = centerZ - sZ;
 		const float l1 = diff2 * z0 - apu1;
 		const float l2 = diff1 * z0;
-		//int hh1 = 2;
-		//int hh2 = 2;
 #ifdef CRYSTXY
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 #else
@@ -299,7 +281,6 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
-		//temp2 -= uy;
 	}
 #endif
 	return uu;
