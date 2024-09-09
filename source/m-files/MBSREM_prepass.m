@@ -232,7 +232,7 @@ if ~options.use_raw_data || options.precompute_all
 %     lor = lor(discard);
     
     save([machine_name '_MBSREM_precompute_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'D','Amin','-v7.3')
-    save([machine_name '_lor_pixel_count_' num2str(Nx) 'x' num2str(Ny) 'x' num2str(Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard','-v7.3')
+    save([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_FOV' num2str(options.FOVa_x) 'x' num2str(options.FOVa_y) 'x' num2str(options.axial_fov) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard','-v7.3')
 end
 
 end

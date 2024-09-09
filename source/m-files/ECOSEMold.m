@@ -21,7 +21,7 @@ lor = [];
 
 if options.use_raw_data == false && options.subsets > 1
     if options.precompute_lor || options.implementation == 3
-        load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
+        load([options.machine_name '_lor_pixel_count_' num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '_FOV' num2str(options.FOVa_x) 'x' num2str(options.FOVa_y) 'x' num2str(options.axial_fov) '_sino_' num2str(options.Ndist) 'x' num2str(options.Nang) '.mat'],'lor','discard')
         if length(discard) ~= options.TotSinos*options.Nang*options.Ndist
             error('Error: Size mismatch between sinogram and LORs to be removed')
         end
