@@ -1619,7 +1619,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 			detectors.yd = x[lo * 6 + 4];
 			detectors.zd = x[lo * 6 + 5];
 
-			if (param.coneMethod == 1 | param.coneMethod == 2) {
+			if (param.coneMethod == 1 || param.coneMethod == 2) {
 				hexShifts = computeSpectHexShifts(param, detectors, ix, iy);
 			} else {
 				hexShifts = computeSpectSquareShifts(param, detectors, ix, iy);
@@ -1650,13 +1650,14 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		int lor = -1;
 
 		// Loop through the rays
-		for (int currentShift = 0u; currentShift < nShift; currentShift++) {
-			for (int lorZ = 0u; lorZ < param.nRays3D; lorZ++) {
-				for (int lorXY = 0u; lorXY < param.nRays2D; lorXY++) {
+		for (int currentShift = 0; currentShift < nShift; currentShift++) {
+			for (int lorZ = 0; lorZ < param.nRays3D; lorZ++) {
+				for (int lorXY = 0; lorXY < param.nRays2D; lorXY++) {
 					lor++;
 
 					if (!SPECT) {
-						Det<T> detectors;
+						//Det<T> detectors;
+						detectors.xd = (T)0., detectors.xs = (T)0., detectors.yd = (T)0., detectors.ys = (T)0., detectors.zd = (T)0., detectors.zs = (T)0.;
 
 						if (!CT) {
 							// Raw data
