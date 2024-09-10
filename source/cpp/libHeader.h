@@ -157,6 +157,8 @@ struct inputStruct {
     float cr_pz;
     // Gaussian standard devation for NLM
     float NLMsigma;
+    // Constant for adaptive NLM
+    float NLAdaptiveConstant;
     // Sum of the weights for quadratic, Huber and hyperbolic priors
     float w_sum;
     // Anisotropic diffusion smoothing parameters
@@ -274,6 +276,8 @@ struct inputStruct {
     bool NLGGMRF = false;
     // Use reference image for NLM
     bool NLM_use_anatomical = false;
+    // Use adaptive NLM
+    bool NLAdaptive = false;
     // Use anatomical weighting for TV
     bool TV_use_anatomical = false;
     // Include neighboring corners with RDP
@@ -1130,6 +1134,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.NLM_MRP = options.NLM_MRP;
         w_vec.NLLange = options.NLLange;
         w_vec.NLGGMRF = options.NLGGMRF;
+        w_vec.NLAdaptive = options.NLAdaptive;
         if (w_vec.NLRD)
             w_vec.RDP_gamma = options.RDP_gamma;
         else if (w_vec.NLLange)
@@ -1141,7 +1146,9 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             w_vec.RDP_gamma = (w_vec.GGMRF_p - w_vec.GGMRF_q) / std::pow(w_vec.GGMRF_c, w_vec.GGMRF_p - w_vec.GGMRF_q);
         }
         if (w_vec.NLM_anatomical)
-            w_vec.NLM_ref = options.NLM_ref;;
+            w_vec.NLM_ref = options.NLM_ref;
+        if (w_vec.NLAdaptive)
+            w_vec.NLAdaptiveConstant = options.NLAdaptiveConstant;
         w_vec.h2 = options.NLMsigma;
         w_vec.h2 = w_vec.h2 * w_vec.h2;
         w_vec.Nlx = options.Nlx;

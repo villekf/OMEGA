@@ -589,7 +589,7 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 
 // Helper function to transfer AF arrays into device vectors, call the actual forward projection function and move memory management back to AF
 inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, uint32_t osa_iter,
-	std::vector<int64_t>& length, const af::array& g, uint64_t m_size, ProjectorClass& proj, const int ii = 0, const int64_t* pituus = nullptr) {
+	const std::vector<int64_t>& length, const af::array& g, uint64_t m_size, ProjectorClass& proj, const int ii = 0, const int64_t* pituus = nullptr) {
 	int status = 0;
 	if (inputScalars.use_psf)
 		vec.im_os_blurred[ii] = computeConvolution(vec.im_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);

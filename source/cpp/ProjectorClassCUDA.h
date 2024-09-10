@@ -590,6 +590,8 @@ class ProjectorClass {
 					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(0));
 					optionsAux.push_back(buffer11);
 				}
+				if (w_vec.NLAdaptive)
+					optionsAux.push_back("-DNLMADAPTIVE");
 				if (w_vec.NLM_anatomical)
 					optionsAux.push_back("-DNLMREF");
 				std::snprintf(buffer12, 30, "-DSWINDOWX=%d", static_cast<int32_t>(w_vec.Ndx));
@@ -2591,7 +2593,7 @@ public:
 	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <returns></returns>
-	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
+	inline int forwardProjection(scalarStruct& inputScalars, Weighting& w_vec, uint32_t osa_iter, const std::vector<int64_t>& length, uint64_t m_size, int ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		CUresult status = CUDA_SUCCESS;
@@ -2684,7 +2686,7 @@ public:
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
-			kTemp.emplace_back(&length[osa_iter]);
+			kTemp.emplace_back((void*)&length[osa_iter]);
 			//mexPrint("3!!!!\n");
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 				kTemp.emplace_back(&d_xyindex[osa_iter]);
@@ -2717,13 +2719,13 @@ public:
 			if (inputScalars.meanFP) {
 
 			}
-			kTemp.emplace_back(&length[osa_iter]);
+			kTemp.emplace_back((void*)&length[osa_iter]);
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 				kTemp.emplace_back(&d_atten[osa_iter]);
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
-				kTemp.emplace_back(&length[osa_iter]);
+				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				kTemp.emplace_back(&d_x[0]);
@@ -3429,6 +3431,8 @@ public:
 			kArgs.emplace_back(&w_vec.GGMRF_q);
 			kArgs.emplace_back(&w_vec.GGMRF_c);
 		}
+		if (w_vec.NLAdaptive)
+			kArgs.emplace_back(&w_vec.NLAdaptiveConstant);
 		if (w_vec.NLM_anatomical)
 			if (inputScalars.useImages)
 				kArgs.emplace_back(&d_urefIm);

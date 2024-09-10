@@ -712,6 +712,15 @@ end
 if ~isfield(options, 'NLM_MRP')
     options.NLM_MRP = false;
 end
+if ~isfield(options, 'NLAdaptive')
+    options.NLAdaptive = false;
+end
+if ~isfield(options, 'NLAdaptiveConstant')
+    options.NLAdaptiveConstant = 1e-5;
+end
+if ~isfield(options, 'sigma')
+    options.sigma = 1;
+end
 if ~isfield(options, 'weights_RDP')
     options.weights_RDP = [];
 end

@@ -626,7 +626,26 @@ if options.verbose > 0
             if kk == length(priori) && length(priori) > 1
                 dispi2 = [dispi2, ' priors selected.'];
             elseif kk == length(priori) && length(priori) == 1
-                dispi2 = [dispi2, ' prior selected.'];
+                if ~options.NLM
+                    dispi2 = [dispi2, ' prior selected.'];
+                else
+                    if options.NLTV
+                        dispi2 = [dispi2, ' prior selected with NLTV.'];
+                    elseif options.NLRD 
+                        dispi2 = [dispi2, ' prior selected with NLRD.'];
+                    elseif options.NLLange
+                        dispi2 = [dispi2, ' prior selected with NL Lange.'];
+                    elseif options.NLGGMRF
+                        dispi2 = [dispi2, ' prior selected with NLGGMRF.'];
+                    elseif options.NLM_MRP
+                        dispi2 = [dispi2, ' prior selected with filtering mode.'];
+                    else
+                        dispi2 = [dispi2, ' prior selected.'];
+                    end
+                    if options.NLAdaptive
+                        dispi2 = [dispi2, ' Using adaptive weighting.'];
+                    end
+                end
             end
         end
         if ~isempty(priori)

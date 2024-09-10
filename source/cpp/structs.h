@@ -65,11 +65,12 @@ typedef struct Weighting_ {
 	float epsilon_mramla = 0.f, U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
 		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
 		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, betaFISTA = 1.f, tFISTA = 1.f, tNFista = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
-		beta = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f;
+		beta = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;
 	uint32_t alku_fmh = 0u, mean_type = 0u, powerIterations = 0, derivType = 0, gradInitIter = 0, filterIter = 0, gradFinalIter = 0;
 	uint32_t Ndx = 1u, Ndy = 1u, Ndz = 0u, NiterAD = 1u, dimmu, inffi, Nlx = 1u, Nly = 1u, Nlz = 0u;
 	bool med_no_norm = false, MBSREM_prepass = false, NLM_MRP = false, NLTV = false, NLRD = false, NLLange = false, NLM_anatomical = false, computeD = false,
-		precondIm = false, precondMeas = false, computeM = false, RDPLargeNeighbor = false, UseL2Ball = true, NLLangeFiltered = false, filteringOrig = false, NLGGMRF = false, RDP_anatomical = false;
+		precondIm = false, precondMeas = false, computeM = false, RDPLargeNeighbor = false, UseL2Ball = true, NLLangeFiltered = false, filteringOrig = false, NLGGMRF = false, RDP_anatomical = false, 
+		NLAdaptive = false;
 	std::vector<bool> precondTypeMeas{ false, false }, precondTypeIm{ false, false, false, false, false, false, false };
 	int64_t nProjections = 0LL;
 	uint32_t nPriors = 0U, nMAP = 0U, nMAPML = 0U, nMLEM = 0U, nOS = 0U, nTot = 0U, nMAPOS = 0U, nPriorsTot = 0U, ng = 20U;

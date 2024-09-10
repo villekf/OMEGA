@@ -26,7 +26,7 @@ function gaussK = gaussianKernel(x, y, varargin)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if nargin == 6
+if nargin >= 6
     z = varargin{1};
     sigma_x = varargin{2};
     sigma_y = varargin{3};
@@ -39,5 +39,7 @@ elseif nargin == 4
 else
     error('Invalid number of input parameters')
 end
-
-gaussK = gaussK ./  sum(gaussK(:));
+if nargin > 6 && varargin{5}
+else
+    gaussK = gaussK ./  sum(gaussK(:));
+end

@@ -1474,20 +1474,20 @@ inline std::vector<std::vector<T>> computeSpectSquareShifts(paramStruct<T>& para
 
 //#undef _OPENMP
 
-	/// <summary>
-	/// Compute the forward or backward projection for projector types 1, 2 or 3. The input/output data can be either float or double.
-	/// </summary>
-	/// <param name="param most required and optional input parameters. Modify the struct accordingly"></param>
-	/// <param name="nMeas Number of elements in the input data, i.e. the number of measurements in the current subset"></param>
-	/// <param name="output pointer to the double or float output array (either the result of the forward projection or backprojection, make sure the dimensions are correct)"></param>
-	/// <param name="x Transaxial detector coordinates (double or float). The order is x-source, y-source, x-detector, y-detector, i.e. the dimensions should be 4 * total detector elements"></param>
-	/// <param name="z Axial detector coordinates (double or float). The order is z-source, z-detector, i.e. the dimensions should be 2 * total detector elements"></param>
-	/// <param name="input pointer to the double or float input array (either the input to the forward projection or backprojection, make sure the dimensions are correct)"></param>
-	/// <param name="fp if fp == 1, forward projection is computed, if fp == 2 bacprojection. Default is forward projection (optional)"></param>
-	/// <param name="SensImage (double or float) pointer for the sensitivity image (optional)"></param>
-	/// <param name="detIndex detector indices for each measurement index for the raw data only. Input this only if you use raw data!"></param>
-	/// <param name="nCores Number of cores/threads used. You can optionally input the number of threads/cores you want to use. Default uses all threads."></param>
-	/// <returns></returns>
+/// <summary>
+/// Compute the forward or backward projection for projector types 1, 2 or 3. The input/output data can be either float or double.
+/// </summary>
+/// <param name="param most required and optional input parameters. Modify the struct accordingly"></param>
+/// <param name="nMeas Number of elements in the input data, i.e. the number of measurements in the current subset"></param>
+/// <param name="output pointer to the double or float output array (either the result of the forward projection or backprojection, make sure the dimensions are correct)"></param>
+/// <param name="x Transaxial detector coordinates (double or float). The order is x-source, y-source, x-detector, y-detector, i.e. the dimensions should be 4 * total detector elements"></param>
+/// <param name="z Axial detector coordinates (double or float). The order is z-source, z-detector, i.e. the dimensions should be 2 * total detector elements"></param>
+/// <param name="input pointer to the double or float input array (either the input to the forward projection or backprojection, make sure the dimensions are correct)"></param>
+/// <param name="fp if fp == 1, forward projection is computed, if fp == 2 bacprojection. Default is forward projection (optional)"></param>
+/// <param name="SensImage (double or float) pointer for the sensitivity image (optional)"></param>
+/// <param name="detIndex detector indices for each measurement index for the raw data only. Input this only if you use raw data!"></param>
+/// <param name="nCores Number of cores/threads used. You can optionally input the number of threads/cores you want to use. Default uses all threads."></param>
+/// <returns></returns>
 template <typename T>
 void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas, T* output, const T* x, const T* z,
 	T* input, const bool CT = false, const bool SPECT = false, const uint8_t fp = 1, T* SensImage = nullptr, const uint16_t* detIndex = nullptr, 

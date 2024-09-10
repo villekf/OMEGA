@@ -6,7 +6,7 @@ g_x = linspace(-options.Nlx, options.Nlx, 2*options.Nlx + 1)';
 g_y = linspace(-options.Nly, options.Nly, 2*options.Nly + 1);
 g_z = zeros(1,1,options.Nlz*2+1);
 g_z(1,1,:) = linspace(-options.Nlz, options.Nlz, 2*options.Nlz + 1);
-gaussian = gaussianKernel(g_x, g_y, g_z, options.NLM_gauss, options.NLM_gauss, options.NLM_gauss);
+gaussian = gaussianKernel(g_x, g_y, g_z, options.NLM_gauss, options.NLM_gauss, options.NLM_gauss, true);
 options.gaussianNLM = gaussian(:);
 if options.NLM_use_anatomical
     if ischar(options.NLM_reference_image)
@@ -21,6 +21,7 @@ if options.NLM_use_anatomical
         options.NLM_ref = single(options.NLM_ref);
     end
 end
+% options.gaussianNLM = ones(size(options.gaussianNLM));
 if options.implementation == 2 || options.implementation == 3
     options.gaussianNLM = single(options.gaussianNLM);
 %     options.sigma = single(options.sigma);

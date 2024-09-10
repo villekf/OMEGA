@@ -443,6 +443,8 @@ class ProjectorClass {
 					options += (" -DNLTYPE=" + std::to_string(6));
 				else
 					options += (" -DNLTYPE=" + std::to_string(0));
+				if (w_vec.NLAdaptive)
+					options += " -DNLMADAPTIVE";
 				if (w_vec.NLM_anatomical)
 					options += " -DNLMREF";
 				options += (" -DSWINDOWX=" + std::to_string(w_vec.Ndx));
@@ -3281,6 +3283,8 @@ public:
 			kernelNLM.setArg(kernelIndNLM++, w_vec.GGMRF_q);
 			kernelNLM.setArg(kernelIndNLM++, w_vec.GGMRF_c);
 		}
+		if (w_vec.NLAdaptive)
+			kernelNLM.setArg(kernelIndNLM++, w_vec.NLAdaptiveConstant);
 		if (w_vec.NLM_anatomical)
 			if (inputScalars.useImages)
 				kernelNLM.setArg(kernelIndNLM++, d_urefIm);
