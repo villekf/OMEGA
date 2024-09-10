@@ -6,3 +6,4 @@ data/
 *.oct
 *.asv
 mat-files/*.mat
+*.so
