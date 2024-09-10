@@ -797,5 +797,7 @@ def prepassPhase(options):
         options.APLS_ref_image = np.empty(0, dtype=np.float32)
     if isinstance(options.NLM_referenceImage, str):
         options.NLM_referenceImage = np.empty(0, dtype=np.float32)
+    if isinstance(options.RDP_referenceImage, str):
+        options.RDP_referenceImage = np.empty(0, dtype=np.float32)
     if isinstance(options.TV_referenceImage, str):
         options.TV_referenceImage = np.empty(0, dtype=np.float32)
