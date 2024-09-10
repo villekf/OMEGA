@@ -287,8 +287,15 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 
 // Final PDHG update step
 // Different methods for subset and non-subset cases
-inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, 
-	const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, std::vector<int64_t>& length = std::vector<int64_t>(0)) {
+// inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, std::vector<int64_t>& length = std::vector<int64_t>(0)) {
+inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter, const uint32_t subIter = 0, const int ii = 0, const int64_t* pituus = nullptr, const af::array& g = af::constant(0.f, 0), const uint64_t m_size = 1, std::vector<int64_t>* length = nullptr) {
+
+	// Handle null pointer
+	std::vector<int64_t> default_length(0);
+    if (length == nullptr) {
+        length = &default_length;
+    }
+
 	int status = 0;
 	const uint32_t kk = iter * inputScalars.subsets + subIter;
 	af::array im_old;
@@ -348,7 +355,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 		vec.im_os[ii] = (im_old - im);
 		const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsets * vec.rhsCP[ii]));
 		af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
-		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, *length, g, m_size, proj, ii, pituus);
 		if (status != 0) {
 			return status;
 		}
