@@ -165,6 +165,7 @@ class CommandLine:
                 files = '"' + sdir + '\\inveonMain.cpp"'
                 compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
                 subprocess.run(compile_command, check=True)
+                print('Inveon list-mode support compiled successfully!')
             except Exception:
                 print("Build failed")
                 
@@ -175,6 +176,7 @@ class CommandLine:
                 files = '"' + sdir + '\\loadRootData.cpp"'
                 compile_command = compiler + ' ' + options + ' ' + files + ' ' + link
                 result = subprocess.run(compile_command, check=True)
+                print('ROOT support compiled successfully!')
             except Exception:
                 print("ROOT support build failed")
         
@@ -278,6 +280,7 @@ class CommandLine:
             files = '' + sdir + '/inveonMain.cpp'
             try:
                 result = subprocess.run([compiler, '-shared', '-fPIC', '-I' + sdir, link, files], check=True)
+                print('Inveon list-mode support compiled successfully!')
             except Exception:
                 print("Build failed")
             
@@ -299,6 +302,7 @@ class CommandLine:
             files = '' + sdir + '/loadRootData.cpp'
             try:
                 result = subprocess.run([compiler, '-shared', '-fPIC', '-pthread', '-std=c++17', '-m64', '-I' + rpath, link, files, lib1, lib2, lib3, lib4, lib5], check=True)
+                print('ROOT support compiled successfully!')
             except Exception:
                 print("ROOT support build failed")
             
