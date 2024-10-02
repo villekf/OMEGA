@@ -40,10 +40,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 					w_vec.tauCP[ii] = w_vec.tauCP2[ii];
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
 				}
-				else
+				else {
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
-				if (MethodList.CPType)
-					w_vec.sigma2CP = w_vec.sigmaCP;
+				}
+				//if (MethodList.CPType)
+				//	w_vec.sigma2CP = w_vec.sigmaCP;
 			}
 			if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)
 				w_vec.lambda = w_vec.lambdaFiltered;

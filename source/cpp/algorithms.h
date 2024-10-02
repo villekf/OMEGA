@@ -294,9 +294,11 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	af::array im_old;
 	if (inputScalars.adaptiveType >= 1)
 		im_old = im.copy();
-	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
-	if (status != 0)
-		return -1;
+	if (ii == 0) {
+		status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
+		if (status != 0)
+			return -1;
+	}
 	if (inputScalars.subsets > 1) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
@@ -336,6 +338,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f + w_vec.alphaCP[ii]);
 			w_vec.alphaCP[ii] *= 0.99f;
 		}
+		w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 		if (inputScalars.verbose >= 3) {
 			mexPrintBase("w_vec.alphaCP[ii] = %f\n", w_vec.alphaCP[ii]);
 			mexPrintBase("w_vec.tauCP = %f\n", w_vec.tauCP[ii]);
@@ -363,6 +366,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			w_vec.tauCP[ii] = w_vec.tauCP[ii] * (1.f - w_vec.alphaCP[ii]);
 			w_vec.alphaCP[ii] *= 0.99f;
 		}
+		w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 		vec.im_os[ii] = apu.copy();
 	}
 	return status;

@@ -1523,6 +1523,8 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 //	if (DEBUG)
 //		mexPrintf("threads = %u\n", threads);
 //#endif
+	//if (DEBUG)
+	//	mexPrintf("nMeas = %u\n", nMeas);
 
 	uint32_t nRays = param.nRays2D * param.nRays3D;
 #ifdef _OPENMP

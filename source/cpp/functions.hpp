@@ -2050,9 +2050,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					af::sync();
 					if (status != 0)
 						return -1;
-					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[ii], proj, kk, ii);
-					if (status != 0)
-						return -1;
+					if (ii == 0) {
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[ii], proj, kk, ii);
+						if (status != 0)
+							return -1;
+					}
 					if (ii > 0)
 						tauCP[ii] = (af::dot<float>(vec.im_os[ii], vec.rhs_os[ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[ii], vec.im_os[ii]));
 					vec.im_os[ii] = vec.rhs_os[ii];
@@ -2224,9 +2226,11 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					af::sync();
 					if (status != 0)
 						return -1;
-					status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[ii], proj, kk, ii);
-					if (status != 0)
-						return -1;
+					if (ii == 0) {
+						status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[ii], vec.im_os[ii], proj, kk, ii);
+						if (status != 0)
+							return -1;
+					}
 					if (ii > 0)
 						tauCP[ii] = (af::dot<float>(vec.im_os[ii], vec.rhs_os[ii]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[ii], vec.im_os[ii]));
 					vec.im_os[ii] = vec.rhs_os[ii];
@@ -2250,7 +2254,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 	}
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		w_vec.sigmaCP[ii] = 1.f;
-		w_vec.sigma2CP[ii] = 1.f;
+		if (ii > 0)
+			w_vec.sigma2CP[ii] = 1.f;
 		if (inputScalars.verbose > 0) {
 			if (ii == 0) {
 				if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]))

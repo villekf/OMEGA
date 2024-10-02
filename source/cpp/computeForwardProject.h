@@ -31,8 +31,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				}
 				else
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
-				if (MethodList.CPType)
-					w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
+				//if (MethodList.CPType)
+				//	w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 				if (inputScalars.adaptiveType == 1)
 					w_vec.alphaCP[ii] = 1.f;
 				else if (inputScalars.adaptiveType == 2)
