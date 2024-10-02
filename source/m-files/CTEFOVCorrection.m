@@ -18,6 +18,11 @@ if ~isfield(options, 'extrapLength')
 else
     extrapLength = options.extrapLength;
 end
+if ~isfield(options, 'eFOVLength')
+    eFOVLength = .4;
+else
+    eFOVLength = options.eFOVLength;
+end
 if options.useEFOV
     if ~isfield(options, 'transaxialEFOV') || ~options.transaxialEFOV
         if ~isfield(options, 'axialEFOV') || ~options.axialEFOV
@@ -166,7 +171,6 @@ if options.useExtrapolation
 end
 if options.useEFOV
     disp('Extending the FOV')
-    eFOVLength = .4;
     if options.transaxialEFOV
         nTransaxial = floor(options.Nx * eFOVLength) * 2;
         options.NxOrig = options.Nx;
