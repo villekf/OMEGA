@@ -1,3 +1,4 @@
+// Load ROOT data in Python
 #if defined(_MSC_VER)
 #define DLL_FUNCTION __declspec(dllexport)
 #endif
@@ -15,7 +16,7 @@ int rootMain(const char* rootFile, const double* tPoints, const double alku, con
 
 	const bool dynamic = Nt > 1;
 
-	const float matlabPtr = NULL;
+	const float matlabPtr = 0.f;
 
 	histogram(rootFile, tPoints, alku, loppu, source, linear_multip, cryst_per_block, blocks_per_ring, det_per_ring, S, SC, RA, trIndex, axIndex, DtrIndex, DaxIndex, obtain_trues, store_scatter, store_randoms,
 		scatter_components, randoms_correction, coord, Dcoord, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,

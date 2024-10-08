@@ -219,8 +219,12 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	param.nRays3D = getScalarUInt16(options, 0, "n_rays_axial");
 	param.useMaskFP = getScalarBool(options, 0, "useMaskFP");
 	param.useMaskBP = getScalarBool(options, 0, "useMaskBP");
-	if (DEBUG)
+	if (DEBUG) {
 		mexPrintf("param.nRays2D = %d\n", param.nRays2D);
+		mexPrintf("param.nRays3D = %d\n", param.nRays3D);
+		mexPrintf("SPECT = %d\n", SPECT);
+		mexPrintf("CT = %d\n", CT);
+	}
 	if (param.useMaskFP)
 		param.maskFP = getUint8s(options, "maskFP");
 	if (param.useMaskBP)

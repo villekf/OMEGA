@@ -41,6 +41,9 @@ end
 if ~isfield(options,'attenuation_phase')
     options.attenuation_phase = false;
 end
+if ~isfield(options,'rotateAttImage')
+    options.rotateAttImage = 0;
+end
 if ~isfield(options, 'store_raw_data')
     options.store_raw_data = options.use_raw_data;
 end
@@ -276,7 +279,6 @@ if ~isfield(options,'thetaCP') || (isfield(options,'thetaCP') && isempty(options
 end
 if ~isfield(options,'sigmaCP') || (isfield(options,'sigmaCP') && isempty(options.sigmaCP))
     options.sigmaCP = 1;
-    options.sigma2CP = 1;
 end
 if ~isfield(options, 'sigma2CP')
     options.sigma2CP = options.sigmaCP;
@@ -711,6 +713,15 @@ if ~isfield(options, 'NLGGMRF')
 end
 if ~isfield(options, 'NLM_MRP')
     options.NLM_MRP = false;
+end
+if ~isfield(options, 'NLAdaptive')
+    options.NLAdaptive = false;
+end
+if ~isfield(options, 'NLAdaptiveConstant')
+    options.NLAdaptiveConstant = 1e-5;
+end
+if ~isfield(options, 'sigma')
+    options.sigma = 1;
 end
 if ~isfield(options, 'weights_RDP')
     options.weights_RDP = [];

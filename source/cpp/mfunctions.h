@@ -595,6 +595,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.NLM_MRP = getScalarBool(getField(options, 0, "NLM_MRP"), -49);
 		w_vec.NLLange = getScalarBool(getField(options, 0, "NLLange"), -49);
 		w_vec.NLGGMRF = getScalarBool(getField(options, 0, "NLGGMRF"), -49);
+		w_vec.NLAdaptive = getScalarBool(getField(options, 0, "NLAdaptive"), -49);
 		if (w_vec.NLRD)
 			w_vec.RDP_gamma = getScalarFloat(getField(options, 0, "RDP_gamma"), -29);
 		else if (w_vec.NLLange)
@@ -607,6 +608,8 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 		if (w_vec.NLM_anatomical)
 			w_vec.NLM_ref = getSingles(options, "NLM_ref", 0);
+		if (w_vec.NLAdaptive)
+			w_vec.NLAdaptiveConstant = getScalarFloat(getField(options, 0, "NLAdaptiveConstant"), -29);
 		w_vec.h2 = getScalarFloat(getField(options, 0, "sigma"), -50);
 		w_vec.h2 = w_vec.h2 * w_vec.h2;
 		w_vec.Nlx = getScalarUInt32(getField(options, 0, "Nlx"), -51);

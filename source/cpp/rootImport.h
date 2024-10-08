@@ -40,8 +40,7 @@ void disp(const char* txt, const T nullPar = NULL) {
 #else
 template <typename T>
 void disp(const char* txt, const T nullPar = NULL) {
-	printf(txt);
-	printf("\n");
+	printf("%s\n", txt);
 }
 #endif
 

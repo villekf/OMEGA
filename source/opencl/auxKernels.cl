@@ -319,6 +319,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #if NLTYPE == 6 // NLGGMRF
 	, const float p, const float q, const float c
 #endif
+#if defined(NLMADAPTIVE)
+	, const float s
+#endif
 // Reference image
 #ifdef NLMREF // START NLMREF
 #ifdef USEIMAGES
@@ -397,8 +400,10 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	if (any(ii >= N))
 #endif
 		return;
+#if defined(NLMADAPTIVE)
 	float hh = 0.f;
 	const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
+#endif
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX, LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
 	for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
@@ -428,9 +433,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 						}
 					}
 				}
+#if defined(NLMADAPTIVE)
 				hh = distance / pSize;
-				weight = EXP(-distance / (hh * h + 1e-5f));
- 				// weight = EXP(-distance / h);
+				weight = EXP(-distance / (hh * h + s));
+#else
+ 				weight = EXP(-distance / h);
+#endif
  				weight_sum += weight;
 				const float uk = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z + k];
  				// Different NLM regularization methods
@@ -463,17 +471,18 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 				const float uabs = sign(u);
 				output += weight * (uabs - uabs / (fabs(u) / gamma + 1.f));
 #elif NLTYPE == 6
+				// NLGGMRF
 				const float delta = uj - uk;
 				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
 				output += weight * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - gamma * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
 #elif NLTYPE == 7
 				const float u = (uk - uj);
 				const float apu = (u * u + gamma * gamma);
-#ifndef USEMAD // START FMAD
+// #ifndef USEMAD // START FMAD
 				output += ((2.f * u * u * u) / (apu * apu) - 2.f * (u / apu));
-#else
-				output += ((2.f * u * u * u) / FMAD(apu, apu, -2.f * (u / apu)));
-#endif // END FMAD
+// #else
+// 				output += ((2.f * u * u * u) / FMAD(apu, apu, -2.f * (u / apu)));
+// #endif // END FMAD
 #else
  				//NLTV
 				const float apuU = uj - uk;

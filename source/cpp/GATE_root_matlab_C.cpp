@@ -192,7 +192,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
 	uint16_t* SinoR = (uint16_t*)mxGetData(plhs[3]);
 	uint16_t* SinoD = (uint16_t*)mxGetData(plhs[4]);
 
-	const float matlabPtr = NULL;
+	const float matlabPtr = 0.f;
 
 	histogram(argv, tPoints, alku, loppu, source, linear_multp, cryst_per_block, blocks_per_ring, det_per_ring, S, SC, RA, trIndex, axIndex, DtrIndex, DaxIndex, obtain_trues, store_scatter, store_randoms,
 		scatter_components, randoms_correction, coord, Dcoord, store_coordinates, dynamic, cryst_per_block_z, transaxial_multip, rings, sinoSize, Ndist, Nang, ringDifference, span,
