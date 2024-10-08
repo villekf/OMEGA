@@ -11,6 +11,7 @@ import os
 from .prepass import prepassPhase
 from .prepass import parseInputs
 from .prepass import loadCorrections
+from .prepass import sinogramToX
 
 def transferData(options):
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
@@ -281,12 +282,12 @@ def transferData(options):
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
     options.param.precondTypeImage = options.precondTypeImage.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
     options.param.precondTypeMeas = options.precondTypeMeas.ctypes.data_as(ctypes.POINTER(ctypes.c_bool))
+    options.param.referenceImage = options.referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.filterIm = options.filterIm.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.filter = options.filter0.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.filter2 = options.filter2.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.Ffilter = options.Ffilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.s = options.s.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.referenceImage = options.referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.weights_quad = options.weights_quad.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.weights_huber = options.weights_huber.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.weighted_weights = options.weighted_weights.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -306,6 +307,16 @@ def transferData(options):
     options.param.TV_ref = options.TV_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.trIndices = options.trIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
+    #For SPECT...
+    options.param.crXY = ctypes.c_float(options.crXY)
+    options.param.colL = ctypes.c_float(options.colL)
+    options.param.colR = ctypes.c_float(options.colR)
+    options.param.colD = ctypes.c_float(options.colD)
+    options.param.dSeptal = ctypes.c_float(options.dSeptal)
+    options.param.hexOrientation = ctypes.c_float(options.hexOrientation)
+    options.param.nRaySPECT = ctypes.c_float(options.nRaySPECT)
+    options.param.coneMethod = ctypes.c_float(options.coneMethod)
+    # ...until here
     
 def reconstructions_mainCT(options):
     options.CT = True
@@ -318,6 +329,18 @@ def reconstructions_mainCT(options):
 
 def reconstructions_mainSPECT(options):
     options.SPECT = True
+    if options.projector_type == 1:
+        options.x = sinogramToX(
+            options.angles,
+            options.radiusPerProj,
+            options.SinM.shape[0],
+            options.SinM.shape[1],
+            options.crXY,
+            options.flip_image,
+            options.offangle
+        )
+        options.colR *= 2 / np.sqrt(3)
+
     if options.storeResidual:
         pz, FPOutputP, residual = reconstructions_main(options)
         return pz, FPOutputP, residual
@@ -472,6 +495,7 @@ def reconstructions_main(options):
         SinoP = options.SinM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     outputP = output.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    print(options.crXY)
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     if options.useMultiResolutionVolumes:

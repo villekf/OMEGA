@@ -1,4 +1,4 @@
-function returnList = sinogramToX(angles, radii, nx, ny, crxy)
+function returnList = sinogramToX(angles, radii, nx, ny, crxy, flipImage, offAngle)
 %SINOGRAMTOX A function for converting sinogram pixel position and orientation information to a list of coordinates. Each column of the output has 6 elements, two pairs of xyz points. The line spanned by the points corresponds to the detector pixel normal vector.
 %   Utility function for OMEGA
 
@@ -6,6 +6,7 @@ function returnList = sinogramToX(angles, radii, nx, ny, crxy)
         error('Different amount of angles and radii')
     end
 
+    angles = angles - offAngle;
     nIter = numel(angles);
     returnList = zeros(6, nIter * ny * nx);
 
@@ -41,5 +42,9 @@ function returnList = sinogramToX(angles, radii, nx, ny, crxy)
                 idxCounter = idxCounter + 1;
             end
         end
+    end
+
+    if (flipImage == 1)
+        returnList = (-1) .* returnList;
     end
 end

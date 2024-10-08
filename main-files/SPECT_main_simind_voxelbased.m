@@ -1,9 +1,12 @@
-%% MATLAB codes for SPECT reconstruction from interfile data
-% This example uses SPECT data from an interfile
+%% MATLAB codes for SPECT reconstruction from SIMIND output
+% This example has been tested using SIMIND v8.0 and the respective
+% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF). The
+% fpath variable should point to the SIMIND output folder containing fname.a00,
+% .cor, and .h00 files.
 
 clear
-
-options = SIMIND_SPECT_parser('nema1');
+fpath = 'cbf1';
+options = SIMIND_SPECT_parser(fpath);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -18,7 +21,7 @@ options = SIMIND_SPECT_parser('nema1');
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x = 364;%4.664*128;
+options.FOVa_x = 4.664 * 128;%1 * 364;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -26,7 +29,7 @@ options.FOVa_y = options.FOVa_x;
 
 %%% Axial FOV (mm)
 % This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 412.5;%4.664*128;
+options.axial_fov = 4.664 * 128;%3.75 * 110;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -60,7 +63,6 @@ options.Nz = 128;
 options.flip_image = false;
 
 %%% How much is the image rotated?
-% You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
@@ -116,7 +118,7 @@ options.verbose = 1;
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
-options.implementation = 2;
+options.implementation = 4;
 
 % Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
@@ -133,7 +135,7 @@ options.use_CUDA = false;
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-options.use_CPU = false;
+options.use_CPU = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
@@ -730,4 +732,8 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
 %% Plot
-% volume3Dviewer(pz, 'fit')
+volume3Dviewer(pz, 'fit')
+
+%% Save
+% save(strcat('brain_phantom_proj', num2str(options.projector_type),...
+%  '_model', num2str(options.coneMethod), '_nRay', num2str(options.nRaySPECT), '.mat'), 'options', 'pz')

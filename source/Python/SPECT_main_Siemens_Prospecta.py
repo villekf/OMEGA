@@ -5,7 +5,7 @@ Python codes for SPECT reconstruction from DICOM data
 import numpy as np
 from omegatomo import proj
 from omegatomo.reconstruction import reconstructions_mainSPECT
-import matplotlib as plt
+import matplotlib.pyplot as plt
 from pydicom import dcmread
 
 
@@ -31,6 +31,9 @@ options.SinM = options.SinM[:,64//4:128-64//4,:]
 
 ### Crystal thickness (mm)
 options.cr_p = 9.525
+
+### Crystal width (mm)
+options.crXY = 4.7952
 
 ### Transaxial FOV size (mm), this is the length of the x [horizontal] side
 # of the FOV
@@ -131,15 +134,19 @@ options.offangle = (3*np.pi)/2
 # collimator parameters (see below) for an analytic solution for round (and
 # hexagonal) holes (this may be unoptimal).
 
-# If you want to compute the CDRF analytically, input the following values:
+# If you want to compute the CDRF analytically, input the following values (required for projector_type=1):
 # Collimator hole length (mm)
 options.colL = 24.05
 # Collimator hole radius
 options.colR = 1.11/2
 # Distance from collimator to the detector
 options.colD = 0
+# Septal thickness (mm)
+options.dSeptal = 0.1
 # Intrinsic resolution
 options.iR = 3.8
+# Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
+options.hexOrientation = 1
 
 # If you have the standard deviations for transaxial (XY) and axial (Z)
 # directions, you can input them here instead of the above values (the
@@ -198,10 +205,9 @@ options.verbose = 1
  
 ############################# IMPLEMENTATIONS #############################
 ### OpenCL/CUDA device used 
-# NOTE: Use 
+# NOTE: to obtain the device numbers uncomment the following two lines.
 # from omegatomo.util.devinfo import deviceInfo
 # deviceInfo(True)
-# to obtain the device numbers
 options.deviceNum = 0
 
 ### Use CUDA
@@ -215,12 +221,22 @@ options.useCPU = False
  
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix
+# 1 = (Improved) Siddon ray-based projector
 # 6 = Rotation-based projector
-options.projector_type = 6
+# See the documentation on some details on the projectors:
+# https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
+options.projector_type = 1
+
+# For Siddon ray-based projector:
+# Number of rays traced per collimator hole
+options.nRaySPECT = 400
+# Method for tracing rays inside collimator hole: 1 for accurate location
+# of rays, 2 for one cone at center of pixel, 3 for generic model
+options.coneMethod = 3
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
-options.Niter = 10
+options.Niter = 2
 ### Save specific intermediate iterations
 # You can specify the intermediate iterations you wish to save here. Note
 # that this uses zero-based indexing, i.e. 0 is the first iteration (not
@@ -242,7 +258,7 @@ options.subsets = 8
 # PET)
 # 11 = Use prime factor sampling to select the projection images
 # Most of the time subset_type 8 is sufficient.
-options.subsetType = 8
+options.subsetType = 3
 
 ### Initial value for the reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
@@ -813,4 +829,5 @@ tic = time.perf_counter()
 pz, fp = reconstructions_mainSPECT(options)
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
-plt.pyplot.imshow(pz[:,:,48], vmin=0)
+plt.imshow(pz[:,:,48], vmin=0)
+plt.show()
