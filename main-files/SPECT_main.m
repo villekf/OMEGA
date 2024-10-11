@@ -3,24 +3,6 @@
 
 clear
 
-% Load projection images
-% DataPath = 'Tomo_Matti_2013-08-1_12949.I04';
-% fid = fopen(DataPath);
-% data = fread(fid, inf, "uint16");
-% fclose(fid);
-% options.SinM = flipud(reshape(data, 128, 128, 64));
-
-% Header file location
-% options.fpath = 'Tomo_Matti_2013-08-1_12949.A04';
-options.fpath = 'cbf1.h00';
-options.corFile = 'cbf1.cor';
-
-DataPath = 'cbf1.a00';
-fid = fopen(DataPath);
-data = fread(fid, inf, "float32");
-fclose(fid);
-options.SinM = reshape(data, 128, 128, 64);
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -66,6 +48,7 @@ options.machine_name = 'Two_Heads_SPECT_example';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Load projection data
 options = loadSPECTInterfile(options);
 
 
@@ -114,25 +97,6 @@ options.offangle = (3*pi)/2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% SPECT EDIT
-% Crystal size (mm);
-options.crXY = 4.664;
-% Collimator hole length (mm)
-options.collimatorLength = 32.8;
-% Collimator hole diameter (mm), larger inner radius
-options.collimatorDiameter = 1.4;
-% Septal thickness (mm)
-options.dSeptal = 0.12;
-% Number of rays traced per collimator hole
-options.nRaySPECT = 4;
-% Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal
-% diameter smaller
-options.hexOrientation = 1;
-% Method for tracing rays inside collimator hole: 1 for accurate location
-% of rays, 2 for one cone at center of pixel, 3 for generic model
-options.coneMethod = 3;
-%%% END SPECT EDIT
-
 %%% Collimator-detector response function (CDRF)
 % You can either input the (Gaussian) PSF filter, or the standard
 % deviations for both transaxial and axial directions or simply the
@@ -147,7 +111,14 @@ options.colR = 0.7;
 % Distance from collimator to the detector
 options.colD = 0;
 % Intrinsic resolution
+% projector_type = 6 only!
 options.iR = 3.4;
+% Septal thickness (mm)
+% projector_type = 1 only!
+options.dSeptal = 0.12;
+% Crystal size (mm);
+% projector_type = 1 only!
+options.crXY = 4.664;
 
 % If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values (the
@@ -218,7 +189,7 @@ options.implementation = 4;
 %%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
 % with implementation 2.
-options.use_device = 1;
+options.use_device = 0;
 
 % Implementation 2 ONLY
 %%% Use CUDA
@@ -233,19 +204,15 @@ options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
+% 1 = (Improved) Siddon ray-based projector
 % 6 = Rotation-based projector
 % See the doc for more information:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
-% Use with projector_type=1
-options.x = sinogramToX( ...
-    (0:(options.nProjections - 1)) * options.angleIncrement + options.startAngle, ...
-    options.radiusPerProj, ...
-    size(options.SinM, 1), ...
-    size(options.SinM, 2), ...
-    options.crXY ...
-);
+% For Siddon ray-based projector:
+% Number of rays traced per collimator hole
+options.nRaySPECT = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -265,12 +232,17 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% 8 = Use every nth projection image
+% For SPECT, the supported types depend on the projector type.
+% projector_type = 1 supports subset_type 0, 1 and 3
+% projector_type = 6 supports types 8-11
+% 0 = Divide the data into N segments with the original data ordering
+% 1 = Every nth (column) measurement is taken
+% 3 = Measurements are selected randomly (recommended for projector_type = 1)
+% 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the projection images
-% Most of the time subset_type 8 is sufficient.
 options.subset_type = 3;
 
 %%% Initial value for the reconstruction
@@ -829,4 +801,4 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 %     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
 %% Plot
-volumeViewer(pz)
+volume3Dviewer(pz)
