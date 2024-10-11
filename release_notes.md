@@ -43,14 +43,21 @@
 
 ### New features
 
+- Added ray-based projector for SPECT reconstructions
+  - Enabled by setting projector type to 1
+  - Supported in MATLAB, Octave and Python
+  - Supports implementations 2 and 4
+  - Currently doesn't support custom reconstruction algorithms
+  - Thanks to @saarlemo (https://github.com/saarlemo)
+
 - Added FISTA-based acceleration for every algorithm
-  - Seems to work well with subset-based reconstructions, but there is a risk of completely failed reconstruction
+  - There is a risk of completely failed reconstruction
   
 - Overhauled relative difference prior for implementation 2
   - Like before there are two different RDP methods
   - The default is basically the original RDP, where only the left/right/top/bottom/front/back voxels are taken into account with no weighting
   - Second method, enabled with `options.RDPIncludeCorners`, on the other hand is dependent on the neighborhood size that you specify, as well as uses the same weights as quadratic prior
-  - The second method can have a neigborhood of any size, though non-cubic ones might not work
+  - The second method can have a neigborhood of any size
   - The second method also includes an optional "reference image" weighting
   - When using other implementations, the functionality is similar to the second method but the functionality is limited (no reference image weighting) and performance can be poor
   
@@ -58,13 +65,27 @@
   - Latter can use any of the non-proximal priors though functionality is not guaranteed
   - Unlike the original ASD-POCS, `options.beta` affects the regularization strength as well
   
+- Added an adaptive NLM weighting
+  - Any non-local regularizer can use adaptive weighting when `options.NLAdaptive` is set as true
+  - See the documentation for more details: https://omega-doc.readthedocs.io/en/latest/algorithms.html#nlm
+  
 ### Bug fixes and enhancements
 
 - Projector type 6 should now work with filtering-based preconditioner
 
 - TOF should now work with image-based preconditioners and power method
 
-- Fix memory leak with (at least) OSEM and ROSEM
+- Fixed memory leak with (at least) OSEM and ROSEM
+
+- Image-based preconditioners should now work with measurement-filtering
+
+- Fixed compilation warnings on Python
+
+- The size of the extended FOV can now be adjusted more easily with `options.eFOVLength`
+
+- The size of the FOV can now be changed when using implementation 1
+
+- Verbosity in certain cases, such as when using non-local priors, has been improved
 
 ## OMEGA v2.0.0 Release Candidate
 
