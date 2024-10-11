@@ -5,6 +5,7 @@
 % distance of the detector head(s) from the center of rotation and the
 % collimator specifics. The collimator information is required for built-in
 % detector response function. You can, however, input your own one as well.
+% Note that at the moment no example data is provided
 
 clear
 
@@ -138,8 +139,10 @@ options.colD = 0;
 % Septal thickness (mm)
 options.dSeptal = 0.1;
 % Intrinsic resolution (mm)
+% projector_type 6 only!
 options.iR = 3.8;
 % Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
+% projector_type 1 only!
 options.hexOrientation = 1;
 
 %%% Collimator-detector response function (CDRF)
@@ -241,9 +244,6 @@ options.projector_type = 6;
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
 options.nRaySPECT = 1;
-% Method for tracing rays inside collimator hole: 1 for accurate location
-% of rays, 2 for one cone at center of pixel, 3 for generic model
-options.coneMethod = 3;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -263,12 +263,17 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% 8 = Use every nth projection image
+% For SPECT, the supported types depend on the projector type.
+% projector_type = 1 supports subset_type 0, 1 and 3
+% projector_type = 6 supports types 8-11
+% 0 = Divide the data into N segments with the original data ordering
+% 1 = Every nth (column) measurement is taken
+% 3 = Measurements are selected randomly (recommended for projector_type = 1)
+% 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the projection images
-% Most of the time subset_type 8 is sufficient.
 options.subset_type = 8;
 
 %%% Initial value for the reconstruction

@@ -3,6 +3,7 @@
 % tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF). The
 % fpath variable should point to the SIMIND output folder containing fname.a00,
 % .cor, and .h00 files.
+% You can find example data from https://github.com/saarlemo/diplomity-/tree/main/data
 
 clear
 fpath = 'cbf1';
@@ -57,6 +58,7 @@ options.Nx = 128;
 options.Ny = 128;
 
 %%% Z-direction (number of slices) (axial)
+% If you're using projector_type = 6, this HAS to be same as options.nColsD
 options.Nz = 128;
 
 %%% Flip the image (in vertical direction)?
@@ -135,7 +137,7 @@ options.use_CUDA = false;
 % Implementation 2 ONLY
 %%% Use CPU
 % Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-options.use_CPU = true;
+options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
@@ -148,9 +150,6 @@ options.projector_type = 1;
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
 options.nRaySPECT = 1;
-% Method for tracing rays inside collimator hole: 1 for accurate location
-% of rays, 2 for one cone at center of pixel, 3 for generic model
-options.coneMethod = 3;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -170,12 +169,17 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% 8 = Use every nth projection image
+% For SPECT, the supported types depend on the projector type.
+% projector_type = 1 supports subset_type 0, 1 and 3
+% projector_type = 6 supports types 8-11
+% 0 = Divide the data into N segments with the original data ordering
+% 1 = Every nth (column) measurement is taken
+% 3 = Measurements are selected randomly (recommended for projector_type = 1)
+% 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the projection images
-% Most of the time subset_type 8 is sufficient.
 options.subset_type = 3;
 
 %%% Initial value for the reconstruction
@@ -727,9 +731,6 @@ tStart = tic;
 pz = reconstructions_mainSPECT(options);
 tElapsed = toc(tStart);
 disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
-
-% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
-%     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
 %% Plot
 volume3Dviewer(pz, 'fit')
