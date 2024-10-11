@@ -364,6 +364,9 @@ if (options.projector_type == 6)
     if options.Nz(1) ~= options.nColsD
         error('options.Nz has to be the same as options.nColsD when using projector type 6')
     end
+    if options.subsets > 1 && options.subset_type < 8
+        error('Subset types 0-8 are not supported with projector type 6!')
+    end
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
     if options.largeDim
@@ -650,6 +653,12 @@ if options.verbose > 0
         end
         if ~isempty(priori)
             disp(dispi2)
+            if options.NLM || options.MRP || options.quad || options.Huber || (options.RDP && options.RDPIncludeCorners) || options.GGMRF
+                disp(['Using neighborhood/search window size of ' num2str(options.Ndx * 2 + 1) 'x' num2str(options.Ndy * 2 + 1) 'x' num2str(options.Ndz * 2 + 1) '.'])
+            end
+            if options.NLM
+                disp(['Using patch size of ' num2str(options.Nlx * 2 + 1) 'x' num2str(options.Nly * 2 + 1) 'x' num2str(options.Nlz * 2 + 1) '.'])
+            end
         end
         if ~OS && ~MAP && ~options.MLEM && ~(options.only_sinos || options.compute_normalization)
             error('No reconstruction algorithm selected.')
