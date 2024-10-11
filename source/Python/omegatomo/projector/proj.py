@@ -680,7 +680,6 @@ class projectorClass:
                 self.dPitchY = self.crXY
                 self.dPitchX = self.crXY
                 self.cr_p = self.crXY
-                print("test")
             else:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
