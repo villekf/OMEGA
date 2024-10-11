@@ -301,7 +301,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
-			status = PDHG2(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii, pituus, g, m_size, &length);
+			status = PDHG2(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii, pituus, g, m_size, length);
 		}
 		else if (MethodList.FISTA) {
 			if (inputScalars.verbose >= 3)
