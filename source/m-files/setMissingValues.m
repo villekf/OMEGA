@@ -855,3 +855,6 @@ end
 if ~isfield(options,'coneMethod')
     options.coneMethod = 3;
 end
+if ~isfield(options,'hexOrientation')
+    options.hexOrientation = 1;
+end
