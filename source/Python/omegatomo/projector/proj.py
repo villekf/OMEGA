@@ -443,6 +443,12 @@ class projectorClass:
     POCS_NgradIter = 20
     FISTA_acceleration = False
     RDP_use_anatomical = False
+    dSeptal = 1
+    hexOrientation = 1
+    coneMethod = 3
+    nRaySPECT = 1
+    crXY = 1
+
     def __init__(self):
         # C-struct
         self.param = self.parameters()
@@ -669,12 +675,19 @@ class projectorClass:
             if self.listmode == True:
                 size_x = self.x.size // 6
         else:
-            self.dPitch = self.cr_p
-            self.dPitchY = self.cr_p
-            self.dPitchX = self.cr_pz
+            if self.SPECT == True:
+                self.dPitch = self.crXY
+                self.dPitchY = self.crXY
+                self.dPitchX = self.crXY
+                self.cr_p = self.crXY
+            else:
+                self.dPitch = self.cr_p
+                self.dPitchY = self.cr_p
+                self.dPitchX = self.cr_pz
             self.nProjections = self.NSinos
             self.nRowsD = self.Ndist
             self.nColsD = self.Nang
+
         # self.size_x = size_x
         # self.totMeas = self.nColsD * self.nRowsD * self.nProjections
         self.nMeas = np.insert(np.cumsum(self.nMeas),0, 0)
@@ -745,7 +758,8 @@ class projectorClass:
             self.nProjSubset[kk] = self.nMeas[kk + 1] - self.nMeas[kk]
         if self.listmode == 1:
             self.x = self.x.astype(dtype=np.float32)
-            self.x = self.x.ravel('F')
+            if self.x.flags.f_contiguous:
+                self.x = self.x.ravel('F')
         # Compute PSF kernel
         self.PSFKernel()
         self.N = self.Nx.astype(np.uint64) * self.Ny.astype(np.uint64) * self.Nz.astype(np.uint64)
@@ -1803,13 +1817,53 @@ class projectorClass:
                 else:
                     bOpt += ' -DCT'
             elif self.SPECT:
+                if self.coneMethod == 1:
+                    tmpNrays = 1
+                    nHexSPECT = math.pow(math.ceil(self.dPitchX / self.colD), 2)
+                elif self.coneMethod == 2:
+                    tmpNrays = self.nRaySPECT
+                    nHexSPECT = 1
+                elif self.coneMethod == 3:
+                    self.nRaySPECT = int(math.pow(math.ceil(math.sqrt(self.nRaySPECT)), 2))
+                    tmpNrays = self.nRaySPECT
+                    nHexSPECT = 1
                 if self.useCUDA:
                     if self.useCuPy:
                         bOpt += ('-DSPECT',)
+                        bOpt += ('-DCOL_D=' + str(self.colD),)
+                        bOpt += ('-DCOL_L=' + str(self.colL),)
+                        bOpt += ('-DDSEPTAL=' + str(self.dSeptal),)
+                        bOpt += ('-DHEXORIENTATION=' + str(self.hexOrientation),)
+                        bOpt += ('-DCONEMETHOD=' + str(self.coneMethod),)
+                        bOpt += ('-DNRAYSPECT=' + str(self.nRaySPECT),)
+                        bOpt += ('-DN_RAYS=' + str(tmpNrays),)
+                        bOpt += ('-DN_RAYS2D=1',)
+                        bOpt += ('-DN_RAYS3D=1',)
+                        bOpt += ('-DNHEXSPECT=' + str(nHexSPECT),)
                     else:
                         bOpt.append('-DSPECT')
+                        bOpt.append('-DCOL_D=' + str(self.colD))
+                        bOpt.append('-DCOL_L=' + str(self.colL))
+                        bOpt.append('-DDSEPTAL=' + str(self.dSeptal))
+                        bOpt.append('-DHEXORIENTATION=' + str(self.hexOrientation))
+                        bOpt.append('-DCONEMETHOD=' + str(self.coneMethod))
+                        bOpt.append('-DNRAYSPECT=' + str(self.nRaySPECT))
+                        bOpt.append('-DN_RAYS=' + str(tmpNrays))
+                        bOpt.append('-DN_RAYS2D=1')
+                        bOpt.append('-DN_RAYS3D=1')
+                        bOpt.append('-DNHEXSPECT=' + str(nHexSPECT))
                 else:
                     bOpt += ' -DSPECT'
+                    bOpt += ' -DCOL_D=' + str(self.colD)
+                    bOpt += ' -DCOL_L=' + str(self.colL)
+                    bOpt += ' -DDSEPTAL=' + str(self.dSeptal)
+                    bOpt += ' -DHEXORIENTATION=' + str(self.hexOrientation)
+                    bOpt += ' -DCONEMETHOD=' + str(self.coneMethod)
+                    bOpt += ' -DNRAYSPECT=' + str(self.nRaySPECT)
+                    bOpt += ' -DN_RAYS=' + str(tmpNrays)
+                    bOpt += ' -DN_RAYS2D=1'
+                    bOpt += ' -DN_RAYS3D=1'
+                    bOpt += ' -DNHEXSPECT=' + str(nHexSPECT)
             elif self.PET:
                 if self.useCUDA:
                     if self.useCuPy:
@@ -4564,4 +4618,12 @@ class projectorClass:
             ('TV_ref', ctypes.POINTER(ctypes.c_float)),
             ('trIndices', ctypes.POINTER(ctypes.c_uint16)),
             ('axIndices', ctypes.POINTER(ctypes.c_uint16)),
+            ('crXY',ctypes.c_float),
+            ('colL',ctypes.c_float),
+            ('colR',ctypes.c_float),
+            ('colD',ctypes.c_float),
+            ('dSeptal', ctypes.c_float),
+            ('hexOrientation', ctypes.c_float),
+            ('nRaySPECT', ctypes.c_float),
+            ('coneMethod', ctypes.c_float),
         ]

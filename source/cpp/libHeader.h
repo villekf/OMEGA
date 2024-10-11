@@ -442,6 +442,16 @@ struct inputStruct {
     float* TV_ref;
     uint16_t* trIndices;
     uint16_t* axIndices;
+    // SPECT values
+    float crXY;
+    float colL;
+    float colR;
+    float colD;
+    float dSeptal;
+    float hexOrientation;
+    float nRaySPECT;
+    float coneMethod;
+    // SPECT end
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -767,8 +777,16 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
-    }
-    else {
+    } else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
+        inputScalars.nColsD = options.nColsD;
+        inputScalars.nRowsD = options.nRowsD;
+        inputScalars.colL = options.colL;
+        inputScalars.colD = 2 * options.colR;
+        inputScalars.dSeptal = options.dSeptal;
+        inputScalars.nRaySPECT = options.nRaySPECT;
+        inputScalars.hexOrientation = options.hexOrientation;
+        inputScalars.coneMethod = options.coneMethod;
+    } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
     }
