@@ -339,6 +339,9 @@ if options.implementation == 1 && ~options.CT
         error('TOF is not supported with implementation 1!')
     end
 end
+if options.TOF_bins_used > 1 && options.implementation == 3
+    error('TOF is not supported with implementation 3!')
+end
 if options.projector_type == 2 && options.implementation == 1 && options.precompute_lor
     warning('Orthogonal distance-based projector is not recommended with implementation 1!')
 end
