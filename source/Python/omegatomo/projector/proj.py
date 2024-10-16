@@ -314,10 +314,12 @@ class projectorClass:
     w_sum = 1.
     RDP_gamma = 1.
     NLMsigma = 1.
+    NLAdaptiveConstant = 1.
     TimeStepAD = 1.
     KAD = 1.
     huber_delta = 1.
     NLM_use_anatomical = False
+    NLAdaptive = False
     NLTV = False
     NLRD = False
     NLLange = False
@@ -4409,6 +4411,7 @@ class projectorClass:
             ('cr_p', ctypes.c_float),
             ('cr_pz', ctypes.c_float),
             ('NLMsigma', ctypes.c_float),
+            ('NLAdaptiveConstant', ctypes.c_float),
             ('w_sum', ctypes.c_float),
             ('KAD', ctypes.c_float),
             ('TimeStepAD', ctypes.c_float),
@@ -4472,6 +4475,7 @@ class projectorClass:
             ('NLLange', ctypes.c_bool),
             ('NLGGMRF', ctypes.c_bool),
             ('NLM_use_anatomical', ctypes.c_bool),
+            ('NLAdaptive', ctypes.c_bool),
             ('TV_use_anatomical', ctypes.c_bool),
             ('RDPIncludeCorners', ctypes.c_bool),
             ('RDP_use_anatomical', ctypes.c_bool),
