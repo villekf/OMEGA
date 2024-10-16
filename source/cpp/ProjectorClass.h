@@ -2236,14 +2236,37 @@ public:
 
 	int computeForward(const scalarStruct& inputScalars, const std::vector<int64_t>& length, const uint32_t osa_iter) {
 		int status = CL_SUCCESS;
+		cl::NDRange localF = { 64, 1, 1 };
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
-			global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
-		else {
-			erotus[0] = length[osa_iter] % local_size[0];
+			global = { inputScalars.nRowsD * inputScalars.nColsD * static_cast<size_t>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+		else
+			global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+		
+		size_t erotusF = global[0] % localF[0];
+		if (erotusF > 0)
+			erotusF = localF[0] - erotusF;
+		global = { static_cast<cl::size_type>(global[0] + erotusF), 1, 1 };
+		//else {
+			//erotus[0] = length[osa_iter] % local_size[0];
 
-			if (erotus[0] > 0)
-				erotus[0] = (local_size[0] - erotus[0]);
-			global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+			//if (erotus[0] > 0)
+			//	erotus[0] = (local_size[0] - erotus[0]);
+			//global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+			//global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
+		//}
+		if (DEBUG) {
+			mexPrintBase("global[0] = %u\n", global[0]);
+			//mexPrintBase("local[0] = %u\n", local[0]);
+			//mexPrintBase("local[1] = %u\n", local[1]);
+			mexPrintBase("global[1] = %u\n", global[1]);
+			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("erotus[0] = %u\n", erotus[0]);
+			mexPrintBase("erotus[1] = %u\n", erotus[1]);
+			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
+			//mexPrintBase("local.dimensions() = %u\n", local.dimensions());
+			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
+			mexPrintBase("listmode = %u\n", inputScalars.listmode);
+			mexEval();
 		}
 		cl_uint kernelInd = 0U;
 		kernelForward.setArg(kernelInd++, d_output);
@@ -2252,7 +2275,7 @@ public:
 			kernelForward.setArg(kernelInd++, d_outputCT);
 		if (inputScalars.randoms_correction)
 			kernelForward.setArg(kernelInd++, d_rand[osa_iter]);
-		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelForward, cl::NDRange(), global, local, NULL);
+		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelForward, cl::NDRange(), global, localF, NULL);
 		if (status != CL_SUCCESS) {
 			getErrorString(status);
 			return -1;
@@ -2271,12 +2294,12 @@ public:
 		return status;
 	}
 
-	int computeEstimate(const scalarStruct& inputScalars, const int ii = 0) {
+	int computeEstimate(const scalarStruct& inputScalars, const int ii = 0, const int uu = 0) {
 		int status = CL_SUCCESS;
 		global = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
 		cl_uint kernelInd = 0U;
-		kernelEstimate.setArg(kernelInd++, d_Summ[ii]);
+		kernelEstimate.setArg(kernelInd++, d_Summ[uu]);
 		kernelEstimate.setArg(kernelInd++, vec_opencl.d_rhs_os[ii]);
 		kernelEstimate.setArg(kernelInd++, d_imFinal[ii]);
 		kernelEstimate.setArg(kernelInd++, inputScalars.epps);
@@ -2293,7 +2316,7 @@ public:
 			return -1;
 		}
 		else if (DEBUG || inputScalars.verbose >= 3) {
-			mexPrint("Forward step kernel launched successfully\n");
+			mexPrint("Estimate step kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
 		if (status != CL_SUCCESS) {
@@ -2301,7 +2324,7 @@ public:
 			return -1;
 		}
 		if (inputScalars.verbose >= 3)
-			mexPrint("Forward step computed");
+			mexPrint("Estimate step computed");
 
 		return status;
 	}
@@ -2642,9 +2665,12 @@ public:
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <param name="compSens if true, computes the sensitivity image as well"></param>
 	/// <returns></returns>
-	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0) {
+	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0, 
+		int ee = -1) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
+		if (ee < 0)
+			ee = uu;
 		cl_int status = CL_SUCCESS;
 		kernelIndBPSubIter = kernelIndBP;
 		if (inputScalars.listmode > 0 && compSens) {
@@ -2661,7 +2687,7 @@ public:
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
 					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers)};
 				else
-				global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
+					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
 			else {
 				erotus[0] = length[osa_iter] % local_size[0];
 
@@ -2759,7 +2785,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[uu]);
+			status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
@@ -2934,7 +2960,7 @@ public:
 						getErrorString(status);
 						return -1;
 					}
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[uu]);
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -2970,7 +2996,7 @@ public:
 						getErrorString(status);
 						return -1;
 					}
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[uu]);
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -3083,7 +3109,7 @@ public:
 					getErrorString(status);
 					return -1;
 				}
-				status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[uu]);
+				status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
