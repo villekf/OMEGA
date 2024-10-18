@@ -261,6 +261,15 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
                 alku = prod(options.N(kk));
             end
         end
+    else
+        if options.use_psf
+            for ii = 1 : options.nMultiVolumes + 1
+                output = computeConvolution(output, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                if numel(sensIm) > 1
+                    sensIm = computeConvolution(sensIm, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                end
+            end
+        end
     end
 else
     error('Unsupported implementation! This is unintended behavior!')
