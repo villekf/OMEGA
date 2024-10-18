@@ -116,6 +116,12 @@ end
 if options.SPECT && options.implementation == 1
     error('Implementation 1 is not supported with SPECT data.')
 end
+if options.SPECT && options.implementation == 3 && options.projector_type == 6
+    error('Implementation 3 is not supported with projector type 6.')
+end
+if options.SPECT && options.implementation == 5 && options.projector_type == 6
+    error('Implementation 5 is not supported with projector type 6.')
+end
 if ~options.CT && ~options.SPECT && options.arc_correction && options.use_raw_data
     warning('Arc correction is not supported for raw data. Disabling arc correction.')
     options.arc_correction = false;
@@ -354,6 +360,9 @@ end
 if (options.projector_type == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
+if (options.projector_type ~= 6 && options.projector_type ~= 1) && options.SPECT
+    error('SPECT only supports projector types 1 and 6!')
+end
 if (options.projector_type == 6) && options.use_CUDA
     error('CUDA is not supported with projector type 6!')
 end
@@ -383,7 +392,7 @@ end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
-if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
+if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
         && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14) && ~options.CT && ~options.SPECT
     error('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
 end
