@@ -222,6 +222,11 @@ else
         options.vaimennus = single(0);
     end
     if iscell(recApu)
+        if options.use_psf
+            for kk = 1 : size(recApu,1)
+                recApu{kk} = computeConvolution(recApu{kk}, options, options.Nx(kk), options.Ny(kk), options.Nz(kk), options.gaussK);
+            end
+        end
         if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
             kopio = recApu;
             for kk = 1 : size(recApu,1)
@@ -237,6 +242,9 @@ else
             options.x0 = [options.x0;cell2mat(kopio)];
         end
     else
+        if options.use_psf
+            recApu = computeConvolution(recApu, options, options.Nx(1), options.Ny(1), options.Nz(1), options.gaussK);
+        end
         if options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 54
             recApu = reshape(recApu, options.Nx(1), options.Ny(1), options.Nz(1));
             kopio = permute(recApu, [1 3 2]);
