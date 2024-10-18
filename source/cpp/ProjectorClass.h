@@ -407,9 +407,11 @@ class ProjectorClass {
 				options += " -DLTYPE=long";
 				options += " -DLTYPE3=long3";
 			}
-			if (type != 0)
-				options += " -DAF";
-			else {
+			if (type == 2) {
+				if (inputScalars.use_psf)
+					options += " -DPSF";
+			}
+			else if (type == 0) {
 				if (inputScalars.CT)
 					options += " -DCT";
 				if (inputScalars.randoms_correction)
@@ -417,6 +419,8 @@ class ProjectorClass {
 				if (inputScalars.use_psf)
 					options += " -DPSF";
 			}
+			else
+				options += " -DAF";
 			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
 				options += " -DMASKPRIOR";
 			if (inputScalars.eFOV)
@@ -959,8 +963,10 @@ class ProjectorClass {
 				return -1;
 			}
 			kernelForward = cl::Kernel(programAux, "forward", &status);
-			if (inputScalars.use_psf)
+			if (inputScalars.use_psf) {
 				kernelPSFf = cl::Kernel(programAux, "Convolution3D_f", &status);
+				kernelPSF = cl::Kernel(programAux, "Convolution3D", &status);
+			}
 
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -971,6 +977,16 @@ class ProjectorClass {
 				mexPrint("Implementation 3 kernels successfully created\n");
 			}
 		}
+		//else if (type == 2) {
+		//	if (inputScalars.use_psf) {
+		//		kernelPSF = cl::Kernel(programAux, "Convolution3D", &status);
+		//		if (status != CL_SUCCESS) {
+		//			getErrorString(status);
+		//			mexPrint("Failed to create PSF kernel\n");
+		//			return -1;
+		//		}
+		//	}
+		//}
 		if (inputScalars.computeSensImag) {
 			if (inputScalars.BPType == 4)
 				kernelSensList = cl::Kernel(programSens, "projectorType4Forward", &status);
@@ -2204,10 +2220,15 @@ public:
 		return 0;
 	}
 
-	int computeConvolution(const scalarStruct& inputScalars, const int ii = 0) {
+	int computeConvolutionF(const scalarStruct& inputScalars, const int ii = 0) {
 		int status = CL_SUCCESS;
 		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
+		status = CLCommandQueue[0].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
 		cl_uint kernelInd = 0U;
 		kernelPSFf.setArg(kernelInd++, d_imFinal[ii]);
 		kernelPSFf.setArg(kernelInd++, d_imTemp[ii]);
@@ -2228,8 +2249,55 @@ public:
 			getErrorString(status);
 			return -1;
 		}
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Convolution computed");
+
+		return status;
+	}
+
+	template <typename T>
+	int computeConvolution(const scalarStruct& inputScalars, cl::Buffer& input, const int ii = 0, const T& cType = 0) {
+		int status = CL_SUCCESS;
+		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
+
+		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
+		status = CLCommandQueue[0].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		cl_uint kernelInd = 0U;
+		kernelPSF.setArg(kernelInd++, input);
+		kernelPSF.setArg(kernelInd++, d_BPApu);
+		kernelPSF.setArg(kernelInd++, d_g);
+		kernelPSF.setArg(kernelInd++, inputScalars.g_dim_x);
+		kernelPSF.setArg(kernelInd++, inputScalars.g_dim_y);
+		kernelPSF.setArg(kernelInd++, inputScalars.g_dim_z);
+		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSF, cl::NDRange(), globalC, localPrior, NULL);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		else if (DEBUG || inputScalars.verbose >= 3) {
+			mexPrint("Convolution kernel launched successfully\n");
+		}
+		status = CLCommandQueue[0].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			mexPrint("Convolution computed");
+		status = CLCommandQueue[0].enqueueCopyBuffer(d_BPApu, input, 0, 0, sizeof(T) * inputScalars.im_dim[ii]);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
+		status = CLCommandQueue[0].finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			return -1;
+		}
 
 		return status;
 	}
@@ -2305,9 +2373,9 @@ public:
 		kernelEstimate.setArg(kernelInd++, inputScalars.epps);
 		kernelEstimate.setArg(kernelInd++, d_N[ii]);
 		kernelEstimate.setArg(kernelInd++, no_norm);
-		if (inputScalars.use_psf) {
-			kernelEstimate.setArg(kernelInd++, d_g);
-		}
+		//if (inputScalars.use_psf) {
+		//	kernelEstimate.setArg(kernelInd++, d_g);
+		//}
 		if (inputScalars.CT)
 			kernelEstimate.setArg(kernelInd++, inputScalars.flat);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelEstimate, cl::NDRange(), global, localPrior, NULL);

@@ -28,6 +28,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	const float* norm = nullptr, const float* extraCorr = nullptr, const size_t size_gauss = 0, const uint32_t* xy_index = nullptr,
 	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr) {
 
+	const C tyyppi = (C)0;
 	// Number of measurements in each subset
 	std::vector<int64_t> length(inputScalars.subsetsUsed);
 
@@ -277,7 +278,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					region[2] = inputScalars.Nz[ii];
 					proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 					if (inputScalars.use_psf) {
-						status = proj.computeConvolution(inputScalars, ii);
+						status = proj.computeConvolutionF(inputScalars, ii);
 						if (status != CL_SUCCESS) {
 							return;
 						}
@@ -381,6 +382,18 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 						return;
 					}
 					if (type == 0) {
+						if (inputScalars.use_psf) {
+							status = proj.computeConvolution(inputScalars, proj.vec_opencl.d_rhs_os[ii], ii, tyyppi);
+							if (status != CL_SUCCESS) {
+								return;
+							}
+							if (proj.no_norm == 0) {
+								status = proj.computeConvolution(inputScalars, proj.d_Summ[uu], ii, tyyppi);
+								if (status != CL_SUCCESS) {
+									return;
+								}
+							}
+						}
 						status = proj.computeEstimate(inputScalars, ii, uu);
 						if (status != CL_SUCCESS) {
 							return;
