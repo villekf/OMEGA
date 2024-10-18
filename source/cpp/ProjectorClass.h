@@ -165,7 +165,7 @@ class ProjectorClass {
 
 		kernel_path = kernelFile;
 		kernel_pathBP = kernelFile;
-		if (inputScalars.FPType > 0) {
+		if (inputScalars.FPType > 0 && inputScalars.FPType != 6) {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				kernel_path += "projectorType123.cl";
 			}
@@ -177,7 +177,7 @@ class ProjectorClass {
 			std::string contentFFP((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 			contentFP = contentHeader + contentFFP;
 		}
-		if (inputScalars.BPType > 0) {
+		if (inputScalars.BPType > 0 && inputScalars.BPType != 6) {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				kernel_pathBP += "projectorType123.cl";
 			}
