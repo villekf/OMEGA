@@ -591,10 +591,12 @@ inline void denominator(std::vector<T>& ax, const uint32_t local_ind, T local_el
 				ax[to] += apu * joku / TOFSum;
 		}
 	}
-	if (nRays > 1)
-		ax[lor] += apu;
-	else
-		ax[0] += apu;
+	else {
+		if (nRays > 1)
+			ax[lor] += apu;
+		else
+			ax[0] += apu;
+	}
 }
 
 // Compute the backprojection
