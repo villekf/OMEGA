@@ -310,7 +310,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #ifndef USEMAD
         const float3 p = t * v + s;
 #else
-        const float3 p = FMAD(t, v, s);
+        const float3 p = FMAD3(t, v, s);
 #endif
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
         t += tStep;
@@ -387,6 +387,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
+#if defined(TOF)
+			D -= (dL * sign(DD));
+#endif
         t += tStep;
         if (t > tEnd)
             break;
