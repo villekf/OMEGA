@@ -187,24 +187,32 @@ C++11 compiler is required when manually compiling.
 
 For Windows Visual Studio 2022 or 2019 is recommended with "Desktop development with C++", no other options are required. https://visualstudio.microsoft.com/
 
-For Linux it is recommended to use g++ which usually comes bundled with the system. 
+For Linux it is recommended to use g++ which usually comes bundled with the system. The version can matter only with MATLAB and it is recommended to use the one supported by your MATLAB version: https://www.mathworks.com/support/requirements/supported-compilers-linux.html
 
 On MacOS Xcode should be used https://apps.apple.com/us/app/xcode/id497799835?mt=12.
 
 OpenCL library is required for OpenCL functionality.
 
-ArrayFire is required for implementation 2.
+ArrayFire is required for implementation 2 (required for Python!).
 
 For OpenCL, an OpenCL 1.2 compatible device is required. For CUDA, compute capability of 2.0 or higher is required.
 
 The following third-party MATLAB codes are NOT required, but can be useful in certain specialized cases as they can be optionally used:  
-https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
-https://se.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
+https://www.mathworks.com/matlabcentral/fileexchange/27076-shuffle (Shuffle, used by random subset sampling)
+https://www.mathworks.com/matlabcentral/fileexchange/22940-vol3d-v2 (vol3d v2, used for 3D visualization)  
 https://www.mathworks.com/matlabcentral/fileexchange/8797-tools-for-nifti-and-analyze-image (Tools for NIfTI and ANALYZE image, to load/save Analyze files and also NIfTI files in absence of image processing toolbox).
 
 
 
 ## Known Issues and Limitations
+
+### Python & MATLAB & Octave
+
+Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases). Though it should be possible to manually achieve a moving bed examination.
+
+Only cylindrical symmetric scanners are supported inherently for PET, for other types of scanners the user has to input the detector coordinates or use index-based reconstruction.
+
+For CT, only cone beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel.
 
 ### MATLAB & Octave
 
@@ -212,18 +220,14 @@ LMF output currently has to contain the time stamp (cannot be removed in GATE) a
 
 LMF source information is a lot more unreliable than the ASCII or ROOT version. LMF support has been deprecated in version 2.0.
 
-Moving bed is not supported at the moment (needs to be step-and-shoot and the different bed positions need to be handled as separate cases).
-
-Only cylindrical symmetric scanners are supported inherently, for other types of scanners the user has to input the detector coordinates or use index-based reconstruction.
-
-For CT, only cone beam flat panel scanners are supported. For other types of scanners, the user has to input the detector coordinates or modify the data such that it is approximately flat panel.
-
 ROOT or ASCII data is not yet supported with GATE CT data.
 
-ECAT geometry is supported only with ASCII data. ROOT data might also work (untested).
+ECAT PET geometry is supported only with ASCII data. ROOT data might also work (untested).
 
-If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire. In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
+If you are experiencing crashes when using implementation 2, it might be caused by the graphics features of ArrayFire (AF). In this case I recommend renaming/removing the libforge.so files from the ArrayFire library folder (e.g. `/opt/arrayfire/lib64/`). Alternatively you can install the no-gl AF:  
 http://arrayfire.s3.amazonaws.com/index.html (3.6.2 is the latest). Finally, you can also simply build AF from source, preferably without building Forge. This seems to apply only to Linux and affects both MATLAB and Octave. Python is unaffected!
+
+Implementation 3 doesn't support TOF data. In general, implementation 3 is not recommended anymore and will probably be deprecated in a future release.
 
 ### MATLAB
 
@@ -238,7 +242,7 @@ ROOT data import is unstable in MATLAB R2018b and earlier versions due to a libr
 
 ### Octave
 
-When using Windows implementation 2 (ArrayFire matrix free OpenCL) can only be enabled by manually building ArrayFire with Mingw. Instructions are provided [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows). Note that CUDA won't work even with manual building.
+When using Windows, implementation 2 (ArrayFire matrix free OpenCL) can only be enabled by manually building ArrayFire with Mingw. Instructions are provided [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows). Note that CUDA won't work even with manual building.
 
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
@@ -260,7 +264,6 @@ Intel GPUs do not support forward and/or backward projection masks.
 
 Here is a list of features that should appear in future releases:
 
-- New SPECT projector
 - PET scatter correction based on SSS
 - Improved dual-layer PET support
 
@@ -276,15 +279,17 @@ For feature requests, post an issue on GitHub. I do not guarantee that a specifi
 
 If you wish to use this software in your work, cite this paper: V-V Wettenhovi et al 2021 Phys. Med. Biol. 66 065010. The peer reviewed (open access) paper on OMEGA can be found from https://doi.org/10.1088/1361-6560/abe65f.
 
-If you use some of the specific algorithm or prior, please cite one of references here or some other original paper.
+If you use some specific algorithm or prior, please cite one of references here or some other original paper!
 
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. The Siddon ray tracer SPECT projector was implemented by Niilo Saarlemo. All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. The Siddon ray tracer SPECT projector was implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from [Jane and Aatos Erkko foundation](https://jaes.fi/en/), [Instrumentarium Science Foundation](http://instrufoundation.fi/en.php), 
-[Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). This work has been supported by [University of Eastern Finland](https://www.uef.fi/en) and Academy of Finland.
+[Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). 
+This work has been supported by [University of Eastern Finland](https://www.uef.fi/en) and Academy of Finland. 
+This work was supported by the Research Council of Finland ([Flagship of Advanced Mathematics for Sensing Imaging and Modelling](https://fameflagship.fi/) grant 358944).
 
 
 ## References
