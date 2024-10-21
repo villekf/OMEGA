@@ -171,6 +171,10 @@ if options.useExtrapolation
 end
 if options.useEFOV
     disp('Extending the FOV')
+    if ~(options.transaxialEFOV) && ~(options.axialEFOV)
+        warning('Neither transaxial nor axial EFOV selected, but EFOV itself is selected! Setting axial EFOV to True!')
+        options.axialEFOV = true;
+    end
     if options.transaxialEFOV
         nTransaxial = floor(options.Nx * eFOVLength) * 2;
         options.NxOrig = options.Nx;

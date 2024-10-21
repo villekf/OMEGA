@@ -377,7 +377,7 @@ if (options.projector_type == 6)
         error('options.Nz has to be the same as options.nColsD when using projector type 6')
     end
     if options.subsets > 1 && options.subset_type < 8
-        error('Subset types 0-8 are not supported with projector type 6!')
+        error('Subset types 0-7 are not supported with projector type 6!')
     end
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
