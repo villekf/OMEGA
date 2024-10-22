@@ -64,7 +64,7 @@ For additional install help, see [installation help](https://omega-doc.readthedo
 
 Pre-built libraries are supplied in the [releases](https://github.com/villekf/OMEGA/releases), however, you can also manually compile everything. 
 
-For manual compilation you're going to need a C++ compiler in order to compile the MEX-files/libraries and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio on Windows, GCC on Linux, clang should work on MacOS). Specifically, Visual Studio 2019 and 2022 have been tested to work on Windows 10 and as well as g++ 9.3 and g++ 10.5 on Ubuntu 22.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) on Windows by default. Octave supports only MinGW++ on Windows and as such implementation 2 on Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)).
+For manual compilation you're going to need a C++ compiler in order to compile the MEX-files/libraries and use this software. Visual Studio and GCC have been tested to work and are recommended depending on your platform (Visual Studio in Windows, GCC in Linux, clang should work in MacOS). Specifically, Visual Studio 2019 and 2022 have been tested to work in Windows 10 and as well as g++ 9.3 and g++ 10.5 on Ubuntu 22.04. MinGW++ also works though it is unable to compile ArrayFire OpenCL reconstructions (implementation 2) in Windows by default. Octave supports only MinGW++ in Windows and as such implementation 2 in Windows is only supported if you manually compile ArrayFire from source with MinGW (for instructions, see [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows)).
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
@@ -93,7 +93,7 @@ and then you need to load the statistics package:
 Python only requires NumPy, though to load mat-files you need `pymatreader` and for multi-resolution reconstruction `scikit-image`.
 
 In order to enable OpenCL support (implementations 2 and 3), you're going to need an OpenCL SDK/library and (for implementation 2) ArrayFire (see below). 
-On Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
+in Linux you can alternatively just install the OpenCL headers and library. Below examples are for Ubuntu, but the packages should exist for other distros as well.
 
 Headers (required only when manually building):
 `sudo apt-get install opencl-headers`
@@ -136,16 +136,19 @@ https://arrayfire.com/binaries
 and the source code from here:  
 https://github.com/arrayfire/arrayfire
 
-Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` on Windows, `/opt/arrayfire/` on Linux/MacOS) should cause `install_mex` and `compile.py` to automatically locate everything. 
-However, in both cases you need to add the library paths to the system PATH. On Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` or 
+Installing/building ArrayFire to the default location (`C:\Program Files\ArrayFire` in Windows, `/opt/arrayfire/` in Linux/MacOS) should cause `install_mex` and `compile.py` to automatically locate everything. 
+However, in both cases you need to add the library paths to the system PATH. In Windows you will be prompted for this during the installation, for Linux you need to add `/opt/arrayfire/lib` or 
 `/opt/arrayfire/lib64` (depending which exists) to the library path (e.g. `sudo ldconfig /opt/arrayfire/lib64/` or `export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/opt/arrayfire/lib64` if you don't have sudo permissions). 
-Alternatively, on Linux, you can also build/install ArrayFire directly into the `/usr/local/` folder.
+Alternatively, in Linux, you can also build/install ArrayFire directly into the `/usr/local/` folder.
 
 Using CUDA code instead of OpenCL requires the CUDA toolkit. On both cases the CUDA folder should be on the system path. `install_mex` and `compile.py` always attempts to build the CUDA code as well so no 
-additional input is required from the user if all the header and library data is found. By default `install_mex` and `compile.py` looks for CUDA in `/usr/local/cuda/` on Linux. 
-On Windows, CUDA location is determined from the environmental variables (PATH).
+additional input is required from the user if all the header and library data is found. By default `install_mex` and `compile.py` looks for CUDA in `/usr/local/cuda/` in Linux. 
+In Windows, CUDA location is determined from the environmental variables (PATH).
 
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
+
+Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Geforce 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
+All the GPUs were tested in Linux except AMD Radeon 7900 XT which was tested in Windows.
 
 ## Getting Started
 
@@ -238,7 +241,7 @@ Or see the solutions in [installation help](https://omega-doc.readthedocs.io/en/
 
 If you are using ROOT data with ROOT 6.16.00 or newer you might receive the following error message: "undefined symbol: _ZN3tbb10interface78internal20isolate_within_arenaERNS1_13delegate_baseEl". This is caused by the `libtbb.so.2` used by MATLAB (located in `/matlabroot/bin/glnxa64`). Same solutions apply as with the above case (e.g. renaming the file). See [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html#linux) for details.
 
-ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. On Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data). The new desktop might not have this issue, but this is currently untested.
+ROOT data import is unstable in MATLAB R2018b and earlier versions due to a library incompatibility between the Java virtual machine in MATLAB and ROOT. in Linux you will experience MATLAB crashes when importing ROOT data. There is a workaround for this by using MATLAB in the no Java mode (e.g `matlab -nojvm`), though you won't have any GUI or graphic features. MATLAB R2019a and up are unaffected. It is recommended to use `nojvm` for data load only (set `options.only_sinos = true` to load only the data). The new desktop might not have this issue, but this is currently untested.
 
 ### Octave
 
@@ -264,6 +267,8 @@ Intel GPUs do not support forward and/or backward projection masks.
 
 Here is a list of features that should appear in future releases:
 
+- Additional SPECT features
+- Additional CT features
 - PET scatter correction based on SSS
 - Improved dual-layer PET support
 
@@ -284,7 +289,7 @@ If you use some specific algorithm or prior, please cite one of references here 
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. The Siddon ray tracer SPECT projector was implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The Siddon ray tracer SPECT projector was implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from [Jane and Aatos Erkko foundation](https://jaes.fi/en/), [Instrumentarium Science Foundation](http://instrufoundation.fi/en.php), 
 [Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). 
