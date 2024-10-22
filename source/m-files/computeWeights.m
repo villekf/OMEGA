@@ -19,7 +19,7 @@ if isempty(options.weights)
                 if options.Ndx == 0 || options.Nx(1) == 1
                     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                         apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repeat_elem(kk,options.Ndy*2+1) * distY)];
-                    elseif exist('OCTAVE_VERSION','builtin') == 5
+                    elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                         apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY)];
                     else
                         apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY)'];
@@ -29,7 +29,7 @@ if isempty(options.weights)
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                             apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repeat_elem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repeat_elem(jj,options.Ndx*2+1) * distX),...
                                 zeros(options.Ndx-options.Ndx,1)]];
-                        elseif exist('OCTAVE_VERSION','builtin') == 5
+                        elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                             apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repelem(jj,options.Ndx*2+1) * distX),...
                                 zeros(options.Ndx-options.Ndx,1)]];
                         else
@@ -39,7 +39,7 @@ if isempty(options.weights)
                     else
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                             apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repeat_elem(kk,options.Ndy*2+1) * distY), (repeat_elem(jj,options.Ndx*2+1) * distX)];
-                        elseif exist('OCTAVE_VERSION','builtin') == 5
+                        elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                             apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY), (repelem(jj,options.Ndx*2+1) * distX)];
                         else
                             apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY)', (repelem(jj,options.Ndx*2+1) * distX)'];
@@ -62,7 +62,7 @@ if isempty(options.weights)
                 if options.Ndz == 0 || options.Nz(1) == 1
                     if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                         apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repeat_elem(kk,options.Ndy*2+1) * distY)];
-                    elseif exist('OCTAVE_VERSION','builtin') == 5
+                    elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                         apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repelem(kk,options.Ndy*2+1) * distY)];
                     else
                         apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repelem(kk,options.Ndy*2+1) * distY)'];
@@ -72,7 +72,7 @@ if isempty(options.weights)
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                             apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repeat_elem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndx-options.Ndz,1),(repeat_elem(jj,options.Ndz*2+1) * distZ),...
                                 zeros(options.Ndx-options.Ndz,1)]];
-                        elseif exist('OCTAVE_VERSION','builtin') == 5
+                        elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                             apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repelem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndx-options.Ndz,1),(repelem(jj,options.Ndz*2+1) * distZ),...
                                 zeros(options.Ndx-options.Ndz,1)]];
                         else
@@ -82,7 +82,7 @@ if isempty(options.weights)
                     else
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                             apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repeat_elem(kk,options.Ndy*2+1) * distY), (repeat_elem(jj,options.Ndz*2+1) * distZ)];
-                        elseif exist('OCTAVE_VERSION','builtin') == 5
+                        elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
                             apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repelem(kk,options.Ndy*2+1) * distY), (repelem(jj,options.Ndz*2+1) * distZ)];
                         else
                             apu = [((options.Ndx:-1:-options.Ndx) * distX)', (repelem(kk,options.Ndy*2+1) * distY)', (repelem(jj,options.Ndz*2+1) * distZ)'];
