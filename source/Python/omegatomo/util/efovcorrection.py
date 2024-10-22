@@ -87,9 +87,11 @@ def CTEFOVCorrection(options):
             options.ScatterC = newProj
     if options.useEFOV:
         print('Extending the FOV')
-        eFOVLength = 0.4
+        if not(options.transaxialEFOV) and not(options.axialEFOV):
+            print('Neither transaxial nor axial EFOV selected, but EFOV itself is selected! Setting axial EFOV to True!')
+            options.axialEFOV = True
         if options.transaxialEFOV:
-            nTransaxial = int(np.floor(options.Nx * eFOVLength)) * 2
+            nTransaxial = int(np.floor(options.Nx * options.eFOVLength)) * 2
             options.NxOrig = options.Nx
             options.NyOrig = options.Ny
             options.Nx += nTransaxial
@@ -104,7 +106,7 @@ def CTEFOVCorrection(options):
             options.NxOrig = options.Nx
             options.NyOrig = options.Ny
         if options.axialEFOV:
-            nAxial = int(np.floor(options.Nz * eFOVLength)) * 2
+            nAxial = int(np.floor(options.Nz * options.eFOVLength)) * 2
             options.NzOrig = options.Nz
             options.Nz += nAxial
             options.axialFOVOrig = options.axial_fov
