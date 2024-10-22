@@ -338,7 +338,7 @@ options.deviceNum = 0
 # 1 = Improved/accelerated Siddon's algorithm
 # 2 = Orthogonal distance based ray tracer
 # 3 = Volume of intersection based ray tracer
-# See the wiki for more information:
+# See the docs for more information:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1
 

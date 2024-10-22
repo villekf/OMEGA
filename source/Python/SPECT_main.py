@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-## MATLAB codes for SPECT reconstruction from interfile data
+## Python codes for SPECT reconstruction from interfile data
 
 import numpy as np
 from omegatomo import proj
@@ -22,12 +22,6 @@ options = proj.projectorClass()
 
 # Header file location
 options.fpath = '/path/to/interfile'
-
-# Load projection images
-DataPath = '/path/to/data'
-lista = read_mat(DataPath)
-options.SinM = np.sum(lista['binned_counts'],3)
-del lista
 
 ### Crystal thickness (mm)
 options.cr_p = 9.525
@@ -187,7 +181,7 @@ options.verbose = 1
 ### OpenCL/CUDA device used 
 # NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
 # with implementation 2.
-options.use_device = 1
+options.deviceNum = 0
 
 ### Use CUDA
 # Selecting this to True will use CUDA kernels/code instead of OpenCL. This
@@ -574,8 +568,8 @@ options.a_L = np.empty(0)
 ### If the weighting factors are set empty, then this option will determine
 # whether the computed weights follow a 1D weighting scheme (True) or 2D 
 # (False).
-# See the wiki for more information:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# See the docs for more information:
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#l-filter
 options.oneD_weights = False
  
  
@@ -636,15 +630,15 @@ options.TV_reference_image = 'reference_image.mat'
 # Type 3 uses the same weights as quadratic prior
 # Type 4 is the Lange prior, does not support anatomic weighting.
 # Type 6 is a weighted TV, does not support anatomic weighting.
-# See the wiki for more information:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# See the docs for more information:
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.TVtype = 1
 
 ### Weighting parameters for the TV prior. 
 # Applicable only if use_anatomical = True. T-value is specific to the used
 # TVtype, e.g. for type 1 it is the edge threshold parameter. See the wiki
 # for more details:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.T = 0.5
 
 ### C is the weight for the original image in type 3 and is ignored with
@@ -686,7 +680,7 @@ options.DiffusionType = 1
 ############################# APLS PROPERTIES #############################
 ### Scaling parameter (eta)
 # See the wiki for details:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.eta = 1e-5
 
 ### "Smoothing" parameter (beta)
