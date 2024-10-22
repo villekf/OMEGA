@@ -41,6 +41,8 @@
   
 - (CB)CT reconstructions are much more efficient now than before as long as GPU computing is used
 
+- TOF support has been dropped from implementation 3
+
 ### New features
 
 - Added ray-based projector for SPECT reconstructions
@@ -48,7 +50,7 @@
   - Supported in MATLAB, Octave and Python
   - Supports implementations 2 and 4
   - Currently doesn't support custom reconstruction algorithms
-  - Thanks to @saarlemo (https://github.com/saarlemo)
+  - Thanks to [@saarlemo](https://github.com/saarlemo)
 
 - Added FISTA-based acceleration for every algorithm
   - There is a risk of completely failed reconstruction
@@ -85,7 +87,23 @@
 
 - The size of the FOV can now be changed when using implementation 1
 
-- Verbosity in certain cases, such as when using non-local priors, has been improved
+- Verbosity in certain cases, such as when using non-local priors, has been improved (MATLAB/Octave only)
+
+- Error checking has been slightly improved
+
+- TOF should now work with projector type 4
+
+- Fixed compilation warnings with latest g++
+
+- PSF blurring now works with multi-resolution
+
+- PDHG and its variants should now work properly with projector type 6
+
+- PSF support has been added for implementation 5
+
+- TOF should now work with implementation 4
+
+- PSF should now work with implementation 3
 
 ## OMEGA v2.0.0 Release Candidate
 

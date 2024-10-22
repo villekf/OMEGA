@@ -4,7 +4,7 @@
 % FOV size, the number of voxels in each direction and the source/detector
 % coordinates. The example data is a cylindrical PET data but in reality it
 % could be anything. This is a simplified example.
-
+% Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 % NOTE: This example has no error checking!
 
 clear
