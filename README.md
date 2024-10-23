@@ -247,6 +247,8 @@ ROOT data import is unstable in MATLAB R2018b and earlier versions due to a libr
 
 When using Windows, implementation 2 (ArrayFire matrix free OpenCL) can only be enabled by manually building ArrayFire with Mingw. Instructions are provided [here](https://github.com/villekf/OMEGA/wiki/Building-ArrayFire-with-Mingw-on-Windows). Note that CUDA won't work even with manual building.
 
+Implementations 3 and 5 fail to build with Octave 9.2 in Windows. Octave 8.3 should work fine.
+
 Almost all MATLAB-based code runs significantly slower compared to MATLAB (this is due to the slowness of loops in Octave). Reconstructions are unaffected.
 
 MAT-files that are over 2 GB are not supported by Octave and such large data sets cannot be saved in Octave at the moment.
