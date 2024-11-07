@@ -202,19 +202,17 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	} else if (SPECT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarFloat(getField(options, 0, "crXY"), ind);
-		param.colL = getScalarFloat(getField(options, 0, "colL"), ind);
-		param.colD = 2 * getScalarFloat(getField(options, 0, "colR"), ind);
-		param.dSeptal = getScalarFloat(getField(options, 0, "dSeptal"), ind);
-		param.nRaySPECT = getScalarFloat(getField(options, 0, "nRaySPECT"), ind);
-		param.hexOrientation = getScalarFloat(getField(options, 0, "hexOrientation"), ind);
-		param.coneMethod = getScalarFloat(getField(options, 0, "coneMethod"), ind);
+		param.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
+		param.rayShiftsSource = getSingles(options, "rayShiftsSource");
+		param.numMaskFP = getScalarInt64(getField(options, 0, "numMaskFP"), ind);
+		param.nProjectionsGlobal = getScalarInt64(getField(options, 0, "nProjectionsGlobal"), ind);
 	} else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarFloat(getField(options, 0, "cr_p"), ind);
 	}
 	
-	if (DEBUG)
-		mexPrintf("param.colD = %f\n", param.colD);
+	//if (DEBUG)
+	//	mexPrintf("param.colD = %f\n", param.colD);
 	param.nRays2D = getScalarUInt16(options, 0, "n_rays_transaxial");
 	param.nRays3D = getScalarUInt16(options, 0, "n_rays_axial");
 	param.useMaskFP = getScalarBool(options, 0, "useMaskFP");

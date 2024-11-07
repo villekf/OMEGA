@@ -13,21 +13,34 @@ function [pz,varargout] = reconstructions_mainSPECT(options)
 %     ll = ll + options.(var{kk});
 %     kk = kk +1;
 % end
-if (options.projector_type == 1) % Use with projector_type=1
-    options.x = sinogramToX( ...
-        options.angles, ...
-        options.radiusPerProj, ...
-        size(options.SinM, 1), ...
-        size(options.SinM, 2), ...
-        options.crXY, ...
-        options.flip_image, ...
-        options.offangle ...
-    );
 
-    options.colR = 2 / sqrt(3) * options.colR; %The larger radius is used
+if ~isfield(options, 'CORtoDetectorSurface')
+    options.CORtoDetectorSurface = 0;
+end
+if ~isfield(options, 'swivelAngles')
+    options.swivelAngles = options.angles+180;
+end
+if ~isfield(options, 'rayShiftsDetector')
+    if options.nRays == 1
+        options.rayShiftsDetector = single(zeros(2, 1));
+    else
+    options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+    end
+end
+if ~isfield(options, 'rayShiftsSource')
+    if options.nRays == 1
+        options.rayShiftsSource= single(zeros(2, 1));
+    else
+    options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+    end
+end
+if isfield(options, 'maskFP')
+    options.useImages = false;
+    options.numMaskFP = size(options.maskFP, 3);
+    options.nProjectionsGlobal = options.nProjections;
 end
 
-
+options.n_rays_transaxial = options.nRays;
 options.NSinos = options.nProjections;
 options.TotSinos = options.nProjections;
 options.span = 3;
@@ -37,7 +50,7 @@ options.Nang = options.nColsD;
 options.use_raw_data = false;
 options.randoms_correction = false;
 options.scatter_correction = false;
-options.attenuation_correction = false;
+%options.attenuation_correction = false;
 options.normalization_correction = false;
 if ~isfield(options, 'partitions')
     options.partitions = 1;
@@ -78,7 +91,8 @@ options.dPitch = options.cr_p;
 options.tube_width_xy = 0;
 options.tube_width_z = 0;
 if ~isfield(options, 'cr_pz')
-    options.cr_pz = options.cr_p;
+    % options.cr_pz = options.cr_p;
+    options.cr_pz = options.crXY;
 end
 if ~isfield(options, 'n_rays_transaxial')
     options.n_rays_transaxial = 1;

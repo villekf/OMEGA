@@ -336,18 +336,28 @@ struct paramStruct {
 	bool useMaskBP = false;
 	// Backward projection mask
 	uint8_t* maskBP = nullptr;
+	// SPECT ray shifts, detector end (collimator model)
+	T* rayShiftsDetector = nullptr;
+	// SPECT ray shifts, source end (collimator model)
+	T* rayShiftsSource = nullptr;
+	// Amount of forward projection masks
+	int64_t numMaskFP = 1;
+	// Total amount of projections (sinograms)
+	int64_t nProjectionsGlobal = 1;
 	// Collimator hole length (mm)
-	T colL = (T)1.;
-	// Collimator hole diameter (mm)
-	T colD = (T)1.;
+	//T colL = (T)1.;
+	// Collimator hole diameter (detector end) [mm]
+	//T collimatorBottomRadius = (T)1.;
+	// Collimator hole diameter (source end) [mm]
+	//T collimatorTopRadius = (T)1.;
 	// Septal width (mm)
-	T dSeptal = (T)1.;
+	//T dSeptal = (T)1.;
 	// Number of rays traced per collimator hole
-	T nRaySPECT = (T)1.;
+	//T nRaySPECT = (T)1.;
 	// Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
-	T hexOrientation = (T)1.;
+	//T hexOrientation = (T)1.;
 	// Method for tracing rays inside collimator hole: 1 for accurate location of rays, 2 for one cone at center of pixel
-	T coneMethod = (T)3.;
+	//T coneMethod = (T)3.;
 };
 
 // Compute the Euclidean norm of a vector
@@ -499,6 +509,57 @@ inline void get_detector_coordinates_CT(const T* x,const T* z, const uint32_t si
 			detectors.zd += dPitch * indeksi2;
 		}
 	}
+}
+
+template <typename T>
+inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detectors, const int64_t lo, const uint32_t lorXY, const uint32_t size_x, const uint32_t size_y, const int64_t ix, const int64_t iy, const int64_t iz, const T dPitchXY, const uint8_t list_mode_format, const uint32_t nRays2D, const T* rayShiftsDetector, const T* rayShiftsSource) {
+	const int idx = iz * 6;
+	detectors.xs = x[idx + 0]; // Detector panel center inner normal vector
+	detectors.ys = x[idx + 1];
+	detectors.zs = x[idx + 2];
+	detectors.xd = x[idx + 3];
+	detectors.yd = x[idx + 4];
+	detectors.zd = x[idx + 5];
+
+	const int idz = iz * 2; // Move ray to detector pixel
+	const T indeksi1 = static_cast<T>(ix) - static_cast<T>(size_x) / 2. + .5;
+	const T indeksi2 = static_cast<T>(iy) - static_cast<T>(size_y) / 2. + .5;
+	detectors.xs += z[idz] * indeksi1;
+	detectors.ys += z[idz + 1] * indeksi1;
+	detectors.zs += dPitchXY * indeksi2;
+	detectors.xd += z[idz] * indeksi1;
+	detectors.yd += z[idz + 1] * indeksi1;
+	detectors.zd += dPitchXY * indeksi2;
+
+	if (lorXY == 0 && lo == 0 && false) {
+		mexPrintf("dPitchXY = %f\n", (T)dPitchXY);
+		mexPrintf("ix = %f\n", (T)ix);
+		mexPrintf("iy = %f\n", (T)iy);
+		mexPrintf("iz = %f\n", (T)iz);
+		mexPrintf("indeksi1 = %f\n", (T)indeksi1);
+		mexPrintf("indeksi2 = %f\n", (T)indeksi2);
+		mexPrintf("detectors.xs = %f\n", (T)detectors.xs);
+		mexPrintf("detectors.ys = %f\n", (T)detectors.ys);
+		mexPrintf("detectors.zs = %f\n", (T)detectors.zs);
+		mexPrintf("detectors.xd = %f\n", (T)detectors.xd);
+		mexPrintf("detectors.yd = %f\n", (T)detectors.yd);
+		mexPrintf("detectors.zd = %f\n", (T)detectors.zd);
+	}
+	
+	if (nRays2D > 1) { // Add ray shift
+		const int idr = lorXY * 2;
+
+		detectors.xd += z[idz+0] * rayShiftsDetector[idr] / 2.;
+		detectors.yd += z[idz+1] * rayShiftsDetector[idr] / 2.;
+		detectors.zd += dPitchXY * rayShiftsDetector[idr + 1] / 2.;
+		detectors.xs += z[idz+0] * rayShiftsSource[idr] / 2.;
+		detectors.ys += z[idz+1] * rayShiftsSource[idr] / 2.;
+		detectors.zs += dPitchXY * rayShiftsSource[idr + 1] / 2.;
+	}	
+	// Extend ray
+	detectors.xs += 100 * (detectors.xs - detectors.xd);
+	detectors.ys += 100 * (detectors.ys - detectors.yd);
+	detectors.zs += 100 * (detectors.zs - detectors.zd);
 }
 
 // Compute the distance that the ray traverses in the current voxel
@@ -1198,7 +1259,7 @@ inline std::vector<size_t> sort_indexes(const std::vector<T>& v)
 //	}
 //
 //};
-
+/*
 template<typename T>
 inline T sind(T arg) {
 	arg *= M_PI / 180; // Convert to radians
@@ -1471,7 +1532,7 @@ inline std::vector<std::vector<T>> computeSpectSquareShifts(paramStruct<T>& para
 
 	return sqShifts;
 }
-
+*/
 //#undef _OPENMP
 
 /// <summary>
@@ -1575,11 +1636,17 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 			iz = lo / ((int64_t)param.size_x * (int64_t)param.size_y);
 			ix = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) % param.size_x;
 			iy = (lo - iz * (int64_t)param.size_x * (int64_t)param.size_y) / param.size_x;
-			if (param.subsetType >= 8 && param.subsets > 1)
+			if (param.subsetType >= 8 && param.subsets > 1) {
 				iz += (int64_t)param.nMeas;
+			}
+			/*if (lo == 0) {
+				mexPrintf("ix = %f\n", (T)ix);
+				mexPrintf("iy = %f\n", (T)iy);
+				mexPrintf("iz = %f\n", (T)iz);
+			}*/
 		}
 		else {
-			if ((param.listMode > 0 && param.computeSensIm == 0) || (!CT && param.listMode == 0)) {
+			if ((param.listMode > 0 && param.computeSensIm == 0) || (!(CT || SPECT) && param.listMode == 0)) {
 				ix = lo;
 				iy = 0;
 				iz = 0;
@@ -1597,17 +1664,22 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 			}
 		}
 		int64_t ind = lo;
-
 		if (param.useMaskFP) {
-			const int64_t idx = ix + iy * (int64_t)param.size_x;
-			const bool maskVal = param.maskFP[idx];
+			const int64_t idx1 = ix + iy * (int64_t)param.size_x;
+			int64_t idx2 = 0;
+			if (param.numMaskFP > 1) { // Shift to the correct detector panel mask 
+				int64_t numProjPerDetector = param.nProjectionsGlobal / param.numMaskFP;
+				int64_t currentDetector = iz / numProjPerDetector;
+				idx2 = (int64_t)param.size_x * (int64_t)param.size_x * currentDetector;
+			}
+			const bool maskVal = param.maskFP[idx1+idx2];
 			if (maskVal == false)
 				continue;
 		}
-
-		uint32_t nShift = 1;
-		std::vector<std::vector<T>> hexShifts;
 		Det<T> detectors; 
+		/*uint32_t nShift = 1;
+		std::vector<std::vector<T>> hexShifts;
+		
 		if (SPECT) {
 			// These are not used for SPECT
 			param.nRays2D = 1;
@@ -1628,7 +1700,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 			}
 			nShift = hexShifts.size();
 			nRays = nShift;
-		}
+		}*/
 
 		//std::vector<T> ax(param.nBins);
 		if (fp == 1)
@@ -1652,610 +1724,615 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		int lor = -1;
 
 		// Loop through the rays
-		for (int currentShift = 0; currentShift < nShift; currentShift++) {
-			for (int lorZ = 0; lorZ < param.nRays3D; lorZ++) {
-				for (int lorXY = 0; lorXY < param.nRays2D; lorXY++) {
-					lor++;
+		//for (int currentShift = 0; currentShift < nShift; currentShift++) {
+		for (int lorZ = 0; lorZ < param.nRays3D; lorZ++) {
+			for (int lorXY = 0; lorXY < param.nRays2D; lorXY++) {
+				lor++;
 
-					if (!SPECT) {
-						//Det<T> detectors;
-						detectors.xd = (T)0., detectors.xs = (T)0., detectors.yd = (T)0., detectors.ys = (T)0., detectors.zd = (T)0., detectors.zs = (T)0.;
-
-						if (!CT) {
-							// Raw data
-							// Pure list-mode format (e.g. event-by-event)
-							if (param.raw || param.listMode > 0) {
-								get_detector_coordinates_raw(x, z, detectors, lo, param.listMode, param.nRays2D, param.nRays3D, ix, iy, iz, izD, lorZ, lorXY, param.dPitchZ, param.dPitchXY, param.computeSensIm);
-							}
-							// Sinogram data
-							else {
-								get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, lorZ,
-									lorXY, param.dPitchZ, param.dPitchXY, param.nLayers);
-							}
-						}
-						else {
-							// CT data
-							get_detector_coordinates_CT(x, z, param.size_x, detectors, lo, param.subsets, param.size_y, ix, iy, iz, param.dPitchZ, param.nProjections, param.listMode, param.pitch);
-						}
-					} else {
-						if (lor == 0) { // First ray in hexagon
-							detectors.xs += hexShifts[currentShift][0];
-							detectors.ys += hexShifts[currentShift][1];
-							detectors.zs += hexShifts[currentShift][2];
-							detectors.xd += hexShifts[currentShift][3];
-							detectors.yd += hexShifts[currentShift][4];
-							detectors.zd += hexShifts[currentShift][5];
-
-							// Ensure other end of ray is on the opposite side of FOV
-							detectors.xs += 100 * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-							detectors.ys += 100 * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-							detectors.zs += 100 * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-						} else { // All other rays
-							detectors.xs -= 100 * (hexShifts[currentShift - 1][0] - hexShifts[currentShift - 1][3]);
-							detectors.ys -= 100 * (hexShifts[currentShift - 1][1] - hexShifts[currentShift - 1][4]);
-							detectors.zs -= 100 * (hexShifts[currentShift - 1][2] - hexShifts[currentShift - 1][5]);
-
-							// Add current ray shift
-							detectors.xs += hexShifts[currentShift][0];
-							detectors.ys += hexShifts[currentShift][1];
-							detectors.zs += hexShifts[currentShift][2];
-							detectors.xd += hexShifts[currentShift][3];
-							detectors.yd += hexShifts[currentShift][4];
-							detectors.zd += hexShifts[currentShift][5];
-							// Subtract the previous ray shift
-							detectors.xs -= hexShifts[currentShift - 1][0];
-							detectors.ys -= hexShifts[currentShift - 1][1];
-							detectors.zs -= hexShifts[currentShift - 1][2];
-							detectors.xd -= hexShifts[currentShift - 1][3];
-							detectors.yd -= hexShifts[currentShift - 1][4];
-							detectors.zd -= hexShifts[currentShift - 1][5];
-
-							detectors.xs += 100 * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-							detectors.ys += 100 * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-							detectors.zs += 100 * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-						}
+				//if (!SPECT) {
+				//Det<T> detectors;
+				detectors.xd = (T)0., detectors.xs = (T)0., detectors.yd = (T)0., detectors.ys = (T)0., detectors.zd = (T)0., detectors.zs = (T)0.;
+				if (CT) { // CT data
+					get_detector_coordinates_CT(x, z, param.size_x, detectors, lo, param.subsets, param.size_y, ix, iy, iz, param.dPitchZ, param.nProjections, param.listMode, param.pitch);
+				} else if (SPECT) { // SPECT data
+					//if (lor == 0) {
+					//	mexPrintf("rayShiftsD[0] = %f\n", param.rayShiftsDetector[0]);
+					//	mexPrintf("rayShiftsD[1] = %f\n", param.rayShiftsDetector[1]);
+					//	mexPrintf("rayShiftsS[0] = %f\n", param.rayShiftsSource[0]);
+					//	mexPrintf("rayShiftsS[1] = %f\n", param.rayShiftsSource[1]);
+					//}
+					get_detector_coordinates_SPECT(x, z, detectors, lo, lorXY, param.size_x, param.size_y, ix, iy, iz, param.dPitchXY, param.listMode, param.nRays2D, param.rayShiftsDetector, param.rayShiftsSource);	
+				} else {
+					// Raw data
+					// Pure list-mode format (e.g. event-by-event)
+					if (param.raw || param.listMode > 0) {
+						get_detector_coordinates_raw(x, z, detectors, lo, param.listMode, param.nRays2D, param.nRays3D, ix, iy, iz, izD, lorZ, lorXY, param.dPitchZ, param.dPitchXY, param.computeSensIm);
 					}
-
-					// Calculate the x, y and z distances of the detector pair
-					T y_diff = (detectors.yd - detectors.ys);
-					T x_diff = (detectors.xd - detectors.xs);
-					T z_diff = (detectors.zd - detectors.zs);
-					// Skip certain cases (e.g. if the x- and y-coordinates are the same for both detectors, LOR between detector n and n)
-					if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.) || std::isinf(y_diff) || std::isinf(x_diff)) {
-						continue;
-					}
-
-					// Number of voxels the ray traverses
-					uint32_t Np = 0U;
-
-					T jelppi = (T)0.;
-					T temp = (T)1.;
-					uint32_t d_N0 = param.Nx;
-					uint32_t d_N1 = param.Ny;
-					uint32_t d_N2 = 1u;
-					uint32_t d_N3 = param.Nx;
-
-					int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
-
-					T L = norm(x_diff, y_diff, z_diff);
-					uint32_t local_ind = 0u;
-					int localIndX = 0, localIndY = 0, localIndZ = 0;
-					T D = 0., DD = 0.;
-					T local_ele = 0.;
-					bool XY = false;
-					T kerroin = 0.;
-					T TotV = 0.;
-					T dI = 0., TOFSum = 0.;
-					T* center2 = nullptr, * center1 = nullptr;
-					uint8_t maskVal = 1;
-					if (param.projType == 2)
-						kerroin = L * param.orthWidth;
-					else if (param.projType == 3) {
-						kerroin = L;
-						TotV = L * (T)(1. / M_PI) * param.orthWidth * param.orthWidth;
-					}
-
-					if (std::fabs(z_diff) < 1e-8 && (std::fabs(y_diff) < 1e-8 || std::fabs(x_diff) < 1e-8)) {
-
-						// Ring number
-						int32_t tempk = static_cast<int32_t>(std::fabs(detectors.zs - param.bz) / param.dz);
-						if (tempk < 0 || tempk >= param.Nz)
-							continue;
-						int indO = 0;
-						T d_b, dd, d_db, d_d2;
-
-						// Detectors are perpendicular
-						// Siddon cannot be applied --> trivial to compute
-						int32_t apuX1, apuX2;
-						T dT1, dT2;
-						if (std::fabs(y_diff) < 1e-8 && detectors.yd <= bmaxy && detectors.yd >= param.by) {
-							apuX1 = 0;
-							apuX2 = param.Nx - 1;
-							dT1 = param.dx;
-							dT2 = param.dx;
-							d_b = param.by;
-							dd = detectors.yd;
-							d_db = param.dy;
-							if (param.projType > 1) {
-								center2 = param.x_center;
-								center1 = param.y_center;
-							}
-							if (param.projType == 1) {
-								T dist1, dist2 = 0.f;
-								if (detectors.xs > detectors.xd) {
-									dist1 = (param.bx - detectors.xd);
-									dist2 = (param.bx + static_cast<T>(param.Nx) * param.dx - detectors.xs);
-								}
-								else {
-									dist1 = (param.bx - detectors.xs);
-									dist2 = (param.bx + static_cast<T>(param.Nx) * param.dx - detectors.xd);
-								}
-								for (int kk = 0; kk < param.Nx; kk++) {
-									if (dist1 >= (T)0.) {
-										apuX1 = kk;
-										if (kk == 0)
-											dT1 = param.dx;
-										else
-											dT1 = std::min(dist1, param.dx);
-										break;
-									}
-									dist1 += param.dx;
-								}
-								for (int kk = param.Nx - 1; kk >= apuX1; kk--) {
-									if (dist2 <= (T)0.) {
-										apuX2 = kk;
-										if (kk == param.Nx - 1)
-											dT2 = param.dx;
-										else
-											dT2 = std::min(-dist2, param.dx);
-										break;
-									}
-									dist2 -= param.dx;
-								}
-							}
-							XY = true;
-							d_d2 = param.dx;
-							T xs_apu = detectors.xs;
-							detectors.xs = detectors.ys;
-							detectors.ys = xs_apu;
-							T xdiff_apu = x_diff;
-							x_diff = y_diff;
-							y_diff = xdiff_apu;
-							d_N0 = param.Ny;
-							d_N1 = param.Nx;
-							d_N2 = param.Ny;
-							d_N3 = 1u;
-						}
-						else if (std::fabs(x_diff) < 1e-8 && detectors.xd <= bmaxx && detectors.xd >= param.bx) {
-							apuX1 = 0;
-							apuX2 = param.Ny - 1;
-							dT1 = param.dx;
-							dT2 = param.dx;
-							d_b = param.bx;
-							dd = detectors.xd;
-							if (param.projType > 1) {
-								center2 = param.y_center;
-								center1 = param.x_center;
-							}
-							if (param.projType == 1) {
-								T dist1, dist2 = 0.f;
-								if (detectors.ys > detectors.yd) {
-									dist1 = (param.by - detectors.yd);
-									dist2 = (param.by + static_cast<T>(param.Ny) * param.dy - detectors.ys);
-								}
-								else {
-									dist1 = (param.by - detectors.ys);
-									dist2 = (param.by + static_cast<T>(param.Ny) * param.dy - detectors.yd);
-								}
-								for (int kk = 0; kk < param.Ny; kk++) {
-									if (dist1 >= (T)0.) {
-										apuX1 = kk;
-										if (kk == 0)
-											dT1 = param.dy;
-										else
-											dT1 = std::min(dist1, param.dy);
-										break;
-									}
-									dist1 += param.dy;
-								}
-								for (int kk = param.Ny - 1; kk >= apuX1; kk--) {
-									if (dist2 <= (T)0.) {
-										apuX2 = kk;
-										if (kk == param.Ny - 1)
-											dT2 = param.dy;
-										else
-											dT2 = std::min(-dist2, param.dy);
-										break;
-									}
-									dist2 -= param.dy;
-								}
-							}
-							d_d2 = param.dy;
-							d_db = param.dx;
-						}
-						else
-							continue;
-						localIndZ = tempk;
-						temp = perpendicular_elements(d_N2, dd, d_d2, d_b, d_db, d_N0, d_N1, param.atten, local_norm, param.attenuationCorrection, param.normalizationCorrection, 
-							param.CTAttenuation, tempk, d_N3, param.globalFactor, param.scatterCorrectionMult, local_scat, localIndX, localIndY, localIndZ, L, nRays, 
-							param.projType, param.Nx, param.Ny, CT, lo);
-						local_ind = tempk;
-						if (param.projType == 3)
-							temp *= ((T)1. / TotV);
-						if (param.projType > 1 || (fp == 2 && param.useMaskBP)) {
-							if (d_N2 == 1)
-								indO = localIndX;
-							else
-								indO = localIndY;
-						}
-						if (param.TOF) {
-							dI = (d_d2 * d_N1) / std::copysign(2.f, y_diff);
-							D = dI;
-							DD = D;
-						}
-
-						for (uint32_t ii = apuX1; ii < apuX2; ii++) {
-							if (param.TOF)
-								TOFSum = TOFLoop(DD, d_d2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
-							if (param.projType > 1) {
-								orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, indO, localIndZ, detectors.xs, detectors.ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3, param.Nz, 
-									param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, d_d2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp, param.projType, 
-									param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-							}
-							else {
-								T d_in = d_d2;
-								if (ii == apuX1) {
-									local_ind += d_N3 * ii;
-								}
-								if (apuX1 > 0 && ii == apuX1)
-									d_in = dT1;
-								else if (apuX2 < d_N1 - 1 && ii == apuX2)
-									d_in = dT2;
-								if (fp == 1) {
-									denominator(ax, local_ind, d_in, input, param.TOF, d_in, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
-								}
-								else if (fp == 2) {
-									if (param.useMaskBP) {
-										maskVal = param.maskBP[indO * d_N2 + ii * d_N3];
-									}
-									if (maskVal > 0)
-										rhs(temp * d_in, ax, local_ind, output, param.noSensImage, SensImage, d_in, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
-								}
-							}
-							local_ind += d_N3;
-							if (param.TOF)
-								D -= std::copysign(d_d2, DD);
-						}
-						if (fp == 1) {
-							if (nRays == 1) {
-								for (size_t to = 0; to < param.nBins; to++) {
-									forwardProjectAF(output, ax, ind, temp, to, CT);
-									if (param.TOF)
-										ind += nMeas;
-								}
-							}
-							else {
-								for (size_t to = 0; to < param.nBins; to++)
-									ax[to + (size_t)param.nBins * (size_t)lor] *= temp;
-							}
-						}
-					}
+					// Sinogram data
 					else {
-						int32_t tempi = 0, tempj = 0, tempk = 0;
-						T txu = (T)0., tyu = (T)0., tzu = (T)0., tc = (T)0., tx0 = (T)1e8, ty0 = (T)1e8, tz0 = (T)1e8;
-						bool skip = false, XY = true;
+						get_detector_coordinates(x, z, param.size_x, param.size_y, detectors, param.xy_index, param.z_index, lo, param.subsetType, param.subsets, ix, iy, iz, param.nRays2D, param.nRays3D, lorZ,
+							lorXY, param.dPitchZ, param.dPitchXY, param.nLayers);
+					}
+				}
+				/*} else {
+					if (lor == 0) { // First ray in hexagon
+						detectors.xs += hexShifts[currentShift][0];
+						detectors.ys += hexShifts[currentShift][1];
+						detectors.zs += hexShifts[currentShift][2];
+						detectors.xd += hexShifts[currentShift][3];
+						detectors.yd += hexShifts[currentShift][4];
+						detectors.zd += hexShifts[currentShift][5];
 
-						// Determine the above values and whether the ray intersects the FOV
-						// Both detectors are on the same ring, but not perpendicular
-						if (std::fabs(z_diff) < (T)1e-8) {
-							tempk = static_cast<int>(fabs(detectors.zs - param.bz) / param.dz);
-							if (tempk < 0 || tempk >= param.Nz)
-								continue;
-							skip = siddon_pre_loop_2D(param.bx, param.by, x_diff, y_diff, bmaxx, bmaxy, param.dx, param.dy, param.Nx, param.Ny, tempi, tempj, txu, tyu, Np, TYPE,
-								detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, ux, uy, tx0, ty0, param.projType, XY);
-						}
-						//Detectors on different rings (e.g. oblique sinograms)
-						else if (std::fabs(y_diff) < (T)1e-8) {
-							tempj = perpendicular_start(param.by, detectors.yd, param.dy, param.Ny);
-							skip = siddon_pre_loop_2D(param.bx, param.bz, x_diff, z_diff, bmaxx, bmaxz, param.dx, param.dz, param.Nx, param.Nz, tempi, tempk, txu, tzu, Np, TYPE,
-								detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, ux, uz, tx0, tz0, param.projType, XY);
-							XY = true;
-							if (detectors.yd > bmaxy || detectors.yd < param.by)
-								skip = true;
-						}
-						else if (std::fabs(x_diff) < (T)1e-8) {
-							tempi = perpendicular_start(param.bx, detectors.xd, param.dx, param.Nx);
-							skip = siddon_pre_loop_2D(param.by, param.bz, y_diff, z_diff, bmaxy, bmaxz, param.dy, param.dz, param.Ny, param.Nz, tempj, tempk, tyu, tzu, Np, TYPE,
-								detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, uy, uz, ty0, tz0, param.projType, XY);
-							XY = false;
-							if (detectors.xd > bmaxx || detectors.xd < param.bx)
-								skip = true;
-						}
-						else {
-							skip = siddon_pre_loop_3D(param.bx, param.by, param.bz, x_diff, y_diff, z_diff, bmaxx, bmaxy, bmaxz, param.dx, param.dy, param.dz, param.Nx, param.Ny, param.Nz, tempi, tempj, tempk, tyu, txu, tzu,
-								Np, TYPE, detectors, tc, ux, uy, uz, tx0, ty0, tz0, param.projType, XY);
-						}
+						// Ensure other end of ray is on the opposite side of FOV
+						detectors.xs += 100 * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
+						detectors.ys += 100 * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
+						detectors.zs += 100 * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
+					} else { // All other rays
+						detectors.xs -= 100 * (hexShifts[currentShift - 1][0] - hexShifts[currentShift - 1][3]);
+						detectors.ys -= 100 * (hexShifts[currentShift - 1][1] - hexShifts[currentShift - 1][4]);
+						detectors.zs -= 100 * (hexShifts[currentShift - 1][2] - hexShifts[currentShift - 1][5]);
 
-						// Skip if the LOR does not intersect with the FOV
-						if (skip) {
-							continue;
-						}
-						if (param.TOF)
-							TOFDis(x_diff, y_diff, z_diff, tc, L, D, DD);
-						int tempi_b = 0, u_b = 0;
-						uint32_t d_Nb = 0U;
-						uint32_t local_ind = 0u;
-						T t0_b = (T)0., tu_b = (T)0., diff_b = (T)0., xs = (T)0., ys = (T)0.;
-						uint32_t d_NNx = param.Nx;
-						uint32_t d_NNy = param.Ny;
-						uint32_t d_NNz = param.Nz;
-						T tx0_c = tx0, ty0_c = ty0, tz0_c = tz0, txu_c = txu, tyu_c = tyu, tzu_c = tzu, tc_c = tc;
-						int tempi_c = tempi, tempj_c = tempj, tempk_c = tempk, ux_c = ux, uy_c = uy, uz_c = uz;
+						// Add current ray shift
+						detectors.xs += hexShifts[currentShift][0];
+						detectors.ys += hexShifts[currentShift][1];
+						detectors.zs += hexShifts[currentShift][2];
+						detectors.xd += hexShifts[currentShift][3];
+						detectors.yd += hexShifts[currentShift][4];
+						detectors.zd += hexShifts[currentShift][5];
+						// Subtract the previous ray shift
+						detectors.xs -= hexShifts[currentShift - 1][0];
+						detectors.ys -= hexShifts[currentShift - 1][1];
+						detectors.zs -= hexShifts[currentShift - 1][2];
+						detectors.xd -= hexShifts[currentShift - 1][3];
+						detectors.yd -= hexShifts[currentShift - 1][4];
+						detectors.zd -= hexShifts[currentShift - 1][5];
 
-						if (param.attenuationCorrection && fp == 2 && param.CTAttenuation) {
-							T tc_a = tc;
-							for (uint32_t ii = 0u; ii < Np; ii++) {
-								local_ind = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
-								if (tz0_c < ty0_c && tz0_c < tx0_c) {
-									local_ele = compute_element(tz0_c, tc, L, tzu_c, uz_c, tempk_c);
-								}
-								else if (ty0_c < tx0_c) {
-									local_ele = compute_element(ty0_c, tc, L, tyu_c, uy_c, tempj_c);
-								}
-								else {
-									local_ele = compute_element(tx0_c, tc, L, txu_c, ux_c, tempi_c);
-								}
-								compute_attenuation(local_ele, local_ind, param.atten, jelppi);
-								if (tempi_c < 0 || tempi_c >= param.Nx || tempj_c < 0 || tempj_c >= param.Ny || tempk_c < 0 || tempk_c >= d_NNz) {
+						detectors.xs += 100 * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
+						detectors.ys += 100 * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
+						detectors.zs += 100 * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
+					}
+				}*/
+
+				// Calculate the x, y and z distances of the detector pair
+				T y_diff = (detectors.yd - detectors.ys);
+				T x_diff = (detectors.xd - detectors.xs);
+				T z_diff = (detectors.zd - detectors.zs);
+				// Skip certain cases (e.g. if the x- and y-coordinates are the same for both detectors, LOR between detector n and n)
+				if ((y_diff == 0. && x_diff == 0. && z_diff == 0.) || (y_diff == 0. && x_diff == 0.) || std::isinf(y_diff) || std::isinf(x_diff)) {
+					continue;
+				}
+
+				// Number of voxels the ray traverses
+				uint32_t Np = 0U;
+
+				T jelppi = (T)0.;
+				T temp = (T)1.;
+				uint32_t d_N0 = param.Nx;
+				uint32_t d_N1 = param.Ny;
+				uint32_t d_N2 = 1u;
+				uint32_t d_N3 = param.Nx;
+
+				int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
+
+				T L = norm(x_diff, y_diff, z_diff);
+				uint32_t local_ind = 0u;
+				int localIndX = 0, localIndY = 0, localIndZ = 0;
+				T D = 0., DD = 0.;
+				T local_ele = 0.;
+				bool XY = false;
+				T kerroin = 0.;
+				T TotV = 0.;
+				T dI = 0., TOFSum = 0.;
+				T* center2 = nullptr, * center1 = nullptr;
+				uint8_t maskVal = 1;
+				if (param.projType == 2)
+					kerroin = L * param.orthWidth;
+				else if (param.projType == 3) {
+					kerroin = L;
+					TotV = L * (T)(1. / M_PI) * param.orthWidth * param.orthWidth;
+				}
+
+				if (std::fabs(z_diff) < 1e-8 && (std::fabs(y_diff) < 1e-8 || std::fabs(x_diff) < 1e-8)) {
+
+					// Ring number
+					int32_t tempk = static_cast<int32_t>(std::fabs(detectors.zs - param.bz) / param.dz);
+					if (tempk < 0 || tempk >= param.Nz)
+						continue;
+					int indO = 0;
+					T d_b, dd, d_db, d_d2;
+
+					// Detectors are perpendicular
+					// Siddon cannot be applied --> trivial to compute
+					int32_t apuX1, apuX2;
+					T dT1, dT2;
+					if (std::fabs(y_diff) < 1e-8 && detectors.yd <= bmaxy && detectors.yd >= param.by) {
+						apuX1 = 0;
+						apuX2 = param.Nx - 1;
+						dT1 = param.dx;
+						dT2 = param.dx;
+						d_b = param.by;
+						dd = detectors.yd;
+						d_db = param.dy;
+						if (param.projType > 1) {
+							center2 = param.x_center;
+							center1 = param.y_center;
+						}
+						if (param.projType == 1) {
+							T dist1, dist2 = 0.f;
+							if (detectors.xs > detectors.xd) {
+								dist1 = (param.bx - detectors.xd);
+								dist2 = (param.bx + static_cast<T>(param.Nx) * param.dx - detectors.xs);
+							}
+							else {
+								dist1 = (param.bx - detectors.xs);
+								dist2 = (param.bx + static_cast<T>(param.Nx) * param.dx - detectors.xd);
+							}
+							for (int kk = 0; kk < param.Nx; kk++) {
+								if (dist1 >= (T)0.) {
+									apuX1 = kk;
+									if (kk == 0)
+										dT1 = param.dx;
+									else
+										dT1 = std::min(dist1, param.dx);
 									break;
 								}
+								dist1 += param.dx;
 							}
-							tc = tc_a;
-							tx0_c = tx0, ty0_c = ty0, tz0_c = tz0, txu_c = txu, tyu_c = tyu, tzu_c = tzu, tc_c = tc;
-							tempi_c = tempi, tempj_c = tempj, tempk_c = tempk, ux_c = ux, uy_c = uy, uz_c = uz;
+							for (int kk = param.Nx - 1; kk >= apuX1; kk--) {
+								if (dist2 <= (T)0.) {
+									apuX2 = kk;
+									if (kk == param.Nx - 1)
+										dT2 = param.dx;
+									else
+										dT2 = std::min(-dist2, param.dx);
+									break;
+								}
+								dist2 -= param.dx;
+							}
 						}
+						XY = true;
+						d_d2 = param.dx;
+						T xs_apu = detectors.xs;
+						detectors.xs = detectors.ys;
+						detectors.ys = xs_apu;
+						T xdiff_apu = x_diff;
+						x_diff = y_diff;
+						y_diff = xdiff_apu;
+						d_N0 = param.Ny;
+						d_N1 = param.Nx;
+						d_N2 = param.Ny;
+						d_N3 = 1u;
+					}
+					else if (std::fabs(x_diff) < 1e-8 && detectors.xd <= bmaxx && detectors.xd >= param.bx) {
+						apuX1 = 0;
+						apuX2 = param.Ny - 1;
+						dT1 = param.dx;
+						dT2 = param.dx;
+						d_b = param.bx;
+						dd = detectors.xd;
 						if (param.projType > 1) {
-							if (!XY) {
-								tempi_b = tempi;
-								tempi = tempj;
-								tempj = tempi_b;
-								xs = detectors.ys;
-								ys = detectors.xs;
-								u_b = ux;
-								ux = uy;
-								uy = u_b;
-								t0_b = tx0;
-								tx0 = ty0;
-								ty0 = t0_b;
-								tu_b = txu;
-								txu = tyu;
-								tyu = tu_b;
-								diff_b = x_diff;
-								x_diff = y_diff;
-								y_diff = diff_b;
-								center1 = param.y_center;
-								center2 = param.x_center;
-								d_NNx = param.Ny;
-								d_NNy = param.Nx;
-								d_N0 = param.Ny;
-								d_N1 = param.Nx;
-								d_N2 = param.Nx;
-								d_N3 = 1;
+							center2 = param.y_center;
+							center1 = param.x_center;
+						}
+						if (param.projType == 1) {
+							T dist1, dist2 = 0.f;
+							if (detectors.ys > detectors.yd) {
+								dist1 = (param.by - detectors.yd);
+								dist2 = (param.by + static_cast<T>(param.Ny) * param.dy - detectors.ys);
 							}
 							else {
-								xs = detectors.xs;
-								ys = detectors.ys;
-								center1 = param.x_center;
-								center2 = param.y_center;
-								d_N0 = param.Nx;
-								d_N1 = param.Ny;
-								d_N2 = 1;
-								d_N3 = param.Nx;
+								dist1 = (param.by - detectors.ys);
+								dist2 = (param.by + static_cast<T>(param.Ny) * param.dy - detectors.yd);
+							}
+							for (int kk = 0; kk < param.Ny; kk++) {
+								if (dist1 >= (T)0.) {
+									apuX1 = kk;
+									if (kk == 0)
+										dT1 = param.dy;
+									else
+										dT1 = std::min(dist1, param.dy);
+									break;
+								}
+								dist1 += param.dy;
+							}
+							for (int kk = param.Ny - 1; kk >= apuX1; kk--) {
+								if (dist2 <= (T)0.) {
+									apuX2 = kk;
+									if (kk == param.Ny - 1)
+										dT2 = param.dy;
+									else
+										dT2 = std::min(-dist2, param.dy);
+									break;
+								}
+								dist2 -= param.dy;
 							}
 						}
-						T tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
-						int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
-						if (!CT) {
-							if (param.projType == 3)
-								temp = (T)1. / TotV;
-							else if (param.projType == 1 && nRays > 1)
-								temp = (T)1. / (L * (T)(nRays));
-							else if (param.projType == 1)
-								temp = (T)1. / L;
-							if (param.attenuationCorrection && fp == 2 && param.CTAttenuation)
-								temp *= std::exp(jelppi);
-							else if (param.attenuationCorrection && !param.CTAttenuation)
-								temp *= param.atten[lo];
-							if (param.normalizationCorrection)
-								temp *= local_norm;
-							if (param.scatterCorrectionMult)
-								temp *= local_scat;
-							temp *= param.globalFactor;
-						}
-						else if (param.projType == 1 && nRays > 1)
-							temp = (T)1. / (T)(nRays);
+						d_d2 = param.dy;
+						d_db = param.dx;
+					}
+					else
+						continue;
+					localIndZ = tempk;
+					temp = perpendicular_elements(d_N2, dd, d_d2, d_b, d_db, d_N0, d_N1, param.atten, local_norm, param.attenuationCorrection, param.normalizationCorrection, 
+						param.CTAttenuation, tempk, d_N3, param.globalFactor, param.scatterCorrectionMult, local_scat, localIndX, localIndY, localIndZ, L, nRays, 
+						param.projType, param.Nx, param.Ny, CT, lo);
+					local_ind = tempk;
+					if (param.projType == 3)
+						temp *= ((T)1. / TotV);
+					if (param.projType > 1 || (fp == 2 && param.useMaskBP)) {
+						if (d_N2 == 1)
+							indO = localIndX;
+						else
+							indO = localIndY;
+					}
+					if (param.TOF) {
+						dI = (d_d2 * d_N1) / std::copysign(2.f, y_diff);
+						D = dI;
+						DD = D;
+					}
 
+					for (uint32_t ii = apuX1; ii < apuX2; ii++) {
+						if (param.TOF)
+							TOFSum = TOFLoop(DD, d_d2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
+						if (param.projType > 1) {
+							orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, indO, localIndZ, detectors.xs, detectors.ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3, param.Nz, 
+								param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, d_d2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp, param.projType, 
+								param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+						}
+						else {
+							T d_in = d_d2;
+							if (ii == apuX1) {
+								local_ind += d_N3 * ii;
+							}
+							if (apuX1 > 0 && ii == apuX1)
+								d_in = dT1;
+							else if (apuX2 < d_N1 - 1 && ii == apuX2)
+								d_in = dT2;
+							if (fp == 1) {
+								denominator(ax, local_ind, d_in, input, param.TOF, d_in, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
+							}
+							else if (fp == 2) {
+								if (param.useMaskBP) {
+									maskVal = param.maskBP[indO * d_N2 + ii * d_N3];
+								}
+								if (maskVal > 0)
+									rhs(temp * d_in, ax, local_ind, output, param.noSensImage, SensImage, d_in, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
+							}
+						}
+						local_ind += d_N3;
+						if (param.TOF)
+							D -= std::copysign(d_d2, DD);
+					}
+					if (fp == 1) {
+						if (nRays == 1) {
+							for (size_t to = 0; to < param.nBins; to++) {
+								forwardProjectAF(output, ax, ind, temp, to, CT);
+								if (param.TOF)
+									ind += nMeas;
+							}
+						}
+						else {
+							for (size_t to = 0; to < param.nBins; to++)
+								ax[to + (size_t)param.nBins * (size_t)lor] *= temp;
+						}
+					}
+				}
+				else {
+					int32_t tempi = 0, tempj = 0, tempk = 0;
+					T txu = (T)0., tyu = (T)0., tzu = (T)0., tc = (T)0., tx0 = (T)1e8, ty0 = (T)1e8, tz0 = (T)1e8;
+					bool skip = false, XY = true;
+
+					// Determine the above values and whether the ray intersects the FOV
+					// Both detectors are on the same ring, but not perpendicular
+					if (std::fabs(z_diff) < (T)1e-8) {
+						tempk = static_cast<int>(fabs(detectors.zs - param.bz) / param.dz);
+						if (tempk < 0 || tempk >= param.Nz)
+							continue;
+						skip = siddon_pre_loop_2D(param.bx, param.by, x_diff, y_diff, bmaxx, bmaxy, param.dx, param.dy, param.Nx, param.Ny, tempi, tempj, txu, tyu, Np, TYPE,
+							detectors.ys, detectors.xs, detectors.yd, detectors.xd, tc, ux, uy, tx0, ty0, param.projType, XY);
+					}
+					//Detectors on different rings (e.g. oblique sinograms)
+					else if (std::fabs(y_diff) < (T)1e-8) {
+						tempj = perpendicular_start(param.by, detectors.yd, param.dy, param.Ny);
+						skip = siddon_pre_loop_2D(param.bx, param.bz, x_diff, z_diff, bmaxx, bmaxz, param.dx, param.dz, param.Nx, param.Nz, tempi, tempk, txu, tzu, Np, TYPE,
+							detectors.zs, detectors.xs, detectors.zd, detectors.xd, tc, ux, uz, tx0, tz0, param.projType, XY);
+						XY = true;
+						if (detectors.yd > bmaxy || detectors.yd < param.by)
+							skip = true;
+					}
+					else if (std::fabs(x_diff) < (T)1e-8) {
+						tempi = perpendicular_start(param.bx, detectors.xd, param.dx, param.Nx);
+						skip = siddon_pre_loop_2D(param.by, param.bz, y_diff, z_diff, bmaxy, bmaxz, param.dy, param.dz, param.Ny, param.Nz, tempj, tempk, tyu, tzu, Np, TYPE,
+							detectors.zs, detectors.ys, detectors.zd, detectors.yd, tc, uy, uz, ty0, tz0, param.projType, XY);
+						XY = false;
+						if (detectors.xd > bmaxx || detectors.xd < param.bx)
+							skip = true;
+					}
+					else {
+						skip = siddon_pre_loop_3D(param.bx, param.by, param.bz, x_diff, y_diff, z_diff, bmaxx, bmaxy, bmaxz, param.dx, param.dy, param.dz, param.Nx, param.Ny, param.Nz, tempi, tempj, tempk, tyu, txu, tzu,
+							Np, TYPE, detectors, tc, ux, uy, uz, tx0, ty0, tz0, param.projType, XY);
+					}
+
+					// Skip if the LOR does not intersect with the FOV
+					if (skip) {
+						continue;
+					}
+					if (param.TOF)
+						TOFDis(x_diff, y_diff, z_diff, tc, L, D, DD);
+					int tempi_b = 0, u_b = 0;
+					uint32_t d_Nb = 0U;
+					uint32_t local_ind = 0u;
+					T t0_b = (T)0., tu_b = (T)0., diff_b = (T)0., xs = (T)0., ys = (T)0.;
+					uint32_t d_NNx = param.Nx;
+					uint32_t d_NNy = param.Ny;
+					uint32_t d_NNz = param.Nz;
+					T tx0_c = tx0, ty0_c = ty0, tz0_c = tz0, txu_c = txu, tyu_c = tyu, tzu_c = tzu, tc_c = tc;
+					int tempi_c = tempi, tempj_c = tempj, tempk_c = tempk, ux_c = ux, uy_c = uy, uz_c = uz;
+
+					if (param.attenuationCorrection && fp == 2 && param.CTAttenuation) {
+						T tc_a = tc;
 						for (uint32_t ii = 0u; ii < Np; ii++) {
-							local_ele = (T)0.;
-							local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, Nyx);
-							localIndX = tempi;
-							localIndY = tempj;
-							localIndZ = tempk;
-							if (param.projType > 1) {
-								tx0_a = tx0;
-								ty0_a = ty0;
-								tz0_a = tz0;
-								tempi_a = tempi;
-								tempj_a = tempj;
-								tempk_a = tempk;
+							local_ind = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
+							if (tz0_c < ty0_c && tz0_c < tx0_c) {
+								local_ele = compute_element(tz0_c, tc, L, tzu_c, uz_c, tempk_c);
 							}
-							if (tz0 < ty0 && tz0 < tx0) {
-								if (tz0 >= (T)0. && tz0 <= (T)1.) {
-									if (tc < (T)0.) {
-										local_ele = tz0 * L;
-										compute_element(tz0, tc, L, tzu, uz, tempk);
-									}
-									else
-										local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
-								}
-								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (tz0 < (T)1.) {
-										local_ele = ((T)1. - tc) * L;
-										compute_element(tz0, tc, L, tzu, uz, tempk);
-									}
-									else
-										local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
-								}
-								else
-									compute_element(tz0, tc, L, tzu, uz, tempk);
-							}
-							else if (ty0 < tx0) {
-								if (ty0 >= (T)0. && ty0 <= (T)1.) {
-									if (tc < (T)0.) {
-										local_ele = ty0 * L;
-										compute_element(ty0, tc, L, tyu, uy, tempj);
-									}
-									else
-										local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
-								}
-								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (ty0 < (T)1.) {
-										local_ele = ((T)1. - tc) * L;
-										compute_element(ty0, tc, L, tyu, uy, tempj);
-									}
-									else
-										local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
-								}
-								else
-									compute_element(ty0, tc, L, tyu, uy, tempj);
+							else if (ty0_c < tx0_c) {
+								local_ele = compute_element(ty0_c, tc, L, tyu_c, uy_c, tempj_c);
 							}
 							else {
-								if (tx0 >= (T)0. && tx0 <= (T)1.) {
-									if (tc < (T)0.) {
-										local_ele = tx0 * L;
-										compute_element(tx0, tc, L, txu, ux, tempi);
-									}
-									else
-										local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
-								}
-								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (tx0 < (T)1.) {
-										local_ele = ((T)1. - tc) * L;
-										compute_element(tx0, tc, L, txu, ux, tempi);
-									}
-									else
-										local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
-								}
-								else
-									compute_element(tx0, tc, L, txu, ux, tempi);
+								local_ele = compute_element(tx0_c, tc, L, txu_c, ux_c, tempi_c);
 							}
-							T local_ele2 = local_ele;
-							uint32_t local_ind2 = local_ind;
-							if (param.projType > 1 && ((param.attenuationCorrection && fp == 1 && param.CTAttenuation) || param.TOF)) {
-								if (param.attenuationCorrection && fp == 1 && param.CTAttenuation)
-									local_ind2 = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
-								if (tz0_c < ty0_c && tz0_c < tx0_c) {
-									local_ele2 = compute_element(tz0_c, tc_c, L, tzu_c, uz_c, tempk_c);
-								}
-								else if (ty0_c < tx0_c) {
-									local_ele2 = compute_element(ty0_c, tc_c, L, tyu_c, uy_c, tempj_c);
-								}
-								else {
-									local_ele2 = compute_element(tx0_c, tc_c, L, txu_c, ux_c, tempi_c);
-								}
-							}
-							if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
-								compute_attenuation(local_ele2, local_ind2, param.atten, jelppi);
-							}
-							if (param.TOF)
-								TOFSum = TOFLoop(DD, local_ele2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
-							if (param.projType > 1) {
-								if (ii == 0) {
-									if (ux >= 0) {
-										for (int kk = tempi_a - 1; kk >= 0; kk--) {
-											int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-												param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-												param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-											if (uu == 0)
-												break;
-										}
-									}
-									else {
-										for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
-											int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-												param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-												param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-											if (uu == 0)
-												break;
-										}
-									}
-								}
-								if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
-									orthDistance3D(localIndX, y_diff, x_diff, z_diff, center1[localIndX], center2, param.z_center, temp, localIndY, localIndZ, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-								}
-							}
-							else {
-								if (local_ele > (T)0.) {
-									if (fp == 1) {
-										denominator(ax, local_ind, local_ele, input, param.TOF, local_ele, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
-									}
-									else if (fp == 2) {
-										if (param.useMaskBP) {
-											maskVal = param.maskBP[localIndX * d_N2 + localIndY * d_N3];
-										}
-										if (maskVal > 0)
-											rhs(local_ele * temp, ax, local_ind, output, param.noSensImage, SensImage, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
-									}
-								}
-							}
-							if (param.TOF)
-								D -= std::copysign(local_ele2, DD);
-							if (tempi < 0 || tempi >= param.Nx || tempj < 0 || tempj >= param.Ny || tempk < 0 || tempk >= param.Nz) {
+							compute_attenuation(local_ele, local_ind, param.atten, jelppi);
+							if (tempi_c < 0 || tempi_c >= param.Nx || tempj_c < 0 || tempj_c >= param.Ny || tempk_c < 0 || tempk_c >= d_NNz) {
 								break;
 							}
 						}
+						tc = tc_a;
+						tx0_c = tx0, ty0_c = ty0, tz0_c = tz0, txu_c = txu, tyu_c = tyu, tzu_c = tzu, tc_c = tc;
+						tempi_c = tempi, tempj_c = tempj, tempk_c = tempk, ux_c = ux, uy_c = uy, uz_c = uz;
+					}
+					if (param.projType > 1) {
+						if (!XY) {
+							tempi_b = tempi;
+							tempi = tempj;
+							tempj = tempi_b;
+							xs = detectors.ys;
+							ys = detectors.xs;
+							u_b = ux;
+							ux = uy;
+							uy = u_b;
+							t0_b = tx0;
+							tx0 = ty0;
+							ty0 = t0_b;
+							tu_b = txu;
+							txu = tyu;
+							tyu = tu_b;
+							diff_b = x_diff;
+							x_diff = y_diff;
+							y_diff = diff_b;
+							center1 = param.y_center;
+							center2 = param.x_center;
+							d_NNx = param.Ny;
+							d_NNy = param.Nx;
+							d_N0 = param.Ny;
+							d_N1 = param.Nx;
+							d_N2 = param.Nx;
+							d_N3 = 1;
+						}
+						else {
+							xs = detectors.xs;
+							ys = detectors.ys;
+							center1 = param.x_center;
+							center2 = param.y_center;
+							d_N0 = param.Nx;
+							d_N1 = param.Ny;
+							d_N2 = 1;
+							d_N3 = param.Nx;
+						}
+					}
+					T tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
+					int tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
+					if (!CT) {
+						if (param.projType == 3)
+							temp = (T)1. / TotV;
+						else if (param.projType == 1 && nRays > 1)
+							temp = (T)1. / (L * (T)(nRays));
+						else if (param.projType == 1)
+							temp = (T)1. / L;
+						if (param.attenuationCorrection && fp == 2 && param.CTAttenuation)
+							temp *= std::exp(jelppi);
+						else if (param.attenuationCorrection && !param.CTAttenuation)
+							temp *= param.atten[lo];
+						if (param.normalizationCorrection)
+							temp *= local_norm;
+						if (param.scatterCorrectionMult)
+							temp *= local_scat;
+						temp *= param.globalFactor;
+					}
+					else if (param.projType == 1 && nRays > 1)
+						temp = (T)1. / (T)(nRays);
+
+					for (uint32_t ii = 0u; ii < Np; ii++) {
+						local_ele = (T)0.;
+						local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, Nyx);
+						localIndX = tempi;
+						localIndY = tempj;
+						localIndZ = tempk;
 						if (param.projType > 1) {
-							if (ux < 0) {
-								for (int ii = tempi_a - 1; ii >= 0; ii--) {
-									int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-									if (uu == 0)
-										break;
+							tx0_a = tx0;
+							ty0_a = ty0;
+							tz0_a = tz0;
+							tempi_a = tempi;
+							tempj_a = tempj;
+							tempk_a = tempk;
+						}
+						if (tz0 < ty0 && tz0 < tx0) {
+							if (tz0 >= (T)0. && tz0 <= (T)1.) {
+								if (tc < (T)0.) {
+									local_ele = tz0 * L;
+									compute_element(tz0, tc, L, tzu, uz, tempk);
 								}
+								else
+									local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
+							}
+							else if (tc >= (T)0. && tc <= (T)1.) {
+								if (tz0 > (T)1.) {
+									local_ele = ((T)1. - tc) * L;
+									compute_element(tz0, tc, L, tzu, uz, tempk);
+								}
+								else
+									local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
+							}
+							else
+								compute_element(tz0, tc, L, tzu, uz, tempk);
+						}
+						else if (ty0 < tx0) {
+							if (ty0 >= (T)0. && ty0 <= (T)1.) {
+								if (tc < (T)0.) {
+									local_ele = ty0 * L;
+									compute_element(ty0, tc, L, tyu, uy, tempj);
+								}
+								else
+									local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
+							}
+							else if (tc >= (T)0. && tc <= (T)1.) {
+								if (ty0 > (T)1.) {
+									local_ele = ((T)1. - tc) * L;
+									compute_element(ty0, tc, L, tyu, uy, tempj);
+								}
+								else
+									local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
+							}
+							else
+								compute_element(ty0, tc, L, tyu, uy, tempj);
+						}
+						else {
+							if (tx0 >= (T)0. && tx0 <= (T)1.) {
+								if (tc < (T)0.) {
+									local_ele = tx0 * L;
+									compute_element(tx0, tc, L, txu, ux, tempi);
+								}
+								else
+									local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
+							}
+							else if (tc >= (T)0. && tc <= (T)1.) {
+								if (tx0 > (T)1.) {
+									local_ele = ((T)1. - tc) * L;
+									compute_element(tx0, tc, L, txu, ux, tempi);
+								}
+								else
+									local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
+							}
+							else
+								compute_element(tx0, tc, L, txu, ux, tempi);
+						}
+						T local_ele2 = local_ele;
+						uint32_t local_ind2 = local_ind;
+						if (param.projType > 1 && ((param.attenuationCorrection && fp == 1 && param.CTAttenuation) || param.TOF)) {
+							if (param.attenuationCorrection && fp == 1 && param.CTAttenuation)
+								local_ind2 = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
+							if (tz0_c < ty0_c && tz0_c < tx0_c) {
+								local_ele2 = compute_element(tz0_c, tc_c, L, tzu_c, uz_c, tempk_c);
+							}
+							else if (ty0_c < tx0_c) {
+								local_ele2 = compute_element(ty0_c, tc_c, L, tyu_c, uy_c, tempj_c);
 							}
 							else {
-								for (int ii = tempi_a + 1; ii < d_NNx; ii++) {
-									int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-									if (uu == 0)
-										break;
-								}
+								local_ele2 = compute_element(tx0_c, tc_c, L, txu_c, ux_c, tempi_c);
 							}
 						}
 						if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
-							temp *= std::exp(jelppi);
+							compute_attenuation(local_ele2, local_ind2, param.atten, jelppi);
 						}
-						if (fp == 1) {
-							if (nRays == 1) {
-								for (size_t to = 0; to < param.nBins; to++) {
-									forwardProjectAF(output, ax, ind, temp, to, CT);
-									if (param.TOF)
-										ind += nMeas;
+						if (param.TOF)
+							TOFSum = TOFLoop(DD, local_ele2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
+						if (param.projType > 1) {
+							if (ii == 0) {
+								if (ux >= 0) {
+									for (int kk = tempi_a - 1; kk >= 0; kk--) {
+										int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+											param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+											param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+										if (uu == 0)
+											break;
+									}
+								}
+								else {
+									for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
+										int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+											param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+											param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+										if (uu == 0)
+											break;
+									}
 								}
 							}
-							else {
-								for (int64_t to = 0; to < param.nBins; to++)
-									ax[to + (int64_t)param.nBins * (int64_t)lor] *= temp;
+							if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
+								orthDistance3D(localIndX, y_diff, x_diff, z_diff, center1[localIndX], center2, param.z_center, temp, localIndY, localIndZ, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
 							}
+						}
+						else {
+							if (local_ele > (T)0.) {
+								if (fp == 1) {
+									denominator(ax, local_ind, local_ele, input, param.TOF, local_ele, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
+								}
+								else if (fp == 2) {
+									if (param.useMaskBP) {
+										maskVal = param.maskBP[localIndX * d_N2 + localIndY * d_N3];
+									}
+									if (maskVal > 0)
+										rhs(local_ele * temp, ax, local_ind, output, param.noSensImage, SensImage, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
+								}
+							}
+						}
+						if (param.TOF)
+							D -= std::copysign(local_ele2, DD);
+						if (tempi < 0 || tempi >= param.Nx || tempj < 0 || tempj >= param.Ny || tempk < 0 || tempk >= param.Nz) {
+							break;
+						}
+					}
+					if (param.projType > 1) {
+						if (ux < 0) {
+							for (int ii = tempi_a - 1; ii >= 0; ii--) {
+								int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+								if (uu == 0)
+									break;
+							}
+						}
+						else {
+							for (int ii = tempi_a + 1; ii < d_NNx; ii++) {
+								int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+								if (uu == 0)
+									break;
+							}
+						}
+					}
+					if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
+						temp *= std::exp(jelppi);
+					}
+					if (fp == 1) {
+						if (nRays == 1) {
+							for (size_t to = 0; to < param.nBins; to++) {
+								forwardProjectAF(output, ax, ind, temp, to, CT);
+								if (param.TOF)
+									ind += nMeas;
+							}
+						}
+						else {
+							for (int64_t to = 0; to < param.nBins; to++)
+								ax[to + (int64_t)param.nBins * (int64_t)lor] *= temp;
 						}
 					}
 				}
 			}
 		}
+		//}
 		if (nRays > 1 && fp == 1) {
 			for (size_t to = 0; to < param.nBins; to++) {
 				T apu = (T)0.;

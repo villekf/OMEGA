@@ -1,13 +1,13 @@
-%% MATLAB codes for SPECT reconstruction from SIMIND output
-% This example has been tested using SIMIND v8.0 and the respective
-% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF). The
-% fpath variable should point to the SIMIND output folder containing fname.a00,
-% .cor, and .h00 files.
-% You can find example data from https://github.com/saarlemo/diplomity-/tree/main/data
+%% MATLAB codes for SPECT reconstruction from Veriton-CT data (csv files)
+% This example outlines the reconstruction of SPECT data. In general SPECT
+% data, require the rotation angles, the distance of the detector head(s) 
+% from the center of rotation and the collimator specifics.
+% Note that at the moment no example data is provided.
 
 clear
-fpath = 'cbf1';
-options = loadSIMINDSPECTData(fpath);
+options.fpath = 'data/Bed_1/';
+options.sensitivityMapFileName = 'Header/SensitivityMap_Ver1.1_2_3.csv';
+options.fname = '_22_3_2024.csv';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17,12 +17,24 @@ options = loadSIMINDSPECTData(fpath);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Number of detector heads
+options.nHeads = 12;
+
+%%% Distance from detector COR to detector surface
+options.CORtoDetectorSurface = 11.56; % [mm]
+
+%%% Crystal thickness (mm)
+options.cr_p = 9.525;
+
+%%% Crystal width (mm)
+options.crXY = 2.46;
+
 %%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
 % of the FOV
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x = 4.664 * 128;%1 * 364;
+options.FOVa_x = options.crXY*128;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -30,17 +42,39 @@ options.FOVa_y = options.FOVa_x;
 
 %%% Axial FOV (mm)
 % This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 4.664 * 128;%3.75 * 110;
+options.axial_fov = options.crXY*128;
+
+% Number of rows in a projection image
+options.nRowsD = 16;
+
+% Number of columns in a projection image
+options.nColsD = 128;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
-options.machine_name = 'Two_Heads_SPECT_example';
+options.machine_name = 'Veriton-CT';
 
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
+% %% Corrections
+% HUoffset = 1000;
+% % intercept = [0.151 0.155];
+% slope = [0.000149 0.000109];
+% intercept = [0.151 0.151];
+% % slope = [0.000152 0.000094];
+% 
+% load("mat-files/pro_specta_attenuation_coefficients_128x128x128.mat")
+% ctVol = ctVol - HUoffset;
+% ctVolPos = ctVol.*(ctVol > 0);
+% ctVolNeg = ctVol.*(ctVol <= 0);
+% ctVolPos2 = slope(2) * (ctVolPos) + intercept(2);
+% ctVolNeg2 = slope(1) * (ctVolNeg) + intercept(1);
+% ctVol2 = ctVolPos2 .*(ctVol > 0) + ctVolNeg2 .*(ctVol <= 0);
+% % min(ctVol2, [], "all")
+% % max(ctVol2, [], "all")
+% options.vaimennus = flip(ctVol2 * 0.01, 3);
+% options.attenuation_correction = true;
+% options.CT_attenuation = true;
+% options.flipAttImageZ = 0;
+% % volumeViewer(options.vaimennus)
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -52,6 +86,7 @@ options.machine_name = 'Two_Heads_SPECT_example';
 
 %%% Reconstructed image pixel count (X-direction)
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
+% If you're using projector_type = 6, this should be options.nRowsD
 options.Nx = 128;
 
 %%% Y-direction
@@ -65,16 +100,72 @@ options.Nz = 128;
 options.flip_image = false;
 
 %%% How much is the image rotated?
+% You need to run the precompute phase again if you modify this
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
-options.offangle = 0;
+options.offangle = (3*pi)/2;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+options = loadVeritonSPECTData(options);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%% COLLIMATOR PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% Collimator hole length (mm)
+options.colL = 24.5;
+% Collimator hole radius (mm)
+options.colR = 1.03/2;
+% Distance from collimator to the detector (mm)
+options.colD = 0;
+% Septal thickness (mm)
+% options.dSeptal = 0.1;
+% Intrinsic resolution (mm)
+% projector_type 6 only!
+options.iR = 3.8;
+
+%%% Collimator-detector response function (CDRF)
+% You can either input either:
+% the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
+% the (Gaussian) PSF filter,
+% or the standard deviations for both transaxial and axial directions
+
+% If you have the standard deviations for transaxial (XY) and axial (Z)
+% directions, you can input them here instead of the above values (the
+% dimensions need to be options.nProjections x options.Nx):
+% Transaxial standard deviation
+% options.sigmaXY = repmat(0, options.nProjection, options.Nx);
+% Axial standard deviation
+% options.sigmaZ = repmat(0, options.nProjection, options.Nx);
+
+% Lastly, you can input the filter for the CDRF directly. This should be
+% filterSizeXY x filterSizeZ x options.nProjections:
+% options.gFilter = ones(10,10,options.nProjections);
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -99,7 +190,7 @@ options.verbose = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%re
 
 
 
@@ -118,10 +209,12 @@ options.verbose = 1;
 % (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
 % with MinGW as well (cannot use the prebuilt binaries)).
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
-% See the doc for more information:
+% See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
-options.implementation = 4;
-
+options.implementation = 2;
+if options.implementation == 2
+    %options = rmfield(options, "maskFP");
+end
 % Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
@@ -142,14 +235,23 @@ options.use_CPU = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = (Improved) Siddon ray-based projector
-% 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
-options.nRaySPECT = 1;
+options.nRays = 1;
+
+% The user can input own rays to be traced. 
+% Consider the detector pixel to be the area [-1, 1] x [-1, 1]. The
+% detector and source refer to the two planes of the collimator. If no rays
+% are input, the rays are chosen randomly according to the collimator
+% dimensions.
+% options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+% options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -180,7 +282,7 @@ options.subsets = 8;
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the projection images
-options.subset_type = 3;
+options.subset_type = 8;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
@@ -324,6 +426,9 @@ options.AD = false;
 
 %%% Asymmetric Parallel Level Set (APLS) prior
 options.APLS = false;
+
+%%% Hyperbolic prior
+options.hyperbolic = false;
 
 %%% Total Generalized Variation (TGV) prior
 options.TGV = false;
@@ -471,7 +576,7 @@ options.filteringIterations = 100;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% REGULARIZATION PARAMETER %%%%%%%%%%%%%%%%%%%%%%%%
 %%% The regularization parameter for ALL regularization methods (priors)
-options.beta = 1;
+options.beta = 1e-6;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%% NEIGHBORHOOD PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%
@@ -564,7 +669,7 @@ options.weighted_center_weight = 4;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% "Smoothing" parameter
 % Also used to prevent zero values in square root.
-options.TVsmoothing = 1e-5;
+options.TVsmoothing = 1e-3;
 
 %%% Whether to use an anatomical reference/weighting image with the TV
 options.TV_use_anatomical = false;
@@ -573,7 +678,7 @@ options.TV_use_anatomical = false;
 % reference image here (same rules apply as with attenuation correction
 % above). Alternatively you can specifiy the variable that holds the
 % reference image.
-options.TV_reference_image = 'reference_image.mat';
+options.TV_reference_image = '';
 
 %%% Three different TV methods are available.
 % Value can be 1, 2, 3, 4 or 6.
@@ -644,6 +749,11 @@ options.APLSsmoothing = 1e-5;
 % instead.
 % NOTE: For APSL, the reference image is required.
 options.APLS_reference_image = 'reference_image.mat';
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% HYPERBOLIC PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Edge weighting factor
+options.hyperbolicDelta = 800;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% TGV PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -727,14 +837,37 @@ options.GGMRF_c = 5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Reconstructions
+% options.maskFP = uint8(ones(16, 128, 12));
+% options.maskFP(:,:,12) = 1;
 tStart = tic;
-pz = reconstructions_mainSPECT(options);
+% pz contains the 3D or 4D image
+% recPar contains certain reconstruction parameters in a struct that can be
+% easily included with the reconstruction
+% options is the modified options struct (some modifications might be
+% applied before reconstruction)
+% fp are the stored forward projections, if options.storeFP = true
+[pz, recPar, ~, fp] = reconstructions_mainSPECT(options);
 tElapsed = toc(tStart);
 disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
-%% Plot
-volume3Dviewer(pz, 'fit')
+% save([options.name '_reconstruction_' num2str(options.subsets) 'subsets_' num2str(options.Niter) 'iterations_' ...
+%     num2str(options.Nx) 'x' num2str(options.Ny) 'x' num2str(options.Nz) '.mat'], 'pz');
 
-%% Save
-% save(strcat('brain_phantom_proj', num2str(options.projector_type),...
-%  '_model', num2str(options.coneMethod), '_nRay', num2str(options.nRaySPECT), '.mat'), 'options', 'pz')
+
+%% Plots
+% pz(pz>400) = 0;
+% [xq, yq] = meshgrid(linspace(-options.FOVa_x/2, options.FOVa_x/2, options.Nx));
+% outputMask = ellipsoid(xq, yq, options.Super_ellipsoid_center_x, options.Super_ellipsoid_center_y, options.Super_ellipsoid_a-10, options.Super_ellipsoid_b-10, options.Super_ellipsoid_power);
+% function maskBP = ellipsoid(xq, yq, ecx, ecy, a, b, n)
+%     maskBP = (abs((xq-ecx)/a).^n + abs((yq-ecy)/b).^n) < 1;
+% end
+volumeViewer(pz)
+% volumeViewer(outputMask .* pz)
+
+% optimizer = registration.optimizer.RegularStepGradientDescent;
+% optimizer.MaximumStepLength = 1e-4;
+% metric = registration.metric.MeanSquares;
+% pz2 = imregister(pz, options.vaimennus, "affine", optimizer, metric);
+% volumeViewer(pz2)
+
+

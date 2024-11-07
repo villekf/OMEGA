@@ -80,7 +80,11 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 extern "C" __global__
 #endif
 void projectorType123(const float global_factor, const float d_epps, const uint d_size_x, const uint d_det_per_ring,
-	const float sigma_x, 
+	const float sigma_x,
+#if defined(SPECT)
+	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
+	const CLGLOBAL float* CLRESTRICT d_rayShiftsSource,
+#endif
 #ifdef PYTHON
 	const float crystalSizeX, const float crystalSizeY, 
 #else
@@ -135,7 +139,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const LONG d_nProjections,
 #endif
 	///////////////////////// END FULL PROJECTIONS/SINOGRAMS /////////////////////////
-#if ((defined(CT) || defined(RAW) || defined(INDEXBASED)) && (!defined(LISTMODE) || defined(INDEXBASED))) || defined(SENS)
+#if ((defined(CT) || defined(SPECT) || defined(RAW) || defined(INDEXBASED)) && (!defined(LISTMODE) || defined(INDEXBASED))) || defined(SENS)
 	CONSTANT float* d_xy,
 #else
 	const CLGLOBAL float* CLRESTRICT d_xy,
@@ -251,7 +255,14 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
 #endif
 #else
-	const int maskVal = maskBP[i.x + i.y * d_size_x];
+	long long int idxMaskFP = 0;
+	if (N_MASK_FP > 1) {
+		long long int numProjPerDetector = N_PROJECTIONS_GLOBAL / N_MASK_FP;
+		long long int currentDetector = i.z / numProjPerDetector;
+		idxMaskFP = d_sizey * d_size_x * currentDetector;
+	}
+
+	const int maskVal = maskFP[i.x + i.y * d_size_x + idxMaskFP];
 #endif
 	if (maskVal == 0)
 		return;
@@ -260,7 +271,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 
 
-
+/*
 #ifdef SPECT ///////////////////////////////////// SPECT /////////////////////////7
 	float3 s, d;
 	getDetectorCoordinatesListmode(d_xy, &s, &d, idx, 0, 0, crystalSize);
@@ -279,7 +290,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	#endif
 	
 #endif ////////////////////////////////// END SPECT ///////////////////////////////////////////
-
+*/
 
 
 
@@ -287,11 +298,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 
 #if defined(N_RAYS) && defined(FP)
-	#ifdef SPECT 
-	float ax[NBINS * (int)NRAYSPECT * (int)NHEXSPECT];
-	#else
 	float ax[NBINS * N_RAYS];
-	#endif
 #else
 	float ax[NBINS];
 #endif
@@ -340,7 +347,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	// Load the next detector index
 	// raw data
 
-#ifdef SPECT ///////////////////////////// SPECT LOOP //////////////////////////////////
+/*#ifdef SPECT ///////////////////////////// SPECT LOOP //////////////////////////////////
 	#if (CONEMETHOD == 1)
 	for (int currentShift = 0u; currentShift < trueRayCount; currentShift++){
 	#else
@@ -348,10 +355,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	#endif
 	int lorZ = 0u;
 	int lorXY = 0u;
-#else
+#else*/
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
-#endif ////////////////////////////// END SPECT LOOP ///////////////////////////////////
+//#endif ////////////////////////////// END SPECT LOOP ///////////////////////////////////
 			lor++;
 
 
@@ -359,7 +366,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 
 
-#if !defined(SPECT) //////////////////////////////////// IF NOT SPECT //////////////////////////
+//#if !defined(SPECT) //////////////////////////////////// IF NOT SPECT //////////////////////////
 	float3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
 	const uint layer = i.z / NLAYERS;
@@ -370,6 +377,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	// Load the next detector index
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
+#elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
@@ -405,7 +414,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	);
 #endif
-
+/*
 #else /////////////////////////////////////////// SPECT //////////////////////////////////7
 
 if (lor == 0) { // First ray in hexagon
@@ -445,7 +454,7 @@ if (lor == 0) { // First ray in hexagon
 }
 
 #endif /////////////////////////////// END SPECT / NOT SPECT ///////////////////////////////////////////////
-
+*/
 	// Calculate the x, y and z distances of the detector pair
 	float3 diff = d - s;
 
@@ -698,7 +707,7 @@ if (lor == 0) { // First ray in hexagon
 					maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
 #endif
 #else
-					maskVal = maskBP[localInd.x + localInd.y * d_N.x];
+					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x];
 #endif
 				}
 				if (maskVal > 0)
@@ -1198,12 +1207,8 @@ if (lor == 0) { // First ray in hexagon
 	}
 //  */
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
-#ifdef SPECT
-			}
-#else
 		}
 	}
-#endif
 
 
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////

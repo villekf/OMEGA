@@ -76,6 +76,7 @@ typedef struct Weighting_ {
 	uint32_t nPriors = 0U, nMAP = 0U, nMAPML = 0U, nMLEM = 0U, nOS = 0U, nTot = 0U, nMAPOS = 0U, nPriorsTot = 0U, ng = 20U;
 	std::vector<int32_t> mIt;
 	std::vector<float> alphaCP, LCP, LCP2;
+	float *rayShiftsDetector, *rayShiftsSource;
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected

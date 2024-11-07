@@ -72,6 +72,7 @@ class ProjectorClass {
 		bool offsetT = false;
 		bool indexBased = false;
 		bool angle = false;
+		bool rayShifts = false;
 		int zType = -1;
 		int xSteps = -1;
 		int zSteps = -1;
@@ -135,14 +136,14 @@ class ProjectorClass {
 		char buffer9[30];
 		char buffer10[30];
 		char buffer11[30];
-		char spectBuffer1[30];
-		char spectBuffer2[30];
-		char spectBuffer3[30];
-		char spectBuffer4[30];
-		char spectBuffer5[30];
-		char spectBuffer6[30];
-		char spectBuffer7[30];
-		char spectBuffer8[30];
+		//char spectBuffer1[30];
+		//char spectBuffer2[30];
+		//char spectBuffer3[30];
+		//char spectBuffer4[30];
+		//char spectBuffer5[30];
+		//char spectBuffer6[30];
+		//char spectBuffer7[30];
+		//char spectBuffer8[30];
 
 		std::snprintf(buffer0, 35, "--gpu-architecture=compute_%d%d", compMajor, compMinor);
 		options.push_back(buffer0);
@@ -249,7 +250,13 @@ class ProjectorClass {
 			options.push_back("-DPET");
 		else if (inputScalars.SPECT) {
 			options.push_back("-DSPECT");
-			std::snprintf(spectBuffer1, 30, "-DCOL_D=%f", inputScalars.colD);
+			std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
+			options.push_back(buffer2);
+			std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
+			options.push_back(buffer3);
+			std::snprintf(buffer4, 30, "-DN_RAYS3D=%d", static_cast<int32_t>(inputScalars.n_rays3D));
+			options.push_back(buffer4);
+			/*std::snprintf(spectBuffer1, 30, "-DCOL_D=%f", inputScalars.colD);
 			options.push_back(spectBuffer1);
 			std::snprintf(spectBuffer2, 30, "-DCOL_L=%f", inputScalars.colL);
 			options.push_back(spectBuffer2);
@@ -282,7 +289,7 @@ class ProjectorClass {
 			}
 
 			std::snprintf(spectBuffer8, 30, "-DNHEXSPECT=%u", static_cast<uint16_t>(nHexSPECT));
-			options.push_back(spectBuffer8);
+			options.push_back(spectBuffer8);*/
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
@@ -1140,6 +1147,7 @@ public:
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
 	CUdeviceptr *d_vector, *d_input;
 	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskFPB, d_maskBPB, *d_RDPref;
+	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	//CUdeviceptr d_outputCT;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
@@ -1216,6 +1224,10 @@ public:
 		}
 		if (memAlloc.eFOV) {
 			getErrorString(cuMemFree(d_eFOVIndices));
+		}
+		if (memAlloc.rayShifts) {
+			getErrorString(cuMemFree(d_rayShiftsDetector));
+			getErrorString(cuMemFree(d_rayShiftsSource));
 		}
 		if (memAlloc.GGMRF) {
 			getErrorString(cuMemFree(d_weights));
@@ -1697,7 +1709,7 @@ public:
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.useBuffers)
-						status = cuMemAlloc(&d_maskFPB, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
+						status = cuMemAlloc(&d_maskFPB, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD);
 					else {
 						std::memset(&texDesc, 0, sizeof(texDesc));
 						std::memset(&resDesc, 0, sizeof(resDesc));
@@ -1830,6 +1842,15 @@ public:
 					return -1;
 				}
 				memAlloc.zFull = true;
+			}
+			if (inputScalars.SPECT) {
+				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memAlloc.rayShifts = true;
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (DEBUG) {
@@ -2026,7 +2047,7 @@ public:
 			//}
 			if ((inputScalars.maskFP || inputScalars.maskBP) && inputScalars.useBuffers) {
 				if (inputScalars.maskFP) {
-					status = cuMemcpyHtoD(d_maskFPB, w_vec.maskFP, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
+					status = cuMemcpyHtoD(d_maskFPB, w_vec.maskFP, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD);
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -2071,6 +2092,18 @@ public:
 			}
 			if (inputScalars.eFOV) {
 				status = cuMemcpyHtoD(d_eFOVIndices, w_vec.eFOVIndices, sizeof(uint8_t) * inputScalars.Nz[0]);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.SPECT) {
+				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -2336,6 +2369,12 @@ public:
 			FPArgs.emplace_back(&inputScalars.det_per_ring);
 			//FPArgs.emplace_back(&inputScalars.Nxy);
 			FPArgs.emplace_back(&inputScalars.sigma_x);
+
+			if (inputScalars.SPECT) {
+				FPArgs.emplace_back(&d_rayShiftsDetector);
+				FPArgs.emplace_back(&d_rayShiftsSource);
+			}
+
 			FPArgs.emplace_back(&dPitch);
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2)
@@ -2354,6 +2393,12 @@ public:
 			BPArgs.emplace_back(&inputScalars.det_per_ring);
 			//BPArgs.emplace_back(&inputScalars.Nxy);
 			BPArgs.emplace_back(&inputScalars.sigma_x);
+
+			if (inputScalars.SPECT) {
+				BPArgs.emplace_back(&d_rayShiftsDetector);
+				BPArgs.emplace_back(&d_rayShiftsSource);
+			}
+
 			BPArgs.emplace_back(&dPitch);
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2)

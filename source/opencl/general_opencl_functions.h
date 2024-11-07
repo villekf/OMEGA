@@ -664,8 +664,8 @@ DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* 
 #endif
 #endif
 
-// Detector coordinates for CT or SPECT data
-#if defined(CT) || (defined(SPECT) && !defined(SPECTMASK))
+// Detector coordinates for CT data
+#if defined(CT) && !defined(SPECTMASK)
 DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
 	const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
@@ -718,6 +718,38 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 #endif
 #endif
 #endif
+}
+
+#elif defined(SPECT)
+DEVICE void getDetectorCoordinatesSPECT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
+	int id = i.z * 6;
+	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
+	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
+	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	id = i.z * NA;
+
+	const float apuX = d_uv[id];
+	const float apuY = d_uv[id + 1];
+	(*d).x += indeksi.x * apuX;
+	(*d).y += indeksi.x * apuY;
+	(*d).z += indeksi.y * d_dPitch.y;
+	(*s).x += indeksi.x * apuX;
+	(*s).y += indeksi.x * apuY;
+	(*s).z += indeksi.y * d_dPitch.y;
+#if defined(N_RAYS)
+	if (N_RAYS2D > 1) {
+		int idr = lorXY * 2;
+		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.;
+		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.;
+		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.;
+		(*s).x += apuX * d_rayShiftsSource[idr] / 2.;
+		(*s).y += apuY * d_rayShiftsSource[idr] / 2.;
+		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.;
+	}
+#endif
+	(*s).x += 100 * ((*s).x - (*d).x);
+	(*s).y += 100 * ((*s).y - (*d).y);
+	(*s).z += 100 * ((*s).z - (*d).z);
 }
 #else
 #if defined(RAW) || defined(SENS)

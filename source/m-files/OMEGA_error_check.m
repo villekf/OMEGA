@@ -677,8 +677,12 @@ if options.verbose > 0
                 else
                     aray = 'ray';
                 end
-                disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' transaxial ' ray ' and ' ...
+                if options.SPECT
+                    disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' ' ray])
+                else
+                    disp(['Improved Siddon''s algorithm selected with ' num2str(options.n_rays_transaxial) ' transaxial ' ray ' and ' ...
                     num2str(options.n_rays_axial) ' axial ' aray '.'])
+                end
             end
         elseif options.projector_type == 1 || options.projector_type == 11
             disp('Improved Siddon''s algorithm selected with 1 ray.')

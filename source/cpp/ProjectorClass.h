@@ -227,31 +227,19 @@ class ProjectorClass {
 			options += " -DPET";
 		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
-			options += (" -DCOL_D=" + std::to_string(inputScalars.colD));
-			options += (" -DCOL_L=" + std::to_string(inputScalars.colL));
-			options += (" -DDSEPTAL=" + std::to_string(inputScalars.dSeptal));
-			options += (" -DHEXORIENTATION=" + std::to_string((uint8_t)inputScalars.hexOrientation));
-			options += (" -DCONEMETHOD=" + std::to_string((uint8_t)inputScalars.coneMethod));
-
-			if (inputScalars.coneMethod == 3) {
-				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
+			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
+			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
+			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
+			mexPrintBase("inputScalars.nProjectionsGlobal = %u\n", inputScalars.nProjectionsGlobal);
+			mexPrintBase("inputScalars.numMaskFP = %u\n", inputScalars.numMaskFP);
+			mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
+			mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
+			mexEval();
+			if (inputScalars.maskFP) {
+				options += (" -DN_MASK_FP=" + std::to_string(inputScalars.numMaskFP));
+				options += (" -DN_PROJECTIONS_GLOBAL=" + std::to_string(inputScalars.nProjectionsGlobal));
+				inputScalars.useBuffers = true;
 			}
-			options += (" -DNRAYSPECT=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
-
-			uint32_t nHexSPECT;
-			if (inputScalars.coneMethod != 1) {
-				options += (" -DN_RAYS=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
-				options += (" -DN_RAYS2D=1");
-				options += (" -DN_RAYS3D=1");
-				nHexSPECT = 1;
-			} else {
-				options += (" -DN_RAYS=1");
-				options += (" -DN_RAYS2D=1");
-				options += (" -DN_RAYS3D=1");
-
-				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
-			}
-			options += (" -DNHEXSPECT=" + std::to_string(nHexSPECT));
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
@@ -261,7 +249,7 @@ class ProjectorClass {
 			options += " -DLISTMODE2";
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options += " -DINDEXBASED";
-		if (siddonVal && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
+		if (siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
@@ -399,6 +387,7 @@ class ProjectorClass {
 				options += " -cl-fast-relaxed-math";
 				options += " -DUSEMAD";
 			}
+			
 			if (inputScalars.useImages)
 				options += " -DUSEIMAGES";
 			if (inputScalars.useExtendedFOV)
@@ -1002,6 +991,7 @@ public:
 	cl::Buffer d_vector, d_input;
 	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm, d_RDPref;
 	cl::Buffer d_outputCT, d_maskFPB, d_maskBPB, d_attenB;
+	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
@@ -1331,7 +1321,7 @@ public:
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
 					if (inputScalars.maskFP)
-						d_maskFPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status);
+						d_maskFPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status);
 					if (inputScalars.maskBP)
 						d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], NULL, &status);
 				}
@@ -1352,6 +1342,18 @@ public:
 						d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 					}
 				}
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.SPECT) {
+				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -1525,9 +1527,11 @@ public:
 			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.maskFP || inputScalars.maskBP || inputScalars.useExtendedFOV) {
+			mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
+			mexEval();
 			if (inputScalars.useBuffers) {
 				if (inputScalars.maskFP)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskFPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskFPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
 				if (inputScalars.maskBP)
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskBPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], w_vec.maskBP);
 			}
@@ -1659,6 +1663,21 @@ public:
 					return -1;
 				}
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
+			}
+			if (inputScalars.SPECT) {
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsDetector);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
+
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsSource);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (inputScalars.CT && inputScalars.listmode == 0) {
@@ -1930,6 +1949,11 @@ public:
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.nRowsD));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.det_per_ring));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.sigma_x));
+			if (inputScalars.SPECT) {
+				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsDetector));
+				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsSource));
+			}
+
 			getErrorString(kernelFP.setArg(kernelIndFP++, dPitch));
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2) {
@@ -1957,6 +1981,10 @@ public:
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.det_per_ring));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.sigma_x));
+			if (inputScalars.SPECT) {
+				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsDetector));
+				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsSource));
+			}
 			getErrorString(kernelBP.setArg(kernelIndBP++, dPitch));
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				if (inputScalars.BPType == 2) {

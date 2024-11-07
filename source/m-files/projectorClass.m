@@ -392,13 +392,13 @@ classdef projectorClass
             end
             obj.param.MAP = ll > 0;
 
-            if isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && ~obj.param.CT))
+            if isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (((~(numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD) && ~(numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads)) && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && (~obj.param.CT && ~obj.param.SPECT)))
                 if obj.param.CT || obj.param.SPECT
-                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ']'])
+                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or contain a mask for each detector head [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ' ' num2str(obj.param.nHeads) ']'])
                 else
                     error(['Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ']'])
                 end
-            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD
+            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD) || (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads))
                 obj.param.useMaskFP = true;
             else
                 obj.param.useMaskFP = false;
@@ -501,7 +501,12 @@ classdef projectorClass
             % Coordinates of the detectors
             if obj.param.projector_type ~= 6
                 if ~obj.param.listmode
-                    [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
+                    if (obj.param.SPECT)
+                        [x_det, z_det] = get_coordinates_SPECT(obj.param);
+                        y = 0;
+                    else
+                        [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
+                    end
                 else
                     if ~obj.param.useIndexBasedReconstruction
                         if size(obj.param.x,2) == 2
@@ -625,7 +630,7 @@ classdef projectorClass
             if obj.param.listmode
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
-                    if obj.param.CT
+                    if obj.param.CT || obj.param.SPECT
                         x_det = reshape(x_det, 6, obj.param.nProjections);
                         x_det = x_det(:,obj.index);
                         x_det = x_det(:);
