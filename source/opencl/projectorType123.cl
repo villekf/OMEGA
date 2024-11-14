@@ -502,7 +502,6 @@ if (lor == 0) { // First ray in hexagon
 #else
 			return;
 #endif  //////////////// END MULTIRAY ////////////////
-			// return;
 
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 		int indO = 0;
@@ -950,7 +949,7 @@ if (lor == 0) { // First ray in hexagon
 						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
-					if (tz0 < 1.f) {
+					if (tz0 > 1.f) {
 						local_ele = (1.f - tc) * L;
 						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
 					}
@@ -974,7 +973,7 @@ if (lor == 0) { // First ray in hexagon
 						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
-					if (ty0 < 1.f) {
+					if (ty0 > 1.f) {
 						local_ele = (1.f - tc) * L;
 						compute_element(&ty0, &tc, L, tyu, uy, &tempj);
 					}
@@ -998,7 +997,7 @@ if (lor == 0) { // First ray in hexagon
 						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
-					if (tx0 < 1.f) {
+					if (tx0 > 1.f) {
 						local_ele = (1.f - tc) * L;
 						compute_element(&tx0, &tc, L, txu, ux, &tempi);
 					}
