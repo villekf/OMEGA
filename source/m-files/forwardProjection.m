@@ -86,7 +86,7 @@ if options.projector_type == 6
     outputFP(outputFP < options.epps) = options.epps;
 elseif options.implementation == 1 || options.implementation == 4
     for ii = loopVar
-        if ii == 1 || numel(loopVar) == 1
+        if ii == 1 || isscalar(loopVar)
             if useCell
                 if options.use_psf && ~isempty(recApu{ii})
                     recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
