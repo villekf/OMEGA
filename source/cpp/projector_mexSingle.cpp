@@ -7,8 +7,7 @@
 * This file contains the mex-functions for both the implementation type 1 and type 4.
 * 
 * A precomputed vector that has the number of voxels a LOR/ray passes, as well as the number of voxels that have been traversed in previous 
-* LORs/rays is required if options.precompute_lor = true, but is optional otherwise. If the precompute_lor options is set to false and 
-* implementation type 4 has been selected then all the measurements are investigated, but only those intercepting the FOV will be included.
+* LORs/rays is required if using implementation 1. 
 * 
 * Both implementations use OpenMP for parallellization (if available, otherwise the code will be sequential with no parallelization).
 * 

@@ -2102,7 +2102,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 										local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
 								}
 								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (tz0 < (T)1.) {
+									if (tz0 > (T)1.) {
 										local_ele = ((T)1. - tc) * L;
 										compute_element(tz0, tc, L, tzu, uz, tempk);
 									}
@@ -2122,7 +2122,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 										local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
 								}
 								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (ty0 < (T)1.) {
+									if (ty0 > (T)1.) {
 										local_ele = ((T)1. - tc) * L;
 										compute_element(ty0, tc, L, tyu, uy, tempj);
 									}
@@ -2142,7 +2142,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 										local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
 								}
 								else if (tc >= (T)0. && tc <= (T)1.) {
-									if (tx0 < (T)1.) {
+									if (tx0 > (T)1.) {
 										local_ele = ((T)1. - tc) * L;
 										compute_element(tx0, tc, L, txu, ux, tempi);
 									}
