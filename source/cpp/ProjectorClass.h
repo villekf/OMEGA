@@ -230,11 +230,6 @@ class ProjectorClass {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
-			mexPrintBase("inputScalars.nProjectionsGlobal = %u\n", inputScalars.nProjectionsGlobal);
-			mexPrintBase("inputScalars.numMaskFP = %u\n", inputScalars.numMaskFP);
-			mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
-			mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
-			mexEval();
 			if (inputScalars.maskFP) {
 				options += (" -DN_MASK_FP=" + std::to_string(inputScalars.numMaskFP));
 				options += (" -DN_PROJECTIONS_GLOBAL=" + std::to_string(inputScalars.nProjectionsGlobal));

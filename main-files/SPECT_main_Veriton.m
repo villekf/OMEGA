@@ -5,7 +5,7 @@
 % Note that at the moment no example data is provided.
 
 clear
-options.fpath = '/home/niilo/Documents/tomodata/Veriton/241121_NEMA_iQ/SPET data/Scan_8/Bed_1';
+options.fpath = '';
 options.fname = '_8_11_2024.csv';
 options.sensitivityMapFileName = 'Header/SensitivityMap_Ver1.1.csv';
 options.blockLocationsFileName = 'Scan Pattern/BlockLocations.csv';
@@ -241,7 +241,7 @@ options.projector_type = 1;
 
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
-options.nRays = 100;
+options.nRays = 10;
 
 % The user can input own rays to be traced. 
 % Consider the detector pixel to be the area [-1, 1] x [-1, 1]. The
