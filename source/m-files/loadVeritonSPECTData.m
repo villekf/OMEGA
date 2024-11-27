@@ -2,8 +2,11 @@ function options = loadVeritonSPECTData(options)
     options = loadInfo(options); % Read imaging parameters
     options = loadSensitivityMaps(options); % Read sensitivity maps
     options = loadProjectionData(options); % Load sinograms
-    options = loadBlockLocations(options); % Load BlockLocations.csv data
     options = rmfield(options, "maskFP"); % Remove FP mask
+    options = loadBlockLocations(options); % Load BlockLocations.csv data
+    if options.attenuation_correction
+        options = readCT(options); % CT attenuation correction
+    end
     
     function options = loadInfo(options)
         fprintf("Loading Veriton info\n")
@@ -105,5 +108,26 @@ function options = loadVeritonSPECTData(options)
             end
         end
         options.gantryHomeAngle = table2array(T_blockLocations(end, 2));
+    end
+
+    function options = readCT(options)
+        listing = dir(options.fpathCT);
+        
+        CTvol = zeros(512, 512, numel(listing)-2);
+        for ii = 1:numel(listing)
+            f = listing(ii);
+            if strcmp(f.name, ".") || strcmp(f.name, "..")
+                continue
+            end
+            CTinfo = dicominfo(fullfile(f.folder, f.name));
+            CTimg = dicomread(fullfile(f.folder, f.name));
+            CTvol(:,:,ii) = CTimg;
+        end
+        
+        options.vaimennus = 0.01538 * (1 + CTvol./1000);
+        options.vaimennus(options.vaimennus < 0) = 0;
+        options.vaimennus = imresize3(options.vaimennus, [options.Nx, options.Ny, options.Nz], 'Method','nearest');
+        options.CT_attenuation = true;
+        options.flipAttImageZ = 0;
     end
 end

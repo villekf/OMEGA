@@ -6,6 +6,7 @@
 
 clear
 options.fpath = '';
+options.fpathCT = '';
 options.fname = '_8_11_2024.csv';
 options.sensitivityMapFileName = 'Header/SensitivityMap_Ver1.1.csv';
 options.blockLocationsFileName = 'Scan Pattern/BlockLocations.csv';
