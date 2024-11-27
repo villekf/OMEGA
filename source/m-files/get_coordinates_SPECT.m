@@ -14,18 +14,25 @@ function [x, z] = get_coordinates_SPECT(options)
     for ii = 1:nProjections
         r1 = options.radiusPerProj(ii);
         r2 = options.CORtoDetectorSurface;
+
         alpha1 = options.angles(ii);
-        alpha2 = options.swivelAngles(ii);
+        alpha2 = options.homeAngles(ii) - 360/(2*pi)*options.offangle;
+        alpha3 = options.swivelAngles(ii) - 360/(2*pi)*options.offangle;
+
+        if ~options.flip_image
+            alpha2 = alpha2 + 180;
+            alpha3 = alpha3 + 180;
+        end
         
-        x(4, ii) = r1 * cosd(alpha1) + r2 * cosd(alpha2);
-        x(5, ii) = r1 * sind(alpha1) + r2 * sind(alpha2);
+        x(4, ii) = r1 * cosd(alpha1+alpha2) + r2 * cosd(alpha3);
+        x(5, ii) = r1 * sind(alpha1+alpha2) + r2 * sind(alpha3);
         x(6, ii) = 0;
-        x(1, ii) = x(4, ii) + options.colL * cosd(alpha2);
-        x(2, ii) = x(5, ii) + options.colL * sind(alpha2);
+        x(1, ii) = x(4, ii) + options.colL * cosd(alpha3);
+        x(2, ii) = x(5, ii) + options.colL * sind(alpha3);
         x(3, ii) = 0;
         
-        z(1, ii) = options.crXY * sind(alpha2);
-        z(2, ii) = -options.crXY * cosd(alpha2);
+        z(1, ii) = options.crXY * cosd(alpha3-90);
+        z(2, ii) = options.crXY * sind(alpha3-90);
     end
     x = cast(x, options.cType);
     z = cast(z, options.cType);

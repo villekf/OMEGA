@@ -5,9 +5,12 @@
 % Note that at the moment no example data is provided.
 
 clear
-options.fpath = 'data/Bed_1/';
-options.sensitivityMapFileName = 'Header/SensitivityMap_Ver1.1_2_3.csv';
-options.fname = '_22_3_2024.csv';
+options.fpath = '/home/niilo/Documents/tomodata/Veriton/241121_NEMA_iQ/SPET data/Scan_8/Bed_1';
+options.fname = '_8_11_2024.csv';
+options.sensitivityMapFileName = 'Header/SensitivityMap_Ver1.1.csv';
+options.blockLocationsFileName = 'Scan Pattern/BlockLocations.csv';
+options.infoFileName = 'Header/info_Ver2.0.csv';
+options.calibrationFileName = 'SystemCalibrations.csv';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -87,25 +90,24 @@ options.machine_name = 'Veriton-CT';
 %%% Reconstructed image pixel count (X-direction)
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
 % If you're using projector_type = 6, this should be options.nRowsD
-options.Nx = 128;
+options.Nx = 256;
 
 %%% Y-direction
-options.Ny = 128;
+options.Ny = 256;
 
 %%% Z-direction (number of slices) (axial)
 % If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 128;
+options.Nz = 256;
 
 %%% Flip the image (in vertical direction)?
 options.flip_image = false;
 
-%%% How much is the image rotated?
-% You need to run the precompute phase again if you modify this
+%%% How much is the image rotated (in radians)?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
-options.offangle = (3*pi)/2;
+options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -212,9 +214,7 @@ options.verbose = 1;
 % See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
-if options.implementation == 2
-    %options = rmfield(options, "maskFP");
-end
+
 % Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
@@ -241,7 +241,7 @@ options.projector_type = 1;
 
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
-options.nRays = 1;
+options.nRays = 100;
 
 % The user can input own rays to be traced. 
 % Consider the detector pixel to be the area [-1, 1] x [-1, 1]. The
@@ -837,8 +837,6 @@ options.GGMRF_c = 5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% Reconstructions
-% options.maskFP = uint8(ones(16, 128, 12));
-% options.maskFP(:,:,12) = 1;
 tStart = tic;
 % pz contains the 3D or 4D image
 % recPar contains certain reconstruction parameters in a struct that can be

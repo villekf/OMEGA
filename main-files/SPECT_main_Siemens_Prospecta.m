@@ -136,14 +136,9 @@ options.colL = 24.05;
 options.colR = 1.11/2;
 % Distance from collimator to the detector (mm)
 options.colD = 0;
-% Septal thickness (mm)
-options.dSeptal = 0.1;
 % Intrinsic resolution (mm)
 % projector_type 6 only!
 options.iR = 3.8;
-% Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
-% projector_type 1 only!
-options.hexOrientation = 1;
 
 %%% Collimator-detector response function (CDRF)
 % You can either input either:
@@ -239,11 +234,13 @@ options.use_CPU = false;
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 6;
+options.projector_type = 1;
 
 % For Siddon ray-based projector:
 % Number of rays traced per collimator hole
-options.nRaySPECT = 1;
+options.nRays = 1;
+% options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+% options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)

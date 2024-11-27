@@ -38,6 +38,13 @@ if isfield(options, 'maskFP')
     options.useImages = false;
     options.numMaskFP = size(options.maskFP, 3);
     options.nProjectionsGlobal = options.nProjections;
+else
+    options.useImages = false;
+    options.numMaskFP = 0;
+    options.nProjectionsGlobal = options.nProjections;
+end
+if ~isfield(options, 'homeAngles')
+    options.homeAngles = 0 * options.angles;
 end
 
 options.n_rays_transaxial = options.nRays;

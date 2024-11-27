@@ -1289,7 +1289,7 @@ public:
 				}
 			}
 			// Detector coordinates
-			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -1398,7 +1398,7 @@ public:
 					mexPrintBase("vecSize = %u\n", vecSize);
 					mexEval();
 				}
-				if (inputScalars.CT && inputScalars.listmode != 1) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 					if (inputScalars.pitch)
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					else
@@ -1430,8 +1430,8 @@ public:
 						return -1;
 					}
 				}
-				if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0))
+				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
 						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -1585,7 +1585,7 @@ public:
 				}
 				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
 			}
-			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -1680,7 +1680,7 @@ public:
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if (inputScalars.CT && inputScalars.listmode == 0) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					int64_t kerroin = 2;
 					if (inputScalars.pitch)
 						kerroin = 6;
@@ -1708,7 +1708,7 @@ public:
 						return -1;
 					}
 				}
-				if (inputScalars.CT && inputScalars.listmode == 0) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -2563,7 +2563,7 @@ public:
 					return -1;
 				}
 			}
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
@@ -2571,7 +2571,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
@@ -2752,7 +2752,7 @@ public:
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
@@ -2760,7 +2760,7 @@ public:
 					getErrorString(status);
 					return -1;
 				}
-				if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
@@ -3078,7 +3078,7 @@ public:
 					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring);
 				}
 				else {
-					if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if ((inputScalars.listmode == 0 && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
@@ -3086,7 +3086,7 @@ public:
 						getErrorString(status);
 						return -1;
 					}
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || inputScalars.listmode > 0))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
