@@ -93,9 +93,6 @@ void forward(CLGLOBAL float* d_outputFP, const CLGLOBAL float* CLRESTRICT meas
 // Used only by implementation 3
 KERNEL3
 void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST* CLRESTRICT d_rhs, CLGLOBAL float* d_im, const float d_epps, const int3 d_N, const uchar no_norm
-#ifdef PSF
-, CONSTANT float* convolution_window, const int window_size_x, const int window_size_y, const int window_size_z
-#endif
 #ifdef CT
 	, const float flat
 #endif
@@ -113,17 +110,10 @@ void computeEstimate(const CLGLOBAL CAST* CLRESTRICT d_Summ, const CLGLOBAL CAST
 #ifdef CT
 	apu *= flat;
 #endif
-#ifdef PSF
-	float result = d_epps;
-	float resultS = d_epps;
-	conv(ind, d_rhs, d_Summ, convolution_window, window_size_x, window_size_y, window_size_z, no_norm, &result, &resultS);
-	d_im[idx] = apu / resultS * result;
-#else
 #if defined(ATOMIC) || defined(ATOMIC32) // START ATOMIC/ATOMIC32
 	d_im[idx] = apu / (convert_float(d_Summ[idx]) / TH + d_epps) * (convert_float(d_rhs[idx]) / TH + d_epps);
 #else
 	d_im[idx] = apu / (d_Summ[idx] + d_epps) * (d_rhs[idx] + d_epps);
-#endif
 #endif
 }
 

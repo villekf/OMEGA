@@ -1,9 +1,11 @@
 .vscode/
 data/
-*.mexa64
-*.mex
+source/cpp/*.mexa64
+source/cpp/*.mexw64
+source/cpp/*.mex
 *.pyc
 *.oct
 *.asv
 mat-files/*.mat
 *.so
+*.dll

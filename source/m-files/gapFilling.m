@@ -57,7 +57,7 @@ if llo == 1
     for kk = int32(1) : (options.det_w_pseudo)
         if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
             L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repeat_elem((kk), options.det_w_pseudo-(kk-1)), ((kk):options.det_w_pseudo)'];
-        elseif exist('OCTAVE_VERSION','builtin') == 5
+        elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
             L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repelem((kk), options.det_w_pseudo-(kk-1)), ((kk):options.det_w_pseudo)'];
         else
             L(jh:(jh + (options.det_w_pseudo) - kk),:) = [repelem((kk), options.det_w_pseudo-(kk-1))', ((kk):options.det_w_pseudo)'];

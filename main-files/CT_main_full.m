@@ -296,7 +296,7 @@ options.offsetCorrection = false;
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the wiki for more information:
+% See the docs for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 % NOTE: Projector types 1-3 should not be used as backprojectors for CT!
 options.implementation = 2;
@@ -477,8 +477,8 @@ options.subsets = 1;
 % 5 = (Sinogram only) Take every nth row in the sinogram
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see GitHub wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-settings
+% 360/n_angles for 3D, see docs for more information:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
 % 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth sinogram
 % 9 = Randomly select the full sinograms
@@ -507,7 +507,7 @@ options.epps = 1e-5;
 % Accelerates the subset formation and uses less memory. Not included in
 % OMEGA, needs to be manually downloaded and installed.
 % Download from: 
-% https://se.mathworks.com/matlabcentral/fileexchange/27076-shuffle
+% https://www.mathworks.com/matlabcentral/fileexchange/27076-shuffle
 options.use_Shuffle = false;
 
 %%% Skip the normalization phase in MRP, FMH, L-filter, ADMRP and
@@ -820,8 +820,8 @@ options.a_L = [];
 %%% If the weighting factors are set empty, then this option will determine
 % whether the computed weights follow a 1D weighting scheme (true) or 2D 
 % (false).
-% See the wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+% See the docs for more information:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#l-filter
 options.oneD_weights = false;
  
  
@@ -883,15 +883,15 @@ options.TV_reference_image = 'reference_image.mat';
 % Type 3 uses the same weights as quadratic prior
 % Type 4 is the Lange prior, does not support anatomic weighting.
 % Type 6 is a weighted TV, does not support anatomic weighting.
-% See the wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+% See the docs for more information:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.TVtype = 1;
 
 %%% Weighting parameters for the TV prior. 
 % Applicable only if use_anatomical = true. T-value is specific to the used
 % TVtype, e.g. for type 1 it is the edge threshold parameter. See the wiki
 % for more details:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.T = 0.5;
 
 %%% C is the weight for the original image in type 3 and is ignored with
@@ -933,7 +933,7 @@ options.DiffusionType = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% APLS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Scaling parameter (eta)
 % See the wiki for details:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.eta = 1e-5;
 
 %%% "Smoothing" parameter (beta)

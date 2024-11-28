@@ -22,12 +22,13 @@
 #include "ProjectorClass.h"
 
 // Main reconstruction function for implementations 3 and 5
-template <typename T>
+template <typename T, typename C>
 inline void reconstruction_multigpu(const float* z_det, const float* x, scalarStruct& inputScalars, Weighting& w_vec, RecMethods& MethodList, const int64_t* pituus,
-	const char* header_directory, const float* meas, const float* im, T* output, T* sensIm, const int type = 0, const int no_norm = 1, const float* rand = nullptr, const float* atten = nullptr,
+	const char* header_directory, const float* meas, const float* im, T* output, C* sensIm, const int type = 0, const int no_norm = 1, const float* rand = nullptr, const float* atten = nullptr,
 	const float* norm = nullptr, const float* extraCorr = nullptr, const size_t size_gauss = 0, const uint32_t* xy_index = nullptr,
 	const uint16_t* z_index = nullptr, const uint16_t* L = nullptr) {
 
+	const C tyyppi = (C)0;
 	// Number of measurements in each subset
 	std::vector<int64_t> length(inputScalars.subsetsUsed);
 
@@ -35,6 +36,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 	if (DEBUG) {
 		mexPrintBase("inputScalars.subsets = %u\n", inputScalars.subsets);
 		mexPrintBase("inputScalars.subsetsUsed = %u\n", inputScalars.subsetsUsed);
+		mexPrintBase("inputScalars.osa_iter0 = %u\n", inputScalars.osa_iter0);
 		mexEval();
 	}
 
@@ -163,24 +165,19 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					return;
 				}
 			}
-			proj.vec_opencl.d_rhs_os.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status));
+			proj.vec_opencl.d_rhs_os.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status));
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return;
 			}
-			if (proj.no_norm == 0) {
-				proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status));
-				status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[ii], (T)0, 0, sizeof(T) * inputScalars.im_dim[ii]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return;
-				}
-			}
-			status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (T)0, 0, sizeof(T) * inputScalars.im_dim[ii]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return;
-			}
+			//if (proj.no_norm == 0) {
+			//	proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status));
+			//	status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+			//	if (status != CL_SUCCESS) {
+			//		getErrorString(status);
+			//		return;
+			//	}
+			//}
 			status = proj.CLCommandQueue[0].enqueueWriteBuffer(proj.d_imFinal[ii], CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[ii], &im[uu]);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
@@ -230,6 +227,16 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					return;
 				}
 			}
+			for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+				if (proj.no_norm == 0) {
+					proj.d_Summ.emplace_back(cl::Buffer(proj.CLContext, CL_MEM_READ_WRITE, sizeof(C) * inputScalars.im_dim[ii], NULL, &status));
+					status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.d_Summ[ii + osa_iter * (inputScalars.nMultiVolumes + 1)], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return;
+					}
+				}
+			}
 			uu += m_size * inputScalars.nBins;
 		}
 	}
@@ -271,7 +278,7 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 					region[2] = inputScalars.Nz[ii];
 					proj.vec_opencl.d_image_os = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, region[0], region[1], region[2], 0, 0, NULL, &status);
 					if (inputScalars.use_psf) {
-						status = proj.computeConvolution(inputScalars, ii);
+						status = proj.computeConvolutionF(inputScalars, ii);
 						if (status != CL_SUCCESS) {
 							return;
 						}
@@ -359,12 +366,35 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 			}
 			if (type == 2 || type == 0) {
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii);
+					int uu = ii;
+					if (type == 0) {
+						uu += osa_iter * (inputScalars.nMultiVolumes + 1);
+						status = proj.CLCommandQueue[0].enqueueFillBuffer(proj.vec_opencl.d_rhs_os[ii], (C)0, 0, sizeof(C) * inputScalars.im_dim[ii]);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return;
+						}
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, ii, uu);
+					}
+					else
+						status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
 					if (status != CL_SUCCESS) {
 						return;
 					}
 					if (type == 0) {
-						status = proj.computeEstimate(inputScalars, ii);
+						if (inputScalars.use_psf) {
+							status = proj.computeConvolution(inputScalars, proj.vec_opencl.d_rhs_os[ii], ii, tyyppi);
+							if (status != CL_SUCCESS) {
+								return;
+							}
+							if (proj.no_norm == 0) {
+								status = proj.computeConvolution(inputScalars, proj.d_Summ[uu], ii, tyyppi);
+								if (status != CL_SUCCESS) {
+									return;
+								}
+							}
+						}
+						status = proj.computeEstimate(inputScalars, ii, uu);
 						if (status != CL_SUCCESS) {
 							return;
 						}
@@ -372,6 +402,8 @@ inline void reconstruction_multigpu(const float* z_det, const float* x, scalarSt
 				}
 			}
 		}
+		if (type == 0)
+			proj.no_norm = 1;
 	}
 	for (cl_uint i = 0; i < proj.CLCommandQueue.size(); i++) {
 		proj.CLCommandQueue[i].finish();

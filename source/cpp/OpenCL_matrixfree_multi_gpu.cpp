@@ -384,6 +384,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		}
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			mDim[0] = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * mDim[0];
+		mDim[0] *= inputScalars.nBins;
 		if (DEBUG) {
 			mexPrintBase("mDim = %u\n", mDim[0]);
 			mexEval();
@@ -424,7 +425,12 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		if (no_norm == 0 && type == 2)
 			sens_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
 		else
-			sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
+			if (type == 0 && inputScalars.atomic_32bit)
+				sens_ptr = mxCreateNumericArray(1, d, mxINT32_CLASS, mxREAL);
+			else if (type == 0 && inputScalars.atomic_64bit)
+				sens_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
+			else
+				sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
 	}
 
 	if (DEBUG) {
@@ -463,7 +469,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (DEBUG) {
 		mexPrint("Pointers set");
 	}
-	if (inputScalars.atomic_32bit && (type == 0 || type == 2)) {
+	if (inputScalars.atomic_32bit && (type == 2)) {
 		int32_t* output = getInt32s(array_ptr, "solu");
 		int32_t* sensIm = getInt32s(sens_ptr, "solu");
 		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
@@ -473,9 +479,29 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		else
 			mxDestroyArray(sens_ptr);
 	}
-	else if (inputScalars.atomic_64bit && (type == 0 || type == 2)) {
+	else if (inputScalars.atomic_64bit && (type == 2)) {
 		int64_t* output = getInt64s(array_ptr, "solu");
 		int64_t* sensIm = getInt64s(sens_ptr, "solu");
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
+		plhs[0] = array_ptr;
+		if (nlhs > 1)
+			plhs[1] = sens_ptr;
+		else
+			mxDestroyArray(sens_ptr);
+	}
+	else if (inputScalars.atomic_64bit && (type == 0)) {
+		float* output = getSingles(array_ptr, "solu");
+		int64_t* sensIm = getInt64s(sens_ptr, "solu");
+		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
+		plhs[0] = array_ptr;
+		if (nlhs > 1)
+			plhs[1] = sens_ptr;
+		else
+			mxDestroyArray(sens_ptr);
+	}
+	else if (inputScalars.atomic_32bit && (type == 0)) {
+		float* output = getSingles(array_ptr, "solu");
+		int32_t* sensIm = getInt32s(sens_ptr, "solu");
 		reconstruction_multigpu(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
 		plhs[0] = array_ptr;
 		if (nlhs > 1)

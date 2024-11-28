@@ -652,10 +652,12 @@ inline void denominator(std::vector<T>& ax, const uint32_t local_ind, T local_el
 				ax[to] += apu * joku / TOFSum;
 		}
 	}
-	if (nRays > 1)
-		ax[lor] += apu;
-	else
-		ax[0] += apu;
+	else {
+		if (nRays > 1)
+			ax[lor] += apu;
+		else
+			ax[0] += apu;
+	}
 }
 
 // Compute the backprojection
@@ -1470,15 +1472,15 @@ inline std::vector<std::vector<T>> computeSpectSquareShifts(paramStruct<T>& para
 	// Panel outer normal vector
 	T panelNvecX = detectors.xs - detectors.xd; // Unnormalized detector panel normal vector X component
 	T panelNvecY = detectors.ys - detectors.yd; // Unnormalized detector panel normal vector Y component
-	T panelNvecXn = panelNvecX / std::sqrt(std::pow(panelNvecX, 2) + std::pow(panelNvecY, 2)); // Normalized detector panel normal vector X component
-	T panelNvecYn = panelNvecY / std::sqrt(std::pow(panelNvecX, 2) + std::pow(panelNvecY, 2)); // Normalized detector panel normal vector Y component
+	T panelNvecXn = panelNvecX / std::sqrt(panelNvecX * panelNvecX + panelNvecY * panelNvecY); // Normalized detector panel normal vector X component
+	T panelNvecYn = panelNvecY / std::sqrt(panelNvecX * panelNvecX + panelNvecY * panelNvecY); // Normalized detector panel normal vector Y component
 
 	// Panel rotation angle
 	T panelAngle = atan2d(panelNvecY, panelNvecX);
 	
 	// Get detector pixel center in local coordinates from ix, iy and size
-	T pixelCenterX = ix * param.dPitchXY - param.Nx * param.dPitchXY / 2. + param.dPitchXY / 2.;
-	T pixelCenterY = iy * param.dPitchXY - param.Ny * param.dPitchXY / 2. + param.dPitchXY / 2.;
+	T pixelCenterX = ix * param.dPitchXY - param.Nx * param.dPitchXY / (T)2. + param.dPitchXY / (T)2.;
+	T pixelCenterY = iy * param.dPitchXY - param.Ny * param.dPitchXY / (T)2. + param.dPitchXY / (T)2.;
 
 	// Pixel boundary in local coordinates
 	T xdMin = pixelCenterX - param.dPitchXY / (T)2.;
@@ -1490,17 +1492,18 @@ inline std::vector<std::vector<T>> computeSpectSquareShifts(paramStruct<T>& para
 	T ysMin = ydMin - param.colD;
 	T ysMax = ydMax + param.colD;
 
-	T nRay = std::pow(std::ceil(std::sqrt(param.nRaySPECT)), 2);
+	T nRay = std::ceil(std::sqrt(param.nRaySPECT));
+	nRay *= nRay;
 	std::vector<std::vector<T>> detectorShifts(nRay, std::vector<T>(2, 0));; // 2D position shifts in detector end (for one hexagon)
 	std::vector<std::vector<T>> sourceShifts(nRay, std::vector<T>(2, 0));; // 2D position shifts in source end (for one hexagon)
 
 	if (nRay > 1) {
 		for (uint32_t x = 0; x < std::sqrt(nRay); x++) {
 			for (uint32_t y = 0; y < std::sqrt(nRay); y++) {
-				T tmpXd = xdMin + x / (std::sqrt(nRay) - 1) * (xdMax - xdMin);
-				T tmpYd = ydMin + y / (std::sqrt(nRay) - 1) * (ydMax - ydMin);
-				T tmpXs = xsMin + x / (std::sqrt(nRay) - 1) * (xsMax - xsMin);
-				T tmpYs = ysMin + y / (std::sqrt(nRay) - 1) * (ysMax - ysMin);
+				T tmpXd = xdMin + (T)x / (std::sqrt(nRay) - (T)1.) * (xdMax - xdMin);
+				T tmpYd = ydMin + (T)y / (std::sqrt(nRay) - (T)1.) * (ydMax - ydMin);
+				T tmpXs = xsMin + (T)x / (std::sqrt(nRay) - (T)1.) * (xsMax - xsMin);
+				T tmpYs = ysMin + (T)y / (std::sqrt(nRay) - (T)1.) * (ysMax - ysMin);
 
 				detectorShifts[x * std::sqrt(nRay) + y][0] = tmpXd;
 				detectorShifts[x * std::sqrt(nRay) + y][1] = tmpYd;

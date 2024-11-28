@@ -314,10 +314,12 @@ class projectorClass:
     w_sum = 1.
     RDP_gamma = 1.
     NLMsigma = 1.
+    NLAdaptiveConstant = 1.
     TimeStepAD = 1.
     KAD = 1.
     huber_delta = 1.
     NLM_use_anatomical = False
+    NLAdaptive = False
     NLTV = False
     NLRD = False
     NLLange = False
@@ -448,6 +450,7 @@ class projectorClass:
     coneMethod = 3
     nRaySPECT = 1
     crXY = 1
+    eFOVLength = 0.4
 
     def __init__(self):
         # C-struct
@@ -938,7 +941,7 @@ class projectorClass:
         if self.precondTypeImage[2] and not os.path.exists(self.referenceImage) and not isinstance(self.referenceImage, np.ndarray):
             raise FileNotFoundError('Reference image for precondititiong was not found on path!')
         if self.RDP_use_anatomical and self.RDP and not self.RDPIncludeCorners:
-            raise ValueError('Reference image for RDP is only supported with options.RDPIncludeCorners = true')
+            raise ValueError('Reference image for RDP is only supported with options.RDPIncludeCorners = True')
         if self.implementation == 2 and self.useCPU and self.RDP and self.RDPIncludeCorners:
             raise ValueError('RDP with include corners is supported only on OpenCL and CUDA!')
         if self.TV and self.TVtype == 2 and not self.TV_use_anatomical:
@@ -1005,6 +1008,9 @@ class projectorClass:
         
         if self.projector_type == 6 and not self.SPECT:
             raise ValueError('Projector type 6 is only supported with SPECT data!')
+            
+        if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11)) and self.SPECT:
+            raise ValueError('SPECT only supports projector types 1 and 6!')
         
         if self.projector_type == 6 and self.useCUDA:
             raise ValueError('Projector type 6 does not support CUDA!')
@@ -1016,6 +1022,8 @@ class projectorClass:
                 raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
             if self.Nz != self.nColsD:
                 raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
+            if self.subsets > 1 and self.subsetType < 8:
+                raise ValueError('Subset types 0-7 are not supported with projector type 6!')
         
         if self.FDK and (self.Niter > 1 or self.subsets > 1):
             if self.largeDim:
@@ -1027,7 +1035,7 @@ class projectorClass:
         if self.useCUDA and self.useCPU:
             raise ValueError('Both CUDA and CPU selected! Select only one!')
         
-        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 33, 31, 13, 4, 41, 14]) and not self.CT and not self.SPECT:
+        if self.TOF_bins_used > 1 and (self.projector_type not in [1, 11, 3, 33, 31, 13, 4, 41, 14]) and not self.CT and not self.SPECT:
             raise ValueError('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
         
         if self.TOF_bins_used > 1 and self.TOF_width <= 0 and not self.CT and not self.SPECT:
@@ -1041,6 +1049,10 @@ class projectorClass:
         
         if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1):
             raise ValueError('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm!')
+            
+        
+        if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4)):
+            raise ValueError('Filtering-based preconditioner only works for subset types 4 and 8-11!')
             
         if self.verbose > 0:
             if self.use_ASCII and self.use_machine == 0:
@@ -4409,6 +4421,7 @@ class projectorClass:
             ('cr_p', ctypes.c_float),
             ('cr_pz', ctypes.c_float),
             ('NLMsigma', ctypes.c_float),
+            ('NLAdaptiveConstant', ctypes.c_float),
             ('w_sum', ctypes.c_float),
             ('KAD', ctypes.c_float),
             ('TimeStepAD', ctypes.c_float),
@@ -4472,6 +4485,7 @@ class projectorClass:
             ('NLLange', ctypes.c_bool),
             ('NLGGMRF', ctypes.c_bool),
             ('NLM_use_anatomical', ctypes.c_bool),
+            ('NLAdaptive', ctypes.c_bool),
             ('TV_use_anatomical', ctypes.c_bool),
             ('RDPIncludeCorners', ctypes.c_bool),
             ('RDP_use_anatomical', ctypes.c_bool),

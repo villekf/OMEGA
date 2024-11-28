@@ -508,7 +508,7 @@ options.verbose = 1;
 % 3 = Multi-GPU/device matrix-free OpenCL (OSEM & MLEM only).
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
 % 5 = Matrix-free reconstruction with OpenCL (parallel)
-% See the wiki for more information:
+% See the docs for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 5;
 
@@ -664,8 +664,8 @@ options.subsets = 8;
 % 5 = (Sinogram only) Take every nth row in the sinogram
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see GitHub wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-settings
+% 360/n_angles for 3D, see docs for more information:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
 % 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth sinogram
 % 9 = Randomly select the full sinograms

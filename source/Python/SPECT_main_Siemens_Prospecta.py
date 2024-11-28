@@ -229,10 +229,7 @@ options.projector_type = 1
 
 # For Siddon ray-based projector:
 # Number of rays traced per collimator hole
-options.nRaySPECT = 400
-# Method for tracing rays inside collimator hole: 1 for accurate location
-# of rays, 2 for one cone at center of pixel, 3 for generic model
-options.coneMethod = 3
+options.nRaySPECT = 9
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
@@ -252,12 +249,17 @@ options.saveNIter = np.empty(0)
 options.subsets = 8
 
 ### Subset type (n = subsets)
-# 8 = Use every nth projection image
+# For SPECT, the supported types depend on the projector type.
+# projector_type = 1 supports subsetType 0, 1 and 3
+# projector_type = 6 supports types 8-11
+# 0 = Divide the data into N segments with the original data ordering
+# 1 = Every nth (column) measurement is taken
+# 3 = Measurements are selected randomly (recommended for projector_type = 1)
+# 8 = Use every nth projection image (recommended for projector_type = 6)
 # 9 = Randomly select the projection images
 # 10 = Use golden angle sampling to select the subsets (not recommended for
 # PET)
 # 11 = Use prime factor sampling to select the projection images
-# Most of the time subset_type 8 is sufficient.
 options.subsetType = 3
 
 ### Initial value for the reconstruction
@@ -608,8 +610,8 @@ options.a_L = np.empty(0)
 ### If the weighting factors are set empty, then this option will determine
 # whether the computed weights follow a 1D weighting scheme (True) or 2D 
 # (False).
-# See the wiki for more information:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# See the docs for more information:
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#l-filter
 options.oneD_weights = False
  
  
@@ -670,15 +672,15 @@ options.TV_reference_image = 'reference_image.mat'
 # Type 3 uses the same weights as quadratic prior
 # Type 4 is the Lange prior, does not support anatomic weighting.
 # Type 6 is a weighted TV, does not support anatomic weighting.
-# See the wiki for more information:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# See the docs for more information:
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.TVtype = 1
 
 ### Weighting parameters for the TV prior. 
 # Applicable only if use_anatomical = True. T-value is specific to the used
 # TVtype, e.g. for type 1 it is the edge threshold parameter. See the wiki
 # for more details:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.T = 0.5
 
 ### C is the weight for the original image in type 3 and is ignored with
@@ -720,7 +722,7 @@ options.DiffusionType = 1
 ############################# APLS PROPERTIES #############################
 ### Scaling parameter (eta)
 # See the wiki for details:
-# https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-algorithms
+# https://omega-doc.readthedocs.io/en/latest/algorithms.html#tv
 options.eta = 1e-5
 
 ### "Smoothing" parameter (beta)

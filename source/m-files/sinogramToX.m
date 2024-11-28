@@ -1,6 +1,22 @@
 function returnList = sinogramToX(angles, radii, nx, ny, crxy, flipImage, offAngle)
 %SINOGRAMTOX A function for converting sinogram pixel position and orientation information to a list of coordinates. Each column of the output has 6 elements, two pairs of xyz points. The line spanned by the points corresponds to the detector pixel normal vector.
 %   Utility function for OMEGA
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2024 Niilo Saarlemo
+%
+% This program is free software: you can redistribute it and/or modify
+% it under the terms of the GNU General Public License as published by
+% the Free Software Foundation, either version 3 of the License, or
+% (at your option) any later version.
+%
+% This program is distributed in the hope that it will be useful,
+% but WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+% GNU General Public License for more details.
+%
+% You should have received a copy of the GNU General Public License
+% along with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     if (numel(angles) ~= numel(radii))
         error('Different amount of angles and radii')

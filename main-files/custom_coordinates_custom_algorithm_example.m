@@ -7,7 +7,7 @@
 % reconstructions by using the built-in class object rather than the
 % built-in algorithms. This example can be modified to compute your own
 % algorithm.
-
+% Documentation: https://omega-doc.readthedocs.io/en/latest/customcoordinates.html
 % NOTE: This example has no error checking!
 
 clear

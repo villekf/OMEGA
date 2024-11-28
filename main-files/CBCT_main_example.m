@@ -290,8 +290,8 @@ options.subsets = 20;
 % 5 = (Sinogram only) Take every nth row in the sinogram
 % 6 = Sort the LORs according to their angle with positive X-axis, combine
 % n_angles together and have 180/n_angles subsets for 2D slices and
-% 360/n_angles for 3D, see GitHub wiki for more information:
-% https://github.com/villekf/OMEGA/wiki/Function-help#reconstruction-settings
+% 360/n_angles for 3D, see docs for more information:
+% https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
 % 7 = Form the subsets by using golden angle sampling
 % 8 = Use every nth projection image
 % 9 = Randomly select the projection images

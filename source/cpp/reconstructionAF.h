@@ -1211,7 +1211,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						fProj.host(FPapu);
 						af::sync();
 					}
-					status = computeForwardStep(MethodList, mData[subIter], fProj, m_size, inputScalars, w_vec, aRand[subIter], vec, proj);
+					status = computeForwardStep(MethodList, mData[subIter], fProj, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter);
 					if (status != 0)
 						return;
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
