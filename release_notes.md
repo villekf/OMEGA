@@ -174,7 +174,7 @@
   - The indices need to be for each measurement and two per measurement (source and detector, or detector 1 and detector 2 with PET)
   - Mainly intended for PET data, especially dual/multi-layer, but should work with other types of data too
   - The index should correspond to a coordinate, for transaxial stored in `options.x` and for axial stored in `options.z`
-  - For example trIndex values [2,7] would use the `options.x` coordinate values from indices 2 and 7.
+  - For example trIndex values [2,7] would use the `options.x` coordinate values from indices 2 and 7 (3 and 8 in MATLAB/Octave).
   - Zero-based indexing!
   - Built-in support for GATE (ROOT only!) and Inveon
   - With symmetric cases should use 66% less memory than the coordinate-based (list-mode) reconstruction
