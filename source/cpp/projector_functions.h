@@ -2155,187 +2155,187 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 					else if (param.projType == 1 && nRays > 1)
 						temp = (T)1. / (T)(nRays);
 
-					for (uint32_t ii = 0u; ii < Np; ii++) {
-						local_ele = (T)0.;
-						local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, Nyx);
-						localIndX = tempi;
-						localIndY = tempj;
-						localIndZ = tempk;
-						if (param.projType > 1) {
-							tx0_a = tx0;
-							ty0_a = ty0;
-							tz0_a = tz0;
-							tempi_a = tempi;
-							tempj_a = tempj;
-							tempk_a = tempk;
-						}
-						if (tz0 < ty0 && tz0 < tx0) {
-							if (tz0 >= (T)0. && tz0 <= (T)1.) {
-								if (tc < (T)0.) {
-									local_ele = tz0 * L;
+						for (uint32_t ii = 0u; ii < Np; ii++) {
+							local_ele = (T)0.;
+							local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, Nyx);
+							localIndX = tempi;
+							localIndY = tempj;
+							localIndZ = tempk;
+							if (param.projType > 1) {
+								tx0_a = tx0;
+								ty0_a = ty0;
+								tz0_a = tz0;
+								tempi_a = tempi;
+								tempj_a = tempj;
+								tempk_a = tempk;
+							}
+							if (tz0 < ty0 && tz0 < tx0) {
+								if (tz0 >= (T)0. && tz0 <= (T)1.) {
+									if (tc < (T)0.) {
+										local_ele = tz0 * L;
+										compute_element(tz0, tc, L, tzu, uz, tempk);
+									}
+									else
+										local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
+								}
+								else if (tc >= (T)0. && tc <= (T)1.) {
+									if (tz0 > (T)1.) {
+										local_ele = ((T)1. - tc) * L;
+										compute_element(tz0, tc, L, tzu, uz, tempk);
+									}
+									else
+										local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
+								}
+								else
 									compute_element(tz0, tc, L, tzu, uz, tempk);
+							}
+							else if (ty0 < tx0) {
+								if (ty0 >= (T)0. && ty0 <= (T)1.) {
+									if (tc < (T)0.) {
+										local_ele = ty0 * L;
+										compute_element(ty0, tc, L, tyu, uy, tempj);
+									}
+									else
+										local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
+								}
+								else if (tc >= (T)0. && tc <= (T)1.) {
+									if (ty0 > (T)1.) {
+										local_ele = ((T)1. - tc) * L;
+										compute_element(ty0, tc, L, tyu, uy, tempj);
+									}
+									else
+										local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
 								}
 								else
-									local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
-							}
-							else if (tc >= (T)0. && tc <= (T)1.) {
-								if (tz0 > (T)1.) {
-									local_ele = ((T)1. - tc) * L;
-									compute_element(tz0, tc, L, tzu, uz, tempk);
-								}
-								else
-									local_ele = compute_element(tz0, tc, L, tzu, uz, tempk);
-							}
-							else
-								compute_element(tz0, tc, L, tzu, uz, tempk);
-						}
-						else if (ty0 < tx0) {
-							if (ty0 >= (T)0. && ty0 <= (T)1.) {
-								if (tc < (T)0.) {
-									local_ele = ty0 * L;
 									compute_element(ty0, tc, L, tyu, uy, tempj);
-								}
-								else
-									local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
-							}
-							else if (tc >= (T)0. && tc <= (T)1.) {
-								if (ty0 > (T)1.) {
-									local_ele = ((T)1. - tc) * L;
-									compute_element(ty0, tc, L, tyu, uy, tempj);
-								}
-								else
-									local_ele = compute_element(ty0, tc, L, tyu, uy, tempj);
-							}
-							else
-								compute_element(ty0, tc, L, tyu, uy, tempj);
-						}
-						else {
-							if (tx0 >= (T)0. && tx0 <= (T)1.) {
-								if (tc < (T)0.) {
-									local_ele = tx0 * L;
-									compute_element(tx0, tc, L, txu, ux, tempi);
-								}
-								else
-									local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
-							}
-							else if (tc >= (T)0. && tc <= (T)1.) {
-								if (tx0 > (T)1.) {
-									local_ele = ((T)1. - tc) * L;
-									compute_element(tx0, tc, L, txu, ux, tempi);
-								}
-								else
-									local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
-							}
-							else
-								compute_element(tx0, tc, L, txu, ux, tempi);
-						}
-						T local_ele2 = local_ele;
-						uint32_t local_ind2 = local_ind;
-						if (param.projType > 1 && ((param.attenuationCorrection && fp == 1 && param.CTAttenuation) || param.TOF)) {
-							if (param.attenuationCorrection && fp == 1 && param.CTAttenuation)
-								local_ind2 = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
-							if (tz0_c < ty0_c && tz0_c < tx0_c) {
-								local_ele2 = compute_element(tz0_c, tc_c, L, tzu_c, uz_c, tempk_c);
-							}
-							else if (ty0_c < tx0_c) {
-								local_ele2 = compute_element(ty0_c, tc_c, L, tyu_c, uy_c, tempj_c);
 							}
 							else {
-								local_ele2 = compute_element(tx0_c, tc_c, L, txu_c, ux_c, tempi_c);
+								if (tx0 >= (T)0. && tx0 <= (T)1.) {
+									if (tc < (T)0.) {
+										local_ele = tx0 * L;
+										compute_element(tx0, tc, L, txu, ux, tempi);
+									}
+									else
+										local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
+								}
+								else if (tc >= (T)0. && tc <= (T)1.) {
+									if (tx0 > (T)1.) {
+										local_ele = ((T)1. - tc) * L;
+										compute_element(tx0, tc, L, txu, ux, tempi);
+									}
+									else
+										local_ele = compute_element(tx0, tc, L, txu, ux, tempi);
+								}
+								else
+									compute_element(tx0, tc, L, txu, ux, tempi);
+							}
+							T local_ele2 = local_ele;
+							uint32_t local_ind2 = local_ind;
+							if (param.projType > 1 && ((param.attenuationCorrection && fp == 1 && param.CTAttenuation) || param.TOF)) {
+								if (param.attenuationCorrection && fp == 1 && param.CTAttenuation)
+									local_ind2 = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
+								if (tz0_c < ty0_c && tz0_c < tx0_c) {
+									local_ele2 = compute_element(tz0_c, tc_c, L, tzu_c, uz_c, tempk_c);
+								}
+								else if (ty0_c < tx0_c) {
+									local_ele2 = compute_element(ty0_c, tc_c, L, tyu_c, uy_c, tempj_c);
+								}
+								else {
+									local_ele2 = compute_element(tx0_c, tc_c, L, txu_c, ux_c, tempi_c);
+								}
+							}
+							if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
+								compute_attenuation(local_ele2, local_ind2, param.atten, jelppi);
+							}
+							if (param.TOF)
+								TOFSum = TOFLoop(DD, local_ele2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
+							if (param.projType > 1) {
+								if (ii == 0) {
+									if (ux >= 0) {
+										for (int kk = tempi_a - 1; kk >= 0; kk--) {
+											int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+												param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+												param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+											if (uu == 0)
+												break;
+										}
+									}
+									else {
+										for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
+											int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+												param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+												param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+											if (uu == 0)
+												break;
+										}
+									}
+								}
+								if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
+									orthDistance3D(localIndX, y_diff, x_diff, z_diff, center1[localIndX], center2, param.z_center, temp, localIndY, localIndZ, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+								}
+							}
+							else {
+								if (local_ele > (T)0.) {
+									if (fp == 1) {
+										denominator(ax, local_ind, local_ele, input, param.TOF, local_ele, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
+									}
+									else if (fp == 2) {
+										if (param.useMaskBP) {
+											maskVal = param.maskBP[localIndX * d_N2 + localIndY * d_N3];
+										}
+										if (maskVal > 0)
+											rhs(local_ele * temp, ax, local_ind, output, param.noSensImage, SensImage, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
+									}
+								}
+							}
+							if (param.TOF)
+								D -= std::copysign(local_ele2, DD);
+							if (tempi < 0 || tempi >= param.Nx || tempj < 0 || tempj >= param.Ny || tempk < 0 || tempk >= param.Nz) {
+								break;
+							}
+						}
+						if (param.projType > 1) {
+							if (ux < 0) {
+								for (int ii = tempi_a - 1; ii >= 0; ii--) {
+									int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+									if (uu == 0)
+										break;
+								}
+							}
+							else {
+								for (int ii = tempi_a + 1; ii < d_NNx; ii++) {
+									int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+										param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
+										param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+									if (uu == 0)
+										break;
+								}
 							}
 						}
 						if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
-							compute_attenuation(local_ele2, local_ind2, param.atten, jelppi);
+							temp *= std::exp(jelppi);
 						}
-						if (param.TOF)
-							TOFSum = TOFLoop(DD, local_ele2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
-						if (param.projType > 1) {
-							if (ii == 0) {
-								if (ux >= 0) {
-									for (int kk = tempi_a - 1; kk >= 0; kk--) {
-										int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-											param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-											param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-										if (uu == 0)
-											break;
-									}
-								}
-								else {
-									for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
-										int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-											param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-											param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-										if (uu == 0)
-											break;
-									}
+						if (fp == 1) {
+							if (nRays == 1) {
+								for (size_t to = 0; to < param.nBins; to++) {
+									forwardProjectAF(output, ax, ind, temp, to, CT);
+									if (param.TOF)
+										ind += nMeas;
 								}
 							}
-							if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
-								orthDistance3D(localIndX, y_diff, x_diff, z_diff, center1[localIndX], center2, param.z_center, temp, localIndY, localIndZ, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
+							else {
+								for (int64_t to = 0; to < param.nBins; to++)
+									ax[to + (int64_t)param.nBins * (int64_t)lor] *= temp;
 							}
-						}
-						else {
-							if (local_ele > (T)0.) {
-								if (fp == 1) {
-									denominator(ax, local_ind, local_ele, input, param.TOF, local_ele, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
-								}
-								else if (fp == 2) {
-									if (param.useMaskBP) {
-										maskVal = param.maskBP[localIndX * d_N2 + localIndY * d_N3];
-									}
-									if (maskVal > 0)
-										rhs(local_ele * temp, ax, local_ind, output, param.noSensImage, SensImage, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, param.nBins, param.projType);
-								}
-							}
-						}
-						if (param.TOF)
-							D -= std::copysign(local_ele2, DD);
-						if (tempi < 0 || tempi >= param.Nx || tempj < 0 || tempj >= param.Ny || tempk < 0 || tempk >= param.Nz) {
-							break;
-						}
-					}
-					if (param.projType > 1) {
-						if (ux < 0) {
-							for (int ii = tempi_a - 1; ii >= 0; ii--) {
-								int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-								if (uu == 0)
-									break;
-							}
-						}
-						else {
-							for (int ii = tempi_a + 1; ii < d_NNx; ii++) {
-								int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
-									param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-									param.projType, param.nBins, lor, nRays, param.useMaskBP, param.maskBP);
-								if (uu == 0)
-									break;
-							}
-						}
-					}
-					if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
-						temp *= std::exp(jelppi);
-					}
-					if (fp == 1) {
-						if (nRays == 1) {
-							for (size_t to = 0; to < param.nBins; to++) {
-								forwardProjectAF(output, ax, ind, temp, to, CT);
-								if (param.TOF)
-									ind += nMeas;
-							}
-						}
-						else {
-							for (int64_t to = 0; to < param.nBins; to++)
-								ax[to + (int64_t)param.nBins * (int64_t)lor] *= temp;
 						}
 					}
 				}
 			}
 		}
-		//}
 		if (nRays > 1 && fp == 1) {
 			for (size_t to = 0; to < param.nBins; to++) {
 				T apu = (T)0.;

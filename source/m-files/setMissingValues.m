@@ -852,6 +852,9 @@ end
 if ~isfield(options, 'FISTA_acceleration')
     options.FISTA_acceleration = false;
 end
+if ~isfield(options, 'FISTAType')
+    options.FISTAType = 0;
+end
 if ~isfield(options,'coneMethod')
     options.coneMethod = 3;
 end

@@ -141,7 +141,7 @@ if (options.MRP || options.quad || options.Huber || options.TV ||options. FMH ||
         else
             options.lambda = lambda;
         end
-    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART || options.ASD_POCS) && numel(options.lambda) == 1 && options.Niter > 1
+    elseif (options.BSREM || options.RAMLA || options.MBSREM || options.MRAMLA || options.ROSEM_MAP || options.ROSEM || options.PKMA || options.SPS || options.SART || options.ASD_POCS) && isscalar(options.lambda) && options.Niter > 1
         lambdaT = zeros(options.Niter,1);
         for i = 1 : options.Niter
             lambdaT(i) = options.lambda / ((i - 1)/20 + 1);
