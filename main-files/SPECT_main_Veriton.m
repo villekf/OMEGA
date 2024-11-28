@@ -58,28 +58,6 @@ options.nColsD = 128;
 % Used for naming purposes (measurement data)
 options.machine_name = 'Veriton-CT';
 
-% %% Corrections
-% HUoffset = 1000;
-% % intercept = [0.151 0.155];
-% slope = [0.000149 0.000109];
-% intercept = [0.151 0.151];
-% % slope = [0.000152 0.000094];
-% 
-% load("mat-files/pro_specta_attenuation_coefficients_128x128x128.mat")
-% ctVol = ctVol - HUoffset;
-% ctVolPos = ctVol.*(ctVol > 0);
-% ctVolNeg = ctVol.*(ctVol <= 0);
-% ctVolPos2 = slope(2) * (ctVolPos) + intercept(2);
-% ctVolNeg2 = slope(1) * (ctVolNeg) + intercept(1);
-% ctVol2 = ctVolPos2 .*(ctVol > 0) + ctVolNeg2 .*(ctVol <= 0);
-% % min(ctVol2, [], "all")
-% % max(ctVol2, [], "all")
-% options.vaimennus = flip(ctVol2 * 0.01, 3);
-% options.attenuation_correction = true;
-% options.CT_attenuation = true;
-% options.flipAttImageZ = 0;
-% % volumeViewer(options.vaimennus)
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -91,14 +69,14 @@ options.machine_name = 'Veriton-CT';
 %%% Reconstructed image pixel count (X-direction)
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
 % If you're using projector_type = 6, this should be options.nRowsD
-options.Nx = 256;
+options.Nx = 128;
 
 %%% Y-direction
-options.Ny = 256;
+options.Ny = 128;
 
 %%% Z-direction (number of slices) (axial)
 % If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 256;
+options.Nz = 128;
 
 %%% Flip the image (in vertical direction)?
 options.flip_image = false;
@@ -109,6 +87,9 @@ options.flip_image = false;
 % right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
 options.offangle = 0;
+
+%%% Corrections
+options.attenuation_correction = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

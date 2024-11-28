@@ -88,6 +88,7 @@ function options = loadVeritonSPECTData(options)
     
     function options = loadBlockLocations(options)
         fprintf("Loading Veriton detector locations\n")
+        warning('OFF', 'MATLAB:table:ModifiedAndSavedVarnames')
         T_blockLocations = readtable(fullfile(options.fpath, options.blockLocationsFileName));
         
         options.blockIndex = zeros(options.nProjections, 1);
@@ -111,10 +112,13 @@ function options = loadVeritonSPECTData(options)
     end
 
     function options = readCT(options)
+        fprintf("Loading Veriton CT images        ")
         listing = dir(options.fpathCT);
         
         CTvol = zeros(512, 512, numel(listing)-2);
         for ii = 1:numel(listing)
+            fprintf("\b\b\b\b\b\b\b")
+            fprintf("%3u/%3u", ii, numel(listing))
             f = listing(ii);
             if strcmp(f.name, ".") || strcmp(f.name, "..")
                 continue
@@ -123,11 +127,19 @@ function options = loadVeritonSPECTData(options)
             CTimg = dicomread(fullfile(f.folder, f.name));
             CTvol(:,:,ii) = CTimg;
         end
+        fprintf("\n")
         
-        options.vaimennus = 0.01538 * (1 + CTvol./1000);
+        % CT volume cropping
+        scale = [options.FOVa_x options.FOVa_y options.axial_fov] / CTinfo.ReconstructionDiameter; % Scale of volume to be cropped
+        win = centerCropWindow3d(size(CTvol), floor(scale.*size(CTvol))); % Crop window
+        CTvol = imcrop3(CTvol, win);
+        CTvol = flipud(CTvol);
+
+        % Conversion from HU to linear attenuation coefficients
+        options.vaimennus = 0.006 * (1 + CTvol./1000);
         options.vaimennus(options.vaimennus < 0) = 0;
-        options.vaimennus = imresize3(options.vaimennus, [options.Nx, options.Ny, options.Nz], 'Method','nearest');
+        options.vaimennus = imresize3(options.vaimennus, [options.Nx, options.Ny, options.Nz], 'Method', 'linear');
         options.CT_attenuation = true;
-        options.flipAttImageZ = 0;
+        options.flipAttImageZ = 1;
     end
 end
