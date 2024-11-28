@@ -313,7 +313,7 @@
 - The user can now select which iterations to save
   - Previously only all or last iteration could be saved
   - Now any iteration can be saved
-  - E.g. `options.saveNIter = [9;19]` stores iterations 10 and 20 (iteration 0 is the first computed iteration) as well as the last one
+  - E.g. `options.saveNIter = [9;19]` stores iterations 10 and 20 (0 is the first computed iteration, i.e. iteration 1) as well as the last one
   
 - Forward projections can be now saved by setting `options.storeFP = true`
   - Stores all subiterations/iterations
