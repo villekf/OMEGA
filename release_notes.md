@@ -268,7 +268,7 @@
   - It is possible, for example, to only reconstruct a cylindrical region instead of the whole rectangular volume by inputing a cylindrical mask
   - Alternatively, it is possible to take into account only measurements from a certain region
   - Can improve computation speed
-  - Masks should be logical (boolean) or uint8 2D images
+  - Masks should be uint8 2D images
   
 - Added support for hybrid projectors
   - Not all combinations are tested (such as projector_type 3 and 5, i.e. 35)
