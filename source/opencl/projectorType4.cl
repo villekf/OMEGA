@@ -4,7 +4,7 @@
 * projector and a voxel-based backprojector. The ray-based forward projector can be used with any data while the backprojector should be
 * used for CT-like data only (i.e. projection-type data). The ray-based forward projector does support backprojection as well but as with
 * projector types 1-3, it is not efficient backprojector, though it is completely adjoint. The voxel-based backprojector is not exactly
-* adjonit with the forward projection, but the difference is less than 1%.
+* adjoint with the forward projection, but the difference is less than 1%.
 *
 * Used by implementations 2, 3 and 5.
 *
@@ -23,8 +23,8 @@
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
 * d_L = Interpolation length, i.e. the length that is moved everytime the interpolation is done, forward projection only
 * global_factor = a global correction factor, e.g. dead time, can be simply 1.f
-* maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
-* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * sigma_x = TOF STD, 
 * d_atten = attenuation data (images, if USEIMAGES is defined, or buffer),
@@ -80,12 +80,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	const float2 d_dPitch, 
 #endif
     const float dL, const float global_factor, 
-#ifdef MASKFP
-    IMAGE2D maskFP,
-#endif
-#if defined(MASKBP) && defined(BP) && !defined(CT)
-    IMAGE2D maskBP,
-#endif
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
 	CONSTANT float* TOFCenter, const float sigma_x, 
@@ -109,7 +103,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
     const CLGLOBAL float* CLRESTRICT d_OSEM, CLGLOBAL CAST* CLRESTRICT d_output,
 #endif
-#if defined(CT) || defined(RAW) || defined(SUBSETS) || defined(SENS)
+#if !defined(USEGLOBAL)
 	CONSTANT float* d_xyz,
 #else
 	const CLGLOBAL float* CLRESTRICT d_xyz,
@@ -121,6 +115,20 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 #ifdef SENS
 	const int rings, const uint d_det_per_ring,
+#endif
+#ifdef MASKFP
+#ifdef MASKFP3D
+    IMAGE3D maskFP,
+#else
+    IMAGE2D maskFP,
+#endif
+#endif
+#if defined(MASKBP) && defined(BP) && !defined(CT)
+#ifdef MASKBP3D
+    IMAGE3D maskBP,
+#else
+    IMAGE2D maskBP,
+#endif
 #endif
     const LONG d_nProjections,
 #if defined(SUBSETS) && !defined(LISTMODE)
@@ -169,9 +177,17 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
         return; 
 #ifdef MASKFP
 #ifdef CUDA
+#ifdef MASKFP3D
+	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
+#else
     const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
+#endif
+#else
+#ifdef MASKFP3D
+    const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
     const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -374,9 +390,17 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
             int maskVal = 1;
             if (aa == 0) {
 #ifdef CUDA
+#ifdef MASKBP3D
+		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y. p.z);
+#else
 		        maskVal = tex2D<unsigned char>(maskBP, p.x, p.y);
+#endif
+#else
+#ifdef MASKBP3D
+		        maskVal = read_imageui(maskBP, sampler_MASK, (int4)(p.x, p.y, p.z, 0)).w;
 #else
 		        maskVal = read_imageui(maskBP, sampler_MASK, (int2)(p.x, p.y)).w;
+#endif
 #endif
             }
             if (maskVal > 0)
@@ -454,7 +478,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 * d_size_x = the number of detector elements (rows),
 * d_sizey = the number of detector elements (columns),
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
-* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * T = redundancy weights for offset imaging,
 * d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
 * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
@@ -483,15 +507,6 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #else
 	const float2 d_dPitch, 
 #endif
-#ifdef USEIMAGES
-#ifdef MASKBP
-    IMAGE2D maskBP,
-#endif
-#else
-#ifdef MASKBP
-    const CLGLOBAL uchar* CLRESTRICT maskBP,
-#endif
-#endif
 #ifdef OFFSET
     CONSTANT float* T, 
 #endif
@@ -510,8 +525,28 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #ifdef FDK
     CONSTANT float* angle, const float DSC, 
 #endif
-    CLGLOBAL float* CLRESTRICT d_OSEM, CONSTANT float* d_xyz, CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ, 
-    const uchar no_norm, const LONG d_nProjections, const int ii) {
+    CLGLOBAL float* CLRESTRICT d_OSEM, 
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* CLRESTRICT d_xyz,
+#else
+    CONSTANT float* d_xyz, 
+#endif
+    CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ, 
+    const uchar no_norm, 
+#ifdef USEIMAGES
+#ifdef MASKBP
+#ifdef MASKBP3D
+    IMAGE3D maskBP,
+#else
+    IMAGE2D maskBP,
+#endif
+#endif
+#else
+#ifdef MASKBP
+    const CLGLOBAL uchar* CLRESTRICT maskBP,
+#endif
+#endif
+    const LONG d_nProjections, const int ii) {
 
     const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS);
 
@@ -525,12 +560,24 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
     if (ii == 0) {
 #ifdef USEIMAGES
 #ifdef CUDA
+#ifdef MASKBP3D
+        const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
+#else
         const int maskVal = tex2D<unsigned char>(maskBP, i.x, i.y);
+#endif
+#else
+#ifdef MASKBP3D
+        const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
         const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
 #endif
+#endif
+#else
+#ifdef MASKBP3D
+		const int maskVal = maskBP[i.x + i.y * d_N.x + i.z * d_N.x * d_N.y];
 #else
         const int maskVal = maskBP[i.x + i.y * d_N.x];
+#endif
 #endif
         if (maskVal == 0)
             return;

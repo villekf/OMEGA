@@ -209,10 +209,13 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	w_vec.betaReg = w_vec.beta;
 
 	// Masks
-	if (inputScalars.maskFP)
+	if (inputScalars.maskFP) {
 		w_vec.maskFP = getUint8s(options, "maskFP");
+		inputScalars.maskFPZ = getScalarUInt32(getField(options, 0, "maskFPZ"));
+	}
 	if (inputScalars.maskBP) {
 		w_vec.maskBP = getUint8s(options, "maskBP");
+		inputScalars.maskBPZ = getScalarUInt32(getField(options, 0, "maskBPZ"));
 		if (DEBUG) {
 			const size_t nMask = mxGetNumberOfElements(getField(options, 0, "maskBP"));
 			mexPrintBase("nMask = %d\n", nMask);

@@ -321,7 +321,11 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #endif // END NLMREF
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ // Compute only in the voxels of the actual FOV (when using extended FOV)
 	, CONSTANT uchar* fovIndices
@@ -523,7 +527,11 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 	const int3 N, const int3 NOrig, const float gamma, const float epps, const float beta
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -796,7 +804,11 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 KERNEL3
 void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const int3 N, const int3 NOrig
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1019,7 +1031,11 @@ KERNEL3
 void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRESTRICT gradX, const CLGLOBAL float* CLRESTRICT gradY, const CLGLOBAL float* CLRESTRICT gradZ, CLGLOBAL float* output
 // The (optional) logical mask should be zero in regions where the prior is not needed
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 // The (optional) logical vector should be zero in axial slices where the extended FOV is
 #ifdef EFOVZ
@@ -1081,7 +1097,11 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #endif
 #endif
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1181,7 +1201,11 @@ void ProxTGVSymmDeriv(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #endif
 	const float sigma2
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 ) {
 	const LTYPE3 xyz = MINT3(GID0, GID1, GID2);
@@ -1302,7 +1326,11 @@ void ProxTGVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLR
 #endif
 	const CLGLOBAL float* CLRESTRICT pX, const CLGLOBAL float* CLRESTRICT pY, const CLGLOBAL float* CLRESTRICT pZ, const float theta, const float tau
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
@@ -1440,7 +1468,11 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #endif
 	const int3 N, const int3 NOrig, const float sigma, const float epps, const float beta, CONSTANT float* w
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
@@ -1567,7 +1599,11 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 	const int3 N, const int3 NOrig, const float sigma, const float epps, const float beta
 #ifdef MASKPRIOR
+#ifdef MASKBP3D
+	, IMAGE3D maskBP
+#else
 	, IMAGE2D maskBP
+#endif
 #endif
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices

@@ -84,9 +84,17 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	if (ii == 0) {
 #ifdef USEIMAGES
 #ifdef CUDA
+#ifdef MASKBP3D
+		const int maskVal = tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
+#else
 		const int maskVal = tex2D<unsigned char>(maskBP, ind.x, ind.y);
+#endif
+#else
+#ifdef MASKBP3D
+		const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
 #else
 		const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+#endif
 #endif
 #else
 		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3];

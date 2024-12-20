@@ -634,7 +634,13 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 // Detector coordinates for listmode data
 #ifdef LISTMODE
 #ifdef INDEXBASED
-DEVICE void getDetectorCoordinatesListmode(CONSTANT float* d_xy, CONSTANT float* d_z, const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
+DEVICE void getDetectorCoordinatesListmode(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xy,
+#else
+	CONSTANT float* d_xy, 
+#endif
+	CONSTANT float* d_z, const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -674,7 +680,13 @@ DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* 
 
 // Detector coordinates for CT or SPECT data
 #if defined(CT) || (defined(SPECT) && !defined(SPECTMASK))
-DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
+DEVICE void getDetectorCoordinatesCT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz,
+#else
+	CONSTANT float* d_xyz, 
+#endif
+	CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
 	const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
@@ -730,7 +742,13 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 #else
 #if defined(RAW) || defined(SENS)
 // Get the detector coordinates for the current (raw) measurement
-DEVICE void getDetectorCoordinatesRaw(CONSTANT float *d_xy, CONSTANT float *d_z, const int3 i, float3* s, float3* d, const int2 indz
+DEVICE void getDetectorCoordinatesRaw(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xy,
+#else
+	CONSTANT float* d_xy, 
+#endif
+	CONSTANT float *d_z, const int3 i, float3* s, float3* d, const int2 indz
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -800,7 +818,12 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 #if !defined(SUBSETS) && !defined(CT)
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
 DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, 
-	const CLGLOBAL float* CLRESTRICT d_xy, CONSTANT float* d_z
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xy,
+#else
+	CONSTANT float* d_xy, 
+#endif
+	CONSTANT float* d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif

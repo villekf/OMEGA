@@ -12,7 +12,7 @@
 * d_nRows = the number of detector elements (rows),
 * d_nCols = the number of detector elements (columns),
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
-* maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
 * d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
 * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
 * d_Size = precomputed scaling value, float2 or two floats (if PYTHON is defined), see computeProjectorScalingValues.m
@@ -56,9 +56,6 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
 #else
 	const float2 d_dPitch, 
 #endif
-#ifdef MASKFP
-    IMAGE2D maskFP,
-#endif
 #ifdef PYTHON
 	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float bx, const float by, const float bz, 
     const float d_SizeX, const float d_SizeY,const float d_dx, const float d_dy, const float d_dz, 
@@ -66,10 +63,21 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
 #else
     const uint3 d_N, const float3 b, const float2 d_Size, const float3 d_d, const float3 d_scale, 
 #endif
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* CLRESTRICT d_xyz,
+#else
     CONSTANT float* d_xyz, 
+#endif
     CONSTANT float* d_uv, IMAGE3D d_IImageY, IMAGE3D d_IImageX, CLGLOBAL float* d_forw,
 #ifdef MEANDISTANCEFP
     CONSTANT float* d_meanV,
+#endif
+#ifdef MASKFP
+#ifdef MASKFP3D
+    IMAGE3D maskFP,
+#else
+    IMAGE2D maskFP,
+#endif
 #endif
     const LONG d_nProjections) {
 
@@ -82,9 +90,17 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
 
 #ifdef MASKFP
 #ifdef CUDA
+#ifdef MASKFP3D
+	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
+#else
     const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
+#endif
+#else
+#ifdef MASKFP3D
+    const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
     const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -277,7 +293,7 @@ void projectorType5Forward(const uint d_nRows, const uint d_nCols,
 * d_nRows = the number of detector elements (rows),
 * d_nCols = the number of detector elements (columns),
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
-* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * T = redundancy weights for offset imaging,
 * d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
 * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
@@ -308,9 +324,6 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
 #else
 	const float2 d_dPitch, 
 #endif
-#ifdef MASKBP
-    IMAGE2D maskBP,
-#endif
 #ifdef OFFSET
     CONSTANT float* T,
 #endif
@@ -321,12 +334,24 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
 #else
    const uint3 d_N, const float3 b, const float3 d_d, const float3 d_scale, const float2 d_Size, 
 #endif
-   CONSTANT float* d_xyz, 
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* CLRESTRICT d_xyz,
+#else
+    CONSTANT float* d_xyz, 
+#endif
     CONSTANT float* d_uv, IMAGE3D d_IImage, CLGLOBAL float* d_forw, CLGLOBAL float* d_Summ,
 #ifdef MEANDISTANCEBP
     CONSTANT float* d_meanV,
 #endif
-    const uchar no_norm, const LONG d_nProjections, const int ii) {
+    const uchar no_norm, 
+#ifdef MASKBP
+#ifdef MASKBP3D
+    IMAGE3D maskBP,
+#else
+    IMAGE2D maskBP,
+#endif
+#endif
+    const LONG d_nProjections, const int ii) {
 	const int3 i = MINT3(GID0, GID1, GID2 * NVOXELS5);
 #ifdef PYTHON
 	const uint3 d_N = make_uint3(d_Nx, d_Ny, d_Nz);
@@ -337,9 +362,17 @@ void projectorType5Backward(const uint d_nRows, const uint d_nCols,
 #ifdef MASKBP
     if (ii == 0) {
 #ifdef CUDA
+#ifdef MASKBP3D
+        const int maskVal = tex3D<unsigned char>(maskBP, i.x, i.y, i.z);
+#else
         const int maskVal = tex2D<unsigned char>(maskBP, i.x, i.y);
+#endif
+#else
+#ifdef MASKBP3D
+        const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
         const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(i.x, i.y)).w;
+#endif
 #endif
         if (maskVal == 0)
             return;
