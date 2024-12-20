@@ -644,8 +644,10 @@ if (lor == 0) { // First ray in hexagon
 		localInd.z = tempk;
 		local_ind = CLONG_rtz(tempk);
 		perpendicular_elements(d_b, d_db, d_N0, dd, d_d2, d_N1, &temp, &localInd, &local_ind, d_N2, d_N3, idx, global_factor, local_scat, 
-#if !defined(CT) && (defined(ATN) || defined(ATNM))
+#if !defined(CT) && defined(ATN) && !defined(ATNM)
 			d_atten, aa, 
+#elif !defined(CT) && !defined(ATN) && defined(ATNM)
+			d_atten, 
 #endif
 		    local_norm, L);
 #if defined(ORTH)
