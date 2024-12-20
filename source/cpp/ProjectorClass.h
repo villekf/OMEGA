@@ -1360,6 +1360,7 @@ public:
 			}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				imZ = inputScalars.Nz[0];
 				if (inputScalars.useBuffers)
 					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 				else
