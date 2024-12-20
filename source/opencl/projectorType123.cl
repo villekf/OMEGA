@@ -487,7 +487,7 @@ if (lor == 0) { // First ray in hexagon
 	kerroin = L * orthWidth;
 #elif defined(VOL) // Volume-based
 	kerroin = L;
-	float TotV = L * M_1_PI_F * orthWidth * orthWidth;
+	float TotV = L * M_PI_F * orthWidth * orthWidth;
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

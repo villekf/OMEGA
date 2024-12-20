@@ -1755,7 +1755,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 						kerroin = L * param.orthWidth;
 					else if (param.projType == 3) {
 						kerroin = L;
-						TotV = L * (T)(1. / M_PI) * param.orthWidth * param.orthWidth;
+						TotV = L * (T)(M_PI) * param.orthWidth * param.orthWidth;
 					}
 
 					if (std::fabs(z_diff) < 1e-8 && (std::fabs(y_diff) < 1e-8 || std::fabs(x_diff) < 1e-8)) {
