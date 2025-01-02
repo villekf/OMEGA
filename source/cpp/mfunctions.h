@@ -161,9 +161,6 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-		if (inputScalars.maskFP) {
-			inputScalars.numMaskFP = getScalarInt64(getField(options, 0, "numMaskFP"));
-		}
 		inputScalars.nProjectionsGlobal = getScalarInt64(getField(options, 0, "nProjectionsGlobal"));
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));

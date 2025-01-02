@@ -240,11 +240,6 @@ class ProjectorClass {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
-			if (inputScalars.maskFP) {
-				options += (" -DN_MASK_FP=" + std::to_string(inputScalars.numMaskFP));
-				options += (" -DN_PROJECTIONS_GLOBAL=" + std::to_string(inputScalars.nProjectionsGlobal));
-				inputScalars.useBuffers = true;
-			}
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
@@ -1015,7 +1010,7 @@ public:
 	cl::Buffer d_angle;
 	cl::Buffer d_vector, d_input;
 	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm, d_RDPref;
-	cl::Buffer d_outputCT, d_maskFPB, d_maskBPB, d_attenB;
+	cl::Buffer d_outputCT, d_maskBPB, d_attenB;
 	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
@@ -1581,8 +1576,8 @@ public:
 			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.maskFP || inputScalars.maskBP || inputScalars.useExtendedFOV) {
-			mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
-			mexEval();
+			//mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
+			//mexEval();
 			if (inputScalars.useBuffers) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.maskFPZ > 1) {

@@ -2335,7 +2335,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 					}
 				}
 			}
-		}
+		//}
 		if (nRays > 1 && fp == 1) {
 			for (size_t to = 0; to < param.nBins; to++) {
 				T apu = (T)0.;
