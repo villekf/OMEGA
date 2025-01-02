@@ -761,9 +761,9 @@ DEVICE void getDetectorCoordinatesSPECT(const CLGLOBAL float* d_xyz, CONSTANT fl
 		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.;
 	}
 #endif
-	(*s).x += 20 * ((*s).x - (*d).x); // 20 = (actual ray length / collimator hole length)
-	(*s).y += 20 * ((*s).y - (*d).y); // 20 = (actual ray length / collimator hole length)
-	(*s).z += 20 * ((*s).z - (*d).z); // 20 = (actual ray length / collimator hole length)
+	(*s).x += 1000000 * ((*s).x - (*d).x);
+	(*s).y += 1000000 * ((*s).y - (*d).y);
+	(*s).z += 1000000 * ((*s).z - (*d).z);
 }
 #else
 #if defined(RAW) || defined(SENS)

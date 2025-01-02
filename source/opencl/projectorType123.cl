@@ -864,6 +864,14 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ATNM
 		temp *= d_atten[idx];
 #endif
+#if defined(SPECT) // Ray length inside BP mask
+		float L_SPECT = 0.f;
+#ifdef N_RAYS
+		temp = temp * (L * CFLOAT(N_RAYS));
+#else
+		temp = temp * L;
+#endif
+#endif
 
 		for (uint ii = 0u; ii < Np; ii++) {
 #if defined(LISTMODE)
@@ -1100,7 +1108,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
 				break;
 			}
+#if defined(SPECT) // Ray length inside BP mask
+		L_SPECT += local_ele;
+#endif
 		}
+
+#if defined(SPECT) // Ray length inside BP mask
+		temp /= L_SPECT;
+#endif
+
 #ifdef ORTH
 		if (ux < 0) {
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
