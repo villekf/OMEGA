@@ -15,9 +15,11 @@ function [x, z] = get_coordinates_SPECT(options)
         r1 = options.radiusPerProj(ii);
         r2 = options.CORtoDetectorSurface;
 
-        alpha1 = options.angles(ii);
+        % The (gantry angle + home angle) should be relative to positive x axis with positive rotation direction counterclockwise
+        % The swivel angle should also be relative to positive x axis with positive rotation direction counterclockwise
+        alpha1 = options.angles(ii); 
         alpha2 = options.homeAngles(ii) - 360/(2*pi)*options.offangle;
-        alpha3 = options.swivelAngles(ii) - 360/(2*pi)*options.offangle;
+        alpha3 = options.swivelAngles(ii) - 360/(2*pi)*options.offangle; 
 
         if ~options.flip_image
             alpha2 = alpha2 + 180;

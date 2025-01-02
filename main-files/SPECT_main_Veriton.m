@@ -1,8 +1,5 @@
 %% MATLAB codes for SPECT reconstruction from Veriton-CT data (csv files)
-% This example outlines the reconstruction of SPECT data. In general SPECT
-% data, require the rotation angles, the distance of the detector head(s) 
-% from the center of rotation and the collimator specifics.
-% Note that at the moment no example data is provided.
+% This example outlines the reconstruction of Veriton-CT SPECT data.
 
 clear
 options.fpath = '';
@@ -21,7 +18,10 @@ options.calibrationFileName = 'SystemCalibrations.csv';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Number of detector heads
+%%% Scanner name, used for reconstruction data naming purposes
+options.machine_name = 'Veriton-CT';
+
+%%% Number of detector heads
 options.nHeads = 12;
 
 %%% Distance from detector COR to detector surface
@@ -33,30 +33,21 @@ options.cr_p = 9.525;
 %%% Crystal width (mm)
 options.crXY = 2.46;
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
-% of the FOV
-% Note that with SPECT data using projector_type = 6, this is not exactly
-% used as the FOV size but rather as the value used to compute the voxel
-% size
-options.FOVa_x = options.crXY*128;
-
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
-% of the FOV
-options.FOVa_y = options.FOVa_x;
-
-%%% Axial FOV (mm)
-% This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = options.crXY*128;
-
-% Number of rows in a projection image
+%%% Number of rows in a projection image
 options.nRowsD = 16;
 
 % Number of columns in a projection image
 options.nColsD = 128;
 
-%%% Scanner name
-% Used for naming purposes (measurement data)
-options.machine_name = 'Veriton-CT';
+%%% FOV size [mm]
+% Note that with SPECT data using projector_type = 6, this is not exactly
+% used as the FOV size but rather as the value used to compute the voxel
+% size. The variable axial_fov is unused if projector_type = 6. Cubic
+% voxels are always assumed when projector_type = 6!
+options.FOVa_x = 1.5*options.crXY*128; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.FOVa_x; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.FOVa_x; % [mm], z-axis of FOV (axial)
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -66,29 +57,32 @@ options.machine_name = 'Veriton-CT';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel count (X-direction)
+%%% Reconstructed image pixel count
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
-% If you're using projector_type = 6, this should be options.nRowsD
-options.Nx = 128;
+% If you're using projector_type = 6, Nx and Ny should equal options.nRowsD
+% and Nz should equal options.nColsD.
+options.Nx = 128; % X-direction
+options.Ny = 128; % Y-direction
+options.Nz = 128; % Z-direction (number of axial slices)
 
-%%% Y-direction
-options.Ny = 128;
-
-%%% Z-direction (number of slices) (axial)
-% If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 128;
-
-%%% Flip the image (in vertical direction)?
+%%% Flip the image in vertical direction?
 options.flip_image = false;
 
 %%% How much is the image rotated (in radians)?
 % NOTE: The rotation is done in the detector space (before reconstruction).
 % This current setting is for systems whose detector blocks start from the
 % right hand side when viewing the device from front.
-% Positive values perform the rotation in clockwise direction
+% Positive values perform the rotation in counterclockwise direction
 options.offangle = 0;
 
-%%% Corrections
+%%% Interpolate sinogram values at dead pixels?
+options.interpolateSinograms = false;
+
+%%% Use back projection mask? (limit reconstruction volume to ellipse
+%%% traced by detector heads)
+options.useMaskBP = true;
+
+%%% Attenuation correction
 options.attenuation_correction = true;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -163,7 +157,7 @@ options.iR = 3.8;
 %%% Name of current datafile/examination
 % This is used to name the saved measurement data and also load it in
 % future sessions.
-options.name = 'spect_example';
+options.name = 'veriton_ct_example';
 
 %%% Show status messages
 % These are e.g. time elapsed on various functions and what steps have been
@@ -229,11 +223,10 @@ options.nRays = 10;
 % Consider the detector pixel to be the area [-1, 1] x [-1, 1]. The
 % detector and source refer to the two planes of the collimator. If no rays
 % are input, the rays are chosen randomly according to the collimator
-% dimensions.
-% options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-% options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-
-
+% dimensions. The example below outlines a square tube originating from the
+% collimator.
+options.rayShiftsDetector = single(2*rand(2*options.nRays, 1)-1);
+options.rayShiftsSource = options.rayShiftsDetector;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
@@ -254,11 +247,11 @@ options.subsets = 8;
 
 %%% Subset type (n = subsets)
 % For SPECT, the supported types depend on the projector type.
-% projector_type = 1 supports subset_type 0, 1 and 3
+% projector_type = 1 supports types 8-11
 % projector_type = 6 supports types 8-11
 % 0 = Divide the data into N segments with the original data ordering
 % 1 = Every nth (column) measurement is taken
-% 3 = Measurements are selected randomly (recommended for projector_type = 1)
+% 3 = Measurements are selected randomly
 % 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
@@ -270,7 +263,6 @@ options.subset_type = 8;
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 
 
 
@@ -835,19 +827,9 @@ disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
 
 %% Plots
-% pz(pz>400) = 0;
-% [xq, yq] = meshgrid(linspace(-options.FOVa_x/2, options.FOVa_x/2, options.Nx));
-% outputMask = ellipsoid(xq, yq, options.Super_ellipsoid_center_x, options.Super_ellipsoid_center_y, options.Super_ellipsoid_a-10, options.Super_ellipsoid_b-10, options.Super_ellipsoid_power);
-% function maskBP = ellipsoid(xq, yq, ecx, ecy, a, b, n)
-%     maskBP = (abs((xq-ecx)/a).^n + abs((yq-ecy)/b).^n) < 1;
-% end
+if options.useMaskBP
+    volumeViewer(pz .* single(options.maskBP))
+else
 volumeViewer(pz)
-% volumeViewer(outputMask .* pz)
-
-% optimizer = registration.optimizer.RegularStepGradientDescent;
-% optimizer.MaximumStepLength = 1e-4;
-% metric = registration.metric.MeanSquares;
-% pz2 = imregister(pz, options.vaimennus, "affine", optimizer, metric);
-% volumeViewer(pz2)
-
-
+end
+% volume3Dviewer(pz, 'fit')

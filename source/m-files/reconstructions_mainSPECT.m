@@ -41,21 +41,24 @@ if ~isfield(options, 'rayShiftsDetector')
         options.rayShiftsDetector = single(zeros(2, 1));
     else
     options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+
+    options.rayShiftsDetector = single(zeros(2*options.nRays, 1));
     end
 end
 if ~isfield(options, 'rayShiftsSource')
     if options.nRays == 1
         options.rayShiftsSource= single(zeros(2, 1));
     else
-    options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+    options.rayShiftsSource = single(0.2*randn(2*options.nRays, 1));
+    %options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     end
 end
 if isfield(options, 'maskFP')
-    options.useImages = false;
+    %options.useImages = false;
     options.numMaskFP = size(options.maskFP, 3);
     options.nProjectionsGlobal = options.nProjections;
 else
-    options.useImages = false;
+    %options.useImages = false;
     options.numMaskFP = 0;
     options.nProjectionsGlobal = options.nProjections;
 end
