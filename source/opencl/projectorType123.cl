@@ -279,36 +279,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	if (maskVal == 0)
 		return;
 #endif
-
-
-
-
-/*
-#ifdef SPECT ///////////////////////////////////// SPECT /////////////////////////7
-	float3 s, d;
-	getDetectorCoordinatesListmode(d_xy, &s, &d, idx, 0, 0, crystalSize);
-
-	#if (CONEMETHOD == 1) | (CONEMETHOD == 2)
-		#if (CONEMETHOD == 1)
-			float hexShifts[(int)NRAYSPECT * (int)NHEXSPECT][6];
-		#else
-			float hexShifts[(int)NRAYSPECT][6];
-		#endif
-
-		uint trueRayCount = computeSpectHexShifts(hexShifts, &s, &d, i, crystalSize, d_Nxyz);
-	#elif (CONEMETHOD == 3)
-		float hexShifts[(int)NRAYSPECT][6];
-		computeSpectSquareShifts(hexShifts, &s, &d, i, crystalSize, d_Nxyz);
-	#endif
-	
-#endif ////////////////////////////////// END SPECT ///////////////////////////////////////////
-*/
-
-
-
-
-
-
 #if defined(N_RAYS) && defined(FP)
 	float ax[NBINS * N_RAYS];
 #else
@@ -358,27 +328,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	int lor = -1;
 	// Load the next detector index
 	// raw data
-
-/*#ifdef SPECT ///////////////////////////// SPECT LOOP //////////////////////////////////
-	#if (CONEMETHOD == 1)
-	for (int currentShift = 0u; currentShift < trueRayCount; currentShift++){
-#else
-	for (int currentShift = 0u; currentShift < NRAYSPECT; currentShift++){
-#endif
-	int lorZ = 0u;
-	int lorXY = 0u;
-#else*/
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
-//#endif ////////////////////////////// END SPECT LOOP ///////////////////////////////////
 			lor++;
-
-
 #endif  //////////////// END MULTIRAY ////////////////
-
-
-
-//#if !defined(SPECT) //////////////////////////////////// IF NOT SPECT //////////////////////////
 	float3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
 	const uint layer = i.z / NLAYERS;
@@ -426,49 +379,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	);
 #endif
-/*
-#else /////////////////////////////////////////// SPECT //////////////////////////////////7
-
-if (lor == 0) { // First ray in hexagon
-	s.x += hexShifts[currentShift][0];
-	s.y += hexShifts[currentShift][1];
-	s.z += hexShifts[currentShift][2];
-	d.x += hexShifts[currentShift][3];
-	d.y += hexShifts[currentShift][4];
-	d.z += hexShifts[currentShift][5];
-	// Ensure other end of ray is on the opposite side of FOV
-	s.x += 100.f * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-	s.y += 100.f * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-	s.z += 100.f * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-} else { // All other rays
-	s.x -= 100.f * (hexShifts[currentShift - 1][0] - hexShifts[currentShift - 1][3]);
-	s.y -= 100.f * (hexShifts[currentShift - 1][1] - hexShifts[currentShift - 1][4]);
-	s.z -= 100.f * (hexShifts[currentShift - 1][2] - hexShifts[currentShift - 1][5]);
-
-	// Add current ray shift
-	s.x += hexShifts[currentShift][0];
-	s.y += hexShifts[currentShift][1];
-	s.z += hexShifts[currentShift][2];
-	d.x += hexShifts[currentShift][3];
-	d.y += hexShifts[currentShift][4];
-	d.z += hexShifts[currentShift][5];
-	// Subtract the previous ray shift
-	s.x -= hexShifts[currentShift - 1][0];
-	s.y -= hexShifts[currentShift - 1][1];
-	s.z -= hexShifts[currentShift - 1][2];
-	d.x -= hexShifts[currentShift - 1][3];
-	d.y -= hexShifts[currentShift - 1][4];
-	d.z -= hexShifts[currentShift - 1][5];
-
-	s.x += 100.f * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-	s.y += 100.f * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-	s.z += 100.f * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-
-	
-}
-
-#endif /////////////////////////////// END SPECT / NOT SPECT ///////////////////////////////////////////////
-*/
 	// Calculate the x, y and z distances of the detector pair
 	float3 diff = d - s;
 
