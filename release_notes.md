@@ -174,7 +174,7 @@
   - The indices need to be for each measurement and two per measurement (source and detector, or detector 1 and detector 2 with PET)
   - Mainly intended for PET data, especially dual/multi-layer, but should work with other types of data too
   - The index should correspond to a coordinate, for transaxial stored in `options.x` and for axial stored in `options.z`
-  - For example trIndex values [2,7] would use the `options.x` coordinate values from indices 2 and 7.
+  - For example trIndex values [2,7] would use the `options.x` coordinate values from indices 2 and 7 (3 and 8 in MATLAB/Octave).
   - Zero-based indexing!
   - Built-in support for GATE (ROOT only!) and Inveon
   - With symmetric cases should use 66% less memory than the coordinate-based (list-mode) reconstruction
@@ -268,7 +268,7 @@
   - It is possible, for example, to only reconstruct a cylindrical region instead of the whole rectangular volume by inputing a cylindrical mask
   - Alternatively, it is possible to take into account only measurements from a certain region
   - Can improve computation speed
-  - Masks should be logical (boolean) or uint8 2D images
+  - Masks should be uint8 2D images
   
 - Added support for hybrid projectors
   - Not all combinations are tested (such as projector_type 3 and 5, i.e. 35)
@@ -313,7 +313,7 @@
 - The user can now select which iterations to save
   - Previously only all or last iteration could be saved
   - Now any iteration can be saved
-  - E.g. `options.saveNIter = [9;19]` stores iterations 10 and 20 (iteration 0 is the first computed iteration) as well as the last one
+  - E.g. `options.saveNIter = [9;19]` stores iterations 10 and 20 (0 is the first computed iteration, i.e. iteration 1) as well as the last one
   
 - Forward projections can be now saved by setting `options.storeFP = true`
   - Stores all subiterations/iterations

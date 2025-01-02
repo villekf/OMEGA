@@ -10,7 +10,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 
 	int status = 0;
 
-	af::array OSEMApu, COSEMApu, PDDYApu, FISTAApu;
+	af::array OSEMApu, COSEMApu, PDDYApu;
+	std::vector<af::array> FISTAApu;
 
 	if (DEBUG) {
 		mexPrint("Algo start\n");
@@ -28,7 +29,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 	}
 	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 		if (inputScalars.FISTAAcceleration)
-			FISTAApu = vec.im_os[ii].copy();
+			FISTAApu.emplace_back(vec.im_os[ii].copy());
 
 		if (w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter  == w_vec.filterIter) {
 			if (inputScalars.verbose >= 3)
@@ -306,20 +307,22 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		else if (MethodList.FISTA) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing FISTA");
-			status = FISTA(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, osa_iter + inputScalars.subsets * iter, ii);
+			status = FISTA(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii);
 		}
 		else if (MethodList.FISTAL1) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing FISTAL1");
-			status = FISTAL1(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, w_vec.beta, proj, osa_iter + inputScalars.subsets * iter, ii);
+			status = FISTAL1(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, w_vec.beta, proj, iter, osa_iter, ii);
 		}
 		if (inputScalars.FISTAAcceleration) {
-			const float t = w_vec.tFISTA;
-			if (osa_iter == 0) {
+			//if ((w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter >= w_vec.filterIter) || !w_vec.precondTypeIm[5]) {
+				const float t = w_vec.tFISTA;
+				//if (osa_iter == 0) {
 				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
-			}
-			vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu);
-			af::eval(vec.im_os[ii]);
+				//}
+				vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu[ii]);
+				af::eval(vec.im_os[ii]);
+			//}
 		}
 	}
 	if (inputScalars.verbose >= 3)

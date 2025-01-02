@@ -22,12 +22,12 @@
 * d_det_per_ring = number of detectors per ring, (only for listmode data sensitivity image computation, can be any value otherwise)
 * sigma_x = TOF STD, can be any value otherwise
 * crystalSize = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
-* orthWidth = the width of of the tube used for orthogonal distance based projector (3D), or the radious of the tube with volume projector
+* orthWidth = the width of of the tube used for orthogonal distance based projector (3D), or the radius of the tube with volume projector
 * bmin = smaller orthogonal distances than this are fully inside the TOR, volume projector only,
 * bmax = Distances greater than this do not touch the TOR, volume projector only,
 * Vmax = Full volume of the spherical "voxel", volume projector only,
-* maskFP = 2D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
-* maskBP = 2D backward projection mask, i.e. voxels with 0 will be skipped
+* maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
+* maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * x/y/z_center = Cartesian coordinates for the center of the voxels (x/y/z-axis),
 * V = Precomputed volumes for specific orthogonal distances, volume projector only
@@ -44,12 +44,12 @@
 * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
 * d_bmax = part in parenthesis of equation (9) in [1] precalculated when k = Nz, float3 or three floats (if PYTHON is defined),
 * d_xy/zindex = for sinogram format they determine the detector indices corresponding to each sinogram bin (subset type 3/6/7 only),
-* d_L = detector numbers for raw data (unused for sinogram or listmode format),
+* d_L = detector numbers for raw data (unused for sinogram/projection or listmode format),
 * d_OSEM = image for current estimates or the input buffer for backward projection,
 * d_output = forward or backward projection,
 * no_norm = If 1, sensitivity image is not computed,
 * m_size = Total number of LORs/measurements for this subset,
-* currentSubset = current subset
+* currentSubset = current subset number, zero-based
 *
 * OUTPUTS:
 * d_output = forward or backward projection,
@@ -69,7 +69,6 @@
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
 
-// Matrix free orthogonal distance-based ray tracer, no precomputation step
 #ifdef OPENCL
 #if (defined(CT) || defined(PET) || defined(SPECT)) && !defined(LISTMODE)
 __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_size(LOCAL_SIZE, LOCAL_SIZE2, 1)))
@@ -95,23 +94,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const float orthWidth, const float bmin, const float bmax, const float Vmax,	
 #endif
 	///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
-	///////////////////////// FORWARD PROJECTION MASK /////////////////////////
-#ifdef USEIMAGES
-#ifdef MASKFP
-	IMAGE2D maskFP,
-#endif
-#if defined(MASKBP) && defined(BP) && !defined(FP)
-    IMAGE2D maskBP,
-#endif
-#else
-#ifdef MASKFP
-	const CLGLOBAL uchar* CLRESTRICT maskFP,
-#endif
-#if defined(MASKBP) && defined(BP) && !defined(FP)
-    const CLGLOBAL uchar* CLRESTRICT maskBP,
-#endif
-#endif
-	///////////////////////// END FORWARD PROJECTION MASK /////////////////////////
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
 	CONSTANT float* TOFCenter, 
@@ -134,18 +116,43 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
 	///////////////////////// END PET ATTENUATION CORRECTION /////////////////////////
+	///////////////////////// FORWARD PROJECTION MASK /////////////////////////
+#ifdef USEIMAGES
+#ifdef MASKFP
+#ifdef MASKFP3D
+    IMAGE3D maskFP,
+#else
+    IMAGE2D maskFP,
+#endif
+#endif
+#if defined(MASKBP) && defined(BP) && !defined(FP)
+#ifdef MASKBP3D
+    IMAGE3D maskBP,
+#else
+    IMAGE2D maskBP,
+#endif
+#endif
+#else
+#ifdef MASKFP
+	const CLGLOBAL uchar* CLRESTRICT maskFP,
+#endif
+#if defined(MASKBP) && defined(BP) && !defined(FP)
+    const CLGLOBAL uchar* CLRESTRICT maskBP,
+#endif
+#endif
+	///////////////////////// END FORWARD PROJECTION MASK /////////////////////////
 	///////////////////////// FULL PROJECTIONS/SINOGRAMS /////////////////////////
 #if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
 	const LONG d_nProjections,
 #endif
 	///////////////////////// END FULL PROJECTIONS/SINOGRAMS /////////////////////////
-#if ((defined(CT) || defined(SPECT) || defined(RAW) || defined(INDEXBASED)) && (!defined(LISTMODE) || defined(INDEXBASED))) || defined(SENS)
+#if !defined(USEGLOBAL)
 	CONSTANT float* d_xy,
 #else
 	const CLGLOBAL float* CLRESTRICT d_xy,
 #endif
 	///////////////////////// LISTMODE DATA /////////////////////////
-#if defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED)
+#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
 	const CLGLOBAL float* CLRESTRICT d_z,
 #else
 	CONSTANT float* d_z,
@@ -250,19 +257,24 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef MASKFP // Mask image
 #ifdef USEIMAGES
 #ifdef CUDA
+#ifdef MASKFP3D
+	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y. i.z);
+#else
 	const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
+#endif
+#else
+#ifdef MASKFP3D
+	const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
 #else
 	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
 #endif
+#endif
 #else
-	long long int idxMaskFP = 0;
-	if (N_MASK_FP > 1) {
-		long long int numProjPerDetector = N_PROJECTIONS_GLOBAL / N_MASK_FP;
-		long long int currentDetector = i.z / numProjPerDetector;
-		idxMaskFP = d_sizey * d_size_x * currentDetector;
-	}
-
-	const int maskVal = maskFP[i.x + i.y * d_size_x + idxMaskFP];
+#ifdef MASKFP3D
+	const int maskVal = maskFP[i.x + i.y * d_size_x + i.z * d_size_x * d_sizey];
+#else
+	const int maskVal = maskFP[i.x + i.y * d_size_x];
+#endif
 #endif
 	if (maskVal == 0)
 		return;
@@ -637,8 +649,10 @@ if (lor == 0) { // First ray in hexagon
 		localInd.z = tempk;
 		local_ind = CLONG_rtz(tempk);
 		perpendicular_elements(d_b, d_db, d_N0, dd, d_d2, d_N1, &temp, &localInd, &local_ind, d_N2, d_N3, idx, global_factor, local_scat, 
-#if !defined(CT) && (defined(ATN) || defined(ATNM))
+#if !defined(CT) && defined(ATN) && !defined(ATNM)
 			d_atten, aa, 
+#elif !defined(CT) && !defined(ATN) && defined(ATNM)
+			d_atten, 
 #endif
 		    local_norm, L);
 #if defined(ORTH)
@@ -709,12 +723,24 @@ if (lor == 0) { // First ray in hexagon
 				if (aa == 0) {
 #ifdef USEIMAGES
 #ifdef CUDA
+#ifdef MASKBP3D
+					maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
+#else
 					maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
+#endif
+#else
+#ifdef MASKBP3D
+					maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
 #else
 					maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
 #endif
+#endif
+#else
+#ifdef MASKBP3D
+					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x + localInd.z * d_Nxyz.x * d_Nxyz.y];
 #else
 					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x];
+#endif
 #endif
 				}
 				if (maskVal > 0)
@@ -1129,12 +1155,24 @@ if (lor == 0) { // First ray in hexagon
 			if (aa == 0) {
 #ifdef USEIMAGES
 #ifdef CUDA
+#ifdef MASKBP3D
+				maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
+#else
 				maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
+#endif
+#else
+#ifdef MASKBP3D
+				maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
 #else
 				maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
 #endif
+#endif
+#else
+#ifdef MASKBP3D
+				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3 + localInd.z * d_Nxyz.x * d_Nxyz.y];
 #else
 				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3];
+#endif
 #endif
 			}
 			if (maskVal > 0)

@@ -1994,7 +1994,7 @@ end
 %     tot_delayed = 0;
 % end
 
-if ~options.use_raw_data && ~store_coordinates && ~options.useIndexBasedReconstruction
+if ~options.use_raw_data && ~store_coordinates && ~options.useIndexBasedReconstruction && ~isempty(raw_SinM)
     if size(raw_SinM,1) == numel(raw_SinM)
         raw_SinM = reshape(raw_SinM, options.Ndist, options.Nang(end), totSinos, options.nLayers^2, options.TOF_bins, Nt);
         if options.obtain_trues

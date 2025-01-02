@@ -861,3 +861,9 @@ end
 if ~isfield(options,'hexOrientation')
     options.hexOrientation = 1;
 end
+if ~isfield(options,'maskFPZ')
+    options.maskFPZ = 1;
+end
+if ~isfield(options,'maskBPZ')
+    options.maskBPZ = 1;
+end

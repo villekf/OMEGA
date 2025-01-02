@@ -40,6 +40,8 @@ class ProjectorClass {
 	// Local and global sizes
 	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
 
+	bool constantBuffer = false;
+
 	// Get the OpenCL context for the current platform
 	cl_int clGetPlatformsContext(const uint32_t platform, cl::Context& context, std::vector<cl::CommandQueue>& commandQueues, const std::vector<uint32_t>& usedDevices, std::vector<cl::Device>& devices) {
 		cl_int status = CL_SUCCESS;
@@ -193,12 +195,20 @@ class ProjectorClass {
 		// Load the source text file
 		// Set all preprocessor definitions
 		const bool siddonVal = (inputScalars.FPType == 1 || inputScalars.BPType == 1 || inputScalars.FPType == 4 || inputScalars.BPType == 4) ? true : false;
+		if (constantBuffer || (inputScalars.listmode > 0 && !inputScalars.indexBased))
+			options += " -DUSEGLOBAL";
 		if (inputScalars.raw == 1)
 			options += " -DRAW";
-		if (inputScalars.maskFP)
+		if (inputScalars.maskFP) {
 			options += " -DMASKFP";
-		if (inputScalars.maskBP)
+			if (inputScalars.maskFPZ > 1)
+				options += " -DMASKFP3D";
+		}
+		if (inputScalars.maskBP) {
 			options += " -DMASKBP";
+			if (inputScalars.maskBPZ > 1)
+				options += " -DMASKBP3D";
+		}
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			options += " -DFDK";
 		if (inputScalars.offset)
@@ -366,7 +376,7 @@ class ProjectorClass {
 			status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programSens, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
 		}
 		// Build prior programs
-		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5] 
+		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM ||
 			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || type == 0) {
 			if (DEBUG) {
@@ -405,8 +415,11 @@ class ProjectorClass {
 			}
 			else
 				options += " -DAF";
-			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
+			if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution)) {
 				options += " -DMASKPRIOR";
+				if (inputScalars.maskBPZ > 1)
+					options += " -DMASKBP3D";
+			}
 			if (inputScalars.eFOV)
 				options += " -DEFOVZ";
 			if (MethodList.MRP) {
@@ -994,6 +1007,7 @@ public:
 		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
+	cl::Image3D d_maskBP3, d_maskPrior3;
 	cl::Image3D d_inputImage, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
 	cl::Buffer d_qX, d_qY, d_qZ;
 	cl::Buffer d_rX, d_rY, d_rXY, d_rZ, d_rXZ, d_rYZ;
@@ -1008,6 +1022,8 @@ public:
 	std::vector<cl_float3> b, d, bmax;
 	std::vector<cl_int3> d_N;
 
+	std::vector<cl::Image3D> d_maskFP3;
+	std::vector<cl::Buffer> d_maskFPB;
 	std::vector<cl::Buffer> d_LFull, d_zindexFull, d_xyindexFull, d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<cl::Buffer> d_L;
 	std::vector<cl::Buffer> d_Summ;
@@ -1098,6 +1114,10 @@ public:
 			mexPrint(deviceName2.c_str());
 			mexEval();
 		}
+		cl_ulong constantBufferSize = CLDeviceID[0].getInfo<CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE>(&status);
+
+		if ((inputScalars.size_of_x + inputScalars.size_z) * sizeof(float) >= constantBufferSize)
+			constantBuffer = true;
 
 		cl::Program programFP, programBP, programAux, programSens;
 
@@ -1280,12 +1300,17 @@ public:
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			imX = inputScalars.Nx[0];
 			imY = inputScalars.Ny[0];
+			imZ = inputScalars.maskBPZ;
 			if (DEBUG) {
 				mexPrintBase("imX = %u\n", imX);
 				mexPrintBase("imY = %u\n", imY);
+				mexPrintBase("imZ = %u\n", imZ);
 				mexEval();
 			}
-			d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+			if (imZ > 1)
+				d_maskPrior3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
+			else
+				d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 			if (status != CL_SUCCESS) {
 				getErrorString(status);
 				return -1;
@@ -1320,6 +1345,7 @@ public:
 			}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
+				imZ = inputScalars.Nz[0];
 				if (inputScalars.useBuffers)
 					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 				else
@@ -1331,26 +1357,43 @@ public:
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
-					if (inputScalars.maskFP)
-						d_maskFPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status);
+					if (inputScalars.maskFP) {
+						if (inputScalars.maskFPZ > 1) {
+							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+								d_maskFPB.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk], NULL, &status));
+						}
+						else
+							d_maskFPB.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t)* inputScalars.nRowsD * inputScalars.nColsD, NULL, &status));
+					}
 					if (inputScalars.maskBP)
-						d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], NULL, &status);
+						d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, NULL, &status);
 				}
 				else {
 					if (inputScalars.maskFP) {
 						imX = inputScalars.nRowsD;
 						imY = inputScalars.nColsD;
-						d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+						imZ = inputScalars.maskFPZ;
+						if (imZ > 1) {
+							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+								d_maskFP3.emplace_back(cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, length[kk], 0, 0, NULL, &status));
+						}
+						else
+							d_maskFP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 					}
 					if (inputScalars.maskBP) {
 						imX = inputScalars.Nx[0];
 						imY = inputScalars.Ny[0];
+						imZ = inputScalars.maskBPZ;
 						if (DEBUG) {
 							mexPrintBase("imX = %u\n", imX);
 							mexPrintBase("imY = %u\n", imY);
+							mexPrintBase("imZ = %u\n", imZ);
 							mexEval();
 						}
-						d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
+						if (imZ > 1)
+							d_maskBP3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
+						else
+							d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 					}
 				}
 				if (status != CL_SUCCESS) {
@@ -1541,17 +1584,31 @@ public:
 			mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
 			mexEval();
 			if (inputScalars.useBuffers) {
-				if (inputScalars.maskFP)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskFPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
+				if (inputScalars.maskFP) {
+					if (inputScalars.maskFPZ > 1) {
+						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+							status = CLCommandQueue[0].enqueueWriteBuffer(d_maskFPB[kk], CL_FALSE, 0, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk], &w_vec.maskFP[pituus[kk] * vecSize]);
+					}
+					else
+						status = CLCommandQueue[0].enqueueWriteBuffer(d_maskFPB[0], CL_FALSE, 0, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, w_vec.maskFP);
+				}
 				if (inputScalars.maskBP)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskBPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0], w_vec.maskBP);
+					status = CLCommandQueue[0].enqueueWriteBuffer(d_maskBPB, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, w_vec.maskBP);
 			}
 			else {
 				cl::detail::size_t_array region = { { 1, 1, 1 } };
 				if (inputScalars.maskFP) {
 					region[0] = inputScalars.nRowsD;
 					region[1] = inputScalars.nColsD;
-					status = CLCommandQueue[0].enqueueWriteImage(d_maskFP, CL_FALSE, origin, region, 0, 0, w_vec.maskFP);
+					region[2] = inputScalars.maskFPZ;
+					if (inputScalars.maskFPZ > 1) {
+						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+							region[2] = length[kk];
+							status = CLCommandQueue[0].enqueueWriteImage(d_maskFP3[kk], CL_FALSE, origin, region, 0, 0, &w_vec.maskFP[pituus[kk] * vecSize]);
+						}
+					}
+					else
+						status = CLCommandQueue[0].enqueueWriteImage(d_maskFP, CL_FALSE, origin, region, 0, 0, w_vec.maskFP);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -1561,13 +1618,17 @@ public:
 				if (inputScalars.maskBP) {
 					region[0] = inputScalars.Nx[0];
 					region[1] = inputScalars.Ny[0];
+					region[2] = inputScalars.maskBPZ;
 					if (DEBUG) {
 						mexPrintBase("region[0] = %u\n", region[0]);
 						mexPrintBase("region[1] = %u\n", region[1]);
 						mexPrintBase("region[2] = %u\n", region[2]);
 						mexEval();
 					}
-					status = CLCommandQueue[0].enqueueWriteImage(d_maskBP, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
+					if (inputScalars.maskBPZ > 1)
+						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP3, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
+					else
+						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -1579,7 +1640,11 @@ public:
 				cl::detail::size_t_array region = { { 1, 1, 1 } };
 				region[0] = inputScalars.Nx[0];
 				region[1] = inputScalars.Ny[0];
-				status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
+				region[2] = inputScalars.maskBPZ;
+				if (inputScalars.maskBPZ > 1)
+					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior3, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
+				else
+					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -2027,48 +2092,6 @@ public:
 					kernelSensList.setArg(kernelIndSens++, inputScalars.bmin);
 					kernelSensList.setArg(kernelIndSens++, inputScalars.bmax);
 					kernelSensList.setArg(kernelIndSens++, inputScalars.Vmax);
-				}
-			}
-		}
-		if (inputScalars.maskFP || inputScalars.maskBP) {
-			if (inputScalars.maskFP) {
-				if (inputScalars.useBuffers)
-					status = kernelFP.setArg(kernelIndFP++, d_maskFPB);
-				else
-					status = kernelFP.setArg(kernelIndFP++, d_maskFP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || (inputScalars.BPType == 4 && !inputScalars.CT)) {
-					if (inputScalars.useBuffers)
-						status = kernelBP.setArg(kernelIndBP++, d_maskFPB);
-					else
-						status = kernelBP.setArg(kernelIndBP++, d_maskFP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
-				}
-			}
-			if (inputScalars.maskBP) {
-				if (inputScalars.useBuffers)
-					status = kernelBP.setArg(kernelIndBP++, d_maskBPB);
-				else
-					status = kernelBP.setArg(kernelIndBP++, d_maskBP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						status = kernelSensList.setArg(kernelIndSens++, d_maskBPB);
-					else
-						status = kernelSensList.setArg(kernelIndSens++, d_maskBP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
 				}
 			}
 		}
@@ -2562,6 +2585,23 @@ public:
 				getErrorString(status);
 				return -1;
 			}
+			if (inputScalars.maskFP) {
+				if (inputScalars.useBuffers) {
+					int subset = 0;
+					if (inputScalars.maskFPZ > 1)
+						subset = osa_iter;
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFPB[subset]);
+				}
+				else
+					if (inputScalars.maskFPZ > 1)
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
+					else
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
 			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]));
@@ -2632,11 +2672,45 @@ public:
 					return -1;
 				}
 			}
+			if (inputScalars.maskFP) {
+				if (inputScalars.useBuffers) {
+					int subset = 0;
+					if (inputScalars.maskFPZ > 1)
+						subset = osa_iter;
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFPB[subset]);
+				}
+				else
+					if (inputScalars.maskFPZ > 1)
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
+					else
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+			}
+			if (inputScalars.maskFP) {
+				if (inputScalars.useBuffers) {
+					int subset = 0;
+					if (inputScalars.maskFPZ > 1)
+						subset = osa_iter;
+					status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFPB[subset]);
+				}
+				else
+					if (inputScalars.maskFPZ > 1)
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
+					else
+						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
@@ -2823,6 +2897,51 @@ public:
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
 					return -1;
+				}
+			}
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						int subset = 0;
+						if (inputScalars.maskFPZ > 1)
+							subset = osa_iter;
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFPB[subset]);
+					}
+					else
+						if (inputScalars.maskFPZ > 1)
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP3[osa_iter]);
+						else
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+				if (inputScalars.maskBP) {
+					if (inputScalars.useBuffers)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+					else
+						if (inputScalars.maskBPZ > 1)
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+						else
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+						if (inputScalars.useBuffers)
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
+						else
+							if (inputScalars.maskBPZ > 1)
+								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
+							else
+								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
+						if (status != CL_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+					}
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
@@ -3211,6 +3330,32 @@ public:
 				getErrorString(status);
 				return -1;
 			}
+			if (inputScalars.maskBP) {
+				if (inputScalars.useBuffers)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+				else
+					if (inputScalars.maskBPZ > 1)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+					else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+				if (status != CL_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+					if (inputScalars.useBuffers)
+						status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
+					else
+						if (inputScalars.maskBPZ > 1)
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
+						else
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
+					if (status != CL_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
+				}
+			}
 			if (inputScalars.CT)
 				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[osa_iter]));
 			else {
@@ -3317,7 +3462,10 @@ public:
 		kernelMed.setArg(kernelIndMed++, d_N[0]);
 		kernelMed.setArg(kernelIndMed++, d_NOrig);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelMed.setArg(kernelIndMed++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelMed.setArg(kernelIndMed++, d_maskPrior3);
+			else
+				kernelMed.setArg(kernelIndMed++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelMed.setArg(kernelIndMed++, d_eFOVIndices);
 		cl_int status = CLCommandQueue[0].enqueueNDRangeKernel(kernelMed, cl::NullRange, global_size, localPrior);
@@ -3408,7 +3556,10 @@ public:
 			else
 				kernelNLM.setArg(kernelIndNLM++, d_uref);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelNLM.setArg(kernelIndNLM++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelNLM.setArg(kernelIndNLM++, d_maskPrior3);
+			else
+				kernelNLM.setArg(kernelIndNLM++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelNLM.setArg(kernelIndNLM++, d_eFOVIndices);
 		 //Compute the kernel
@@ -3486,7 +3637,10 @@ public:
 		kernelRDP.setArg(kernelIndRDP++, inputScalars.epps);
 		kernelRDP.setArg(kernelIndRDP++, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelRDP.setArg(kernelIndRDP++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelRDP.setArg(kernelIndRDP++, d_maskPrior3);
+			else
+				kernelRDP.setArg(kernelIndRDP++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelRDP.setArg(kernelIndRDP++, d_eFOVIndices);
 		if (RDPLargeNeighbor) {
@@ -3572,7 +3726,10 @@ public:
 		kernelGGMRF.setArg(kernelIndGGMRF++, pqc);
 		kernelGGMRF.setArg(kernelIndGGMRF++, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior3);
+			else
+				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
 		if (status != CL_SUCCESS) {
@@ -3723,7 +3880,10 @@ public:
 		kernelProxTVDiv.setArg(kernelIndCPTV++, d_qZ);
 		kernelProxTVDiv.setArg(kernelIndCPTV++, vec_opencl.d_rhs_os[0]);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelProxTVDiv.setArg(kernelIndCPTV++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelProxTVDiv.setArg(kernelIndCPTV++, d_maskPrior3);
+			else
+				kernelProxTVDiv.setArg(kernelIndCPTV++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelProxTVDiv.setArg(kernelIndCPTV++, d_eFOVIndices);
 		// Compute the kernel
@@ -3791,7 +3951,10 @@ public:
 				kernelProxTVGrad.setArg(kernelIndCPTV++, d_vZ);
 		}
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelProxTVGrad.setArg(kernelIndCPTV++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelProxTVGrad.setArg(kernelIndCPTV++, d_maskPrior3);
+			else
+				kernelProxTVGrad.setArg(kernelIndCPTV++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelProxTVGrad.setArg(kernelIndCPTV++, d_eFOVIndices);
 		// Compute the kernel
@@ -3858,7 +4021,10 @@ public:
 			kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, d_rXY);
 		kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, sigma2);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, d_maskPrior3);
+			else
+				kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVSymmDeriv, cl::NullRange, globalPriorEFOV, localPrior);
 		if (status != CL_SUCCESS) {
@@ -3935,7 +4101,10 @@ public:
 		kernelProxTGVDiv.setArg(kernelIndCPTGV++, theta);
 		kernelProxTGVDiv.setArg(kernelIndCPTGV++, tau);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelProxTGVDiv.setArg(kernelIndCPTGV++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelProxTGVDiv.setArg(kernelIndCPTGV++, d_maskPrior3);
+			else
+				kernelProxTGVDiv.setArg(kernelIndCPTGV++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVDiv, cl::NullRange, globalPriorEFOV, localPrior);
 		if (status != CL_SUCCESS) {
@@ -4030,7 +4199,10 @@ public:
 		kernelHyper.setArg(kernelIndHyper++, beta);
 		kernelHyper.setArg(kernelIndHyper++, d_weights);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelHyper.setArg(kernelIndHyper++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelHyper.setArg(kernelIndHyper++, d_maskPrior3);
+			else
+				kernelHyper.setArg(kernelIndHyper++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelHyper.setArg(kernelIndHyper++, d_eFOVIndices);
 		// Compute the kernel
@@ -4089,7 +4261,10 @@ public:
 		kernelTV.setArg(kernelIndTV++, smooth);
 		kernelTV.setArg(kernelIndTV++, beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
-			kernelTV.setArg(kernelIndTV++, d_maskPrior);
+			if (inputScalars.maskBPZ > 1)
+				kernelTV.setArg(kernelIndTV++, d_maskPrior3);
+			else
+				kernelTV.setArg(kernelIndTV++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelTV.setArg(kernelIndTV++, d_eFOVIndices);
 		if (type == 2 || type == 3)

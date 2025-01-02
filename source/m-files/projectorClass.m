@@ -392,21 +392,23 @@ classdef projectorClass
             end
             obj.param.MAP = ll > 0;
 
-            if isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (((~(numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD) && ~(numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads)) && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && (~obj.param.CT && ~obj.param.SPECT)))
+            if isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD && numel(obj.param.maskFP) ~= obj.param.nRowsD * obj.param.nColsD * obj.param.nProjections && (obj.param.CT || obj.param.SPECT)) || (numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist && numel(obj.param.maskFP) ~= obj.param.Nang * obj.param.Ndist * obj.param.NSinos && ~obj.param.CT))
                 if obj.param.CT || obj.param.SPECT
-                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or contain a mask for each detector head [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ' ' num2str(obj.param.nHeads) ']'])
+                    error(['Incorrect size for the forward projection mask! Must be the size of a single projection image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or full stack of [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD)  ' ' num2str(obj.param.nProjections) ']'])
                 else
-                    error(['Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ']'])
+                    error(['Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) '] or all sinograms [' num2str(obj.param.nRowsD) ' ' num2str(obj.param.nColsD) ' ' num2str(obj.param.NSinos) ']'])
                 end
-            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && ((numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD) || (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nHeads))
+            elseif isfield(obj.param, 'maskFP') && numel(obj.param.maskFP) > 1 && (numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD || numel(obj.param.maskFP) == obj.param.nRowsD * obj.param.nColsD * obj.param.nProjections)
                 obj.param.useMaskFP = true;
+                obj.param.maskFPZ = size(obj.param.maskFP,3);
             else
                 obj.param.useMaskFP = false;
             end
-            if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1)
-                error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ']'])
-            elseif isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) == obj.param.Nx(1) * obj.param.Ny(1)
+            if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
+                error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
+            elseif isfield(obj.param, 'maskBP') && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) || numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
                 obj.param.useMaskBP = true;
+                obj.param.maskBPZ = size(obj.param.maskBP,3);
             else
                 obj.param.useMaskBP = false;
             end

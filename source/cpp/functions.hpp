@@ -1784,7 +1784,8 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 		if (curIter == 0 && subIter == 0)
 			vec.uFISTA.emplace_back(vec.im_os[ii]);
 		else {
-			vec.im_os[ii] = vec.uFISTA[ii].copy();
+			if (inputScalars.subsets == 1 || (subIter == 0 && curIter > 0))
+				vec.im_os[ii] = vec.uFISTA[ii].copy();
 		}
 		vec.uFISTA[ii].eval();
 	}

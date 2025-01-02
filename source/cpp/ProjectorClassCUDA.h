@@ -214,10 +214,16 @@ class ProjectorClass {
 		//	options.push_back("-DVOL");
 		if (inputScalars.raw == 1)
 			options.push_back("-DRAW");
-		if (inputScalars.maskFP)
+		if (inputScalars.maskFP) {
 			options.push_back("-DMASKFP");
-		if (inputScalars.maskBP)
+			if (inputScalars.maskFPZ > 1)
+				options.push_back("-DMASKFP3D");
+		}
+		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
+			if (inputScalars.maskBPZ > 1)
+				options.push_back("-DMASKBP3D");
+		}
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			options.push_back("-DFDK");
 		if (inputScalars.offset)
@@ -1141,7 +1147,7 @@ public:
 	CUdeviceptr d_angle, d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, *d_output, *d_meanBP, *d_meanFP, d_eFOVIndices, d_weights, *d_inputB, *d_W, *d_gaussianNLM;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
 	CUtexObject d_inputImage, d_imageX, d_imageY, d_attenIm, d_urefIm, d_inputI, d_RDPrefI;
-	CUarray atArray, uRefArray, maskArrayFP, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
+	CUarray atArray, uRefArray, maskArrayBP, maskArrayPrior, BPArray, FPArray, integArrayXY, imArray;
 	CUdeviceptr *d_qX, *d_qY, *d_qZ;
 	CUdeviceptr *d_rX, *d_rY, *d_rXY, *d_rZ, *d_rXZ, *d_rYZ;
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
@@ -1156,6 +1162,9 @@ public:
 	// Image dimensions
 	std::vector<int3> d_N;
 
+	std::vector<CUtexObject> d_maskFP3;
+	std::vector<CUdeviceptr> d_maskFPB;
+	std::vector<CUarray> maskArrayFP;
 	std::vector<CUdeviceptr> d_normFull, d_scatFull, d_xFull, d_zFull;
 	std::vector<CUdeviceptr> d_L;
 	std::vector<CUdeviceptr*> d_Summ;
@@ -1256,11 +1265,19 @@ public:
 			getErrorString(cuMemFree(d_zFull[0]));
 		if (memAlloc.maskFP) {
 			if (useBuffers) {
-				getErrorString(cuMemFree(d_maskFPB));
+				for (int ll = 0; ll < d_maskFPB.size(); ll++)
+					getErrorString(cuMemFree(d_maskFPB[ll]));
 			}
 			else {
-				getErrorString(cuTexObjectDestroy(d_maskFP));
-				getErrorString(cuArrayDestroy(maskArrayFP));
+				if (d_maskFP3.size() > 0) {
+					for (int ll = 0; ll < d_maskFP3.size(); ll++)
+						getErrorString(cuTexObjectDestroy(d_maskFP3[ll]));
+				}
+				else {
+					getErrorString(cuTexObjectDestroy(d_maskFP));
+				}
+				for (int ll = 0; ll < maskArrayFP.size(); ll++)
+					getErrorString(cuArrayDestroy(maskArrayFP[ll]));
 			}
 		}
 		if (memAlloc.maskBP) {
@@ -1575,30 +1592,53 @@ public:
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			std::memset(&texDesc, 0, sizeof(texDesc));
 			std::memset(&resDesc, 0, sizeof(resDesc));
-			std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
 			std::memset(&viewDesc, 0, sizeof(viewDesc));
-			arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-			arr2DDesc.NumChannels = 1;
-			arr2DDesc.Height = inputScalars.Nx[0];
-			arr2DDesc.Width = inputScalars.Ny[0];
-			status = cuArrayCreate(&maskArrayPrior, &arr2DDesc);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
+			if (inputScalars.maskBPZ > 1) {
+				std::memset(&arr2DDesc, 0, sizeof(arr3DDesc));
+				arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+				arr3DDesc.NumChannels = 1;
+				arr3DDesc.Height = inputScalars.Nx[0];
+				arr3DDesc.Width = inputScalars.Ny[0];
+				arr3DDesc.Depth = inputScalars.Nz[0];
+				status = cuArray3DCreate(&maskArrayPrior, &arr3DDesc);
+				CUDA_MEMCPY3D cpy3d;
+				std::memset(&cpy3d, 0, sizeof(cpy3d));
+				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+				cpy3d.srcHost = w_vec.maskPrior;
+				cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
+				cpy3d.srcHeight = inputScalars.Nx[0];
+				cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+				cpy3d.dstArray = maskArrayPrior;
+				cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
+				cpy3d.Height = inputScalars.Nx[0];
+				cpy3d.Depth = inputScalars.maskBPZ;
+				status = cuMemcpy3D(&cpy3d);
 			}
-			CUDA_MEMCPY2D cpy2d;
-			std::memset(&cpy2d, 0, sizeof(cpy2d));
-			cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-			cpy2d.srcHost = w_vec.maskPrior;
-			cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-			cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-			cpy2d.dstArray = maskArrayPrior;
-			cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-			cpy2d.Height = inputScalars.Nx[0];
-			status = cuMemcpy2D(&cpy2d);
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				return -1;
+			else {
+				std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
+				arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+				arr2DDesc.NumChannels = 1;
+				arr2DDesc.Height = inputScalars.Nx[0];
+				arr2DDesc.Width = inputScalars.Ny[0];
+				status = cuArrayCreate(&maskArrayPrior, &arr2DDesc);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
+				CUDA_MEMCPY2D cpy2d;
+				std::memset(&cpy2d, 0, sizeof(cpy2d));
+				cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+				cpy2d.srcHost = w_vec.maskPrior;
+				cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
+				cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+				cpy2d.dstArray = maskArrayPrior;
+				cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
+				cpy2d.Height = inputScalars.Nx[0];
+				status = cuMemcpy2D(&cpy2d);
+				if (status != CUDA_SUCCESS) {
+					getErrorString(status);
+					return -1;
+				}
 			}
 			resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 			resDesc.res.array.hArray = maskArrayPrior;
@@ -1609,7 +1649,8 @@ public:
 			texDesc.flags = CU_TRSF_READ_AS_INTEGER;
 			viewDesc.height = inputScalars.Nx[0];
 			viewDesc.width = inputScalars.Ny[0];
-			//viewDesc.depth = 1;
+			if (inputScalars.maskBPZ > 1)
+				viewDesc.depth = inputScalars.maskBPZ;
 			viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
 			status = cuTexObjectCreate(&d_maskPrior, &resDesc, &texDesc, &viewDesc);
 			if (status != CUDA_SUCCESS) {
@@ -1676,6 +1717,10 @@ public:
 					arr3DDesc.Width = inputScalars.Ny[0];
 					arr3DDesc.Depth = inputScalars.Nz[0];
 					status = cuArray3DCreate(&atArray, &arr3DDesc);
+					if (status != CUDA_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
 					CUDA_MEMCPY3D cpy3d;
 					std::memset(&cpy3d, 0, sizeof(cpy3d));
 					cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
@@ -1688,6 +1733,10 @@ public:
 					cpy3d.Height = inputScalars.Nx[0];
 					cpy3d.Depth = inputScalars.Nz[0];
 					status = cuMemcpy3D(&cpy3d);
+					if (status != CUDA_SUCCESS) {
+						getErrorString(status);
+						return -1;
+					}
 					resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 					resDesc.res.array.hArray = atArray;
 					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
@@ -1708,49 +1757,96 @@ public:
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
-					if (inputScalars.useBuffers)
-						status = cuMemAlloc(&d_maskFPB, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD);
+					if (inputScalars.useBuffers) {
+						d_maskFPB.resize(inputScalars.subsetsUsed);
+						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+							status = cuMemAlloc(&d_maskFPB[kk], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
+					}
 					else {
 						std::memset(&texDesc, 0, sizeof(texDesc));
 						std::memset(&resDesc, 0, sizeof(resDesc));
 						std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 						std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
 						std::memset(&viewDesc, 0, sizeof(viewDesc));
-						arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-						arr2DDesc.NumChannels = 1;
-						arr2DDesc.Height = inputScalars.nRowsD;
-						arr2DDesc.Width = inputScalars.nColsD;
-						status = cuArrayCreate(&maskArrayFP, &arr2DDesc);
-						if (status != CUDA_SUCCESS) {
-							getErrorString(status);
-							return -1;
+						if (inputScalars.maskFPZ > 1) {
+							maskArrayFP.resize(inputScalars.subsetsUsed);
+							arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+							arr3DDesc.NumChannels = 1;
+							arr3DDesc.Height = inputScalars.nRowsD;
+							arr3DDesc.Width = inputScalars.nColsD;
+							CUDA_MEMCPY3D cpy3d;
+							std::memset(&cpy3d, 0, sizeof(cpy3d));
+							cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+							cpy3d.srcPitch = inputScalars.nColsD * sizeof(uint8_t);
+							cpy3d.srcHeight = inputScalars.nRowsD;
+							cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+							cpy3d.WidthInBytes = inputScalars.nColsD * sizeof(uint8_t);
+							cpy3d.Height = inputScalars.nRowsD;
+							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+								arr3DDesc.Depth = length[kk];
+								status = cuArray3DCreate(&maskArrayFP[kk], &arr3DDesc);
+								if (status != CUDA_SUCCESS) {
+									getErrorString(status);
+									return -1;
+								}
+								cpy3d.Depth = length[kk];
+								cpy3d.srcHost = &w_vec.maskFP[pituus[kk] * vecSize];
+								cpy3d.dstArray = maskArrayFP[kk];
+								status = cuMemcpy3D(&cpy3d);
+								if (status != CUDA_SUCCESS) {
+									getErrorString(status);
+									return -1;
+								}
+							}
 						}
-						CUDA_MEMCPY2D cpy2d;
-						std::memset(&cpy2d, 0, sizeof(cpy2d));
-						cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-						cpy2d.srcHost = w_vec.maskFP;
-						cpy2d.srcPitch = inputScalars.nColsD * sizeof(uint8_t);
-						cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-						cpy2d.dstArray = maskArrayFP;
-						cpy2d.WidthInBytes = inputScalars.nColsD * sizeof(uint8_t);
-						cpy2d.Height = inputScalars.nRowsD;
-						status = cuMemcpy2D(&cpy2d);
-						if (status != CUDA_SUCCESS) {
-							getErrorString(status);
-							return -1;
+						else {
+							maskArrayFP.resize(1);
+							arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+							arr2DDesc.NumChannels = 1;
+							arr2DDesc.Height = inputScalars.nRowsD;
+							arr2DDesc.Width = inputScalars.nColsD;
+							status = cuArrayCreate(&maskArrayFP[0], &arr2DDesc);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
+							CUDA_MEMCPY2D cpy2d;
+							std::memset(&cpy2d, 0, sizeof(cpy2d));
+							cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+							cpy2d.srcHost = w_vec.maskFP;
+							cpy2d.srcPitch = inputScalars.nColsD * sizeof(uint8_t);
+							cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+							cpy2d.dstArray = maskArrayFP[0];
+							cpy2d.WidthInBytes = inputScalars.nColsD * sizeof(uint8_t);
+							cpy2d.Height = inputScalars.nRowsD;
+							status = cuMemcpy2D(&cpy2d);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
 						}
 						resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
-						resDesc.res.array.hArray = maskArrayFP;
 						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 						texDesc.flags = CU_TRSF_READ_AS_INTEGER;
 						viewDesc.height = inputScalars.nRowsD;
 						viewDesc.width = inputScalars.nColsD;
-						viewDesc.depth = 1;
+						//viewDesc.depth = 1;
 						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
-						status = cuTexObjectCreate(&d_maskFP, &resDesc, &texDesc, &viewDesc);
+						if (inputScalars.maskFPZ > 1) {
+							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+							d_maskFP3.resize(inputScalars.subsetsUsed);
+							for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
+								viewDesc.depth = length[kk];
+								resDesc.res.array.hArray = maskArrayFP[kk];
+								status = cuTexObjectCreate(&d_maskFP3[kk], &resDesc, &texDesc, &viewDesc);
+							}
+						}
+						else {
+							resDesc.res.array.hArray = maskArrayFP[0];
+							status = cuTexObjectCreate(&d_maskFP, &resDesc, &texDesc, &viewDesc);
+						}
 						if (status != CUDA_SUCCESS) {
 							getErrorString(status);
 							return -1;
@@ -1760,35 +1856,65 @@ public:
 				}
 				if (inputScalars.maskBP) {
 					if (inputScalars.useBuffers)
-						status = cuMemAlloc(&d_maskBPB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0]);
+						status = cuMemAlloc(&d_maskBPB, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					else {
 						std::memset(&texDesc, 0, sizeof(texDesc));
 						std::memset(&resDesc, 0, sizeof(resDesc));
 						std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 						std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
 						std::memset(&viewDesc, 0, sizeof(viewDesc));
-						arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
-						arr2DDesc.NumChannels = 1;
-						arr2DDesc.Height = inputScalars.Nx[0];
-						arr2DDesc.Width = inputScalars.Ny[0];
-						status = cuArrayCreate(&maskArrayBP, &arr2DDesc);
-						if (status != CUDA_SUCCESS) {
-							getErrorString(status);
-							return -1;
+						if (inputScalars.maskBPZ > 1) {
+							arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+							arr3DDesc.NumChannels = 1;
+							arr3DDesc.Height = inputScalars.Nx[0];
+							arr3DDesc.Width = inputScalars.Ny[0];
+							arr3DDesc.Depth = inputScalars.Nz[0];
+							status = cuArray3DCreate(&maskArrayBP, &arr3DDesc);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
+							CUDA_MEMCPY3D cpy3d;
+							std::memset(&cpy3d, 0, sizeof(cpy3d));
+							cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+							cpy3d.srcHost = w_vec.maskBP;
+							cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
+							cpy3d.srcHeight = inputScalars.Nx[0];
+							cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+							cpy3d.dstArray = maskArrayBP;
+							cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
+							cpy3d.Height = inputScalars.Nx[0];
+							cpy3d.Depth = inputScalars.Nz[0];
+							status = cuMemcpy3D(&cpy3d);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
 						}
-						CUDA_MEMCPY2D cpy2d;
-						std::memset(&cpy2d, 0, sizeof(cpy2d));
-						cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-						cpy2d.srcHost = w_vec.maskBP;
-						cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
-						cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-						cpy2d.dstArray = maskArrayBP;
-						cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
-						cpy2d.Height = inputScalars.Nx[0];
-						status = cuMemcpy2D(&cpy2d);
-						if (status != CUDA_SUCCESS) {
-							getErrorString(status);
-							return -1;
+						else {
+							arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
+							arr2DDesc.NumChannels = 1;
+							arr2DDesc.Height = inputScalars.Nx[0];
+							arr2DDesc.Width = inputScalars.Ny[0];
+							status = cuArrayCreate(&maskArrayBP, &arr2DDesc);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
+							CUDA_MEMCPY2D cpy2d;
+							std::memset(&cpy2d, 0, sizeof(cpy2d));
+							cpy2d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
+							cpy2d.srcHost = w_vec.maskBP;
+							cpy2d.srcPitch = inputScalars.Ny[0] * sizeof(uint8_t);
+							cpy2d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
+							cpy2d.dstArray = maskArrayBP;
+							cpy2d.WidthInBytes = inputScalars.Ny[0] * sizeof(uint8_t);
+							cpy2d.Height = inputScalars.Nx[0];
+							status = cuMemcpy2D(&cpy2d);
+							if (status != CUDA_SUCCESS) {
+								getErrorString(status);
+								return -1;
+							}
 						}
 						resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 						resDesc.res.array.hArray = maskArrayBP;
@@ -1801,6 +1927,10 @@ public:
 						viewDesc.width = inputScalars.Ny[0];
 						//viewDesc.depth = 1;
 						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
+						if (inputScalars.maskBPZ > 1) {
+							viewDesc.depth = inputScalars.maskBPZ;
+							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+						}
 						status = cuTexObjectCreate(&d_maskBP, &resDesc, &texDesc, &viewDesc);
 						if (status != CUDA_SUCCESS) {
 							getErrorString(status);
@@ -2047,14 +2177,18 @@ public:
 			//}
 			if ((inputScalars.maskFP || inputScalars.maskBP) && inputScalars.useBuffers) {
 				if (inputScalars.maskFP) {
-					status = cuMemcpyHtoD(d_maskFPB, w_vec.maskFP, sizeof(uint8_t) * inputScalars.numMaskFP * inputScalars.nRowsD * inputScalars.nColsD);
+					if (inputScalars.maskFPZ > 1)
+						for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++)
+							status = cuMemcpyHtoD(d_maskFPB[kk], &w_vec.maskFP[pituus[kk] * vecSize], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
+					else
+						status = cuMemcpyHtoD(d_maskFPB[0], w_vec.maskFP, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
 						return -1;
 					}
 				}
 				else if (inputScalars.maskBP) {
-					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0]);
+					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -2428,33 +2562,6 @@ public:
 				}
 			}
 		}
-		if (inputScalars.maskFP || inputScalars.maskBP) {
-			if (inputScalars.maskFP) {
-				if (inputScalars.useBuffers)
-					FPArgs.emplace_back(&d_maskFPB);
-				else
-					FPArgs.emplace_back(&d_maskFP);
-				if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-					if (inputScalars.useBuffers)
-						BPArgs.emplace_back(&d_maskFPB);
-					else
-						BPArgs.emplace_back(&d_maskFP);
-				}
-			}
-			if (inputScalars.maskBP) {
-				//if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)
-				if (inputScalars.useBuffers)
-					BPArgs.emplace_back(&d_maskBPB);
-				else
-					BPArgs.emplace_back(&d_maskBP);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						SensArgs.emplace_back(&d_maskBPB);
-					else
-						SensArgs.emplace_back(&d_maskBP);
-				}
-			}
-		}
 		//if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 		//	BPArgs.emplace_back(&inputScalars.T);
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2665,10 +2772,11 @@ public:
 
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
-			mexPrintBase("local[0] = %u\n", local[0]);
-			mexPrintBase("local[1] = %u\n", local[1]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("local[0] = %u\n", local[0]);
+			mexPrintBase("local[1] = %u\n", local[1]);
+			mexPrintBase("local[2] = %u\n", local[2]);
 			mexPrintBase("erotus[0] = %u\n", erotus[0]);
 			mexPrintBase("erotus[1] = %u\n", erotus[1]);
 			mexPrintBase("d[ii].s0 = %f\n", d[ii].x);
@@ -2731,6 +2839,21 @@ public:
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						int subset = 0;
+						if (inputScalars.maskFPZ > 1)
+							subset = osa_iter;
+						kTemp.emplace_back(&d_maskFPB[subset]);
+					}
+					else
+						if (inputScalars.maskFPZ > 1)
+							kTemp.emplace_back(&d_maskFP3[osa_iter]);
+						else
+							kTemp.emplace_back(&d_maskFP);
+				}
+			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
 			//mexPrint("3!!!!\n");
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
@@ -2764,11 +2887,41 @@ public:
 			if (inputScalars.meanFP) {
 
 			}
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						int subset = 0;
+						if (inputScalars.maskFPZ > 1)
+							subset = osa_iter;
+						kTemp.emplace_back(&d_maskFPB[subset]);
+					}
+					else
+						if (inputScalars.maskFPZ > 1)
+							kTemp.emplace_back(&d_maskFP3[osa_iter]);
+						else
+							kTemp.emplace_back(&d_maskFP);
+				}
+			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 				kTemp.emplace_back(&d_atten[osa_iter]);
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						int subset = 0;
+						if (inputScalars.maskFPZ > 1)
+							subset = osa_iter;
+						kTemp.emplace_back(&d_maskFPB[subset]);
+					}
+					else
+						if (inputScalars.maskFPZ > 1)
+							kTemp.emplace_back(&d_maskFP3[osa_iter]);
+						else
+							kTemp.emplace_back(&d_maskFP);
+				}
+			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
 				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
@@ -2926,6 +3079,33 @@ public:
 			// Set kernelBP arguments
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation)
 				kTemp.emplace_back(&d_atten[osa_iter]);
+			if (inputScalars.maskFP || inputScalars.maskBP) {
+				if (inputScalars.maskFP) {
+					if (inputScalars.useBuffers) {
+						int subset = 0;
+						if (inputScalars.maskFPZ > 1)
+							subset = osa_iter;
+						kTemp.emplace_back(&d_maskFPB[subset]);
+					}
+					else
+						if (inputScalars.maskFPZ > 1)
+							kTemp.emplace_back(&d_maskFP3[osa_iter]);
+						else
+							kTemp.emplace_back(&d_maskFP);
+				}
+				if (inputScalars.maskBP) {
+					if (inputScalars.useBuffers)
+						kTemp.emplace_back(&d_maskBPB);
+					else
+						kTemp.emplace_back(&d_maskBP);
+					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+						if (inputScalars.useBuffers)
+							kTemp.emplace_back(&d_maskBPB);
+						else
+							kTemp.emplace_back(&d_maskBP);
+					}
+				}
+			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
 				kTemp.emplace_back(&length[osa_iter]);
 			if (compSens) {
@@ -3284,6 +3464,18 @@ public:
 			}
 			kTemp.emplace_back(&no_norm);
 			//mexPrint("6!!!!\n");
+			if (inputScalars.maskBP) {
+				if (inputScalars.useBuffers)
+					kTemp.emplace_back(&d_maskBPB);
+				else
+					kTemp.emplace_back(&d_maskBP);
+				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+					if (inputScalars.useBuffers)
+						kTemp.emplace_back(&d_maskBPB);
+					else
+						kTemp.emplace_back(&d_maskBP);
+				}
+			}
 			if (inputScalars.CT)
 				kTemp.emplace_back(&length[osa_iter]);
 			else {

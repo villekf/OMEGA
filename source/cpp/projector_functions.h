@@ -1817,23 +1817,23 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 
 				int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
-				T L = norm(x_diff, y_diff, z_diff);
-				uint32_t local_ind = 0u;
-				int localIndX = 0, localIndY = 0, localIndZ = 0;
-				T D = 0., DD = 0.;
-				T local_ele = 0.;
-				bool XY = false;
-				T kerroin = 0.;
-				T TotV = 0.;
-				T dI = 0., TOFSum = 0.;
-				T* center2 = nullptr, * center1 = nullptr;
-				uint8_t maskVal = 1;
-				if (param.projType == 2)
-					kerroin = L * param.orthWidth;
-				else if (param.projType == 3) {
-					kerroin = L;
-					TotV = L * (T)(1. / M_PI) * param.orthWidth * param.orthWidth;
-				}
+					T L = norm(x_diff, y_diff, z_diff);
+					uint32_t local_ind = 0u;
+					int localIndX = 0, localIndY = 0, localIndZ = 0;
+					T D = 0., DD = 0.;
+					T local_ele = 0.;
+					bool XY = false;
+					T kerroin = 0.;
+					T TotV = 0.;
+					T dI = 0., TOFSum = 0.;
+					T* center2 = nullptr, * center1 = nullptr;
+					uint8_t maskVal = 1;
+					if (param.projType == 2)
+						kerroin = L * param.orthWidth;
+					else if (param.projType == 3) {
+						kerroin = L;
+						TotV = L * (T)(M_PI) * param.orthWidth * param.orthWidth;
+					}
 
 				if (std::fabs(z_diff) < 1e-8 && (std::fabs(y_diff) < 1e-8 || std::fabs(x_diff) < 1e-8)) {
 

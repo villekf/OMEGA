@@ -375,31 +375,59 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	return status;
 }
 
-inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const int ii = 0) {
+inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
-	af::array uPrev = im.copy();
-	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, iter, ii);
+	const uint32_t kk = iter * inputScalars.subsets + osa_iter;
+	status = applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
 	if (status != 0)
 		return -1;
-	im = vec.uFISTA[ii] - w_vec.tauCP[ii] * rhs;
-	if (ii == 0) {
-		if (inputScalars.FISTAType == 1) {
-			w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
-			w_vec.betaFISTA = (1.f - w_vec.tNFista) / w_vec.tFISTA;
-			w_vec.tNFista = w_vec.tFISTA;
+	if (inputScalars.subsets > 1 && osa_iter == inputScalars.subsets - 1) {
+		im -= w_vec.tauCP[ii] * rhs;
+		if (ii == 0) {
+			if (inputScalars.FISTAType == 1) {
+				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
+				w_vec.betaFISTA = (1.f - w_vec.tNFista) / w_vec.tFISTA;
+				w_vec.tNFista = w_vec.tFISTA;
+			}
+			else {
+				const uint32_t it = iter + 1;
+				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA <= 0.f) {
+					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
+					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
+					w_vec.tNFista = w_vec.tFISTA;
+				}
+			}
 		}
-		else {
-			const uint32_t it = iter + 1;
-			w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
-			if (w_vec.betaFISTA <= 0.f) {
+		im.eval();
+		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - vec.uFISTA[ii]);
+		vec.uFISTA[ii].eval();
+	}
+	else if (inputScalars.subsets == 1) {
+		af::array uPrev = im.copy();
+		im = vec.uFISTA[ii] - w_vec.tauCP[ii] * rhs;
+		if (ii == 0) {
+			if (inputScalars.FISTAType == 1) {
 				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
 				w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
 				w_vec.tNFista = w_vec.tFISTA;
 			}
+			else {
+				const uint32_t it = iter + 1;
+				w_vec.betaFISTA = static_cast<float>(it - 1) / static_cast<float>(it + 2);
+				if (w_vec.betaFISTA <= 0.f) {
+					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tNFista * w_vec.tNFista)) / 2.f;
+					w_vec.betaFISTA = (w_vec.tNFista - 1.f) / w_vec.tFISTA;
+					w_vec.tNFista = w_vec.tFISTA;
+				}
+			}
 		}
+		vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - uPrev);
+		vec.uFISTA[ii].eval();
 	}
-	vec.uFISTA[ii] = im + w_vec.betaFISTA * (im - uPrev);
-	vec.uFISTA[ii].eval();
+	else {
+		im -= w_vec.tauCP[ii] * rhs;
+	}
 	im.eval();
 	rhs.eval();
 	return 0;
@@ -407,9 +435,9 @@ inline int FISTA(af::array& im, af::array& rhs, const scalarStruct& inputScalars
 
 
 // FISTA with L1 regularization
-inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t iter = 0, const int ii = 0) {
+inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, const float beta, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t osa_iter = 0, const int ii = 0) {
 	int status = 0;
-	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, iter, ii);
+	status = FISTA(im, rhs, inputScalars, w_vec, vec, proj, iter, osa_iter, ii);
 	if (status != 0)
 		return -1;
 	const float a = w_vec.tauCP[ii] * beta;
