@@ -376,6 +376,7 @@ class projectorClass:
     CV = False
     ASD_POCS = False
     FDK = False
+    SAGA = False
     MRP = False
     quad = False
     Huber = False
@@ -451,6 +452,10 @@ class projectorClass:
     nRaySPECT = 1
     crXY = 1
     eFOVLength = 0.4
+    FISTAType = 0
+    maskFPZ = 1
+    maskBPZ = 1
+    stochasticSubsetSelection = False
 
     def __init__(self):
         # C-struct
@@ -553,20 +558,25 @@ class projectorClass:
                 self.TOFCenter = -self.TOFCenter * c / 2.
         else:
             self.sigma_x = 0.
-        if self.maskFP.size > 1 and ((not(self.maskFP.size == (self.nRowsD * self.nColsD)) and (self.CT == True or self.SPECT == True)) or (not(self.maskFP.size == (self.Nang * self.Ndist)) and self.CT == False)):
+        if self.maskFP.size > 1 and ((not(self.maskFP.size == (self.nRowsD * self.nColsD)) and not(self.maskFP.size == (self.nRowsD * self.nColsD * self.nProjections)) 
+                                      and (self.CT == True or self.SPECT == True)) or (not(self.maskFP.size == (self.Nang * self.Ndist)) and not(self.maskFP.size == (self.Nang * self.Ndist * self.NSinos)) and self.CT == False)):
             if self.CT == True or self.SPECT == True:
-                raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single projection image [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ']')
+                raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single projection image [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ']  or full stack of [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ' ' + str(self.nProjections) + ']')
             else:
-                raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ']')
+                raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' + str(self.Nang) + ' ' + str(self.Ndist) + '] or 3D stack [' + str(self.Nang) + ' ' + str(self.Ndist) + ' ' + str(self.NSinos) + ']')
         elif self.maskFP.size > 1 and self.maskFP.size == (self.nRowsD * self.nColsD):
             self.useMaskFP = True
+            if (self.maskFP.ndim == 3):
+                self.maskFPZ = self.maskFP.shape[2]
         else:
             self.useMaskFP = False
         
-        if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny):
-            raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + ']')
+        if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny) and not(self.maskBP.size == self.Nx * self.Ny * self.Nz):
+            raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + '] or 3D stack [' + str(self.Nx) + ' ' + str(self.Ny) + ' ' + str(self.Nz) + ']')
         elif self.maskBP.size == self.Nx * self.Ny:
             self.useMaskBP = True
+            if (self.maskBP.ndim == 3):
+                self.maskBPZ = self.maskBP.shape[2]
         else:
             self.useMaskBP = False
         list_mode_format = False
@@ -4400,6 +4410,9 @@ class projectorClass:
             ('FluxType', ctypes.c_uint32),
             ('DiffusionType', ctypes.c_uint32),
             ('POCS_NgradIter', ctypes.c_uint32),
+            ('maskFPZ', ctypes.c_uint32),
+            ('maskBPZ', ctypes.c_uint32),
+            ('FISTAType', ctypes.c_uint32),
             ('nProjections', ctypes.c_int64),
             ('TOF_bins', ctypes.c_int64),
             ('tau', ctypes.c_float),
@@ -4496,6 +4509,7 @@ class projectorClass:
             ('compute_sensitivity_image', ctypes.c_bool),
             ('useFDKWeights', ctypes.c_bool),
             ('useIndexBasedReconstruction', ctypes.c_bool),
+            ('stochasticSubsetSelection', ctypes.c_bool),
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),
@@ -4525,6 +4539,7 @@ class projectorClass:
             ('PDDY', ctypes.c_bool),
             ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
+            ('SAGA', ctypes.c_bool),
             ('MRP', ctypes.c_bool),
             ('quad', ctypes.c_bool),
             ('Huber', ctypes.c_bool),
