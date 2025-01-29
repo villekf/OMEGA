@@ -1692,7 +1692,7 @@ inline int applyMeasPreconditioning(const Weighting& w_vec, const scalarStruct& 
 				mexPrintBase("input.elements() / (inputScalars.nRowsD * inputScalars.nColsD) = %d\n", input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 				mexEval();
 			}
-			if (inputScalars.subsets > 1 && (inputScalars.subsetType == 5 || inputScalars.subsetType == 4)) {
+			if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType == 5 || inputScalars.subsetType == 4)) {
 				if (inputScalars.subsetType == 4)
 					input = af::moddims(input, inputScalars.nRowsD, input.elements() / inputScalars.nRowsD);
 				else
@@ -1784,7 +1784,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 		if (curIter == 0 && subIter == 0)
 			vec.uFISTA.emplace_back(vec.im_os[ii]);
 		else {
-			if (inputScalars.subsets == 1 || (subIter == 0 && curIter > 0))
+			if (inputScalars.subsetsUsed == 1 || (subIter == 0 && curIter > 0))
 				vec.im_os[ii] = vec.uFISTA[ii].copy();
 		}
 		vec.uFISTA[ii].eval();
@@ -1879,12 +1879,28 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					mexPrint("CGLS initialization complete");
 			}
 		}
+		if (MethodList.SAGA && inputScalars.currentSubset == 0) {
+			if (ii == 0)
+				vec.stochasticHelper.resize(inputScalars.nMultiVolumes + 1);
+			vec.SAGASum.emplace_back(af::constant(0.f, vec.im_os[ii].elements()));
+			for (int uu = 0; uu < inputScalars.subsetsUsed; uu++)
+				vec.stochasticHelper[ii].emplace_back(af::constant(0.f, vec.im_os[ii].elements()));
+			//vec.stochasticHelper = af::constant(0.f, inputScalars.im_dim[ii], inputScalars.subsetsUsed, inputScalars.nMultiVolumes + 1);
+		}
 		if (MethodList.CPType) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing PDHG algorithm");
-			if (ii == 0 && !inputScalars.largeDim) {
-				vec.pCP.emplace_back(af::constant(0.f, m_size * inputScalars.nBins));
-				proj.memSize += (sizeof(float) * m_size * inputScalars.nBins) / 1048576ULL;
+			if (ii == 0 && !inputScalars.largeDim && inputScalars.currentSubset == 0) {
+				//vec.pCP.emplace_back(af::constant(0.f, m_size * inputScalars.nBins));
+				vec.pCP.resize(inputScalars.subsetsUsed);
+				//std::fill(vec.pCP.begin(), vec.pCP.end(), af::constant(0.f, m_size * inputScalars.nBins));
+				for (int uu = 0; uu < inputScalars.subsetsUsed; uu++) {
+					uint64_t mSize = length[uu];
+					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
+						mSize = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[uu];
+					vec.pCP[uu] = af::constant(0.f, mSize * inputScalars.nBins);
+					proj.memSize += (sizeof(float) * mSize * inputScalars.nBins) / 1048576ULL;
+				}
 			}
 			else if (ii == 0 && inputScalars.largeDim)
 				vec.pCP.resize(1);
@@ -1892,11 +1908,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				mexPrintBase("subIter = %d\n", subIter);
 				mexEval();
 			}
-			if (subIter == 0 && !inputScalars.largeDim) {
+			if (inputScalars.currentSubset == 0 && !inputScalars.largeDim) {
 				vec.uCP.emplace_back(vec.im_os[ii].copy());
 				proj.memSize += (sizeof(float) * inputScalars.im_dim[ii]) / 1048576ULL;
 			}
-			else if (subIter == 0 && inputScalars.largeDim)
+			else if (inputScalars.currentSubset == 0 && inputScalars.largeDim)
 				vec.uCP.resize(1);
 			if (inputScalars.verbose >= 3)
 				mexPrint("PDHG initialization complete");
@@ -2126,7 +2142,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 	}
 	std::copy(tauCP.begin(), tauCP.end(), w_vec.tauCP);
-	if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) && w_vec.filterIter < inputScalars.subsets * inputScalars.Niter) {
+	uint32_t subsets = 1;
+	if (!inputScalars.stochastic)
+		subsets = inputScalars.subsets;
+	if (w_vec.filterIter > 0 && (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) && w_vec.filterIter < subsets * inputScalars.Niter) {
 		bool apuM = false;
 		bool apuI = false;
 		if (w_vec.precondTypeMeas[1]) {
@@ -2179,7 +2198,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			status = applyImagePreconditioning(w_vec, inputScalars, vec.rhs_os[0], vec.im_os[0], proj, kk, 0);
 			if (status != 0)
 				return -1;
-			tauCP[0] = (af::dot<float>(vec.im_os[0], vec.rhs_os[0]) * static_cast<float>(inputScalars.subsets)) / (af::dot<float>(vec.im_os[0], vec.im_os[0]));
+			tauCP[0] = (af::dot<float>(vec.im_os[0], vec.rhs_os[0]) * static_cast<float>(inputScalars.subsetsUsed)) / (af::dot<float>(vec.im_os[0], vec.im_os[0]));
 			vec.im_os[0] = vec.rhs_os[0];
 			vec.im_os[0] /= af::norm(vec.im_os[0]);
 			vec.im_os[0].eval();

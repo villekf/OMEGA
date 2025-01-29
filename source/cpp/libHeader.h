@@ -113,10 +113,16 @@ struct inputStruct {
     uint32_t derivativeType = 0;
     // Type of TV prior (optional)
     uint32_t TVtype = 1;
+    // Used by AD-MRP
     uint32_t FluxType;
     uint32_t DiffusionType;
     // POCS TV iteration number
     uint32_t POCS_NgradIter;
+    // Number of slices in mask images
+    uint32_t maskFPZ = 1;
+    uint32_t maskBPZ = 1;
+    // FISTA weighting type
+    uint32_t FISTAType = 0;
     // Number of projections
     int64_t nProjections = 1;
     // Number of TOF bins
@@ -298,6 +304,8 @@ struct inputStruct {
     bool useFDKWeights = true;
     // If true, index-based listmode reconstruction is used
     bool useIndexBasedReconstruction = false;
+    // Use stochastic subset selection
+    bool stochasticSubsetSelection = false;
     // Compute the selected algorithm/prior
     bool OSEM = false;
     bool LSQR = false;
@@ -328,6 +336,7 @@ struct inputStruct {
     bool CV = false;
     bool POCS = false;
     bool FDK = false;
+    bool SAGA = false;
     bool MRP = false;
     bool quad = false;
     bool Huber = false;
@@ -369,77 +378,116 @@ struct inputStruct {
     float* z;
     // Unused
     float* uV;
+    // Voxel sizes, multiple if multi-resolution is used
     float* dx;
     float* dy;
     float* dz;
+    // Distance of the corner of the FOV from the origin, again multiple if multi-resolution is used
     float* bx;
     float* by;
     float* bz;
+    // Attenuation coefficients for PET/SPECT
     float* atten;
+    // normalization coefficients
     float* norm;
+    // Number of projections/measurements per subset
     int64_t* pituus;
+    // Indices for subset type 3
     uint32_t* xy_index;
     uint16_t* z_index;
+    // Orthogonal only, voxel centers
     float* x_center;
     float* y_center;
     float* z_center;
+    // volume of intersection ray-tracer, precomputed volumes
     float* V;
+    // PSF values for PSF blurring
     float* gaussPSF;
+    // Iterations to be saved
     uint32_t* saveNiter;
+    // Number of voxels in each volume
     uint32_t* Nx;
     uint32_t* Ny;
     uint32_t* Nz;
 //#ifdef MTYPE
 //    uint16_t* randoms;
 //#else
+    // Randoms
     float* randoms;
 //#endif
+    // Optional correction vector
     float* corrVector;
+    // Initial value
     float* x0;
+    // Offset correction values
     float* offsetVal;
+    // Scaling parameters for projector type 4
     float* dScaleX4;
     float* dScaleY4;
     float* dScaleZ4;
+    // More scaling parameters
     float* dSizeX;
     float* dSizeY;
     float* dScaleX;
     float* dScaleY;
     float* dScaleZ;
     float* kerroin4;
+    // Relaxation for DRAMA
     float* lam_drama;
+    // Forward projection mask
     uint8_t* maskFP;
+    // backprojection mask
     uint8_t* maskBP;
+    // Extended FOV indices, only used in cases where no multi-resolution is used to compute priors only on main FOV
     uint8_t* eFOVIndices;
+    // Mask for priors
     uint8_t* maskPrior;
+    // Angles for SPECT or CT
     float* angles;
+    // Blur planes for rotation-based projector in SPECT
     uint32_t* blurPlanes;
+    // Blurring kernel for the rotation-based projector
     float* gFilter;
     uint64_t* gFSize;
+    // Which image-based preconditioners are used
     bool* precondTypeImage;
+    // Which measurement-based preconditioners are used
     bool* precondTypeMeas;
+    // Reference image for IEM
     float* referenceImage;
+    // Various filtering vectors
     float* filterIm;
     float* filter;
     float* filter2;
     float* Ffilter;
+    // TV anatomical weighting
     float* s;
+    // Various weights
     float* weights_quad;
     float* weights_huber;
     float* weighted_weights;
+    // Reference image for APLS
     float* APLS_ref_image;
+    // Relaxation parameters
     float* lambdaN;
     float* lambdaFiltered;
+    // Momentum parameters
     float* alpha_PKMA;
     float* alphaPrecond;
+    // More reference images
     float* NLM_ref;
     float* RDP_ref;
+    // Primal and dual variables
     float* tauCP;
     float* tauCPFilt;
     float* sigmaCP;
     float* sigma2CP;
     float* thetaCP;
+    // TOF time windows
     float* TOFCenter;
+    // TV reference image
     float* TV_ref;
+    // Index-based reconstruction indices
     uint16_t* trIndices;
     uint16_t* axIndices;
     // SPECT values
@@ -507,6 +555,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     MethodList.CV = options.CV;
     MethodList.PDDY = options.PDDY;
     MethodList.POCS = options.POCS;
+    MethodList.SAGA = options.SAGA;
 
     // Whether MAP/prior-based algorithms are used
     MethodList.MAP = options.MAP;
@@ -701,9 +750,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.scatter = options.additionalCorrection;
     inputScalars.CTAttenuation = options.CTAttenuation;
     inputScalars.largeDim = options.largeDim;
-    inputScalars.loadTOF = options.loadTOF;
+    inputScalars.loadTOF = options.loadTOF; 
     inputScalars.storeResidual = options.storeResidual;
     inputScalars.FISTAAcceleration = options.FISTA_acceleration;
+    inputScalars.stochastic = options.stochasticSubsetSelection;
     if (inputScalars.scatter == 1U) {
         inputScalars.size_scat = options.sizeScat;
     }
@@ -824,10 +874,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     w_vec.betaReg = w_vec.beta;
 
     // Masks
-    if (inputScalars.maskFP)
+    if (inputScalars.maskFP) {
         w_vec.maskFP = options.maskFP;
-    if (inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+        inputScalars.maskFPZ = options.maskFPZ;
+    }
+    if (inputScalars.maskBP) {
         w_vec.maskBP = options.maskBP;
+        inputScalars.maskBPZ = options.maskBPZ;
     }
     if (inputScalars.eFOV && inputScalars.useExtendedFOV && !inputScalars.multiResolution)
         w_vec.eFOVIndices = options.eFOVIndices;
@@ -1124,13 +1177,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.U = options.U;
     }
     // Relaxation parameters
-    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS)
+    if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA)
         w_vec.lambda = options.lambdaN;
     if (MethodList.PKMA) {
         w_vec.alphaM = options.alpha_PKMA;
         w_vec.lambda = options.lambdaN;
     }
-    if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)) {
+    if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
         w_vec.lambdaFiltered = w_vec.lambda;
         w_vec.lambda = options.lambdaFiltered;
     }
@@ -1198,6 +1251,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.alpha0CPTGV = options.alpha0TGV;
         w_vec.alpha1CPTGV = options.alpha1TGV;
         w_vec.UseL2Ball = options.useL2Ball;
+        inputScalars.FISTAType = options.FISTAType;
         if (inputScalars.adaptiveType >= 1) {
             for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
                 if (inputScalars.adaptiveType == 1)

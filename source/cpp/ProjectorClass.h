@@ -2580,7 +2580,7 @@ public:
 				}
 			}
 			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
-			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]));
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]));
 			}
@@ -2733,7 +2733,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -2981,7 +2981,7 @@ public:
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, b[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, bmax[ii]));
-				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]));
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]));
 				}
@@ -3281,7 +3281,7 @@ public:
 					return -1;
 				}
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
-				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
 					kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
 				}

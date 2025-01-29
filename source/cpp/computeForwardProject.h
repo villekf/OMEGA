@@ -10,8 +10,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	int status = 0;
 	af::array indeksit;
 	bool indS = false;
-	uint32_t kk = subIter + iter * inputScalars.subsets;
+	uint32_t kk = inputScalars.currentSubset + iter * inputScalars.subsets;
 	if (DEBUG) {
+		mexPrintBase("length = %d\n", length);
 		mexPrintBase("y.dims(0) = %d\n", y.dims(0));
 		mexPrintBase("input.dims(0) = %d\n", input.dims(0));
 		mexEval();
@@ -40,7 +41,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			}
 			w_vec.LCP = w_vec.LCP2;
 		}
-		if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)
+		if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
 			w_vec.lambda = w_vec.lambdaFiltered;
 		w_vec.precondTypeMeas[1] = false;
 	}
@@ -67,7 +68,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			input.eval();
 		}
 	}
-	if (MethodList.CPType && inputScalars.subsets > 1) {
+	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
 		vec.p0CP = vec.pCP[subIter].copy();
 	}
 	if (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
@@ -192,6 +193,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (MethodList.POCS)
 			vec.f0POCS = vec.im_os;
 		input = y - input;
+		if (inputScalars.storeResidual) {
+			//residual[kk] = af::sum<float>(af::matmulTN(input, input)) * .5;
+			residual[kk] = af::norm(input);
+			residual[kk] = residual[kk] * residual[kk] * .5f;
+		}
 		input /= w_vec.M[subIter];
 		input.eval();
 	}
@@ -210,9 +216,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			mexEval();
 		}
 		if (inputScalars.storeResidual) {
-			af::array ressa = res.copy();
-			status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, subIter);
-			residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
+			//af::array ressa = res.copy();
+			//status = applyMeasPreconditioning(w_vec, inputScalars, ressa, proj, subIter);
+			//residual[kk] = af::sum<float>(af::matmulTN(res, ressa)) * .5;
+			residual[kk] = af::norm(res);
+			residual[kk] = residual[kk] * residual[kk] * .5f;
 		}
 		status = applyMeasPreconditioning(w_vec, inputScalars, res, proj, subIter);
 		if (status != 0)
@@ -222,7 +230,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			mexPrintBase("max(res) = %f\n", af::max<float>(res));
 			mexEval();
 		}
-		if (w_vec.precondTypeMeas[1] && iter < w_vec.filterIter) {
+		if (w_vec.precondTypeMeas[1] && subIter + iter * inputScalars.subsets < w_vec.filterIter) {
 			if (FINVERSE) {
 				if (inputScalars.verbose >= 3)
 					mexPrint("Computing inverse with circulant matrix");
@@ -258,8 +266,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				}
 				input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res);
 			}
-			if (inputScalars.storeResidual)
-				residual[kk] += static_cast<float>(af::norm(vec.pCP[subIter]) * af::norm(vec.pCP[subIter]) * .5) + af::dot<float>(vec.pCP[subIter], y);
+			//if (inputScalars.storeResidual)
+			//	residual[kk] += static_cast<float>(af::norm(vec.pCP[subIter]) * af::norm(vec.pCP[subIter]) * .5) + af::dot<float>(vec.pCP[subIter], y);
 			input.eval();
 		}
 		else {
@@ -320,7 +328,31 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 		vec.pCP[subIter] = input.copy();
 	}
-	if (MethodList.CPType && inputScalars.subsets > 1) {
+	else if (MethodList.SAGA) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Computing SAGA");
+		if (inputScalars.CT) {
+			input(input < 0.f) = 0.f;
+			if (inputScalars.verbose >= 3)
+				mexPrint("CT mode");
+			if (inputScalars.verbose >= 3 && inputScalars.randoms_correction)
+				mexPrint("Adding scatter data to forward projection");
+			if (inputScalars.randoms_correction)
+				input = af::exp(-input) * inputScalars.flat - (y * af::exp(-input)) / (af::exp(-input) + randomsData);
+			else
+				input = af::exp(-input) * inputScalars.flat - y;
+		}
+		else {
+			if (inputScalars.verbose >= 3)
+				mexPrint("PET/SPECT mode");
+			input = y / (input) - 1.f;
+		}
+		input.eval();
+		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		if (status != 0)
+			return -1;
+}
+	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PDHG with subsets");
 		input -= vec.p0CP;
@@ -331,6 +363,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			mexPrint("Computing FISTA/L1");
 		input -= y;
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
+		if (inputScalars.storeResidual) {
+			//residual[kk] = af::sum<float>(af::matmulTN(input, input)) * .5;
+			residual[kk] = af::norm(input);
+			residual[kk] = residual[kk] * residual[kk] * .5f;
+		}
 		if (status != 0)
 			return -1;
 	}

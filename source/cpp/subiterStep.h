@@ -47,7 +47,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				//if (MethodList.CPType)
 				//	w_vec.sigma2CP = w_vec.sigmaCP;
 			}
-			if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)
+			if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
 				w_vec.lambda = w_vec.lambdaFiltered;
 			w_vec.precondTypeIm[5] = false;
 		}
@@ -75,6 +75,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix);
 		if (status != 0)
 			return -1;
+		if (DEBUG) {
+			mexPrintBase("rhs_os0 = %f\n", af::sum<float>(vec.rhs_os[0]));
+			mexEval();
+		}
 	}
 	if (MethodList.PDDY && MAP)
 		vec.im_os[0] = PDDYApu.copy();
@@ -314,18 +318,35 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexPrint("Computing FISTAL1");
 			status = FISTAL1(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, w_vec.beta, proj, iter, osa_iter, ii);
 		}
+		else if (MethodList.SAGA) {
+			if (inputScalars.verbose >= 3)
+				mexPrint("Computing SAGA");
+			status = SAGA(vec.im_os[ii], inputScalars, w_vec, vec, proj, osa_iter, iter, ii);
+		}
 		if (inputScalars.FISTAAcceleration) {
 			//if ((w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter >= w_vec.filterIter) || !w_vec.precondTypeIm[5]) {
+			//if (osa_iter == inputScalars.subsets - 1) {
 				const float t = w_vec.tFISTA;
-				//if (osa_iter == 0) {
-				w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
-				//}
-				vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu[ii]);
+				if (DEBUG) {
+					mexPrintBase("im_os1 = %f\n", af::sum<float>(vec.im_os[ii]));
+					mexEval();
+				}
+				if (osa_iter + iter > 0)
+					vec.im_os[ii] = vec.im_os[ii] + (t - 1.f) / w_vec.tFISTA * (vec.im_os[ii] - FISTAApu[ii]);
 				af::eval(vec.im_os[ii]);
+				if (ii == inputScalars.nMultiVolumes)
+					w_vec.tFISTA = (1.f + std::sqrt(1.f + 4.f * w_vec.tFISTA * w_vec.tFISTA)) / 2.f;
+				if (DEBUG) {
+					mexPrintBase("im_os = %f\n", af::sum<float>(vec.im_os[ii]));
+					mexPrintBase("FISTAApu = %f\n", af::sum<float>(FISTAApu[ii]));
+					mexPrintBase("t = %f\n", t);
+					mexPrintBase("w_vec.tFISTA = %f\n", w_vec.tFISTA);
+					mexEval();
+				}
 			//}
 		}
 	}
-	if (inputScalars.verbose >= 3)
+	if (inputScalars.verbose >= 3 || DEBUG)
 		mexPrint("Iterative algorithm computed");
 	return status;
 }
