@@ -867,3 +867,6 @@ end
 if ~isfield(options,'maskBPZ')
     options.maskBPZ = 1;
 end
+if ~isfield(options, 'stochasticSubsetSelection')
+    options.stochasticSubsetSelection = false;
+end
