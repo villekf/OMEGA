@@ -40,8 +40,7 @@ if ~isfield(options, 'rayShiftsDetector')
     if options.nRays == 1
         options.rayShiftsDetector = single(zeros(2, 1));
     else
-    options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-
+    %options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     options.rayShiftsDetector = single(zeros(2*options.nRays, 1));
     end
 end
@@ -52,6 +51,7 @@ if ~isfield(options, 'rayShiftsSource')
     options.rayShiftsSource = single(0.2*randn(2*options.nRays, 1));
     %options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     end
+
 end
 if isfield(options, 'maskFP')
     %options.useImages = false;
@@ -64,6 +64,10 @@ else
 end
 if ~isfield(options, 'homeAngles')
     options.homeAngles = 0 * options.angles;
+end
+
+if options.flipImageZ % Flip image by flipping sinograms' z-axis in image space
+    options.SinM = flip(options.SinM, 2);
 end
 
 options.n_rays_transaxial = options.nRays;

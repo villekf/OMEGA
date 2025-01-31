@@ -735,7 +735,13 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 }
 
 #elif defined(SPECT)
-DEVICE void getDetectorCoordinatesSPECT(const CLGLOBAL float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
+DEVICE void getDetectorCoordinatesSPECT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz,
+#else
+	CONSTANT float* d_xyz, 
+#endif
+    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
 	int id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
@@ -761,9 +767,9 @@ DEVICE void getDetectorCoordinatesSPECT(const CLGLOBAL float* d_xyz, CONSTANT fl
 		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.;
 	}
 #endif
-	(*s).x += 1000000 * ((*s).x - (*d).x);
-	(*s).y += 1000000 * ((*s).y - (*d).y);
-	(*s).z += 1000000 * ((*s).z - (*d).z);
+	(*s).x += 1000 * ((*s).x - (*d).x);
+	(*s).y += 1000 * ((*s).y - (*d).y);
+	(*s).z += 1000 * ((*s).z - (*d).z);
 }
 #else
 #if defined(RAW) || defined(SENS)

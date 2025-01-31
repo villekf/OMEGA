@@ -18,24 +18,31 @@ function [x, z] = get_coordinates_SPECT(options)
         % The (gantry angle + home angle) should be relative to positive x axis with positive rotation direction counterclockwise
         % The swivel angle should also be relative to positive x axis with positive rotation direction counterclockwise
         alpha1 = options.angles(ii); 
-        alpha2 = options.homeAngles(ii) - 360/(2*pi)*options.offangle;
-        alpha3 = options.swivelAngles(ii) - 360/(2*pi)*options.offangle; 
-
-        if ~options.flip_image
-            alpha2 = alpha2 + 180;
-            alpha3 = alpha3 + 180;
-        end
+        alpha3 = options.swivelAngles(ii);
         
-        x(4, ii) = r1 * cosd(alpha1+alpha2) + r2 * cosd(alpha3);
-        x(5, ii) = r1 * sind(alpha1+alpha2) + r2 * sind(alpha3);
+        x(4, ii) = r1 * cosd(alpha1) + r2 * cosd(alpha3);
+        x(5, ii) = r1 * sind(alpha1) + r2 * sind(alpha3);
         x(6, ii) = 0;
         x(1, ii) = x(4, ii) + options.colL * cosd(alpha3);
         x(2, ii) = x(5, ii) + options.colL * sind(alpha3);
         x(3, ii) = 0;
         
-        z(1, ii) = options.crXY * cosd(alpha3-90);
-        z(2, ii) = options.crXY * sind(alpha3-90);
+        z(1, ii) = options.crXY * cosd(alpha3+90);
+        z(2, ii) = options.crXY * sind(alpha3+90);
     end
+
+    if options.flipImageX
+        x(1, :) = -x(1, :);
+        x(4, :) = -x(4, :);
+        z(1, :) = -z(1, :);
+    end
+
+    if options.flipImageY
+        x(2, :) = -x(2, :);
+        x(5, :) = -x(5, :);
+        z(2, :) = -z(2, :);
+    end
+
     x = cast(x, options.cType);
     z = cast(z, options.cType);
 end

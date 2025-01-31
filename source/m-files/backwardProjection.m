@@ -58,7 +58,15 @@ if options.projector_type == 6
         kuvaRot = permute(kuvaRot, [2, 1, 3]);
         apu = kuvaRot;
         uu = 1;
+        if options.attenuation_correction
+            attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
+            attenuationImage = cumsum(attenuationImage, 1, 'reverse');
+            attenuationImage = exp(-options.crXY * attenuationImage);
+        end
         for ll = 1 : options.Ny
+            if options.attenuation_correction
+                kuvaRot(:, :, uu) = kuvaRot(:, :, uu) .* attenuationImage(:, :, uu);
+            end
             kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             uu = uu + 1;
         end
@@ -78,7 +86,15 @@ if options.projector_type == 6
             apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
             kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
             apu = kuvaRot(:,:,1);
+            if options.attenuation_correction
+                attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
+                attenuationImage = cumsum(attenuationImage, 1, 'reverse');
+                attenuationImage = exp(-options.crXY * attenuationImage);
+            end
             for ll = 1 : options.Ny
+                if options.attenuation_correction
+                    kuvaRot(:, :, ll) = kuvaRot(:, :, ll) .* attenuationImage(:, :, ll);
+                end
                 kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             end
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);

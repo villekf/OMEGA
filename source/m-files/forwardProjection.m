@@ -67,6 +67,11 @@ if options.projector_type == 6
         for kk = 1 : koko
             kuvaRot = imrotate(apuArr, -options.angles(u1), 'bilinear','crop');
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
+            if options.attenuation_correction
+                attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
+                attenuationImage = cumsum(attenuationImage, 1, 'reverse');
+                attenuationImage = exp(-options.crXY * attenuationImage);
+            end
             for ll = 1 : size(kuvaRot,3)
                 apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1));
                 if size(apu,1) > size(kuvaRot,1) || size(apu,2) > size(kuvaRot,2)
@@ -76,7 +81,11 @@ if options.projector_type == 6
             end
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            kuvaRot = permute(sum(kuvaRot, 1), [2, 3, 1]);
+            if options.attenuation_correction
+                kuvaRot = kuvaRot .* attenuationImage;
+            end
+            kuvaRot = sum(kuvaRot, 1);
+            kuvaRot = permute(kuvaRot, [2, 3, 1]);
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end

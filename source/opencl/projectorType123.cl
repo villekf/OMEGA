@@ -866,11 +866,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #if defined(SPECT) // Ray length inside BP mask
 		float L_SPECT = 0.f;
-#ifdef N_RAYS
+//#ifdef N_RAYS
 		temp = temp * (L * CFLOAT(N_RAYS));
-#else
-		temp = temp * L;
-#endif
+//#else
+//		temp = temp * L;
+//#endif
 #endif
 
 		for (uint ii = 0u; ii < Np; ii++) {
