@@ -9,6 +9,9 @@
 
 clear
 
+options.fpath = '/home/niilo/Documents/tomodata/Pro.specta/250131_JASZCZAK/1.3.12.2.1107.5.6.3.100219.30000024110807260607300000011/1.3.12.2.1107.5.6.3.100219.30000024110811241097600000115/1.3.12.2.1107.5.6.3.100219.30000024110811241097600000162.dcm';
+options.fpathCT = '/home/niilo/Documents/tomodata/Pro.specta/250131_JASZCZAK/1.3.12.2.1107.5.6.3.100219.30000024110807260607300000011/1.3.12.2.1107.5.6.3.100219.30000024110810324303200000226';
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17,15 +20,7 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% Header file location
-info = dicominfo('45931349');
 
-% Load projection images
-options.SinM = squeeze(dicomread('45931349'));
-
-options.SinM = permute(options.SinM, [2 1 3]);
-
-options.SinM = options.SinM(:,64/4+1:128-64/4,:);
 
 %%% Crystal thickness (mm)
 options.cr_p = 9.525;
@@ -38,7 +33,7 @@ options.crXY = 4.7952;
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x =  4.7952*128;
+options.FOVa_x =  options.crXY*128;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -48,30 +43,6 @@ options.FOVa_y = options.FOVa_x;
 % This is unused if projector_type = 6. Cubic voxels are always assumed!
 options.axial_fov = 4.7952*128;
 
-% Number of rows in a projection image
-options.nRowsD = size(options.SinM, 1);
-
-% Number of columns in a projection image
-options.nColsD = size(options.SinM, 2);
-
-% Total number of projections
-options.nProjections = size(options.SinM,3);
-
-% Number of detector heads
-options.nHeads = 2;
-
-% Starting angles for both heads
-startAngle1 = info.DetectorInformationSequence.Item_1.StartAngle;
-startAngle2 = info.DetectorInformationSequence.Item_2.StartAngle;
-
-% Increment value for the projection angles
-angleIncrement = info.RotationInformationSequence.Item_1.AngularStep;
-
-% Projection angles
-options.angles = [(startAngle2 : angleIncrement : startAngle2 + angleIncrement * (options.nProjections / options.nHeads - 1))';(startAngle1 : angleIncrement : startAngle1 + angleIncrement * (options.nProjections / options.nHeads - 1))'];
-
-% Distances from the panel to the center of rotation
-options.radiusPerProj = [info.DetectorInformationSequence.Item_1.RadialPosition;info.DetectorInformationSequence.Item_2.RadialPosition];
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -101,10 +72,26 @@ options.Ny = 128;
 
 %%% Z-direction (number of slices) (axial)
 % If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 96;
+options.Nz = 128;
 
-%%% Flip the image (in vertical direction)?
-options.flip_image = false;
+%%% Flip the image?
+options.flipImageX = false;
+options.flipImageY = false;
+options.flipImageZ = false;
+
+%%% Use back projection mask?
+options.useMaskBP = false;
+
+%%% Attenuation correction
+options.attenuation_correction = true;
+
+%%% HU scaling (affine map y=ax+b)
+options.HU.slope = 0.0000109;
+options.HU.intercept = 0.0151;
+% intercept = [0.151 0.155];
+% slope = [0.000149 0.000109];
+% intercept = [0.151 0.151];
+% slope = [0.000152 0.000094];
 
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
@@ -119,6 +106,7 @@ options.offangle = (3*pi)/2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+options = loadProSpectaData(options);
 
 
 

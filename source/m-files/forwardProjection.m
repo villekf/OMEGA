@@ -65,29 +65,68 @@ if options.projector_type == 6
             apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
         end
         for kk = 1 : koko
-            kuvaRot = imrotate(apuArr, -options.angles(u1), 'bilinear','crop');
+            kuvaRot = apuArr;
+            kuvaRot = imrotate(kuvaRot, 180-options.angles(u1), 'bilinear','crop');
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
             if options.attenuation_correction
-                attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1, 'reverse');
+                attenuationImage = options.vaimennus;
+                attenuationImage = imrotate(attenuationImage, 180-options.angles(u1), 'bilinear','crop');
+                attenuationImage = cumsum(attenuationImage, 1);
                 attenuationImage = exp(-options.crXY * attenuationImage);
+                attenuationImage = permute(attenuationImage, [3, 2, 1]);
             end
             for ll = 1 : size(kuvaRot,3)
-                apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1));
-                if size(apu,1) > size(kuvaRot,1) || size(apu,2) > size(kuvaRot,2)
-                    apu = apu((size(apu,1) - size(kuvaRot,1))/2 + 1 : end - (size(apu,1) - size(kuvaRot,1))/2, (size(apu,2) - size(kuvaRot,2))/2 + 1 : end - (size(apu,2) - size(kuvaRot,2))/2);
-                end
+                apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
                 kuvaRot(:,:,ll) = apu;
+                if options.attenuation_correction
+                    apuAtt = conv2(attenuationImage(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
+                    attenuationImage(:, :, ll) = apuAtt;
+                end
             end
-            kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
             if options.attenuation_correction
+                attenuationImage = permute(attenuationImage, [3, 2, 1]);
                 kuvaRot = kuvaRot .* attenuationImage;
             end
+            kuvaRot = kuvaRot(options.blurPlanes(u1):end, :, :);
             kuvaRot = sum(kuvaRot, 1);
             kuvaRot = permute(kuvaRot, [2, 3, 1]);
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
+        end
+    end
+    A = [];
+    outputFP = outputFP(:);
+    outputFP(outputFP < options.epps) = options.epps;
+elseif options.projector_type == 7
+    outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
+    voxelXY = [options.FOVa_x/double(options.Nx); options.FOVa_y/double(options.Ny)]; % Voxel size X and Y [mm]
+    voxelZ = options.axial_fov/double(options.Nz); % Voxel size Z [mm]
+    for ii = loopVar
+        u1 = options.uu;
+        if useCell
+            inputVolume = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        else
+            inputVolume = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+        end
+        for kk = 1 : koko
+            apuFP = inputVolume;
+            P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector panel normal
+            %disp(min(apuFP, [], 'all'))
+            %disp(max(apuFP, [], 'all'))
+            apuFP = imtranslate(apuFP, [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate image by -p0      
+            apuFP = imrotate(apuFP, -options.swivelAngles(u1)+180, 'bilinear', 'crop'); % Rotate the image by the swivel angle
+            targetSize = round([ % Determine the target size of image volume
+                options.crXY * options.nRowsD / voxelXY(2), ... % Y-axis (first dimension)
+                size(apuFP, 2), ... % X-axis (second dimension)
+                options.crXY * options.nColsD / voxelZ % Z-axis (third dimension)
+            ]);
+            apuFP = resize(apuFP, targetSize, 'side', 'both'); % Crop BP volume to match FP physical dimensions
+            apuFP = sum(apuFP, 2); % Sum along the X-axis (second dimension)
+            apuFP = squeeze(apuFP); % Remove singleton dimension
+            apuFP = imresize(apuFP, size(outputFP(:, :, 1)), 'bilinear'); % Resize to match FP size
+            outputFP(:, :, kk) = outputFP(:, :, kk) + apuFP; % Update output array
+            u1 = u1 + 1; % Increment counter
         end
     end
     A = [];

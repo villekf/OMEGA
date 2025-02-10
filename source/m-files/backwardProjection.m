@@ -58,22 +58,25 @@ if options.projector_type == 6
         kuvaRot = permute(kuvaRot, [2, 1, 3]);
         apu = kuvaRot;
         uu = 1;
-        if options.attenuation_correction
-            attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
-            attenuationImage = cumsum(attenuationImage, 1, 'reverse');
-            attenuationImage = exp(-options.crXY * attenuationImage);
-        end
         for ll = 1 : options.Ny
-            if options.attenuation_correction
-                kuvaRot(:, :, uu) = kuvaRot(:, :, uu) .* attenuationImage(:, :, uu);
-            end
             kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             uu = uu + 1;
         end
         kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
         apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
-        apuBP = imrotate(apuBP, options.angles(u1), 'bilinear','crop');
+        apuBP = imrotate(apuBP, 180+options.angles(u1), 'bilinear','crop');
+        if options.attenuation_correction
+            attenuationImage = options.vaimennus;
+            attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
+            attenuationImage = cumsum(attenuationImage, 1);
+            attenuationImage = exp(-options.crXY * attenuationImage);
+            %attenuationImageSum = sum(attenuationImage, 1);
+            %for ii = 1:size(attenuationImage, 1)
+            %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
+            %end
+            apuBP = apuBP .* attenuationImage;
+        end
         apuBP2(:, kk) = apuBP(:);
         u1 = u1 + 1;
     end
@@ -86,21 +89,24 @@ if options.projector_type == 6
             apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
             kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
             apu = kuvaRot(:,:,1);
-            if options.attenuation_correction
-                attenuationImage = imrotate(options.vaimennus, -options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1, 'reverse');
-                attenuationImage = exp(-options.crXY * attenuationImage);
-            end
             for ll = 1 : options.Ny
-                if options.attenuation_correction
-                    kuvaRot(:, :, ll) = kuvaRot(:, :, ll) .* attenuationImage(:, :, ll);
-                end
                 kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
             end
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
             apuSumm(options.blurPlanes(u1):end, :, :) = kuvaRot;
-            apuSumm = imrotate(apuSumm, options.angles(u1), 'bilinear', 'crop');
+            apuSumm = imrotate(apuSumm, 180+options.angles(u1), 'bilinear', 'crop');
+            if options.attenuation_correction
+                attenuationImage = options.vaimennus;
+                attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
+                attenuationImage = cumsum(attenuationImage, 1);
+                attenuationImage = exp(-options.crXY * attenuationImage);
+                %attenuationImageSum = sum(attenuationImage, 1);
+                %for ii = 1:size(attenuationImage, 1)
+                %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
+                %end
+                apuSumm = apuSumm .* attenuationImage;
+            end
             apuBP2(:, kk) = apuSumm(:);
             u1 = u1 + 1;
         end
@@ -108,6 +114,57 @@ if options.projector_type == 6
         sensIm(sensIm < options.epps) = 1;
     end
     options.ub = options.ub + koko;
+elseif options.projector_type == 7
+    fProj = reshape(input, options.nRowsD, options.nColsD, koko); % Forward projections (FP)
+    output = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType); % Initialize output backprojection (image volume)
+    outputHelp = zeros(options.Nx(1), options.Ny(1), options.Nz(1)); % Initialize helper array used for scaling the output BP
+    voxelXY = [options.FOVa_x/double(options.Nx); options.FOVa_y/double(options.Ny)]; % Voxel size X and Y [mm]
+    voxelZ = options.axial_fov/double(options.Nz); % Voxel size Z [mm]
+    u1 = options.ub; % ???????????????????? Some index variable ???????????????
+    detectorSizeYinImageSpace = round(options.nRowsD * options.crXY / voxelXY(2)); % Target size of FP, Y-dimension
+    detectorSizeZinImageSpace = round(options.nColsD * options.crXY / voxelZ); % Target size of FP, Z-dimension
+
+    for kk = 1 : koko % Loop over each FP
+        apuBP = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType); % Helper BP variable, this contains the BP of one FP.
+        apuFP = fProj(:, :, kk); % Select current forward projection
+        apuFP = imresize(apuFP, [detectorSizeYinImageSpace, detectorSizeZinImageSpace]); % Resize the FP according to size computations done outside the loop    
+        apuFP = permute(apuFP, [1, 3, 2]); % Transform to YZ-axes
+        apuFP = repmat(apuFP, 1, options.Ny, 1); % BP without padding
+        apuBP = resize(apuFP, size(apuBP), 'side', 'both'); % Pad apuFP and set it to apuBP
+        P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector normal
+        apuBP = imrotate(apuBP, options.swivelAngles(u1)+180, 'bilinear','crop'); % Rotate the BP volume
+        apuBP = imtranslate(apuBP, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the BP volume
+        output = output + apuBP; % Add to the output BP
+
+        outputHelp = outputHelp + single(apuBP ~= 0);
+        u1 = u1 + 1; % Increment counter
+    end
+    output = output .* outputHelp; % Scale output
+    %if isfield(options, 'maskBP'); output = output .* options.maskBP; end; % Apply BP mask
+    output(output < options.epps & output >= 0) = options.epps; % Set output values less than threshold to zero
+    %volume3Dviewer(output)
+    output = output(:);
+    if noSensIm == 0; % Sensitivity image
+        sensIm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
+        u1 = options.ub;
+        for kk = 1 : koko
+            apuBP = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
+            apuFP = ones(size(fProj(:,:,1)), options.cType);
+            apuFP = imresize(apuFP, [detectorSizeYinImageSpace, detectorSizeZinImageSpace]); % Resize the FP according to size computations done outside the loop
+            apuFP = permute(apuFP, [1, 3, 2]); % Transform to YZ-axes
+            apuFP = repmat(apuFP, 1, options.Ny, 1); % BP without padding
+            apuBP = resize(apuFP, size(apuBP), 'side', 'both'); % Pad apuFP and set it to apuBP
+            P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector normal
+            apuBP = imrotate(apuBP, options.swivelAngles(u1)+180, 'bilinear','crop'); % Rotate the BP volume
+            apuBP = imtranslate(apuBP, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the BP volume
+            sensIm = sensIm + apuBP;
+            u1 = u1 + 1;
+        end
+        sensIm = sensIm ./ outputHelp;
+        sensIm(sensIm < options.epps | isnan(sensIm)) = 1;
+        sensIm = sensIm(:);
+    end
+    options.ub = options.ub + koko; % Update counter variable
 elseif options.implementation == 4
     for ii = 1 : options.nMultiVolumes + 1
         if outputCell
