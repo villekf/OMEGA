@@ -218,6 +218,8 @@ class ProjectorClass {
 			if (inputScalars.maskFPZ > 1)
 				options.push_back("-DMASKFP3D");
 		}
+		if (inputScalars.useTotLength)
+			options.push_back("-DTOTLENGTH");
 		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
 			if (inputScalars.maskBPZ > 1)

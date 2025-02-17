@@ -171,6 +171,7 @@ def transferData(options):
     options.param.useFDKWeights = ctypes.c_bool(options.useFDKWeights)
     options.param.useIndexBasedReconstruction = ctypes.c_bool(options.useIndexBasedReconstruction)
     options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
+    options.param.useTotLength = ctypes.c_bool(options.useTotLength)
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)

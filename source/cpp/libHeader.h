@@ -306,6 +306,8 @@ struct inputStruct {
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
     bool stochasticSubsetSelection = false;
+    // Use the total ray length when computing probability in PET and SPECT
+    bool useTotLength = true;
     // Compute the selected algorithm/prior
     bool OSEM = false;
     bool LSQR = false;
@@ -824,6 +826,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.TGV2D = options.use2DTGV;
     inputScalars.adaptiveType = options.PDAdaptiveType;
     inputScalars.storeFP = options.storeFP;
+    inputScalars.useTotLength = options.useTotLength;
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;

@@ -60,7 +60,7 @@ typedef struct Weighting_ {
 		* alphaPrecond = nullptr, * thetaCP = nullptr, * tauCP2 = nullptr, * tauCP = nullptr, * sigmaCP = nullptr, * sigma2CP = nullptr, * kerroin4 = nullptr, * lambdaFiltered = nullptr, 
 		* weights = nullptr, *listCoord = nullptr, * RDP_ref = nullptr;
 	uint32_t* rekot = nullptr, * distInt = nullptr;
-	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr;
+	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	float epsilon_mramla = 0.f, U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
 		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,

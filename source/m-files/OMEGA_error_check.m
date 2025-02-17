@@ -269,8 +269,9 @@ end
 if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
-if (options.CGLS || options.LSQR || options.FISTA || options.FISTAL1) && options.subsets > 1
-    warning('CGLS/LSQR/FISTA do not support subsets! Setting subsets to 1.')
+% if (options.CGLS || options.LSQR || options.FISTA || options.FISTAL1) && options.subsets > 1
+if (options.CGLS || options.LSQR) && options.subsets > 1
+    warning('CGLS or LSQR do not support subsets! Setting subsets to 1.')
     options.subsets = 1;
 end
 if options.subsets <= 0
@@ -879,7 +880,7 @@ if options.verbose > 0
             disp('Arc correction ON.')
         end
         if options.use_raw_data && ~options.CT
-            if partitions == 1
+            if partitions == 1 || isempty(partitions)
                 dispi = 'Using STATIC raw data';
             else
                 dispi = 'Using DYNAMIC raw data';

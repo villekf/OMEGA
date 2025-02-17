@@ -83,12 +83,19 @@ if mod(options.TOF_bins, 2) == 0 && options.TOF_bins > 1
     error('Number of TOF bins has to be odd')
 end
 
+if numel(options.partitions) > 1
+    partitions = numel(options.partitions);
+elseif isempty(options.partitions)
+    partitions = 1;
+else
+    partitions = options.partitions;
+end
 alku = double(options.start);
 loppu = options.end;
 if isinf(loppu)
     loppu = 1e9;
 end
-vali = double((loppu - alku)/options.partitions);
+vali = double((loppu - alku)/partitions);
 % tot_time = options.tot_time;
 % if options.useIndexBasedReconstruction && ~options.use_root
 %     error('Detector indices can only be saved from ROOT data!')
@@ -108,15 +115,15 @@ if options.useIndexBasedReconstruction && nargout < 7
     error('Too little of output arguments when extracting detector indices! There must be at least 7 outputs!')
 end
 
-if numel(options.partitions) == 1 && options.partitions > 1
+if isscalar(partitions) && partitions > 1
     if isinf(options.end)
         error('End time is infinity, but more than one time-step selected. Use either one time-step or input a finite end time.')
     end
     options.partitions = repmat(vali, options.partitions, 1);
 end
 
-Nt = numel(options.partitions);
-partitions = options.partitions;
+Nt = numel(partitions);
+% partitions = options.partitions;
 
 if ispc && options.use_root
     options.legacyROOT = true;
