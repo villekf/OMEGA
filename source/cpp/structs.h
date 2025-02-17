@@ -40,9 +40,9 @@ typedef struct TVdata_ {
 typedef struct AF_im_vectors_ {
 	af::array C_co, dU;
 	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
-	std::vector<af::array> im_os, im_os_blurred, rhs_os, pCP, qProxTGV, vProxTGV, qProxTV, qProx;
+	std::vector<af::array> im_os, im_os_blurred, rhs_os, pCP, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
 	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS;
-	std::vector<std::vector<af::array>> Summ;
+	std::vector<std::vector<af::array>> Summ, stochasticHelper;
 } AF_im_vectors;
 #endif
 
@@ -86,7 +86,7 @@ typedef struct RecMethods_ {
 	bool MRP = false, Quad = false, Huber = false, L = false, FMH = false, WeightedMean = false, TV = false, AD = false, APLS = false, TGV = false, NLM = false, RDP = false, GGMRF = false, 
 		ProxTV = false, ProxTGV = false, ProxRDP = false, ProxNLM = false, hyperbolic = false;
 	bool OSLOSEM = false, MAPOSEM = false, MBSREM = false, BSREM = false, ROSEMMAP = false, ROSEMOSL = false, RBIMAP = false, RBIOSL = false,
-		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false;
+		PKMA = false, FISTAL1 = false, SPS = false, PDHG = false, PDHGKL = false, FISTA = false, PDHGL1 = false, CV = false, PDDY = false, POCS = false, SAGA = false;
 	bool MAP = false;
 	bool CUSTOM = false;
 	bool initAlg = false;

@@ -313,7 +313,10 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexPrintBase("vec.qProxTGV0 = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
 	}
+	//if (osa_iter > 100)
 	status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[osa_iter], w_vec.tauCP[0], proj);
+	//else
+	//status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[osa_iter], 1.f, proj);
 #else
 	mexPrint("Proximal TGV not supported with CPU implementation!");
 	status = -1;
@@ -381,7 +384,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	int status = 0;
 	if (iter)
 		dU = &vec.im_os[0];
-	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS) {
+	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA) {
 		vec.dU = af::constant(0.f, vec.im_os[0].elements());
 		dU = &vec.dU;
 	}
@@ -449,6 +452,8 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.ProxTGV || MethodList.TGV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TGV prior");
+		if (osa_iter >= 100)
+			w_vec.sigma2CP = w_vec.sigmaCP;
 		status = proxTGV(vec.im_os[0], inputScalars, vec, proj, w_vec, *dU, osa_iter);
 	}
 	else if (MethodList.ProxTV) {

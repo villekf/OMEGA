@@ -23,6 +23,7 @@
 #include "subiterStep.h"
 #include "computeForwardProject.h"
 #include "iterStep.h"
+#include <random>
 
 /// <summary>
 /// The main reconstruction function. This function performs all the image reconstruction duties. First it transfers the
@@ -79,6 +80,9 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 		// Complete data
 		vec.C_co = af::constant(0.f, inputScalars.im_dim[0], inputScalars.subsets);
 	}
+	std::random_device rd;
+	std::mt19937 rng(rd());
+	std::uniform_int_distribution<int> distribution(0, inputScalars.subsets - 1);
 
 
 	int status = 0;
@@ -856,6 +860,10 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 			}
 		}
 
+		if (inputScalars.stochastic) {
+			inputScalars.subsets = 1;
+			//inputScalars.subsetsUsed = 1;
+		}
 		// FDK only computations
 		if (MethodList.FDK) {
 			inputScalars.Niter = 0;
@@ -940,6 +948,11 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 
 			// Loop through the subsets
 			for (uint32_t osa_iter = inputScalars.osa_iter0; osa_iter < inputScalars.subsetsUsed; osa_iter++) {
+				inputScalars.currentSubset = osa_iter;
+				if (inputScalars.stochastic) {
+					osa_iter = distribution(rng);
+					inputScalars.currentSubset = 0;
+				}
 				if (inputScalars.verbose >= 3)
 					mexPrintVar("Starting sub-iteration ", osa_iter + 1);
 
@@ -958,7 +971,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						if (inputScalars.subsetsUsed > 1 && inputScalars.subsetType < 8) {
 							const F** fptr = new const F* [length[osa_iter]];
 							for (int ii = 0; ii < length[osa_iter]; ii++)
-								fptr[ii] = const_cast<const F*>(&Sin[osa_iter + ii * inputScalars.subsets]);
+								fptr[ii] = const_cast<const F*>(&Sin[osa_iter + ii * inputScalars.subsetsUsed]);
 							mData[0] = af::array(length[osa_iter], *fptr, AFTYPE).as(f32);
 							af::sync();
 							delete[] fptr;
@@ -966,7 +979,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						else
 							for (int ii = 0; ii < length[osa_iter]; ii++)
 								mData[0](af::seq(inputScalars.nRowsD* inputScalars.nColsD* ii, inputScalars.nRowsD* inputScalars.nColsD* (ii + 1) - 1)) = af::array(inputScalars.nRowsD * inputScalars.nColsD, 
-									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsets], afHost).as(f32);
+									&Sin[osa_iter * inputScalars.nRowsD * inputScalars.nColsD + inputScalars.nRowsD * inputScalars.nColsD * ii * inputScalars.subsetsUsed], afHost).as(f32);
 						if (inputScalars.CT && MethodList.CPType)
 							mData[0] = af::log(inputScalars.flat / mData[0]);
 					}
@@ -1051,6 +1064,10 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							outputFP.host(FPapu);
 							af::sync();
 						}
+						//if (inputScalars.storeResidual) {
+						//	residual[iter * inputScalars.subsets + osa_iter] = af::norm(outputFP - mData[subIter]);
+						//	residual[iter * inputScalars.subsets + osa_iter] = residual[iter * inputScalars.subsets + osa_iter] * residual[iter * inputScalars.subsets + osa_iter] * .5f;
+						//}
 						status = computeForwardStep(MethodList, mData[subIter], outputFP, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter, 0, residual);
 						if (status != 0)
 							return;
@@ -1117,7 +1134,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						if (DEBUG)
 							mexPrintVar("Starting largeDim ", inputScalars.largeDim);
 						af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
-						for (int ii = 0; ii < inputScalars.subsets; ii++) {
+						for (int ii = 0; ii < inputScalars.subsetsUsed; ii++) {
 							largeDimFirst(inputScalars, proj, ii);
 							if (iter == 0 && osa_iter == 0)
 								vec.im_os[0] = af::constant(1e-4f, inputScalars.lDimStruct.imDim[ii]);
@@ -1153,7 +1170,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 
 						af::sync();
 
-						for (int ii = 0; ii < inputScalars.subsets; ii++) {
+						for (int ii = 0; ii < inputScalars.subsetsUsed; ii++) {
 							largeDimFirst(inputScalars, proj, ii);
 							if (iter == 0 && osa_iter == 0) {
 								vec.im_os[0] = af::constant(1e-4f, inputScalars.lDimStruct.imDim[ii]);
@@ -1254,7 +1271,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 
 				}
 
-				if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1) {
+				if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1 && inputScalars.stochastic == false) {
 					mexPrintBase("Sub-iteration %d complete\n", osa_iter + 1u);
 					mexEval();
 				}
@@ -1264,7 +1281,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 
 				proj.memSize -= (sizeof(float) * totDim) / 1048576ULL;
 
-				if (break_iter)
+				if (break_iter || inputScalars.stochastic)
 					break;
 
 				af::deviceGC();

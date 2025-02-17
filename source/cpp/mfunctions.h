@@ -67,6 +67,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.loadTOF = getScalarBool(options, 0, "loadTOF");
 	inputScalars.storeResidual = getScalarBool(options, 0, "storeResidual");
 	inputScalars.FISTAAcceleration = getScalarBool(options, 0, "FISTA_acceleration");
+	inputScalars.stochastic = getScalarBool(options, 0, "stochasticSubsetSelection");
 	if (inputScalars.scatter == 1U) {
 		inputScalars.size_scat = mxGetNumberOfElements(mxGetCell(getField(options, 0, "ScatterC"), 0));
 	}
@@ -564,17 +565,17 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.U = getScalarFloat(getField(options, 0, "U"), -42);
 	}
 	// Relaxation parameters
-	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS)
+	if (MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.SART || MethodList.POCS || MethodList.SAGA)
 		w_vec.lambda = getSingles(options, "lambda");
 	if (MethodList.PKMA) {
 		w_vec.alphaM = getSingles(options, "alpha_PKMA");
 		w_vec.lambda = getSingles(options, "lambda");
 	}
-	if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)) {
+	if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
 		w_vec.lambdaFiltered = w_vec.lambda;
 		w_vec.lambda = getSingles(options, "lambdaFiltered");
 	}
-	if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA)) {
+	if (DEBUG && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
 		mexPrintBase("w_vec.lambda[0] = %f\n", w_vec.lambda[0]);
 		mexEval();
 	}
@@ -726,6 +727,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.CV = getScalarBool(getField(options, 0, "CV"), -61);
 	MethodList.PDDY = getScalarBool(getField(options, 0, "PDDY"), -61);
 	MethodList.POCS = getScalarBool(getField(options, 0, "ASD_POCS"), -61);
+	MethodList.SAGA = getScalarBool(getField(options, 0, "SAGA"), -61);
 
 	// Whether MAP/prior-based algorithms are used
 	MethodList.MAP = getScalarBool(getField(options, 0, "MAP"), -61);

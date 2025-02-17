@@ -17,20 +17,20 @@ function varList = recNames(varargin)
 
 % Add Any MAP algorithm here (algorithms that can use gradient-based
 % priors)
-varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'ASD_POCS'};
+varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'ASD_POCS';'SAGA'};
 % Add any non-MAP/prior-based algorithm to this list (or algorithms with
 % fixed prior)
 OS = {'OSEM';'MRAMLA';'RAMLA';'ROSEM';'RBI';'DRAMA';'COSEM';'ECOSEM';'ACOSEM';'LSQR';'CGLS';'FISTA'; 'FISTAL1';'FDK';'SART'};
 % Algorithms that are not built into the OpenCL kernel of projector types
 % 1/2/3. This will automatically select e.g. projector_type = 11 instead of
 % projector_type = 1.
-varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS'};
+varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA'};
 % Algorithms that should not have positivity constraint
 varNeg = {'LSQR';'CGLS';'FDK';'SART'};
 % Algorithms that support image-based preconditioners
-varPreCondIm = {'MRAMLA'; 'MBSREM'; 'FISTA';'FISTAL1'; 'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY'};
+varPreCondIm = {'MRAMLA'; 'MBSREM'; 'FISTA';'FISTAL1'; 'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SAGA'};
 % Algorithms that support measurement-based preconditioners
-varPreCondMeas = {'MRAMLA'; 'MBSREM';'FISTA';'PKMA';'SPS'; 'PDHG';'PDHGKL';'PDHGL1';'FISTAL1';'PDDY'};
+varPreCondMeas = {'MRAMLA'; 'MBSREM';'FISTA';'PKMA';'SPS'; 'PDHG';'PDHGKL';'PDHGL1';'FISTAL1';'PDDY';'SAGA'};
 % Algorithms that require linearized data
 varLin = {'LSQR';'CGLS'; 'FISTA'; 'FISTAL1';'PDHG';'PDHGL1';'PDDY';'FDK';'SART';'ASD_POCS'};
 % Add your new prior to this list (before 'custom')
@@ -51,7 +51,7 @@ varAlgoFull = {'Ordered Subsets Expectation Maximization (OSEM)'; 'Modified Row-
     'Block-sequential regularized expectation maximization (BSREM)'; 'Modified block-sequential regularized expectation maximization (MBSREM)';...
     'ROSEM MAP (ROSEM_MAP)'; 'One-step-late RBI (OSL_RBI)'; 'One-step-late COSEM (OSL_COSEM)'; 'Preconditioned Krasnoselski-Mann algorithm (PKMA)';...
     'Separable paraboloidal surrogates (SPS)'; 'Primal-dual hybrid gradient (PDHG)'; 'Primal-dual hybrid gradient with Kullback-Leibler divergence (PDHGKL)';...
-    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Primal-dual Davis-Yin algorithm';'Condat-Vu algorithm';'ASD-POCS'};
+    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Primal-dual Davis-Yin algorithm';'Condat-Vu algorithm';'ASD-POCS';'SAGA'};
 if ~isempty(varargin) && varargin{1} == 0
     varList = upper([OS(:);varMAP(:)]);
 elseif ~isempty(varargin) && varargin{1} == 1

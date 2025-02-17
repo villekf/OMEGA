@@ -1,5 +1,62 @@
 # Release notes
 
+## OMEGA v2.1.0
+
+### Breaking changes
+
+- SPECT behavior changed with projector type 1
+  - This is now closer to CT-functionality, meaning that subsets are projection-based
+  - Subset types 8-11 are now supported instead of 0, 1, and 3
+  - You'll need to switch the subset type to a supported one after updating
+  - Should be more memory efficient than the previous version
+  
+- Most new features will be restricted to implementation 2 now and in the future
+  
+### New features
+
+- Added support for 3D masks
+  - Forward and backward projection masks can now be either 2D or 3D
+  - In 2D case, the same mask is used at each slice/projection/sinogram
+  - In 3D case, you can specify a unique mask for each
+  - Needs to be the same size as the image/measurement data
+  - Probably won't work with multi-resolution reconstruction
+  - Idea is the same as before, pixels/voxels with 1 are included, pixels/voxels with 0 are omitted
+  - Implementation 2 only!
+  
+- Added subset support for FISTA
+  - Implementation 2 only!
+
+- Added another FISTA acceleration scheme
+  - Select with `options.FISTAType`, use either 0 or 1
+  - Implementation 2 only!
+  
+- FISTA acceleration can now be used with any algorithm
+  - Enable with `options.FISTA_acceleration`
+  - Can lead to divergence!
+  - Implementation 2 only!
+  
+- Added support for stochastic subset selection
+  - Subsets are selected randomly during the reconstruction
+  - implementation 2 only!
+  
+- Added support for SAGA algorithm, both emission and transmission likelihood
+  - Implementation 2 only!
+  
+- Added support for attenuation correction when using projector type 6 (rotation-based SPECT projector)
+
+- Custom reconstructions are now supported with projector type 1 with SPECT data in Python
+  - Functionality is the same as with PET, CT, or the SPECT rotation-based projector
+  - Easily create your own algorithms by using the built-in operators for forward and/or backward projections
+  - Full GPU support
+  
+### Bug fixes and enhancements
+
+- Hybrid projector 45 wasn't using the correct interpolation length before, this has been fixed
+
+- Fixed weighting when source and/or detector are inside the FOV
+
+- The volume of intersection ray tracer (projector type 3) was previously incorrectly weighted
+
 ## OMEGA v2.0.0
 
 ### Breaking changes
