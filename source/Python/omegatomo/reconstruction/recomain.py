@@ -316,13 +316,12 @@ def transferData(options):
     options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     #For SPECT...
     options.param.crXY = ctypes.c_float(options.crXY)
-    options.param.colL = ctypes.c_float(options.colL)
-    options.param.colR = ctypes.c_float(options.colR)
-    options.param.colD = ctypes.c_float(options.colD)
-    options.param.dSeptal = ctypes.c_float(options.dSeptal)
-    options.param.hexOrientation = ctypes.c_float(options.hexOrientation)
-    options.param.nRaySPECT = ctypes.c_float(options.nRaySPECT)
-    options.param.coneMethod = ctypes.c_float(options.coneMethod)
+    #options.param.colL = ctypes.c_float(options.colL)
+    #options.param.colR = ctypes.c_float(options.colR)
+    #options.param.colD = ctypes.c_float(options.colD)
+    #options.param.nRays = ctypes.c_float(options.nRays)
+    options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     # ...until here
     
 def reconstructions_mainCT(options):
@@ -336,17 +335,19 @@ def reconstructions_mainCT(options):
 
 def reconstructions_mainSPECT(options):
     options.SPECT = True
-    if options.projector_type == 1:
-        options.x = sinogramToX(
-            options.angles,
-            options.radiusPerProj,
-            options.SinM.shape[0],
-            options.SinM.shape[1],
-            options.crXY,
-            options.flip_image,
-            options.offangle
-        )
-        options.colR *= 2 / np.sqrt(3)
+    options.n_rays_transaxial = options.nRays
+    if options.swivelAngles.size == 0:
+        options.swivelAngles = options.angles + 180
+    if options.rayShiftsDetector.size == 0:
+        options.rayShiftsDetector = np.zeros((options.nRays*2, 1), dtype=np.float32)
+    if options.rayShiftsSource.size == 0:
+        options.rayShiftsSource = (0.2 * np.random.randn(2 * options.nRays, 1)).astype(np.float32)
+        options.rayShiftsSource[0] = 0
+        options.rayShiftsSource[1] = 0
+    if options.homeAngles.size == 0:
+        options.homeAngles = np.zeros_like(options.angles)
+    if getattr(options, 'flipImageZ', False):
+        options.SinM = np.flip(options.SinM, axis=1)
 
     if options.storeResidual:
         pz, FPOutputP, residual = reconstructions_main(options)

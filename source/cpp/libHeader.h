@@ -492,13 +492,16 @@ struct inputStruct {
     uint16_t* axIndices;
     // SPECT values
     float crXY;
-    float colL;
-    float colR;
-    float colD;
-    float dSeptal;
-    float hexOrientation;
-    float nRaySPECT;
-    float coneMethod;
+    //float colL;
+    //float colR;
+    //float colD;
+    //float nRays;
+    float* rayShiftsDetector;
+    float* rayShiftsSource;
+    //float dSeptal;
+    //float hexOrientation;
+    //float nRaySPECT;
+    //float coneMethod;
     // SPECT end
 };
 
@@ -830,12 +833,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     } else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
-        inputScalars.colL = options.colL;
-        inputScalars.colD = 2 * options.colR;
-        inputScalars.dSeptal = options.dSeptal;
-        inputScalars.nRaySPECT = options.nRaySPECT;
-        inputScalars.hexOrientation = options.hexOrientation;
-        inputScalars.coneMethod = options.coneMethod;
+        //inputScalars.colL = options.colL;
+        //inputScalars.colD = 2 * options.colR;
+        //inputScalars.dSeptal = options.dSeptal;
+        //inputScalars.nRaySPECT = options.nRaySPECT;
+        //inputScalars.hexOrientation = options.hexOrientation;
+        //inputScalars.coneMethod = options.coneMethod;
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -893,8 +896,15 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.nProjections = options.nProjections;
         w_vec.dPitchX = options.dPitchX;
         w_vec.dPitchY = options.dPitchY;
-    }
-    else {
+    } else if (inputScalars.SPECT) {
+        w_vec.nProjections = options.nProjections;
+		w_vec.dPitchX = options.crXY;
+		w_vec.dPitchY = options.crXY;
+		if (inputScalars.projector_type == 1) {
+			w_vec.rayShiftsDetector = options.rayShiftsDetector;
+			w_vec.rayShiftsSource = options.rayShiftsSource;
+		}
+    } else {
         w_vec.nProjections = options.nProjections;
         // Detector pitch
         w_vec.dPitchX = options.cr_p;

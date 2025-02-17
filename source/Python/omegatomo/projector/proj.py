@@ -446,11 +446,16 @@ class projectorClass:
     POCS_NgradIter = 20
     FISTA_acceleration = False
     RDP_use_anatomical = False
-    dSeptal = 1
-    hexOrientation = 1
-    coneMethod = 3
-    nRaySPECT = 1
+    nRays = 1
+    flipImageX = False
+    flipImageY = False
+    flipImageZ = False
     crXY = 1
+    rayShiftsDetector = np.empty(0, dtype=np.float32)
+    rayShiftsSource = np.empty(0, dtype=np.float32)
+    CORtoDetectorSurface = 0
+    homeAngles = np.empty(0, dtype = np.float32)
+    swivelAngles = np.empty(0, dtype = np.float32)
     eFOVLength = 0.4
     FISTAType = 0
     maskFPZ = 1
@@ -646,8 +651,13 @@ class projectorClass:
         # Coordinates of the detectors
         if not(self.projector_type == 6):
             if self.listmode == False:
-                from .detcoord import getCoordinates
-                x_det, y, z_det = getCoordinates(self)
+                if self.SPECT:
+                    from .detcoord import getCoordinatesSPECT
+                    x_det, z_det = getCoordinatesSPECT(self)
+                    y = 0
+                else:
+                    from .detcoord import getCoordinates
+                    x_det, y, z_det = getCoordinates(self)
             else:
                 if not self.useIndexBasedReconstruction:
                     if self.x.shape[0] == 2:
@@ -1839,53 +1849,43 @@ class projectorClass:
                 else:
                     bOpt += ' -DCT'
             elif self.SPECT:
-                if self.coneMethod == 1:
-                    tmpNrays = 1
-                    nHexSPECT = math.pow(math.ceil(self.dPitchX / self.colD), 2)
-                elif self.coneMethod == 2:
-                    tmpNrays = self.nRaySPECT
-                    nHexSPECT = 1
-                elif self.coneMethod == 3:
-                    self.nRaySPECT = int(math.pow(math.ceil(math.sqrt(self.nRaySPECT)), 2))
-                    tmpNrays = self.nRaySPECT
-                    nHexSPECT = 1
                 if self.useCUDA:
                     if self.useCuPy:
                         bOpt += ('-DSPECT',)
-                        bOpt += ('-DCOL_D=' + str(self.colD),)
-                        bOpt += ('-DCOL_L=' + str(self.colL),)
-                        bOpt += ('-DDSEPTAL=' + str(self.dSeptal),)
-                        bOpt += ('-DHEXORIENTATION=' + str(self.hexOrientation),)
-                        bOpt += ('-DCONEMETHOD=' + str(self.coneMethod),)
-                        bOpt += ('-DNRAYSPECT=' + str(self.nRaySPECT),)
-                        bOpt += ('-DN_RAYS=' + str(tmpNrays),)
-                        bOpt += ('-DN_RAYS2D=1',)
-                        bOpt += ('-DN_RAYS3D=1',)
-                        bOpt += ('-DNHEXSPECT=' + str(nHexSPECT),)
+                        #bOpt += ('-DCOL_D=' + str(self.colD),)
+                        #bOpt += ('-DCOL_L=' + str(self.colL),)
+                        #bOpt += ('-DDSEPTAL=' + str(self.dSeptal),)
+                        #bOpt += ('-DHEXORIENTATION=' + str(self.hexOrientation),)
+                        #bOpt += ('-DCONEMETHOD=' + str(self.coneMethod),)
+                        #bOpt += ('-DNRAYSPECT=' + str(self.nRaySPECT),)
+                        #bOpt += ('-DN_RAYS=' + str(tmpNrays),)
+                        #bOpt += ('-DN_RAYS2D=1',)
+                        #bOpt += ('-DN_RAYS3D=1',)
+                        #bOpt += ('-DNHEXSPECT=' + str(nHexSPECT),)
                     else:
                         bOpt.append('-DSPECT')
-                        bOpt.append('-DCOL_D=' + str(self.colD))
-                        bOpt.append('-DCOL_L=' + str(self.colL))
-                        bOpt.append('-DDSEPTAL=' + str(self.dSeptal))
-                        bOpt.append('-DHEXORIENTATION=' + str(self.hexOrientation))
-                        bOpt.append('-DCONEMETHOD=' + str(self.coneMethod))
-                        bOpt.append('-DNRAYSPECT=' + str(self.nRaySPECT))
-                        bOpt.append('-DN_RAYS=' + str(tmpNrays))
-                        bOpt.append('-DN_RAYS2D=1')
-                        bOpt.append('-DN_RAYS3D=1')
-                        bOpt.append('-DNHEXSPECT=' + str(nHexSPECT))
+                        #bOpt.append('-DCOL_D=' + str(self.colD))
+                        #bOpt.append('-DCOL_L=' + str(self.colL))
+                        #bOpt.append('-DDSEPTAL=' + str(self.dSeptal))
+                        #bOpt.append('-DHEXORIENTATION=' + str(self.hexOrientation))
+                        #bOpt.append('-DCONEMETHOD=' + str(self.coneMethod))
+                        #bOpt.append('-DNRAYSPECT=' + str(self.nRaySPECT))
+                        #bOpt.append('-DN_RAYS=' + str(tmpNrays))
+                        #bOpt.append('-DN_RAYS2D=1')
+                        #bOpt.append('-DN_RAYS3D=1')
+                        #bOpt.append('-DNHEXSPECT=' + str(nHexSPECT))
                 else:
                     bOpt += ' -DSPECT'
-                    bOpt += ' -DCOL_D=' + str(self.colD)
-                    bOpt += ' -DCOL_L=' + str(self.colL)
-                    bOpt += ' -DDSEPTAL=' + str(self.dSeptal)
-                    bOpt += ' -DHEXORIENTATION=' + str(self.hexOrientation)
-                    bOpt += ' -DCONEMETHOD=' + str(self.coneMethod)
-                    bOpt += ' -DNRAYSPECT=' + str(self.nRaySPECT)
-                    bOpt += ' -DN_RAYS=' + str(tmpNrays)
-                    bOpt += ' -DN_RAYS2D=1'
-                    bOpt += ' -DN_RAYS3D=1'
-                    bOpt += ' -DNHEXSPECT=' + str(nHexSPECT)
+                    #bOpt += ' -DCOL_D=' + str(self.colD)
+                    #bOpt += ' -DCOL_L=' + str(self.colL)
+                    #bOpt += ' -DDSEPTAL=' + str(self.dSeptal)
+                    #bOpt += ' -DHEXORIENTATION=' + str(self.hexOrientation)
+                    #bOpt += ' -DCONEMETHOD=' + str(self.coneMethod)
+                    #bOpt += ' -DNRAYSPECT=' + str(self.nRaySPECT)
+                    #bOpt += ' -DN_RAYS=' + str(tmpNrays)
+                    #bOpt += ' -DN_RAYS2D=1'
+                    #bOpt += ' -DN_RAYS3D=1'
+                    #bOpt += ' -DNHEXSPECT=' + str(nHexSPECT)
             elif self.PET:
                 if self.useCUDA:
                     if self.useCuPy:
@@ -4648,11 +4648,6 @@ class projectorClass:
             ('trIndices', ctypes.POINTER(ctypes.c_uint16)),
             ('axIndices', ctypes.POINTER(ctypes.c_uint16)),
             ('crXY',ctypes.c_float),
-            ('colL',ctypes.c_float),
-            ('colR',ctypes.c_float),
-            ('colD',ctypes.c_float),
-            ('dSeptal', ctypes.c_float),
-            ('hexOrientation', ctypes.c_float),
-            ('nRaySPECT', ctypes.c_float),
-            ('coneMethod', ctypes.c_float),
+            ('rayShiftsDetector',ctypes.POINTER(ctypes.c_float)),
+            ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
         ]

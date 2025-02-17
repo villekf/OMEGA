@@ -106,14 +106,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		mexPrintBase("inputScalars.Vmax = %f\n", inputScalars.Vmax);
 		mexPrintBase("inputScalars.size_V = %u\n", inputScalars.size_V);
 		mexPrintBase("MethodList.FDK = %u\n", MethodList.FDK);
-		mexPrintBase("inputScalars.nRaySPECT=%f\n", inputScalars.nRaySPECT);
 		mexPrintBase("w_vec.dPitchX = %f\n", w_vec.dPitchX);
-		mexPrintBase("inputScalars.colL= %f\n", inputScalars.colL);
-		mexPrintBase("inputScalars.colD= %f\n", inputScalars.colD);
-		mexPrintBase("inputScalars.dSeptal= %f\n", inputScalars.dSeptal);
-		mexPrintBase("inputScalars.nRaySPECT= %f\n", inputScalars.nRaySPECT);
-		mexPrintBase("inputScalars.hexOrientation= %f\n", inputScalars.hexOrientation);
-		mexPrintBase("inputScalars.coneMethod= %f\n", inputScalars.coneMethod);
 		mexEval();
 	}
 
