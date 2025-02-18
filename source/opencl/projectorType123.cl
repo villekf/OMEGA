@@ -318,7 +318,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	float ax[NBINS];
 #endif
 #ifdef BP
-#if defined(LISTMODE) && defined(TOF)
+#if defined(LISTMODE) && defined(TOF) && !defined(SENS)
 	for (int to = 0; to < NBINS; to++)
 		ax[to] = 0.f;
 	ax[TOFid] = d_OSEM[idx];
@@ -693,7 +693,7 @@ if (lor == 0) { // First ray in hexagon
 #endif
 #ifdef TOF
 				, d_d2, sigma_x, &D, DD, TOFCenter, TOFSum
-#ifdef LISTMODE
+#if defined(LISTMODE)
 				, TOFid
 #endif
 #endif

@@ -444,6 +444,8 @@ struct inputStruct {
     uint8_t* eFOVIndices;
     // Mask for priors
     uint8_t* maskPrior;
+    // TOF indices for listmode data
+    uint8_t* TOFIndices;
     // Angles for SPECT or CT
     float* angles;
     // Blur planes for rotation-based projector in SPECT

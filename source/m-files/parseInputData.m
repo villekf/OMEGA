@@ -20,7 +20,7 @@ if options.subsets > 1 && options.subset_type > 0
                 else
                     temp = single(full(options.SinM{ff}));
                 end
-                if options.TOF
+                if options.TOF && options.listmode == 0
                     if options.subset_type >= 8
                         temp = temp(:,:,index,:);
                     else

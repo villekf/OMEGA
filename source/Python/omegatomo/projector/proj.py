@@ -457,6 +457,7 @@ class projectorClass:
     maskBPZ = 1
     stochasticSubsetSelection = False
     useTotLength = True
+    TOFIndices = np.empty(0, dtype = np.uint8)
 
     def __init__(self):
         # C-struct
@@ -4618,6 +4619,7 @@ class projectorClass:
             ('maskBP', ctypes.POINTER(ctypes.c_uint8)),
             ('eFOVIndices', ctypes.POINTER(ctypes.c_uint8)),
             ('maskPrior', ctypes.POINTER(ctypes.c_uint8)),
+            ('TOFIndices', ctypes.POINTER(ctypes.c_uint8)),
             ('angles', ctypes.POINTER(ctypes.c_float)),
             ('blurPlanes', ctypes.POINTER(ctypes.c_uint32)),
             ('gFilter', ctypes.POINTER(ctypes.c_float)),

@@ -569,7 +569,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 	forwardProject(local_ele, &apu, localInd, d_OSEM);
 #ifdef TOF
 	const float dX = element / (TRAPZ_BINS - 1.f);
-#ifdef LISTMODE
+#if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
 #ifndef __CUDACC__ 
@@ -583,7 +583,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 #else
 		ax[to] += apu * joku / TOFSum;
 #endif
-#ifndef LISTMODE
+#if !defined(LISTMODE) || defined(SENS)
 	}
 #endif
 #else
@@ -611,7 +611,7 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 	const float dX = element / (TRAPZ_BINS - 1.f);
 
 	float yaxTOF = 0.f;
-#ifdef LISTMODE
+#if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
 #ifndef __CUDACC__ 
@@ -622,7 +622,7 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 		const float apu = local_ele * ((TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 		val += apu;
 		yaxTOF += apu * ax[to];
-#ifndef LISTMODE
+#if !defined(LISTMODE) || defined(SENS)
 	}
 #endif
 #else

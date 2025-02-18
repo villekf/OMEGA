@@ -210,6 +210,8 @@ def formSubsetIndices(options):
                 if not (options.x.shape[0] == 6):
                     options.x = np.reshape(options.x, (6, options.x.size // 6))
                 options.x = options.x[:,options.index]
+            if options.TOF_bins_used > 1:
+                options.TOFIndices = options.TOFIndices[options.index]
         options.x = options.x.ravel('F')
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)

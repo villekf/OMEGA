@@ -391,7 +391,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Obtain the reconstruction methods used
 	get_rec_methods(options, MethodList);
 
-	if (inputScalars.listmode)
+	if (inputScalars.listmode) {
 		if (inputScalars.indexBased) {
 			w_vec.trIndex = getUint16s(options, "trIndex", 0);
 			w_vec.axIndex = getUint16s(options, "axIndex", 0);
@@ -400,6 +400,9 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 			w_vec.listCoord = getSingles(options, "x", 0);
 			//inputScalars.size_of_x = mxGetNumberOfElements(getField(options, 0, "x"));
 		}
+		if (inputScalars.TOF)
+			w_vec.TOFIndices = getUint8s(options, "TOFIndices", 0);
+	}
 
 	if (DEBUG) {
 		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 2 = %f\n", inputScalars.nRaySPECT);

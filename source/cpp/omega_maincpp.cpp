@@ -75,6 +75,8 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 			w_vec.listCoord = options.x;
 			x = options.uV;
 		}
+		if (inputScalars.TOF)
+			w_vec.TOFIndices = options.TOFIndices;
 	}
 	
 	
