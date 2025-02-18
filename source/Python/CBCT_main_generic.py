@@ -11,6 +11,8 @@ You can manually add any of the built-in priors if desired.
 This example also showcases CBCT cases where you have the source and center
 of detector panel coordinates, as well as additional rotation of the panel.
 Instead of the rotation of the panel, you can also input the direction vectors.
+
+Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
 from omegatomo import proj
@@ -84,8 +86,8 @@ options.sourceToCRot = var['sourceToCRot']
 options.sourceToDetector = var['sourceToDetector']
 
 # Detector pixel size
-options.dPitchX = var['dPitch'][0]
-options.dPitchY = var['dPitch'][1]
+options.dPitchX = np.float32(var['dPitch'][0])
+options.dPitchY = np.float32(var['dPitch'][1])
 
 # Projection angles
 options.angles = np.float32(var['projAngles'])

@@ -7,6 +7,8 @@ on before trying them. Likewise, turn the multi-resolution off when using non-mu
 multi-resolution. Filtering-based preconditioner is on.
 
 For CUDA, there are no recommendations on which version to use. This version is pure CuPy, but PyTorch version is available too.
+
+Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
 from omegatomo import proj
@@ -53,8 +55,8 @@ options.sourceToCRot = var['sourceToCRot']
 options.sourceToDetector = var['sourceToDetector']
 
 # Detector pixel size
-options.dPitchX = var['dPitch'][0]
-options.dPitchY = var['dPitch'][1]
+options.dPitchX = np.float32(var['dPitch'][0])
+options.dPitchY = np.float32(var['dPitch'][1])
 
 # Projection angles
 options.angles = np.float32(var['projAngles'])
