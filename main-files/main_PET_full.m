@@ -982,6 +982,19 @@ options.subsets = 8;
 % Most of the time subset_type 1 or 4 is sufficient.
 options.subset_type = 1;
 
+%%% Stochastic subset selection
+% If true, the subsets are selected stochastically
+% This means that the subset numbers are selected randomly
+% For example, if using subset_type = 8, the subsets are still grouped into
+% groups with every nth projection but the group is selected randomly
+% For example, if we have three subsets with 9 sinograms, the first group
+% will have sinogram slices 1, 4, and 7, second 2, 5, and 8, and the third
+% 3, 6, and 9. During the reconstruction, the group is selected randomly, but
+% the sinograms within the groups remain the same so first group always has
+% sinograms 1, 4, and 7, but the first subiteration might use group three.
+% The behavior is similar for any other subset type.
+options.stochasticSubsetSelection = false;
+
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are
 % combined to the same subset, 2 and 3, etc.
@@ -1135,6 +1148,10 @@ options.PDHGKL = false;
 % Supported by implementation 2
 options.PDDY = false;
 
+%%% SAGA
+% Supported by implementation 2
+options.SAGA = false;
+
 
  
  
@@ -1259,6 +1276,13 @@ options.thetaCP = 1;
 % Can lead to unstable behavior with using multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FISTA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FISTA step-size/acceleration type
+% There are two different ways to compute the step-size/acceleration value
+% for FISTA reconstructions. There should be slight convergence rate 
+% differences between the two. Values 1 and 2 are supported.
+options.FISTAType = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
@@ -1672,6 +1696,19 @@ options.useSingles = true;
 % also include randoms by inputting them as negative measurements. The
 % indices are used in the same order as measurements.
 options.useIndexBasedReconstruction = false;
+
+% Applies to implementation 2 ONLY
+% Use FISTA acceleration with the selected algorithm
+% If true, FISTA acceleration is used for the selected algorithm, even if
+% the algorithm doesn't inherently use same acceleration scheme
+options.FISTA_acceleration = false;
+
+% Use either the full ray length or the length of the ray in the image 
+% volume
+% If set to true (default), the full length of the ray is used when
+% computing the probability. If false, only the length of the ray inside
+% the FOV is used.
+options.useTotLength = true;
  
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

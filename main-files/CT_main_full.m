@@ -480,13 +480,25 @@ options.subsets = 1;
 % 360/n_angles for 3D, see docs for more information:
 % https://omega-doc.readthedocs.io/en/latest/algorithms.html#type-6
 % 7 = Form the subsets by using golden angle sampling
-% 8 = Use every nth sinogram
-% 9 = Randomly select the full sinograms
+% 8 = Use every nth sinogram/projection
+% 9 = Randomly select the full sinograms/projections
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
-% 11 = Use prime factor sampling to select the full sinograms
+% 11 = Use prime factor sampling to select the full sinograms/projections
 % Most of the time subset_type 8 is sufficient.
 options.subset_type = 8;
+
+%%% Stochastic subset selection
+% If true, the subsets are selected stochastically
+% This means that the subset numbers are selected randomly
+% For example, if using subset_type = 8, the subsets are still grouped into
+% groups with every nth projection but the group is selected randomly
+% For example, if we have three subsets with 9 projections, the first group
+% will have projection images 1, 4, and 7, second 2, 5, and 8, and the third
+% 3, 6, and 9. During the reconstruction, the group is selected randomly, but
+% the projections within the groups remain the same so first group always has
+% projections 1, 4, and 7, but the first subiteration might use group three.
+options.stochasticSubsetSelection = false;
 
 %%% How many angles are combined in subset_type = 6
 % E.g. there are 180 angles, in n_angles = 2, then angles 0 and 1 are
@@ -601,6 +613,10 @@ options.PDHGL1 = false;
 %%% Primal-dual Davis-Yin (PDDY)
 % Supported by implementation 2
 options.PDDY = false;
+
+%%% SAGA
+% Supported by implementation 2
+options.SAGA = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -718,6 +734,13 @@ options.thetaCP = 1;
 % Can lead to unstable behavior with multi-resolution
 % Minimal to none use with filtering-based preconditioner
 options.PDAdaptiveType = 0;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%% FISTA PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% FISTA step-size/acceleration type
+% There are two different ways to compute the step-size/acceleration value
+% for FISTA reconstructions. There should be slight convergence rate 
+% differences between the two. Values 1 and 2 are supported.
+options.FISTAType = 1;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRECONDITIONERS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDHGKL, PKMA, MBSREM, MRAMLA, PDDY, FISTA and
@@ -1113,6 +1136,12 @@ options.storeResidual = false;
 % Applies to implementation 4 ONLY
 % Uses singe precision values if true, double precision otherwise
 options.useSingles = true;
+
+% Applies to implementation 2 ONLY
+% Use FISTA acceleration with the selected algorithm
+% If true, FISTA acceleration is used for the selected algorithm, even if
+% the algorithm doesn't inherently use same acceleration scheme
+options.FISTA_acceleration = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
