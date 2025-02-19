@@ -736,6 +736,11 @@ class projectorClass:
                         z_det = np.reshape(z_det, (self.nProjections, 2))
                         z_det = z_det[self.index,:]
                         z_det = z_det.ravel('C')
+                elif self.SPECT:
+                    x_det = x_det[:,self.index]
+                    x_det = x_det.ravel('F')
+                    z_det = z_det[:,self.index]
+                    z_det = z_det.ravel('F')
                 else:
                     z_det = np.reshape(z_det, (self.nProjections, -1))
                     z_det = z_det[self.index,:]
