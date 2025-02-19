@@ -9,3 +9,5 @@ source/cpp/*.mex
 mat-files/*.mat
 *.so
 *.dll
+misc/
+.venv/
