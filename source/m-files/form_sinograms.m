@@ -96,7 +96,9 @@ if nargin >= 2 && ~isempty(varargin{2}) && (numel(varargin{2}) == (options.Ndist
     variableList = [variableList, {'raw_SinDelayed'},{'SinSC'},{'ScatterProp'},{'RandProp'},{'appliedCorrections'}];
     if numel(options.partitions) > 1
         raw_SinM = cell(numel(options.partitions),1);
-    elseif (numel(options.partitions) == 1 && options.partitions > 1)
+    elseif isempty(options.partitions)
+        raw_SinM = cell(1,1);
+    elseif (isscalar(options.partitions) && options.partitions > 1)
         raw_SinM = cell(options.partitions,1);
     end
 else
@@ -130,6 +132,8 @@ if options.use_machine ~= 2
     ring_difference = options.ring_difference;
     if numel(options.partitions) > 1
         partitions = numel(options.partitions);
+    elseif isempty(options.partitions)
+        partitions = 1;
     else
         partitions = options.partitions;
     end

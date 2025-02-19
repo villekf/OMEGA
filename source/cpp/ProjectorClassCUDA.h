@@ -71,6 +71,7 @@ class ProjectorClass {
 		bool zFull = false;
 		bool offsetT = false;
 		bool indexBased = false;
+		bool TOFIndex = false;
 		bool angle = false;
 		bool rayShifts = false;
 		int zType = -1;
@@ -80,6 +81,7 @@ class ProjectorClass {
 		int eSteps = 0;
 		int lSteps = 0;
 		int iSteps = 0;
+		int TOFSteps = 0;
 		int aSteps = 0;
 		int oSteps = 0;
 	};
@@ -219,6 +221,8 @@ class ProjectorClass {
 			if (inputScalars.maskFPZ > 1)
 				options.push_back("-DMASKFP3D");
 		}
+		if (inputScalars.useTotLength)
+			options.push_back("-DTOTLENGTH");
 		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
 			if (inputScalars.maskBPZ > 1)
@@ -1178,6 +1182,7 @@ public:
 	std::vector<CUdeviceptr> d_T;
 	std::vector<CUdeviceptr> d_trIndex;
 	std::vector<CUdeviceptr> d_axIndex;
+	std::vector<CUdeviceptr> d_TOFIndex;
 	CUDA_TEXTURE_DESC texDesc;
 	CUDA_ARRAY_DESCRIPTOR arr2DDesc;
 	CUDA_ARRAY3D_DESCRIPTOR_st arr3DDesc;
@@ -1255,6 +1260,11 @@ public:
 			for (int kk = 0; kk < memAlloc.iSteps; kk++) {
 				getErrorString(cuMemFree(d_trIndex[kk]));
 				getErrorString(cuMemFree(d_axIndex[kk]));
+			}
+		}
+		if (memAlloc.TOFIndex) {
+			for (int kk = 0; kk < memAlloc.TOFSteps; kk++) {
+				getErrorString(cuMemFree(d_TOFIndex[kk]));
 			}
 		}
 		if (memAlloc.angle)
@@ -2107,6 +2117,17 @@ public:
 						memAlloc.iSteps++;
 					}
 				}
+				if (inputScalars.listmode > 0 && inputScalars.TOF) {
+					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+						status = cuMemAlloc(&d_TOFIndex[kk], sizeof(uint8_t) * length[kk]);
+						if (status != CUDA_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+						memAlloc.TOFIndex = true;
+						memAlloc.TOFSteps++;
+					}
+				}
 			}
 		}
 
@@ -2324,6 +2345,15 @@ public:
 						}
 					}
 				}
+				if (inputScalars.listmode > 0 && inputScalars.TOF) {
+					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
+						status = cuMemcpyHtoD(d_TOFIndex[kk], &w_vec.TOFIndices[pituus[kk]], sizeof(uint8_t) * length[kk]);
+						if (status != CUDA_SUCCESS) {
+							getErrorString(status);
+							return -1;
+						}
+					}
+				}
 				if (inputScalars.normalization_correction) {
 					status = cuMemcpyHtoD(d_norm[kk], &norm[pituus[kk] * vecSize], sizeof(float) * length[kk] * vecSize);
 					if (status != CUDA_SUCCESS) {
@@ -2416,6 +2446,9 @@ public:
 		if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 			d_trIndex.resize(inputScalars.subsetsUsed);
 			d_axIndex.resize(inputScalars.subsetsUsed);
+		}
+		if (inputScalars.listmode > 0 && inputScalars.TOF) {
+			d_TOFIndex.resize(inputScalars.subsetsUsed);
 		}
 		//if (inputScalars.randoms_correction)
 		//	d_sc_ra.resize(inputScalars.subsets);
@@ -2692,7 +2725,7 @@ public:
 	}
 
 	template <typename T>
-	inline int loadCoord(scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr) {
+	inline int loadCoord(scalarStruct& inputScalars, const int64_t length, const T* listCoord, const T* listCoordAx = nullptr, const uint8_t* TOFIndices = nullptr) {
 		CUresult status = CUDA_SUCCESS;
 		if (inputScalars.indexBased) {
 			getErrorString(cuMemFree(d_trIndex[0]));
@@ -2719,16 +2752,29 @@ public:
 			}
 		}
 		else {
-		getErrorString(cuMemFree(d_x[0]));
-		status = cuMemAlloc(&d_x[0], sizeof(float) * length * 6);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			return -1;
+			getErrorString(cuMemFree(d_x[0]));
+			status = cuMemAlloc(&d_x[0], sizeof(float) * length * 6);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			status = cuMemcpyHtoD(d_x[0], listCoord, sizeof(float) * length * 6);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
 		}
-		status = cuMemcpyHtoD(d_x[0], listCoord, sizeof(float) * length * 6);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			return -1;
+		if (inputScalars.TOF) {
+			getErrorString(cuMemFree(d_TOFIndex[0]));
+			status = cuMemAlloc(&d_TOFIndex[0], sizeof(uint8_t) * length);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				return -1;
+			}
+			status = cuMemcpyHtoD(d_TOFIndex[0], TOFIndices, sizeof(uint8_t) * length);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				return -1;
 			}
 		}
 		return 0;
@@ -2956,6 +3002,14 @@ public:
 					kTemp.emplace_back(&d_axIndex[osa_iter]);
 				}
 			}
+			if (inputScalars.listmode > 0 && inputScalars.TOF) {
+				if (!inputScalars.loadTOF) {
+					kTemp.emplace_back(&d_TOFIndex[0]);
+				}
+				else {
+					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+				}
+			}
 			if (inputScalars.raw) {
 				kTemp.emplace_back(&d_L[osa_iter]);
 			}
@@ -3156,8 +3210,16 @@ public:
 					kTemp.emplace_back(&d_axIndex[osa_iter]);
 				}
 			}
-				if (inputScalars.raw)
-					kTemp.emplace_back(&d_L[osa_iter]);
+			if (inputScalars.listmode > 0 && inputScalars.TOF) {
+				if (!inputScalars.loadTOF) {
+					kTemp.emplace_back(&d_TOFIndex[0]);
+				}
+				else {
+					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+				}
+			}
+			if (inputScalars.raw)
+				kTemp.emplace_back(&d_L[osa_iter]);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
 			kTemp.emplace_back(reinterpret_cast<void*>(&vec_opencl.d_rhs_os[uu]));
 			kTemp.emplace_back(&no_norm);

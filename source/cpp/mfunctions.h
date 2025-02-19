@@ -153,6 +153,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.TGV2D = getScalarBool(options, 0, "use2DTGV");
 	inputScalars.adaptiveType = getScalarUInt32(options, 0, "PDAdaptiveType");
 	inputScalars.storeFP = getScalarBool(options, 0, "storeFP");
+	inputScalars.useTotLength = getScalarBool(options, 0, "useTotLength");
 	const uint32_t* devPointer = getUint32s(options, "use_device");
 	size_t devLength = mxGetNumberOfElements(mxGetField(options, 0, "use_device"));
 	inputScalars.usedDevices = std::vector<uint32_t>(devPointer, devPointer + devLength);

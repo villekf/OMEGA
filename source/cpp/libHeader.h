@@ -306,6 +306,8 @@ struct inputStruct {
     bool useIndexBasedReconstruction = false;
     // Use stochastic subset selection
     bool stochasticSubsetSelection = false;
+    // Use the total ray length when computing probability in PET and SPECT
+    bool useTotLength = true;
     // Compute the selected algorithm/prior
     bool OSEM = false;
     bool LSQR = false;
@@ -442,6 +444,8 @@ struct inputStruct {
     uint8_t* eFOVIndices;
     // Mask for priors
     uint8_t* maskPrior;
+    // TOF indices for listmode data
+    uint8_t* TOFIndices;
     // Angles for SPECT or CT
     float* angles;
     // Blur planes for rotation-based projector in SPECT
@@ -827,6 +831,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.TGV2D = options.use2DTGV;
     inputScalars.adaptiveType = options.PDAdaptiveType;
     inputScalars.storeFP = options.storeFP;
+    inputScalars.useTotLength = options.useTotLength;
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;

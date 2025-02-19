@@ -50,6 +50,8 @@ options = projectorClass(inputStruct);
 
 if numel(options.param.partitions) > 1
     partitions = numel(options.param.partitions);
+elseif isempty(options.param.partitions)
+    partitions = 1;
 else
     partitions = options.param.partitions;
 end
@@ -62,13 +64,15 @@ if tyyppi < 2
     [options.param, RandProp, ScatterProp] = loadInputData(options.param);
 end
 
-if (options.param.CT && isfield(options.param,'flat') && options.param.flat == 0) || (options.param.CT && ~isfield(options.param,'flat'))
+if ~options.param.usingLinearizedData && ((options.param.CT && isfield(options.param,'flat') && options.param.flat == 0) || (options.param.CT && ~isfield(options.param,'flat')))
     warning('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
     if options.param.useSingles
         options.param.flat = single(max(options.param.SinM(:)));
     else
         options.param.flat = double(max(options.param.SinM(:)));
     end
+elseif options.param.CT && isfield(options.param,'flat') && numel(options.param.flat) > 1
+    options.param.flat = max(options.param.flat(:));
 end
 
 

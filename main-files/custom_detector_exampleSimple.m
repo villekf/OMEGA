@@ -95,12 +95,6 @@ options.verbose = 1;
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
 options.implementation = 2;
 
-% Applies to implementations 3 and 5 ONLY
-%%% OpenCL platform used
-% NOTE: Use OpenCL_device_info() to determine the platform numbers and
-% their respective devices with implementations 3 or 5.
-options.platform = 0;
-
 % Applies to implementations 2, 3 and 5 ONLY
 %%% OpenCL/CUDA device used
 % NOTE: Use ArrayFire_OpenCL_device_info() to determine the device numbers
@@ -110,28 +104,6 @@ options.platform = 0;
 % NOTE: The device numbers might be different between implementation 2 and
 % implementations 3 and 5
 options.use_device = 0;
-
-% Applies to implementations 2, 3 and 5 ONLY
-%%% Use 64-bit integer atomic functions
-% If true, then 64-bit integer atomic functions (atomic add) will be used
-% if they are supported by the selected device.
-% Setting this to true will make computations faster on GPUs that support
-% the functions, but might make results slightly less reliable due to
-% floating point rounding. Recommended for OpenCL GPUs. Not recommended for
-% CUDA. Doesn't apply for CPU.
-options.use_64bit_atomics = true;
-
-% Implementation 2 ONLY
-%%% Use CUDA
-% Selecting this to true will use CUDA kernels/code instead of OpenCL. This
-% only works if the CUDA code was successfully built.
-options.use_CUDA = false;
-
-% Implementation 2 ONLY
-%%% Use CPU
-% Selecting this to true will use CPU-based code instead of OpenCL or CUDA.
-% Some features are not supported by CPU such as projector_type 4 and 5.
-options.use_CPU = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
@@ -146,96 +118,9 @@ options.use_CPU = false;
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
-%%% Use mask
-% The mask needs to be a binary mask (uint8 or logical) where 1 means that
-% the pixel is included while 0 means it is skipped. Separate masks can be
-% used for both forward and backward projection and either one or both can
-% be utilized at the same time. E.g. if only backprojection mask is input,
-% then only the voxels which have 1 in the mask are reconstructed.
-% Currently the masks need to be a 2D image that is applied identically at
-% each slice/sinogram/projection.
-% Forward projection mask
-% If nonempty, the mask will be applied. If empty, or completely omitted, no
-% mask will be considered.
-% options.maskFP = true(options.Ndist,options.Nang);
-% Backprojection mask
-% If nonempty, the mask will be applied. If empty, or completely omitted, no
-% mask will be considered.
-% Create a circle that fills the FOV:
-% [columnsInImage, rowsInImage] = meshgrid(1:options.Nx, 1:options.Ny);
-% centerX = options.Nx/2;
-% centerY = options.Ny/2;
-% radius = options.Nx/2;
-% options.maskBP = uint8((rowsInImage - centerY).^2 ...
-%     + (columnsInImage - centerX).^2 <= radius.^2);
-
-%%% Interpolation length (projector type = 4 only)
-% This specifies the length after which the interpolation takes place. This
-% value will be multiplied by the voxel size which means that the
-% interpolation length of 1 corresponds to a single voxel (transaxial) 
-% length. Larger values lead to faster computation but at the cost of
-% accuracy. Recommended values are between [0.5 1], though values up to 2
-% should be fine.
-options.dL = 0.5;
-
-%%% Use point spread function (PSF) blurring
-% Applies PSF blurring through convolution to the image space. This is the
-% same as multiplying the geometric matrix with an image blurring matrix.
-options.use_psf = false;
-
-% FWHM of the Gaussian used in PSF blurring in all three dimensions (X/Y/Z)
-options.FWHM = [2.4 2.4 2.4];
-
-% Orthogonal ray tracer (projector_type = 2 only)
-%%% The 2D (XY) width of the "strip/tube" where the orthogonal distances are
-% included. If tube_width_z below is non-zero, then this value is ignored.
-options.tube_width_xy = 2.4;
-
-% Orthogonal ray tracer (projector_type = 2 only)
-%%% The 3D (Z) width of the "tube" where the orthogonal distances are
-% included. If set to 0, then the 2D orthogonal ray tracer is used. If this
-% value is non-zero then the above value is IGNORED.
-options.tube_width_z = 2.4;
-
-% Volume ray tracer (projector_type = 3 only)
-%%% Radius of the tube-of-response (cylinder)
-% The radius of the cylinder that approximates the tube-of-response.
-% Default uses circle size that is just large enough to fit one detector
-% crystal
-options.tube_radius = sqrt(2) * (2.4 / 2);
-
-% Volume ray tracer (projector_type = 3 only)
-%%% Relative size of the voxel (sphere)
-% In volume ray tracer, the voxels are modeled as spheres. This value
-% specifies the relative radius of the sphere such that with 1 the sphere
-% is just large enoough to encompass an entire cubic voxel, i.e. the
-% corners of the cubic voxel intersect with the sphere shell. Larger values
-% create larger spheres, while smaller values create smaller spheres.
-options.voxel_radius = 1;
-
-% Siddon (projector_type = 1 only)
-%%% Number of rays
-% Number of rays used per detector if projector_type = 1 (i.e. Improved
-% Siddon is used).
-% Number of rays in transaxial direction
-options.n_rays_transaxial = 1;
-% Number of rays in axial direction
-options.n_rays_axial = 1;
-
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
 options.Niter = 1;
-
-%%% Save specific intermediate iterations
-% You can specify the intermediate iterations you wish to save here. Note
-% that this uses zero-based indexing, i.e. 0 is the first iteration (not
-% the initial value). By default only the last iteration is saved.
-% Note: Subiterations cannot be saved!
-options.saveNIter = [];
-% Alternatively you can save ALL intermediate iterations by setting the
-% below to true and uncommenting it
-% Note: Only affects full iterations (epochs)
-% options.save_iter = false;
 
 %%% Number of subsets (excluding subset_type = 6 and algorithms that do not
 %%% support subsets)
@@ -269,53 +154,9 @@ options.x0 = ones(options.Nx, options.Ny, options.Nz);
 % recommended for non-Poisson data
 options.OSEM = false;
 
-%%% Modified Row-Action Maximum Likelihood Algorithm (MRAMLA)
-% Supported by implementations 1, 2, 4, and 5
-options.MRAMLA = false;
-
-%%% Row-Action Maximum Likelihood Algorithm (RAMLA)
-% Supported by implementations 1, 2, 4, and 5
-options.RAMLA = false;
-
-%%% Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ROSEM = false;
-
-%%% Rescaled Block Iterative Expectation Maximization (RBI-EM)
-% Supported by implementations 1, 2, 4, and 5
-options.RBI = false;
-
-%%% Dynamic RAMLA (DRAMA)
-% Supported by implementations 1, 2, 4, and 5
-options.DRAMA = false;
-
-%%% Complete data OSEM (COSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.COSEM = false;
-
-%%% Enhanced COSEM (ECOSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ECOSEM = false;
-
-%%% Accelerated COSEM (ACOSEM)
-% Supported by implementations 1, 2, 4, and 5
-options.ACOSEM = false;
-
-%%% FISTA
-% Supported by implementations 1, 2, 4, and 5
-options.FISTA = false;
-
-%%% FISTA with L1 regularization (FISTAL1)
-% Supported by implementations 1, 2, 4, and 5
-options.FISTAL1 = false;
-
 %%% LSQR
 % Supported by implementations 1, 2, 4, and 5
 options.LSQR = false;
-
-%%% CGLS
-% Supported by implementations 1, 2, 4, and 5
-options.CGLS = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MAP-METHODS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -323,14 +164,6 @@ options.CGLS = false;
 % this. Note that only one algorithm and prior combination is allowed! You
 % can also use most of these algorithms without priors (such as PKMA or
 % PDHG).
-%%% Modified BSREM (MBSREM)
-% Supported by implementations 1, 2, 4, and 5
-options.MBSREM = false;
-
-%%% Block Sequential Regularized Expectation Maximization (BSREM)
-% Supported by implementations 1, 2, 4, and 5
-options.BSREM = false;
-
 %%% Preconditioner Krasnoselskii-Mann algorithm (PKMA)
 % Supported by implementations 1, 2, 4, and 5
 options.PKMA = false;
@@ -338,18 +171,6 @@ options.PKMA = false;
 %%% Primal-dual hybrid gradient (PDHG)
 % Supported by implementations 1, 2, 4, and 5
 options.PDHG = true;
-
-%%% Primal-dual hybrid gradient (PDHG) with L1 minimization
-% Supported by implementations 1, 2, 4, and 5
-options.PDHGL1 = false;
-
-%%% Primal-dual hybrid gradient (PDHG) with Kullback-Leibler minimization
-% Supported by implementations 1, 2, 4, and 5
-options.PDHGKL = false;
-
-%%% Primal-dual Davis-Yin (PDDY)
-% Supported by implementation 2
-options.PDDY = false;
 
 % You can input other reconstruction parameters and priors as in the other
 % examples

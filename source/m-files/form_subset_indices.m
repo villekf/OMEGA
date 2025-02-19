@@ -126,6 +126,9 @@ if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
             end
             options.x = options.x(:,index);
         end
+        if options.TOF_bins > 1
+            options.TOFIndices = options.TOFIndices(index);
+        end
     end
     options.x = options.x(:);
     % options.y = options.y(index,:);

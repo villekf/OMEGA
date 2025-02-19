@@ -461,6 +461,8 @@ class projectorClass:
     maskFPZ = 1
     maskBPZ = 1
     stochasticSubsetSelection = False
+    useTotLength = True
+    TOFIndices = np.empty(0, dtype = np.uint8)
 
     def __init__(self):
         # C-struct
@@ -1003,8 +1005,8 @@ class projectorClass:
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
             print('Both reconstruct trues and scatter selected, reconstructing only trues.')
             self.reconstruct_scatter = False
-        if (self.CGLS or self.LSQR or self.FISTA or self.FISTAL1) and self.subsets > 1:
-            print('CGLS/LSQR/FISTA do not support subsets! Setting subsets to 1.')
+        if (self.CGLS or self.LSQR) and self.subsets > 1:
+            print('CGLS or LSQR do not support subsets! Setting subsets to 1.')
             self.subsets = 1
         if self.subsets <= 0:
             print('Subsets set to 0 or less than 0. Setting subsets to 1.')
@@ -4515,6 +4517,7 @@ class projectorClass:
             ('useFDKWeights', ctypes.c_bool),
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
+            ('useTotLength', ctypes.c_bool),
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),
@@ -4621,6 +4624,7 @@ class projectorClass:
             ('maskBP', ctypes.POINTER(ctypes.c_uint8)),
             ('eFOVIndices', ctypes.POINTER(ctypes.c_uint8)),
             ('maskPrior', ctypes.POINTER(ctypes.c_uint8)),
+            ('TOFIndices', ctypes.POINTER(ctypes.c_uint8)),
             ('angles', ctypes.POINTER(ctypes.c_float)),
             ('blurPlanes', ctypes.POINTER(ctypes.c_uint32)),
             ('gFilter', ctypes.POINTER(ctypes.c_float)),

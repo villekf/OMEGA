@@ -221,9 +221,9 @@ options.offangle = (2*np.pi)/2
 ### Use projection extrapolation
 # If True, extrapolates the projection data. You can select below whether
 # this extrapolation is done only in the axial or transaxial directions, or
-# both. Default extrapolation length is 20# of the original length, for
+# both. Default extrapolation length is 20% of the original length, for
 # both sides. For example if axial extrapolation is enabled, then the left
-# and right regions of the projection get 20# increase in size. This value
+# and right regions of the projection get 20% increase in size. This value
 # can be adjusted in CTEFOVCorrection. The values are scaled to air with
 # the use of logarithmic scaling.
 options.useExtrapolation = False
@@ -232,7 +232,7 @@ options.useExtrapolation = False
 # Similar to above, but expands the FOV. The benefit of expanding the FOV
 # this way is to enable to the use of multi-resolution reconstruction or
 # computation of the priors/regularization only in the original FOV. The
-# default extension is 40# per side.
+# default extension is 40% per side.
 options.useEFOV = False
 
 # Use transaxial extended FOV (this is off by default)
@@ -445,6 +445,18 @@ options.subsets = 10
 # Most of the time subset_type 8 is sufficient.
 options.subsetType = 8
 
+### Stochastic subset selection
+# If true, the subsets are selected stochastically
+# This means that the subset numbers are selected randomly
+# For example, if using subset_type = 8, the subsets are still grouped into
+# groups with every nth projection but the group is selected randomly
+# For example, if we have three subsets with 9 projections, the first group
+# will have projection images 1, 4, and 7, second 2, 5, and 8, and the third
+# 3, 6, and 9. During the reconstruction, the group is selected randomly, but
+# the projections within the groups remain the same so first group always has
+# projections 1, 4, and 7, but the first subiteration might use group three.
+options.stochasticSubsetSelection = False
+
 ### Initial value for the reconstruction
 # Should not be used with high-dimensional reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32) * 1e-4
@@ -534,6 +546,9 @@ options.PDHGL1 = False
 
 ### Primal-dual Davis-Yin (PDDY)
 options.PDDY = False
+
+### SAGA
+options.SAGA = False
 
 
 ################################# PRIORS ##################################
@@ -1056,6 +1071,11 @@ options.use2DTGV = False
 # Default is false
 options.storeResidual = False
 
+# Use FISTA acceleration with the selected algorithm
+# If true, FISTA acceleration is used for the selected algorithm, even if
+# the algorithm doesn't inherently use same acceleration scheme
+options.FISTA_acceleration = False
+
 
 ###########################################################################
 ###########################################################################
@@ -1074,7 +1094,6 @@ options.storeResidual = False
 ###########################################################################
 ###########################################################################
 ###########################################################################
-
 
 # 2D (sinogram) reconstruction can be enabled with the following changes:
 # options.SinM = np.squeeze(np.sum(options.SinM,1))

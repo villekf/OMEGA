@@ -60,6 +60,8 @@ if ~isfield(options, 'vaimennus')
 end
 if numel(options.partitions) > 1
     partitions = numel(options.partitions);
+elseif isempty(options.partitions)
+    partitions = 1;
 else
     partitions = options.partitions;
 end

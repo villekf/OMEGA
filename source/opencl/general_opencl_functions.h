@@ -557,6 +557,9 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
 	, const float element, const float TOFSum, const float DD, CONSTANT float* TOFCenter, const float sigma_x, float* D
+#ifdef LISTMODE
+	, const int TOFIndex
+#endif
 #endif
 #ifdef N_RAYS
 	, const int lor
@@ -566,17 +569,23 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 	forwardProject(local_ele, &apu, localInd, d_OSEM);
 #ifdef TOF
 	const float dX = element / (TRAPZ_BINS - 1.f);
+#if defined(LISTMODE) && !defined(SENS)
+	int to = TOFIndex;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
+#endif
 		const float joku = (TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX);
 #ifdef N_RAYS
 		ax[to + NBINS * lor] += apu * joku / TOFSum;
 #else
 		ax[to] += apu * joku / TOFSum;
 #endif
+#if !defined(LISTMODE) || defined(SENS)
 	}
+#endif
 #else
 #ifdef N_RAYS
 	ax[lor] += apu;
@@ -592,6 +601,9 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
 	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+#ifdef LISTMODE
+	, const int TOFIndex
+#endif
 #endif
 ) {
 #ifdef TOF
@@ -599,15 +611,20 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 	const float dX = element / (TRAPZ_BINS - 1.f);
 
 	float yaxTOF = 0.f;
+#if defined(LISTMODE) && !defined(SENS)
+	int to = TOFIndex;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
-
+#endif
 		const float apu = local_ele * ((TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
 		val += apu;
 		yaxTOF += apu * ax[to];
+#if !defined(LISTMODE) || defined(SENS)
 	}
+#endif
 #else
 	const float yaxTOF = ax[0] * local_ele;
 	const float val = local_ele;
@@ -805,7 +822,7 @@ DEVICE void getDetectorCoordinatesRaw(
 // Get the detector coordinates for the current sinogram bin (index-based subsets)
 DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBAL ushort *d_zindex, const size_t idx,
 	float3* s, float3* d, 
-#if defined(CT)
+#if defined(CT) || !defined(USEGLOBAL)
 	CONSTANT float *d_xy, 
 #else
 	const CLGLOBAL float *d_xy, 
@@ -941,11 +958,19 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 #else //////////////// PET ////////////////
 	// Probability
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
+#ifdef TOTLENGTH
 	float temp = 1.f / (L * CFLOAT(N_RAYS));
+#else
+	float temp = 1.f / (CFLOAT(d_N2) * d_d2 * CFLOAT(N_RAYS));
+#endif
 #elif defined(ORTH)
 	float temp = 1.f;
 #else
+#ifdef TOTLENGTH
 	float temp = 1.f / L;
+#else
+	float temp = 1.f / (CFLOAT(d_N2) * d_d2);
+#endif
 #endif //////////////// END MULTIRAY ////////////////
 #ifdef ATN //////////////// ATTENUATION ////////////////
 		float jelppi = 0.f;

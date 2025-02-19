@@ -186,6 +186,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(INDEXBASED) && defined(LISTMODE) && !defined(SENS)
 	const CLGLOBAL ushort* CLRESTRICT trIndex, const CLGLOBAL ushort* CLRESTRICT axIndex,
 #endif
+#if defined(LISTMODE) && defined(TOF)
+	const CLGLOBAL uchar* CLRESTRICT TOFIndex, 
+#endif
 	///////////////////////// RAW PET DATA /////////////////////////
 #ifdef RAW
 	const CLGLOBAL ushort* CLRESTRICT d_L, 
@@ -279,12 +282,20 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	if (maskVal == 0)
 		return;
 #endif
+#if defined(LISTMODE) && defined(TOF)
+	const int TOFid = TOFIndex[idx];
+#endif
 #if defined(N_RAYS) && defined(FP)
 	float ax[NBINS * N_RAYS];
 #else
 	float ax[NBINS];
 #endif
 #ifdef BP
+#if defined(LISTMODE) && defined(TOF) && !defined(SENS)
+	for (int to = 0; to < NBINS; to++)
+		ax[to] = 0.f;
+	ax[TOFid] = d_OSEM[idx];
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
@@ -293,6 +304,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		ax[to] = 1.f;
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
+#endif
 #endif
 #else
 #if defined(N_RAYS) && defined(FP)
@@ -406,6 +418,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	int tempi = 0, tempj = 0, tempk = 0, ux = 0, uy = 0, uz = 0;
 
 	float L = length(diff);
+#ifndef TOTLENGTH
+	float LL = 0.f;
+#endif
 	LONG local_ind = 0u;
 	int3 localInd = MINT3(0, 0, 0);
 #ifdef TOF //////////////// TOF ////////////////
@@ -428,7 +443,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	//If the LOR is perpendicular in the y-direction (Siddon cannot be used)
 	if (fabs(diff.z) < 1e-6f && (fabs(diff.y) < 1e-6f || fabs(diff.x) < 1e-6f)) {
 
-
+		//return;
 		tempk = CINT(fabs(s.z - b.z) / d_d.z);
 		if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -593,6 +608,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef TOF
 				, d_d2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
@@ -621,6 +639,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef TOF //////////////// TOF ////////////////
 				, d_in, TOFSum, DD, TOFCenter, sigma_x, &D
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #ifdef N_RAYS
 				, lor
@@ -658,6 +679,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF //////////////// TOF ////////////////
 				, d_in, sigma_x, &D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 				);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
@@ -676,20 +700,31 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 			}
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
+#if defined(TOF) && defined(LISTMODE)
+		size_t to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 			for (size_t to = 0; to < NBINS; to++) {
+#endif
 			    forwardProjectAF(d_output, ax, idx, temp, to);
 #ifdef TOF
 				idx += m_size;
 #endif
+#if defined(TOF) && defined(LISTMODE)
+#else
 			}
+#endif
 #elif defined(FP) && defined(N_RAYS)
+#if defined(TOF) && defined(LISTMODE)
+		size_t to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+#endif
 		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 
@@ -844,11 +879,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		temp = 1.f / TotV;
 #endif
 #else
+#ifdef TOTLENGTH
 #ifdef N_RAYS
 		temp = 1.f / (L * CFLOAT(N_RAYS));
 #else
 		temp = 1.f / L;
-#endif
 #endif
 #if defined(ATN) && defined(BP)
 		temp *= EXP(jelppi);
@@ -860,9 +895,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		temp *= local_scat;
 #endif
 		temp *= global_factor;
-#endif
 #ifdef ATNM
 		temp *= d_atten[idx];
+#endif
+#endif
+#endif
 #endif
 #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 		float L_SPECT = 0.f;
@@ -966,6 +1003,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
 #endif
 			}
+#ifndef TOTLENGTH
+			LL += local_ele;
+#endif
 #if (defined(ATN) && defined(FP)) || defined(TOF)
 			float local_ele2 = local_ele;
 #endif
@@ -1053,6 +1093,26 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				);
 			}
 #else
+#ifndef TOTLENGTH
+#ifdef N_RAYS
+			temp = 1.f / (LL * CFLOAT(N_RAYS));
+#else
+			temp = 1.f / LL;
+#endif
+#if defined(ATN) && defined(BP)
+			temp *= EXP(jelppi);
+#endif
+#ifdef NORM
+			temp *= local_norm;
+#endif
+#ifdef SCATTER
+			temp *= local_scat;
+#endif
+			temp *= global_factor;
+#ifdef ATNM
+			temp *= d_atten[idx];
+#endif
+#endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
 			denominator(ax, localInd, local_ele, d_OSEM
@@ -1061,6 +1121,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef TOF //////////////// TOF ////////////////
 			, local_ele, TOFSum, DD, TOFCenter, sigma_x, &D
+#ifdef LISTMODE
+			, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #ifdef N_RAYS
 			, lor
@@ -1098,6 +1161,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
 			, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+			, TOFid
+#endif
 #endif
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
@@ -1129,6 +1195,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef TOF
 				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
@@ -1149,6 +1218,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef TOF
 				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
@@ -1163,20 +1235,31 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		temp *= EXP(jelppi);
 #endif
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
+#if defined(TOF) && defined(LISTMODE)
+		size_t to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 		for (size_t to = 0; to < NBINS; to++) {
+#endif
 			forwardProjectAF(d_output, ax, idx, temp, to);
 #ifdef TOF
 			idx += m_size;
 #endif
+#if defined(TOF) && defined(LISTMODE)
+#else
 		}
+#endif
 #elif defined(FP) && defined(N_RAYS)
+#if defined(TOF) && defined(LISTMODE)
+	int to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+#endif
 		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 	}

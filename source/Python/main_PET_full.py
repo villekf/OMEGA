@@ -756,6 +756,19 @@ options.subsets = 8
 # Most of the time subset_type 1 is sufficient.
 options.subsetType = 1
 
+### Stochastic subset selection
+# If true, the subsets are selected stochastically
+# This means that the subset numbers are selected randomly
+# For example, if using subset_type = 8, the subsets are still grouped into
+# groups with every nth projection but the group is selected randomly
+# For example, if we have three subsets with 9 sinograms, the first group
+# will have sinogram slices 1, 4, and 7, second 2, 5, and 8, and the third
+# 3, 6, and 9. During the reconstruction, the group is selected randomly, but
+# the sinograms within the groups remain the same so first group always has
+# sinograms 1, 4, and 7, but the first subiteration might use group three.
+# The behavior is similar for any other subset type.
+options.stochasticSubsetSelection = False
+
 ### Initial value for the reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)
 
@@ -790,55 +803,42 @@ options.med_no_norm = False
 ############################### ML-METHODS ################################
 ### Ordered Subsets Expectation Maximization (OSEM) OR Maximum-Likelihood
 ### Expectation Maximization (MLEM) (if subsets = 1)
-# Supported by all implementations
 options.OSEM = True
 
 ### Modified Row-Action Maximum Likelihood Algorithm (MRAMLA)
-# Supported by implementations 1, 2, 4, and 5
 options.MRAMLA = False
 
 ### Row-Action Maximum Likelihood Algorithm (RAMLA)
-# Supported by implementations 1, 2, 4, and 5
 options.RAMLA = False
 
 ### Relaxed Ordered Subsets Expectation Maximization (ROSEM)
-# Supported by implementations 1, 2, 4, and 5
 options.ROSEM = False
 
 ### Rescaled Block Iterative Expectation Maximization (RBI-EM)
-# Supported by implementations 1, 2, 4, and 5
 options.RBI = False
 
 ### Dynamic RAMLA (DRAMA)
-# Supported by implementations 1, 2, 4, and 5
 options.DRAMA = False
 
 ### Complete data OSEM (COSEM)
-# Supported by implementations 1, 2, 4, and 5
 options.COSEM = False
 
 ### Enhanced COSEM (ECOSEM)
-# Supported by implementations 1, 2, 4, and 5
 options.ECOSEM = False
 
 ### Accelerated COSEM (ACOSEM)
-# Supported by implementations 1, 2, 4, and 5
 options.ACOSEM = False
 
 ### FISTA
-# Supported by implementations 1, 2, 4, and 5
 options.FISTA = False
 
 ### FISTA with L1 regularization (FISTAL1)
-# Supported by implementations 1, 2, 4, and 5
 options.FISTAL1 = False
 
 ### LSQR
-# Supported by implementations 1, 2, 4, and 5
 options.LSQR = False
 
 ### CGLS
-# Supported by implementations 1, 2, 4, and 5
 options.CGLS = False
  
  
@@ -848,53 +848,44 @@ options.CGLS = False
 # can also use most of these algorithms without priors (such as PKMA or
 # PDHG).
 ### One-Step Late MLEM (OSL-MLEM)
-# Supported by implementations 1, 2, 4, and 5
 options.OSL_MLEM = False
 
 ### One-Step Late OSEM (OSL-OSEM)
-# Supported by implementations 1, 2, 4, and 5
 options.OSL_OSEM = False
 
 ### Modified BSREM (MBSREM)
-# Supported by implementations 1, 2, 4, and 5
 options.MBSREM = False
 
 ### Block Sequential Regularized Expectation Maximization (BSREM)
-# Supported by implementations 1, 2, 4, and 5
 options.BSREM = False
 
 ### ROSEM-MAP
-# Supported by implementations 1, 2, 4, and 5
 options.ROSEM_MAP = False
 
 ### RBI-OSL
-# Supported by implementations 1, 2, 4, and 5
 options.OSL_RBI = False
 
 ### (A)COSEM-OSL
 # 0/False = No COSEM-OSL, 1/True = ACOSEM-OSL, 2 = COSEM-OSL
-# Supported by implementations 1, 2, 4, and 5
 options.OSL_COSEM = False
 
 ### Preconditioner Krasnoselskii-Mann algorithm (PKMA)
-# Supported by implementations 1, 2, 4, and 5
 options.PKMA = False
 
 ### Primal-dual hybrid gradient (PDHG)
-# Supported by implementations 1, 2, 4, and 5
 options.PDHG = False
 
 ### Primal-dual hybrid gradient (PDHG) with L1 minimization
-# Supported by implementations 1, 2, 4, and 5
 options.PDHGL1 = False
 
 ### Primal-dual hybrid gradient (PDHG) with KUllback-Leibler minimization
-# Supported by implementations 1, 2, 4, and 5
 options.PDHGKL = False
 
 ### Primal-dual Davis-Yin (PDDY)
-# Supported by implementation 2
 options.PDDY = False
+
+### SAGE
+options.SAGA = False
 
 
  
@@ -1430,6 +1421,18 @@ options.use2DTGV = False
 # also include randoms by inputting them as negative measurements. The
 # indices are used in the same order as measurements.
 options.useIndexBasedReconstruction = True
+
+# Use FISTA acceleration with the selected algorithm
+# If true, FISTA acceleration is used for the selected algorithm, even if
+# the algorithm doesn't inherently use same acceleration scheme
+options.FISTA_acceleration = False
+
+# Use either the full ray length or the length of the ray in the image 
+# volume
+# If set to true (default), the full length of the ray is used when
+# computing the probability. If false, only the length of the ray inside
+# the FOV is used.
+options.useTotLength = True
 
 
 

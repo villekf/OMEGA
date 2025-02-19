@@ -53,6 +53,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
 #ifdef TOF
 	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+#ifdef LISTMODE
+	, const int TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 	, const int ii, IMAGE2D maskBP
@@ -115,6 +118,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
 				, element, TOFSum, DD, TOFCenter, sigma_x, D
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 	);
 #endif
@@ -122,6 +128,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 				);
 #endif
@@ -144,6 +153,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef TOF
 	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+#ifdef LISTMODE
+	, const int TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 	, const int ii, IMAGE2D maskBP
@@ -189,6 +201,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
@@ -213,6 +228,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
@@ -250,6 +268,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
@@ -274,6 +295,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #ifdef TOF
 				, element, sigma_x, D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+				, TOFid
+#endif
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP

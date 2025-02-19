@@ -201,7 +201,7 @@ def parseInputs(options, mDataFound = False):
                     # else:
                     #     temp = np.single(np.full(options.SinM[ff - 1]))
             
-                    if options.TOF:
+                    if options.TOF and options.listmode == 0:
                         if options.subsetType >= 8:
                             temp = temp[:, :, options.index, :]
                         else:
@@ -225,7 +225,7 @@ def parseInputs(options, mDataFound = False):
                 if options.subsetType >= 8:
                     options.SinM = np.reshape(options.SinM, (options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order='F')
             
-                if options.TOF:
+                if options.TOF and options.listmode == 0:
                     if options.subsetType >= 8:
                         options.SinM = options.SinM[:, :, options.index, :]
                     else:

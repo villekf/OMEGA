@@ -870,3 +870,6 @@ end
 if ~isfield(options, 'stochasticSubsetSelection')
     options.stochasticSubsetSelection = false;
 end
+if ~isfield(options, 'useTotLength')
+    options.useTotLength = true;
+end
