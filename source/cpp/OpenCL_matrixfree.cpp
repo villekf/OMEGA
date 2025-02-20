@@ -345,10 +345,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2), static_cast<mwSize>(inputScalars.Nt) }; 
 
 	loadInput(inputScalars, options);
-	if (DEBUG) {
-		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 1 = %f\n", inputScalars.nRaySPECT);
-		mexEval();
-	}
 
 	inputScalars.subsetsUsed = inputScalars.subsets;
 
@@ -405,7 +401,6 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 
 	if (DEBUG) {
-		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 2 = %f\n", inputScalars.nRaySPECT);
 		mexPrintBase("ind = %u\n", ind);
 		mexPrintBase("koko = %u\n", inputScalars.koko);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);

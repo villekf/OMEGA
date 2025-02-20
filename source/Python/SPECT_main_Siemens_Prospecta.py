@@ -141,12 +141,8 @@ options.colL = 24.05
 options.colR = 1.11/2
 # Distance from collimator to the detector
 options.colD = 0
-# Septal thickness (mm)
-options.dSeptal = 0.1
 # Intrinsic resolution
 options.iR = 3.8
-# Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
-options.hexOrientation = 1
 
 # If you have the standard deviations for transaxial (XY) and axial (Z)
 # directions, you can input them here instead of the above values (the
@@ -229,7 +225,7 @@ options.projector_type = 1
 
 # For Siddon ray-based projector:
 # Number of rays traced per collimator hole
-options.nRaySPECT = 9
+options.nRays = 1
  
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
@@ -260,7 +256,7 @@ options.subsets = 8
 # 10 = Use golden angle sampling to select the subsets (not recommended for
 # PET)
 # 11 = Use prime factor sampling to select the projection images
-options.subsetType = 3
+options.subsetType = 8
 
 ### Initial value for the reconstruction
 options.x0 = np.ones((options.Nx, options.Ny, options.Nz), dtype=np.float32)

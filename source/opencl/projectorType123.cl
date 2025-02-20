@@ -79,7 +79,11 @@ __kernel __attribute__((vec_type_hint(float))) __attribute__((reqd_work_group_si
 extern "C" __global__
 #endif
 void projectorType123(const float global_factor, const float d_epps, const uint d_size_x, const uint d_det_per_ring,
-	const float sigma_x, 
+	const float sigma_x,
+#if defined(SPECT)
+	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
+	const CLGLOBAL float* CLRESTRICT d_rayShiftsSource,
+#endif
 #ifdef PYTHON
 	const float crystalSizeX, const float crystalSizeY, 
 #else
@@ -278,42 +282,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	if (maskVal == 0)
 		return;
 #endif
-
-
-
-
-
-#ifdef SPECT ///////////////////////////////////// SPECT /////////////////////////7
-	float3 s, d;
-	getDetectorCoordinatesListmode(d_xy, &s, &d, idx, 0, 0, crystalSize);
-
-	#if (CONEMETHOD == 1) | (CONEMETHOD == 2)
-		#if (CONEMETHOD == 1)
-			float hexShifts[(int)NRAYSPECT * (int)NHEXSPECT][6];
-		#else
-			float hexShifts[(int)NRAYSPECT][6];
-		#endif
-
-		uint trueRayCount = computeSpectHexShifts(hexShifts, &s, &d, i, crystalSize, d_Nxyz);
-	#elif (CONEMETHOD == 3)
-		float hexShifts[(int)NRAYSPECT][6];
-		computeSpectSquareShifts(hexShifts, &s, &d, i, crystalSize, d_Nxyz);
-	#endif
-	
-#endif ////////////////////////////////// END SPECT ///////////////////////////////////////////
-
-
-
-
 #if defined(LISTMODE) && defined(TOF)
 	const int TOFid = TOFIndex[idx];
 #endif
 #if defined(N_RAYS) && defined(FP)
-#ifdef SPECT 
-	float ax[NBINS * (int)NRAYSPECT * (int)NHEXSPECT];
-#else
 	float ax[NBINS * N_RAYS];
-#endif
 #else
 	float ax[NBINS];
 #endif
@@ -367,27 +340,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	int lor = -1;
 	// Load the next detector index
 	// raw data
-
-#ifdef SPECT ///////////////////////////// SPECT LOOP //////////////////////////////////
-#if (CONEMETHOD == 1)
-	for (int currentShift = 0u; currentShift < trueRayCount; currentShift++){
-#else
-	for (int currentShift = 0u; currentShift < NRAYSPECT; currentShift++){
-#endif
-	int lorZ = 0u;
-	int lorXY = 0u;
-#else
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
-#endif ////////////////////////////// END SPECT LOOP ///////////////////////////////////
 			lor++;
-
-
 #endif  //////////////// END MULTIRAY ////////////////
-
-
-
-#if !defined(SPECT) //////////////////////////////////// IF NOT SPECT //////////////////////////
 	float3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
 	const uint layer = i.z / NLAYERS;
@@ -398,6 +354,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	// Load the next detector index
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
+#elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx
@@ -433,49 +391,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	);
 #endif
-
-#else /////////////////////////////////////////// SPECT //////////////////////////////////7
-
-if (lor == 0) { // First ray in hexagon
-	s.x += hexShifts[currentShift][0];
-	s.y += hexShifts[currentShift][1];
-	s.z += hexShifts[currentShift][2];
-	d.x += hexShifts[currentShift][3];
-	d.y += hexShifts[currentShift][4];
-	d.z += hexShifts[currentShift][5];
-	// Ensure other end of ray is on the opposite side of FOV
-	s.x += 100.f * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-	s.y += 100.f * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-	s.z += 100.f * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-} else { // All other rays
-	s.x -= 100.f * (hexShifts[currentShift - 1][0] - hexShifts[currentShift - 1][3]);
-	s.y -= 100.f * (hexShifts[currentShift - 1][1] - hexShifts[currentShift - 1][4]);
-	s.z -= 100.f * (hexShifts[currentShift - 1][2] - hexShifts[currentShift - 1][5]);
-
-	// Add current ray shift
-	s.x += hexShifts[currentShift][0];
-	s.y += hexShifts[currentShift][1];
-	s.z += hexShifts[currentShift][2];
-	d.x += hexShifts[currentShift][3];
-	d.y += hexShifts[currentShift][4];
-	d.z += hexShifts[currentShift][5];
-	// Subtract the previous ray shift
-	s.x -= hexShifts[currentShift - 1][0];
-	s.y -= hexShifts[currentShift - 1][1];
-	s.z -= hexShifts[currentShift - 1][2];
-	d.x -= hexShifts[currentShift - 1][3];
-	d.y -= hexShifts[currentShift - 1][4];
-	d.z -= hexShifts[currentShift - 1][5];
-
-	s.x += 100.f * (hexShifts[currentShift][0] - hexShifts[currentShift][3]);
-	s.y += 100.f * (hexShifts[currentShift][1] - hexShifts[currentShift][4]);
-	s.z += 100.f * (hexShifts[currentShift][2] - hexShifts[currentShift][5]);
-
-	
-}
-
-#endif /////////////////////////////// END SPECT / NOT SPECT ///////////////////////////////////////////////
-
 	// Calculate the x, y and z distances of the detector pair
 	float3 diff = d - s;
 
@@ -986,6 +901,14 @@ if (lor == 0) { // First ray in hexagon
 #endif
 #endif
 #endif
+#if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
+		float L_SPECT = 0.f;
+//#ifdef N_RAYS
+		temp = temp * (L * CFLOAT(N_RAYS));
+//#else
+//		temp = temp * L;
+//#endif
+#endif
 
 		for (uint ii = 0u; ii < Np; ii++) {
 #if defined(LISTMODE)
@@ -1251,7 +1174,15 @@ if (lor == 0) { // First ray in hexagon
 			if (tempi < 0 || tempi >= d_Nxyz.x || tempj < 0 || tempj >= d_Nxyz.y || tempk < 0 || tempk >= d_Nxyz.z) {
 				break;
 			}
+#if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
+		L_SPECT += local_ele;
+#endif
 		}
+
+#if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
+		temp /= L_SPECT;
+#endif
+
 #ifdef ORTH
 		if (ux < 0) {
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
@@ -1334,12 +1265,8 @@ if (lor == 0) { // First ray in hexagon
 	}
 //  */
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
-#ifdef SPECT
-			}
-#else
 		}
 	}
-#endif
 
 
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////

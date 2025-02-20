@@ -1,5 +1,5 @@
-function options = SIMIND_SPECT_parser(fname)
-%SIMIND_SPECT_PARSER Reads voxel-based SIMIND SPECT data to be reconstructed by OMEGA. 
+function options = loadSIMINDSPECTData(fname)
+%LOADSIMINDSPECTDATA Reads voxel-based SIMIND SPECT data to be reconstructed by OMEGA. 
     %   Utility function for OMEGA
     contains = @(str, pattern) ~cellfun('isempty', strfind(str, pattern));
     % Load header

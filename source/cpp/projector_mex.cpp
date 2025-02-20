@@ -198,12 +198,18 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	} else if (SPECT) {
 		param.size_y = getScalarUInt32(getField(options, 0, "nColsD"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "crXY"), ind);
-		param.colL = getScalarDouble(getField(options, 0, "colL"), ind);
-		param.colD = 2 * getScalarDouble(getField(options, 0, "colR"), ind);
-		param.dSeptal = getScalarDouble(getField(options, 0, "dSeptal"), ind);
-		param.nRaySPECT = getScalarDouble(getField(options, 0, "nRaySPECT"), ind);
-		param.hexOrientation = getScalarDouble(getField(options, 0, "hexOrientation"), ind);
-		param.coneMethod = getScalarDouble(getField(options, 0, "coneMethod"), ind);
+		param.rayShiftsDetector = getDoubles(options, "rayShiftsDetector");
+		param.rayShiftsSource = getDoubles(options, "rayShiftsSource");
+		param.numMaskFP = getScalarInt64(getField(options, 0, "numMaskFP"), ind);
+		param.nProjectionsGlobal = getScalarInt64(getField(options, 0, "nProjectionsGlobal"), ind);
+		//param.colL = getScalarDouble(getField(options, 0, "colL"), ind);
+		//param.collimatorBottomRadius = getScalarDouble(getField(options, 0, "colR"), ind);
+		//param.collimatorTopRadius = getScalarDouble(getField(options, 0, "colR"), ind);
+		//mexPrintf("test");
+		//param.dSeptal = getScalarDouble(getField(options, 0, "dSeptal"), ind);
+		//param.nRaySPECT = getScalarDouble(getField(options, 0, "nRaySPECT"), ind);
+		//param.hexOrientation = getScalarDouble(getField(options, 0, "hexOrientation"), ind);
+		//param.coneMethod = getScalarDouble(getField(options, 0, "coneMethod"), ind);
 	} else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarDouble(getField(options, 0, "cr_p"), ind);

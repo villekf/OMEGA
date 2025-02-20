@@ -205,6 +205,9 @@ class CommandLine:
             elif os.path.exists('/opt/ArrayFire/'):
                 afpath = '/opt/ArrayFire/include'
                 aflib = '/opt/ArrayFire/lib64'
+            elif os.path.exists('/opt/arrayfire/'):
+                afpath = '/opt/arrayfire/include'
+                aflib = '/opt/arrayfire/lib64'
             # if len(afpath) == 0:
             #     raise ValueError('ArrayFire not found! Please install ArrayFire and input install directory with -A /path/to/arrayfire')
                 

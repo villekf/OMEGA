@@ -695,15 +695,9 @@ DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* 
 #endif
 #endif
 
-// Detector coordinates for CT or SPECT data
-#if defined(CT) || (defined(SPECT) && !defined(SPECTMASK))
-DEVICE void getDetectorCoordinatesCT(
-#if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xyz,
-#else
-	CONSTANT float* d_xyz, 
-#endif
-	CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
+// Detector coordinates for CT data
+#if defined(CT) && !defined(SPECTMASK)
+DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
 	const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
@@ -755,6 +749,44 @@ DEVICE void getDetectorCoordinatesCT(
 #endif
 #endif
 #endif
+}
+
+#elif defined(SPECT)
+DEVICE void getDetectorCoordinatesSPECT(
+#if defined(USEGLOBAL)
+	const CLGLOBAL float* d_xyz,
+#else
+	CONSTANT float* d_xyz, 
+#endif
+    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
+	int id = i.z * 6;
+	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
+	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
+	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	id = i.z * NA;
+
+	const float apuX = d_uv[id];
+	const float apuY = d_uv[id + 1];
+	(*d).x += indeksi.x * apuX;
+	(*d).y += indeksi.x * apuY;
+	(*d).z += indeksi.y * d_dPitch.y;
+	(*s).x += indeksi.x * apuX;
+	(*s).y += indeksi.x * apuY;
+	(*s).z += indeksi.y * d_dPitch.y;
+#if defined(N_RAYS)
+	if (N_RAYS2D > 1) {
+		int idr = lorXY * 2;
+		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.;
+		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.;
+		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.;
+		(*s).x += apuX * d_rayShiftsSource[idr] / 2.;
+		(*s).y += apuY * d_rayShiftsSource[idr] / 2.;
+		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.;
+	}
+#endif
+	(*s).x += 1000 * ((*s).x - (*d).x);
+	(*s).y += 1000 * ((*s).y - (*d).y);
+	(*s).z += 1000 * ((*s).z - (*d).z);
 }
 #else
 #if defined(RAW) || defined(SENS)
@@ -1198,265 +1230,4 @@ DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, cons
 	output[idx] += ax[kk];
 #endif
 }
-#endif
-
-#if defined(SPECT)
-// #ifndef M_PI
-//     #define M_PI 3.14159265358979323846
-// #endif
-
-DEVICE float sind(float arg) {
-	arg *= M_PI_F / 180.f;
-	return SINF(arg);
-}
-
-DEVICE float cosd(float arg) {
-	arg *= M_PI_F / 180.f;
-	return COSF(arg);
-}
-
-DEVICE float atan2d(float y, float x) {
-	y *= M_PI_F / 180.f; // Convert to radians
-	x *= M_PI_F / 180.f; // Convert to radians
-	return ATAN2(y, x);
-}
-
-/*
-DEVICE int floorDiv(float dividend, float divisor) { // ChatGPT funktio
-    // Ensure the denominator is not zero to avoid division by zero error
-    if (divisor == 0) {
-        return 0; // Or handle the error as needed
-    }
-
-    int quotient = dividend / divisor;
-    int remainder = fmod(dividend, divisor);
-
-    // If the remainder is zero, the result of floor division is the same as integer division
-    if (remainder == 0) {
-        return quotient;
-    }
-
-    // If the numerator and denominator have different signs, adjust the result
-    if ((dividend < 0) != (divisor < 0)) {
-        quotient -= 1;
-    }
-
-    return quotient;
-}
-*/
-#if (CONEMETHOD == 1) | (CONEMETHOD == 2)
-DEVICE void computeHexShifts2D(const float startAngle, const float diameter, float hexShifts[][2]) {
-	hexShifts[0][0] = 0.0f; // Initialize x-coordinate to 0
-	hexShifts[0][1] = 0.0f; // Initialize y-coordinate to 0
-	#if (NRAYSPECT == 1)  // Trivial case
-        return;
-	#else
-    unsigned short currentPoint = 0; // Variable to keep count of current point
-    float nLayer = CEIL(0.5f * SQRT(4.0f * ((float)NRAYSPECT - 1.0f) / 3.0f + 1.0f) - 1.0f); // Number of hexagon point layers
-    float radius = diameter / 2.0f; // Hexagon radius
-
-    float xx_s; // Temporary variable for point location
-    float yy_s; // Temporary variable for point location
-
-    for (float currentLayer = 1.f; currentLayer <= nLayer; currentLayer++) {
-        for (float ii = 1; ii <= 6.f; ii++) { // Iterate over each hexagon angle
-            xx_s = currentLayer / nLayer * radius * cosd(startAngle + 60.f * ii);
-            yy_s = currentLayer / nLayer * radius * sind(startAngle + 60.f * ii);
-
-            // Layer k has 6 * k points
-            for (unsigned short jj = 1; jj <= currentLayer; jj++) {
-                currentPoint++;
-                if (currentPoint == NRAYSPECT) {
-                    return;
-                }
-
-                xx_s -= 1.0f / nLayer * radius * cosd(startAngle + 60.f * ii);
-                yy_s -= 1.0f / nLayer * radius * sind(startAngle + 60.f * ii);
-                xx_s += 1.0f / nLayer * radius * cosd(startAngle + 60.f * (ii + 1.f));
-                yy_s += 1.0f / nLayer * radius * sind(startAngle + 60.f * (ii + 1.f));
-
-                hexShifts[currentPoint][0] = xx_s; // Set x-coordinate
-                hexShifts[currentPoint][1] = yy_s; // Set y-coordinate
-            }
-        }
-    }
-    return;
-	#endif
-}
-
-DEVICE uint computeSpectHexShifts(float hexShifts[][6], float3* s, float3* d, const int3 i, const float2 cr, const uint3 d_Nxyz) {
-	// Panel outer normal vector
-	const float panelNvecX = (*s).x - (*d).x; // Unnormalized detector panel normal vector X component
-	const float panelNvecY = (*s).y - (*d).y; // Unnormalized detector panel normal vector Y component
-	const float panelNvecXn = panelNvecX / SQRT(POWN(panelNvecX, 2) + POWN(panelNvecY, 2)); // Normalized detector panel normal vector X component
-	const float panelNvecYn = panelNvecY / SQRT(POWN(panelNvecX, 2) + POWN(panelNvecY, 2)); // Normalized detector panel normal vector Y component
-
-	// Panel rotation angle
-	const float panelAngle = atan2d(panelNvecY, panelNvecX);
-	
-	// Get detector pixel center in local coordinates from ix, iy and size
-	const float pixelCenterX = i.x * cr.x - d_Nxyz.x * cr.x / 2.f + cr.x / 2.f;
-	const float pixelCenterY = i.y * cr.y - d_Nxyz.y * cr.y / 2.f + cr.y / 2.f;
-
-	// Pixel boundary in local (detector )coordinates
-	const float xMin = pixelCenterX - cr.x / 2.f;
-	const float xMax = pixelCenterX + cr.x / 2.f;
-	const float yMin = pixelCenterY - cr.y / 2.f;
-	const float yMax = pixelCenterY + cr.y / 2.f;
-
-	// Calculate hexagon grid properties
-	float d_vertical; // Vertical distance (y) spanning one hole
-	float d_horizontal; // Horizontal distance (x) spanning one hole
-	float d_vertical_s; // Vertical distance (y) between hexagon centers
-	float d_horizontal_s; // Horizontal distance (x) between hexagon centers
-
-	float detectorShifts[(int)NRAYSPECT][2]; // 2D position shifts in detector end (for one hexagon)
-	float sourceShifts[(int)NRAYSPECT][2]; // 2D position shifts in source end (for one hexagon)
-
-	#if (HEXORIENTATION == 1)  // Vertical diameter is smaller
-		d_horizontal = COL_D;
-		d_vertical = SQRT(3.f) / 2.f * d_horizontal;
-		d_vertical_s = d_vertical + DSEPTAL;
-		d_horizontal_s = SQRT(3.f) / 2.f  * d_vertical_s;
-
-		computeHexShifts2D(0., d_vertical, detectorShifts); 
-		computeHexShifts2D(180., d_vertical, sourceShifts);
-	#elif (HEXORIENTATION == 2) // Horizontal diameter is smaller
-		d_vertical = COL_D;
-		d_horizontal = SQRT(3.f) / 2.f * d_vertical;
-		d_horizontal_s = d_horizontal + DSEPTAL;
-		d_vertical_s = SQRT(3.f) / 2.f * d_horizontal_s;
-
-		computeHexShifts2D(30.f, d_horizontal, detectorShifts);
-		computeHexShifts2D(210.f, d_horizontal, sourceShifts);
-	#endif
-
-	
-	#if (CONEMETHOD == 1) // Accurate ray locations
-		// Helper variables for hexagon location calculation
-		const long rowMin = FLOOR(yMin / d_vertical_s) - 2.;
-		const long rowMax = FLOOR(yMax / d_vertical_s) + 2.;
-		const long colMin = FLOOR(xMin / d_horizontal_s) - 2.;
-		const long colMax = FLOOR(xMax / d_horizontal_s) + 2.;
-
-		float hexCenters[NHEXSPECT][2];
-		int nHex = 0; // Number of hexagons in the pixel
-
-		for (int row = rowMin; row <= rowMax; row++) { // Iterate over hexagon rows in selected pixel
-			for (int col = colMin; col <= colMax; col++) { // Iterate over hexagon columns in selected pixel
-				float tmpX = (float)col * d_horizontal_s; // Hex center X
-				float tmpY = (float)row * d_vertical_s; // Hex center Y
-				#if (HEXORIENTATION == 1) // Vertical diameter is smaller
-					tmpY += fmod((float)col, 2.f) * d_vertical_s / 2.f; // The columns overlap half the hexagon size 
-				#elif (HEXORIENTATION == 2) // Horizontal diameter is smaller
-					tmpX += fmod((float)row, 2.f) * d_horizontal_s / 2.f; // The rows overlap half the hexagon size
-				#endif
-
-				if ((tmpX >= (xMin - d_horizontal / 2.)) && (tmpX <= (xMax + d_horizontal / 2.))) { // Check pixel boundaries X
-					if ((tmpY >= (yMin - d_vertical / 2.)) && (tmpY <= (yMax + d_vertical / 2.))) { // Check pixel boundaries Y
-						hexCenters[nHex][0] = tmpX;
-						hexCenters[nHex][1] = tmpY;
-						nHex++;
-					}
-				}
-			}
-		}
-	#elif (CONEMETHOD == 2) // Approximate cone
-		float hexCenters[1][2];
-		int nHex = 1; // Number of hexagons in the pixel
-		hexCenters[0][0] = pixelCenterX;
-		hexCenters[0][1] = pixelCenterY;
-	#endif
-
-	uint trueRayCount = 0; // At the edge of pixel, some rays might be detected by an adjacent pixel. Keep count of valid rays.
-	for (uint currentHex = 0; currentHex < nHex; currentHex++) {// Loop over each hexagon
-		for (uint currentShift = 0; currentShift < NRAYSPECT; currentShift++) { // For each hexagon, loop over all rays
-			const float xx_d = hexCenters[currentHex][0] + detectorShifts[currentShift][0];
-			const float yy_d = hexCenters[currentHex][1] + detectorShifts[currentShift][1];
-			const float xx_s = hexCenters[currentHex][0] + sourceShifts[currentShift][0];
-			const float yy_s = hexCenters[currentHex][1] + sourceShifts[currentShift][1];
-
-			if ((xx_d >= xMin) && (xx_d <= xMax) && (yy_d >= yMin) && (yy_d <= yMax)) { // Check pixel boundaries
-				hexShifts[trueRayCount][0] = -sind(panelAngle) * (yy_s-pixelCenterY) - panelNvecX - panelNvecXn * COL_L;
-				hexShifts[trueRayCount][1] = cosd(panelAngle) * (yy_s-pixelCenterY) - panelNvecY - panelNvecYn * COL_L;
-				hexShifts[trueRayCount][2] = xx_s - pixelCenterX;
-				hexShifts[trueRayCount][3] = -sind(panelAngle) * (yy_d-pixelCenterY);
-				hexShifts[trueRayCount][4] = cosd(panelAngle) * (yy_d-pixelCenterY);
-				hexShifts[trueRayCount][5] = xx_d - pixelCenterX;
-				trueRayCount++;
-			}
-		}
-	}
-
-	return trueRayCount;
-}
-#endif
-#if (CONEMETHOD == 3)
-DEVICE void computeSpectSquareShifts(float hexShifts[][6], float3* s, float3* d, const int3 i, const float2 cr, const uint3 d_Nxyz) {
-	// Panel outer normal vector
-	const float panelNvecX = (*s).x - (*d).x; // Unnormalized detector panel normal vector X component
-	const float panelNvecY = (*s).y - (*d).y; // Unnormalized detector panel normal vector Y component
-	const float panelNvecXn = panelNvecX / SQRT(panelNvecX * panelNvecX + panelNvecY * panelNvecY); // Normalized detector panel normal vector X component
-	const float panelNvecYn = panelNvecY / SQRT(panelNvecX * panelNvecX + panelNvecY * panelNvecY); // Normalized detector panel normal vector Y component
-
-	// Panel rotation angle
-	const float panelAngle = atan2d(panelNvecY, panelNvecX);
-	
-	// Get detector pixel center in local coordinates from ix, iy and size
-	const float pixelCenterX = i.x * cr.x - d_Nxyz.x * cr.x / 2.f + cr.x / 2.f;
-	const float pixelCenterY = i.y * cr.y - d_Nxyz.y * cr.y / 2.f + cr.y / 2.f;
-
-
-	float detectorShifts[(int)NRAYSPECT][2];
-	float sourceShifts[(int)NRAYSPECT][2];
-#if (NRAYSPECT == 1)
-	detectorShifts[0][0] = pixelCenterX;
-	detectorShifts[0][1] = pixelCenterY;
-	sourceShifts[0][0] = pixelCenterX;
-	sourceShifts[0][1] = pixelCenterY;
-#else 
-	// Pixel boundary in local (detector )coordinates
-	const float xdMin = pixelCenterX - cr.x / 2.f;
-	const float xdMax = pixelCenterX + cr.x / 2.f;
-	const float ydMin = pixelCenterY - cr.y / 2.f;
-	const float ydMax = pixelCenterY + cr.y / 2.f;
-	const float xsMin = xdMin - COL_D;
-	const float xsMax = xdMax + COL_D;
-	const float ysMin = ydMin - COL_D;
-	const float ysMax = ydMax + COL_D;
-
-	for (int x = 0; x < SQRT((float)NRAYSPECT); x++) {
-		for (int y = 0; y < SQRT((float)NRAYSPECT); y++) {
-			const float tmpXd = xdMin + (float)x / (float)(SQRT((float)NRAYSPECT) - 1.f) * (xdMax - xdMin);
-			const float tmpYd = ydMin + (float)y / (float)(SQRT((float)NRAYSPECT) - 1.f) * (ydMax - ydMin);
-			const float tmpXs = xsMin + (float)x / (float)(SQRT((float)NRAYSPECT) - 1.f) * (xsMax - xsMin);
-			const float tmpYs = ysMin + (float)y / (float)(SQRT((float)NRAYSPECT) - 1.f) * (ysMax - ysMin);
-
-			detectorShifts[x * (int)SQRT((float)NRAYSPECT) + y][0] = tmpXd;
-			detectorShifts[x * (int)SQRT((float)NRAYSPECT) + y][1] = tmpYd;
-			sourceShifts[x * (int)SQRT((float)NRAYSPECT) + y][0] = tmpXs;
-			sourceShifts[x * (int)SQRT((float)NRAYSPECT) + y][1] = tmpYs;
-		}
-	}
-#endif
-
-
-
-	for (unsigned int currentShift = 0u; currentShift < NRAYSPECT; currentShift++) {
-		const float xx_d = detectorShifts[currentShift][0];
-		const float yy_d = detectorShifts[currentShift][1];
-		const float xx_s = sourceShifts[currentShift][0];
-		const float yy_s = sourceShifts[currentShift][1];
-
-		hexShifts[currentShift][0] = -sind(panelAngle) * (yy_s-pixelCenterY) - panelNvecX - panelNvecXn * COL_L;
-		hexShifts[currentShift][1] = cosd(panelAngle) * (yy_s-pixelCenterY) - panelNvecY - panelNvecYn * COL_L;
-		hexShifts[currentShift][2] = xx_s - pixelCenterX;
-		hexShifts[currentShift][3] = -sind(panelAngle) * (yy_d-pixelCenterY);
-		hexShifts[currentShift][4] = cosd(panelAngle) * (yy_d-pixelCenterY);
-		hexShifts[currentShift][5] = xx_d - pixelCenterX;
-	}
-
-	return;
-}
-#endif
 #endif

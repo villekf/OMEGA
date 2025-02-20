@@ -147,7 +147,7 @@ In Windows, CUDA location is determined from the environmental variables (PATH).
 
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
 
-Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Geforce 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
+Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
 All the GPUs were tested in Linux except AMD Radeon 7900 XT which was tested in Windows.
 
 ## Getting Started

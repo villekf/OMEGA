@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from omegatomo import proj
+from typing import Tuple
 
 def CTDetSource(options):
     if options.angles.size == options.nProjections:
@@ -204,6 +206,47 @@ def getCoordinates(options):
         
             x = np.asfortranarray(np.vstack((x, y)))
     return x, y, z
+    
+def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.ndarray]:
+    n1: int = len(options.angles)
+    n2: int = len(options.radiusPerProj)
+    n3: int = len(options.swivelAngles)
+    assert (n1 == n2) and (n2 == n3), "The amount of angles, radii and swivel angles have to be equal."
+    
+    nProjections: int = n1
+    
+    x: np.ndarray = np.zeros((6, nProjections), dtype=np.float32)
+    z: np.ndarray = np.zeros((2, nProjections), dtype=np.float32)
+    
+    for ii in range(nProjections):
+        r1: float = options.radiusPerProj[ii]
+        r2: float = options.CORtoDetectorSurface
+        
+        alpha1: float = options.angles[ii]
+        alpha3: float = options.swivelAngles[ii]
+        
+        x[3, ii] = r1 * np.cos(np.deg2rad(alpha1)) + r2 * np.cos(np.deg2rad(alpha3))
+        x[4, ii] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha3))
+        x[5, ii] = 0
+        
+        x[0, ii] = x[3, ii] + options.colL * np.cos(np.deg2rad(alpha3))
+        x[1, ii] = x[4, ii] + options.colL * np.sin(np.deg2rad(alpha3))
+        x[2, ii] = 0
+        
+        z[0, ii] = options.crXY * np.cos(np.deg2rad(alpha3 + 90))
+        z[1, ii] = options.crXY * np.sin(np.deg2rad(alpha3 + 90))
+    
+    if options.flipImageX:
+        x[0, :] = -x[0, :]
+        x[3, :] = -x[3, :]
+        z[0, :] = -z[0, :]
+    
+    if options.flipImageY:
+        x[1, :] = -x[1, :]
+        x[4, :] = -x[4, :]
+        z[1, :] = -z[1, :]
+    #return x, z
+    return np.asfortranarray(x), np.asfortranarray(z)
     
 def detectorCoordinates(options):
     cr_p = options.cr_p

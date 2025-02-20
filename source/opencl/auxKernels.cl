@@ -615,7 +615,11 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -825,7 +829,11 @@ void medianFilter3D(const CLGLOBAL float* grad, CLGLOBAL float* output, const in
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1057,7 +1065,11 @@ void ProxTVDivergence(const int3 N, const int3 NOrig, const CLGLOBAL float* CLRE
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1122,7 +1134,11 @@ void ProxTVGradient(const int3 N, const int3 NOrig, const CLGLOBAL float* CLREST
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1493,7 +1509,11 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;
@@ -1631,7 +1651,11 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #ifdef CUDA
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
 #else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#else
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(xyz.x, xyz.y)).w;
+#endif
 #endif
     if (maskVal == 0)
         return;

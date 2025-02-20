@@ -875,9 +875,12 @@ if exist('OCTAVE_VERSION','builtin') == 0
                         ['-L"' af_path '/lib64"'], ['-L"' af_path '/lib"'], ['-L"' cuda_path '/lib64"'], ['-I' af_path_include], [folder '/OpenCL_matrixfree.cpp']);
 
                     disp('CUDA support enabled')
-                catch
+                catch ME
                     warning('CUDA support not enabled')
-                end
+                    if verbose
+                        disp(ME.message)
+                    end
+               end
             end
         end
         if strcmp(cc.Manufacturer, 'Microsoft')
