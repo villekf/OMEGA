@@ -10,7 +10,7 @@
   - You'll need to switch the subset type to a supported one after updating
   - Should be more memory efficient than the previous version
   
-- Most new features will be restricted to implementation 2 now and in the future
+- Most new features will be restricted to implementation 2 now and in the future (for Python this is the only one available)
   
 ### New features
 
@@ -49,6 +49,10 @@
   - Easily create your own algorithms by using the built-in operators for forward and/or backward projections
   - Full GPU support
   
+- Added support for TOF with list-mode data
+  - A separate uint8 vector needs to be input (`options.TOFIndices`) that contains the indices to the TOF time windows specified by `options.TOFCenter`
+  - Implementation 2 only!
+  
 ### Bug fixes and enhancements
 
 - Hybrid projector 45 wasn't using the correct interpolation length before, this has been fixed
@@ -56,6 +60,8 @@
 - Fixed weighting when source and/or detector are inside the FOV
 
 - The volume of intersection ray tracer (projector type 3) was previously incorrectly weighted
+
+- Fixed attenuation correction for projector type 1 when using SPECT data
 
 ## OMEGA v2.0.0
 
