@@ -1362,7 +1362,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		af::array kuvaRot = af::rotate(apuArr, 180-w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 		kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
 		if (inputScalars.attenuation_correction && (atten != nullptr)) {
-			attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten, AFTYPE);
+			attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
 			//attenuationImage = af::reorder(attenuationImage, 1, 0, 2);
 			attenuationImage = af::rotate(attenuationImage, -w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 			attenuationImage = af::accum(attenuationImage, 0);
@@ -1418,7 +1418,7 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 		apuBP(af::seq(w_vec.distInt[u1], af::end), af::span, af::span) = kuvaRot;
 		apuBP = af::rotate(apuBP, 180+w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 		if (inputScalars.attenuation_correction && (atten != nullptr)) {
-			af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten, AFTYPE);
+			af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
 			//attenuationImage = af::reorder(attenuationImage, 1, 0, 2);
 			attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 			attenuationImage = af::accum(attenuationImage, 0);
@@ -1457,7 +1457,7 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 			apuSumm(af::seq(w_vec.distInt[u1], af::end), af::span, af::span) = kuvaRot;
 			apuSumm = af::rotate(apuSumm, 180+w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 			if (inputScalars.attenuation_correction && (atten != nullptr)) {
-				af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten, AFTYPE);
+				af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
 				//attenuationImage = af::reorder(attenuationImage, 1, 0, 2);
 				attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1], true, AF_INTERP_BILINEAR);
 				attenuationImage = af::accum(attenuationImage, 0);

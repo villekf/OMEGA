@@ -213,7 +213,7 @@ class ProjectorClass {
 			if (inputScalars.maskFPZ > 1)
 				options.push_back("-DMASKFP3D");
 		}
-		if (inputScalars.useTotLength)
+		if (inputScalars.useTotLength && !inputScalars.SPECT)
 			options.push_back("-DTOTLENGTH");
 		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
@@ -1114,7 +1114,7 @@ public:
 	CUdeviceptr *d_rX, *d_rY, *d_rXY, *d_rZ, *d_rXZ, *d_rYZ;
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
 	CUdeviceptr *d_vector, *d_input;
-	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskFPB, d_maskBPB, *d_RDPref;
+	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskBPB, *d_RDPref;
 	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	//CUdeviceptr d_outputCT;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
