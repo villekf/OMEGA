@@ -50,11 +50,6 @@ else
 end
 n_rays = uint16(options.n_rays_transaxial);
 n_rays3D = uint16(options.n_rays_axial);
-if n_rays * n_rays3D > 1
-    dc_z = single(z_det(2,1) - z_det(1,1));
-else
-    dc_z = single(options.cr_pz);
-end
 if ~isfield(options, 'vaimennus')
     options.vaimennus = single(0);
 end
