@@ -972,7 +972,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 	float temp = 1.f / (CFLOAT(d_N2) * d_d2);
 #endif
 #endif //////////////// END MULTIRAY ////////////////
-#ifdef ATN //////////////// ATTENUATION ////////////////
+#if defined(ATN) && !defined(SPECT) //////////////// ATTENUATION ////////////////
 		float jelppi = 0.f;
 #ifdef USEIMAGES
 		int3 atnind = *tempi;
