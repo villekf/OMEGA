@@ -98,40 +98,6 @@ if options.projector_type == 6
     A = [];
     outputFP = outputFP(:);
     outputFP(outputFP < options.epps) = options.epps;
-elseif options.projector_type == 7
-    outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
-    voxelXY = [options.FOVa_x/double(options.Nx); options.FOVa_y/double(options.Ny)]; % Voxel size X and Y [mm]
-    voxelZ = options.axial_fov/double(options.Nz); % Voxel size Z [mm]
-    for ii = loopVar
-        u1 = options.uu;
-        if useCell
-            inputVolume = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-        else
-            inputVolume = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-        end
-        for kk = 1 : koko
-            apuFP = inputVolume;
-            P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector panel normal
-            %disp(min(apuFP, [], 'all'))
-            %disp(max(apuFP, [], 'all'))
-            apuFP = imtranslate(apuFP, [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate image by -p0      
-            apuFP = imrotate(apuFP, -options.swivelAngles(u1)+180, 'bilinear', 'crop'); % Rotate the image by the swivel angle
-            targetSize = round([ % Determine the target size of image volume
-                options.crXY * options.nRowsD / voxelXY(2), ... % Y-axis (first dimension)
-                size(apuFP, 2), ... % X-axis (second dimension)
-                options.crXY * options.nColsD / voxelZ % Z-axis (third dimension)
-            ]);
-            apuFP = resize(apuFP, targetSize, 'side', 'both'); % Crop BP volume to match FP physical dimensions
-            apuFP = sum(apuFP, 2); % Sum along the X-axis (second dimension)
-            apuFP = squeeze(apuFP); % Remove singleton dimension
-            apuFP = imresize(apuFP, size(outputFP(:, :, 1)), 'bilinear'); % Resize to match FP size
-            outputFP(:, :, kk) = outputFP(:, :, kk) + apuFP; % Update output array
-            u1 = u1 + 1; % Increment counter
-        end
-    end
-    A = [];
-    outputFP = outputFP(:);
-    outputFP(outputFP < options.epps) = options.epps;
 elseif options.implementation == 1 || options.implementation == 4
     for ii = loopVar
         if ii == 1 || isscalar(loopVar)
