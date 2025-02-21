@@ -776,17 +776,17 @@ DEVICE void getDetectorCoordinatesSPECT(
 #if defined(N_RAYS)
 	if (N_RAYS2D > 1) {
 		int idr = lorXY * 2;
-		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.;
-		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.;
-		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.;
-		(*s).x += apuX * d_rayShiftsSource[idr] / 2.;
-		(*s).y += apuY * d_rayShiftsSource[idr] / 2.;
-		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.;
+		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
+		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
+		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
+		(*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
+		(*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
+		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
 	}
 #endif
-	(*s).x += 1000 * ((*s).x - (*d).x);
-	(*s).y += 1000 * ((*s).y - (*d).y);
-	(*s).z += 1000 * ((*s).z - (*d).z);
+	(*s).x += 100.f * ((*s).x - (*d).x);
+	(*s).y += 100.f * ((*s).y - (*d).y);
+	(*s).z += 100.f * ((*s).z - (*d).z);
 }
 #else
 #if defined(RAW) || defined(SENS)

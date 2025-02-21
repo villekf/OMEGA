@@ -343,6 +343,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	for (int lorZ = 0u; lorZ < N_RAYS3D; lorZ++) {
 		for (int lorXY = 0u; lorXY < N_RAYS2D; lorXY++) {
 			lor++;
+#elif defined(SPECT)
+	const int lorXY = 0;
 #endif  //////////////// END MULTIRAY ////////////////
 	float3 s, d;
 #if defined(NLAYERS) && !defined(LISTMODE)
@@ -461,13 +463,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 		float d_b, dd, d_db, d_d2;
 		int apuX1, apuX2;
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 		float dT1, dT2;
-//#endif
+// #endif
 		if (fabs(diff.y) < 1e-6f && d.y <= d_bmax.y && d.y >= b.y && s.y <= d_bmax.y && s.y >= b.y) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.x - 1;
-#if defined(LISTMODE)
+// #if defined(LISTMODE)
 			float dist1, dist2 = 0.f;
 			if (s.x > d.x) {
 				dist1 = (b.x - d.x);
@@ -499,7 +501,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				dist2 -= d_d.x;
 			}
-#endif
+// #endif
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
@@ -525,7 +527,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		else if (fabs(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
 			apuX2 = d_Nxyz.y - 1;
-#if defined(LISTMODE)
+// #if defined(LISTMODE)
 			float dist1, dist2 = 0.f;
 			if (s.y > d.y) {
 				dist1 = (b.y - d.y);
@@ -557,7 +559,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				dist2 -= d_d.y;
 			}
-#endif
+// #endif
 			d_b = b.x;
 			dd = d.x;
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
@@ -626,7 +628,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				);
 #else //////////////// SIDDON ////////////////
 				float d_in = d_d2;
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 				if (ii == apuX1) {
 					local_ind += CLONG_rtz(d_N3 * ii);
 					if (d_N3 == 1)
@@ -638,9 +640,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					d_in = dT1;
 				else if (apuX2 < d_N1 - 1 && ii == apuX2)
 					d_in = dT2;
-//#endif
+// #endif
 #if defined(ATN) && defined(SPECT)
+#ifdef USEIMAGES
 				compute_attenuation(d_in, localInd, d_atten, &jelppi, aa);
+#else
+				compute_attenuation(d_in, local_ind, d_atten, &jelppi, aa);
+#endif
 				d_in *= EXP(jelppi);
 #endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
@@ -814,6 +820,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #endif
 			if (tz0 < ty0 && tz0 < tx0) {
+// #if defined(LISTMODE)
 				if (tz0 >= 0.f && tz0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = tz0 * L;
@@ -832,8 +839,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+// #else
+// 				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+// #endif
 			}
 			else if (ty0 < tx0) {
+// #if defined(LISTMODE)
 				if (ty0 >= 0.f && ty0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = ty0 * L;
@@ -852,8 +863,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&ty0, &tc, L, tyu, uy, &tempj);
+// #else
+// 				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
+// #endif
 			}
 			else {
+// #if defined(LISTMODE)
 				if (tx0 >= 0.f && tx0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = tx0 * L;
@@ -872,6 +887,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&tx0, &tc, L, txu, ux, &tempi);
+// #else
+// 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
+// #endif
 			}
 #if defined(ATN) && !defined(SPECT)
 #ifdef USEIMAGES
@@ -990,9 +1008,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // #endif
 
 		for (uint ii = 0u; ii < Np; ii++) {
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 			local_ele = 0.f;
-//#endif
+// #endif
 			local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, d_Nxy);
 			localInd = CMINT3(tempi, tempj, tempk);
 #if defined(ATN) && (defined(FP) || defined(SPECT)) //////////////// ATTENUATION ////////////////
@@ -1011,7 +1029,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			tempk_a = tempk;
 #endif //////////////// END ORTH/VOL ////////////////
 			if (tz0 < ty0 && tz0 < tx0) {
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 				if (tz0 >= 0.f && tz0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = tz0 * L;
@@ -1030,12 +1048,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-//#else
-//				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
-//#endif
+// #else
+// 				local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+// #endif
 			}
 			else if (ty0 < tx0) {
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 				if (ty0 >= 0.f && ty0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = ty0 * L;
@@ -1054,12 +1072,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-//#else
-//				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
-//#endif
+// #else
+// 				local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
+// #endif
 			}
 			else {
-//#if defined(LISTMODE)
+// #if defined(LISTMODE)
 				if (tx0 >= 0.f && tx0 <= 1.f) {
 					if (tc < 0.f) {
 						local_ele = tx0 * L;
@@ -1078,9 +1096,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				}
 				else
 					compute_element(&tx0, &tc, L, txu, ux, &tempi);
-//#else
-//				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
-//#endif
+// #else
+// 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
+// #endif
 			}
 #if !defined(TOTLENGTH) && defined(FP)
 			LL += local_ele;
