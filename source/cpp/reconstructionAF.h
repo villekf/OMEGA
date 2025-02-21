@@ -55,7 +55,7 @@
 /// <param name="n_rekos Number of selected reconstruction algorithms. NOT USED AT THE MOMENT! (optional)"></param>
 /// <returns></returns>
 template <typename T, typename F, typename R>
-void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* sc_ra, scalarStruct inputScalars,
+int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* sc_ra, scalarStruct inputScalars,
 	const uint32_t device, const int64_t* pituus, Weighting& w_vec, RecMethods& MethodList, const char* header_directory,
 	const float* x0, T* cell, T* FPcell = nullptr, const float* atten = nullptr, const float* norm = nullptr, const float* extraCorr = nullptr, const size_t size_gauss = 0,
 	const uint32_t* xy_index = nullptr, const uint16_t* z_index = nullptr, float* residual = nullptr, const uint16_t* L = nullptr, uint32_t n_rekos = 1) {
@@ -228,7 +228,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 	ProjectorClass proj;
 	status = proj.addProjector(inputScalars, w_vec, MethodList, header_directory);
 	if (status != 0)
-		return;
+		return -1;
 
 	if (inputScalars.verbose >= 3 || DEBUG)
 		mexPrint("Projector class object created");
@@ -368,7 +368,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 	// Create OpenCL buffers, CUDA arrays or OneAPI buffers (in the future)
 	status = proj.createBuffers(inputScalars, w_vec, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, length, MethodList);
 	if (status != 0)
-		return;
+		return -1;
 
 	// Special case for large dimensional reconstructions, i.e. cases where the image volume/measurements don't fit into the device memory
 	if (inputScalars.largeDim)
@@ -441,12 +441,12 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 		status = proj.initializeKernel(inputScalars, w_vec);
 		if (status != 0) {
 			mexPrint("Failed to initialize kernel");
-			return;
+			return -1;
 		}
 		af::sync();
 		status = proj.setDynamicKernelData(inputScalars, w_vec);
 		if (status != 0)
-			return;
+			return -1;
 	}
 #endif
 
@@ -485,7 +485,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						af::sync();
 						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, E, 0, totLength, g, inputScalars.koko, proj, ii, pituus);
 						if (status != 0) {
-							return;
+							return -1;
 						}
 						af::sync();
 					}
@@ -527,7 +527,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, E, 0, totLength, inputScalars.koko, meanBP, g, proj, false, ii, pituus);
 							if (status != 0) {
 								mexPrint("Failed to launch the SPS sensitivity kernel\n");
-								return;
+								return -1;
 							}
 						}
 						w_vec.dP[ii] = static_cast<float>(inputScalars.subsetsUsed) / vec.rhs_os[ii];
@@ -616,7 +616,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 			if (inputScalars.scatter) {
 				status = proj.loadDynamicData(inputScalars, length, extraCorr, pituus, tt);
 				if (status != 0)
-					return;
+					return -1;
 			}
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Dynamic data loaded");
@@ -651,7 +651,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						af::array oneInput = af::constant(0.f, 1, 1);
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, 0, length, m_size, meanBP, g, proj, true, ii, pituus);
 						if (status != 0) {
-							return;
+							return -1;
 						}
 						af::sync();
 						vec.rhs_os[ii](vec.rhs_os[ii] < inputScalars.epps) = inputScalars.epps;
@@ -686,7 +686,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							else {
 								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, subIter, length, m_size, meanBP, g, proj, false, ii, pituus);
 								if (status != 0) {
-									return;
+									return -1;
 								}
 								af::sync();
 							}
@@ -744,7 +744,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							oneInput = af::constant(1.f, m_size, 1);
 							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, length, g, m_size, proj, ii, pituus);
 							if (status != 0) {
-								return;
+								return - 1;
 							}
 							af::sync();
 						}
@@ -765,7 +765,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 			if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f)
 				status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, g, apuF);
 			if (status != 0) {
-				return;
+				return -1;
 			}
 			if (inputScalars.verbose >= 3 && (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1)) {
 				mexPrintVarf("Primal step size (tau) is ", w_vec.tauCP[0]);
@@ -810,7 +810,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					oneInput1 = af::constant(1.f, m_size * inputScalars.nBins, 1);
 					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, g, m_size, proj, 0, pituus);
 					if (status != 0) {
-						return;
+						return -1;
 					}
 					af::sync();
 				}
@@ -824,7 +824,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					oneInput2 = af::constant(1.f, m_size * inputScalars.nBins, 1);
 					status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput2, ll, length, g, m_size, proj, 0, pituus);
 					if (status != 0) {
-						return;
+						return -1;
 					}
 					af::sync();
 				}
@@ -843,7 +843,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 				else {
 					status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput1, ll, length, m_size, meanBP, g, proj, false, 0, pituus);
 					if (status != 0) {
-						return;
+						return -1;
 					}
 					af::sync();
 				}
@@ -854,9 +854,9 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 				mexPrintBase("w_vec.RDPref = %f\n", af::sum<float>(w_vec.RDPref));
 				mexEval();
 				if (af::anyTrue<bool>(af::isNaN(w_vec.RDPref)))
-					return;
+					return -1;
 				if (af::anyTrue<bool>(af::isInf(w_vec.RDPref)))
-					return;
+					return -1;
 			}
 		}
 
@@ -871,11 +871,11 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 			if (!inputScalars.largeDim) {
 				status = applyMeasPreconditioning(w_vec, inputScalars, mData[0], proj, 0);
 				if (status != 0)
-					return;
+					return -1;
 				computeIntegralImage(inputScalars, w_vec, length[0], mData[0], meanBP);
 				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], 0, length, fullMSize, meanBP, g, proj, false, 0, pituus);
 				if (status != 0) {
-					return;
+					return -1;
 				}
 			}
 			else {
@@ -900,7 +900,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					}
 					status = applyMeasPreconditioning(w_vec, inputScalars, mData[0], proj, 0);
 					if (status != 0)
-						return;
+						return -1;
 					computeIntegralImage(inputScalars, w_vec, length[kk], mData[0], meanBP);
 					// Loop through the image volume for the current measurement "subset"
 					for (int ii = 0; ii < inputScalars.subsets; ii++) {
@@ -909,7 +909,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							vec.rhs_os[0] = af::array(inputScalars.lDimStruct.imDim[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost);
 						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData[0], kk, length, fullMSize, meanBP, g, proj, false, 0, pituus, FDK);
 						if (status != 0) {
-							return;
+							return -1;
 						}
 						if (!FDK)
 							vec.rhs_os[0] += af::array(inputScalars.lDimStruct.imDim[ii], &apuF[inputScalars.lDimStruct.cumDim[ii]], afHost);
@@ -1035,7 +1035,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					status = initializationStep(w_vec, mData[subIter], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, g, osa_iter, ii);
 					if (status != 0)
-						return;
+						return -1;
 				}
 
 				af::sync();
@@ -1053,7 +1053,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
 							if (status != 0) {
-								return;
+								return -1;
 							}
 						}
 						af::sync();
@@ -1082,7 +1082,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						//}
 						status = computeForwardStep(MethodList, mData[subIter], outputFP, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter, 0, residual);
 						if (status != 0)
-							return;
+							return -1;
 						if (DEBUG) {
 							mexPrintBase("outputFP = %f\n", af::sum<float>(outputFP));
 							mexPrintBase("max(outputFP) = %f\n", af::max<float>(outputFP));
@@ -1137,7 +1137,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 								else if (compute_norm_matrix == 2) {
 									vec.Summ[ii][osa_iter].unlock();
 								}
-								return;
+								return -1;
 							}
 							transferControl(vec, inputScalars, g, w_vec, compute_norm_matrix, proj.no_norm, osa_iter, ii);
 						}
@@ -1155,7 +1155,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							af::sync();
 							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, 0, pituus);
 							if (status != 0) {
-								return;
+								return -1;
 							}
 						}
 						largeDimLast(inputScalars, proj);
@@ -1172,7 +1172,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 						af::sync();
 						status = computeForwardStep(MethodList, mData[0], outputFP, m_size, inputScalars, w_vec, aRand[0], vec, proj, iter, 0);
 						if (status != 0)
-							return;
+							return -1;
 						if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
 							if (inputScalars.subsetsUsed > 1 && (inputScalars.subsetType < 8))
 								vec.pCP[0].host(&apuM[pituus[osa_iter] * inputScalars.nBins]);
@@ -1198,7 +1198,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 							status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter,
 								pituus, g, proj, mData[0], m_size, uu, compute_norm_matrix);
 							if (status != 0)
-								return;
+								return -1;
 							if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
 								for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 									vec.im_os[ii](vec.im_os[ii] < inputScalars.epps) = inputScalars.epps;
@@ -1242,7 +1242,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					}
 					status = computeForwardStep(MethodList, mData[subIter], fProj, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter);
 					if (status != 0)
-						return;
+						return -1;
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 						backprojectionType6(fProj, w_vec, vec, inputScalars, length[osa_iter], uu, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
 				}
@@ -1264,14 +1264,14 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 					status = computeOSEstimates(vec, w_vec, MethodList, iter, osa_iter, inputScalars, length, break_iter,
 						pituus, g, proj, mData[subIter], m_size, uu, compute_norm_matrix);
 					if (status != 0)
-						return;
+						return -1;
 					if (DEBUG) {
 						mexPrintBase("vec.im_os = %f\n", af::sum<float>(vec.im_os[0]));
 						mexEval();
 						if (af::anyTrue<bool>(af::isNaN(vec.im_os[0])))
-							return;
+							return -1;
 						if (af::anyTrue<bool>(af::isInf(vec.im_os[0])))
-							return;
+							return -1;
 					}
 
 					// Enforce positivity if applicable
@@ -1303,7 +1303,7 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 			if (!inputScalars.largeDim) {
 				status = computeOSEstimatesIter(vec, w_vec, MethodList, inputScalars, iter, proj, g, cell, ee, eInd, x0);
 				if (status != 0)
-					return;
+					return -1;
 				if (inputScalars.enforcePositivity && inputScalars.subsetsUsed == 1 && !MethodList.CPType) {
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 						vec.im_os[ii](vec.im_os[ii] < inputScalars.epps) = inputScalars.epps;
@@ -1357,5 +1357,5 @@ void reconstructionAF(const float* z_det, const float* x, const F* Sin, const R*
 		mexPrint("Reconstructions complete, setting the output values\n");
 	}
 
-	return;
+	return 0;
 }

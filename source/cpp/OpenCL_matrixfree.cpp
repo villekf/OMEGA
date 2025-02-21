@@ -456,7 +456,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 	try {
 
-		reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
+		int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 			cell_array_ptr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual, L);
 
 
@@ -467,8 +467,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		// Clear ArrayFire memory
 		af::deviceGC();
-		if (inputScalars.verbose >= 3 || DEBUG)
+		if ((inputScalars.verbose >= 3 || DEBUG) && status == 0)
 			mexPrint("Reconstruction completed successfully!");
+		else if (status != 0)
+			mexPrint("Reconstruction failed!");
 	}
 	catch (const std::exception& e) {
 		af::deviceGC();

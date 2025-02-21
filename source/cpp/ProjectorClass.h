@@ -209,7 +209,7 @@ class ProjectorClass {
 			if (inputScalars.maskBPZ > 1)
 				options += " -DMASKBP3D";
 		}
-		if (inputScalars.useTotLength)
+		if (inputScalars.useTotLength && !inputScalars.SPECT)
 			options += " -DTOTLENGTH";
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			options += " -DFDK";
@@ -239,9 +239,9 @@ class ProjectorClass {
 			options += " -DPET";
 		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
-			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
-			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
-			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
+			//options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
+			//options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
+			//options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));

@@ -252,12 +252,12 @@ class ProjectorClass {
 			options.push_back("-DPET");
 		else if (inputScalars.SPECT) {
 			options.push_back("-DSPECT");
-			std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
-			options.push_back(buffer2);
-			std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
-			options.push_back(buffer3);
-			std::snprintf(buffer4, 30, "-DN_RAYS3D=%d", static_cast<int32_t>(inputScalars.n_rays3D));
-			options.push_back(buffer4);
+			//std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
+			//options.push_back(buffer2);
+			//std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
+			//options.push_back(buffer3);
+			//std::snprintf(buffer4, 30, "-DN_RAYS3D=%d", static_cast<int32_t>(inputScalars.n_rays3D));
+			//options.push_back(buffer4);
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
@@ -1635,7 +1635,7 @@ public:
 			}
 			memAlloc.V = true;
 			// Detector coordinates
-			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = cuMemAlloc(&d_x[0], sizeof(float) * inputScalars.size_of_x);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
@@ -1957,7 +1957,7 @@ public:
 					mexPrintBase("vecSize = %u\n", vecSize);
 					mexEval();
 				}
-				if (inputScalars.CT && inputScalars.listmode != 1) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 					if (inputScalars.pitch) {
 						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 6);
 					}
@@ -1998,8 +1998,8 @@ public:
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
 				}
-				if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0)) {
+				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)) {
 						status = cuMemAlloc(&d_x[kk], sizeof(float) * length[kk] * 6);
 						if (status != CUDA_SUCCESS) {
 							getErrorString(status);
@@ -2120,7 +2120,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = cuMemcpyHtoD(d_x[0], x, sizeof(float) * inputScalars.size_of_x);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
@@ -2223,7 +2223,7 @@ public:
 				}
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if (inputScalars.CT && inputScalars.listmode == 0) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					if (inputScalars.pitch)
 						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
 					else
@@ -2247,7 +2247,7 @@ public:
 						//return -1;
 					}
 				}
-				if (inputScalars.CT && inputScalars.listmode == 0) {
+				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					status = cuMemcpyHtoD(d_x[kk], &x[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
@@ -2929,11 +2929,11 @@ public:
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
 				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				kTemp.emplace_back(&d_x[0]);
 			else
 				kTemp.emplace_back(&d_x[osa_iter]);
-			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
@@ -3126,11 +3126,11 @@ public:
 				kTemp.emplace_back(&inputScalars.rings);
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 					kTemp.emplace_back(&d_x[0]);
 				else
 					kTemp.emplace_back(&d_x[osa_iter]);
-				if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					kTemp.emplace_back(&d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
 					kTemp.emplace_back(&d_z[0]);
@@ -3458,11 +3458,11 @@ public:
 					kTemp.emplace_back(&inputScalars.det_per_ring);
 				}
 				else {
-					if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if ((inputScalars.listmode == 0 && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						kTemp.emplace_back(&d_x[0]);
 					else
 						kTemp.emplace_back(&d_x[osa_iter]);
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || inputScalars.listmode > 0))
 						kTemp.emplace_back(&d_z[osa_iter]);
 					else
 						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
