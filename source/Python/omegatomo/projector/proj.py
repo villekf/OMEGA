@@ -1692,48 +1692,21 @@ class projectorClass:
                 if self.use_64bit_atomics or self.use_32bit_atomics:
                     self.use_64bit_atomics = False
                     self.use_32bit_atomics = False
-                # bOpt ='-DCUDA'
-                if self.useCuPy:
-                    bOpt = ('-DCUDA',)
-                    bOpt += ('-DPYTHON',)
-                else:
-                    bOpt = ['-DCUDA']
-                    bOpt.append('-DPYTHON')
+                bOpt = ('-DCUDA','-DPYTHON',)
             else:
-                bOpt ='-cl-single-precision-constant -DOPENCL'
+                bOpt =('-cl-single-precision-constant -DOPENCL',)
             if self.useMAD:
                 if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('--use_fast_math',)
-                        bOpt += ('-DUSEMAD',)
-                    else:
-                        bOpt.append('--use_fast_math')
-                        bOpt.append('-DUSEMAD')
-                    # bOpt += ' --use_fast_math -DUSEMAD'
+                    bOpt += ('--use_fast_math','-DUSEMAD',)
                 else:
-                    bOpt += ' -cl-fast-relaxed-math -DUSEMAD'
+                    bOpt += (' -cl-fast-relaxed-math -DUSEMAD',)
             if self.useImages:
-                if self.useCUDA:
-                    bOpt += ('-DUSEIMAGES',)
-                else:
-                    bOpt += ' -DUSEIMAGES'
+                bOpt += ('-DUSEIMAGES',)
             if (self.FPType == 2 or self.BPType == 2 or self.FPType == 3 or self.BPType == 3):
                 if self.orthTransaxial:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOpt += ('-DDCRYSTXYUSEMAD',)
-                        else:
-                            bOpt.append('-DCRYSTXY')
-                    else:
-                        bOpt += ' -DCRYSTXY'
+                    bOpt += ('-DCRYSTXY',)
                 if self.orthAxial:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOpt += ('-DCRYSTZ',)
-                        else:
-                            bOpt.append('-DCRYSTZ')
-                    else:
-                        bOpt += ' -DCRYSTZ'
+                    bOpt += ('-DCRYSTZ',)
                 with open(headerDir + 'opencl_functions_orth3d.h') as f:
                     hlines2 = f.read()
                 if self.FPType in [2, 3]:
@@ -1748,456 +1721,116 @@ class projectorClass:
                 linesFP = hlines + linesFP
                 linesBP = hlines + linesBP
             if self.FPType == 3 or self.BPType == 3:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DVOL',)
-                    else:
-                        bOpt.append('-DVOL')
-                else:
-                    bOpt += ' -DVOL'
+                bOpt += ('-DVOL',)
             if self.useMaskFP:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DMASKFP',)
-                    else:
-                        bOpt.append('-DMASKFP')
-                else:
-                    bOpt += ' -DMASKFP'
+                bOpt += ('-DMASKFP',)
             if self.useMaskBP:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DMASKBP',)
-                    else:
-                        bOpt.append('-DMASKBP')
-                else:
-                    bOpt += ' -DMASKBP'
+                bOpt += ('-DMASKBP',)
             if self.OffsetLimit.size > 0:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DOFFSET',)
-                    else:
-                        bOpt.append('-DOFFSET')
-                else:
-                    bOpt += ' -DOFFSET'
+                bOpt += ('-DOFFSET',)
             if self.attenuation_correction and self.CTAttenuation:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DATN',)
-                    else:
-                        bOpt.append('-DATN')
-                else:
-                    bOpt += ' -DATN'
+                bOpt += ('-DATN',)
             elif self.attenuation_correction and not self.CTAttenuation:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DATNM',)
-                    else:
-                        bOpt.append('-DATNM')
-                else:
-                    bOpt += ' -DATNM'
+                bOpt += ('-DATNM',)
             if self.normalization_correction:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DNORM',)
-                    else:
-                        bOpt.append('-DNORM')
-                else:
-                    bOpt += ' -DNORM'
+                bOpt += ('-DNORM',)
             if self.additionalCorrection:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DSCATTER',)
-                    else:
-                        bOpt.append('-DSCATTER')
-                else:
-                    bOpt += ' -DSCATTER'
+                bOpt += ('-DSCATTER',)
             if self.randoms_correction:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DRANDOMS',)
-                    else:
-                        bOpt.append('-DRANDOMS')
-                else:
-                    bOpt += ' -DRANDOMS'
+                bOpt += ('-DRANDOMS',)
             if self.nLayers > 1:
                 if self.useIndexBasedReconstruction:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOpt += ('-DNLAYERS=' + str(self.nLayers),)
-                        else:
-                            bOpt.append('-DNLAYERS=' + str(self.nLayers))
-                    else:
-                        bOpt += ' -DNLAYERS=' + str(self.nLayers)
+                    bOpt += ('-DNLAYERS=' + str(self.nLayers),)
                 else:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOpt += ('-DNLAYERS=' + str(self.nProjections // (self.nLayers * self.nLayers)),)
-                        else:
-                            bOpt.append('-DNLAYERS=' + str(self.nProjections // (self.nLayers * self.nLayers)))
-                    else:
-                        bOpt += ' -DNLAYERS=' + str(self.nProjections // (self.nLayers * self.nLayers))
+                    bOpt += ('-DNLAYERS=' + str(self.nProjections // (self.nLayers * self.nLayers)),)
             if self.TOF:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DTOF',)
-                    else:
-                        bOpt.append('-DTOF')
-                else:
-                    bOpt += ' -DTOF'
+                bOpt += ('-DTOF',)
             if self.CT:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DCT',)
-                    else:
-                        bOpt.append('-DCT')
-                else:
-                    bOpt += ' -DCT'
+                bOpt += ('-DCT',)
             elif self.SPECT:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DSPECT',)
-                        #bOpt += ('-DCOL_D=' + str(self.colD),)
-                        #bOpt += ('-DCOL_L=' + str(self.colL),)
-                        #bOpt += ('-DDSEPTAL=' + str(self.dSeptal),)
-                        #bOpt += ('-DHEXORIENTATION=' + str(self.hexOrientation),)
-                        #bOpt += ('-DCONEMETHOD=' + str(self.coneMethod),)
-                        #bOpt += ('-DNRAYSPECT=' + str(self.nRaySPECT),)
-                        #bOpt += ('-DN_RAYS=' + str(tmpNrays),)
-                        #bOpt += ('-DN_RAYS2D=1',)
-                        #bOpt += ('-DN_RAYS3D=1',)
-                        #bOpt += ('-DNHEXSPECT=' + str(nHexSPECT),)
-                    else:
-                        bOpt.append('-DSPECT')
-                        #bOpt.append('-DCOL_D=' + str(self.colD))
-                        #bOpt.append('-DCOL_L=' + str(self.colL))
-                        #bOpt.append('-DDSEPTAL=' + str(self.dSeptal))
-                        #bOpt.append('-DHEXORIENTATION=' + str(self.hexOrientation))
-                        #bOpt.append('-DCONEMETHOD=' + str(self.coneMethod))
-                        #bOpt.append('-DNRAYSPECT=' + str(self.nRaySPECT))
-                        #bOpt.append('-DN_RAYS=' + str(tmpNrays))
-                        #bOpt.append('-DN_RAYS2D=1')
-                        #bOpt.append('-DN_RAYS3D=1')
-                        #bOpt.append('-DNHEXSPECT=' + str(nHexSPECT))
-                else:
-                    bOpt += ' -DSPECT'
-                    #bOpt += ' -DCOL_D=' + str(self.colD)
-                    #bOpt += ' -DCOL_L=' + str(self.colL)
-                    #bOpt += ' -DDSEPTAL=' + str(self.dSeptal)
-                    #bOpt += ' -DHEXORIENTATION=' + str(self.hexOrientation)
-                    #bOpt += ' -DCONEMETHOD=' + str(self.coneMethod)
-                    #bOpt += ' -DNRAYSPECT=' + str(self.nRaySPECT)
-                    #bOpt += ' -DN_RAYS=' + str(tmpNrays)
-                    #bOpt += ' -DN_RAYS2D=1'
-                    #bOpt += ' -DN_RAYS3D=1'
-                    #bOpt += ' -DNHEXSPECT=' + str(nHexSPECT)
+                bOpt += ('-DSPECT',)
             elif self.PET:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DPET',)
-                    else:
-                        bOpt.append('-DPET')
-                else:
-                    bOpt += ' -DPET'
-            if self.useCUDA:
-                if self.useCuPy:
-                    bOpt += ('-DNBINS=' + str(self.TOF_bins_used),)
-                else:
-                    bOpt.append('-DNBINS=' + str(self.TOF_bins_used))
-            else:
-                bOpt += ' -DNBINS=' + str(self.TOF_bins_used)
+                bOpt += ('-DPET',)
+
+            bOpt += ('-DNBINS=' + str(self.TOF_bins_used),)
             if self.listmode:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DLISTMODE',)
-                    else:
-                        bOpt.append('-DLISTMODE')
-                else:
-                    bOpt += ' -DLISTMODE'
+                bOpt += ('-DLISTMODE',)
             if self.listmode > 0 and self.useIndexBasedReconstruction:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DINDEXBASED',)
-                    else:
-                        bOpt.append('-DINDEXBASED')
-                else:
-                    bOpt += ' -DINDEXBASED'
+                bOpt += ('-DINDEXBASED',)
             if (self.FPType == 1 or self.BPType == 1 or self.FPType == 4 or self.BPType == 4) and self.n_rays_transaxial * self.n_rays_axial > 1:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial),)
-                        bOpt += ('-DN_RAYS2D=' + str(self.n_rays_transaxial),)
-                        bOpt += ('-DN_RAYS3D=' + str(self.n_rays_axial),)
-                    else:
-                        bOpt.append('-DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial))
-                        bOpt.append('-DN_RAYS2D=' + str(self.n_rays_transaxial))
-                        bOpt.append('-DN_RAYS3D=' + str(self.n_rays_axial))
-                else:
-                    bOpt += ' -DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial)
-                    bOpt += ' -DN_RAYS2D=' + str(self.n_rays_transaxial)
-                    bOpt += ' -DN_RAYS3D=' + str(self.n_rays_axial)
+                bOpt += ('-DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial),)
+                bOpt += ('-DN_RAYS2D=' + str(self.n_rays_transaxial),)
+                bOpt += ('-DN_RAYS3D=' + str(self.n_rays_axial),)
             if self.pitch:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DPITCH',)
-                    else:
-                        bOpt.append('-DPITCH')
-                else:
-                    bOpt += ' -DPITCH'
+                bOpt += ('-DPITCH',)
             if (((self.subsets > 1 and (self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7))) and not self.CT and not self.SPECT and not self.PET and self.listmode == 0):
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DSUBSETS',)
-                    else:
-                        bOpt.append('-DSUBSETS')
-                else:
-                    bOpt += ' -DSUBSETS'
+                bOpt += ('-DSUBSETS',)
             if self.subsets > 1 and self.listmode == 0:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOpt += ('-DSTYPE=' + str(self.subsetType),)
-                        bOpt += ('-DNSUBSETS=' + str(self.subsets),)
-                    else:
-                        bOpt.append('-DSTYPE=' + str(self.subsetType))
-                        bOpt.append('-DNSUBSETS=' + str(self.subsets))
-                else:
-                    bOpt += ' -DSTYPE=' + str(self.subsetType)
-                    bOpt += ' -DNSUBSETS=' + str(self.subsets)
+                bOpt += ('-DSTYPE=' + str(self.subsetType),'-DNSUBSETS=' + str(self.subsets),)
             
-            if self.useCUDA:
-                if self.useCuPy:
-                    bOptFP = bOpt + ('-DFP',)
-                else:
-                    bOptFP = bOpt.copy()
-                    bOptFP.append('-DFP')
-            else:
-                bOptFP = bOpt + ' -DFP'
+            bOptFP = bOpt + ('-DFP',)
             if self.localSizeFP[1] > 1:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),)
-                        bOptFP += ('-DLOCAL_SIZE2=' + str(self.localSizeFP[1]),)
-                    else:
-                        bOptFP.append('-DLOCAL_SIZE=' + str(self.localSizeFP[0]))
-                        bOptFP.append('-DLOCAL_SIZE2=' + str(self.localSizeFP[1]))
-                else:
-                    bOptFP += ' -DLOCAL_SIZE=' + str(self.localSizeFP[0])
-                    bOptFP += ' -DLOCAL_SIZE2=' + str(self.localSizeFP[1])
+                bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),'-DLOCAL_SIZE2=' + str(self.localSizeFP[1]),)
             else:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),)
-                        bOptFP += ('-DLOCAL_SIZE2=' + str(1),)
-                    else:
-                        bOptFP.append('-DLOCAL_SIZE=' + str(self.localSizeFP[0]))
-                        bOptFP.append('-DLOCAL_SIZE2=' + str(1))
-                else:
-                    bOptFP += ' -DLOCAL_SIZE=' + str(self.localSizeFP[0])
-                    bOptFP += ' -DLOCAL_SIZE2=' + str(1)
+                bOptFP += ('-DLOCAL_SIZE=' + str(self.localSizeFP[0]),'-DLOCAL_SIZE2=' + str(1),)
             if self.FPType in [1, 2, 3]:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptFP += ('-DSIDDON',)
-                    else:
-                        bOptFP.append('-DSIDDON')
-                else:
-                    bOptFP += ' -DSIDDON'
+                bOptFP += ('-DSIDDON',)
                 if self.FPType in [2, 3]:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptFP += ('-DORTH',)
-                        else:
-                            bOptFP.append('-DORTH')
-                    else:
-                        bOptFP += ' -DORTH'
+                    bOptFP += ('-DORTH',)
                 if self.FPType == 3:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptFP += ('-DVOL',)
-                        else:
-                            bOptFP.append('-DVOL')
-                    else:
-                        bOptFP += ' -DVOL'
+                    bOptFP += ('-DVOL',)
                 if self.use_64bit_atomics:
-                    bOptFP += ' -DCAST=long'
+                    bOptFP += ('-DCAST=long',)
                 elif self.use_32bit_atomics:
-                    bOptFP += ' -DCAST=int'
+                    bOptFP += ('-DCAST=int',)
                 else:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptFP += ('-DCAST=float',)
-                        else:
-                            bOptFP.append('-DCAST=float')
-                    else:
-                        bOptFP += ' -DCAST=float'
+                    bOptFP += ('-DCAST=float',)
             elif self.FPType == 4:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptFP += ('-DPTYPE4=',)
-                        bOptFP += ('-DNVOXELS=' + str(self.NVOXELS),)
-                    else:
-                        bOptFP.append('-DPTYPE4')
-                        bOptFP.append('-DNVOXELS=' + str(self.NVOXELS))
-                else:
-                    bOptFP += ' -DPTYPE4'
-                    bOptFP += ' -DNVOXELS=' + str(self.NVOXELS)
+                bOptFP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 if not self.CT:
                     if self.use_64bit_atomics:
-                        bOptFP += ' -DCAST=long'
+                        bOptFP += ('-DCAST=long',)
                     elif self.use_32bit_atomics:
-                        bOptFP += ' -DCAST=int'
+                        bOptFP += ('-DCAST=int',)
                     else:
-                        bOptFP += ' -DCAST=float'
+                        bOptFP += ('-DCAST=float',)
             elif self.FPType == 5:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptFP += ('-DPROJ5=',)
-                        bOptFP += ('-DNVOXELSFP=' + str(self.NVOXELSFP),)
-                    else:
-                        bOptFP.append('-DPROJ5')
-                        bOptFP.append('-DNVOXELSFP=' + str(self.NVOXELSFP))
-                else:
-                    bOptFP += ' -DPROJ5'
-                    bOptFP += ' -DNVOXELSFP=' + str(self.NVOXELSFP)
+                bOptFP += ('-DPROJ5','-DNVOXELSFP=' + str(self.NVOXELSFP),)
                 if self.meanFP:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptFP += ('-DMEANDISTANCEFP=',)
-                        else:
-                            bOptFP.append('-DMEANDISTANCEFP')
-                    else:
-                        bOptFP += ' -DMEANDISTANCEFP'
+                    bOptFP += ('-DMEANDISTANCEFP',)
             
-            if self.useCUDA:
-                if self.useCuPy:
-                    bOptBP = bOpt + ('-DBP',)
-                else:
-                    bOptBP = bOpt.copy()
-                    bOptBP.append('-DBP')
-            else:
-                bOptBP = bOpt + ' -DBP'
+            bOptBP = bOpt + ('-DBP',)
             if self.localSizeBP[1] > 1:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DLOCAL_SIZE=' + str(self.localSizeBP[0]),)
-                        bOptBP += ('-DLOCAL_SIZE2=' + str(self.localSizeBP[1]),)
-                    else:
-                        bOptBP.append('-DLOCAL_SIZE=' + str(self.localSizeBP[0]))
-                        bOptBP.append('-DLOCAL_SIZE2=' + str(self.localSizeBP[1]))
-                else:
-                    bOptBP += ' -DLOCAL_SIZE=' + str(self.localSizeBP[0])
-                    bOptBP += ' -DLOCAL_SIZE2=' + str(self.localSizeBP[1])
+                bOptBP += ('-DLOCAL_SIZE=' + str(self.localSizeBP[0]),'-DLOCAL_SIZE2=' + str(self.localSizeBP[1]),)
             else:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DLOCAL_SIZE=' + str(self.localSizeBP[0]),)
-                        bOptBP += ('-DLOCAL_SIZE2=' + str(1),)
-                    else:
-                        bOptBP.append('-DLOCAL_SIZE=' + str(self.localSizeBP[0]))
-                        bOptBP.append('-DLOCAL_SIZE2=' + str(1))
-                else:
-                    bOptBP += ' -DLOCAL_SIZE=' + str(self.localSizeBP[0])
-                    bOptBP += ' -DLOCAL_SIZE2=' + str(1)
+                bOptBP += ('-DLOCAL_SIZE=' + str(self.localSizeBP[0]),'-DLOCAL_SIZE2=' + str(1),)
             if self.BPType in [1, 2, 3]:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DSIDDON',)
-                    else:
-                        bOptBP.append('-DSIDDON')
-                else:
-                    bOptBP += ' -DSIDDON'
+                bOptBP += ('-DSIDDON',)
                 if self.BPType in [2, 3]:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptBP += ('-DORTH',)
-                        else:
-                            bOptBP.append('-DORTH')
-                    else:
-                        bOptBP += ' -DORTH'
+                    bOptBP += ('-DORTH',)
                 if self.BPType == 3:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptBP += ('-DVOL',)
-                        else:
-                            bOptBP.append('-DVOL')
-                    else:
-                        bOptBP += ' -DVOL'
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DATOMICF',)
-                    else:
-                        bOptBP.append('-DATOMICF')
-                else:
-                    bOptBP += ' -DATOMICF'
+                    bOptBP += ('-DVOL',)
+                bOptBP += ('-DATOMICF',)
                 if self.use_64bit_atomics:
-                    bOptBP += ' -DATOMIC'
-                    bOptBP += ' -DCAST=long'
-                    bOptBP += ' -DTH=' + str(self.TH)
+                    bOptBP += ('-DATOMIC','-DCAST=long','-DTH=' + str(self.TH),)
                 elif self.use_32bit_atomics:
-                    bOptBP += ' -DATOMIC32'
-                    bOptBP += ' -DCAST=int'
-                    bOptBP += ' -DTH=' + str(self.TH32)
+                    bOptBP += (' -DATOMIC32',' -DCAST=int',' -DTH=' + str(self.TH32),)
                 else:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptBP += ('-DCAST=float',)
-                        else:
-                            bOptBP.append('-DCAST=float')
-                    else:
-                        bOptBP += ' -DCAST=float'
+                    bOptBP += ('-DCAST=float',)
             elif self.BPType == 4:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DPTYPE4',)
-                        bOptBP += ('-DNVOXELS=' + str(self.NVOXELS),)
-                    else:
-                        bOptBP.append('-DPTYPE4')
-                        bOptBP.append('-DNVOXELS=' + str(self.NVOXELS))
-                else:
-                    bOptBP += ' -DPTYPE4'
-                    bOptBP += ' -DNVOXELS=' + str(self.NVOXELS)
+                bOptBP += ('-DPTYPE4','-DNVOXELS=' + str(self.NVOXELS),)
                 if not self.CT:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptBP += ('-DATOMICF',)
-                        else:
-                            bOptBP.append('-DATOMICF')
-                    else:
-                        bOptBP += ' -DATOMICF'
+                    bOptBP += ('-DATOMICF',)
                     if self.use_64bit_atomics:
-                        bOptBP += ' -DATOMIC'
-                        bOptBP += ' -DCAST=long'
-                        bOptBP += ' -DTH=' + str(self.TH)
+                        bOptBP += ('-DATOMIC','-DCAST=long','-DTH=' + str(self.TH),)
                     elif self.use_32bit_atomics:
-                        bOptBP += ' -DATOMIC32'
-                        bOptBP += ' -DCAST=int'
-                        bOptBP += ' -DTH=' + str(self.TH32)
+                        bOptBP += (' -DATOMIC32',' -DCAST=int',' -DTH=' + str(self.TH32),)
                     else:
-                        if self.useCUDA:
-                            if self.useCuPy:
-                                bOptBP += ('-DCAST=float',)
-                            else:
-                                bOptBP.append('-DCAST=float')
-                        else:
-                            bOptBP += ' -DCAST=float'
+                        bOptBP += ('-DCAST=float',)
             elif self.BPType == 5:
-                if self.useCUDA:
-                    if self.useCuPy:
-                        bOptBP += ('-DPROJ5',)
-                        bOptBP += ('-DNVOXELS5=' + str(self.NVOXELS5),)
-                    else:
-                        bOptBP.append('-DPROJ5')
-                        bOptBP.append('-DNVOXELS5=' + str(self.NVOXELS5))
-                else:
-                    bOptBP += ' -DPROJ5'
-                    bOptBP += ' -DNVOXELS5=' + str(self.NVOXELS5)
+                bOptBP += ('-DPROJ5','-DNVOXELS5=' + str(self.NVOXELS5),)
                 if self.meanBP:
-                    if self.useCUDA:
-                        if self.useCuPy:
-                            bOptBP += ('-DMEANDISTANCEBP',)
-                        else:
-                            bOptBP.append('-DMEANDISTANCEBP')
-                    else:
-                        bOptBP += ' -DMEANDISTANCEBP'
+                    bOptBP += ('-DMEANDISTANCEBP',)
         else:
             if self.useCUDA:
                 if self.useTorch:
@@ -2351,10 +1984,7 @@ class projectorClass:
                         with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
                             lines = f.read()
                         lines = hlines + lines
-                        bOpt += ('-DCAST=float',)
-                        bOpt += ('-DPSF',)
-                        bOpt += ('-DLOCAL_SIZE=' + str(localSize[0]),)
-                        bOpt += ('-DLOCAL_SIZE2=' + str(localSize[1]),)
+                        bOpt += ('-DCAST=float','-DPSF','-DLOCAL_SIZE=' + str(localSize[0]),'-DLOCAL_SIZE2=' + str(localSize[1]),)
                         mod = cp.RawModule(code=lines, options=bOpt)
                         self.knlPSF = mod.get_function('Convolution3D_f')
                         self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
@@ -2497,7 +2127,7 @@ class projectorClass:
                         for i in range(self.subsets):
                             self.d_T[i] = cuda.gpuarray.to_gpu(self.offsetLimit[self.nMeas[i].item() : self.nMeas[i + 1].item()])
                     try:
-                        mod = SourceModule(linesFP, options=bOptFP, no_extern_c=True)
+                        mod = SourceModule(linesFP, options=list(bOptFP), no_extern_c=True)
                     except cuda.driver.CompileError as e:
                         print("Compilation error:", e)
                         raise ValueError("Forward projection compilation failed!")
@@ -2508,7 +2138,7 @@ class projectorClass:
                     elif self.FPType == 5:
                         self.knlF = mod.get_function('projectorType5Forward')
                     try:
-                        mod = SourceModule(linesBP, options=bOptBP, no_extern_c=True)
+                        mod = SourceModule(linesBP, options=list(bOptBP), no_extern_c=True)
                     except cuda.driver.CompileError as e:
                         print("Compilation error:", e)
                         raise ValueError("Backprojection compilation failed!")
@@ -2526,11 +2156,8 @@ class projectorClass:
                         with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
                             lines = f.read()
                         lines = hlines + lines
-                        bOpt.append('-DCAST=float')
-                        bOpt.append('-DPSF')
-                        bOpt.append('-DLOCAL_SIZE=' + str(localSize[0]))
-                        bOpt.append('-DLOCAL_SIZE2=' + str(localSize[1]))
-                        mod = SourceModule(lines, options=bOpt, no_extern_c=True)
+                        bOpt += ('-DCAST=float','-DPSF','-DLOCAL_SIZE=' + str(localSize[0]),'-DLOCAL_SIZE2=' + str(localSize[1]),)
+                        mod = SourceModule(lines, options=list(bOpt), no_extern_c=True)
                         self.knlPSF = mod.get_function('Convolution3D_f')
                         self.d_gaussPSF = cuda.gpuarray.to_gpu(self.gaussK.ravel('F'))
                     
@@ -2705,14 +2332,14 @@ class projectorClass:
                 # d_Sens = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=Sens)
                 # d_x = cl.Buffer(self.clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.x)
                 # z = cl.Buffer(clctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=self.z)
-                prg = cl.Program(self.clctx, linesFP).build(bOptFP)
+                prg = cl.Program(self.clctx, linesFP).build(' '.join(bOptFP))
                 if self.FPType in [1, 2, 3]:
                     self.knlF = prg.projectorType123
                 elif self.FPType == 4:
                     self.knlF = prg.projectorType4Forward
                 elif self.FPType == 5:
                     self.knlF = prg.projectorType5Forward
-                prg = cl.Program(self.clctx, linesBP).build(bOptBP)
+                prg = cl.Program(self.clctx, linesBP).build(' '.join(bOptBP))
                 if self.BPType in [1, 2, 3]:
                     self.knlB = prg.projectorType123
                 elif self.BPType == 4 and not self.CT:
@@ -2726,7 +2353,8 @@ class projectorClass:
                     with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
                         lines = f.read()
                     lines = hlines + lines
-                    prg = cl.Program(self.clctx, lines).build(bOpt + ' -DCAST=float -DPSF -DLOCAL_SIZE=' + str(localSize[0]) + ' -DLOCAL_SIZE2=' + str(localSize[1]))
+                    bOpt +=(' -DCAST=float',' -DPSF',' -DLOCAL_SIZE=' + str(localSize[0]), ' -DLOCAL_SIZE2=' + str(localSize[1]),)
+                    prg = cl.Program(self.clctx, lines).build(' '.join(bOpt))
                     self.knlPSF = prg.Convolution3D_f
                     self.d_gaussPSF = cl.array.to_device(self.queue, self.gaussK.ravel('F'))
                     
