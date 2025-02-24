@@ -1138,7 +1138,8 @@ template <typename T>
 inline T perpendicular_elements(const uint32_t N, const T dd, const T dd2, const T b, const T d, const uint32_t N1, const uint32_t N2, const T* atten,
 	const T local_norm, const bool attenuation_correction, const bool normalization, const bool CTAttenuation, 
 	int32_t& tempk, const uint32_t NN, const T global_factor, const bool scatter, const T local_scat, int& indX, int& indY,
-	const int indZ, const T L, const uint16_t nRays, const int projType, const uint32_t Nx, const uint32_t Ny, const bool CT, const int64_t idx) {
+	const int indZ, const T L, const uint16_t nRays, const int projType, const uint32_t Nx, const uint32_t Ny, const bool CT, const int64_t idx, 
+	const bool SPECT = false) {
 	uint32_t apu = 0u;
 	// Find the closest y-index value by finding the smallest y-distance between detector 2 and all the y-pixel coordinates
 	T start = b - dd + d;
@@ -1160,7 +1161,7 @@ inline T perpendicular_elements(const uint32_t N, const T dd, const T dd2, const
 			temp = (T)1. / (L * static_cast<T>(nRays));
 		else if (projType == 1)
 			temp = (T)1. / L;
-		if (attenuation_correction && CTAttenuation) {
+		if (attenuation_correction && CTAttenuation && !SPECT) {
 			T jelppi = 0.;
 			uint32_t atnindX = indX;
 			uint32_t atnindY = indY;
@@ -1622,7 +1623,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 					localIndZ = tempk;
 					temp = perpendicular_elements(d_N2, dd, d_d2, d_b, d_db, d_N0, d_N1, param.atten, local_norm, param.attenuationCorrection, param.normalizationCorrection, 
 						param.CTAttenuation, tempk, d_N3, param.globalFactor, param.scatterCorrectionMult, local_scat, localIndX, localIndY, localIndZ, L, nRays, 
-						param.projType, param.Nx, param.Ny, CT, lo);
+						param.projType, param.Nx, param.Ny, CT, lo, SPECT);
 					local_ind = tempk;
 					if (param.projType == 3)
 						temp *= ((T)1. / TotV);
@@ -1655,6 +1656,10 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 								d_in = dT1;
 							else if (apuX2 < d_N1 - 1 && ii == apuX2)
 								d_in = dT2;
+							if (param.attenuationCorrection && SPECT && param.CTAttenuation) {
+								compute_attenuation(d_in, local_ind, param.atten, jelppi);
+								d_in *= std::exp(jelppi);
+							}
 							if (fp == 1) {
 								denominator(ax, local_ind, d_in, input, param.TOF, d_in, TOFSum, DD, param.TOFCenters, param.sigma_x, D, param.nBins, lor, nRays, param.projType);
 							}
@@ -1736,7 +1741,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 					T tx0_c = tx0, ty0_c = ty0, tz0_c = tz0, txu_c = txu, tyu_c = tyu, tzu_c = tzu, tc_c = tc;
 					int tempi_c = tempi, tempj_c = tempj, tempk_c = tempk, ux_c = ux, uy_c = uy, uz_c = uz;
 
-					if (param.attenuationCorrection && fp == 2 && param.CTAttenuation) {
+					if (param.attenuationCorrection && fp == 2 && param.CTAttenuation && !SPECT) {
 						T tc_a = tc;
 						for (uint32_t ii = 0u; ii < Np; ii++) {
 							local_ind = compute_ind(tempj_c, tempi_c, tempk_c, param.Nx, Nyx);
@@ -1807,7 +1812,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                         }
 //						else if (param.projType == 1)
 //							temp = (T)1. / L;
-						if (param.attenuationCorrection && fp == 2 && param.CTAttenuation)
+						if (param.attenuationCorrection && fp == 2 && param.CTAttenuation && !SPECT)
 							temp *= std::exp(jelppi);
 						else if (param.attenuationCorrection && !param.CTAttenuation)
 							temp *= param.atten[lo];
@@ -1913,8 +1918,10 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                                 local_ele2 = compute_element(tx0_c, tc_c, L, txu_c, ux_c, tempi_c);
                             }
                         }
-                        if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
+                        if (param.attenuationCorrection && (fp == 1 || SPECT) && param.CTAttenuation) {
                             compute_attenuation(local_ele2, local_ind2, param.atten, jelppi);
+							if (SPECT)
+								local_ele *= std::exp(jelppi);
                         }
                         if (param.TOF)
                             TOFSum = TOFLoop(DD, local_ele2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
@@ -1991,7 +1998,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                             }
                         }
                     }
-                    if (param.attenuationCorrection && fp == 1 && param.CTAttenuation) {
+                    if (param.attenuationCorrection && fp == 1 && param.CTAttenuation && !SPECT) {
                         temp *= std::exp(jelppi);
                     }
                     if (fp == 1) {
