@@ -967,6 +967,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(VOL) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
 		temp = 1.f / TotV;
 #elif defined(VOL) && !defined(TOTLENGTH) && defined(BP)
+		if (LL == 0.f)
+			LL = L;
 		temp = 1.f / (TotV * LL);
 #endif //////////////// END VOL+TOTLENGTH ////////////////
 #else //////////////// SIDDON ////////////////
@@ -977,6 +979,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		temp = 1.f / L;
 #endif //////////////// END MULTIRAY ////////////////
 #elif !defined(TOTLENGTH) && defined(BP) //////////////// NOTTOTLENGTH+BP ////////////////
+		if (LL == 0.f)
+			LL = L;
 #ifdef N_RAYS  //////////////// MULTIRAY ////////////////
 		temp = 1.f / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
@@ -1262,6 +1266,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // 		temp /= L_SPECT;
 // #endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
+			if (LL == 0.f)
+				LL = L;
 #if defined(N_RAYS) && !defined(ORTH)
 			temp = 1.f / (LL * CFLOAT(N_RAYS));
 #elif !defined(ORTH)
