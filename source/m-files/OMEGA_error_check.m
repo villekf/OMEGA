@@ -5,7 +5,7 @@ function options = OMEGA_error_check(options)
 % selected options.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2019-2024 Ville-Veikko Wettenhovi
+% Copyright (C) 2019-2025 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -329,7 +329,7 @@ if OS_I4_summa > 1
         end
         if kk == length(reko) && length(reko) > 1
             dispi = [dispi, ' reconstruction methods selected.'];
-        elseif kk == length(reko) && length(reko) == 1
+        elseif kk == length(reko) && isscalar(reko)
             dispi = [dispi, ' reconstruction method selected.'];
         end
     end
@@ -363,9 +363,6 @@ if (options.projector_type == 6) && ~options.SPECT
 end
 if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11) && options.SPECT
     error('SPECT only supports projector types 1 and 6!')
-end
-if (options.projector_type == 6) && options.use_CUDA
-    error('CUDA is not supported with projector type 6!')
 end
 if (options.projector_type == 6)
     if options.Nx(1) ~= options.nRowsD
@@ -641,7 +638,7 @@ if options.verbose > 0
             end
             if kk == length(priori) && length(priori) > 1
                 dispi2 = [dispi2, ' priors selected.'];
-            elseif kk == length(priori) && length(priori) == 1
+            elseif kk == length(priori) && isscalar(priori)
                 if ~options.NLM
                     dispi2 = [dispi2, ' prior selected.'];
                 else

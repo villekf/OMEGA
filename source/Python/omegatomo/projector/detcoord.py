@@ -795,9 +795,14 @@ def SPECTParameters(options):
         options.gFilter = options.gFilter.astype(dtype=np.float32)
     options.blurPlanes = np.argmax(Distances>0,1)
     if options.angles.size == 0:
-        options.angles = (np.repeat(options.startAngle, (options.nProjections // options.nHeads)) + np.tile(np.arange(0,options.angleIncrement * (options.nProjections / options.nHeads),options.angleIncrement), (options.nHeads, 1)) + options.offangle)
+        options.angles = (np.repeat(options.startAngle, (options.nProjections // options.nHeads)) + np.tile(np.arange(0,options.angleIncrement * (options.nProjections / options.nHeads),options.angleIncrement), (options.nHeads, 1)))
     options.uu = 1
     options.ub = 1
+    if abs(options.offangle) > 0:
+        if np.max(np.abs(options.angles.flatten())) > 10. * np.pi:
+            options.angles = options.angles + (options.offangle * 180./np.pi)
+        else:
+            options.angles = options.angles + options.offangle
     if np.max(np.abs(options.angles.flatten())) > 10. * np.pi and options.implementation == 2:
         options.angles = options.angles / 180. * np.pi
     if options.flip_image:

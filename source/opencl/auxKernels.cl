@@ -1899,3 +1899,49 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 #endif
 }
 #endif
+
+
+#ifdef ROTATE
+KERNEL
+// Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
+void rotate(CLGLOBAL float* CLRESTRICT rotim, const CLGLOBAL float* CLRESTRICT im, const int Nx, const int Ny, const int Nz, const float cosa, const float sina) {
+	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
+	if (xyz.x >= Nx || xyz.y >= Ny || xyz.z >= Nz)
+		return;
+	const LTYPE n = (xyz.x) + (xyz.y) * (Nx) + (xyz.z) * (Nx * Ny);
+
+    const float xA = (float)(xyz.x - Nx/2) + 0.5f;
+    const float yA = (float)(xyz.y - Ny/2) + 0.5f;
+
+    const float src_x = (xA * cosa - yA * sina + Nx/2) - 0.5f;
+    const float src_y = (xA * sina + yA * cosa + Ny/2) - 0.5f;
+
+    if (src_x >= 0.0f && src_x < Nx && src_y >= 0.0f && src_y < Ny) {
+        // BILINEAR INTERPOLATION
+        const int src_x0 = (int)(src_x);
+        const int src_x1 = (src_x0 + 1);
+        const int src_y0 = (int)(src_y);
+        const int src_y1 = (src_y0 + 1);
+
+        const float sx = (src_x - src_x0);
+        const float sy = (src_y - src_y0);
+
+        const int idx_src00 = min(max(0, src_x0 + src_y0 * Nx), (Nx * Ny) - 1);
+        const int idx_src10 = min(max(0, src_x1 + src_y0 * Nx), (Nx * Ny) - 1);
+        const int idx_src01 = min(max(0, src_x0 + src_y1 * Nx), (Nx * Ny) - 1);
+        const int idx_src11 = min(max(0, src_x1 + src_y1 * Nx), (Nx * Ny) - 1);
+
+		float val = 0.f;
+
+        val  = (1.0f - sx) * (1.0f - sy) * im[idx_src00 + xyz.z * Nx * Ny];
+        val += (       sx) * (1.0f - sy) * im[idx_src10 + xyz.z * Nx * Ny];
+        val += (1.0f - sx) * (       sy) * im[idx_src01 + xyz.z * Nx * Ny];
+        val += (       sx) * (       sy) * im[idx_src11 + xyz.z * Nx * Ny];
+		rotim[n] = val;
+    } 
+	else {
+        rotim[n] = 0.0f;
+    }
+
+}
+#endif

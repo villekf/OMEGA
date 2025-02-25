@@ -375,7 +375,7 @@ class ProjectorClass {
 		// Build prior programs
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM ||
-			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || type == 0) {
+			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
 			if (DEBUG) {
 				mexPrint("Building aux programs\n");
 			}
@@ -559,6 +559,8 @@ class ProjectorClass {
 				if (inputScalars.subsets > 1)
 					options += " -DSUBSETS";
 			}
+			if (inputScalars.projector_type == 6)
+				options += " -DROTATE";
 			status = buildProgram(inputScalars.verbose, contentAux, CLContext, CLDeviceID, programAux, inputScalars.atomic_64bit, inputScalars.atomic_32bit, options);
 		}
 		if (DEBUG) {
@@ -992,6 +994,14 @@ class ProjectorClass {
 				return -1;
 			}
 		}
+		if (inputScalars.projector_type == 6) {
+			kernelRotate = cl::Kernel(programAux, "rotate", &status);
+			if (status != CL_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create bilinear rotation kernel\n");
+				return -1;
+			}
+		}
 		return status;
 	}
 public:
@@ -1001,7 +1011,7 @@ public:
 	OpenCL_im_vectors vec_opencl;
 	cl::Kernel kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision, 
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
-		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
+		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
 	cl::Image3D d_maskBP3, d_maskPrior3;
@@ -4429,6 +4439,47 @@ public:
 		}
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL PDHG update computed");
+		return 0;
+	}
+
+	inline int rotateCustom(const scalarStruct& inputScalars, const float cosa, const float sina, const int ii = 0) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Starting OpenCL bilinear image rotation computation");
+		cl_int status = CL_SUCCESS;
+		cl_uint kernelIndRot = 0ULL;
+		global = { inputScalars.Nx[ii] + erotusPrior[0], inputScalars.Ny[ii] + erotusPrior[1], inputScalars.Nz[ii] };
+		if (DEBUG) {
+			mexPrintBase("global[0] = %u\n", global[0]);
+			mexPrintBase("global[1] = %u\n", global[1]);
+			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].s[0]);
+			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].s[1]);
+			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
+			mexEval();
+		}
+		kernelRotate.setArg(kernelIndRot++, d_rhs);
+		kernelRotate.setArg(kernelIndRot++, d_im);
+		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[0]);
+		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[1]);
+		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[2]);
+		kernelRotate.setArg(kernelIndRot++, cosa);
+		kernelRotate.setArg(kernelIndRot++, sina);
+		// Compute the kernel
+		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to launch the bilinear image rotation kernel\n");
+			return -1;
+		}
+
+		status = (CLCommandQueue[0]).finish();
+		if (status != CL_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
+			return -1;
+		}
+		if (inputScalars.verbose >= 3)
+			mexPrint("OpenCL bilinear image rotation computed");
 		return 0;
 	}
 

@@ -1039,9 +1039,6 @@ class projectorClass:
         if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11)) and self.SPECT:
             raise ValueError('SPECT only supports projector types 1 and 6!')
         
-        if self.projector_type == 6 and self.useCUDA:
-            raise ValueError('Projector type 6 does not support CUDA!')
-        
         if self.projector_type == 6:
             if self.Nx != self.nRowsD:
                 raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
@@ -1549,7 +1546,7 @@ class projectorClass:
 
             af.device.set_device(self.deviceNum)
         if self.useTorch and self.useAF:
-            raise ValueError('Arrayfire and PyTorch cannot be used at the same time! Select only either!')
+            raise ValueError('Arrayfire and PyTorch cannot be used at the same time! Select only one!')
         if self.useTorch:
             import torch
             torch.cuda.init()

@@ -170,7 +170,7 @@ class ProjectorClass {
 
 		kernel_path = kernelFile;
 		kernel_pathBP = kernelFile;
-		if (inputScalars.FPType > 0) {
+		if (inputScalars.FPType > 0 && inputScalars.FPType != 6) {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
 				//	kernel_path += "multidevice_siddon_no_precomp.cu");
@@ -185,7 +185,7 @@ class ProjectorClass {
 			std::string contentFFP((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 			contentFP = contentHeader + contentFFP;
 		}
-		if (inputScalars.BPType > 0) {
+		if (inputScalars.BPType > 0 && inputScalars.BPType != 6) {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
 				//	kernel_pathBP += "multidevice_siddon_no_precomp.cu");
@@ -477,7 +477,7 @@ class ProjectorClass {
 		// Build prior programs
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM ||
-			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || type == 0) {
+			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
 			if (DEBUG) {
 				mexPrint("Building aux programs\n");
 			}
@@ -688,6 +688,8 @@ class ProjectorClass {
 				if (inputScalars.subsets > 1)
 					optionsAux.push_back("-DSUBSETS");
 			}
+			if (inputScalars.projector_type == 6)
+				optionsAux.push_back("-DROTATE");
 			status = buildProgram(inputScalars.verbose, contentAux, programAux, optionsAux);
 			if (status == NVRTC_SUCCESS && DEBUG) {
 				mexPrint("Aux program built\n");
@@ -1068,6 +1070,18 @@ class ProjectorClass {
 				return status;
 			}
 		}
+		if (inputScalars.projector_type == 6) {
+			status = cuModuleGetFunction(&kernelRotate, programAux, "rotate");
+
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+				mexPrint("Failed to create bilinear rotation kernel\n");
+				return status;
+			}
+			else if (DEBUG || inputScalars.verbose >= 2) {
+				mexPrint("Bilinear rotation kernel successfully created\n");
+			}
+		}
 		//if (type == 0) {
 		//	kernelsumma = cuModuleGetFunction(programAux, "summa", &status);
 		//	if (status != CUDA_SUCCESS) {
@@ -1104,7 +1118,7 @@ public:
 	std::vector<CUstream> CLCommandQueue;
 	CUfunction kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
-		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
+		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
 	CUmodule programFP, programBP, programAux, programSens;
 	CUdeviceptr d_angle, d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, *d_output, *d_meanBP, *d_meanFP, d_eFOVIndices, d_weights, *d_inputB, *d_W, *d_gaussianNLM;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
@@ -4545,6 +4559,49 @@ public:
 		}
 		if (inputScalars.verbose >= 3)
 			mexPrint("CUDA PDHG update computed");
+		return 0;
+	}
+
+	inline int rotateCustom(const scalarStruct& inputScalars, float cosa, float sina, const int ii = 0) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Starting CUDA bilinear image rotation computation");
+		CUresult status = CUDA_SUCCESS;
+		std::vector<void*> kArgs;
+		global[0] = (inputScalars.Nx[ii] + erotusPrior[0]) / localPrior[0];
+		global[1] = (inputScalars.Ny[ii] + erotusPrior[1]) / localPrior[1];
+		global[2] = inputScalars.Nz[ii];
+		if (DEBUG) {
+			mexPrintBase("global[0] = %u\n", global[0]);
+			mexPrintBase("global[1] = %u\n", global[1]);
+			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
+			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
+			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
+			mexEval();
+		}
+		kArgs.emplace_back(reinterpret_cast<void*>(&d_rhs));
+		kArgs.emplace_back(reinterpret_cast<void*>(&d_im));
+		kArgs.emplace_back(&d_N[ii].x);
+		kArgs.emplace_back(&d_N[ii].y);
+		kArgs.emplace_back(&d_N[ii].z);
+		kArgs.emplace_back(&cosa);
+		kArgs.emplace_back(&sina);
+		// Compute the kernel
+		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Failed to launch the bilinear image rotation kernel\n");
+			return -1;
+		}
+
+		status = cuCtxSynchronize();
+		if (status != CUDA_SUCCESS) {
+			getErrorString(status);
+			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
+			return -1;
+		}
+		if (inputScalars.verbose >= 3)
+			mexPrint("CUDA bilinear image rotation computed");
 		return 0;
 	}
 

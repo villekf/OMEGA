@@ -72,10 +72,13 @@ if options.implementation == 2
     options.blurPlanes = uint32(options.blurPlanes - 1);
 end
 if ~isfield(options,'angles') || numel(options.angles) == 0
-    options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1) + options.offangle);
+    options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1));
 end
 options.uu = 1;
 options.ub = 1;
+if abs(options.offangle) > 0
+     options.angles = options.angles + (options.offangle * 180/pi);
+end
 if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
     options.angles = options.angles / 180 * pi;
 end
