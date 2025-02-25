@@ -1150,6 +1150,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
                         , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+						, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
@@ -1170,6 +1173,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
                         , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+						, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
@@ -1190,6 +1196,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
 				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+				, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 				, aa, maskBP
