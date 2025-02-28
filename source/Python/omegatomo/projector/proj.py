@@ -2717,7 +2717,7 @@ class projectorClass:
                                 else:
                                     array.copy_from(f[k].reshape((self.Nz[k].item(), self.Ny[k].item(), self.Nx[k].item())))
                                 res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeBorder, cp.cuda.runtime.cudaAddressModeBorder,cp.cuda.runtime.cudaAddressModeBorder), 
+                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
                                                                         filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
                                 ff = cp.cuda.texture.TextureObject(res, tdes)
                                 kIndLoc += (ff,)
@@ -2729,7 +2729,7 @@ class projectorClass:
                                 else:
                                     array.copy_from(f.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())))
                                 res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeBorder, cp.cuda.runtime.cudaAddressModeBorder,cp.cuda.runtime.cudaAddressModeBorder), 
+                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
                                                                         filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
                                 ff = cp.cuda.texture.TextureObject(res, tdes)
                                 kIndLoc += (ff,)
@@ -3386,7 +3386,7 @@ class projectorClass:
                                             array.copy_from(y.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
                                         res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
                                         tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                                filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=1)
+                                                                                filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
                                         yy = cp.cuda.texture.TextureObject(res, tdes)
                                         kIndLoc += (yy,)
                                     else:
@@ -3461,7 +3461,7 @@ class projectorClass:
                                         array.copy_from(y.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
                                     res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
                                     tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                            filterMode=cp.cuda.runtime.cudaFilterModePoint, normalizedCoords=1)
+                                                                            filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
                                     yy = cp.cuda.texture.TextureObject(res, tdes)
                                     kIndLoc += (yy,)
                                 else:
