@@ -991,6 +991,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(ATN) && defined(BP) && !defined(SPECT)
 		temp *= EXP(jelppi);
 #endif
+#if defined(TOTLENGTH) || defined(BP)
 #ifdef NORM //////////////// NORM ////////////////
 		temp *= local_norm;
 #endif //////////////// END NORM ////////////////
@@ -1001,6 +1002,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ATNM //////////////// ATTENUATIONLOR ////////////////
 		temp *= d_atten[idx];
 #endif //////////////// END ATTENUATIONLOR ////////////////
+#endif
 #endif //////////////// END PET/SPECT ////////////////
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		float L_SPECT = 0.f;
@@ -1104,7 +1106,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
 // #endif
 			}
-#if !defined(TOTLENGTH) && defined(FP)
+#if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
 			LL += local_ele;
 #endif
 #if (defined(ATN) && (defined(FP) || defined(SPECT))) || defined(TOF)
