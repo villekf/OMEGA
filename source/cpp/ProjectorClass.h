@@ -229,7 +229,7 @@ class ProjectorClass {
 			if (inputScalars.listmode > 0 && inputScalars.indexBased)
 				options += (" -DNLAYERS=" + std::to_string(inputScalars.nLayers));
 			else
-			options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
+				options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
 		if (inputScalars.TOF) {
 			options += " -DTOF";
 		}
@@ -2400,7 +2400,10 @@ public:
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			global = { inputScalars.nRowsD * inputScalars.nColsD * static_cast<size_t>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
 		else
-			global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+			if (inputScalars.listmode == 0)
+				global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
+			else
+				global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
 		
 		size_t erotusF = global[0] % localF[0];
 		if (erotusF > 0)
@@ -2615,7 +2618,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
@@ -2652,6 +2655,24 @@ public:
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]));
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]));
+			}
+			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+				if (!inputScalars.loadTOF) {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[0]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[0]));
+				}
+				else {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[osa_iter]));
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[osa_iter]));
+				}
+			}
+			if (inputScalars.listmode > 0 && inputScalars.TOF) {
+				if (!inputScalars.loadTOF) {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[0]));
+				}
+				else {
+					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[osa_iter]));
+				}
 			}
 			if (inputScalars.raw) {
 				kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]);
@@ -2986,12 +3007,12 @@ public:
 					}
 					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 						if (inputScalars.useBuffers)
-							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
 						else
 							if (inputScalars.maskBPZ > 1)
-								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 							else
-								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return -1;
@@ -3349,7 +3370,7 @@ public:
 					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring);
 				}
 				else {
-					if ((inputScalars.listmode == 0 && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
@@ -3357,8 +3378,10 @@ public:
 						getErrorString(status);
 						return -1;
 					}
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || inputScalars.listmode > 0))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
+					else if (inputScalars.indexBased && inputScalars.listmode > 0)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
 				}
@@ -3370,6 +3393,24 @@ public:
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
 					kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
+				}
+				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
+					if (!inputScalars.loadTOF) {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[0]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[0]));
+					}
+					else {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[osa_iter]));
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[osa_iter]));
+					}
+				}
+				if (inputScalars.listmode > 0 && inputScalars.TOF) {
+					if (!inputScalars.loadTOF) {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[0]));
+					}
+					else {
+						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[osa_iter]));
+					}
 				}
 				if (inputScalars.raw) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
@@ -3407,12 +3448,12 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
-						status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
 					else
 						if (inputScalars.maskBPZ > 1)
-							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
-							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;

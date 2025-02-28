@@ -493,9 +493,9 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 			resDesc.res.array.hArray = proj.FPArray;
 			if (inputScalars.FPType == 4) {
-				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
-				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
-				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_BORDER;
+				texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+				texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+				texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 				texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
 				texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
 			}
@@ -2010,7 +2010,10 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					uint64_t mSize = length[uu];
 					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 						mSize = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[uu];
-					vec.pCP[uu] = af::constant(0.f, mSize * inputScalars.nBins);
+					if (inputScalars.listmode && inputScalars.TOF)
+						vec.pCP[uu] = af::constant(0.f, mSize);
+					else
+						vec.pCP[uu] = af::constant(0.f, mSize * inputScalars.nBins);
 					proj.memSize += (sizeof(float) * mSize * inputScalars.nBins) / 1048576ULL;
 				}
 			}
@@ -2105,7 +2108,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+				if (inputScalars.listmode && inputScalars.TOF)
+					outputFP = af::constant(0.f, m_size);
+				else
+					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -2149,7 +2155,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (inputScalars.projector_type == 6)
 					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				else
-					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+					if (inputScalars.listmode && inputScalars.TOF)
+						outputFP = af::constant(0.f, m_size);
+					else
+						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
 						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten);
@@ -2204,6 +2213,8 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
 			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+			if (inputScalars.listmode && inputScalars.TOF)
+				outputFP = af::constant(0.f, m_size);
 			if (DEBUG) {
 				mexPrint("Starting largeDim\n");
 			}
@@ -2285,7 +2296,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				outputFP = af::flat(outputFP);
 			}
 			else {
-				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+				if (inputScalars.listmode && inputScalars.TOF)
+					outputFP = af::constant(0.f, m_size);
+				else
+					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
 			}
 			af::sync();
@@ -2327,7 +2341,10 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				if (inputScalars.projector_type == 6)
 					outputFP = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, length[0]);
 				else
-					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+					if (inputScalars.listmode && inputScalars.TOF)
+						outputFP = af::constant(0.f, m_size);
+					else
+						outputFP = af::constant(0.f, m_size * inputScalars.nBins);
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 					if (inputScalars.projector_type == 6) {
 						forwardProjectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, ii, atten);

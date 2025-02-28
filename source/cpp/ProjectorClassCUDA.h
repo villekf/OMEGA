@@ -2844,12 +2844,10 @@ public:
 				kTemp.emplace_back(&inputScalars.d_Scale4[ii]);
 			}
 		}
-		//mexPrint("1!!!!\n");
 		if (inputScalars.FPType == 4) {
 			kTemp.emplace_back(&vec_opencl.d_image_os);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
-			//mexPrint("2!!!!\n");
-			if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				kTemp.emplace_back(&d_x[0]);
 			else
 				kTemp.emplace_back(&d_x[osa_iter]);
@@ -2873,10 +2871,27 @@ public:
 				}
 			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
-			//mexPrint("3!!!!\n");
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 				kTemp.emplace_back(&d_xyindex[osa_iter]);
 				kTemp.emplace_back(&d_zindex[osa_iter]);
+			}
+			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
+				if (!inputScalars.loadTOF) {
+					kTemp.emplace_back(&d_trIndex[0]);
+					kTemp.emplace_back(&d_axIndex[0]);
+				}
+				else {
+					kTemp.emplace_back(&d_trIndex[osa_iter]);
+					kTemp.emplace_back(&d_axIndex[osa_iter]);
+				}
+			}
+			if (inputScalars.listmode > 0 && inputScalars.TOF) {
+				if (!inputScalars.loadTOF) {
+					kTemp.emplace_back(&d_TOFIndex[0]);
+				}
+				else {
+					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+				}
 			}
 			if (inputScalars.raw) {
 				kTemp.emplace_back(&d_L[osa_iter]);
@@ -2886,12 +2901,10 @@ public:
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				kTemp.emplace_back(&d_scat[osa_iter]);
-			//mexPrint("4!!!!\n");
 			kTemp.emplace_back(&no_norm);
 			kTemp.emplace_back(&m_size);
 			kTemp.emplace_back(&osa_iter);
 			kTemp.emplace_back(&ii);
-			//mexPrint("5!!!!\n");
 		}
 		else if (inputScalars.FPType == 5) {
 			if (!inputScalars.loadTOF && inputScalars.listmode > 0)
@@ -3168,10 +3181,10 @@ public:
 			kTemp.emplace_back(&d[ii]);
 			kTemp.emplace_back(&b[ii]);
 			kTemp.emplace_back(&bmax[ii]);
-				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
-					kTemp.emplace_back(&d_xyindex[osa_iter]);
-					kTemp.emplace_back(&d_zindex[osa_iter]);
-				}
+			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+				kTemp.emplace_back(&d_xyindex[osa_iter]);
+				kTemp.emplace_back(&d_zindex[osa_iter]);
+			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
 					kTemp.emplace_back(&d_trIndex[0]);
@@ -3472,12 +3485,14 @@ public:
 					kTemp.emplace_back(&inputScalars.det_per_ring);
 				}
 				else {
-					if ((inputScalars.listmode == 0 && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						kTemp.emplace_back(&d_x[0]);
 					else
 						kTemp.emplace_back(&d_x[osa_iter]);
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || inputScalars.listmode > 0))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						kTemp.emplace_back(&d_z[osa_iter]);
+					else if (inputScalars.indexBased && inputScalars.listmode > 0)
+						kTemp.emplace_back(&d_z[0]);
 					else
 						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
 				}
@@ -3485,6 +3500,24 @@ public:
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 					kTemp.emplace_back(&d_xyindex[osa_iter]);
 					kTemp.emplace_back(&d_zindex[osa_iter]);
+				}
+				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
+					if (!inputScalars.loadTOF) {
+						kTemp.emplace_back(&d_trIndex[0]);
+						kTemp.emplace_back(&d_axIndex[0]);
+					}
+					else {
+						kTemp.emplace_back(&d_trIndex[osa_iter]);
+						kTemp.emplace_back(&d_axIndex[osa_iter]);
+					}
+				}
+				if (inputScalars.listmode > 0 && inputScalars.TOF) {
+					if (!inputScalars.loadTOF) {
+						kTemp.emplace_back(&d_TOFIndex[0]);
+					}
+					else {
+						kTemp.emplace_back(&d_TOFIndex[osa_iter]);
+					}
 				}
 				if (inputScalars.raw) {
 					kTemp.emplace_back(&d_L[osa_iter]);
@@ -3497,7 +3530,6 @@ public:
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);
-			//mexPrint("6!!!!\n");
 			if (inputScalars.maskBP) {
 				if (inputScalars.useBuffers)
 					kTemp.emplace_back(&d_maskBPB);
