@@ -28,7 +28,7 @@
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
 * sigma_x = TOF STD, 
 * d_atten = attenuation data (images, if USEIMAGES is defined, or buffer),
-* d_N = image size in x/y/z- dimension, float3 or three floats (if PYTHON is defined),
+* d_N = image size in x/y/z- dimension, uint3 or three uints (if PYTHON is defined),
 * d_b = distance from the pixel space to origin (z/x/y-dimension), float3 or three floats (if PYTHON is defined),
 * d_bmax = part in parenthesis of equation (9) in [1] precalculated when k = Nz, float3 or three floats (if PYTHON is defined),
 * d_scale = precomputed scaling value, float3 or three floats (if PYTHON is defined), see computeProjectorScalingValues.m
@@ -48,7 +48,7 @@
 * OUTPUTS:
 * d_output = forward projection,
 *
-* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -108,7 +108,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #else
 	const CLGLOBAL float* CLRESTRICT d_xyz,
 #endif
-#if defined(LISTMODE) && !defined(SENS)
+#if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
     const CLGLOBAL float* CLRESTRICT d_uv,
 #else
     CONSTANT float* d_uv,
@@ -133,6 +133,12 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     const LONG d_nProjections,
 #if defined(SUBSETS) && !defined(LISTMODE)
     const CLGLOBAL uint* CLRESTRICT d_xyindex, const CLGLOBAL ushort* CLRESTRICT d_zindex,
+#endif
+#if defined(INDEXBASED) && defined(LISTMODE) && !defined(SENS)
+	const CLGLOBAL ushort* CLRESTRICT trIndex, const CLGLOBAL ushort* CLRESTRICT axIndex,
+#endif
+#if defined(LISTMODE) && defined(TOF)
+	const CLGLOBAL uchar* CLRESTRICT TOFIndex, 
 #endif
 #ifdef RAW
     const CLGLOBAL ushort* CLRESTRICT d_L, const uint d_det_per_ring,
@@ -199,12 +205,20 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	const float3 b = make_float3(bx, by, bz);
 	const float3 bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #endif
+#if defined(LISTMODE) && defined(TOF)
+	const int TOFid = TOFIndex[idx];
+#endif
 #if defined(N_RAYS) && defined(FP)
 	float ax[NBINS * N_RAYS];
 #else
 	float ax[NBINS];
 #endif
 #if defined(BP) && !defined(CT)
+#if defined(LISTMODE) && defined(TOF) && !defined(SENS)
+	for (int to = 0; to < NBINS; to++)
+		ax[to] = 0.f;
+	ax[TOFid] = d_OSEM[idx];
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
@@ -213,6 +227,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		ax[to] = 1.f;
 #else
 		ax[to] = d_OSEM[idx + to * m_size];
+#endif
 #endif
 #else
 #if defined(N_RAYS) && defined(FP)
@@ -254,7 +269,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #if (defined(CT) || defined(SPECT)) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xyz, d_uv, &s, &d, i, d_size_x, d_sizey, d_dPitch);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
+#if defined(INDEXBASED)
+	getDetectorCoordinatesListmode(d_xyz, d_uv, trIndex, axIndex, &s, &d, idx
+#else
 	getDetectorCoordinatesListmode(d_xyz, &s, &d, idx
+#endif
 #if defined(N_RAYS)
 		, lorXY, lorZ, d_dPitch
 #endif
@@ -305,6 +324,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif  //////////////// END MULTIRAY ////////////////
 	float L = length(v);
 #ifndef CT
+#if !defined(TOTLENGTH)
+	float LL = 0.f;
+#endif
 #ifdef ATN // Attenuation included
 	float jelppi = 0.f;
 #endif
@@ -321,14 +343,18 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     float temp = 0.f;
 
     float t = tStart;
-#if defined(ATN) && defined(BP)
+#if (defined(ATN) && defined(BP)) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
     for (uint ii = 0; ii < NSTEPS; ii++) {
+#if (defined(ATN) && defined(BP))
 #ifndef USEMAD
         const float3 p = t * v + s;
 #else
         const float3 p = FMAD3(t, v, s);
 #endif
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
+#else
+        LL += dL;
+#endif
         t += tStep;
         if (t >= tEnd)
             break;
@@ -336,14 +362,25 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     t = tStart;
 #endif
 #if !defined(CT) //////////////// PET ////////////////
+#if defined(TOTLENGTH) //////////////// TOTLENGTH ////////////////
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		temp = 1.f / (L * CFLOAT(N_RAYS));
 #else
 		temp = 1.f / L;
 #endif //////////////// END MULTIRAY ////////////////
+#elif !defined(TOTLENGTH) && defined(BP) //////////////// NOTTOTLENGTH+BP ////////////////
+		if (LL == 0.f)
+			LL = L;
+#ifdef N_RAYS  //////////////// MULTIRAY ////////////////
+		temp = 1.f / (LL * CFLOAT(N_RAYS));
+#else //////////////// SINGLERAY ////////////////
+		temp = 1.f / LL;
+#endif //////////////// END MULTIRAY ////////////////
+#endif //////////////// END TOTLENGTH ////////////////
 #if defined(ATN) && defined(BP)
 		temp *= EXP(jelppi);
 #endif
+#if defined(TOTLENGTH) || defined(BP)
 #ifdef NORM
 		temp *= local_norm;
 #endif
@@ -354,6 +391,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
         temp *= d_atten[idx];
 #endif
 		temp *= global_factor;
+#endif
 #endif //////////////// END PET ////////////////
     for (uint ii = 0; ii < NSTEPS; ii++) {
 #ifndef USEMAD
@@ -371,11 +409,20 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			denominator(ax, p, dL, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
 			, dL, TOFSum, DD, TOFCenter, sigma_x, &D
+#ifdef LISTMODE
+			, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #ifdef N_RAYS
 			, lor
 #endif
 			);
+    // if (idx == 0) {
+    //     printf("ax[0] = %f\n", ax[0]);
+    //     printf("dL = %f\n", dL);
+    //     printf("d_OSEM = %f\n", tex3D<float>(d_OSEM, p.x, p.y, p.z));
+    //     // printf("d_OSEM = %f\n", read_imagef(d_OSEM, samplerForw, (T4)(p, (typeTT)0)).w);
+    // }
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
             const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
@@ -408,44 +455,84 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			rhs(dL * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
 			, dL, sigma_x, &D, DD, TOFCenter, TOFSum
+#ifdef LISTMODE
+			, TOFid
+#endif
 #endif
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
 #if defined(TOF)
 			D -= (dL * sign(DD));
 #endif
+#if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
+			LL += dL;
+#endif
         t += tStep;
         if (t > tEnd)
             break;
     }
+#if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
+        if (LL == 0.f)
+            LL = L;
+#if defined(N_RAYS) && !defined(ORTH) //////////////// MULTIRAY ////////////////
+        temp = 1.f / (LL * CFLOAT(N_RAYS));
+#else //////////////// SINGLERAY ////////////////
+		temp = 1.f / LL;
+#endif //////////////// END MULTIRAY ////////////////
+#ifdef NORM
+        temp *= local_norm;
+#endif
+#ifdef SCATTER
+        temp *= local_scat;
+#endif
+        temp *= global_factor;
+#ifdef ATNM
+        temp *= d_atten[idx];
+#endif
+#endif
 #if defined(ATN) && defined(FP)
 		temp *= EXP(jelppi);
 #endif
 #if defined(FP) && !defined(N_RAYS) //////////////// FORWARD PROJECTION ////////////////
+#if defined(TOF) && defined(LISTMODE)
+		size_t to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 		for (size_t to = 0; to < NBINS; to++) {
+#endif
 			forwardProjectAF(d_output, ax, idx, temp, to);
 #ifdef TOF
 			idx += m_size;
 #endif
+#if defined(TOF) && defined(LISTMODE)
+#else
 		}
+#endif
 #elif defined(FP) && defined(N_RAYS)
+#if defined(TOF) && defined(LISTMODE)
+	int to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
+#endif
 		ax[to + NBINS * lor] *= temp;
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
 		}
 	}
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
+#if defined(TOF) && defined(LISTMODE)
+		size_t to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
+#endif
         float apu = 0.f;
 #ifndef __CUDACC__ 
 #pragma unroll N_RAYS
@@ -454,16 +541,26 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
             apu += ax[to + NBINS * kk];
         }
         ax[to] = apu;
-    }
+#if defined(TOF) && defined(LISTMODE)
+#else
+	}
+#endif
+#if defined(TOF) && defined(LISTMODE)
+		to = TOFid;
+#else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
     for (size_t to = 0; to < NBINS; to++) {
+#endif
         forwardProjectAF(d_output, ax, idx, 1.f, to);
 #ifdef TOF
         idx += m_size;
 #endif
-    }
+#if defined(TOF) && defined(LISTMODE)
+#else
+	}
+#endif
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #endif //////////////// END MULTIRAY ////////////////
 }
