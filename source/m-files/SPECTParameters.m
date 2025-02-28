@@ -77,7 +77,11 @@ end
 options.uu = 1;
 options.ub = 1;
 if abs(options.offangle) > 0
-     options.angles = options.angles + (options.offangle * 180/pi);
+    if max(abs(options.angles(:))) > 10 * pi
+        options.angles = options.angles + (options.offangle * 180/pi);
+    else
+        options.angles = options.angles + options.offangle;
+    end
 end
 if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
     options.angles = options.angles / 180 * pi;
