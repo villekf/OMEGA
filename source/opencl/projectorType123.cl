@@ -83,6 +83,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(SPECT)
 	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
 	const CLGLOBAL float* CLRESTRICT d_rayShiftsSource,
+    const float coneOfResponseStdCoeff,
 #endif
 #ifdef PYTHON
 	const float crystalSizeX, const float crystalSizeY, 
@@ -625,6 +626,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
 #endif
+#ifdef SPECT
+                , coneOfResponseStdCoeff
+#endif
 				);
 #else //////////////// SIDDON ////////////////
 				float d_in = d_d2;
@@ -1150,6 +1154,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                        , coneOfResponseStdCoeff
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1170,6 +1177,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                        , coneOfResponseStdCoeff
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1190,6 +1200,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                , coneOfResponseStdCoeff
+#endif
 				);
 			}
 #endif //////////////// END ORTH/VOL ////////////////
@@ -1304,6 +1317,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
 #endif
+#ifdef SPECT
+                , coneOfResponseStdCoeff
+#endif
 				);
 				if (uu == 0)
 					break;
@@ -1326,6 +1342,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeff
 #endif
 				);
 				if (uu == 0)

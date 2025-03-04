@@ -361,8 +361,9 @@ end
 if (options.projector_type == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
-if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11) && options.SPECT
-    error('SPECT only supports projector types 1 and 6!')
+if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22 && options.projector_type ~= 7) && options.SPECT
+    disp(options.projector_type)
+    error('SPECT only supports projector types 1, 2 and 6!')
 end
 if (options.projector_type == 6) && options.use_CUDA
     error('CUDA is not supported with projector type 6!')

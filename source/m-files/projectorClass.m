@@ -701,6 +701,9 @@ classdef projectorClass
                 obj.param.orthAxial = false;
             end
 
+            if ((obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33) && obj.param.SPECT)
+                obj.param = SPECTParameters(obj.param);
+            end
 
             if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...

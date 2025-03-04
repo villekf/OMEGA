@@ -37,35 +37,22 @@ if ~isfield(options, 'swivelAngles')
     options.swivelAngles = options.angles+180;
 end
 if ~isfield(options, 'rayShiftsDetector')
-    if options.nRays == 1
-        options.rayShiftsDetector = single(zeros(2, 1));
-    else
     %options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     options.rayShiftsDetector = single(zeros(2*options.nRays, 1));
-    end
+    options.rayShiftsDetector(1:2) = 0;
 end
 if ~isfield(options, 'rayShiftsSource')
-    if options.nRays == 1
-        options.rayShiftsSource= single(zeros(2, 1));
-    else
     options.rayShiftsSource = single(0.2*randn(2*options.nRays, 1));
+    options.rayShiftsSource(1:2) = 0;
     %options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-    end
 
-end
-if isfield(options, 'maskFP')
-    %options.useImages = false;
-    options.numMaskFP = size(options.maskFP, 3);
-    options.nProjectionsGlobal = options.nProjections;
-else
-    %options.useImages = false;
-    options.numMaskFP = 0;
-    options.nProjectionsGlobal = options.nProjections;
 end
 if ~isfield(options, 'homeAngles')
     options.homeAngles = 0 * options.angles;
 end
-
+if ~isfield(options, 'coneOfResponseStdCoeff')
+    options.coneOfResponseStdCoeff = 0.1;
+end
 if options.flipImageZ % Flip image by flipping sinograms' z-axis in image space
     options.SinM = flip(options.SinM, 2);
 end
@@ -118,8 +105,11 @@ options.blocks_per_ring = 1;
 options.linear_multip = 0;
 options.cryst_per_block = options.nColsD * options.nRowsD;
 options.dPitch = options.cr_p;
-options.tube_width_xy = 0;
-options.tube_width_z = 0;
+%options.tube_width_xy = 0;
+%options.tube_width_z = 0;
+if options.projector_type == 2 && isfield(options, 'gFilter')
+    options = rmfield(options, 'gFilter');
+end
 if ~isfield(options, 'cr_pz')
     % options.cr_pz = options.cr_p;
     options.cr_pz = options.crXY;

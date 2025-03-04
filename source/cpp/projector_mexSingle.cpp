@@ -203,9 +203,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 		param.dPitchXY = getScalarFloat(getField(options, 0, "crXY"), ind);
 		param.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 		param.rayShiftsSource = getSingles(options, "rayShiftsSource");
-		param.numMaskFP = getScalarInt64(getField(options, 0, "numMaskFP"), ind);
-		param.nProjectionsGlobal = getScalarInt64(getField(options, 0, "nProjectionsGlobal"), ind);
-	} else {
+        param.coneOfResponseStdCoeff = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeff"), ind);
+    } else {
 		param.size_y = getScalarUInt32(getField(options, 0, "Nang"), ind);
 		param.dPitchXY = getScalarFloat(getField(options, 0, "cr_p"), ind);
 	}

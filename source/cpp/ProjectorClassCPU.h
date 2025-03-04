@@ -89,8 +89,7 @@ public:
 		// SPECT EDIT
 		param.rayShiftsDetector = w_vec.rayShiftsDetector;
 		param.rayShiftsSource = w_vec.rayShiftsSource;
-		param.numMaskFP = inputScalars.numMaskFP;
-		param.nProjectionsGlobal = inputScalars.nProjectionsGlobal;
+        param.coneOfResponseStdCoeff = inputScalars.coneOfResponseStdCoeff;
 		// END SPECT EDIT
 		return 0;
 	}

@@ -1,11 +1,11 @@
 function options = SPECTParameters(options)
-%SPECTParameters Computes the necessary variables for projector type 6
+%SPECTParameters Computes the necessary variables for projector types 2 and 6
 %(SPECT)
 %   Computes the PSF standard deviations for the current SPECT collimator
 %   if omitted. Also computes the interaction planes with the rotated
 %   projector and the projection angles.
 %
-% Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Matti Kortelainen
+% Copyright (C) 2022-2025 Ville-Veikko Wettenhovi, Matti Kortelainen, Niilo Saarlemo
 %
 % This program is free software: you can redistribute it and/or modify
 % it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ DistanceToFirstRow = options.radiusPerProj-(double(options.Nx)/2-0.5)*double(opt
 Distances = repmat(DistanceToFirstRow,1,options.Nx)+repmat((0:double(options.Nx)-1)*double(options.dx),length(DistanceToFirstRow),1);
 Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
 
-if ~isfield(options,'gFilter')
+if (~isfield(options,'gFilter') || projector_type == 2) % gFilter not supported by projector_type == 2
     if ~isfield(options, 'sigmaZ')
         Rg = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/options.colL; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
         Rg(Rg<0) = 0;
@@ -66,21 +66,32 @@ if ~isfield(options,'gFilter')
     % colS = find(options.gFilter(:,round(size(options.gFilter,2)/2),end,ind) > 1e-6,1,'first');
     options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
     options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
+
+    if options.projector_type == 2 % Calculate linear coefficients for standard deviation, it is assumed that sigma=st where t is the distance from detector to the orthogonal projection of current voxel and s is a constant determined below.
+        distIdx = Distances(1, :) >= 100; % The relation between standard deviation and distance is approximately linear in this range
+        tmpDist = Distances(1, distIdx); % Distances above the threshold
+        tmpStd = options.sigmaXY(1, distIdx); % Standard deviations above the threshold
+        options.coneOfResponseStdCoeff = (tmpDist * tmpDist') \ (tmpDist * tmpStd'); % Least squares line fit
+        %disp(stdCoeff)
+    end
 end
-[~, options.blurPlanes] = max(Distances>0,[],2);
-if options.implementation == 2
-    options.blurPlanes = uint32(options.blurPlanes - 1);
-end
-if ~isfield(options,'angles') || numel(options.angles) == 0
-    options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1) + options.offangle);
-end
-options.uu = 1;
-options.ub = 1;
-if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
-    options.angles = options.angles / 180 * pi;
-end
-if options.flip_image
-    options.angles = -(options.angles);
+
+if options.projector_type == 6 % Not required for projector_type == 2
+    [~, options.blurPlanes] = max(Distances>0,[],2);
+    if options.implementation == 2
+        options.blurPlanes = uint32(options.blurPlanes - 1);
+    end
+    if ~isfield(options,'angles') || numel(options.angles) == 0
+        options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1) + options.offangle);
+    end
+    options.uu = 1;
+    options.ub = 1;
+    if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
+        options.angles = options.angles / 180 * pi;
+    end
+    if options.flip_image
+        options.angles = -(options.angles);
+    end
 end
 if options.implementation == 2 || options.useSingles
     options.gFilter = single(options.gFilter);

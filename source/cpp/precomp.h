@@ -77,7 +77,7 @@ typedef struct structForScalars {
 	uint64_t* pituus, length;
 	std::vector<uint32_t> usedDevices;
 	largeDimStruct lDimStruct;
-	int64_t numMaskFP = 1, nProjectionsGlobal;
+	float coneOfResponseStdCoeff = 0.01f;
 } scalarStruct;
 
 #ifdef OPENCL

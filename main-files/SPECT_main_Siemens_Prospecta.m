@@ -88,10 +88,6 @@ options.attenuation_correction = true;
 %%% HU scaling (affine map y=ax+b)
 options.HU.slope = 0.0000109;
 options.HU.intercept = 0.0151;
-% intercept = [0.151 0.155];
-% slope = [0.000149 0.000109];
-% intercept = [0.151 0.151];
-% slope = [0.000152 0.000094];
 
 %%% How much is the image rotated?
 % You need to run the precompute phase again if you modify this
@@ -118,6 +114,18 @@ options = loadProSpectaData(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+%%% Collimator-detector response function (CDRF)
+% You can either input either:
+% 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
+% 2. the standard deviations for both transaxial and axial directions or
+% 3. the (Gaussian) PSF filter
+% NOTE: With projector_type == 2 (orthogonal distance projector), the
+% actual standard deviations used are a linear fit of the parameters below.
+% With that projector only options.sigmaXY is used for CDR calculation i.e.
+% the collimator hole is assumed to be a circle. Thus only 1. and 2. below
+% are supported with projector_type == 2.
+
+% 1. The collimator parameters
 % Collimator hole length (mm)
 options.colL = 24.05;
 % Collimator hole radius (mm)
@@ -125,25 +133,19 @@ options.colR = 1.11/2;
 % Distance from collimator to the detector (mm)
 options.colD = 0;
 % Intrinsic resolution (mm)
-% projector_type 6 only!
+% projector_type 2 and 6 only!
 options.iR = 3.8;
 
-%%% Collimator-detector response function (CDRF)
-% You can either input either:
-% the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
-% the (Gaussian) PSF filter,
-% or the standard deviations for both transaxial and axial directions
-
-% If you have the standard deviations for transaxial (XY) and axial (Z)
+% 2. If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values (the
 % dimensions need to be options.nProjections x options.Nx):
 % Transaxial standard deviation
-% options.sigmaXY = repmat(0, options.nProjection, options.Nx);
+% options.sigmaXY = repmat(1, options.nProjections, options.Nx);
 % Axial standard deviation
-% options.sigmaZ = repmat(0, options.nProjection, options.Nx);
+% options.sigmaZ = repmat(1, options.nProjections, options.Nx);
 
-% Lastly, you can input the filter for the CDRF directly. This should be
-% filterSizeXY x filterSizeZ x options.nProjections:
+% 3. You can input the filter for the CDRF directly. This should be of the
+% size filterSizeXY x filterSizeZ x options.nProjections:
 % options.gFilter = ones(10,10,options.nProjections);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -219,6 +221,7 @@ options.use_CPU = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = (Improved) Siddon ray-based projector
+% 2 = Orthogonal distance ray tracing
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
@@ -248,12 +251,6 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% For SPECT, the supported types depend on the projector type.
-% projector_type = 1 supports subset_type 0, 1 and 3
-% projector_type = 6 supports types 8-11
-% 0 = Divide the data into N segments with the original data ordering
-% 1 = Every nth (column) measurement is taken
-% 3 = Measurements are selected randomly (recommended for projector_type = 1)
 % 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for

@@ -160,10 +160,10 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
-	} else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
+	} else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-		inputScalars.nProjectionsGlobal = getScalarInt64(getField(options, 0, "nProjectionsGlobal"));
+        inputScalars.coneOfResponseStdCoeff = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeff"));
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));
@@ -238,7 +238,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "crXY"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "crXY"));
-		if (inputScalars.projector_type == 1) {
+		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2) {
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 		}
