@@ -21,7 +21,7 @@ function [x, z] = get_coordinates_SPECT(options)
         alpha2 = options.swivelAngles(ii);
         
         x(4, ii) = r1 * cosd(alpha1) + r2 * cosd(alpha2);
-        x(5, ii) = -r1 * sind(alpha1) + r2 * sind(alpha2);
+        x(5, ii) = -r1 * sind(alpha1) - r2 * sind(alpha2);
         x(6, ii) = 0;
         x(1, ii) = x(4, ii) + options.colL * cosd(alpha2);
         x(2, ii) = x(5, ii) - options.colL * sind(alpha2);
