@@ -78,7 +78,6 @@ function options = loadProSpectaData(options)
 
         % Assign to attenuation map variable
         options.vaimennus = single(CTvol);
-        options.vaimennus = imrotate(options.vaimennus, options.offangle * 360 / (2*pi));
 
         % Map to linear attenuation coefficients
         options.vaimennus = options.vaimennus * options.HU.slope + options.HU.intercept;
@@ -86,7 +85,6 @@ function options = loadProSpectaData(options)
         % Convert to single
         options.vaimennus = single(options.vaimennus);
         options.vaimennus(options.vaimennus < 0) = 0;
-
         fprintf("Ready\n")
     end
 end

@@ -17,27 +17,27 @@ function [x, z] = get_coordinates_SPECT(options)
 
         % The (gantry angle + home angle) should be relative to positive x axis with positive rotation direction counterclockwise
         % The swivel angle should also be relative to positive x axis with positive rotation direction counterclockwise
-        alpha1 = options.angles(ii) + options.offangle; 
-        alpha2 = options.swivelAngles(ii) + options.offangle;
+        alpha1 = options.angles(ii); 
+        alpha2 = options.swivelAngles(ii);
         
         x(4, ii) = r1 * cosd(alpha1) + r2 * cosd(alpha2);
-        x(5, ii) = r1 * sind(alpha1) + r2 * sind(alpha2);
+        x(5, ii) = -r1 * sind(alpha1) + r2 * sind(alpha2);
         x(6, ii) = 0;
         x(1, ii) = x(4, ii) + options.colL * cosd(alpha2);
-        x(2, ii) = x(5, ii) + options.colL * sind(alpha2);
+        x(2, ii) = x(5, ii) - options.colL * sind(alpha2);
         x(3, ii) = 0;
         
         z(1, ii) = options.crXY * cosd(alpha2+90);
-        z(2, ii) = options.crXY * sind(alpha2+90);
+        z(2, ii) = -options.crXY * sind(alpha2+90);
     end
 
-    if options.flipImageX
+    if options.flipImageX % Horizontal
         x(1, :) = -x(1, :);
         x(4, :) = -x(4, :);
         z(1, :) = -z(1, :);
     end
 
-    if options.flipImageY
+    if options.flipImageY % Vertical
         x(2, :) = -x(2, :);
         x(5, :) = -x(5, :);
         z(2, :) = -z(2, :);

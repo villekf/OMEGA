@@ -53,10 +53,6 @@ end
 if ~isfield(options, 'coneOfResponseStdCoeff')
     options.coneOfResponseStdCoeff = 0.1;
 end
-if options.flipImageZ % Flip image by flipping sinograms' z-axis in image space
-    options.SinM = flip(options.SinM, 2);
-end
-
 options.n_rays_transaxial = options.nRays;
 options.NSinos = options.nProjections;
 options.TotSinos = options.nProjections;
@@ -134,11 +130,26 @@ if ~isfield(options, 'flip_image')
 end
 if ~isfield(options, 'offangle')
     options.offangle = 0;
-else
-    if isfield(options, 'vaimennus')
-        options.vaimennus = imrotate3(options.vaimennus, options.offangle, [0 0 1], 'crop');
-    end
 end
+options.angles = options.angles + options.offangle;
+options.swivelAngles = options.swivelAngles + options.offangle;
+if isfield(options, 'vaimennus')
+    options.vaimennus = imrotate(options.vaimennus, options.offangle, 'crop');
+    if options.flipImageX
+        options.vaimennus = flip(options.vaimennus, 2)
+    end
+    if options.flipImageY
+        options.vaimennus = flip(options.vaimennus, 1)
+    end
+    if options.flipImageZ
+        options.vaimennus = flip(options.vaimennus, 3)
+    end
+    volume3Dviewer(options.vaimennus)
+end
+if options.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
+    options.SinM = flip(options.SinM, 2);
+end
+
 if ~isfield(options, 'uCenter')
     options.uCenter = [];
 end

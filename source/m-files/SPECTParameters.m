@@ -86,12 +86,12 @@ if options.projector_type == 6 % Not required for projector_type == 2
     end
     options.uu = 1;
     options.ub = 1;
-    if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
-        options.angles = options.angles / 180 * pi;
-    end
-    if options.flip_image
-        options.angles = -(options.angles);
-    end
+    %if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
+    %    options.angles = (options.angles + options.offangle) / 180 * pi;
+    %end
+    %if options.flip_image
+    %    options.angles = -(options.angles);
+    %end
 end
 if options.implementation == 2 || options.useSingles
     options.gFilter = single(options.gFilter);
