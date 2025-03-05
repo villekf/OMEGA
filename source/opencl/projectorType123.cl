@@ -505,11 +505,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
-			d_d2 = d_d.x;		
+			d_d2 = d_d.x;
 			d_N0 = d_Nxyz.y;
 			d_N1 = d_Nxyz.x;
 			d_N2 = d_Nxyz.y;
-			d_N3 = 1u;	
+			d_N3 = 1u;
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 			b1 = b.x;
 			b2 = b.y;
@@ -563,12 +563,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			b2 = b.x;
 			d1 = d_d.y;
 			d2 = d_d.x;
-			float s_b = s.x;
-			s.x = s.y;
-			s.y = s_b;
-			float diff_b = diff.x;
-			diff.x = diff.y;
-			diff.y = diff_b;
+			// float s_b = s.x;
+			// s.x = s.y;
+			// s.y = s_b;
+			// float diff_b = diff.x;
+			// diff.x = diff.y;
+			// diff.y = diff_b;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 
 		}
@@ -611,7 +611,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -751,6 +751,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// /*
 	else {
+		return;
 		float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		bool skip = false, XY = true;
 #ifdef TOF //////////////// TOF ////////////////
@@ -944,20 +945,20 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			diff.y = diff_b;
 			d_NN.x = d_Nxyz.y;
 			d_NN.y = d_Nxyz.x;
-			d_N0 = d_Nxyz.x;
-			d_N1 = d_Nxyz.y;
-			d_N2 = 1;
-			d_N3 = d_Nxyz.x;
+			d_N0 = d_Nxyz.y;
+			d_N1 = d_Nxyz.x;
+			d_N2 = d_Nxyz.x;
+			d_N3 = 1;
 		}
 		else {
 			b1 = b.x;
 			b2 = b.y;
 			d1 = d_d.x;
 			d2 = d_d.y;
-			d_N0 = d_Nxyz.y;
-			d_N1 = d_Nxyz.x;
-			d_N2 = d_Nxyz.x;
-			d_N3 = 1;
+			d_N0 = d_Nxyz.x;
+			d_N1 = d_Nxyz.y;
+			d_N2 = 1;
+			d_N3 = d_Nxyz.x;
 		}
 		tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
