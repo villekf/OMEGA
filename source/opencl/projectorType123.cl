@@ -563,12 +563,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			b2 = b.x;
 			d1 = d_d.y;
 			d2 = d_d.x;
-			// float s_b = s.x;
-			// s.x = s.y;
-			// s.y = s_b;
-			// float diff_b = diff.x;
-			// diff.x = diff.y;
-			// diff.y = diff_b;
+			float s_b = s.x;
+			s.x = s.y;
+			s.y = s_b;
+			float diff_b = diff.x;
+			diff.x = diff.y;
+			diff.y = diff_b;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 
 		}
@@ -751,7 +751,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 	// /*
 	else {
-		return;
+		// return;
 		float txu = 0.f, tyu = 0.f, tzu = 0.f, tc = 0.f, tx0 = 1e8f, ty0 = 1e8f, tz0 = 1e8f;
 		bool skip = false, XY = true;
 #ifdef TOF //////////////// TOF ////////////////
@@ -1209,7 +1209,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END MASKBP ////////////////
 				);
 			}
-#endif //////////////// END ORTH/VOL ////////////////
+#else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
 			denominator(ax, localInd, local_ele, d_OSEM
@@ -1264,6 +1264,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 			);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
+#endif //////////////// END ORTH/VOL ////////////////
 #if defined(TOF)
 			D -= (local_ele2 * sign(DD));
 #endif
