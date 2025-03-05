@@ -134,6 +134,10 @@ if ~isfield(options, 'flip_image')
 end
 if ~isfield(options, 'offangle')
     options.offangle = 0;
+else
+    if isfield(options, 'vaimennus')
+        options.vaimennus = imrotate3(options.vaimennus, options.offangle, [0 0 1], 'crop');
+    end
 end
 if ~isfield(options, 'uCenter')
     options.uCenter = [];

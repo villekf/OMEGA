@@ -33,7 +33,7 @@ options.crXY = 4.7952;
 % Note that with SPECT data using projector_type = 6, this is not exactly
 % used as the FOV size but rather as the value used to compute the voxel
 % size
-options.FOVa_x =  options.crXY*128;
+options.FOVa_x = options.crXY*128;
 
 %%% Transaxial FOV size (mm), this is the length of the y (vertical) side
 % of the FOV
@@ -89,13 +89,10 @@ options.attenuation_correction = true;
 options.HU.slope = 0.0000109;
 options.HU.intercept = 0.0151;
 
-%%% How much is the image rotated?
-% You need to run the precompute phase again if you modify this
+%%% How much is the image rotated in degrees?
 % NOTE: The rotation is done in the detector space (before reconstruction).
-% This current setting is for systems whose detector blocks start from the
-% right hand side when viewing the device from front.
 % Positive values perform the rotation in clockwise direction
-options.offangle = (3*pi)/2;
+options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
