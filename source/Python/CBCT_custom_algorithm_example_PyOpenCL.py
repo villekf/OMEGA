@@ -168,7 +168,7 @@ tic = time.perf_counter()
 #     fPrev = f.copy(options.queue)
 #     f = f - tau * apu
 #     # Positivity constraint
-#     cl.array.if_positive(f, f, zeroAr)
+#     d_f = cl.array.if_positive(f, f, zeroAr)
 #     # Updated estimate
 #     d_f = f + theta * (f - fPrev)
 #     print('Iteration ' + str(k))
@@ -198,7 +198,7 @@ for k in range(options.Niter):
         g1 = g1 + dg
         g = g1 + (theta * options.subsets) * dg
         d_f = d_f - tau * g
-        cl.array.if_positive(d_f, d_f, zeroAr)
+        d_f = cl.array.if_positive(d_f, d_f, zeroAr)
         print('Sub-iteration ' + str(i))
     print('Iteration ' + str(k))
     
@@ -224,7 +224,7 @@ for k in range(options.Niter):
 #         zeroAr = cl.array.zeros(options.queue, f[i].size, dtype=cl.cltypes.float)
 #         fPrev = f[i].copy(options.queue)
 #         f[i] = f[i] - tau[i] * apu[i]
-#         cl.array.if_positive(f[i], f[i], zeroAr)
+#         d_f = cl.array.if_positive(f[i], f[i], zeroAr)
 #         d_f[i] = f[i] + theta * (f[i] - fPrev)
 #     print('Iteration ' + str(k))
 
@@ -259,7 +259,7 @@ for k in range(options.Niter):
 #             g1[j] = g1[j] + dg[j]
 #             g = g1[j] + (theta * options.subsets) * dg[j]
 #             d_f[j] = d_f[j] - tau[j] * g
-#             cl.array.if_positive(d_f[j], d_f[j], zeroAr)
+#             d_f = cl.array.if_positive(d_f[j], d_f[j], zeroAr)
 #     print('Iteration ' + str(k))
 
 toc = time.perf_counter()

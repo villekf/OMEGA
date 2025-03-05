@@ -334,7 +334,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef ORTH // Orthogonal or volume-based
 	float b1, b2, d1, d2;
-	float bz = b.z, dz = d_d.z;
+	float _bz = b.z, dz = d_d.z;
 #endif
 
 #if defined(N_RAYS) //////////////// MULTIRAY ////////////////
@@ -506,24 +506,18 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
-#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			b1 = b.y;
-			b2 = b.x;
-			d1 = d_d.y;
-			d2 = d_d.x;
-			XY = true;
-#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
-			d_d2 = d_d.x;
-			float xs_apu = s.x;
-			s.x = s.y;
-			s.y = xs_apu;
-			float xdiff_apu = diff.x;
-			diff.x = diff.y;
-			diff.y = xdiff_apu;
+			d_d2 = d_d.x;		
 			d_N0 = d_Nxyz.y;
 			d_N1 = d_Nxyz.x;
 			d_N2 = d_Nxyz.y;
-			d_N3 = 1u;
+			d_N3 = 1u;	
+#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
+			b1 = b.x;
+			b2 = b.y;
+			d1 = d_d.x;
+			d2 = d_d.y;
+			XY = true;
+#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
 		}
 		else if (fabs(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
@@ -563,14 +557,21 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // #endif
 			d_b = b.x;
 			dd = d.x;
-#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			b1 = b.x;
-			b2 = b.y;
-			d1 = d_d.x;
-			d2 = d_d.y;
-#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
-			d_d2 = d_d.y;
 			d_db = d_d.x;
+			d_d2 = d_d.y;
+#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
+			b1 = b.y;
+			b2 = b.x;
+			d1 = d_d.y;
+			d2 = d_d.x;
+			float s_b = s.x;
+			s.x = s.y;
+			s.y = s_b;
+			float diff_b = diff.x;
+			diff.x = diff.y;
+			diff.y = diff_b;
+#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
+
 		}
 		else
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -605,13 +606,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			D = dI;
 			DD = D;
 #endif //////////////// END TOF ////////////////
-			for (uint ii = apuX1; ii < apuX2; ii++) {
+			for (uint ii = apuX1; ii <= apuX2; ii++) {
 #ifdef TOF //////////////// TOF ////////////////
 				const float TOFSum = TOFLoop(DD, d_d2, TOFCenter, sigma_x, &D, d_epps);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -920,7 +921,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ORTH // Orthogonal or volume-based
 		int tempi_b, u_b;
 		float t0_b, tu_b, diff_b, s_b, b1, b2, d1, d2;
-		float bz = b.z, dz = d_d.z;
+		float _bz = b.z, dz = d_d.z;
 		uint3 d_NN = MUINT3(d_Nxyz.x, d_Nxyz.y, d_Nxyz.z);
 		if (!XY) {
 			b1 = b.y;
@@ -947,20 +948,20 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			diff.y = diff_b;
 			d_NN.x = d_Nxyz.y;
 			d_NN.y = d_Nxyz.x;
-			d_N0 = d_Nxyz.y;
-			d_N1 = d_Nxyz.x;
-			d_N2 = d_Nxyz.x;
-			d_N3 = 1;
+			d_N0 = d_Nxyz.x;
+			d_N1 = d_Nxyz.y;
+			d_N2 = 1;
+			d_N3 = d_Nxyz.x;
 		}
 		else {
 			b1 = b.x;
 			b2 = b.y;
 			d1 = d_d.x;
 			d2 = d_d.y;
-			d_N0 = d_Nxyz.x;
-			d_N1 = d_Nxyz.y;
-			d_N2 = 1;
-			d_N3 = d_Nxyz.x;
+			d_N0 = d_Nxyz.y;
+			d_N1 = d_Nxyz.x;
+			d_N2 = d_Nxyz.x;
+			d_N3 = 1;
 		}
 		tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
@@ -971,6 +972,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(VOL) && defined(TOTLENGTH) //////////////// VOL+TOTLENGTH ////////////////
 		temp = 1.f / TotV;
 #elif defined(VOL) && !defined(TOTLENGTH) && defined(BP)
+		if (LL == 0.f)
+			LL = L;
 		temp = 1.f / (TotV * LL);
 #endif //////////////// END VOL+TOTLENGTH ////////////////
 #else //////////////// SIDDON ////////////////
@@ -981,6 +984,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		temp = 1.f / L;
 #endif //////////////// END MULTIRAY ////////////////
 #elif !defined(TOTLENGTH) && defined(BP) //////////////// NOTTOTLENGTH+BP ////////////////
+		if (LL == 0.f)
+			LL = L;
 #ifdef N_RAYS  //////////////// MULTIRAY ////////////////
 		temp = 1.f / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
@@ -991,6 +996,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(ATN) && defined(BP) && !defined(SPECT)
 		temp *= EXP(jelppi);
 #endif
+#if defined(TOTLENGTH) || defined(BP)
 #ifdef NORM //////////////// NORM ////////////////
 		temp *= local_norm;
 #endif //////////////// END NORM ////////////////
@@ -1001,6 +1007,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ATNM //////////////// ATTENUATIONLOR ////////////////
 		temp *= d_atten[idx];
 #endif //////////////// END ATTENUATIONLOR ////////////////
+#endif
 #endif //////////////// END PET/SPECT ////////////////
 // #if (defined(SPECT) && !defined(ORTH)) // Ray length inside BP mask
 // 		float L_SPECT = 0.f;
@@ -1104,7 +1111,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // 				local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
 // #endif
 			}
-#if !defined(TOTLENGTH) && defined(FP)
+#if !defined(TOTLENGTH) && defined(FP) && !defined(CT)
 			LL += local_ele;
 #endif
 #if (defined(ATN) && (defined(FP) || defined(SPECT))) || defined(TOF)
@@ -1142,7 +1149,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 if (ux >= 0) {
                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
 						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1150,6 +1157,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
                         , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+						, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
@@ -1165,7 +1175,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 else {
                     for (int kk = tempi_a + 1; kk < d_NN.x; kk++) {
 						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1173,6 +1183,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
                         , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+						, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
@@ -1188,7 +1201,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
             }
 			if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
 				const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
-				orthDistance3D(localInd.x, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, localInd.y, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				orthDistance3D(localInd.x, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, localInd.y, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1196,6 +1209,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
 				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+				, TOFid
+#endif
 #endif //////////////// END TOF ////////////////
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 				, aa, maskBP
@@ -1275,6 +1291,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // 		temp /= L_SPECT;
 // #endif
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
+			if (LL == 0.f)
+				LL = L;
 #if defined(N_RAYS) && !defined(ORTH)
 			temp = 1.f / (LL * CFLOAT(N_RAYS));
 #elif !defined(ORTH)
@@ -1302,7 +1320,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		if (ux < 0) {
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1328,7 +1346,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		else {
 			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
 					d_OSEM
 #else

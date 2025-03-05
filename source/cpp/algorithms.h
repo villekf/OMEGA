@@ -353,6 +353,8 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			vec.im_os[ii] = (im_old - im);
 			const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
 			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+			if (inputScalars.listmode && inputScalars.TOF)
+				outputFP = af::constant(0.f, m_size);
 			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
 			if (status != 0) {
 				return status;
@@ -466,6 +468,8 @@ inline void POCS(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, co
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
 		af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+		if (inputScalars.listmode && inputScalars.TOF)
+			outputFP = af::constant(0.f, m_size);
 		int status = 0;
 		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
 		if (status != 0) {

@@ -35,6 +35,9 @@ end
 if ~isfield(options,'listmode')
     options.listmode = false;
 end
+if ~isfield(options,'nLayers')
+    options.nLayers = 1;
+end
 
 cr_p = options.cr_p;
 diameter = options.diameter;

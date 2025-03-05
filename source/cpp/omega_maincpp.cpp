@@ -65,7 +65,6 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	size_t mDim = options.measElem / static_cast<size_t>(inputScalars.Nt);
 
-	inputScalars.koko = mDim / inputScalars.nBins;
 	if (inputScalars.listmode) {
 		if (inputScalars.indexBased) {
 			w_vec.trIndex = options.trIndices;
@@ -77,7 +76,10 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;
+		inputScalars.koko = mDim;
 	}
+	else
+		inputScalars.koko = mDim / inputScalars.nBins;
 	
 	
 	if (DEBUG) {
