@@ -505,7 +505,11 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
-			d_d2 = d_d.x;			
+			d_d2 = d_d.x;		
+			d_N0 = d_Nxyz.y;
+			d_N1 = d_Nxyz.x;
+			d_N2 = d_Nxyz.y;
+			d_N3 = 1u;	
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 			b1 = b.x;
 			b2 = b.y;
@@ -554,10 +558,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			dd = d.x;
 			d_db = d_d.x;
 			d_d2 = d_d.y;
-			d_N0 = d_Nxyz.y;
-			d_N1 = d_Nxyz.x;
-			d_N2 = d_Nxyz.y;
-			d_N3 = 1u;
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 			b1 = b.y;
 			b2 = b.x;
@@ -944,20 +944,20 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			diff.y = diff_b;
 			d_NN.x = d_Nxyz.y;
 			d_NN.y = d_Nxyz.x;
-			d_N0 = d_Nxyz.y;
-			d_N1 = d_Nxyz.x;
-			d_N2 = d_Nxyz.x;
-			d_N3 = 1;
+			d_N0 = d_Nxyz.x;
+			d_N1 = d_Nxyz.y;
+			d_N2 = 1;
+			d_N3 = d_Nxyz.x;
 		}
 		else {
 			b1 = b.x;
 			b2 = b.y;
 			d1 = d_d.x;
 			d2 = d_d.y;
-			d_N0 = d_Nxyz.x;
-			d_N1 = d_Nxyz.y;
-			d_N2 = 1;
-			d_N3 = d_Nxyz.x;
+			d_N0 = d_Nxyz.y;
+			d_N1 = d_Nxyz.x;
+			d_N2 = d_Nxyz.x;
+			d_N3 = 1;
 		}
 		tx0_a = tx0, ty0_a = ty0, tz0_a = tz0;
 		tempi_a = tempi, tempj_a = tempj, tempk_a = tempk;
