@@ -505,24 +505,14 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			d_b = b.y;
 			dd = d.y;
 			d_db = d_d.y;
+			d_d2 = d_d.x;			
 #if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			b1 = b.y;
-			b2 = b.x;
-			d1 = d_d.y;
-			d2 = d_d.x;
+			b1 = b.x;
+			b2 = b.y;
+			d1 = d_d.x;
+			d2 = d_d.y;
 			XY = true;
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
-			d_d2 = d_d.x;
-			float xs_apu = s.x;
-			s.x = s.y;
-			s.y = xs_apu;
-			float xdiff_apu = diff.x;
-			diff.x = diff.y;
-			diff.y = xdiff_apu;
-			d_N0 = d_Nxyz.y;
-			d_N1 = d_Nxyz.x;
-			d_N2 = d_Nxyz.y;
-			d_N3 = 1u;
 		}
 		else if (fabs(diff.x) < 1e-6f && d.x <= d_bmax.x && d.x >= b.x && s.x <= d_bmax.x && s.x >= b.x) {
 			apuX1 = 0;
@@ -562,14 +552,25 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // #endif
 			d_b = b.x;
 			dd = d.x;
-#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
-			b1 = b.x;
-			b2 = b.y;
-			d1 = d_d.x;
-			d2 = d_d.y;
-#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
-			d_d2 = d_d.y;
 			d_db = d_d.x;
+			d_d2 = d_d.y;
+			d_N0 = d_Nxyz.y;
+			d_N1 = d_Nxyz.x;
+			d_N2 = d_Nxyz.y;
+			d_N3 = 1u;
+#if defined(ORTH) //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
+			b1 = b.y;
+			b2 = b.x;
+			d1 = d_d.y;
+			d2 = d_d.x;
+			float s_b = s.x;
+			s.x = s.y;
+			s.y = s_b;
+			float diff_b = diff.x;
+			diff.x = diff.y;
+			diff.y = diff_b;
+#endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////
+
 		}
 		else
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -604,13 +605,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			D = dI;
 			DD = D;
 #endif //////////////// END TOF ////////////////
-			for (uint ii = apuX1; ii < apuX2; ii++) {
+			for (uint ii = apuX1; ii <= apuX2; ii++) {
 #ifdef TOF //////////////// TOF ////////////////
 				const float TOFSum = TOFLoop(DD, d_d2, TOFCenter, sigma_x, &D, d_epps);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2,_bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
 					d_OSEM
 #else
