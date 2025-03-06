@@ -1587,12 +1587,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 						}
 						XY = true;
 						d_d2 = param.dx;
-						T xs_apu = detectors.xs;
-						detectors.xs = detectors.ys;
-						detectors.ys = xs_apu;
-						T xdiff_apu = x_diff;
-						x_diff = y_diff;
-						y_diff = xdiff_apu;
 						d_N0 = param.Ny;
 						d_N1 = param.Nx;
 						d_N2 = param.Ny;
@@ -1644,6 +1638,12 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 						}
 						d_d2 = param.dy;
 						d_db = param.dx;
+						T xs_apu = detectors.xs;
+						detectors.xs = detectors.ys;
+						detectors.ys = xs_apu;
+						T xdiff_apu = x_diff;
+						x_diff = y_diff;
+						y_diff = xdiff_apu;
 					}
 					else
 						continue;
@@ -1670,7 +1670,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 						if (param.TOF)
 							TOFSum = TOFLoop(DD, d_d2, param.TOFCenters, param.sigma_x, D, param.epps, param.nBins);
 						if (param.projType > 1) {
-							orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, indO, localIndZ, detectors.xs, detectors.ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3, param.Nz, 
+							orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, indO, localIndZ, detectors.xs, detectors.ys, detectors.zs, Nyx, kerroin, d_N1, d_N3, d_N2, param.Nz, 
 								param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, d_d2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp, param.projType, 
 								param.nBins, lor, nRays, param.coneOfResponseStdCoeff, param.useMaskBP, param.maskBP, SPECT);
 						}
