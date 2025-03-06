@@ -27,15 +27,15 @@ DEVICE float compute_element_orth_3D(const float xs, const float ys, const float
 	const float z1 = -yl * x0 + ys;
 #endif
 	const float norm1 = length(CMFLOAT3(zs, y1, z1));
+#ifdef SPECT
     const float norm2 = length(CMFLOAT3(x0, yl, zl));
     const float d = norm1 / norm2;
-#ifdef SPECT
     return d;
 #else
 #ifdef VOL
-	return (d / crystal_size_z);
+	return (norm1 / crystal_size_z);
 #else
-	return (1.f - d / crystal_size_z);
+	return (1.f - (norm1 / crystal_size_z));
 #endif
 #endif
 }

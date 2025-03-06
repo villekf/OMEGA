@@ -993,6 +993,7 @@ inline T compute_element_orth_3D(const T xs, const T ys, const T zs, const T xl,
         yl = detectors.xd - detectors.xs
         zl = detectors.zd - detectors.zs
         xp: voxel centre in y-direction
+        crystal_size_z = ||ray||_2 / FWHM
     */
 	const T x0 = xp - xs;
 
@@ -1001,16 +1002,15 @@ inline T compute_element_orth_3D(const T xs, const T ys, const T zs, const T xl,
 	const T z1 = -yl * x0 + ys;
 
 	const T norm1 = norm(zs, y1, z1);
-    const T norm2 = norm(x0, yl, zl);
-    const T d = norm1 / norm2;
-    
     if (SPECT) {  // Return pure orthogonal distance from ray to voxel
+        const T norm2 = norm(x0, yl, zl);
+        const T d = norm1 / norm2;
         return d;
     }
 	if (projType == 3) { // Return normalized distance
-		return (d / crystal_size_z);
+		return (norm1 / crystal_size_z);
     } else {
-        return (1.f - (d / crystal_size_z));
+        return (1.f - (norm1 / crystal_size_z));
     }
 }
 

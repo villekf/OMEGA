@@ -128,6 +128,15 @@ end
 if ~isfield(options, 'flip_image')
     options.flip_image = false;
 end
+if ~isfield(options, 'flipImageX')
+    options.flipImageX = false;
+end
+if ~isfield(options, 'flipImageY')
+    options.flipImageY = false;
+end
+if ~isfield(options, 'flipImageZ')
+    options.flipImageZ = false;
+end
 if ~isfield(options, 'offangle')
     options.offangle = 0;
 end
