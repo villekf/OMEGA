@@ -16,6 +16,9 @@ from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction.prepass import linearizeData
 from omegatomo.util.powermethod import powerMethod
 from omegatomo.util.measprecond import applyMeasPreconditioning, circulantInverse
+from omegatomo.util.priors import RDP
+from omegatomo.util.priors import NLReg
+from omegatomo.util.priors import TV
 import matplotlib as plt
 
 options = proj.projectorClass()
@@ -120,9 +123,11 @@ options.offsetCorrection = False
 # Should have no effect at the moment
 options.enforcePositivity = True
 
-# Unused at the moment
+# Regularization parameter
 options.beta = .1
-options.NLMsigma = 2.00e-3
+# Filter parameter for non-local regularization
+options.NLMsigma = 4.00e-3
+# Edge preservation parameter for RDP and NLRDP
 options.RDP_gamma = 10.
 
 options.verbose = 1
@@ -193,19 +198,10 @@ tic = time.perf_counter()
 #     d_f = f + theta * (f - fPrev)
 #     af.device_gc()
 #     print('Iteration ' + str(k))
-# # u2 = p.to_ndarray()
-# # u2 = np.reshape(u2, (options.nRowsD, options.nColsD, -1), order='F')
-# # plt.pyplot.imshow(u2[:,:,260])
-# f_np2 = d_f.to_ndarray()
-# f_np2 = np.reshape(f_np2, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-# plt.pyplot.imshow(f_np2[:,:,200])
 
-obj = np.zeros(options.Niter*options.subsets,dtype=np.float32)
 """
 PDHG with subsets but without multi-resolution
 """
-uu = 0
-# FilterG = af.interop.np_to_af_array(options.filter0)
 d_m = [None] * options.subsets
 for k in range(options.subsets):
     d_m[k] = af.interop.np_to_af_array(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()])
@@ -228,26 +224,18 @@ for k in range(options.Niter):
         g1 = g1 + dg
         af.eval(g1)
         g = g1 + (theta * options.subsets) * dg
+		# Regularized versions are enabled by uncommenting one regularizer and the update equation
+        # grad = RDP(d_f, options.Nx, options.Ny, options.Nz, options.RDP_gamma, options.beta)
+        # grad = NLReg(d_f, options.Nx, options.Ny, options.Nz, options.NLMsigma, options.beta, NLType = 3, useAdaptive=True, adaptiveConstant=5e-6)
+        # grad = TV(d_f, options.Nx, options.Ny, options.Nz, options.beta)
+        # d_f = d_f - tau * (g + grad)
         d_f = d_f - tau * g
         d_f[d_f < 0] = 0.
         af.eval(d_f)
-        ar = (options * d_f - d_m[i])
-        var = applyMeasPreconditioning(options, ar)
-        # var = af.moddims(ar, options.nRowsD, d1=options.nColsD, d2=ar.elements() // (options.nRowsD * options.nColsD));
-        # temp = af.fft(var, options.Nf)
-        # temp /= af.tile(FilterG, 1, d1=temp.shape[1], d2=temp.shape[2])
-        # af.eval(temp)
-        # af.ifft_inplace(temp)
-        # var = af.flat(af.real(temp[:var.shape[0], :, :]))
-        ar = af.blas.matmulTN(ar, var) * .5
-        # ar = .5 * af.blas.matmulTN(ar, ar)
-        obj[uu] = ar.to_ndarray()
-        uu += 1
         af.device_gc()
         print('Sub-iteration ' + str(i))
     print('Iteration ' + str(k))
     
-# from skimage.transform import resize #scikit-image
 # """
 # PDHG without subsets but with multi-resolution
 # """
@@ -284,51 +272,6 @@ for k in range(options.Niter):
 #         af.eval(f[i])
 #         d_f[i] = f[i] + theta * (f[i] - fPrev)
 #     print('Iteration ' + str(k))
-# # u1 = p.to_ndarray()
-# # u1 = np.reshape(u1, (options.nRowsD, options.nColsD, -1), order='F')
-# # plt.pyplot.imshow(u1[:,:,260])
-# if isinstance(d_f, list):
-#     f_np = np.zeros((681, 681, 401), dtype=np.float32, order='F')
-#     var = 1
-#     var2 = -1
-#     for k in range(len(d_f)):
-#         ff = d_f[k].to_ndarray()
-#         ff = np.reshape(ff, (options.Nx[k].item(), options.Ny[k].item(), options.Nz[k].item()), order='F')
-#         if k == 0:
-#             f_np[int(options.Nx[3].item() / options.multiResolutionScale) - var : int(options.Nx[3].item() / options.multiResolutionScale) - var + options.Nx[0].item(), 
-#                   int(options.Ny[5].item() / options.multiResolutionScale) - var : int(options.Ny[5].item() / options.multiResolutionScale) - var + options.Ny[0].item(), 
-#                   int(options.Nz[1].item() / options.multiResolutionScale) : int(options.Nz[1].item() / options.multiResolutionScale) + options.Nz[0].item()] = ff
-#         if k == 1:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (options.Nx[0].item(), options.Ny[0].item(), int(options.Nz[1].item() / options.multiResolutionScale)))
-#             f_np[int(options.Nx[3].item() / options.multiResolutionScale) - var : int(options.Nx[3].item() / options.multiResolutionScale) - var + options.Nx[0].item(), 
-#                  int(options.Ny[5].item() / options.multiResolutionScale) - var: int(options.Ny[5].item() / options.multiResolutionScale) - var + options.Ny[0].item(),  
-#                  : int(options.Nz[1].item() / options.multiResolutionScale)] = ff
-#         if k == 2:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (options.Nx[0].item(), options.Ny[0].item(), int(options.Nz[2].item() / options.multiResolutionScale)))
-#             f_np[int(options.Nx[3].item() / options.multiResolutionScale) - var : int(options.Nx[3].item() / options.multiResolutionScale) - var + options.Nx[0].item(), 
-#                  int(options.Ny[5].item() / options.multiResolutionScale) - var : int(options.Ny[5].item() / options.multiResolutionScale) - var + options.Ny[0].item(), 
-#                  -int(options.Nz[1].item() / options.multiResolutionScale):] = ff
-#         if k == 3:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (int(options.Nx[k].item() / options.multiResolutionScale) - var, 681, 401))
-#             f_np[ : int(options.Nx[k].item() / options.multiResolutionScale) - var, :, :] = ff
-#         if k == 4:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (int(options.Nx[k].item() / options.multiResolutionScale) - var, 681, 401))
-#             f_np[int(options.Nx[k].item() / options.multiResolutionScale) - var + options.Nx[0].item() :, :, :] = ff
-#         if k == 5:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (int(options.Nx[k].item() / options.multiResolutionScale) + var2, int(options.Ny[k].item() / options.multiResolutionScale) - var, 401))
-#             f_np[int(options.Nx[3].item() / options.multiResolutionScale) - var : int(options.Nx[3].item() / options.multiResolutionScale) - var + options.Nx[0].item(), 
-#                  : int(options.Ny[5].item() / options.multiResolutionScale) - var,  :] = ff
-#         if k == 6:
-#             if options.multiResolutionScale < 1:
-#                 ff = resize(ff, (int(options.Nx[k].item() / options.multiResolutionScale) + var2, int(options.Ny[k].item() / options.multiResolutionScale) - var, 401))
-#             f_np[int(options.Nx[3].item() / options.multiResolutionScale) - var : int(options.Nx[3].item() / options.multiResolutionScale) - var + options.Nx[0].item(), 
-#                  int(options.Ny[5].item() / options.multiResolutionScale) - var + options.Ny[0].item() :,  :] = ff
-#     plt.pyplot.imshow(f_np[:,:,305])
 
 # """
 # PDHG with subsets and multi-resolution
@@ -380,57 +323,15 @@ leike = 0
 print(f"{toc - tic:0.4f} seconds")
 if isinstance(d_f, list):
     f_np = d_f[0].to_ndarray()
-    # f_np1 = apu[leike].to_ndarray()
-    # f_np1 = np.reshape(f_np1, (options.Nx[leike].item(), options.Ny[leike].item(), options.Nz[leike].item()), order='F')
-    # plt.pyplot.imshow(f_np1[:,:,2])
 else:
     f_np = d_f.to_ndarray()
-    # f_np2 = apu.to_ndarray()
-    # f_np2 = np.reshape(f_np2, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-    # plt.pyplot.imshow(f_np2[:,:,90], vmin=-10, vmax=5)
 f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
 
 
 
 z = np.int16(f_np * 55000) - 1000
 
-# apu1 = options * d_f
-# u1 = apu1.to_ndarray()
-# u1 = np.reshape(u1, (options.nRowsD, options.nColsD, -1), order='F')
-# plt.pyplot.imshow(u1[:,:,500])
-# apu = options * d_f
-# u = apu.to_ndarray()
-# u = np.reshape(u, (options.nRowsD, options.nColsD, -1), order='F')
-# plt.pyplot.imshow(u[:,:,260], vmin=0.030643528, vmax=0.031839356)
-
 plt.pyplot.imshow(z[:,:,420], vmin=-1000, vmax=2000)
-
-# apu1 = options.T() * d_m
-# if isinstance(apu1, list):
-#     f_np = np.zeros((681, 681, 401), dtype=np.float32, order='F')
-#     for k in range(len(apu1)):
-#         ff = apu1[k].to_ndarray()
-#         ff = np.reshape(ff, (options.Nx[k].item(), options.Ny[k].item(), options.Nz[k].item()), order='F')
-#         if k == 0:
-#             f_np[options.Nx[3].item() : options.Nx[3].item() + options.Nx[0].item(), options.Ny[5].item() : options.Ny[5].item() + options.Ny[0].item(), options.Nz[1].item() : options.Nz[1].item() + options.Nz[0].item()] = ff
-#         if k == 1:
-#             f_np[options.Nx[3].item() : options.Nx[3].item() + options.Nx[0].item(), options.Ny[5].item() : options.Ny[5].item() + options.Ny[0].item(),  : options.Nz[1].item()] = ff
-#         if k == 2:
-#             f_np[options.Nx[3].item() : options.Nx[3].item() + options.Nx[0].item(), options.Ny[5].item() : options.Ny[5].item() + options.Ny[0].item(), options.Nz[1].item() + options.Nz[0].item() :] = ff
-#         if k == 3:
-#             f_np[ : options.Nx[3].item(), :, :] = ff
-#         if k == 4:
-#             f_np[options.Nx[3].item() + options.Nx[0].item() :, :, :] = ff
-#         if k == 5:
-#             f_np[options.Nx[3].item() : options.Nx[3].item() + options.Nx[0].item(), : options.Ny[5].item(),  :] = ff
-#         if k == 6:
-#             f_np[options.Nx[3].item() : options.Nx[3].item() + options.Nx[0].item(), options.Ny[5].item() + options.Ny[0].item() : ,  :] = ff
-#     plt.pyplot.imshow(f_np[:,:,200])
-# else:
-#     f_np2 = apu1.to_ndarray()
-#     f_np2 = np.reshape(f_np2, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-#     plt.pyplot.imshow(f_np2[:,:,5])
-    
 
 af.sync()
 af.device_gc()

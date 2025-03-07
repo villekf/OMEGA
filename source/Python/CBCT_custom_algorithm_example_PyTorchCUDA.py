@@ -16,6 +16,9 @@ from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction.prepass import linearizeData
 from omegatomo.util.powermethod import powerMethod
 from omegatomo.util.measprecond import applyMeasPreconditioning, circulantInverse
+from omegatomo.util.priors import RDP
+from omegatomo.util.priors import NLReg
+from omegatomo.util.priors import TV
 import matplotlib as plt
 
 options = proj.projectorClass()
@@ -119,9 +122,11 @@ options.offsetCorrection = False
 # Should have no effect at the moment
 options.enforcePositivity = True
 
-# Unused at the moment
+# Regularization parameter
 options.beta = .1
-options.NLMsigma = 2.00e-3
+# Filter parameter for non-local regularization
+options.NLMsigma = 4.00e-3
+# Edge preservation parameter for RDP and NLRDP
 options.RDP_gamma = 10.
 
 options.verbose = 1
@@ -199,6 +204,11 @@ for k in range(options.Niter):
         p[i] = pl
         g1 = g1 + dg
         g = g1 + (theta * options.subsets) * dg
+		# Regularized versions are enabled by uncommenting one regularizer and the update equation
+        # grad = RDP(d_f, options.Nx, options.Ny, options.Nz, options.RDP_gamma, options.beta, rType = 2)
+        # grad = NLReg(d_f, options.Nx, options.Ny, options.Nz, options.NLMsigma, options.beta, NLType = 3, useAdaptive=True, adaptiveConstant=5e-6, rType = 2)
+        # grad = TV(d_f, options.Nx, options.Ny, options.Nz, options.beta, rType = 2)
+        # d_f = d_f - tau * (g + grad)
         d_f = d_f - tau * g
         d_f = torch.clamp(d_f, min=0)
         print('Sub-iteration ' + str(i))
