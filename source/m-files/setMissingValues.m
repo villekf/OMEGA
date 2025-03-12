@@ -159,7 +159,11 @@ if ~isfield(options, 'offsetCorrection')
     options.offsetCorrection = false;
 end
 if ~isfield(options,'bedOffset')
-    options.bedOffset = [];
+    if ~options.SPECT
+        options.bedOffset = [];
+    else
+        options.bedOffset = 0;
+    end
 end
 if isfield(options,'uCenter')
     options.detOffsetRow = options.uCenter;
@@ -187,6 +191,15 @@ if ~isfield(options,'nBed')
 end
 if ~isfield(options,'flip_image')
     options.flip_image = false;
+end
+if ~isfield(options, 'flipImageX')
+    options.flipImageX = false;
+end
+if ~isfield(options, 'flipImageY')
+    options.flipImageY = false;
+end
+if ~isfield(options, 'flipImageZ')
+    options.flipImageZ = false;
 end
 if ~isfield(options,'offangle')
     options.offangle = 0;
@@ -227,8 +240,15 @@ end
 if ~isfield(options, 'use_CPU')
     options.use_CPU = false;
 end
+if ~isfield(options, 'nRays')
+    options.nRays = 1;
+end
 if ~isfield(options, 'n_rays_transaxial')
-    options.n_rays_transaxial = 1;
+    if options.SPECT
+        options.n_rays_transaxial = options.nRays;
+    else
+        options.n_rays_transaxial = 1;
+    end
 end
 if ~isfield(options, 'n_rays_axial')
     options.n_rays_axial = 1;
@@ -855,12 +875,6 @@ end
 if ~isfield(options, 'FISTAType')
     options.FISTAType = 0;
 end
-if ~isfield(options,'coneMethod')
-    options.coneMethod = 3;
-end
-if ~isfield(options,'hexOrientation')
-    options.hexOrientation = 1;
-end
 if ~isfield(options,'maskFPZ')
     options.maskFPZ = 1;
 end
@@ -872,4 +886,45 @@ if ~isfield(options, 'stochasticSubsetSelection')
 end
 if ~isfield(options, 'useTotLength')
     options.useTotLength = true;
+end
+if ~isfield(options, 'coneOfResponseStdCoeffA')
+    options.coneOfResponseStdCoeffA = 0.1;
+end
+if ~isfield(options, 'coneOfResponseStdCoeffB')
+    options.coneOfResponseStdCoeffB = 0.1;
+end
+if ~isfield(options, 'coneOfResponseStdCoeffC')
+    options.coneOfResponseStdCoeffC = 0.1;
+end
+if ~isfield(options, 'colL')
+    options.colL = 1;
+end
+if ~isfield(options, 'colD')
+    options.colD = 1;
+end
+if ~isfield(options, 'colR')
+    options.colR = 1;
+end
+if ~isfield(options, 'iR')
+    options.iR = 1;
+end
+if ~isfield(options, 'crXY')
+    options.crXY = 1;
+end
+if ~isfield(options, 'rayShiftsDetector')
+    options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+    options.rayShiftsDetector(1:2) = 0;
+end
+if ~isfield(options, 'rayShiftsSource')
+    options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+    options.rayShiftsSource(1:2) = 0;
+end
+if ~isfield(options, 'homeAngles')
+    options.homeAngles = 0 * options.angles;
+end
+if ~isfield(options, 'CORtoDetectorSurface')
+    options.CORtoDetectorSurface = 0;
+end
+if ~isfield(options, 'swivelAngles')
+    options.swivelAngles = options.angles+180;
 end

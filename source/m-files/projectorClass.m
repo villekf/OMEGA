@@ -344,6 +344,45 @@ classdef projectorClass
                 if ~isa(obj.param.x, obj.param.cType)
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
+            elseif obj.param.SPECT
+                if obj.param.offangle > 0
+                    if isfield(obj.param, 'angles')
+                        obj.param.angles = obj.param.angles + obj.param.offangle;
+                    end
+                    if isfield(obj.param, 'swivelAngles')
+                        obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
+                    end
+                end
+                if isfield(obj.param, 'vaimennus')
+                    obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
+                    if obj.param.flipImageX
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 2);
+                    end
+                    if obj.param.flipImageY
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 1);
+                    end
+                    if obj.param.flipImageZ
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 3);
+                    end
+                end
+                if obj.param.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
+                    obj.param.SinM = flip(obj.param.SinM, 2);
+                end
+                % The following may or may not be required
+                obj.param.Ndist = obj.param.nRowsD;
+                obj.param.Nang = obj.param.nColsD;
+                obj.param.rings = obj.param.nColsD * obj.param.nBed;
+                obj.param.det_per_ring = obj.param.nRowsD * obj.param.nProjections;
+                obj.param.tot_time = 0;
+                obj.param.diameter = 0;
+                obj.param.ndist_side = 0;
+                obj.param.corrections_during_reconstruction = false;
+                obj.param.NSinos = obj.param.nProjections;
+                obj.param.TotSinos = obj.param.nProjections;
+                obj.param.dPitch = obj.param.cr_p;
+                obj.param.cr_pz = obj.param.crXY;
+                obj.param.linear_multip = 0;
+                obj.param.cryst_per_block = obj.param.nColsD * obj.param.nRowsD;
             end
             obj.param = convertOptions(obj.param);
             if ~obj.param.simple && obj.param.errorChecking
