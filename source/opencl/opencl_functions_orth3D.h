@@ -45,9 +45,9 @@ DEVICE float compute_element_parallel_3D(const float v0x, const float v0y, const
     // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v1x for example is detectors.xd-detectors.xs
     const float dot1 = v1x*(px-v0x)+v1y*(py-v0y)+v1z*(pz-v0z); // v1 * (p-v0)
     const float dot2 = v1x*v1x+v1y*v1y+v1z*v1z; // v1 * v1
-    const float t = dot1 / dot2;
+    const float t = 1.f - dot1 / dot2; // 1-t as SPECT collimator response is measured from the collimator-detector interface
     const float rayLength = length(CMFLOAT3(v1x, v1y, v1z));
-    return ((1-t) * rayLength); // 1-t as SPECT collimator response is measured from the collimator-detector interface
+    return (t * rayLength); 
 }
 #endif
 
@@ -77,7 +77,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, const int ii, IMAGE2D maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeff, const float s1, const float sZ, const float diff2, const float center1, const float centerZ
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY, const float s1, const float sZ, const float diff2, const float center1, const float centerZ
 #endif
 ) {
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES)
@@ -90,7 +90,10 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #ifdef SPECT
     float d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
     float d_parallel = compute_element_parallel_3D(s1, s2, sZ, diff1, diff2, diffZ, center1, center2, centerZ);
-    float CORstd = coneOfResponseStdCoeff * d_parallel;
+    if (d_parallel < 0) { // Voxel behind detector
+        return true;
+    }
+    float CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)); // / (crXY.y*2.f*sqrt(2.f*log(2.f))); // Standard deviation for current parallel distance
     float local_ele = normPDF(d_orth, 0.f, CORstd);
 #else
 	float local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
@@ -105,7 +108,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
 #else
 #ifdef SPECT
-    if (local_ele <= normPDF(10*CORstd, 0.f, CORstd)) {
+    if (local_ele <= normPDF(3*CORstd, 0.f, CORstd)) {
 #else
 	if (local_ele <= THR) {
 #endif
@@ -191,7 +194,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	, const int ii, IMAGE2D maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeff
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
 #endif
 ) {
 	int uu = 0;
@@ -242,7 +245,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeff, s1, sZ, diff2, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 #ifdef CRYSTXY
@@ -272,7 +275,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeff, s1, sZ, diff2, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 			if (breikki) {
@@ -315,7 +318,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeff, s1, sZ, diff2, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 #ifdef CRYSTXY
@@ -345,7 +348,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeff, s1, sZ, diff2, center1, centerZ
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 			if (breikki) {

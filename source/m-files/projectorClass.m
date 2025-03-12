@@ -681,7 +681,7 @@ classdef projectorClass
             if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthTransaxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && isfield(obj.param,'tube_width_xy') && obj.param.tube_width_xy > 0
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
                     obj.param.orthTransaxial = true;
                 else
                     obj.param.orthTransaxial = false;
@@ -692,7 +692,7 @@ classdef projectorClass
             if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthAxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
                     obj.param.orthAxial = true;
                 else
                     obj.param.orthAxial = false;

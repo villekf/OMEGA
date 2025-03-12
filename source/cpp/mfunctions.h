@@ -163,7 +163,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	} else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-        inputScalars.coneOfResponseStdCoeff = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeff"));
+        inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
+        inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
+        inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));

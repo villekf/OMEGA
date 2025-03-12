@@ -37,21 +37,24 @@ if ~isfield(options, 'swivelAngles')
     options.swivelAngles = options.angles+180;
 end
 if ~isfield(options, 'rayShiftsDetector')
-    %options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-    options.rayShiftsDetector = single(zeros(2*options.nRays, 1));
+    options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     options.rayShiftsDetector(1:2) = 0;
 end
 if ~isfield(options, 'rayShiftsSource')
-    options.rayShiftsSource = single(0.2*randn(2*options.nRays, 1));
+    options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
     options.rayShiftsSource(1:2) = 0;
-    %options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-
 end
 if ~isfield(options, 'homeAngles')
     options.homeAngles = 0 * options.angles;
 end
-if ~isfield(options, 'coneOfResponseStdCoeff')
-    options.coneOfResponseStdCoeff = 0.1;
+if ~isfield(options, 'coneOfResponseStdCoeffA')
+    options.coneOfResponseStdCoeffA = 0.1;
+end
+if ~isfield(options, 'coneOfResponseStdCoeffB')
+    options.coneOfResponseStdCoeffB = 0.1;
+end
+if ~isfield(options, 'coneOfResponseStdCoeffC')
+    options.coneOfResponseStdCoeffC = 0.1;
 end
 options.n_rays_transaxial = options.nRays;
 options.NSinos = options.nProjections;
@@ -101,8 +104,6 @@ options.blocks_per_ring = 1;
 options.linear_multip = 0;
 options.cryst_per_block = options.nColsD * options.nRowsD;
 options.dPitch = options.cr_p;
-%options.tube_width_xy = 0;
-%options.tube_width_z = 0;
 if options.projector_type == 2 && isfield(options, 'gFilter')
     options = rmfield(options, 'gFilter');
 end
@@ -145,15 +146,14 @@ options.swivelAngles = options.swivelAngles + options.offangle;
 if isfield(options, 'vaimennus')
     options.vaimennus = imrotate(options.vaimennus, options.offangle, 'crop');
     if options.flipImageX
-        options.vaimennus = flip(options.vaimennus, 2)
+        options.vaimennus = flip(options.vaimennus, 2);
     end
     if options.flipImageY
-        options.vaimennus = flip(options.vaimennus, 1)
+        options.vaimennus = flip(options.vaimennus, 1);
     end
     if options.flipImageZ
-        options.vaimennus = flip(options.vaimennus, 3)
+        options.vaimennus = flip(options.vaimennus, 3);
     end
-    volume3Dviewer(options.vaimennus)
 end
 if options.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
     options.SinM = flip(options.SinM, 2);

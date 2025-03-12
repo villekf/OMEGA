@@ -2512,7 +2512,9 @@ public:
 			if (inputScalars.SPECT) {
 				FPArgs.emplace_back(&d_rayShiftsDetector);
 				FPArgs.emplace_back(&d_rayShiftsSource);
-                FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeff);
+                FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffA);
+                FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffB);
+                FPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffC);
 			}
 
 			FPArgs.emplace_back(&dPitch);
@@ -2537,7 +2539,9 @@ public:
 			if (inputScalars.SPECT) {
 				BPArgs.emplace_back(&d_rayShiftsDetector);
 				BPArgs.emplace_back(&d_rayShiftsSource);
-                BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeff);
+                BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffA);
+                BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffB);
+                BPArgs.emplace_back(&inputScalars.coneOfResponseStdCoeffC);
 			}
 
 			BPArgs.emplace_back(&dPitch);

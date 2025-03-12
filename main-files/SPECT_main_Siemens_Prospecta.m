@@ -112,17 +112,15 @@ options = loadProSpectaData(options);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Collimator-detector response function (CDRF)
-% You can either input either:
+% For projector types 2 and 6 you can either input either:
 % 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
 % 2. the standard deviations for both transaxial and axial directions or
 % 3. the (Gaussian) PSF filter
-% NOTE: With projector_type == 2 (orthogonal distance projector), the
-% actual standard deviations used are a linear fit of the parameters below.
-% With that projector only options.sigmaXY is used for CDR calculation i.e.
-% the collimator hole is assumed to be a circle. Thus only 1. and 2. below
-% are supported with projector_type == 2.
+% For projector type 1 the CDRF is determined by options.rayShiftsDetector
+% and options.rayShiftsSource defined later.
 
-% 1. The collimator parameters
+
+% 1. The collimator parameters (projector types 2 and 6)
 % Collimator hole length (mm)
 options.colL = 24.05;
 % Collimator hole radius (mm)
@@ -135,14 +133,12 @@ options.iR = 3.8;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
 % directions, you can input them here instead of the above values (the
-% dimensions need to be options.nProjections x options.Nx):
-% Transaxial standard deviation
-% options.sigmaXY = repmat(1, options.nProjections, options.Nx);
-% Axial standard deviation
-% options.sigmaZ = repmat(1, options.nProjections, options.Nx);
+% dimensions need to be options.nProjections x options.Nx) 
+% options.sigmaXY = repmat(1, options.nProjections, options.Nx); % Transaxial standard deviation, (projector type 6)
+% options.sigmaZ = repmat(1, options.nProjections, options.Nx); % Axial standard deviation (projector type 6)
 
 % 3. You can input the filter for the CDRF directly. This should be of the
-% size filterSizeXY x filterSizeZ x options.nProjections:
+% size filterSizeXY x filterSizeZ x options.nProjections (projector type 6)
 % options.gFilter = ones(10,10,options.nProjections);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -224,9 +220,12 @@ options.use_CPU = false;
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
-% For Siddon ray-based projector:
-% Number of rays traced per collimator hole
-options.nRays = 1;
+%%% For projector type 1:
+options.nRays = 1; % Number of rays traced per detector element
+
+% The CDRF is defined by shifting the rays to a shape of the collimator
+% hole. The below example is for random (uniform distribution) rays with
+% one square collimator hole at the centre of each detector element.
 % options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
 % options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
 

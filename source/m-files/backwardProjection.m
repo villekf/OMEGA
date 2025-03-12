@@ -178,7 +178,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthTransaxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && isfield(options,'tube_width_xy') && options.tube_width_xy > 0
+        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
             options.orthTransaxial = true;
         else
             options.orthTransaxial = false;
@@ -187,7 +187,7 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
     if ~isfield(options,'orthAxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
             options.orthAxial = true;
-        elseif (options.projector_type == 2 || options.projector_type == 22) && isfield(options,'tube_width_z') && options.tube_width_z > 0
+        elseif (options.projector_type == 2 || options.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
             options.orthAxial = true;
         else
             options.orthAxial = false;
