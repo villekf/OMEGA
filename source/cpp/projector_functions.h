@@ -1055,7 +1055,7 @@ inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_
         if (d_parallel < 0) { // Voxel behind detector
             return true;
         }
-        CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2)+pow(coneOfResponseStdCoeffC, 2)); // / (crXY*2.f*sqrt(2.f*log(2.f))); // Standard deviation for current parallel distance
+        CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2)+pow(coneOfResponseStdCoeffC, 2)) / (2.f*sqrt(2.f*log(2.f))); // Standard deviation for current parallel distance
         local_ele = normPDF(d_orth, (T)0., CORstd);
     } else {
         local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2, projType, SPECT);
