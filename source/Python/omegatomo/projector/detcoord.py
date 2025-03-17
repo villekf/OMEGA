@@ -513,7 +513,7 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     if Ndist % 2 == 0:
         accepted_lors = np.logical_and(i <= (Ndist//2 + min(0,options.ndist_side)), i >= (-Ndist//2 + max(0,options.ndist_side)))
     else:
-        accepted_lors = np.logical_and(i <= Ndist//2, i >= (-Ndist//2))
+        accepted_lors = np.logical_and(i <= Ndist//2, i >= -(Ndist//2))
     
     j = j // (det_w_pseudo // 2 // Nang)
     
