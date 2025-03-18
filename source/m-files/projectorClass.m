@@ -345,6 +345,29 @@ classdef projectorClass
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
             elseif obj.param.SPECT
+                if obj.param.projector_type == 6
+                    %% Sinogram resizing
+                    % Sinogram size is (options.nRowsD, options.nColsD)
+                    % FOV size is (options.Nx, options.Ny, options.Nz)
+                    % nRowsD corresponds to Nx, nColsD corresponds to Nz.
+
+                    % Idea:
+                    % % Resample and resize sinogram to match FOV size and resolution
+                    % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram
+                    sinogramSizeX = obj.param.crXY * obj.param.nRowsD; % Sinogram size in X
+                    sinogramSizeZ = obj.param.crXY * obj.param.nColsD; % Sinogram size in Z
+                    
+                    endSinogramRows = obj.param.FOVa_x / obj.param.crXY; % Desired amount of sinogram rows
+                    endSinogramCols = obj.param.axial_fov / obj.param.crXY; % Desired amount of sinogram columns
+                    obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
+                    obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                    obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
+                    obj.param.nColsD = obj.param.Nz; % Set new sinogram size
+                    
+                    % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                    obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                end
+                
                 if obj.param.offangle > 0
                     if isfield(obj.param, 'angles')
                         obj.param.angles = obj.param.angles + obj.param.offangle;
