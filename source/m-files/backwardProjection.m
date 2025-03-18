@@ -47,55 +47,25 @@ if options.compute_sensitivity_image
     [x, ~, z, ~] = get_coordinates(options);
     options.use_raw_data = false;
 end
-
-if options.projector_type == 6
-    fProj = reshape(input, options.nRowsD, options.nColsD, koko);
-    apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
-    u1 = options.ub;
-    for kk = 1 : koko
-        apuBP = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
-        kuvaRot = fProj(:, :, kk);
-        kuvaRot = permute(kuvaRot, [2, 1, 3]);
-        apu = kuvaRot;
-        uu = 1;
-        for ll = 1 : options.Ny
-            kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
-            uu = uu + 1;
-        end
-        kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
-        kuvaRot = permute(kuvaRot, [3, 2, 1]);
-        apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
-        apuBP = imrotate(apuBP, 180+options.angles(u1), 'bilinear','crop');
-        if options.attenuation_correction
-            attenuationImage = options.vaimennus;
-            attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
-            attenuationImage = cumsum(attenuationImage, 1);
-            attenuationImage = exp(-options.crXY * attenuationImage);
-            %attenuationImageSum = sum(attenuationImage, 1);
-            %for ii = 1:size(attenuationImage, 1)
-            %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
-            %end
-            apuBP = apuBP .* attenuationImage;
-        end
-        apuBP2(:, kk) = apuBP(:);
-        u1 = u1 + 1;
-    end
-    output = sum(apuBP2, 2);
-    output(output < options.epps & output >= 0) = options.epps;
-    if noSensIm == 0
+if options.implementation == 4
+    if options.projector_type == 6
+        fProj = reshape(input, options.nRowsD, options.nColsD, koko);
         apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
         u1 = options.ub;
         for kk = 1 : koko
-            apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
-            kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
-            apu = kuvaRot(:,:,1);
+            apuBP = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
+            kuvaRot = fProj(:, :, kk);
+            kuvaRot = permute(kuvaRot, [2, 1, 3]);
+            apu = kuvaRot;
+            uu = 1;
             for ll = 1 : options.Ny
-                kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
+                kuvaRot(:,:,uu) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
+                uu = uu + 1;
             end
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            apuSumm(options.blurPlanes(u1):end, :, :) = kuvaRot;
-            apuSumm = imrotate(apuSumm, 180+options.angles(u1), 'bilinear', 'crop');
+            apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
+            apuBP = imrotate(apuBP, 180+options.angles(u1), 'bilinear','crop');
             if options.attenuation_correction
                 attenuationImage = options.vaimennus;
                 attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
@@ -105,71 +75,104 @@ if options.projector_type == 6
                 %for ii = 1:size(attenuationImage, 1)
                 %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
                 %end
-                apuSumm = apuSumm .* attenuationImage;
+                apuBP = apuBP .* attenuationImage;
             end
-            apuBP2(:, kk) = apuSumm(:);
+            apuBP2(:, kk) = apuBP(:);
             u1 = u1 + 1;
         end
-        sensIm = sum(apuBP2, 2);
-        sensIm(sensIm < options.epps) = 1;
-    end
-    options.ub = options.ub + koko;
-elseif options.implementation == 4
-    for ii = 1 : options.nMultiVolumes + 1
-        if outputCell
-            if inputCell
-                if options.useSingles
-                    [output{ii}, sensIm{ii}] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
-                else
-                    [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
+        output = sum(apuBP2, 2);
+        output(output < options.epps & output >= 0) = options.epps;
+        if noSensIm == 0
+            apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
+            u1 = options.ub;
+            for kk = 1 : koko
+                apuSumm = zeros(options.Nx(1), options.Ny(1), options.Nz(1), options.cType);
+                kuvaRot = ones(options.nColsD, options.nRowsD, options.Ny, options.cType);
+                apu = kuvaRot(:,:,1);
+                for ll = 1 : options.Ny
+                    kuvaRot(:,:,ll) = conv2(apu, options.gFilter(:, :, ll, u1),'same');
                 end
-            else
-                if options.useSingles
-                    [output{ii}, sensIm{ii}] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
-                else
-                    [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                        options.dPitchX, options.dPitchY, options.nProjections);
+                kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
+                kuvaRot = permute(kuvaRot, [3, 2, 1]);
+                apuSumm(options.blurPlanes(u1):end, :, :) = kuvaRot;
+                apuSumm = imrotate(apuSumm, 180+options.angles(u1), 'bilinear', 'crop');
+                if options.attenuation_correction
+                    attenuationImage = options.vaimennus;
+                    attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
+                    attenuationImage = cumsum(attenuationImage, 1);
+                    attenuationImage = exp(-options.crXY * attenuationImage);
+                    %attenuationImageSum = sum(attenuationImage, 1);
+                    %for ii = 1:size(attenuationImage, 1)
+                    %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
+                    %end
+                    apuSumm = apuSumm .* attenuationImage;
                 end
+                apuBP2(:, kk) = apuSumm(:);
+                u1 = u1 + 1;
             end
-            if options.use_psf
-                output{ii} = computeConvolution(output{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                if numel(sensIm{ii}) > 1
-                    sensIm{ii} = computeConvolution(sensIm{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-            end
+            sensIm = sum(apuBP2, 2);
+            sensIm(sensIm < options.epps) = 1;
         else
-            if options.useSingles
-                [output, sensIm] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                    options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                    options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                    options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                    options.dPitchX, options.dPitchY, options.nProjections);
+            sensIm = 0;
+        end
+        options.ub = options.ub + koko;
+    else
+        for ii = 1 : options.nMultiVolumes + 1
+            if outputCell
+                if inputCell
+                    if options.useSingles
+                        [output{ii}, sensIm{ii}] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
+                            options.dPitchX, options.dPitchY, options.nProjections);
+                    else
+                        [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input{ii}, noSensIm, 2, ...
+                            options.dPitchX, options.dPitchY, options.nProjections);
+                    end
+                else
+                    if options.useSingles
+                        [output{ii}, sensIm{ii}] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
+                            options.dPitchX, options.dPitchY, options.nProjections);
+                    else
+                        [output{ii}, sensIm{ii}] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
+                            options.dPitchX, options.dPitchY, options.nProjections);
+                    end
+                end
+                if options.use_psf
+                    output{ii} = computeConvolution(output{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    if numel(sensIm{ii}) > 1
+                        sensIm{ii} = computeConvolution(sensIm{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
+                end
             else
-                [output, sensIm] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                    options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                    options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                    options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
-                    options.dPitchX, options.dPitchY, options.nProjections);
-            end
-            if options.use_psf
-                output = computeConvolution(output, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                if numel(sensIm) > 1
-                    sensIm = computeConvolution(sensIm, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                if options.useSingles
+                    [output, sensIm] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
+                        options.dPitchX, options.dPitchY, options.nProjections);
+                else
+                    [output, sensIm] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, input, noSensIm, 2, ...
+                        options.dPitchX, options.dPitchY, options.nProjections);
+                end
+                if options.use_psf
+                    output = computeConvolution(output, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    if numel(sensIm) > 1
+                        sensIm = computeConvolution(sensIm, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
                 end
             end
         end

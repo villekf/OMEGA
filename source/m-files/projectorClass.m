@@ -762,6 +762,8 @@ classdef projectorClass
                 obj.param = SPECTParameters(obj.param);
                 if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
                     obj.param.angles = obj.param.angles(obj.index);
+                    obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
+                    obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
                     obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
                     obj.param.gFilter = obj.param.gFilter(:,:,:,obj.index);
                 end

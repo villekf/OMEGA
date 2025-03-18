@@ -24,6 +24,7 @@ if options.projector_type == 2 % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimato
     options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
     options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
     options.coneOfResponseStdCoeffC = options.iR;
+    % Now FWHM is sqrt((az+b)^2+c^2)
 end
 if options.projector_type == 6
     DistanceToFirstRow = options.radiusPerProj-(double(options.Nx)/2-0.5)*double(options.dx);
@@ -34,7 +35,6 @@ if options.projector_type == 6
         if ~isfield(options, 'sigmaZ')
             Rg = 2*options.colR*(options.colL+options.colD+(Distances)+options.cr_p/2)/options.colL; %Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
             Rg(Rg<0) = 0;
-            disp(options.cr_p)
             FWHMrot = 1;
 
             FWHM = sqrt(Rg.^2+options.iR^2);
@@ -92,6 +92,8 @@ if options.projector_type == 6
     if options.useSingles
         options.gFilter = single(options.gFilter);
         options.angles = single(options.angles);
+        options.swivelAngles = single(options.swivelAngles);
+        options.radiusPerProj = single(options.radiusPerProj);
     end
 end
 end

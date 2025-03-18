@@ -1462,7 +1462,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		int lor = -1;
 
 		// Loop through the rays
-		//for (int currentShift = 0; currentShift < nShift; currentShift++) {
 		for (int lorZ = 0; lorZ < param.nRays3D; lorZ++) {
 			for (int lorXY = 0; lorXY < param.nRays2D; lorXY++) {
 				lor++;

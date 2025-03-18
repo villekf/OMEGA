@@ -8,7 +8,7 @@ function options = loadProSpectaData(options)
     function options = loadProjectionData(options)
         % Header file location
         info = dicominfo(options.fpath);
-        options.SPECTinfo = info;
+        
         % Load projection images
         options.SinM = squeeze(dicomread(options.fpath));
 

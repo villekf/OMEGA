@@ -49,160 +49,162 @@ if options.attenuation_correction
         error('Attenuation correction selected, but no attenuation data inserted! Insert attenuation coefficients to param.atten of the class object')
     end
 end
-if options.projector_type == 6
-    outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
-    for ii = loopVar
-        u1 = options.uu;
-        if useCell
-            if options.use_psf && ~isempty(recApu{ii})
-                recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-            end
-            apuArr = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-        else
-            if options.use_psf && ~isempty(recApu)
-                recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-            end
-            apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
-        end
-        for kk = 1 : koko
-            kuvaRot = apuArr;
-            kuvaRot = imrotate(kuvaRot, 180-options.angles(u1), 'bilinear','crop');
-            kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-                attenuationImage = imrotate(attenuationImage, 180-options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1);
-                attenuationImage = exp(-options.crXY * attenuationImage);
-                attenuationImage = permute(attenuationImage, [3, 2, 1]);
-            end
-            for ll = 1 : size(kuvaRot,3)
-                apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                kuvaRot(:,:,ll) = apu;
-                if options.attenuation_correction
-                    apuAtt = conv2(attenuationImage(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                    attenuationImage(:, :, ll) = apuAtt;
-                end
-            end
-            kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            if options.attenuation_correction
-                attenuationImage = permute(attenuationImage, [3, 2, 1]);
-                kuvaRot = kuvaRot .* attenuationImage;
-            end
-            kuvaRot = kuvaRot(options.blurPlanes(u1):end, :, :);
-            kuvaRot = sum(kuvaRot, 1);
-            kuvaRot = permute(kuvaRot, [2, 3, 1]);
-            outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
-            u1 = u1 + 1;
-        end
-    end
-    A = [];
-    outputFP = outputFP(:);
-    outputFP(outputFP < options.epps) = options.epps;
-elseif options.implementation == 1 || options.implementation == 4
-    for ii = loopVar
-        if ii == 1 || isscalar(loopVar)
-            if useCell
-                if options.use_psf && ~isempty(recApu{ii})
-                    recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                if options.implementation == 4
-                    if options.useSingles
-                        [outputFP, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    else
-                        [outputFP, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    end
-                else
-                    error('Unsupported implementation! This is unintended behavior!')
-                end
-            else
-                if options.use_psf && ~isempty(recApu)
-                    recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                if options.implementation == 1
-                    [A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
-                        options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...% 18
-                        options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
-                        options.TOF_bins, options.verbose, nCores, options.use_raw_data, 0, options.listmode, projType, subIter, nMeas, lor2, lor1, summa, options.dPitchY, options.nProjections); % 42
-                    if ~isempty(recApu)
-                        outputFP = A' * recApu;
-                    else
-                        outputFP = [];
-                    end
-                elseif options.implementation == 4
-                    if options.useSingles
-                        [outputFP, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ... % 18
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ... % 40
-                            options.dPitchY, options.nProjections); % 43
-                    else
-                        [outputFP, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ... % 18
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ... % 40
-                            options.dPitchY, options.nProjections); % 43
-                    end
-                else
-                    error('Unsupported implementation! This is unintended behavior!')
-                end
-            end
-        else
-            if useCell
-                if options.use_psf && ~isempty(recApu{ii})
-                    recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                if options.implementation == 4
-                    if options.useSingles
-                        [apu, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    else
-                        [apu, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    end
-                else
-                    error('Unsupported implementation! This is unintended behavior!')
-                end
-            else
-                if options.use_psf && ~isempty(recApu)
-                    recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
-                end
-                if options.implementation == 4
-                    if options.useSingles
-                        [apu, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    else
-                        [apu, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
-                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
-                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
-                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ...
-                            options.dPitchY, options.nProjections);
-                    end
-                else
-                    error('Unsupported implementation! This is unintended behavior!')
-                end
-            end
-            outputFP = outputFP + apu;
-        end
-    end
-else
 
+if options.implementation == 4
+    if options.projector_type == 6
+        outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
+        for ii = loopVar
+            u1 = options.uu;
+            if useCell
+                if options.use_psf && ~isempty(recApu{ii})
+                    recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                end
+                apuArr = reshape(recApu{ii}, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+            else
+                if options.use_psf && ~isempty(recApu)
+                    recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                end
+                apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
+            end
+            for kk = 1 : koko
+                kuvaRot = apuArr;
+                kuvaRot = imrotate(kuvaRot, 180-options.angles(u1), 'bilinear','crop');
+                kuvaRot = permute(kuvaRot, [3, 2, 1]);
+                if options.attenuation_correction
+                    attenuationImage = options.vaimennus;
+                    attenuationImage = imrotate(attenuationImage, 180-options.angles(u1), 'bilinear','crop');
+                    attenuationImage = cumsum(attenuationImage, 1);
+                    attenuationImage = exp(-options.crXY * attenuationImage);
+                    attenuationImage = permute(attenuationImage, [3, 2, 1]);
+                end
+                for ll = 1 : size(kuvaRot,3)
+                    apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
+                    kuvaRot(:,:,ll) = apu;
+                    if options.attenuation_correction
+                        apuAtt = conv2(attenuationImage(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
+                        attenuationImage(:, :, ll) = apuAtt;
+                    end
+                end
+                kuvaRot = permute(kuvaRot, [3, 2, 1]);
+                if options.attenuation_correction
+                    attenuationImage = permute(attenuationImage, [3, 2, 1]);
+                    kuvaRot = kuvaRot .* attenuationImage;
+                end
+                kuvaRot = kuvaRot(options.blurPlanes(u1):end, :, :);
+                kuvaRot = sum(kuvaRot, 1);
+                kuvaRot = permute(kuvaRot, [2, 3, 1]);
+                outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
+                u1 = u1 + 1;
+            end
+        end
+        A = [];
+        outputFP = outputFP(:);
+        outputFP(outputFP < options.epps) = options.epps;
+    else
+        for ii = loopVar
+            if ii == 1 || isscalar(loopVar)
+                if useCell
+                    if options.use_psf && ~isempty(recApu{ii})
+                        recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
+                    if options.implementation == 4
+                        if options.useSingles
+                            [outputFP, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        else
+                            [outputFP, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        end
+                    else
+                        error('Unsupported implementation! This is unintended behavior!')
+                    end
+                else
+                    if options.use_psf && ~isempty(recApu)
+                        recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
+                    if options.implementation == 1
+                        [A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
+                            options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...% 18
+                            options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
+                            options.TOF_bins, options.verbose, nCores, options.use_raw_data, 0, options.listmode, projType, subIter, nMeas, lor2, lor1, summa, options.dPitchY, options.nProjections); % 42
+                        if ~isempty(recApu)
+                            outputFP = A' * recApu;
+                        else
+                            outputFP = [];
+                        end
+                    elseif options.implementation == 4
+                        if options.useSingles
+                            [outputFP, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ... % 18
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ... % 40
+                                options.dPitchY, options.nProjections); % 43
+                        else
+                            [outputFP, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ... % 8
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ... % 18
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ... % 28
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ... % 40
+                                options.dPitchY, options.nProjections); % 43
+                        end
+                    else
+                        error('Unsupported implementation! This is unintended behavior!')
+                    end
+                end
+            else
+                if useCell
+                    if options.use_psf && ~isempty(recApu{ii})
+                        recApu{ii} = computeConvolution(recApu{ii}, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
+                    if options.implementation == 4
+                        if options.useSingles
+                            [apu, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        else
+                            [apu, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu{ii}, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        end
+                    else
+                        error('Unsupported implementation! This is unintended behavior!')
+                    end
+                else
+                    if options.use_psf && ~isempty(recApu)
+                        recApu = computeConvolution(recApu, options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.gaussK);
+                    end
+                    if options.implementation == 4
+                        if options.useSingles
+                            [apu, A] = projector_mexSingle( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        else
+                            [apu, A] = projector_mex( options, options.Nx(ii), options.Ny(ii), options.Nz(ii), options.dx(ii), options.dy(ii), options.dz(ii), options.bx(ii), ...
+                                options.by(ii), options.bz(ii), z, x, options.size_x, options.vaimennus, norm_input, koko, options.attenuation_correction, options.normalization_correction, ...
+                                options.scatter, corr_input, options.global_correction_factor, xy_index, z_index, L_input, options.det_per_ring, TOF, options.sigma_x, options.TOFCenter, ...
+                                options.TOF_bins, options.verbose, nCores, options.use_raw_data, 1, options.listmode, projType, subIter, nMeas, options.epps, recApu, true, 1, options.dPitchX, ...
+                                options.dPitchY, options.nProjections);
+                        end
+                    else
+                        error('Unsupported implementation! This is unintended behavior!')
+                    end
+                end
+                outputFP = outputFP + apu;
+            end
+        end
+    end
+elseif options.implementation == 2 || options.implementation == 3 || options.implementation == 5
     A = [];
     if ~isfield(options,'orthTransaxial') && (options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33)
         if options.projector_type == 3 || options.projector_type == 33
