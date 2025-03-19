@@ -17,26 +17,14 @@ clear
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+% Required for SPECT data
+options.SPECT = true;
+
 %%% Crystal thickness (mm)
 options.cr_p = 9.525;
 
 %%% Crystal width (mm)
 options.crXY = 4.7952;
-
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
-% of the FOV
-% Note that with SPECT data using projector_type = 6, this is not exactly
-% used as the FOV size but rather as the value used to compute the voxel
-% size
-options.FOVa_x = options.crXY*128;
-
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
-% of the FOV
-options.FOVa_y = options.crXY*128;
-
-%%% Axial FOV (mm)
-% This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = options.crXY*128;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -60,7 +48,7 @@ options.Nz = 128; % Z-direction (number of axial slices)
 % NOTE: Non-cubical voxels may not work
 options.FOVa_x = options.crXY*64; % [mm], x-axis of FOV (transaxial)
 options.FOVa_y = options.crXY*64; % [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.crXY*128; % [mm], z-axis of FOV (axial)
+options.axial_fov = options.crXY*64; % [mm], z-axis of FOV (axial)
 
 %%% Flip the image?
 options.flipImageX = false;
@@ -265,8 +253,7 @@ options.projector_type = 2;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-options.SPECT = true;
-
+%% Projections
 A = projectorClass(options);
 
 x = A'*y0;
