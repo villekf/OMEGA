@@ -57,8 +57,19 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, const int TOFid
 #endif
 #endif
+#if defined(SPECT) && defined(ATN)
+	, float jelppi
+#endif
 #if defined(MASKBP) && defined(BP)
+#ifdef USEIMAGES
+#ifdef MASKBP3D
+	, const int ii, IMAGE3D maskBP
+#else
 	, const int ii, IMAGE2D maskBP
+#endif
+#else
+	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
+#endif
 #endif
 ) {
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES)
@@ -82,6 +93,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		return true;
 	}
 #endif
+#if defined(SPECT) && defined(ATN)
+	local_ele *= jelppi;
+#endif
 #ifdef BP
 #if defined(MASKBP)
 	if (ii == 0) {
@@ -100,7 +114,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
 #endif
 #else
+#ifdef MASKBP3D
+		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3 + zz * d_Nxy];
+#else
 		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3];
+#endif
 #endif
 		if (maskVal == 0)
 			return false;
@@ -157,8 +175,19 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	, const int TOFid
 #endif
 #endif
+#if defined(SPECT) && defined(ATN)
+	, float jelppi
+#endif
 #if defined(MASKBP) && defined(BP)
+#ifdef USEIMAGES
+#ifdef MASKBP3D
+	, const int ii, IMAGE3D maskBP
+#else
 	, const int ii, IMAGE2D maskBP
+#endif
+#else
+	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
+#endif
 #endif
 ) {
 	int uu = 0;
@@ -205,6 +234,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, TOFid
 #endif
 #endif
+#if defined(SPECT) && defined(ATN)
+				, jelppi
+#endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
 #endif
@@ -231,6 +263,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #ifdef LISTMODE
 				, TOFid
 #endif
+#endif
+#if defined(SPECT) && defined(ATN)
+				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
@@ -272,6 +307,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				, TOFid
 #endif
 #endif
+#if defined(SPECT) && defined(ATN)
+				, jelppi
+#endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
 #endif
@@ -298,6 +336,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #ifdef LISTMODE
 				, TOFid
 #endif
+#endif
+#if defined(SPECT) && defined(ATN)
+				, jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
