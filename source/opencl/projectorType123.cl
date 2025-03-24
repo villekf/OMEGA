@@ -766,6 +766,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 		// If the measurement is on a same ring
 			// Z-coordinate (ring)
 		if (fabs(diff.z) < 1e-6f) {
+		    	// return;
 			tempk = CINT(fabs(s.z - b.z) / d_d.z);
 			if (tempk < 0 || tempk >= d_Nxyz.z)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -777,7 +778,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				s.y, s.x, d.y, d.x, &tc, &ux, &uy, &tx0, &ty0, &XY);
 		}
 		else if (fabs(diff.y) < 1e-6f) {
-			//return;
+			// return;
 			tempj = perpendicular_start(b.y, d.y, d_d.y, d_Nxyz.y);
 			skip = siddon_pre_loop_2D(b.x, b.z, diff.x, diff.z, d_bmax.x, d_bmax.z, d_d.x, d_d.z, d_Nxyz.x, d_Nxyz.z, &tempi, &tempk, &txu, &tzu, &Np, TYPE,
 				s.z, s.x, d.z, d.x, &tc, &ux, &uz, &tx0, &tz0, &XY);
@@ -786,7 +787,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				skip = true;
 		}
 		else if (fabs(diff.x) < 1e-6f) {
-			//return;
+			// return;
 			tempi = perpendicular_start(b.x, d.x, d_d.x, d_Nxyz.x);
 			skip = siddon_pre_loop_2D(b.y, b.z, diff.y, diff.z, d_bmax.y, d_bmax.z, d_d.y, d_d.z, d_Nxyz.y, d_Nxyz.z, &tempj, &tempk, &tyu, &tzu, &Np, TYPE,
 				s.z, s.y, d.z, d.y, &tc, &uy, &uz, &ty0, &tz0, &XY);
@@ -1330,7 +1331,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 
 #ifdef ORTH
 		if (ux < 0) {
-			for (int ii = tempi_a - 1; ii >= 0; ii--) {
+			for (int ii = tempi_a; ii >= 0; ii--) {
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
 				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
@@ -1356,7 +1357,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			}
 		}
 		else {
-			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
+			for (int ii = tempi_a; ii < d_NN.x; ii++) {
 				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
 				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
 #if defined(FP)
