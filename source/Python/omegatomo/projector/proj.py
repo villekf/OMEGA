@@ -454,8 +454,10 @@ class projectorClass:
     rayShiftsDetector = np.empty(0, dtype=np.float32)
     rayShiftsSource = np.empty(0, dtype=np.float32)
     CORtoDetectorSurface = 0
-    homeAngles = np.empty(0, dtype = np.float32)
     swivelAngles = np.empty(0, dtype = np.float32)
+    coneOfResponseStdCoeffA = 0
+    coneOfResponseStdCoeffB = 0
+    coneOfResponseStdCoeffC = 0
     eFOVLength = 0.4
     FISTAType = 0
     maskFPZ = 1
@@ -521,6 +523,46 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
+            if self.projector_type == 6:
+                endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
+                endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
+                padRows = (endSinogramRows-self.nRowsD)/2
+                padCols = (endSinogramCols-self.nColsD)/2
+                if padRows < 0:
+                    self.SinM = self.SinM[-padRows:padRows, :, :]
+                if padRows > 0:
+                    self.SinM = np.pad(self.SinM, ((padRows, padRows), (0, 0), (0, 0)))
+                if padCols < 0:
+                    self.SinM = self.SinM[:, -padCols:padCols, :]
+                if padCols > 0:
+                    self.SinM = np.pad(self.SinM, ((0, 0), (padCols, padCols), (0, 0)))
+                self.nRowsD = self.Nx; # Set new sinogram size
+                self.nColsD = self.Nz; # Set new sinogram size
+                
+                # Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                from skimage.transform import resize
+                self.SinM = resize(self.SinM, (self.Nx, self.Nz), preserve_range=True)
+                
+            if self.swivelAngles.size == 0:
+                self.swivelAngles = self.angles + 180
+            if self.offangle != 0:
+                self.angles += self.offangle
+                self.swivelAngles += self.offangle
+            
+            if self.vaimennus.size > 0:
+                from skimage.transform import rotate
+                self.vaimennus = rotate(self.vaimennus, self.offangle)
+                if self.flipImageX:
+                    self.vaimennus = np.flip(self.vaimennus, 2)
+                if self.flipImageY:
+                    self.vaimennus = np.flip(self.vaimennus, 1)
+                if self.flipImageZ:
+                    self.vaimennus = np.flip(self.vaimennus, 3)
+                    
+            if self.flipImageZ:
+                self.SinM = np.flip(self.SinM, axis=2)
+            
+            self.n_rays_transaxial = self.nRays
             self.NSinos = self.nProjections
             self.TotSinos = self.nProjections
             self.dPitchX = self.cr_p
@@ -651,7 +693,7 @@ class projectorClass:
         self.x0 = self.x0.ravel('F')
         
         # Coordinates of the detectors
-        if not(self.projector_type == 6):
+        if self.projector_type != 6:
             if self.listmode == False:
                 if self.SPECT:
                     from .detcoord import getCoordinatesSPECT
@@ -761,13 +803,19 @@ class projectorClass:
         if self.offsetCorrection and self.subsets > 1:
             self.OffsetLimit = self.OffsetLimit[self.index];
 
-        if self.projector_type == 6:
+        if self.SPECT:
             from .detcoord import SPECTParameters
             SPECTParameters(self)
+
+        if self.projector_type == 6:
+            #from .detcoord import SPECTParameters
+            #SPECTParameters(self)
             if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11):
-                self.angles = self.angles[self.index];
-                self.blurPlanes = self.blurPlanes[self.index];
-                self.gFilter = self.gFilter[:,:,:,self.index];
+                self.angles = self.angles[self.index]
+                self.swivelAngles = self.swivelAngles[self.index]
+                self.radiusPerProj = self.radiusPerProj[self.index]
+                self.blurPlanes = self.blurPlanes[self.index]
+                self.gFilter = self.gFilter[:,:,:,self.index]
             # self.gFilter = self.gFilter.ravel('F').astype(dtype=np.float32)
         ## This part is used when the observation matrix is calculated on-the-fly
 
@@ -802,14 +850,14 @@ class projectorClass:
         if self.projector_type in [2, 3, 22, 33]:
             if self.projector_type in [3, 33]:
                 self.orthTransaxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_xy > 0):
+            elif (self.projector_type in [2, 22]) and (self.tube_width_xy > 0 or self.SPECT):
                 self.orthTransaxial = True
             else:
                 self.orthTransaxial = False
         if self.projector_type in [2, 3, 22, 33]:
             if self.projector_type in [3, 33]:
                 self.orthAxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_z > 0):
+            elif (self.projector_type in [2, 22]) and (self.tube_width_z > 0 or self.SPECT):
                 self.orthAxial = True
             else:
                 self.orthAxial = False
@@ -869,7 +917,7 @@ class projectorClass:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
         
         if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
-            raise ValueError(f"The numnber of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
+            raise ValueError(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
         
         if not self.CT and not self.SPECT and (self.ndist_side > 1 and self.Ndist % 2 == 0 or self.ndist_side < -1 and self.Ndist % 2 == 0) and not self.use_raw_data:
             raise ValueError("ndist_side can be either 1 or -1!")
@@ -1036,16 +1084,16 @@ class projectorClass:
         if self.projector_type == 6 and not self.SPECT:
             raise ValueError('Projector type 6 is only supported with SPECT data!')
             
-        if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11)) and self.SPECT:
-            raise ValueError('SPECT only supports projector types 1 and 6!')
+        if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11) and not(self.projector_type == 2) and not(self.projector_type == 22)) and self.SPECT:
+            raise ValueError('SPECT only supports projector types 1, 2 and 6!')
         
         if self.projector_type == 6:
-            if self.Nx != self.nRowsD:
-                raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
-            if self.Ny != self.nRowsD:
-                raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
-            if self.Nz != self.nColsD:
-                raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
+            #if self.Nx != self.nRowsD:
+            #    raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
+            #if self.Ny != self.nRowsD:
+            #    raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
+            #if self.Nz != self.nColsD:
+            #    raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
         
@@ -1748,7 +1796,13 @@ class projectorClass:
             if self.CT:
                 bOpt += ('-DCT',)
             elif self.SPECT:
-                bOpt += ('-DSPECT',)
+                if self.useCUDA:
+                    if self.useCuPy:
+                        bOpt += ('-DSPECT',)
+                    else:
+                        bOpt.append('-DSPECT')
+                else:
+                    bOpt += ' -DSPECT'
             elif self.PET:
                 bOpt += ('-DPET',)
 
@@ -4284,4 +4338,7 @@ class projectorClass:
             ('crXY',ctypes.c_float),
             ('rayShiftsDetector',ctypes.POINTER(ctypes.c_float)),
             ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
+            ('coneOfResponseStdCoeffA',ctypes.c_float),
+            ('coneOfResponseStdCoeffB',ctypes.c_float),
+            ('coneOfResponseStdCoeffC',ctypes.c_float)
         ]

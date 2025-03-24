@@ -366,15 +366,15 @@ if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projec
     error('SPECT only supports projector types 1, 2 and 6!')
 end
 if (options.projector_type == 6)
-    if options.Nx(1) ~= options.nRowsD
-        error('options.Nx has to be the same as options.nRowsD when using projector type 6')
-    end
-    if options.Ny(1) ~= options.nRowsD
-        error('options.Ny has to be the same as options.nRowsD when using projector type 6')
-    end
-    if options.Nz(1) ~= options.nColsD
-        error('options.Nz has to be the same as options.nColsD when using projector type 6')
-    end
+    %if options.Nx(1) ~= options.nRowsD
+    %    error('options.Nx has to be the same as options.nRowsD when using projector type 6')
+    %end
+    %if options.Ny(1) ~= options.nRowsD
+    %    error('options.Ny has to be the same as options.nRowsD when using projector type 6')
+    %end
+    %if options.Nz(1) ~= options.nColsD
+    %    error('options.Nz has to be the same as options.nColsD when using projector type 6')
+    %end
     if options.subsets > 1 && options.subset_type < 8
         error('Subset types 0-7 are not supported with projector type 6!')
     end

@@ -353,7 +353,7 @@ classdef projectorClass
 
                     % Idea:
                     % % Resample and resize sinogram to match FOV size and resolution
-                    % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram
+                    % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
                     sinogramSizeX = obj.param.crXY * obj.param.nRowsD; % Sinogram size in X
                     sinogramSizeZ = obj.param.crXY * obj.param.nColsD; % Sinogram size in Z
                     
@@ -367,14 +367,12 @@ classdef projectorClass
                     % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
                     obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
                 end
-                
-                if obj.param.offangle > 0
-                    if isfield(obj.param, 'angles')
-                        obj.param.angles = obj.param.angles + obj.param.offangle;
-                    end
-                    if isfield(obj.param, 'swivelAngles')
-                        obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
-                    end
+                if numel(obj.param.swivelAngles) == 0
+                    obj.param.swivelAngles = obj.param.angles + 180;
+                end
+                if obj.param.offangle ~= 0
+                    obj.param.angles = obj.param.angles + obj.param.offangle;
+                    obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
                 end
                 if isfield(obj.param, 'vaimennus')
                     obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
@@ -763,10 +761,6 @@ classdef projectorClass
                 obj.param.orthAxial = false;
             end
 
-            if ((obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33) && obj.param.SPECT)
-                obj.param = SPECTParameters(obj.param);
-            end
-
             if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...
                     || obj.param.projector_type == 42 || obj.param.projector_type == 43 || obj.param.projector_type == 24 || obj.param.projector_type == 34
@@ -781,8 +775,12 @@ classdef projectorClass
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
             end
 
-            if obj.param.projector_type == 6
+            if obj.param.SPECT
                 obj.param = SPECTParameters(obj.param);
+            end
+
+            if obj.param.projector_type == 6
+                %obj.param = SPECTParameters(obj.param);
                 if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
                     obj.param.angles = obj.param.angles(obj.index);
                     obj.param.swivelAngles = obj.param.swivelAngles(obj.index);

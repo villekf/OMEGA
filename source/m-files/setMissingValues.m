@@ -909,18 +909,10 @@ if ~isfield(options, 'crXY')
     options.crXY = 1;
 end
 if ~isfield(options, 'rayShiftsDetector')
-    options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
-    if isfield(options, 'iR') && options.iR > 0 % Detector intrinsic resolution
-        options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*options.crXY*2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
-    end
-    options.rayShiftsDetector(1:2) = 0;
+    options.rayShiftsDetector = [];
 end
 if ~isfield(options, 'rayShiftsSource')
-    options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
-    if isfield(options, 'iR') && options.iR > 0 % Detector intrinsic resolution
-        options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*options.crXY*2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
-    end
-    options.rayShiftsSource(1:2) = 0;
+    options.rayShiftsSource = [];
 end
 if ~isfield(options, 'iR')
     options.iR = 0;
@@ -929,5 +921,5 @@ if ~isfield(options, 'CORtoDetectorSurface')
     options.CORtoDetectorSurface = 0;
 end
 if ~isfield(options, 'swivelAngles')
-    options.swivelAngles = options.angles+180;
+    options.swivelAngles = [];
 end

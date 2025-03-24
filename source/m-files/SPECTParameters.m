@@ -20,11 +20,29 @@ function options = SPECTParameters(options)
 % You should have received a copy of the GNU General Public License
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if options.projector_type == 2 % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
+
+if (options.projector_type == 1 || options.projector_type == 2) % Ray tracing projectors
+    if numel(options.rayShiftsDetector) == 0
+        options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
+        if options.iR > 0 % Detector intrinsic resolution
+            options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*options.crXY*2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
+        end
+        options.rayShiftsDetector(1:2) = 0;
+    end
+    if numel(options.rayShiftsSource) == 0
+        options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
+        if options.iR > 0 % Detector intrinsic resolution
+            options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*options.crXY*2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
+        end
+        options.rayShiftsSource(1:2) = 0;
+    end
+end
+if options.projector_type == 2 % Orthogonal distance ray tracer
+    % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
     options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
     options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
     options.coneOfResponseStdCoeffC = options.iR;
-    % Now FWHM is sqrt((az+b)^2+c^2)
+    % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
 end
 if options.projector_type == 6
     DistanceToFirstRow = options.radiusPerProj-(double(options.Nx)/2-0.5)*double(options.dx);
@@ -68,9 +86,6 @@ if options.projector_type == 6
         colS = min(colS);
         rowE = max(rowE);
         colE = max(colE);
-        % rowS = find(options.gFilter(round(size(options.gFilter,1)/2),:,end,ind) > 1e-6,1,'first');
-        % colE = find(options.gFilter(:,round(size(options.gFilter,2)/2),end,ind) > 1e-6,1,'last');
-        % colS = find(options.gFilter(:,round(size(options.gFilter,2)/2),end,ind) > 1e-6,1,'first');
         options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
         options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
     end
@@ -83,12 +98,6 @@ if options.projector_type == 6
     end
     options.uu = 1;
     options.ub = 1;
-    %if max(abs(options.angles(:))) > 10 * pi && options.implementation == 2
-    %    options.angles = (options.angles + options.offangle) / 180 * pi;
-    %end
-    %if options.flip_image
-    %    options.angles = -(options.angles);
-    %end
     if options.useSingles
         options.gFilter = single(options.gFilter);
         options.angles = single(options.angles);

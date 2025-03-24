@@ -20,29 +20,11 @@ options.fpathCT = '';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-
-
 %%% Crystal thickness (mm)
 options.cr_p = 9.525;
 
 %%% Crystal width (mm)
 options.crXY = 4.7952;
-
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
-% of the FOV
-% Note that with SPECT data using projector_type = 6, this is not exactly
-% used as the FOV size but rather as the value used to compute the voxel
-% size
-options.FOVa_x = options.crXY*128;
-
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
-% of the FOV
-options.FOVa_y = options.FOVa_x;
-
-%%% Axial FOV (mm)
-% This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 4.7952*128;
-
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -62,17 +44,17 @@ options.machine_name = 'Prospecta';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel count (X-direction)
+%%% Reconstructed image pixel count
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
-% If you're using projector_type = 6, this should be options.nRowsD
-options.Nx = 128;
+options.Nx = 128; % X-direction
+options.Ny = 128; % Y-direction
+options.Nz = 128; % Z-direction (number of axial slices)
 
-%%% Y-direction
-options.Ny = 128;
-
-%%% Z-direction (number of slices) (axial)
-% If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 128;
+%%% FOV size [mm]
+% NOTE: Non-cubical voxels may not work
+options.FOVa_x = options.crXY*128; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.crXY*128; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.crXY*128; % [mm], z-axis of FOV (axial)
 
 %%% Flip the image?
 options.flipImageX = false;
@@ -86,7 +68,7 @@ options.useMaskBP = false;
 options.attenuation_correction = true;
 
 %%% HU scaling (affine map y=ax+b)
-options.HU.slope = 0.0000109;
+options.HU.slope = 0.000109;
 options.HU.intercept = 0.0151;
 
 %%% How much is the image rotated in degrees?
@@ -116,11 +98,19 @@ options = loadProSpectaData(options);
 % 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
 % 2. the standard deviations for both transaxial and axial directions or
 % 3. the (Gaussian) PSF filter
-% For projector type 1 the CDRF is determined by options.rayShiftsDetector
-% and options.rayShiftsSource defined later.
+% 4. the shifts of each ray traced 
 
+% NOTE: For projector type 1 the CDRF is determined by
+% options.rayShiftsDetector and options.rayShiftsSource defined in option 
+% 4. These can also be calculated automatically when collimator parameters
+% (1.) are input.
 
-% 1. The collimator parameters (projector types 2 and 6)
+% NOTE: With projector_type == 2 (orthogonal distance projector), only the
+% collimator parameters below are used for CDR calculation i.e. the
+% collimator hole is assumed to be a circle. Thus only 1. below is
+% supported with projector_type == 2
+
+% 1. The collimator parameters (projector types 1, 2 and 6)
 % Collimator hole length (mm)
 options.colL = 24.05;
 % Collimator hole radius (mm)
@@ -128,18 +118,28 @@ options.colR = 1.11/2;
 % Distance from collimator to the detector (mm)
 options.colD = 0;
 % Intrinsic resolution (mm)
-% projector_type 2 and 6 only!
 options.iR = 3.8;
 
 % 2. If you have the standard deviations for transaxial (XY) and axial (Z)
-% directions, you can input them here instead of the above values (the
-% dimensions need to be options.nProjections x options.Nx) 
-% options.sigmaXY = repmat(1, options.nProjections, options.Nx); % Transaxial standard deviation, (projector type 6)
-% options.sigmaZ = repmat(1, options.nProjections, options.Nx); % Axial standard deviation (projector type 6)
+% directions, you can input them here instead of the above values The
+% dimensions need to be options.nProjections x options.Nx. Only for
+% projector type 6.
+% options.sigmaZ = repmat(1, options.nProjections, options.Nx); 
+% options.sigmaXY = repmat(1, options.nProjections, options.Nx);
 
 % 3. You can input the filter for the CDRF directly. This should be of the
-% size filterSizeXY x filterSizeZ x options.nProjections (projector type 6)
-% options.gFilter = ones(10,10,options.nProjections);
+% size filterSizeXY x filterSizeZ x options.nProjections. Only for
+% projector type 6.
+% options.gFilter = ones(1, 1, options.Nx, options.nProjections);
+
+% 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
+% the shape of the collimator hole. The values of rayShiftsDetector and
+% rayShiftsSource should be in the range of [-1, 1]. For example,
+% dx1=dy1=-1 below would have the end of the ray shifted to the corner of a
+% detector element.
+options.nRays = 1; % Number of rays traced per detector element
+% options.rayShiftsDetector = zeros(2*options.nRays, 1); % The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
+% options.rayShiftsSource = zeros(2*options.nRays, 1); % The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -218,16 +218,7 @@ options.use_CPU = false;
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 1;
-
-%%% For projector type 1:
-options.nRays = 1; % Number of rays traced per detector element
-
-% The CDRF is defined by shifting the rays to a shape of the collimator
-% hole. The below example is for random (uniform distribution) rays with
-% one square collimator hole at the centre of each detector element.
-% options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
-% options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY);
+options.projector_type = 6;
 
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
