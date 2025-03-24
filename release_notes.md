@@ -53,6 +53,10 @@
   - A separate uint8 vector needs to be input (`options.TOFIndices`) that contains the indices to the TOF time windows specified by `options.TOFCenter`
   - Implementation 2 only!
   
+- Added support for standalone GPU-based regularizers in Python
+  - Can be used with any data, as long as the input image is a vector and PyOpenCL, ArrayFire, CuPy or Pytorch format
+  - Supports RDP, non-local regularizers and gradient-based TV
+  
 ### Bug fixes and enhancements
 
 - Hybrid projector 45 wasn't using the correct interpolation length before, this has been fixed
@@ -62,6 +66,12 @@
 - The volume of intersection ray tracer (projector type 3) was previously incorrectly weighted
 
 - Fixed attenuation correction for projector type 1 when using SPECT data
+
+- Fixed projector types 2 and 3
+
+- Gradient-based TV regularization should now work with CUDA
+
+- When using projector type 6 (SPECT), the image can now be correctly rotated when using `options.offangle`
 
 ## OMEGA v2.0.0
 

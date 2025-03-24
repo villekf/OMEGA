@@ -302,7 +302,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u, CONSTANT float* gaussian,
 #else
 void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CONSTANT float* gaussian, 
 #endif
-	const int3 N, const int3 NOrig, const float h, const float epps, const float beta
+#ifdef PYTHON
+	const int Nx, const int Ny, const int Nz, const int NOrigx, const int NOrigy, const int NOrigz, 
+#else
+	const int3 N, const int3 NOrig, 
+#endif
+	const float h, const float epps, const float beta
 #if NLTYPE >= 3
 	, const float gamma
 #endif
@@ -331,7 +336,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	, CONSTANT uchar* fovIndices
 #endif
 ) {
-
+#ifdef PYTHON
+	const int3 N = MINT3(Nx, Ny, Nz);
+#endif
 	LTYPE3 ii = MINT3(GID0, GID1, GID2);
 	const LTYPE n = (ii.x) + (ii.y) * (N.x) + (ii.z) * (N.x * N.y);
 	float weight_sum = epps;
@@ -400,19 +407,28 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX, LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+#if PWINDOWZ > 0
+#pragma unroll
+#endif
 	for (int i = -SWINDOWX; i <= SWINDOWX; i++) {
+#if PWINDOWZ > 0
+#pragma unroll
+#endif
 		for (int j = -SWINDOWY; j <= SWINDOWY; j++) {
+#if PWINDOWZ > 0
+#pragma unroll
+#endif
 			for (int k = -SWINDOWZ; k <= SWINDOWZ; k++) {
 				if (i == 0 && j == 0 && k == 0)
 					continue;
 				float weight = 0.f;
 				float distance = 0.f;
-// #pragma unroll
+#pragma unroll
 				for (int pz = -PWINDOWZ; pz <= PWINDOWZ; pz++) {
-// #pragma unroll
+#pragma unroll
 					for (int py = -PWINDOWY; py <= PWINDOWY; py++) {
 						int dim_g = (pz + PWINDOWZ) * (PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) + (py + PWINDOWY) * (PWINDOWX * 2 + 1);
-// #pragma unroll
+#pragma unroll
 						for (int px = -PWINDOWX; px <= PWINDOWX; px++) {
 							const float gg = gaussian[dim_g++];
 #ifdef NLMREF
@@ -525,7 +541,12 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u,
 #else
 void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, 
 #endif
-	const int3 N, const int3 NOrig, const float gamma, const float epps, const float beta
+#ifdef PYTHON
+	const int Nx, const int Ny, const int Nz, const int NOrigx, const int NOrigy, const int NOrigz, 
+#else
+	const int3 N, const int3 NOrig, 
+#endif
+	const float gamma, const float epps, const float beta
 #ifdef MASKPRIOR
 #ifdef MASKBP3D
 	, IMAGE3D maskBP
@@ -547,7 +568,9 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #endif
 ) {
-
+#ifdef PYTHON
+	const int3 N = MINT3(Nx, Ny, Nz);
+#endif
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 #ifdef RDPCORNERS // START RDPCORNERS
 	float output = 0.f;
@@ -1617,7 +1640,12 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u,
 #else
 void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u,
 #endif
-	const int3 N, const int3 NOrig, const float sigma, const float epps, const float beta
+#ifdef PYTHON
+	const int Nx, const int Ny, const int Nz, const int NOrigx, const int NOrigy, const int NOrigz, 
+#else
+	const int3 N, const int3 NOrig, 
+#endif
+	const float sigma, const float epps, const float beta
 #ifdef MASKPRIOR
 #ifdef MASKBP3D
 	, IMAGE3D maskBP
@@ -1635,7 +1663,9 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	, CLGLOBAL float* CLRESTRICT S
 #endif
 ) {
-
+#ifdef PYTHON
+	const int3 N = MINT3(Nx, Ny, Nz);
+#endif
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 #ifdef CUDA
 	if (xyz.x >= N.x || xyz.y >= N.y || xyz.z >= N.z)
@@ -1662,7 +1692,11 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 	const LTYPE n = (xyz.x) + (xyz.y) * (N.x) + (xyz.z) * (N.x * N.y);
 #ifdef USEIMAGES
+#ifdef CUDA
+	const float uijk = tex3D<float>(u, xyz.x, xyz.y, xyz.z);
+#else
 	const float uijk = read_imagef(u, samplerTV, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
+#endif
 #else
 	const float uijk = u[n];
 #endif

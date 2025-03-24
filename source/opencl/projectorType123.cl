@@ -609,31 +609,6 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			DD = D;
 #endif //////////////// END TOF ////////////////
 			for (uint ii = apuX1; ii <= apuX2; ii++) {
-#ifdef TOF //////////////// TOF ////////////////
-				const float TOFSum = TOFLoop(DD, d_d2, TOFCenter, sigma_x, &D, d_epps);
-#endif //////////////// END TOF ////////////////
-#ifdef ORTH //////////////// ORTH/VOL ////////////////
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
-#if defined(FP)
-					d_OSEM
-#else
-					no_norm, d_Summ, d_output 
-#endif
-#ifdef TOF
-				, d_d2, sigma_x, &D, DD, TOFCenter, TOFSum
-#if defined(LISTMODE)
-				, TOFid
-#endif
-#endif
-#if defined(MASKBP) && defined(BP)
-				, aa, maskBP
-#endif
-#ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
-#endif
-				);
-#else //////////////// SIDDON ////////////////
 				float d_in = d_d2;
 // #if defined(LISTMODE)
 				if (ii == apuX1) {
@@ -654,8 +629,38 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #else
 				compute_attenuation(d_in, local_ind, d_atten, &jelppi, aa);
 #endif
+#if defined(SPECT) && !defined(ORTH)
 				d_in *= EXP(jelppi);
 #endif
+#endif
+#ifdef TOF //////////////// TOF ////////////////
+				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps);
+#endif //////////////// END TOF ////////////////
+#ifdef ORTH //////////////// ORTH/VOL ////////////////
+				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, 
+#if defined(FP)
+					d_OSEM
+#else
+					no_norm, d_Summ, d_output 
+#endif
+#ifdef TOF
+				, d_d2, sigma_x, &D, DD, TOFCenter, TOFSum
+#if defined(LISTMODE)
+				, TOFid
+#endif
+#endif
+#if defined(SPECT) && defined(ATN)
+				, EXP(jelppi)
+#endif
+#if defined(MASKBP) && defined(BP)
+				, aa, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
+				);
+#else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 #ifdef USEIMAGES
 				denominator(ax, localInd, d_in, d_OSEM
@@ -710,16 +715,16 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END TOF ////////////////
 				);
 #endif //////////////// END BACKWARD PROJECTION ////////////////
-#if (!defined(USEIMAGES) && defined(FP)) || defined(BP)
+#endif //////////////// END SIDDON/ORTH/VOL ////////////////
+#if (!defined(USEIMAGES) && defined(FP)) || defined(BP) || (defined(ATN) && defined(SPECT) && !defined(USEIMAGES))
 				local_ind += CLONG_rtz(d_N3);
 #endif 
-#if defined(FP) || (defined(MASKBP) && defined(BP))
+#if defined(FP) || (defined(MASKBP) && defined(BP)) || (defined(ATN) && defined(SPECT) && defined(USEIMAGES))
 				if (d_N3 == 1)
 					localInd.x++;
 				else
 					localInd.y++;
 #endif
-#endif //////////////// END SIDDON/ORTH/VOL ////////////////
 #if defined(TOF)
 				D -= (d_d2 * sign(DD));
 #endif
@@ -1042,6 +1047,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			tempj_a = tempj;
 			tempk_a = tempk;
 #endif //////////////// END ORTH/VOL ////////////////
+			bool pass = false;
 			if (tz0 < ty0 && tz0 < tx0) {
 // #if defined(LISTMODE)
 				if (tz0 >= 0.f && tz0 <= 1.f) {
@@ -1051,6 +1057,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					}
 					else
 						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+					pass = true;
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
 					if (tz0 > 1.f) {
@@ -1058,7 +1065,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						compute_element(&tz0, &tc, L, tzu, uz, &tempk);
 					}
 					else
-					local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+						local_ele = compute_element(&tz0, &tc, L, tzu, uz, &tempk);
+					pass = true;
 				}
 				else
 					compute_element(&tz0, &tc, L, tzu, uz, &tempk);
@@ -1075,6 +1083,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					}
 					else
 						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
+					pass = true;
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
 					if (ty0 > 1.f) {
@@ -1083,6 +1092,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					}
 					else
 						local_ele = compute_element(&ty0, &tc, L, tyu, uy, &tempj);
+					pass = true;
 				}
 				else
 					compute_element(&ty0, &tc, L, tyu, uy, &tempj);
@@ -1099,6 +1109,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					}
 					else
 						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
+					pass = true;
 				}
 				else if (tc >= 0.f && tc <= 1.f) {
 					if (tx0 > 1.f) {
@@ -1107,6 +1118,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					}
 					else
 						local_ele = compute_element(&tx0, &tc, L, txu, ux, &tempi);
+					pass = true;
 				}
 				else
 					compute_element(&tx0, &tc, L, txu, ux, &tempi);
@@ -1139,10 +1151,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			}
 #endif
 #if defined(ATN) && (defined(FP) || defined(SPECT))
-			compute_attenuation(local_ele2, localInd2, d_atten, &jelppi, aa);
-#if defined(SPECT)
-			local_ele *= EXP(jelppi);
+			if (pass) {
+				compute_attenuation(local_ele2, localInd2, d_atten, &jelppi, aa);
+#if defined(SPECT) && !defined(ORTH)
+				local_ele *= EXP(jelppi);
 #endif
+			}
 #endif
 #ifdef TOF //////////////// TOF ////////////////
 			TOFSum = TOFLoop(DD, local_ele2, TOFCenter, sigma_x, &D, d_epps);
@@ -1164,6 +1178,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
+#if defined(SPECT) && defined(ATN)
+						, EXP(jelppi)
+#endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
@@ -1190,6 +1207,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
+#if defined(SPECT) && defined(ATN)
+						, EXP(jelppi)
+#endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
@@ -1216,6 +1236,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, TOFid
 #endif
 #endif //////////////// END TOF ////////////////
+#if defined(SPECT) && defined(ATN)
+				, EXP(jelppi)
+#endif
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
@@ -1336,6 +1359,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, TOFid
 #endif
 #endif
+#if defined(SPECT) && defined(ATN)
+				, EXP(jelppi)
+#endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
 #endif
@@ -1361,6 +1387,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef LISTMODE
 				, TOFid
 #endif
+#endif
+#if defined(SPECT) && defined(ATN)
+				, EXP(jelppi)
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
