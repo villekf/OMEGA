@@ -1179,12 +1179,12 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*tx0 = t0.x;
 	*ty0 = t0.y;
 	*tz0 = t0.z;
-#ifdef ORTH
-	if (*tc == *tx0 || *tc == tBack.x)
-		*xy = true;
-	else
-		*xy = false;
-#endif
+// #ifdef ORTH
+// 	if (*tc == *tx0 || *tc == tBack.x)
+// 		*xy = true;
+// 	else
+// 		*xy = false;
+// #endif
 
 	uint imin, imax, jmin, jmax, kmin, kmax;
 
@@ -1220,6 +1220,12 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*txu = dd.x / fabs(diff.x);
 	*tyu = dd.y / fabs(diff.y);
 	*tzu = dd.z / fabs(diff.z);
+#ifdef ORTH
+	if (imin < jmin && imax > jmax)
+		*xy = true;
+	else
+		*xy = false;
+#endif
 
 	return false;
 }
