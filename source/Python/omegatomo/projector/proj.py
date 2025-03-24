@@ -1707,7 +1707,7 @@ class projectorClass:
                     bOpt += ('-DCRYSTXY',)
                 if self.orthAxial:
                     bOpt += ('-DCRYSTZ',)
-                with open(headerDir + 'opencl_functions_orth3d.h') as f:
+                with open(headerDir + 'opencl_functions_orth3D.h') as f:
                     hlines2 = f.read()
                 if self.FPType in [2, 3]:
                     linesFP = hlines + hlines2 + linesFP
