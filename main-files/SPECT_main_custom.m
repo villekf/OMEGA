@@ -1,11 +1,5 @@
-%% MATLAB codes for SPECT reconstruction from DICOM data
-% This example outlines the reconstruction of SPECT data. In this case the
-% data is Siemens Pro.specta DICOM projection data file. In general SPECT
-% data, when using projector type 6, require the rotation angles, the
-% distance of the detector head(s) from the center of rotation and the
-% collimator specifics. The collimator information is required for built-in
-% detector response function. You can, however, input your own one as well.
-% Note that at the moment no example data is provided
+%% MATLAB codes for SPECT reconstruction from custom sinogram data
+% This example outlines the reconstruction of SPECT data.
 
 clear
 
@@ -86,11 +80,11 @@ options.swivelAngles = options.angles+180;
 % Distance between detector surface and FOV centre (origin)
 options.radiusPerProj = 48*options.crXY*ones(size(options.angles)); 
 
-% Initial value for the reconstruction
+% Initial value for the forward projection example
 x0 = zeros(options.Nx, options.Ny, options.Nz);
 x0(64, 64, 64) = 1;
 
-% Projection images
+% Projection images for backward projection example
 y0 = zeros(128, 128, numel(options.angles), 'single'); 
 y0(64, 64, :) = 1;
 

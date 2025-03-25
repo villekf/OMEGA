@@ -65,7 +65,7 @@ options.flipImageZ = false;
 options.useMaskBP = false;
 
 %%% Attenuation correction
-options.attenuation_correction = true;
+options.attenuation_correction = false;
 
 %%% HU scaling (affine map y=ax+b)
 options.HU.slope = 0.000109;
@@ -82,8 +82,6 @@ options.offangle = 0;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 options = loadProSpectaData(options);
-
-
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
