@@ -523,7 +523,7 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
-            if self.projector_type == 6:
+            if self.projector_type == 6 and len(self.SinM > 0):
                 endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
                 endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
                 padRows = (endSinogramRows-self.nRowsD)/2
@@ -1800,9 +1800,9 @@ class projectorClass:
                     if self.useCuPy:
                         bOpt += ('-DSPECT',)
                     else:
-                        bOpt.append('-DSPECT')
+                        bOpt += ('-DSPECT', )
                 else:
-                    bOpt += ' -DSPECT'
+                    bOpt += (' -DSPECT',)
             elif self.PET:
                 bOpt += ('-DPET',)
 
@@ -1988,6 +1988,9 @@ class projectorClass:
                             self.d_maskFP = cp.cuda.texture.TextureObject(res, tdes)
                     if self.TOF:
                         self.d_TOFCenter = cp.asarray(self.TOFCenter)
+                    if self.SPECT:
+                        self.d_rayShiftsDetector = cp.asarray(self.rayShiftsDetector)
+                        self.d_rayShiftsSource = cp.asarray(self.rayShiftsSource)
                     if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
                         self.d_V = cp.asarray(self.V)
                     if (self.normalization_correction):
@@ -2044,7 +2047,10 @@ class projectorClass:
                         self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
                         
                     if self.FPType in [1, 2, 3]:
-                        self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
+                        self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
+                        if self.SPECT:
+                            self.kIndF += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndF += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                     elif self.FPType == 4:
                         self.kIndF = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),cp.float32(self.dL),cp.float32(self.global_factor),)
                     elif self.FPType == 5:
@@ -2076,7 +2082,10 @@ class projectorClass:
                         self.kIndB += (cp.float32(self.dL),)
                         self.kIndB += (cp.float32(self.global_factor),)
                     if self.BPType in [1, 2, 3]:
-                        self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
+                        self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
+                        if self.SPECT:
+                            self.kIndB += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndB += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                         if self.BPType in [2, 3]:
                             if self.BPType == 2:
                                 self.kIndB  += (cp.float32(self.tube_width_z),)
@@ -2158,6 +2167,9 @@ class projectorClass:
                         self.d_maskFP = cuda.gpuarray.to_gpu(self.maskFP)
                     if self.useMaskBP:
                         self.d_maskBP = cuda.gpuarray.to_gpu(self.maskBP)
+                    if self.SPECT:
+                        self.d_rayShiftsDetector = cuda.gpuarray.to_gpu(self.rayShiftsDetector)
+                        self.d_rayShiftsSource = cuda.gpuarray.to_gpu(self.rayShiftsSource)
                     if self.TOF:
                         self.d_TOFCenter = cuda.gpuarray.to_gpu(self.TOFCenter)
                     if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
@@ -2204,7 +2216,11 @@ class projectorClass:
                         self.knlB = mod.get_function('projectorType4Backward')
                     elif self.BPType == 5:
                         self.knlB = mod.get_function('projectorType5Backward')
-                    self.kIndF = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()),)
+                    
+                    self.kIndF = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), )
+                    if self.SPECT:
+                        self.kIndF += (self.d_rayShiftsDetector.gpudata, self.d_rayShiftsSource.gpudata, np.float32(self.coneOfResponseStdCoeffA), np.float32(self.coneOfResponseStdCoeffB), np.float32(self.coneOfResponseStdCoeffC), )
+                    self.kIndF += (np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()), )
                     
                     if self.use_psf:
                         with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
@@ -2239,7 +2255,10 @@ class projectorClass:
                         self.kIndB += (np.float32(self.dL),)
                         self.kIndB += (np.float32(self.global_factor),)
                     if self.BPType in [1, 2, 3]:
-                        self.kIndB = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()),)
+                        self.kIndB = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), )
+                        if self.SPECT:
+                            self.kIndB += (self.d_rayShiftsDetector.gpudata, self.d_rayShiftsSource.gpudata, np.float32(self.coneOfResponseStdCoeffA), np.float32(self.coneOfResponseStdCoeffB), np.float32(self.coneOfResponseStdCoeffC), )
+                        self.kIndB += (np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()), )
                         if self.BPType in [2, 3]:
                             if self.BPType == 2:
                                 self.kIndB  += (np.float32(self.tube_width_z),)
@@ -2350,6 +2369,9 @@ class projectorClass:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
                     self.d_atten = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
                     # self.d_atten = cl.image_from_array(self.clctx, np.reshape(self.vaimennus, (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F'))
+                if self.SPECT:
+                    self.d_rayShiftsDetector = cl.array.to_device(self.queue, self.rayShiftsDetector)
+                    self.d_rayShiftsSource = cl.array.to_device(self.queue, self.rayShiftsSource)
                 if self.useMaskFP:
                     self.d_maskFP = cl.image_from_array(self.clctx, self.maskFP)
                 if self.useMaskBP:
@@ -2436,6 +2458,17 @@ class projectorClass:
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.sigma_x))
                     self.kIndF += 1
+                    if self.SPECT:
+                        self.knlF.set_arg(self.kIndF, self.d_rayShiftsDetector.data)
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, self.d_rayShiftsSource.data)
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
+                        self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, self.d_dPitch)
                     self.kIndF += 1
                     if self.FPType in [2, 3]:
@@ -2498,6 +2531,17 @@ class projectorClass:
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.sigma_x))
                     self.kIndB += 1
+                    if self.SPECT:
+                        self.knlB.set_arg(self.kIndB, self.d_rayShiftsDetector.data)
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, self.d_rayShiftsSource.data)
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
+                        self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, self.d_dPitch)
                     self.kIndB += 1
                     if self.BPType in [2, 3]:

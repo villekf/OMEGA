@@ -3,22 +3,33 @@
 ## Python codes for SPECT custom algorithm reconstruction
 This example contains a simplified example for custom algorithm
 reconstruction using projection SPECT data. Currently the support for
-some of the additional features is limited. The default configuration
-uses MLEM, but OSEM with subsets is also available.
+some of the additional features is limited.
 
 Note that custom algorithm refers to your own algorithms and not the built-in 
-algorithms. This example merely has the MLEM/OSEM algorithm shown as an example.
-The forward and/or backward projections of OMEGA are utilized for the computation
+algorithms. The forward and/or backward projections of OMEGA are utilized for the computation
 of these algorithms.
 
-This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
+This example uses PyTorch and CuPy and thus requires CUDA (with CuPy and PyTorch)!
 """
+
 import numpy as np
 from omegatomo import proj
-import matplotlib as plt
-from pydicom import dcmread
+import matplotlib.pyplot as plt
+import torch
 
 options = proj.projectorClass()
+
+# Required for SPECT data
+options.SPECT = True
+
+# Assumes that PyTorch tensors are used as input to either forward or backward projections
+options.useTorch = True
+
+# Required for PyTorch
+options.useCUDA = True
+
+# Uses CuPy instead of PyCUDA (recommended)
+options.useCuPy = True
 
 ###########################################################################
 ###########################################################################
@@ -28,67 +39,16 @@ options = proj.projectorClass()
 ###########################################################################
 ###########################################################################
 
-# Header file location
-dcm = dcmread('/path/to/DICOM')
-
-
-# Load projection images
-options.SinM = dcm.pixel_array
-options.SinM = options.SinM.transpose((2, 1, 0))
-
-options.SinM = options.SinM[:,64//4:128-64//4,:]
-
 ### Crystal thickness (mm)
 options.cr_p = 9.525
 
-### Transaxial FOV size (mm), this is the length of the x [horizontal] side
-# of the FOV
-# Note that with SPECT data using projector_type = 6, this is not exactly
-# used as the FOV size but rather as the value used to compute the voxel
-# size
-options.FOVa_x = 4.7952*128
-
-### Transaxial FOV size (mm), this is the length of the y [vertical] side
-# of the FOV
-options.FOVa_y = options.FOVa_x
-
-### Axial FOV (mm)
-# This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 4.7952*128
-
-# Number of rows in a projection image
-options.nRowsD = options.SinM.shape[0]
-
-# Number of columns in a projection image
-options.nColsD = options.SinM.shape[1]
-
-# Number of projections
-options.nProjections = options.SinM.shape[2]
-
-# Number of detector heads
-options.nHeads = 2
-
-startAngle1 = (float)(dcm.DetectorInformationSequence[0].StartAngle)
-startAngle2 = (float)(dcm.DetectorInformationSequence[1].StartAngle)
-
-angleIncrement = (float)(dcm.RotationInformationSequence[0].AngularStep)
-
-# Rotation angles
-options.angles = np.concatenate((np.arange(startAngle2, startAngle2 + angleIncrement * (options.nProjections / options.nHeads), angleIncrement),np.arange(startAngle1, startAngle1 + angleIncrement * (options.nProjections / options.nHeads - 1), angleIncrement)))
-
-# Radial distance of the detector panel from the COR
-options.radiusPerProj = np.concatenate((dcm.DetectorInformationSequence[0].RadialPosition, dcm.DetectorInformationSequence[1].RadialPosition))
+### Crystal width (mm)
+options.crXY = 4.7952
 
 ### Scanner name
 # Used for naming purposes (measurement data)
-options.machine_name = 'Prospecta'
+options.machine_name = 'Example'
  
-###########################################################################
-###########################################################################
-###########################################################################
-###########################################################################
- 
-
 ###########################################################################
 ###########################################################################
 ###########################################################################
@@ -97,34 +57,70 @@ options.machine_name = 'Prospecta'
 ###########################################################################
 ###########################################################################
  
-### Reconstructed image pixel count (X-direction)
+### Reconstructed image pixel count
 # NOTE: Non-square image sizes (X- and Y-direction) may not work
-options.Nx = 128
+options.Nx = 128 # X-direction
+options.Ny = 128 # Y-direction
+options.Nz = 128 # Z-direction (number of axial slices)
 
-### Y-direction
-options.Ny = 128
+### FOV size [mm]
+# NOTE: Non-cubical voxels may not work
+options.FOVa_x = options.crXY*128 # [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.crXY*128 # [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.crXY*128 # [mm], z-axis of FOV (axial)
 
-### Z-direction (number of slices) (axial)
-options.Nz = 96
+### Flip the image?
+options.flipImageX = False
+options.flipImageY = False
+options.flipImageZ = False
 
-### Flip the image (in vertical direction)?
-options.flip_image = True
+### Use back projection mask?
+options.useMaskBP = False
 
-### How much is the image rotated?
-# You need to run the precompute phase again if you modify this
+### Attenuation correction
+options.attenuation_correction = False
+
+# Linear attenuation coefficients, size and dimensions should match FOV
+options.vaimennus = np.zeros((options.Nx, options.Ny, options.Nz), dtype=np.float32)
+
+### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
-# This current setting is for systems whose detector blocks start from the
-# right hand side when viewing the device from front.
 # Positive values perform the rotation in clockwise direction
-options.offangle = (3*np.pi)/2
- 
+options.offangle = 0
+
 ###########################################################################
 ###########################################################################
 ###########################################################################
+########################### PROJECTION DATA ###############################
 ###########################################################################
- 
- 
- 
+###########################################################################
+###########################################################################
+
+# Gantry angles
+options.angles = np.array([0])
+
+# Detector swivel angles
+options.swivelAngles = options.angles+180
+
+# Distance between detector surface and FOV centre (origin)
+options.radiusPerProj = 48*options.crXY*np.ones_like(options.angles); 
+
+# Initial value for the forward projection example
+x0 = np.zeros((options.Nx, options.Ny, options.Nz), dtype=np.float32)
+x0[63, 63, 63] = 1
+
+# Projection images for backward projection example
+y0 = np.zeros((128, 128, len(options.angles)), dtype=np.float32)
+y0[63, 63, :] = 1
+
+# Number of rows in a projection image
+options.nRowsD = y0.shape[0]
+
+# Number of columns in a projection image
+options.nColsD = y0.shape[1]
+
+# Number of projections
+options.nProjections = y0.shape[2]
 
 ###########################################################################
 ###########################################################################
@@ -135,39 +131,71 @@ options.offangle = (3*np.pi)/2
 ###########################################################################
 
 ### Collimator-detector response function (CDRF)
-# You can either input the (Gaussian) PSF filter, or the standard
-# deviations for both transaxial and axial directions or simply the
-# collimator parameters (see below) for an analytic solution for round (and
-# hexagonal) holes (this may be unoptimal).
+# For projector types 1, 2 and 6 you can either input either:
+# 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
+# 2. the standard deviations for both transaxial and axial directions or
+# 3. the (Gaussian) PSF filter
+# 4. the shifts of each ray traced 
 
-# If you want to compute the CDRF analytically, input the following values:
+# NOTE: For projector type 1 the CDRF is determined by
+# options.rayShiftsDetector and options.rayShiftsSource defined in option 
+# 4. These can also be calculated automatically when collimator parameters
+# (1.) are input.
+
+# NOTE: With projector_type == 2 (orthogonal distance projector), only the
+# collimator parameters below are used for CDR calculation i.e. the
+# collimator hole is assumed to be a circle. Thus only 1. below is
+# supported with projector_type == 2
+
+# 1. The collimator parameters (projector types 1, 2 and 6)
 # Collimator hole length (mm)
 options.colL = 24.05
-# Collimator hole radius
+# Collimator hole radius (mm)
 options.colR = 1.11/2
-# Distance from collimator to the detector
+# Distance from collimator to the detector (mm)
 options.colD = 0
-# Intrinsic resolution
+# Intrinsic resolution (mm)
 options.iR = 3.8
 
-# If you have the standard deviations for transaxial (XY) and axial (Z)
-# directions, you can input them here instead of the above values (the
-# dimensions need to be options.nProjections x options.Nx):
-# Transaxial standard deviation
-# options.sigmaXY = np.tile(0, (options.nProjection, options.Nx))
-# Axial standard deviation
-# options.sigmaZ = np.tile(0, (options.nProjection, options.Nx))
+# 2. If you have the standard deviations for transaxial (XY) and axial (Z)
+# directions, you can input them here instead of the above values The
+# dimensions need to be options.nProjections x options.Nx. Only for
+# projector type 6.
+# options.sigmaZ = np.ones((options.nProjections, options.Nx), dtype=np.float32)
+# options.sigmaXY = np.ones((options.nProjections, options.Nx), dtype=np.float32) # Transaxial standard deviation, (projector type 6)
 
-# Lastly, you can input the filter for the CDRF directly. This should be
-# filterSizeXY x filterSizeZ x options.nProjections:
-# options.gFilter = np.ones((10,10,options.nProjections), dtype=np.float32)
+# 3. You can input the filter for the CDRF directly. This should be of the
+# size filterSizeXY x filterSizeZ x options.nProjections. Only for
+# projector type 6.
+# options.gFilter = np.ones((10, 10, options.nProjections), dtype=np.float32)
+
+# 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
+# the shape of the collimator hole. The below example is for random
+# (uniform distribution) rays with one square collimator hole at the centre
+# of each detector element. For 1 ray, the ray perpendicular to the
+# detector element.
+options.nRays = 1 # Number of rays traced per detector element
+# options.rayShiftsDetector = options.colR*(2*np.random.rand(2 * options.nRays, 1).astype(np.float32)-1)/options.crXY # The relative shifts (dx1, dy1, dx2, dy2, ...) at the collimator-detector interface
+# options.rayShiftsSource = options.colR*(2*np.random.rand(2 * options.nRays, 1).astype(np.float32)-1)/options.crXY # The relative shifts (dx1, dy1, dx2, dy2, ...) at the other end of the collimator
  
 ###########################################################################
 ###########################################################################
 ###########################################################################
+############################# MISC PROPERTIES #############################
+###########################################################################
+###########################################################################
 ###########################################################################
 
+### Name of current datafile/examination
+# This is used to name the saved measurement data and also load it in
+# future sessions.
+options.name = 'spect_example'
 
+### Show status messages
+# These are e.g. time elapsed on various functions and what steps have been
+# completed. It is recommended to keep this 1.  Maximum value of 3 is
+# supported.
+options.verbose = 3
 
 ###########################################################################
 ###########################################################################
@@ -179,79 +207,45 @@ options.iR = 3.8
  
 ############################### PROJECTOR #################################
 ### Type of projector to use for the geometric matrix
+# 1 = (Improved) Siddon ray-based projector
+# 2 = Orthogonal distance ray tracing
 # 6 = Rotation-based projector
-# See the documentation for more information:
+# See the documentation on some details on the projectors:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 6
- 
-######################### RECONSTRUCTION SETTINGS #########################
-### Number of iterations (all reconstruction methods)
-options.Niter = 1
+# NOTE: with rotation-based projector, the sinogram must be resized and
+# resampled to match FOV XZ-plane size and resolution.
+options.projector_type = 2
 
-### Number of subsets (all excluding MLEM and subset_type = 6)
-options.subsets = 1
+###########################################################################
+###########################################################################
+###########################################################################
+###########################################################################
 
-### Subset type (n = subsets)
-# 8 = Use every nth projection image
-# 9 = Randomly select the full projection images
-# 11 = Use prime factor sampling to select the full projection images
-# Most of the time subset_type 8 is sufficient.
-options.subsetType = 8
-
-# Required for SPECT data
-options.SPECT = True
-
-
+# Initialize projector
 options.addProjector()
-
-# Assumes that PyTorch tensors are used as input to either forward or backward projections
-options.useTorch = True
-
-# Required for PyTorch
-options.useCUDA = True
-
-# Uses CuPy instead of PyCUDA (recommended)
-options.useCuPy = True
-
-# Compute forward projection with options * f
-# Compute backprojection with options.T() * y
-
 options.initProj()
-import torch
-d_f = torch.tensor(options.x0, device='cuda')
-m = options.SinM.ravel('F')
+A = options
 
+d_x0 = torch.tensor(x0.ravel('F'), device='cuda') # Input as torch tensor
+d_y0 = torch.tensor(y0.ravel('F'), device='cuda') # Input as torch tensor
 
-"""
-MLEM
-"""
-d_m = torch.tensor(m, device='cuda')
-Sens = options.T() * torch.ones(d_m.numel(), dtype=torch.float32, device='cuda')
-for it in range(options.Niter):
-    fp = options * d_f
-    bp = options.T() * (d_m / fp)
-    d_f = d_f / Sens * bp
-    
-    
+## Compute forward projection with A * x
+d_y = A * d_x0
 
-# """
-# OSEM
-# """
-# d_m = [None] * options.subsets
-# for k in range(options.subsets):
-#     d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device='cuda')
-# for it in range(options.Niter):
-#     for k in range(options.subsets):
-#         # This is necessary when using subsets
-#         # Alternative, call options.forwardProject(d_f, k) to use forward projection
-#         # options.backwardProject(m, k) for backprojection
-#         options.subset = k
-#         fp = options * d_f
-#         Sens = options.T() * torch.ones(d_m[k].numel(), dtype=torch.float32, device='cuda')
-#         Sens[Sens <= 0] = options.epps
-#         bp = options.T() * (d_m[k] / fp)
-#         d_f = d_f / Sens * bp
-    
-f_np = d_f.cpu().numpy()
-f_np = np.reshape(f_np, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()), order='F')
-plt.pyplot.imshow(f_np[:,:,20], vmin=0)
+y = d_y.cpu().numpy()
+y = np.reshape(y, (options.nRowsD, options.nColsD, options.nProjections), order='F')
+plt.subplot(1, 2, 1)
+plt.imshow(y[:,:,0], vmin=0) # Plot first sinogram
+plt.title('First projection image', fontsize=6)
+
+# Compute backprojection with A.T() * y
+d_x = A.T() * d_y0
+
+x = d_x.cpu().numpy()
+x = np.reshape(x, (options.Nx[0], options.Ny[0], options.Nz[0]), order='F')
+plt.subplot(1, 2, 2)
+plt.imshow(x[:, :, 63], vmin=0) # Plot cross-section of backprojection
+plt.title('Cross-section of back projection', fontsize=6)
+
+# Show plot
+plt.show()
