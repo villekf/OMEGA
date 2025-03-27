@@ -264,7 +264,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef USEIMAGES
 #ifdef CUDA
 #ifdef MASKFP3D
-	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y. i.z);
+	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
 #else
 	const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
 #endif
