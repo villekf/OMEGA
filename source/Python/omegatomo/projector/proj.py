@@ -1755,7 +1755,7 @@ class projectorClass:
                     bOpt += ('-DCRYSTXY',)
                 if self.orthAxial:
                     bOpt += ('-DCRYSTZ',)
-                with open(headerDir + 'opencl_functions_orth3d.h') as f:
+                with open(headerDir + 'opencl_functions_orth3D.h') as f:
                     hlines2 = f.read()
                 if self.FPType in [2, 3]:
                     linesFP = hlines + hlines2 + linesFP
@@ -2232,7 +2232,7 @@ class projectorClass:
                         self.d_gaussPSF = cuda.gpuarray.to_gpu(self.gaussK.ravel('F'))
                     
                     if self.FPType in [2,3]:
-                        if self.FPTye == 2:
+                        if self.FPType == 2:
                             self.kIndF += (np.float32(self.tube_width_z),)
                         else:
                             self.kIndF += (np.float32(self.tube_radius),)
@@ -3629,7 +3629,7 @@ class projectorClass:
                             if (self.attenuation_correction and not self.CTAttenuation):
                                 kIndLoc += (self.d_atten[subset].gpudata,)
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
-                                kIndLoc += ((self.nProjSubset[subset].item()),)
+                                kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
                             if (self.listmode == 0 and not self.CT):
                                 kIndLoc += (self.d_x[0].gpudata,)
                             else:
