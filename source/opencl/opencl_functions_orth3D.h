@@ -15,8 +15,7 @@
 
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
-DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z,
-	const float xp) {
+DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z, const float xp) {
 	const float x0 = xp - xs;
 
 	// Cross product
@@ -27,13 +26,30 @@ DEVICE float compute_element_orth_3D(const float xs, const float ys, const float
 	const float y1 = zl * x0 - xl;
 	const float z1 = -yl * x0 + ys;
 #endif
-	const float normi = length(CMFLOAT3(zs, y1, z1));
-#ifdef VOL
-	return (normi / crystal_size_z);
+	const float norm1 = length(CMFLOAT3(zs, y1, z1));
+#ifdef SPECT
+    const float norm2 = length(CMFLOAT3(x0, yl, zl));
+    const float d = norm1 / norm2;
+    return d;
 #else
-	return (1.f - normi / crystal_size_z);
+#ifdef VOL
+	return (norm1 / crystal_size_z);
+#else
+	return (1.f - (norm1 / crystal_size_z));
+#endif
 #endif
 }
+
+#ifdef SPECT
+DEVICE float compute_element_parallel_3D(const float v0x, const float v0y, const float v0z, const float v1x, const float v1y, const float v1z, const float px, const float py, const float pz) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v1x for example is detectors.xd-detectors.xs
+    const float dot1 = v1x*(px-v0x)+v1y*(py-v0y)+v1z*(pz-v0z); // v1 * (p-v0)
+    const float dot2 = v1x*v1x+v1y*v1y+v1z*v1z; // v1 * v1
+    const float t = 1.f - dot1 / dot2; // 1-t as SPECT collimator response is measured from the collimator-detector interface
+    const float rayLength = length(CMFLOAT3(v1x, v1y, v1z));
+    return (t * rayLength); 
+}
+#endif
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer
 DEVICE LONG compute_ind_orth_3D(const uint tempi, const uint tempijk, const int tempk, const uint d_N, const uint Nyx) {
@@ -68,8 +84,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, const int ii, IMAGE2D maskBP
 #endif
 #else
-	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
+, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
 #endif
+#endif
+#ifdef SPECT
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY, const float s1, const float sZ, const float diff2, const float center1, const float centerZ
 #endif
 ) {
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES)
@@ -79,7 +98,17 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		else
 			ind = CMINT3(uu, tempi, zz);
 #endif
+#ifdef SPECT
+    float d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
+    float d_parallel = compute_element_parallel_3D(s1, s2, sZ, diff1, diff2, diffZ, center1, center2, centerZ);
+    if (d_parallel < 0) { // Voxel behind detector
+        return true;
+    }
+    float CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)) / (2.f*sqrt(2.f*log(2.f)));
+    float local_ele = normPDF(d_orth, 0.f, CORstd);
+#else
 	float local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
+#endif
 #ifdef VOL
 	if (local_ele >= bmax) {
 		return true;
@@ -89,7 +118,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	else
 		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
 #else
+#ifdef SPECT
+    if (local_ele <= normPDF(3*CORstd, 0.f, CORstd)) {
+#else
 	if (local_ele <= THR) {
+#endif
 		return true;
 	}
 #endif
@@ -155,7 +188,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	return false;
 }
  
-// Both the orthogonal and volumme of intersection ray tracers loop through all the neighboring voxels of the current voxel
+// Both the orthogonal and volume of intersection ray tracers loop through all the neighboring voxels of the current voxel
 // Both also proceed through each X or Y slice, depending on the incident direction
 // This function simply loops through each X or Y voxel and Z voxels in the current slice
 // Forward or backward projection is computed in the helper function
@@ -188,6 +221,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #else
 	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
 #endif
+#endif
+#ifdef SPECT
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
 #endif
 ) {
 	int uu = 0;
@@ -240,6 +276,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
 #endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+#endif
 			);
 #ifdef CRYSTXY
 			if (breikki) {
@@ -269,6 +308,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 			if (breikki) {
@@ -313,6 +355,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
 #endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
+#endif
 			);
 #ifdef CRYSTXY
 			if (breikki) {
@@ -342,6 +387,9 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 #if defined(MASKBP) && defined(BP)
 				, ii, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, s1, sZ, diff1, center1, centerZ
 #endif
 			);
 			if (breikki) {

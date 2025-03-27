@@ -2058,6 +2058,9 @@ public:
 			if (inputScalars.SPECT) {
 				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsDetector));
 				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsSource));
+                getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffA));
+                getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffB));
+                getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.coneOfResponseStdCoeffC));
 			}
 
 			getErrorString(kernelFP.setArg(kernelIndFP++, dPitch));
@@ -2090,6 +2093,9 @@ public:
 			if (inputScalars.SPECT) {
 				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsDetector));
 				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsSource));
+                getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffA));
+                getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffB));
+                getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.coneOfResponseStdCoeffC));
 			}
 			getErrorString(kernelBP.setArg(kernelIndBP++, dPitch));
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {

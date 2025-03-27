@@ -83,6 +83,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(SPECT)
 	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
 	const CLGLOBAL float* CLRESTRICT d_rayShiftsSource,
+    const float coneOfResponseStdCoeffA,
+    const float coneOfResponseStdCoeffB,
+    const float coneOfResponseStdCoeffC,
 #endif
 #ifdef PYTHON
 	const float crystalSizeX, const float crystalSizeY, 
@@ -261,7 +264,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef USEIMAGES
 #ifdef CUDA
 #ifdef MASKFP3D
-	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y. i.z);
+	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
 #else
 	const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
 #endif
@@ -652,6 +655,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
 				);
 #else //////////////// SIDDON ////////////////
@@ -1179,6 +1185,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1205,6 +1214,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1231,6 +1243,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP) //////////////// MASKBP ////////////////
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
 				);
 			}
 #else //////////////// SIDDON ////////////////
@@ -1351,6 +1366,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
 #endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
 				);
 				if (uu == 0)
 					break;
@@ -1376,6 +1394,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #if defined(MASKBP) && defined(BP)
 				, aa, maskBP
+#endif
+#ifdef SPECT
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
 				);
 				if (uu == 0)
