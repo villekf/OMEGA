@@ -1707,7 +1707,7 @@ class projectorClass:
                     bOpt += ('-DCRYSTXY',)
                 if self.orthAxial:
                     bOpt += ('-DCRYSTZ',)
-                with open(headerDir + 'opencl_functions_orth3d.h') as f:
+                with open(headerDir + 'opencl_functions_orth3D.h') as f:
                     hlines2 = f.read()
                 if self.FPType in [2, 3]:
                     linesFP = hlines + hlines2 + linesFP
@@ -1726,6 +1726,8 @@ class projectorClass:
                 bOpt += ('-DMASKFP',)
             if self.useMaskBP:
                 bOpt += ('-DMASKBP',)
+            if self.useTotLength and not self.SPECT:
+                bOpt += ('-DTOTLENGTH',)
             if self.OffsetLimit.size > 0:
                 bOpt += ('-DOFFSET',)
             if self.attenuation_correction and self.CTAttenuation:
