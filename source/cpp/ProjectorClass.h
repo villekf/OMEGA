@@ -1277,7 +1277,7 @@ public:
 				return -1;
 			}
 		}
-		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic) {
+		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
 				if (status != 0) {
@@ -4504,8 +4504,13 @@ public:
 			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
 			mexEval();
 		}
-		kernelRotate.setArg(kernelIndRot++, d_rhs);
-		kernelRotate.setArg(kernelIndRot++, d_im);
+        
+        kernelRotate.setArg(kernelIndRot++, d_rhs);
+        if (!inputScalars.useBuffers) {
+            kernelRotate.setArg(kernelIndRot++, d_inputI);
+        } else {
+            kernelRotate.setArg(kernelIndRot++, d_im);
+        }
 		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[0]);
 		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[1]);
 		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[2]);

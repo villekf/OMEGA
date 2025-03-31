@@ -1265,7 +1265,23 @@ inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct&
 
 inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angle, const int ii = 0) {
 	int status = 0;
-	proj.d_im = transferAF(im);
+    if (!inputScalars.useBuffers) {
+#if defined(CUDA)
+		CUdeviceptr* input = im.device<CUdeviceptr>();
+		status = proj.transferTex(inputScalars, input);
+#elif defined(OPENCL)
+        status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
+        if (status != 0) {
+			getErrorString(status);
+			im.unlock();
+			mexPrint("Failed to copy rotation image\n");
+			return -1;
+		}
+#endif
+    } else {
+        proj.d_im = transferAF(im);
+    }
+	
 	proj.d_rhs = transferAF(imrot);
 	const float cosa = std::cos(-angle);
 	const float sina = std::sin(-angle);

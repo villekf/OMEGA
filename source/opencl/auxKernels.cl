@@ -1936,9 +1936,21 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 
 
 #ifdef ROTATE
+#if defined(USEIMAGES) && defined(OPENCL)
+CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
+#endif
+
 KERNEL
 // Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
-void rotate(CLGLOBAL float* CLRESTRICT rotim, const CLGLOBAL float* CLRESTRICT im, const int Nx, const int Ny, const int Nz, const float cosa, const float sina) {
+void rotate(
+    CLGLOBAL float* CLRESTRICT rotim
+#ifdef USEIMAGES
+    , IMAGE3D im
+#else
+    , const CLGLOBAL float* CLRESTRICT im
+#endif
+    , const int Nx, const int Ny, const int Nz, const float cosa, const float sina
+) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 	if (xyz.x >= Nx || xyz.y >= Ny || xyz.z >= Nz)
 		return;
@@ -1951,6 +1963,14 @@ void rotate(CLGLOBAL float* CLRESTRICT rotim, const CLGLOBAL float* CLRESTRICT i
     const float src_y = (xA * sina + yA * cosa + Ny/2) - 0.5f;
 
     if (src_x >= 0.0f && src_x < Nx && src_y >= 0.0f && src_y < Ny) {
+        float val = 0.f;
+#ifdef USEIMAGES
+#if defined(CUDA)
+        val = tex3D<float>(im, src_x, src_y, xyz.z);
+#elif defined(OPENCL)
+        val = read_imagef(im, samplerRotate, (int4)(src_x, src_y, xyz.z, 0)).w;
+#endif
+#else
         // BILINEAR INTERPOLATION
         const int src_x0 = (int)(src_x);
         const int src_x1 = (src_x0 + 1);
@@ -1965,12 +1985,11 @@ void rotate(CLGLOBAL float* CLRESTRICT rotim, const CLGLOBAL float* CLRESTRICT i
         const int idx_src01 = min(max(0, src_x0 + src_y1 * Nx), (Nx * Ny) - 1);
         const int idx_src11 = min(max(0, src_x1 + src_y1 * Nx), (Nx * Ny) - 1);
 
-		float val = 0.f;
-
         val  = (1.0f - sx) * (1.0f - sy) * im[idx_src00 + xyz.z * Nx * Ny];
         val += (       sx) * (1.0f - sy) * im[idx_src10 + xyz.z * Nx * Ny];
         val += (1.0f - sx) * (       sy) * im[idx_src01 + xyz.z * Nx * Ny];
         val += (       sx) * (       sy) * im[idx_src11 + xyz.z * Nx * Ny];
+#endif
 		rotim[n] = val;
     } 
 	else {

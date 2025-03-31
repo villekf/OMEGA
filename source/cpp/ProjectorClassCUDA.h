@@ -4618,7 +4618,11 @@ public:
 			mexEval();
 		}
 		kArgs.emplace_back(reinterpret_cast<void*>(&d_rhs));
-		kArgs.emplace_back(reinterpret_cast<void*>(&d_im));
+        if (inputScalars.useImages) {
+            kArgs.emplace_back(&d_inputI);
+        } else {
+            kArgs.emplace_back(reinterpret_cast<void*>(&d_im));
+        }
 		kArgs.emplace_back(&d_N[ii].x);
 		kArgs.emplace_back(&d_N[ii].y);
 		kArgs.emplace_back(&d_N[ii].z);
@@ -4638,6 +4642,13 @@ public:
 			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
 			return -1;
 		}
+        if (inputScalars.useImages) {
+			status = cuTexObjectDestroy(d_inputI);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+            }
+        }
+
 		if (inputScalars.verbose >= 3)
 			mexPrint("CUDA bilinear image rotation computed");
 		return 0;
