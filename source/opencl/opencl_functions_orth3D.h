@@ -81,7 +81,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
 	float local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
 #ifdef VOL
-	if (local_ele >= bmax) {
+	if (local_ele > bmax) {
 		return true;
 	}
 	if (local_ele < bmin)
@@ -163,7 +163,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	const float center1, const float b2, const float d2, const float bz, const float dz, const float temp, int temp2, const int tempk, 
 	const float s1, const float s2, const float sZ, const uint d_Nxy, const float kerroin,
 	const uint d_N1, const uint d_N2, const uint d_N3, const uint d_Nz, const float bmin, 
-	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, 
+	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const bool preStep, int* k, const int ku, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -204,7 +204,8 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	const int minimiXY = 0;
 	int uu1 = 0, uu2 = 0;
 #ifdef CRYSTZ
-	for (int zz = tempk; zz < maksimiZ; zz++) {
+	int zz = tempk;
+	for (zz = tempk; zz < maksimiZ; zz++) {
 #else
 	int zz = tempk;
 #endif
@@ -283,7 +284,8 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 		break;
 	}
-	for (int zz = tempk - 1; zz >= minimiZ; zz--) {
+	*k = zz - 1;
+	for (zz = tempk - 1; zz >= minimiZ; zz--) {
 		const float centerZ = bz + CFLOAT(zz) * dz + dz / 2.f;
 		const float z0 = centerZ - sZ;
 		const float l1 = diff2 * z0 - apu1;
@@ -354,6 +356,12 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 		if (uu1 == temp2 && uu2 == temp2 - 1 && breikki)
 			break;
+	}
+	if (preStep) {
+		if (ku < 0)
+			*k = max(*k, zz) - 1;
+		else
+			*k = min(*k, zz) + 1;
 	}
 #endif
 	return uu;

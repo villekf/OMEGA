@@ -91,6 +91,7 @@
 #define FLOOR floor
 #define CEIL ceil
 #define ATAN2 atan2
+#define ACOS acos
 #define LOG native_log
 #define CLAMP3(a, b, c) clamp(a, b, c)
 #define CINT(a) convert_int(a)
@@ -208,6 +209,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define FLOOR floorf
 #define CEIL ceilf
 #define ATAN2 atan2f
+#define ACOS acosf
 #define SQRT sqrtf
 #define LOG logf
 
@@ -1179,12 +1181,15 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*tx0 = t0.x;
 	*ty0 = t0.y;
 	*tz0 = t0.z;
-// #ifdef ORTH
-// 	if (*tc == *tx0 || *tc == tBack.x)
-// 		*xy = true;
-// 	else
-// 		*xy = false;
-// #endif
+#ifdef ORTH
+	const float pituus = d.x - s.x;
+	const float pituusY = d.y - s.y;
+	const float angle = fabs(ACOS((pituus) / SQRT(pituus * pituus + pituusY * pituusY)));
+	if ((angle < 0.785398f && angle > 0.f) || (angle > 2.35619f && angle < 3.92699f) || (angle > 5.497787f))
+		*xy = true;
+	else
+		*xy = false;
+#endif
 
 	uint imin, imax, jmin, jmax, kmin, kmax;
 
@@ -1220,12 +1225,6 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*txu = dd.x / fabs(diff.x);
 	*tyu = dd.y / fabs(diff.y);
 	*tzu = dd.z / fabs(diff.z);
-#ifdef ORTH
-	if (imin < jmin && imax > jmax)
-		*xy = true;
-	else
-		*xy = false;
-#endif
 
 	return false;
 }
