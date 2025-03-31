@@ -4647,6 +4647,10 @@ public:
 			if (status != CUDA_SUCCESS) {
 				getErrorString(status);
             }
+            status = cuArrayDestroy(imArray);
+			if (status != CUDA_SUCCESS) {
+				getErrorString(status);
+			}
         }
 
 		if (inputScalars.verbose >= 3)
