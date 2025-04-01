@@ -1396,10 +1396,10 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 #ifndef CPU
 		kuvaRot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
         /* apuFP = imtranslate(apuFP, [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate FP */
-		rotateCustomAF(kuvaRot, apuArr, inputScalars, proj, -w_vec.angles[u1]*M_PI/180., ii);
+		rotateCustomAF(kuvaRot, apuArr, inputScalars, proj, (180-w_vec.angles[u1])*M_PI/180., ii);
 #else
         /* apuFP = imtranslate(apuFP, [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate FP */
-		kuvaRot = af::rotate(apuArr, -w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+		kuvaRot = af::rotate(apuArr, (180-w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
 		kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
 		if (DEBUG)
@@ -1411,11 +1411,11 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 #ifndef CPU
 			af::array attn = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
             /* attenuationImage = imtranslate(attenuationImage,  [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate attenuation image */
-			rotateCustomAF(attn, attenuationImage, inputScalars, proj, -w_vec.angles[u1]*M_PI/180., ii);
+			rotateCustomAF(attn, attenuationImage, inputScalars, proj, (180-w_vec.angles[u1])*M_PI/180., ii);
 			attenuationImage = attn.copy();
 #else
             /* attenuationImage = imtranslate(attenuationImage,  [-P0(1); P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate attenuation image */
-			attenuationImage = af::rotate(attenuationImage, -w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+			attenuationImage = af::rotate(attenuationImage, (180-w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
 			attenuationImage = af::accum(attenuationImage, 0);
 			attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
@@ -1471,11 +1471,11 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 		apuBP(af::seq(w_vec.distInt[u1], af::end), af::span, af::span) = kuvaRot.copy();
 #ifndef CPU
 		kuvaRot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-		rotateCustomAF(kuvaRot, apuBP, inputScalars, proj, w_vec.angles[u1]*M_PI/180., ii);
+		rotateCustomAF(kuvaRot, apuBP, inputScalars, proj, (180+w_vec.angles[u1])*M_PI/180., ii);
 		apuBP = kuvaRot.copy();
 		//apuBP = af::rotate(apuBP, w_vec.angles[u1]);
 #else
-		apuBP = af::rotate(apuBP, w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+		apuBP = af::rotate(apuBP, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
         /* P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector normal */
         /* apuBP = imtranslate(apuBP, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the BP volume */
@@ -1487,11 +1487,11 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 			af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
 #ifndef CPU
 			kuvaRot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-			rotateCustomAF(kuvaRot, attenuationImage, inputScalars, proj, w_vec.angles[u1]*M_PI/180., ii);
+			rotateCustomAF(kuvaRot, attenuationImage, inputScalars, proj, (180+w_vec.angles[u1])*M_PI/180., ii);
 			attenuationImage = kuvaRot.copy();
 			//attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1]);
 #else
-			attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+			attenuationImage = af::rotate(attenuationImage, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
             /* attenuationImage = imtranslate(attenuationImage, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the attenuation image*/
 			attenuationImage = af::accum(attenuationImage, 0);
@@ -1532,21 +1532,21 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 			apuSumm(af::seq(w_vec.distInt[u1], af::end), af::span, af::span) = kuvaRot.copy();
 #ifndef CPU
 			kuvaRot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-			rotateCustomAF(kuvaRot, apuSumm, inputScalars, proj, w_vec.angles[u1]*M_PI/180., ii);
+			rotateCustomAF(kuvaRot, apuSumm, inputScalars, proj, (180+w_vec.angles[u1])*M_PI/180., ii);
 			apuSumm = kuvaRot.copy();
 			//apuSumm = af::rotate(apuSumm, w_vec.angles[u1]);
 #else
-			apuSumm = af::rotate(apuSumm, w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+			apuSumm = af::rotate(apuSumm, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
 			if (inputScalars.attenuation_correction && (atten != nullptr)) {
 				af::array attenuationImage = af::array(inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], atten);
 #ifndef CPU
 				kuvaRot = af::constant(0.f, inputScalars.Nx[ii], inputScalars.Ny[ii], inputScalars.Nz[ii]);
-				rotateCustomAF(kuvaRot, attenuationImage, inputScalars, proj, w_vec.angles[u1]*M_PI/180., ii);
+				rotateCustomAF(kuvaRot, attenuationImage, inputScalars, proj, (180+w_vec.angles[u1])*M_PI/180., ii);
 				attenuationImage = kuvaRot.copy();
 				//attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1]);
 #else
-				attenuationImage = af::rotate(attenuationImage, w_vec.angles[u1]*M_PI/180., true, AF_INTERP_BILINEAR);
+				attenuationImage = af::rotate(attenuationImage, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
 				attenuationImage = af::accum(attenuationImage, 0);
 				attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
