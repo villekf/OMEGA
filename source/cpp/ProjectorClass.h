@@ -49,10 +49,7 @@ class ProjectorClass {
 		// Get the number of platforms 
 		std::vector<cl::Platform> platforms;
 		status = cl::Platform::get(&platforms);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return status;
-		}
+        OCL_CHECK(status, "\n", status);
 		if (DEBUG) {
 			mexPrintBase("platforms.size() = %u\n", platforms.size());
 			mexEval();
@@ -79,17 +76,11 @@ class ProjectorClass {
 		// Create context from the chosen platform
 		// If a single device was selected (options.cpu_to_gpu_factor = 0), use GPU if possible
 		context = cl::Context(CL_DEVICE_TYPE_ALL, properties, NULL, NULL, &status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return status;
-		}
+		OCL_CHECK(status, "\n", status);
 		// Get device IDs
 		std::vector<cl::Device> devices2;
 		status = context.getInfo(CL_CONTEXT_DEVICES, &devices2);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return status;
-		}
+		OCL_CHECK(status, "\n", status);
 		devices.push_back(devices2[usedDevices[0]]);
 		if (DEBUG) {
 			mexPrintBase("devices.size() = %u\n", devices.size());
@@ -100,10 +91,7 @@ class ProjectorClass {
 		// Enable out of order execution (devices can compute kernels at the same time)
 		for (size_t i = 0; i < devices.size(); i++) {
 			commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return status;
-			}
+			OCL_CHECK(status, "\n", status);
 		}
 		if (DEBUG) {
 			mexPrintBase("commandQueues.size() = %u\n", commandQueues.size());
@@ -700,12 +688,8 @@ class ProjectorClass {
 		if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
 			if (inputScalars.FPType == 4) {
 				kernelFP = cl::Kernel(programFP, "projectorType4Forward", &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					mexPrint("Failed to create projector type 4 FP kernel\n");
-					return -1;
-				}
-				else if (DEBUG || inputScalars.verbose >= 2) {
+                OCL_CHECK(status, "Failed to create projector type 4 FP kernel\n", -1);
+				if (DEBUG || inputScalars.verbose >= 2) {
 					mexPrint("OpenCL kernel for projector type 4 FP successfully created\n");
 				}
 			}
@@ -716,12 +700,8 @@ class ProjectorClass {
 					kernelBP = cl::Kernel(programBP, "projectorType4Forward", &status);
 				else
 					kernelBP = cl::Kernel(programBP, "projectorType4Backward", &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					mexPrint("Failed to create projector type 4 BP kernel\n");
-					return -1;
-				}
-				else if (DEBUG || inputScalars.verbose >= 2) {
+                OCL_CHECK(status, "Failed to create projector type 4 BP kernel\n", -1);
+				if (DEBUG || inputScalars.verbose >= 2) {
 					mexPrint("OpenCL kernel for projector type 4 BP successfully created\n");
 				}
 			}
@@ -729,12 +709,8 @@ class ProjectorClass {
 		if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 			if (inputScalars.FPType == 5) {
 				kernelFP = cl::Kernel(programFP, "projectorType5Forward", &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					mexPrint("Failed to create projector type 5 FP kernel\n");
-					return -1;
-				}
-				else if (DEBUG || inputScalars.verbose >= 2) {
+                OCL_CHECK(status, "Failed to create projector type 5 FP kernel\n", -1);
+				if (DEBUG || inputScalars.verbose >= 2) {
 					mexPrint("OpenCL kernel for projector type 5 FP successfully created\n");
 				}
 			}
@@ -743,12 +719,8 @@ class ProjectorClass {
 					kernelBP = cl::Kernel(programFP, "projectorType5Backward", &status);
 				else //if (inputScalars.BPType == 5)
 					kernelBP = cl::Kernel(programBP, "projectorType5Backward", &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					mexPrint("Failed to create projector type 5 BP kernel\n");
-					return -1;
-				}
-				else if (DEBUG || inputScalars.verbose >= 2) {
+                OCL_CHECK(status, "Failed to create projector type 5 BP kernel\n", -1);
+				if (DEBUG || inputScalars.verbose >= 2) {
 					mexPrint("OpenCL kernel for projector type 5 BP successfully created\n");
 				}
 			}
@@ -758,110 +730,65 @@ class ProjectorClass {
 				kernelFP = cl::Kernel(programFP, "projectorType123", &status);
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
 				kernelBP = cl::Kernel(programBP, "projectorType123", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create OS-methods kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create OS-methods kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("OpenCL kernel successfully created\n");
 			}
 		}
 
 		if (MethodList.NLM) {
 			kernelNLM = cl::Kernel(programAux, "NLM", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create NLM kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create NLM kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.MRP) {
 			kernelMed = cl::Kernel(programAux, "medianFilter3D", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create Median kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create Median kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Median kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
 			kernelRDP = cl::Kernel(programAux, "RDPKernel", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create RDP kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create RDP kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("RDP kernel successfully created\n");
 			}
 		}
 		if (MethodList.GGMRF) {
 			kernelGGMRF = cl::Kernel(programAux, "GGMRFKernel", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create GGMRF kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create GGMRF kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
 		if (MethodList.TV || MethodList.APLS) {
 			kernelTV = cl::Kernel(programAux, "TVKernel", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create TV kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create TV kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.hyperbolic) {
 			kernelHyper = cl::Kernel(programAux, "hyperbolicKernel", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create hyperbolic prior kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create hyperbolic prior kernel\n", -1);
+		    if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
 		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			kernelPoisson = cl::Kernel(programAux, "PoissonUpdate", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create Poisson Update kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create Poisson Update kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
 		if (MethodList.CPType) {
 			kernelPDHG = cl::Kernel(programAux, "PDHGUpdate", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create PDHG Update kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create PDHG Update kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
@@ -869,13 +796,8 @@ class ProjectorClass {
 			kernelProxTVq = cl::Kernel(programAux, "ProxTVq", &status);
 			kernelProxTVDiv = cl::Kernel(programAux, "ProxTVDivergence", &status);
 			kernelProxTVGrad = cl::Kernel(programAux, "ProxTVGradient", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create CPTV kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create CPTV kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("CPTV kernel successfully created\n");
 			}
 		}
@@ -883,13 +805,8 @@ class ProjectorClass {
 			kernelProxq = cl::Kernel(programAux, "Proxq", &status);
 			kernelProxRDP = cl::Kernel(programAux, "ProxRDP", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create proximal RDP kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create proximal RDP kernel\n", -1);
+            if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Proximal RDP kernel successfully created\n");
 			}
 		}
@@ -897,13 +814,8 @@ class ProjectorClass {
 			kernelProxq = cl::Kernel(programAux, "Proxq", &status);
 			kernelProxNLM = cl::Kernel(programAux, "ProxNLM", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create proximal NLM kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create proximal NLM kernel\n", -1);
+            if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Proximal NLM kernel successfully created\n");
 			}
 		}
@@ -914,62 +826,35 @@ class ProjectorClass {
 			kernelProxTVGrad = cl::Kernel(programAux, "ProxTVGradient", &status);
 			kernelProxTGVDiv = cl::Kernel(programAux, "ProxTGVDivergence", &status);
 			kernelProxTGVSymmDeriv = cl::Kernel(programAux, "ProxTGVSymmDeriv", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create CPTGV kernel\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create CPTGV kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("CPTGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 			kernelElementMultiply = cl::Kernel(programAux, "vectorElementMultiply", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create element-wise kernels\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create element-wise multiplication kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 			kernelElementDivision = cl::Kernel(programAux, "vectorElementDivision", &status);
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create element-wise kernels\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create element-wise division kernel\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 		}
 		if (type == 0) {
 			kernelsumma = cl::Kernel(programAux, "summa", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create implementation 3 kernels\n");
-				return -1;
-			}
+            OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
 			kernelEstimate = cl::Kernel(programAux, "computeEstimate", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create implementation 3 kernels\n");
-				return -1;
-			}
+			OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
 			kernelForward = cl::Kernel(programAux, "forward", &status);
 			if (inputScalars.use_psf) {
 				kernelPSFf = cl::Kernel(programAux, "Convolution3D_f", &status);
 				kernelPSF = cl::Kernel(programAux, "Convolution3D", &status);
 			}
-
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create implementation 3 kernels\n");
-				return -1;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
+            OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
+			if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Implementation 3 kernels successfully created\n");
 			}
 		}
@@ -988,19 +873,11 @@ class ProjectorClass {
 				kernelSensList = cl::Kernel(programSens, "projectorType4Forward", &status);
 			else
 				kernelSensList = cl::Kernel(programSens, "projectorType123", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create sensitivity image kernels\n");
-				return -1;
-			}
+            OCL_CHECK(status, "Failed to create sensitivity image kernels\n", -1);
 		}
 		if (inputScalars.projector_type == 6) {
 			kernelRotate = cl::Kernel(programAux, "rotate", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create bilinear rotation kernel\n");
-				return -1;
-			}
+            OCL_CHECK(status, "Failed to create bilinear rotation kernel\n", -1);
 		}
 		return status;
 	}
@@ -1098,10 +975,7 @@ public:
 #ifdef AF
 		CLContext = afcl::getContext(true);
 		std::vector<cl::Device> devices = CLContext.getInfo<CL_CONTEXT_DEVICES>(&status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+        OCL_CHECK(status, "\n", -1);
 		CLDeviceID.push_back(devices[0]);
 		CLCommandQueue.push_back(cl::CommandQueue(afcl::getQueue(true), true));
 #else
@@ -1130,20 +1004,14 @@ public:
 		cl::Program programFP, programBP, programAux, programSens;
 
 		status = createProgram(CLContext, CLDeviceID[0], programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
-		if (status != CL_SUCCESS) {
-			std::cerr << "Error while creating program" << std::endl;
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 2) {
+        OCL_CHECK(status, "Error while creating program\n", -1);
+		if (DEBUG || inputScalars.verbose >= 2) {
 			mexPrint("OpenCL programs successfully created\n");
 		}
 
 		status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, programFP, programBP, programAux, programSens, MethodList, w_vec, inputScalars, type);
-		if (status != CL_SUCCESS) {
-			mexPrint("Failed to create kernels\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 2) {
+        OCL_CHECK(status, "Failed to create kernels\n", -1);
+		if (DEBUG || inputScalars.verbose >= 2) {
 			mexPrint("OpenCL kernels successfully created\n");
 		}
 		format.image_channel_order = CL_A;
@@ -1272,38 +1140,24 @@ public:
 				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
 			else
 				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
-				if (status != 0) {
-					getErrorString(status);
-					mexPrint("Failed to create prior image\n");
-					return -1;
-				}
+                OCL_CHECK(status, "Failed to create prior image\n", -1);
 			}
 		}
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
 				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
-				if (status != 0) {
-					getErrorString(status);
-					mexPrint("Failed to create RDP reference image\n");
-					return -1;
-				}
+				OCL_CHECK(status, "Failed to create RDP reference image\n", -1);
 			}
 		}
 		// Create the necessary buffers
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
 			imX = inputScalars.Nx[0];
@@ -1319,26 +1173,17 @@ public:
 				d_maskPrior3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
 			else
 				d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1)
@@ -1346,10 +1191,7 @@ public:
 				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x / 2, NULL, &status));
 				else
 					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
@@ -1358,10 +1200,7 @@ public:
 					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 				else
 					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
@@ -1404,54 +1243,33 @@ public:
 							d_maskBP = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
 					}
 				}
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.SPECT) {
 				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.eFOV) {
 				d_eFOVIndices = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0], NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				d_angle = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			// TOF bin centers
 			if (inputScalars.TOF) {
 				d_TOFCenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1)
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
 				else
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (DEBUG) {
@@ -1465,10 +1283,7 @@ public:
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					else
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 				}
 				else {
 					if (inputScalars.PET && inputScalars.listmode == 0)
@@ -1480,99 +1295,58 @@ public:
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
 					else
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
 						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
 					d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
 				if (inputScalars.raw && inputScalars.listmode != 1) {
 					d_L[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
 					d_xyindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint32_t) * length[kk], NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					d_zindex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk], NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
 						d_trIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 						d_axIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length[kk] * 2, NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 					}
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
 						d_TOFIndex[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length[kk], NULL, &status);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 					}
 				}
 			}
 		}
-
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Buffer creation failed\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+        OCL_CHECK(status, "Buffer creation failed\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
 		}
 
@@ -1580,10 +1354,7 @@ public:
 		// assign values to the buffers
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
 		}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
@@ -1626,10 +1397,7 @@ public:
 					}
 					else
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskFP, CL_FALSE, origin, region, 0, 0, w_vec.maskFP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(bool) * inputScalars.nRowsD * inputScalars.nColsD) / 1048576ULL;
 				}
 				if (inputScalars.maskBP) {
@@ -1646,10 +1414,7 @@ public:
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP3, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
 					else
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
 				}
 			}
@@ -1662,54 +1427,33 @@ public:
 					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior3, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
 				else
 					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
 			}
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_V, CL_FALSE, 0, sizeof(float) * inputScalars.size_V, inputScalars.V);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
 			}
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * inputScalars.size_of_x) / 1048576ULL;
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				else {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 			}
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
@@ -1721,55 +1465,34 @@ public:
 					region[1] = inputScalars.Ny[0];
 					region[2] = inputScalars.Nz[0];
 					status = CLCommandQueue[0].enqueueWriteImage(d_attenIm, CL_FALSE, origin, region, 0, 0, atten);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_angle, CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, w_vec.angles);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * inputScalars.nProjections) / 1048576ULL;
 			}
 			if (inputScalars.TOF) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFCenter, CL_FALSE, 0, sizeof(float) * inputScalars.nBins, inputScalars.TOFCenter);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * inputScalars.nBins) / 1048576ULL;
 			}
 			status = CLCommandQueue[0].finish();
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.eFOV) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_eFOVIndices, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
 			}
 			if (inputScalars.SPECT) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsDetector);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsSource);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -1778,10 +1501,7 @@ public:
 					if (inputScalars.pitch)
 						kerroin = 6;
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
 				}
 				else {
@@ -1796,109 +1516,67 @@ public:
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
 						memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
 					}
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
 				}
 				else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_T[kk], CL_FALSE, 0, sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.raw) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_L[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &L[pituus[kk] * 2]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 				}
 				else if (inputScalars.listmode != 1 && ((!inputScalars.CT && !inputScalars.SPECT && !inputScalars.PET) && (inputScalars.subsets > 1 && (inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7)))) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_zindex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk], &z_index[pituus[kk]]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_xyindex[kk], CL_FALSE, 0, sizeof(uint32_t) * length[kk], &xy_index[pituus[kk]]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(uint32_t) * length[kk] + sizeof(uint16_t) * length[kk]) / 1048576ULL;
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.trIndex[pituus[kk] * 2]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[kk], CL_FALSE, 0, sizeof(uint16_t) * length[kk] * 2, &w_vec.axIndex[pituus[kk] * 2]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 						memSize += (sizeof(uint16_t) * length[kk] * 2) / 1048576ULL;
 					}
 				}
 				if (inputScalars.listmode > 0 && inputScalars.TOF) {
 					if (inputScalars.loadTOF || (kk == 0 && !inputScalars.loadTOF)) {
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[kk], CL_FALSE, 0, sizeof(uint8_t) * length[kk], &w_vec.TOFIndices[pituus[kk]]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 						memSize += (sizeof(uint8_t) * length[kk]) / 1048576ULL;
 					}
 				}
 				status = CLCommandQueue[0].finish();
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_atten[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (DEBUG) {
@@ -1914,19 +1592,11 @@ public:
 					mexEval();
 				}
 				status = CLCommandQueue[0].finish();
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 		}
-
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Buffer write failed\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+        OCL_CHECK(status, "Buffer write failed\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer write succeeded\n");
 		}
 		return 0;
@@ -2008,10 +1678,7 @@ public:
 			kernelFP.setArg(kernelIndFP++, inputScalars.nRowsD);
 			kernelFP.setArg(kernelIndFP++, inputScalars.nColsD);
 			status = kernelFP.setArg(kernelIndFP++, dPitch);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 
 		if (inputScalars.BPType == 4 || inputScalars.BPType == 5) {
@@ -2027,18 +1694,12 @@ public:
 		if (inputScalars.FPType == 4) {
 			kernelFP.setArg(kernelIndFP++, inputScalars.dL);
 			status = kernelFP.setArg(kernelIndFP++, inputScalars.global_factor);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.BPType == 4 && !inputScalars.CT) {
 			kernelBP.setArg(kernelIndBP++, inputScalars.dL);
 			status = kernelBP.setArg(kernelIndBP++, inputScalars.global_factor);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				kernelSensList.setArg(kernelIndSens++, inputScalars.dL);
 				status = kernelSensList.setArg(kernelIndSens++, inputScalars.global_factor);
@@ -2047,10 +1708,7 @@ public:
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			// Set the kernelFP parameters that do not change
 			status = kernelFP.setArg(kernelIndFP++, inputScalars.global_factor);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.epps));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.nRowsD));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.det_per_ring));
@@ -2075,17 +1733,11 @@ public:
 				getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.bmax));
 				getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.Vmax));
 			}
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			status = kernelBP.setArg(kernelIndBP++, inputScalars.global_factor);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.epps));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.det_per_ring));
@@ -2111,10 +1763,7 @@ public:
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				status = kernelSensList.setArg(kernelIndSens++, inputScalars.global_factor);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.epps);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.nRowsD);
 				kernelSensList.setArg(kernelIndSens++, inputScalars.det_per_ring);
@@ -2142,15 +1791,9 @@ public:
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				status = kernelFP.setArg(kernelIndFP++, d_V);
 			}
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFP++, inputScalars.nColsD);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			if (inputScalars.TOF)
@@ -2159,10 +1802,7 @@ public:
 				kernelBP.setArg(kernelIndBP++, d_V);
 			}
 			status = kernelBP.setArg(kernelIndBP++, inputScalars.nColsD);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.TOF)
 					kernelSensList.setArg(kernelIndSens++, d_TOFCenter);
@@ -2170,10 +1810,7 @@ public:
 					kernelSensList.setArg(kernelIndSens++, d_V);
 				}
 				status = kernelSensList.setArg(kernelIndSens++, inputScalars.nColsD);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 		}
 		if ((inputScalars.BPType == 4 || inputScalars.FPType == 4) && !inputScalars.CT && inputScalars.TOF) {
@@ -2214,10 +1851,7 @@ public:
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * length[kk]) / 1048576ULL;
 			}
 		}
@@ -2238,29 +1872,20 @@ public:
 					status = kernelFP.setArg(kernelIndFP++, d_attenB);
 				else
 					status = kernelFP.setArg(kernelIndFP++, d_attenIm);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
 				if (inputScalars.useBuffers)
 					status = kernelBP.setArg(kernelIndBP++, d_attenB);
 				else
 					status = kernelBP.setArg(kernelIndBP++, d_attenIm);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
 						status = kernelSensList.setArg(kernelIndSens++, d_attenB);
 					else
 						status = kernelSensList.setArg(kernelIndSens++, d_attenIm);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 				}
 			}
 		}
@@ -2271,49 +1896,25 @@ public:
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.indexBased) {
 			d_trIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			d_axIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint16_t) * length * 2, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_trIndex[0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoord);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_axIndex[0], CL_FALSE, 0, sizeof(uint16_t) * length * 2, listCoordAx);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		else {
 			d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.TOF) {
 			d_TOFIndex[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * length, NULL, &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFIndex[0], CL_FALSE, 0, sizeof(uint8_t) * length, TOFIndices);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 		}
 		return 0;
 	}
@@ -2323,10 +1924,7 @@ public:
 		cl::NDRange	globalC = { inputScalars.Nx[ii] + erotusBP[0][ii], inputScalars.Ny[ii] + erotusBP[1][ii], inputScalars.Nz[ii] };
 
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		cl_uint kernelInd = 0U;
 		kernelPSFf.setArg(kernelInd++, d_imFinal[ii]);
 		kernelPSFf.setArg(kernelInd++, d_imTemp[ii]);
@@ -2335,18 +1933,12 @@ public:
 		kernelPSFf.setArg(kernelInd++, inputScalars.g_dim_y);
 		kernelPSFf.setArg(kernelInd++, inputScalars.g_dim_z);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSFf, cl::NDRange(), globalC, localPrior, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Convolution kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Convolution computed");
 
@@ -2360,10 +1952,7 @@ public:
 
 		cl::Buffer d_BPApu = cl::Buffer(CLContext, CL_MEM_READ_WRITE, sizeof(T) * inputScalars.im_dim[ii], NULL, &status);
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		cl_uint kernelInd = 0U;
 		kernelPSF.setArg(kernelInd++, input);
 		kernelPSF.setArg(kernelInd++, d_BPApu);
@@ -2372,30 +1961,18 @@ public:
 		kernelPSF.setArg(kernelInd++, inputScalars.g_dim_y);
 		kernelPSF.setArg(kernelInd++, inputScalars.g_dim_z);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelPSF, cl::NDRange(), globalC, localPrior, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Convolution kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Convolution computed");
 		status = CLCommandQueue[0].enqueueCopyBuffer(d_BPApu, input, 0, 0, sizeof(T) * inputScalars.im_dim[ii]);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 
 		return status;
 	}
@@ -2445,18 +2022,12 @@ public:
 		if (inputScalars.randoms_correction)
 			kernelForward.setArg(kernelInd++, d_rand[osa_iter]);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelForward, cl::NDRange(), global, localF, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Forward step kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Forward step computed");
 
@@ -2480,18 +2051,12 @@ public:
 		if (inputScalars.CT)
 			kernelEstimate.setArg(kernelInd++, inputScalars.flat);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelEstimate, cl::NDRange(), global, localPrior, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Estimate step kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Estimate step computed");
 
@@ -2575,17 +2140,11 @@ public:
 		}
 
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.FPType == 4) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 		}
 		if (inputScalars.FPType == 5 || inputScalars.FPType == 4) {
@@ -2593,20 +2152,11 @@ public:
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, b[ii]));
 			if (inputScalars.FPType == 5) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, inputScalars.dSize[ii]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelFP.setArg(kernelIndFPSubIter++, d[ii]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelFP.setArg(kernelIndFPSubIter++, inputScalars.d_Scale[ii]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			else {
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, bmax[ii]));
@@ -2615,31 +2165,19 @@ public:
 		}
 		if (inputScalars.FPType == 4) {
 			status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_output);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
 					int subset = 0;
@@ -2652,10 +2190,7 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
@@ -2688,25 +2223,13 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_scat[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, no_norm);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<cl_ulong>(m_size));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, osa_iter);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, ii));
 		}
 		else if (inputScalars.FPType == 5) {
@@ -2714,36 +2237,18 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os_int);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_output);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.meanFP) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_meanFP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
@@ -2757,20 +2262,14 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
 		}
 		else if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_atten[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
@@ -2784,62 +2283,38 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			if (inputScalars.normalization_correction)
 				kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				kernelFP.setArg(kernelIndFPSubIter++, d_scat[osa_iter]);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_Summ[uu]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_N[ii]));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d[ii]));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, b[ii]));
 			status = kernelFP.setArg(kernelIndFPSubIter++, bmax[ii]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
@@ -2865,37 +2340,22 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_im);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_output));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, no_norm));
 			status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<cl_ulong>(m_size));
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, osa_iter);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, ii));
 		}
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelFP, cl::NDRange(), global, local, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Forward projection kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Forward projection completed");
 		return 0;
@@ -2976,10 +2436,7 @@ public:
 			// Set kernelBP arguments
 			if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_atten[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.maskFP) {
@@ -2994,10 +2451,7 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP3[osa_iter]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.maskBP) {
 					if (inputScalars.useBuffers)
@@ -3007,10 +2461,7 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 						if (inputScalars.useBuffers)
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
@@ -3019,25 +2470,16 @@ public:
 								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 							else
 								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+                        OCL_CHECK(status, "\n", -1);
 					}
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+            OCL_CHECK(status, "\n", -1);
 			if (compSens) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
 			}
@@ -3046,10 +2488,7 @@ public:
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
@@ -3057,10 +2496,7 @@ public:
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
 			}
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (compSens) {
 				if (inputScalars.normalization_correction)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_normFull[0]);
@@ -3073,15 +2509,9 @@ public:
 				if (inputScalars.scatter)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
 			}
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_N[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d[ii]));
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, b[ii]));
@@ -3130,24 +2560,12 @@ public:
 					}
 					cl::detail::size_t_array region = { imX, imY, imZ };
 					d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						mexPrint("Image creation failed\n");
-						return -1;
-					}
+					OCL_CHECK(status, "Image creation failed\n", -1);
 
 					status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						mexPrint("Image copy failed\n");
-						return -1;
-					}
+					OCL_CHECK(status, "Image copy failed\n", -1);
 					status = CLCommandQueue[0].finish();
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						mexPrint("Queue finish failed after image copy\n");
-						return -1;
-					}
+                    OCL_CHECK(status, "Queue finish failed after image copy\n", -1);
 				}
 				if (inputScalars.BPType == 4)
 					if (!inputScalars.largeDim)
@@ -3194,33 +2612,18 @@ public:
 				if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
 					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_N[ii]));
 					status = kernelBP.setArg(kernelIndBPSubIter++, b[ii]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d[ii]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					if (inputScalars.BPType == 5) {
 						status = kernelBP.setArg(kernelIndBPSubIter++, inputScalars.d_Scale[ii]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 						status = kernelBP.setArg(kernelIndBPSubIter++, inputScalars.dSizeBP);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 					}
 					else {
 						status = kernelBP.setArg(kernelIndBPSubIter++, w_vec.kerroin4[ii]);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 					}
 				}
 				if (inputScalars.BPType == 4) {
@@ -3228,19 +2631,13 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_output);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_inputImage);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					if (inputScalars.CT && inputScalars.DSC > 0.f) {
 						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_angle));
 						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.DSC));
 					}
 					status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					if (compSens)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
 					else
@@ -3248,23 +2645,14 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					if (compSens)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 				else {
 					if (compSens)
@@ -3274,39 +2662,21 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					if (compSens)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_inputImage);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					if (inputScalars.meanBP) {
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_meanBP);
-						if (status != CL_SUCCESS) {
-							getErrorString(status);
-							return -1;
-						}
+						OCL_CHECK(status, "\n", -1);
 					}
 				}
 			}
@@ -3356,21 +2726,12 @@ public:
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, bmax[ii]));
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.d_Scale4[ii]));
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_output);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				if (compSens) {
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
 					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings);
 					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring);
@@ -3380,10 +2741,7 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                    OCL_CHECK(status, "\n", -1);
 					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 					else if (inputScalars.indexBased && inputScalars.listmode > 0)
@@ -3391,10 +2749,7 @@ public:
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
 				}
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
@@ -3425,21 +2780,12 @@ public:
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			status = kernelBP.setArg(kernelIndBPSubIter++, no_norm);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				return -1;
-			}
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.maskBP) {
 				if (inputScalars.useBuffers)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
@@ -3448,10 +2794,7 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+                OCL_CHECK(status, "\n", -1);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
@@ -3460,41 +2803,26 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-					if (status != CL_SUCCESS) {
-						getErrorString(status);
-						return -1;
-					}
+                OCL_CHECK(status, "\n", -1);
 				}
 			}
 			if (inputScalars.CT)
 				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[osa_iter]));
 			else {
 				status = kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_ulong>(m_size));
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, osa_iter);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
+				OCL_CHECK(status, "\n", -1);
 			}
 			getErrorString(kernelBP.setArg(kernelIndBPSubIter++, ii));
 		}
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelBP, cl::NDRange(), global, local, NULL);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 		status = CLCommandQueue[0].finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
 		}
@@ -3527,16 +2855,10 @@ public:
 		int64_t mem;
 		cl_ulong mem_loc;
 		mem = CLDeviceID[0].getInfo<CL_DEVICE_GLOBAL_MEM_SIZE>(&status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 
 		mem_loc = CLDeviceID[0].getInfo<CL_DEVICE_LOCAL_MEM_SIZE>(&status);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (DEBUG) {
 			mexPrintBase("mem_loc = %u\n", mem_loc);
 		}
@@ -3579,20 +2901,12 @@ public:
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelMed.setArg(kernelIndMed++, d_eFOVIndices);
 		cl_int status = CLCommandQueue[0].enqueueNDRangeKernel(kernelMed, cl::NullRange, global_size, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Median filter kernel\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+		OCL_CHECK(status, "Failed to launch the Median filter kernel\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Median kernel launched successfully\n");
 		}
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after MRP kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL median kernel computed");
 		return 0;
@@ -3674,18 +2988,9 @@ public:
 			kernelNLM.setArg(kernelIndNLM++, d_eFOVIndices);
 		 //Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelNLM, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the NLM kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after NLM kernel\n");
-			return -1;
-		}
+		OCL_CHECK(status, "Queue finish failed after NLM kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL NLM gradient computed");
 		return 0;
@@ -3706,11 +3011,7 @@ public:
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed before RDP kernel\n");
-			return -1;
-		}
+		OCL_CHECK(status, "Queue finish failed before RDP kernel\n", -1);
 		cl_uint kernelIndRDP = 0ULL;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
@@ -3727,20 +3028,14 @@ public:
 			mexEval();
 		}
 		status = kernelRDP.setArg(kernelIndRDP++, d_W);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.useImages) {
 			status = kernelRDP.setArg(kernelIndRDP++, d_inputI);
 		}
 		else {
 			status = kernelRDP.setArg(kernelIndRDP++, d_inputB);
 		}
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		kernelRDP.setArg(kernelIndRDP++, d_N[0]);
 		kernelRDP.setArg(kernelIndRDP++, d_NOrig);
 		kernelRDP.setArg(kernelIndRDP++, gamma);
@@ -3763,18 +3058,9 @@ public:
 		}
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the RDP kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after RDP kernel\n");
-			return -1;
-		}
+		OCL_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL RDP gradient computed");
 		return 0;
@@ -3813,21 +3099,14 @@ public:
 			mexEval();
 		}
 		status = kernelGGMRF.setArg(kernelIndGGMRF++, d_W);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			return -1;
-		}
+		OCL_CHECK(status, "\n", -1);
 		if (inputScalars.useImages) {
 			status = kernelGGMRF.setArg(kernelIndGGMRF++, d_inputI);
 		}
 		else {
 			status = kernelGGMRF.setArg(kernelIndGGMRF++, d_inputB);
 		}
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to input GGMRF buffer\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Failed to input GGMRF buffer\n", -1);
 		kernelGGMRF.setArg(kernelIndGGMRF++, d_weights);
 		kernelGGMRF.setArg(kernelIndGGMRF++, d_N[0]);
 		kernelGGMRF.setArg(kernelIndGGMRF++, p);
@@ -3842,18 +3121,9 @@ public:
 				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the GGMRF kernel\n");
-			return -1;
-		}
-
+        OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after GGMRF kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL GGMRF gradient computed");
 		return 0;
@@ -3869,18 +3139,9 @@ public:
 		kernelProxq.setArg(kernelIndProxRDP++, alpha);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxq, cl::NullRange, globalQ, cl::NullRange);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal RDP helper kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after proximal RDP helper kernel\n");
-			return -1;
-		}
+		OCL_CHECK(status, "Queue finish failed after Proximal RDP helper kernel\n", -1);
 		return status;
 	}
 
@@ -3902,18 +3163,9 @@ public:
 		kernelProxTVq.setArg(kernelIndCPTV++, alpha);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVq, cl::NullRange, globalQ, cl::NullRange);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TV kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after kernel\n", -1);
 		return status;
 	}
 
@@ -3940,18 +3192,9 @@ public:
 		kernelProxTGVq.setArg(kernelIndCPTV++, alpha);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVq, cl::NullRange, globalQ, cl::NullRange);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TGV kernel\n");
-			return -1;
-		}
-
+        OCL_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after kernel\n", -1);
 		return status;
 	}
 
@@ -3998,18 +3241,9 @@ public:
 			kernelProxTVDiv.setArg(kernelIndCPTV++, d_eFOVIndices);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVDiv, cl::NullRange, globalPriorEFOV, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TV divergence kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after divergence kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TV divergence computed");
 		return 0;
@@ -4069,21 +3303,13 @@ public:
 			kernelProxTVGrad.setArg(kernelIndCPTV++, d_eFOVIndices);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTVGrad, cl::NullRange, globalPriorEFOV, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TV gradient kernel\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+        OCL_CHECK(status, "Failed to launch the Proximal TV gradient kernel\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Proximal TV gradient kernel launched successfully\n");
 		}
 
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after gradient kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after gradient kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TV gradient computed");
 		return 0;
@@ -4137,21 +3363,12 @@ public:
 				kernelProxTGVSymmDeriv.setArg(kernelIndCPTGV++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVSymmDeriv, cl::NullRange, globalPriorEFOV, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TGV symmetric derivative kernel\n");
-			return -1;
-		}
-		else if (DEBUG || inputScalars.verbose >= 3) {
+        OCL_CHECK(status, "Failed to launch the Proximal TGV symmetric derivative kernel\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Proximal TV gradient kernel launched successfully\n");
 		}
-
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after symmetric derivative kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after symmetric derivative kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TGV symmetric derivative computed");
 		return 0;
@@ -4217,18 +3434,9 @@ public:
 				kernelProxTGVDiv.setArg(kernelIndCPTGV++, d_maskPrior);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelProxTGVDiv, cl::NullRange, globalPriorEFOV, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Proximal TGV divergence kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the Proximal TGV divergence kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after divergence kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("Proximal TGV divergence complete");
 		return 0;
@@ -4260,18 +3468,9 @@ public:
 			// Compute the kernel
 			status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelElementDivision, cl::NullRange, gSize, cl::NullRange);
 		}
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the element-wise kernel\n");
-			return -1;
-		}
-
+        OCL_CHECK(status, "Failed to launch the element-wise kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after element-wise kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after element-wise kernel\n", -1);
 		return 0;
 	}
 
@@ -4317,18 +3516,9 @@ public:
 			kernelHyper.setArg(kernelIndHyper++, d_eFOVIndices);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelHyper, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the hyperbolic prior gradient kernel\n");
-			return -1;
-		}
-
+        OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after hyperbolic prior gradient kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL hyperbolic prior gradient computed");
 		return 0;
@@ -4383,18 +3573,9 @@ public:
 			kernelTV.setArg(kernelIndTV++, d_refIm);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTV, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the TV gradient kernel\n");
-			return -1;
-		}
-
+        OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after TV gradient kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL TV gradient computed");
 		return 0;
@@ -4428,18 +3609,9 @@ public:
 		kernelPoisson.setArg(kernelIndPoisson++, static_cast<cl_uchar>(inputScalars.enforcePositivity));
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPoisson, cl::NullRange, global, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the Poisson update kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after Poisson update kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL Poisson update computed");
 		return 0;
@@ -4472,18 +3644,9 @@ public:
 		kernelPDHG.setArg(kernelIndPDHG++, static_cast<cl_uchar>(inputScalars.enforcePositivity));
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelPDHG, cl::NullRange, global, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the PDHG update kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after PDHG update kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL PDHG update computed");
 		return 0;
@@ -4518,21 +3681,11 @@ public:
 		kernelRotate.setArg(kernelIndRot++, sina);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the bilinear image rotation kernel\n");
-			return -1;
-		}
-
+		OCL_CHECK(status, "Failed to launch the bilinear image rotation kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
-			return -1;
-		}
+        OCL_CHECK(status, "Queue finish failed after bilinear image rotation kernel\n", -1);
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL bilinear image rotation computed");
 		return 0;
 	}
-
 };
