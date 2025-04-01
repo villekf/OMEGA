@@ -1774,6 +1774,8 @@ class projectorClass:
                 bOpt += ('-DMASKFP',)
             if self.useMaskBP:
                 bOpt += ('-DMASKBP',)
+            if self.useTotLength and not self.SPECT:
+                bOpt += ('-DTOTLENGTH',)
             if self.OffsetLimit.size > 0:
                 bOpt += ('-DOFFSET',)
             if self.attenuation_correction and self.CTAttenuation:
