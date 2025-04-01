@@ -240,7 +240,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"));
 		w_vec.dPitchX = getScalarFloat(getField(options, 0, "crXY"));
 		w_vec.dPitchY = getScalarFloat(getField(options, 0, "crXY"));
-		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2) {
+		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2) {
 			w_vec.rayShiftsDetector = getSingles(options, "rayShiftsDetector");
 			w_vec.rayShiftsSource = getSingles(options, "rayShiftsSource");
 		}

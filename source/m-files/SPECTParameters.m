@@ -21,7 +21,7 @@ function options = SPECTParameters(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if (options.projector_type == 1 || options.projector_type == 2) % Ray tracing projectors
+if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Ray tracing projectors
     if numel(options.rayShiftsDetector) == 0
         options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
         if options.iR > 0 % Detector intrinsic resolution
@@ -37,7 +37,7 @@ if (options.projector_type == 1 || options.projector_type == 2) % Ray tracing pr
         options.rayShiftsSource(1:2) = 0;
     end
 end
-if options.projector_type == 2 % Orthogonal distance ray tracer
+if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
     % Frey, E. C., & Tsui, B. M. W. (n.d.). Collimator-Detector Response Compensation in SPECT. Quantitative Analysis in Nuclear Medicine Imaging, 141–166. doi:10.1007/0-387-25444-7_5 
     options.coneOfResponseStdCoeffA = 2*options.colR/options.colL; % See equation (6) of book chapter
     options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2);
