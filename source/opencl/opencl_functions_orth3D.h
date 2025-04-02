@@ -43,11 +43,24 @@ DEVICE float compute_element_orth_3D(const float xs, const float ys, const float
 #ifdef SPECT
 DEVICE float compute_element_parallel_3D(const float v0x, const float v0y, const float v0z, const float v1x, const float v1y, const float v1z, const float px, const float py, const float pz) {
     // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v1x for example is detectors.xd-detectors.xs
+#ifdef USEMAD
+    const float dot1 = FMAD(v1x, (px-v0x), FMAD(v1y, (py-v0y), FMAD(v1z, (pz-v0z), 0.f)));
+    const float dot2 = FMAD(v1x, v1x, FMAD(v1y, v1y, FMAD(v1z, v1z, 0.f)));
+    const float t = FMAD(-1.f, dot1/dot2, 1.f);
+#else
     const float dot1 = v1x*(px-v0x)+v1y*(py-v0y)+v1z*(pz-v0z); // v1 * (p-v0)
     const float dot2 = v1x*v1x+v1y*v1y+v1z*v1z; // v1 * v1
     const float t = 1.f - dot1 / dot2; // 1-t as SPECT collimator response is measured from the collimator-detector interface
+#endif
     const float rayLength = length(CMFLOAT3(v1x, v1y, v1z));
     return (t * rayLength); 
+
+}
+
+#define _2PI 0.3989423f
+DEVICE float normPDF2(const float x, const float mu, const float sigma) {
+	const float a = (x - mu) / sigma;
+	return _2PI * _2PI / sigma / sigma * EXP(-0.5f * a * a);
 }
 #endif
 
@@ -105,7 +118,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
         return true;
     }
     float CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)) / (2.f*sqrt(2.f*log(2.f)));
-    float local_ele = normPDF(d_orth, 0.f, CORstd);
+    float local_ele = normPDF2(d_orth, 0.f, CORstd);
 #else
 	float local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
 #endif
@@ -119,7 +132,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		local_ele = V[CUINT_rte((local_ele - bmin) * CC)];
 #else
 #ifdef SPECT
-    if (local_ele <= normPDF(3*CORstd, 0.f, CORstd)) {
+    if (local_ele <= normPDF2(3.5*CORstd, 0.f, CORstd)) {
 #else
 	if (local_ele <= THR) {
 #endif

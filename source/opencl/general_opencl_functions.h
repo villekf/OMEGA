@@ -465,7 +465,7 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 }
 #endif
 
-#if defined(TOF) || defined(SPECT) //////////////// TOF ////////////////
+#ifdef TOF //////////////// TOF ////////////////
 #define _2PI 0.3989423f
 
 DEVICE float normPDF(const float x, const float mu, const float sigma) {
@@ -474,8 +474,6 @@ DEVICE float normPDF(const float x, const float mu, const float sigma) {
 
 	return _2PI / sigma * EXP(-0.5f * a * a);
 }
-#endif
-#ifdef TOF
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
 	*D = length(diff * tc) - LL / 2.f;
 	*DD = *D;
