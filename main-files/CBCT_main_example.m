@@ -109,13 +109,13 @@ options.z = zCoord;
 % The image size is taken from the conf file, but you can manually adjust
 % these if desired
 %%% Reconstructed image pixel count (X/row-direction)
-options.Nx = 801;
+options.Nx = 200;
 
 %%% Y/column-direction
-options.Ny = 801;
+options.Ny = 200;
 
 %%% Z-direction (number of slices) (axial)
-options.Nz = 668;
+options.Nz = 167;
 
 % Use these two to rotate/flip the final image
 %%% Flip the image (in horizontal direction)?
@@ -279,7 +279,7 @@ options.saveNIter = [];
 % options.save_iter = false;
 
 %%% Number of subsets (all excluding MLEM and subset_type = 5)
-options.subsets = 20;
+options.subsets = 1;
 
 %%% Subset type (n = subsets)
 % 1 = Every nth (column) measurement is taken
@@ -341,7 +341,7 @@ options.PKMA = false;
 
 %%% Primal-dual hybrid gradient (PDHG)
 % Supported by implementations 1, 2, 4, and 5
-options.PDHG = true;
+options.PDHG = false;
 
 %%% Primal-dual hybrid gradient (PDHG) with L1 minimization
 % Supported by implementations 1, 2, 4, and 5
@@ -350,6 +350,8 @@ options.PDHGL1 = false;
 %%% Primal-dual Davis-Yin (PDDY)
 % Supported by implementation 2
 options.PDDY = false;
+
+options.BB = true;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PRIORS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -368,11 +370,13 @@ options.RDP = false;
 %%% Generalized Gaussian Markov random field (GGMRF) prior
 options.GGMRF = false;
 
+%%% Regular gradient-based TV
+options.TV = false;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%% ENFORCE POSITIVITY %%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Applies to PDHG, PDHGL1, PDDY, FISTA, FISTAL1, MBSREM, MRAMLA, PKMA
 % Enforces positivity in the estimate after each iteration
-options.enforcePositivity = true;
+options.enforcePositivity = false;
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%% PDHG PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -403,7 +407,7 @@ options.PDAdaptiveType = 0;
 % Measurement-based preconditioners
 % precondTypeMeas(1) = Diagonal normalization preconditioner (1 / (A1))
 % precondTypeMeas(2) = Filtering-based preconditioner
-options.precondTypeMeas = [false;true];
+options.precondTypeMeas = [false;false];
 
 % Number of filtering iterations
 % Applies to both precondTypeMeas(2) and precondTypeImage(6)
@@ -564,10 +568,12 @@ t = tic;
 % fp are the forward projections, if stored
 % the primal-dual gap can be also be stored and is the variable after
 % fp
-[pz, recPar, ~, fp, pdgap] = reconstructions_mainCT(options);
+ [pz, recPar, ~, fp, pdgap] = reconstructions_mainCT(options);
 t = toc(t)
 
 % Convert to HU-values
 z = int16(pz(:,:,:,end) * 55000) - 1000;
 
+
 volume3Dviewer(z, [-1000 2000], [0 0 1])
+ volume3Dviewer(pz, [], [0 0 1])

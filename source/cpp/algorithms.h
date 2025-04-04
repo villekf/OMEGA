@@ -533,3 +533,20 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	}
 	return status;
 }
+
+inline int BB(AF_im_vectors &vec, Weighting &w_vec)
+{
+
+	af:: array s = vec.im_os[0] - vec.imBB;
+	af:: array y = vec.rhs_os[0] - vec.gradBB;
+	float denmo = af::dot<float>(s,y);
+	float num = af::dot<float>(s,s);
+
+	w_vec.alphaBB = (denmo !=0)? num / denmo :1e-4f; // Avoid division by zero
+	vec.im_os[0]= vec.imBB - w_vec.alphaBB * vec.gradBB;
+	vec.imBB = vec.im_os[0]; 
+	vec.gradBB = vec.rhs_os[0];
+
+
+	return 0;
+}
