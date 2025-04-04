@@ -209,7 +209,7 @@ class ProjectorClass {
 			if (inputScalars.maskBPZ > 1)
 				options += " -DMASKBP3D";
 		}
-		if (inputScalars.useTotLength && !inputScalars.SPECT)
+		if (inputScalars.useTotLength)
 			options += " -DTOTLENGTH";
 		if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights)
 			options += " -DFDK";
@@ -229,7 +229,7 @@ class ProjectorClass {
 			if (inputScalars.listmode > 0 && inputScalars.indexBased)
 				options += (" -DNLAYERS=" + std::to_string(inputScalars.nLayers));
 			else
-				options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
+			options += (" -DNLAYERS=" + std::to_string(inputScalars.nProjections / (inputScalars.nLayers * inputScalars.nLayers)));
 		if (inputScalars.TOF) {
 			options += " -DTOF";
 		}
@@ -239,9 +239,31 @@ class ProjectorClass {
 			options += " -DPET";
 		else if (inputScalars.SPECT) {
 			options += " -DSPECT";
-			//options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
-			//options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
-			//options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
+			options += (" -DCOL_D=" + std::to_string(inputScalars.colD));
+			options += (" -DCOL_L=" + std::to_string(inputScalars.colL));
+			options += (" -DDSEPTAL=" + std::to_string(inputScalars.dSeptal));
+			options += (" -DHEXORIENTATION=" + std::to_string((uint8_t)inputScalars.hexOrientation));
+			options += (" -DCONEMETHOD=" + std::to_string((uint8_t)inputScalars.coneMethod));
+
+			if (inputScalars.coneMethod == 3) {
+				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
+			}
+			options += (" -DNRAYSPECT=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
+
+			uint32_t nHexSPECT;
+			if (inputScalars.coneMethod != 1) {
+				options += (" -DN_RAYS=" + std::to_string((uint16_t)inputScalars.nRaySPECT));
+				options += (" -DN_RAYS2D=1");
+				options += (" -DN_RAYS3D=1");
+				nHexSPECT = 1;
+			} else {
+				options += (" -DN_RAYS=1");
+				options += (" -DN_RAYS2D=1");
+				options += (" -DN_RAYS3D=1");
+
+				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
+			}
+			options += (" -DNHEXSPECT=" + std::to_string(nHexSPECT));
 		}
 
 		options += (" -DNBINS=" + std::to_string(inputScalars.nBins));
@@ -251,7 +273,7 @@ class ProjectorClass {
 			options += " -DLISTMODE2";
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options += " -DINDEXBASED";
-		if (siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) {
+		if (siddonVal && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));
@@ -375,7 +397,7 @@ class ProjectorClass {
 		// Build prior programs
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM ||
-			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
+			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || type == 0) {
 			if (DEBUG) {
 				mexPrint("Building aux programs\n");
 			}
@@ -389,7 +411,6 @@ class ProjectorClass {
 				options += " -cl-fast-relaxed-math";
 				options += " -DUSEMAD";
 			}
-			
 			if (inputScalars.useImages)
 				options += " -DUSEIMAGES";
 			if (inputScalars.useExtendedFOV)
@@ -559,8 +580,6 @@ class ProjectorClass {
 				if (inputScalars.subsets > 1)
 					options += " -DSUBSETS";
 			}
-			if (inputScalars.projector_type == 6)
-				options += " -DROTATE";
 			status = buildProgram(inputScalars.verbose, contentAux, CLContext, CLDeviceID, programAux, inputScalars.atomic_64bit, inputScalars.atomic_32bit, options);
 		}
 		if (DEBUG) {
@@ -994,14 +1013,6 @@ class ProjectorClass {
 				return -1;
 			}
 		}
-		if (inputScalars.projector_type == 6) {
-			kernelRotate = cl::Kernel(programAux, "rotate", &status);
-			if (status != CL_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create bilinear rotation kernel\n");
-				return -1;
-			}
-		}
 		return status;
 	}
 public:
@@ -1011,7 +1022,7 @@ public:
 	OpenCL_im_vectors vec_opencl;
 	cl::Kernel kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision, 
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
-		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
+		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
 	cl::Buffer d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, d_output, d_meanBP, d_meanFP, d_eFOVIndices, d_weights, d_inputB, d_W, d_gaussianNLM;
 	cl::Image2D d_maskFP, d_maskBP, d_maskPrior;
 	cl::Image3D d_maskBP3, d_maskPrior3;
@@ -1023,7 +1034,6 @@ public:
 	cl::Buffer d_vector, d_input;
 	cl::Buffer d_im, d_rhs, d_U, d_g, d_uref, d_refIm, d_RDPref;
 	cl::Buffer d_outputCT, d_maskBPB, d_attenB;
-	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
@@ -1333,7 +1343,7 @@ public:
 				}
 			}
 			// Detector coordinates
-			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -1409,18 +1419,6 @@ public:
 					return -1;
 				}
 			}
-			if (inputScalars.SPECT) {
-				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
 			if (inputScalars.eFOV) {
 				d_eFOVIndices = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nz[0], NULL, &status);
 				if (status != CL_SUCCESS) {
@@ -1460,7 +1458,7 @@ public:
 					mexPrintBase("vecSize = %u\n", vecSize);
 					mexEval();
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+				if (inputScalars.CT && inputScalars.listmode != 1) {
 					if (inputScalars.pitch)
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					else
@@ -1492,8 +1490,8 @@ public:
 						return -1;
 					}
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
+				if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0))
 						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -1598,8 +1596,6 @@ public:
 			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.maskFP || inputScalars.maskBP || inputScalars.useExtendedFOV) {
-			//mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
-			//mexEval();
 			if (inputScalars.useBuffers) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.maskFPZ > 1) {
@@ -1678,7 +1674,7 @@ public:
 				}
 				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
 			}
-			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
 				if (status != CL_SUCCESS) {
 					getErrorString(status);
@@ -1757,23 +1753,8 @@ public:
 				}
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
 			}
-			if (inputScalars.SPECT) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsDetector);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
-
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsSource);
-				if (status != CL_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
-			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+				if (inputScalars.CT && inputScalars.listmode == 0) {
 					int64_t kerroin = 2;
 					if (inputScalars.pitch)
 						kerroin = 6;
@@ -1801,7 +1782,7 @@ public:
 						return -1;
 					}
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+				if (inputScalars.CT && inputScalars.listmode == 0) {
 					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
@@ -2055,11 +2036,6 @@ public:
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.nRowsD));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.det_per_ring));
 			getErrorString(kernelFP.setArg(kernelIndFP++, inputScalars.sigma_x));
-			if (inputScalars.SPECT) {
-				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsDetector));
-				getErrorString(kernelFP.setArg(kernelIndFP++, d_rayShiftsSource));
-			}
-
 			getErrorString(kernelFP.setArg(kernelIndFP++, dPitch));
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2) {
@@ -2087,10 +2063,6 @@ public:
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.nRowsD));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.det_per_ring));
 			getErrorString(kernelBP.setArg(kernelIndBP++, inputScalars.sigma_x));
-			if (inputScalars.SPECT) {
-				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsDetector));
-				getErrorString(kernelBP.setArg(kernelIndBP++, d_rayShiftsSource));
-			}
 			getErrorString(kernelBP.setArg(kernelIndBP++, dPitch));
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				if (inputScalars.BPType == 2) {
@@ -2400,10 +2372,7 @@ public:
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			global = { inputScalars.nRowsD * inputScalars.nColsD * static_cast<size_t>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
 		else
-			if (inputScalars.listmode == 0)
-				global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
-			else
-				global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
+			global = { static_cast<cl::size_type>(length[osa_iter]) * inputScalars.nBins, 1, 1 };
 		
 		size_t erotusF = global[0] % localF[0];
 		if (erotusF > 0)
@@ -2618,7 +2587,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
@@ -2655,24 +2624,6 @@ public:
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]));
 				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]));
-			}
-			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[0]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_trIndex[osa_iter]));
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_axIndex[osa_iter]));
-				}
-			}
-			if (inputScalars.listmode > 0 && inputScalars.TOF) {
-				if (!inputScalars.loadTOF) {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[0]));
-				}
-				else {
-					getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_TOFIndex[osa_iter]));
-				}
 			}
 			if (inputScalars.raw) {
 				kernelFP.setArg(kernelIndFPSubIter++, d_L[osa_iter]);
@@ -2790,7 +2741,7 @@ public:
 					return -1;
 				}
 			}
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
@@ -2798,7 +2749,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
@@ -3007,12 +2958,12 @@ public:
 					}
 					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 						if (inputScalars.useBuffers)
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
 						else
 							if (inputScalars.maskBPZ > 1)
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
 							else
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+								status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
 						if (status != CL_SUCCESS) {
 							getErrorString(status);
 							return -1;
@@ -3036,7 +2987,7 @@ public:
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
@@ -3044,7 +2995,7 @@ public:
 					getErrorString(status);
 					return -1;
 				}
-				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+				if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
@@ -3370,7 +3321,7 @@ public:
 					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring);
 				}
 				else {
-					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
@@ -3378,10 +3329,8 @@ public:
 						getErrorString(status);
 						return -1;
 					}
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-					else if (inputScalars.indexBased && inputScalars.listmode > 0)
-						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
 				}
@@ -3393,24 +3342,6 @@ public:
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
 					kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
-					if (!inputScalars.loadTOF) {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[0]));
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[0]));
-					}
-					else {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_trIndex[osa_iter]));
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_axIndex[osa_iter]));
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (!inputScalars.loadTOF) {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[0]));
-					}
-					else {
-						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_TOFIndex[osa_iter]));
-					}
 				}
 				if (inputScalars.raw) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_L[osa_iter]);
@@ -3448,12 +3379,12 @@ public:
 				}
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
-						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+						status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBPB);
 					else
 						if (inputScalars.maskBPZ > 1)
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+							status = kernelSensList.setArg(kernelIndBPSubIter++, d_maskBP);
 					if (status != CL_SUCCESS) {
 						getErrorString(status);
 						return -1;
@@ -4480,47 +4411,6 @@ public:
 		}
 		if (inputScalars.verbose >= 3)
 			mexPrint("OpenCL PDHG update computed");
-		return 0;
-	}
-
-	inline int rotateCustom(const scalarStruct& inputScalars, const float cosa, const float sina, const int ii = 0) {
-		if (inputScalars.verbose >= 3)
-			mexPrint("Starting OpenCL bilinear image rotation computation");
-		cl_int status = CL_SUCCESS;
-		cl_uint kernelIndRot = 0ULL;
-		global = { inputScalars.Nx[ii] + erotusPrior[0], inputScalars.Ny[ii] + erotusPrior[1], inputScalars.Nz[ii] };
-		if (DEBUG) {
-			mexPrintBase("global[0] = %u\n", global[0]);
-			mexPrintBase("global[1] = %u\n", global[1]);
-			mexPrintBase("global[2] = %u\n", global[2]);
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].s[0]);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].s[1]);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].s[2]);
-			mexEval();
-		}
-		kernelRotate.setArg(kernelIndRot++, d_rhs);
-		kernelRotate.setArg(kernelIndRot++, d_im);
-		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[0]);
-		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[1]);
-		kernelRotate.setArg(kernelIndRot++, d_N[ii].s[2]);
-		kernelRotate.setArg(kernelIndRot++, cosa);
-		kernelRotate.setArg(kernelIndRot++, sina);
-		// Compute the kernel
-		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRotate, cl::NullRange, globalPrior, localPrior);
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the bilinear image rotation kernel\n");
-			return -1;
-		}
-
-		status = (CLCommandQueue[0]).finish();
-		if (status != CL_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
-			return -1;
-		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL bilinear image rotation computed");
 		return 0;
 	}
 

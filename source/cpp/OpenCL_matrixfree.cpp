@@ -345,6 +345,10 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const mwSize dim[5] = { static_cast<mwSize>(inputScalars.Nx[0]), static_cast<mwSize>(inputScalars.Ny[0]), static_cast<mwSize>(inputScalars.Nz[0]), static_cast<mwSize>(outSize2), static_cast<mwSize>(inputScalars.Nt) }; 
 
 	loadInput(inputScalars, options);
+	if (DEBUG) {
+		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 1 = %f\n", inputScalars.nRaySPECT);
+		mexEval();
+	}
 
 	inputScalars.subsetsUsed = inputScalars.subsets;
 
@@ -362,10 +366,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	if (inputScalars.raw)
 		inputScalars.koko = numRows / 2;
 	else {
-		if (inputScalars.listmode == 0)
-			inputScalars.koko = mDim / inputScalars.nBins;
-		else
-			inputScalars.koko = mDim;
+		inputScalars.koko = mDim / inputScalars.nBins;
 	}
 	if (inputScalars.storeFP) {
 		FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets * inputScalars.Niter), 1);
@@ -404,6 +405,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 
 	if (DEBUG) {
+		mexPrintBase("!!!!!!!!!!!!!!!!! nRaySPECT OpenCL_matrixfree.cpp 2 = %f\n", inputScalars.nRaySPECT);
 		mexPrintBase("ind = %u\n", ind);
 		mexPrintBase("koko = %u\n", inputScalars.koko);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);
@@ -459,7 +461,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 	try {
 
-		int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
+		reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 			cell_array_ptr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual, L);
 
 
@@ -470,10 +472,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 		// Clear ArrayFire memory
 		af::deviceGC();
-		if ((inputScalars.verbose >= 3 || DEBUG) && status == 0)
+		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrint("Reconstruction completed successfully!");
-		else if (status != 0)
-			mexPrint("Reconstruction failed!");
 	}
 	catch (const std::exception& e) {
 		af::deviceGC();

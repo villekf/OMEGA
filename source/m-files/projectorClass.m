@@ -503,12 +503,7 @@ classdef projectorClass
             % Coordinates of the detectors
             if obj.param.projector_type ~= 6
                 if ~obj.param.listmode
-                    if (obj.param.SPECT)
-                        [x_det, z_det] = get_coordinates_SPECT(obj.param);
-                        y = 0;
-                    else
-                        [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
-                    end
+                    [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
                 else
                     if ~obj.param.useIndexBasedReconstruction
                         if size(obj.param.x,2) == 2
@@ -632,7 +627,7 @@ classdef projectorClass
             if obj.param.listmode
             elseif obj.param.CT || obj.param.PET || (obj.param.SPECT && obj.param.projector_type ~= 6)
                 if obj.param.subset_type >= 8 && obj.param.subsets > 1 && ~obj.param.FDK
-                    if obj.param.CT || obj.param.SPECT
+                    if obj.param.CT
                         x_det = reshape(x_det, 6, obj.param.nProjections);
                         x_det = x_det(:,obj.index);
                         x_det = x_det(:);

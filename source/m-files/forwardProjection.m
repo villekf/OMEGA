@@ -65,32 +65,18 @@ if options.projector_type == 6
             apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
         end
         for kk = 1 : koko
-            kuvaRot = apuArr;
-            kuvaRot = imrotate(kuvaRot, 180-options.angles(u1), 'bilinear','crop');
+            kuvaRot = imrotate(apuArr, -options.angles(u1), 'bilinear','crop');
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-                attenuationImage = imrotate(attenuationImage, 180-options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1);
-                attenuationImage = exp(-options.crXY * attenuationImage);
-                attenuationImage = permute(attenuationImage, [3, 2, 1]);
-            end
             for ll = 1 : size(kuvaRot,3)
-                apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                kuvaRot(:,:,ll) = apu;
-                if options.attenuation_correction
-                    apuAtt = conv2(attenuationImage(:,:,ll), options.gFilter(:, :, ll, u1), 'same');
-                    attenuationImage(:, :, ll) = apuAtt;
+                apu = conv2(kuvaRot(:,:,ll), options.gFilter(:, :, ll, u1));
+                if size(apu,1) > size(kuvaRot,1) || size(apu,2) > size(kuvaRot,2)
+                    apu = apu((size(apu,1) - size(kuvaRot,1))/2 + 1 : end - (size(apu,1) - size(kuvaRot,1))/2, (size(apu,2) - size(kuvaRot,2))/2 + 1 : end - (size(apu,2) - size(kuvaRot,2))/2);
                 end
+                kuvaRot(:,:,ll) = apu;
             end
+            kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            if options.attenuation_correction
-                attenuationImage = permute(attenuationImage, [3, 2, 1]);
-                kuvaRot = kuvaRot .* attenuationImage;
-            end
-            kuvaRot = kuvaRot(options.blurPlanes(u1):end, :, :);
-            kuvaRot = sum(kuvaRot, 1);
-            kuvaRot = permute(kuvaRot, [2, 3, 1]);
+            kuvaRot = permute(sum(kuvaRot, 1), [2, 3, 1]);
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end

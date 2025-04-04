@@ -17,14 +17,14 @@ function varList = recNames(varargin)
 
 % Add Any MAP algorithm here (algorithms that can use gradient-based
 % priors)
-varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'ASD_POCS';'SAGA'};
+varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'ASD_POCS';'SAGA';'BB'};
 % Add any non-MAP/prior-based algorithm to this list (or algorithms with
 % fixed prior)
 OS = {'OSEM';'MRAMLA';'RAMLA';'ROSEM';'RBI';'DRAMA';'COSEM';'ECOSEM';'ACOSEM';'LSQR';'CGLS';'FISTA'; 'FISTAL1';'FDK';'SART'};
 % Algorithms that are not built into the OpenCL kernel of projector types
 % 1/2/3. This will automatically select e.g. projector_type = 11 instead of
 % projector_type = 1.
-varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA'};
+varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA';'BB'};
 % Algorithms that should not have positivity constraint
 varNeg = {'LSQR';'CGLS';'FDK';'SART'};
 % Algorithms that support image-based preconditioners
@@ -32,7 +32,7 @@ varPreCondIm = {'MRAMLA'; 'MBSREM'; 'FISTA';'FISTAL1'; 'PKMA';'SPS';'PDHG';'PDHG
 % Algorithms that support measurement-based preconditioners
 varPreCondMeas = {'MRAMLA'; 'MBSREM';'FISTA';'PKMA';'SPS'; 'PDHG';'PDHGKL';'PDHGL1';'FISTAL1';'PDDY';'SAGA'};
 % Algorithms that require linearized data
-varLin = {'LSQR';'CGLS'; 'FISTA'; 'FISTAL1';'PDHG';'PDHGL1';'PDDY';'FDK';'SART';'ASD_POCS'};
+varLin = {'LSQR';'CGLS'; 'FISTA'; 'FISTAL1';'PDHG';'PDHGL1';'PDDY';'FDK';'SART';'ASD_POCS';'BB'};
 % Add your new prior to this list (before 'custom')
 varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'hyperbolic';'AD';'APLS';'TGV';'NLM';'RDP';'GGMRF';'ProxTV';'ProxRDP';'ProxNLM';'custom'};
 % Add your prior to this list also (this is used for display purposes only
@@ -40,7 +40,7 @@ varPrior = {'MRP';'quad';'Huber';'L';'FMH';'weighted_mean';'TV';'hyperbolic';'AD
 varPriorFull = {'Median Root';'Quadratic';'Huber';'L-filter';'FIR Median Hybrid';'Weighted mean';'Total Variation';'Hyperbolic function';'Anisotropic Diffusion';...
     'Asymmetric Parallel Level Sets';'Total Generalized Variation';'Non-Local Means';'Relative Difference';'General Gaussian Markov Random Field';...
     'Proximal Total variation';'Proximal Relative Difference';'Proximal Non-Local Means';'Custom'};
-% Add your algorithm to this list also (this is used for display purposes only
+% Add your algorithm to this liiterst also (this is used for display purposes only
 % and can be unabbreviated and contain any characters):
 varAlgoFull = {'Ordered Subsets Expectation Maximization (OSEM)'; 'Modified Row-action Maximum-Likelihood Algorithm (MRAMLA)'; 'Row-action Maximum-Likelihood Algorithm (RAMLA)'; ...
     'Relaxed Ordered Subsets Expectation Maximization (ROSEM)'; 'Rescaled Block-iterative algorithm (RBI)'; 'Dynamic Row-action Maximum-Likelihood Algorithm (DRAMA)';...
@@ -51,7 +51,7 @@ varAlgoFull = {'Ordered Subsets Expectation Maximization (OSEM)'; 'Modified Row-
     'Block-sequential regularized expectation maximization (BSREM)'; 'Modified block-sequential regularized expectation maximization (MBSREM)';...
     'ROSEM MAP (ROSEM_MAP)'; 'One-step-late RBI (OSL_RBI)'; 'One-step-late COSEM (OSL_COSEM)'; 'Preconditioned Krasnoselski-Mann algorithm (PKMA)';...
     'Separable paraboloidal surrogates (SPS)'; 'Primal-dual hybrid gradient (PDHG)'; 'Primal-dual hybrid gradient with Kullback-Leibler divergence (PDHGKL)';...
-    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Condat-Vu algorithm';'Primal-dual Davis-Yin algorithm';'ASD-POCS';'SAGA'};
+    'Primal-dual hybrid gradient with L1 error (PDHGL1)';'Primal-dual Davis-Yin algorithm';'Condat-Vu algorithm';'ASD-POCS';'SAGA';'Barzilia-Borwein'};
 if ~isempty(varargin) && varargin{1} == 0
     varList = upper([OS(:);varMAP(:)]);
 elseif ~isempty(varargin) && varargin{1} == 1

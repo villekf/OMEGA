@@ -187,6 +187,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
 	}
+	else if (MethodList.BB) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Computing BB");
+
+		input  = input -y;
+	}
 	else if (MethodList.SART || MethodList.POCS) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing SART or ASD-POCS");
@@ -352,6 +358,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		if (status != 0)
 			return -1;
 }
+
 	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing PDHG with subsets");

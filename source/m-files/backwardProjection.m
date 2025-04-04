@@ -65,18 +65,7 @@ if options.projector_type == 6
         kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
         apuBP(options.blurPlanes(u1):end, :, :) = kuvaRot;
-        apuBP = imrotate(apuBP, 180+options.angles(u1), 'bilinear','crop');
-        if options.attenuation_correction
-            attenuationImage = options.vaimennus;
-            attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
-            attenuationImage = cumsum(attenuationImage, 1);
-            attenuationImage = exp(-options.crXY * attenuationImage);
-            %attenuationImageSum = sum(attenuationImage, 1);
-            %for ii = 1:size(attenuationImage, 1)
-            %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
-            %end
-            apuBP = apuBP .* attenuationImage;
-        end
+        apuBP = imrotate(apuBP, options.angles(u1), 'bilinear','crop');
         apuBP2(:, kk) = apuBP(:);
         u1 = u1 + 1;
     end
@@ -95,18 +84,7 @@ if options.projector_type == 6
             kuvaRot = kuvaRot(:, :, options.blurPlanes(u1):end);
             kuvaRot = permute(kuvaRot, [3, 2, 1]);
             apuSumm(options.blurPlanes(u1):end, :, :) = kuvaRot;
-            apuSumm = imrotate(apuSumm, 180+options.angles(u1), 'bilinear', 'crop');
-            if options.attenuation_correction
-                attenuationImage = options.vaimennus;
-                attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
-                attenuationImage = cumsum(attenuationImage, 1);
-                attenuationImage = exp(-options.crXY * attenuationImage);
-                %attenuationImageSum = sum(attenuationImage, 1);
-                %for ii = 1:size(attenuationImage, 1)
-                %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
-                %end
-                apuSumm = apuSumm .* attenuationImage;
-            end
+            apuSumm = imrotate(apuSumm, options.angles(u1), 'bilinear', 'crop');
             apuBP2(:, kk) = apuSumm(:);
             u1 = u1 + 1;
         end

@@ -323,6 +323,14 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexPrint("Computing SAGA");
 			status = SAGA(vec.im_os[ii], inputScalars, w_vec, vec, proj, osa_iter, iter, ii);
 		}
+		else if(MethodList.BB){
+			if(inputScalars.verbose>=3)
+			  mexPrint("Computing BB");
+
+			  
+			  status = BB(vec, w_vec);
+
+		}
 		if (inputScalars.FISTAAcceleration) {
 			//if ((w_vec.precondTypeIm[5] && w_vec.filterIter > 0 && osa_iter + inputScalars.subsets * iter >= w_vec.filterIter) || !w_vec.precondTypeIm[5]) {
 			//if (osa_iter == inputScalars.subsets - 1) {
@@ -349,4 +357,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 	if (inputScalars.verbose >= 3 || DEBUG)
 		mexPrint("Iterative algorithm computed");
 	return status;
+
+
 }

@@ -73,7 +73,6 @@ class ProjectorClass {
 		bool indexBased = false;
 		bool TOFIndex = false;
 		bool angle = false;
-		bool rayShifts = false;
 		int zType = -1;
 		int xSteps = -1;
 		int zSteps = -1;
@@ -138,6 +137,14 @@ class ProjectorClass {
 		char buffer9[30];
 		char buffer10[30];
 		char buffer11[30];
+		char spectBuffer1[30];
+		char spectBuffer2[30];
+		char spectBuffer3[30];
+		char spectBuffer4[30];
+		char spectBuffer5[30];
+		char spectBuffer6[30];
+		char spectBuffer7[30];
+		char spectBuffer8[30];
 
 		std::snprintf(buffer0, 35, "--gpu-architecture=compute_%d%d", compMajor, compMinor);
 		options.push_back(buffer0);
@@ -170,7 +177,7 @@ class ProjectorClass {
 
 		kernel_path = kernelFile;
 		kernel_pathBP = kernelFile;
-		if (inputScalars.FPType > 0 && inputScalars.FPType != 6) {
+		if (inputScalars.FPType > 0) {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
 				//	kernel_path += "multidevice_siddon_no_precomp.cu");
@@ -185,7 +192,7 @@ class ProjectorClass {
 			std::string contentFFP((std::istreambuf_iterator<char>(sourceFile)), std::istreambuf_iterator<char>());
 			contentFP = contentHeader + contentFFP;
 		}
-		if (inputScalars.BPType > 0 && inputScalars.BPType != 6) {
+		if (inputScalars.BPType > 0) {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
 				//	kernel_pathBP += "multidevice_siddon_no_precomp.cu");
@@ -213,7 +220,7 @@ class ProjectorClass {
 			if (inputScalars.maskFPZ > 1)
 				options.push_back("-DMASKFP3D");
 		}
-		if (inputScalars.useTotLength && !inputScalars.SPECT)
+		if (inputScalars.useTotLength)
 			options.push_back("-DTOTLENGTH");
 		if (inputScalars.maskBP) {
 			options.push_back("-DMASKBP");
@@ -252,12 +259,40 @@ class ProjectorClass {
 			options.push_back("-DPET");
 		else if (inputScalars.SPECT) {
 			options.push_back("-DSPECT");
-			//std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
-			//options.push_back(buffer2);
-			//std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
-			//options.push_back(buffer3);
-			//std::snprintf(buffer4, 30, "-DN_RAYS3D=%d", static_cast<int32_t>(inputScalars.n_rays3D));
-			//options.push_back(buffer4);
+			std::snprintf(spectBuffer1, 30, "-DCOL_D=%f", inputScalars.colD);
+			options.push_back(spectBuffer1);
+			std::snprintf(spectBuffer2, 30, "-DCOL_L=%f", inputScalars.colL);
+			options.push_back(spectBuffer2);
+			std::snprintf(spectBuffer3, 30, "-DDSEPTAL=%f", inputScalars.dSeptal);
+			options.push_back(spectBuffer3);
+			std::snprintf(spectBuffer4, 30, "-DHEXORIENTATION=%u", static_cast<uint8_t>(inputScalars.hexOrientation));
+			options.push_back(spectBuffer4);
+			std::snprintf(spectBuffer5, 30, "-DCONEMETHOD=%u", static_cast<uint8_t>(inputScalars.coneMethod));
+			options.push_back(spectBuffer5);
+
+			if (inputScalars.coneMethod == 3) {
+				inputScalars.nRaySPECT = std::pow(std::ceil(std::sqrt(inputScalars.nRaySPECT)), 2);
+			}
+			std::snprintf(spectBuffer6, 30, "-DNRAYSPECT=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+			options.push_back(spectBuffer6);
+
+
+			uint32_t nHexSPECT;
+			if (inputScalars.coneMethod != 1) {
+				std::snprintf(spectBuffer7, 30, "-DN_RAYS=%u", static_cast<uint16_t>(inputScalars.nRaySPECT));
+				options.push_back(spectBuffer7);
+				options.push_back("-DN_RAYS2D=1");
+				options.push_back("-DN_RAYS3D=1");
+				nHexSPECT = 1;
+			} else {
+				options.push_back("-DN_RAYS=1");
+				options.push_back("-DN_RAYS2D=1");
+				options.push_back("-DN_RAYS3D=1");
+				nHexSPECT = std::pow(std::ceil(w_vec.dPitchX / inputScalars.colD), 2);
+			}
+
+			std::snprintf(spectBuffer8, 30, "-DNHEXSPECT=%u", static_cast<uint16_t>(nHexSPECT));
+			options.push_back(spectBuffer8);
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
@@ -477,7 +512,7 @@ class ProjectorClass {
 		// Build prior programs
 		if (MethodList.NLM || MethodList.MRP || MethodList.RDP || w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]
 			|| MethodList.TV || MethodList.APLS || MethodList.hyperbolic || MethodList.ProxTV || MethodList.ProxTGV || MethodList.PKMA || MethodList.BSREM || MethodList.RAMLA || MethodList.MRAMLA || MethodList.MBSREM ||
-			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || inputScalars.projector_type == 6 || type == 0) {
+			MethodList.CPType || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF || type == 0) {
 			if (DEBUG) {
 				mexPrint("Building aux programs\n");
 			}
@@ -688,8 +723,6 @@ class ProjectorClass {
 				if (inputScalars.subsets > 1)
 					optionsAux.push_back("-DSUBSETS");
 			}
-			if (inputScalars.projector_type == 6)
-				optionsAux.push_back("-DROTATE");
 			status = buildProgram(inputScalars.verbose, contentAux, programAux, optionsAux);
 			if (status == NVRTC_SUCCESS && DEBUG) {
 				mexPrint("Aux program built\n");
@@ -1070,18 +1103,6 @@ class ProjectorClass {
 				return status;
 			}
 		}
-		if (inputScalars.projector_type == 6) {
-			status = cuModuleGetFunction(&kernelRotate, programAux, "rotate");
-
-			if (status != CUDA_SUCCESS) {
-				getErrorString(status);
-				mexPrint("Failed to create bilinear rotation kernel\n");
-				return status;
-			}
-			else if (DEBUG || inputScalars.verbose >= 2) {
-				mexPrint("Bilinear rotation kernel successfully created\n");
-			}
-		}
 		//if (type == 0) {
 		//	kernelsumma = cuModuleGetFunction(programAux, "summa", &status);
 		//	if (status != CUDA_SUCCESS) {
@@ -1118,7 +1139,7 @@ public:
 	std::vector<CUstream> CLCommandQueue;
 	CUfunction kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
 		kernelTV, kernelProxTGVSymmDeriv, kernelProxTGVDiv, kernelProxTGVq, kernelPoisson, kernelPDHG, kernelProxRDP, kernelProxq, kernelProxTrans, kernelProxNLM, kernelGGMRF,
-		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper, kernelRotate;
+		kernelsumma, kernelEstimate, kernelPSF, kernelPSFf, kernelDiv, kernelMult, kernelForward, kernelSensList, kernelApu, kernelHyper;
 	CUmodule programFP, programBP, programAux, programSens;
 	CUdeviceptr d_angle, d_xcenter, d_ycenter, d_zcenter, d_V, d_TOFCenter, *d_output, *d_meanBP, *d_meanFP, d_eFOVIndices, d_weights, *d_inputB, *d_W, *d_gaussianNLM;
 	CUtexObject d_maskFP, d_maskBP, d_maskPrior;
@@ -1129,7 +1150,6 @@ public:
 	CUdeviceptr *d_vX, *d_vY, *d_vZ;
 	CUdeviceptr *d_vector, *d_input;
 	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskBPB, *d_RDPref;
-	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	//CUdeviceptr d_outputCT;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
@@ -1210,10 +1230,6 @@ public:
 		}
 		if (memAlloc.eFOV) {
 			getErrorString(cuMemFree(d_eFOVIndices));
-		}
-		if (memAlloc.rayShifts) {
-			getErrorString(cuMemFree(d_rayShiftsDetector));
-			getErrorString(cuMemFree(d_rayShiftsSource));
 		}
 		if (memAlloc.GGMRF) {
 			getErrorString(cuMemFree(d_weights));
@@ -1649,7 +1665,7 @@ public:
 			}
 			memAlloc.V = true;
 			// Detector coordinates
-			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = cuMemAlloc(&d_x[0], sizeof(float) * inputScalars.size_of_x);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
@@ -1955,15 +1971,6 @@ public:
 				}
 				memAlloc.zFull = true;
 			}
-			if (inputScalars.SPECT) {
-				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
-				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				memAlloc.rayShifts = true;
-			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (DEBUG) {
 					mexPrintBase("length[kk] = %u\n", length[kk]);
@@ -1971,7 +1978,7 @@ public:
 					mexPrintBase("vecSize = %u\n", vecSize);
 					mexEval();
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
+				if (inputScalars.CT && inputScalars.listmode != 1) {
 					if (inputScalars.pitch) {
 						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 6);
 					}
@@ -2012,8 +2019,8 @@ public:
 					memAlloc.offsetT = true;
 					memAlloc.oSteps++;
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
-					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)) {
+				if (inputScalars.CT || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
+					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || (inputScalars.CT && inputScalars.listmode == 0)) {
 						status = cuMemAlloc(&d_x[kk], sizeof(float) * length[kk] * 6);
 						if (status != CUDA_SUCCESS) {
 							getErrorString(status);
@@ -2134,7 +2141,7 @@ public:
 				getErrorString(status);
 				return -1;
 			}
-			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
+			if ((!inputScalars.CT && inputScalars.listmode == 0) || inputScalars.indexBased) {
 				status = cuMemcpyHtoD(d_x[0], x, sizeof(float) * inputScalars.size_of_x);
 				if (status != CUDA_SUCCESS) {
 					getErrorString(status);
@@ -2224,20 +2231,8 @@ public:
 					return -1;
 				}
 			}
-			if (inputScalars.SPECT) {
-				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
-				if (status != CUDA_SUCCESS) {
-					getErrorString(status);
-					return -1;
-				}
-			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+				if (inputScalars.CT && inputScalars.listmode == 0) {
 					if (inputScalars.pitch)
 						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
 					else
@@ -2261,7 +2256,7 @@ public:
 						//return -1;
 					}
 				}
-				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
+				if (inputScalars.CT && inputScalars.listmode == 0) {
 					status = cuMemcpyHtoD(d_x[kk], &x[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
 					if (status != CUDA_SUCCESS) {
 						getErrorString(status);
@@ -2508,12 +2503,6 @@ public:
 			FPArgs.emplace_back(&inputScalars.det_per_ring);
 			//FPArgs.emplace_back(&inputScalars.Nxy);
 			FPArgs.emplace_back(&inputScalars.sigma_x);
-
-			if (inputScalars.SPECT) {
-				FPArgs.emplace_back(&d_rayShiftsDetector);
-				FPArgs.emplace_back(&d_rayShiftsSource);
-			}
-
 			FPArgs.emplace_back(&dPitch);
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2)
@@ -2532,12 +2521,6 @@ public:
 			BPArgs.emplace_back(&inputScalars.det_per_ring);
 			//BPArgs.emplace_back(&inputScalars.Nxy);
 			BPArgs.emplace_back(&inputScalars.sigma_x);
-
-			if (inputScalars.SPECT) {
-				BPArgs.emplace_back(&d_rayShiftsDetector);
-				BPArgs.emplace_back(&d_rayShiftsSource);
-			}
-
 			BPArgs.emplace_back(&dPitch);
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (inputScalars.FPType == 2)
@@ -2844,10 +2827,12 @@ public:
 				kTemp.emplace_back(&inputScalars.d_Scale4[ii]);
 			}
 		}
+		//mexPrint("1!!!!\n");
 		if (inputScalars.FPType == 4) {
 			kTemp.emplace_back(&vec_opencl.d_image_os);
 			kTemp.emplace_back(reinterpret_cast<void*>(&d_output));
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			//mexPrint("2!!!!\n");
+			if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				kTemp.emplace_back(&d_x[0]);
 			else
 				kTemp.emplace_back(&d_x[osa_iter]);
@@ -2871,27 +2856,10 @@ public:
 				}
 			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
+			//mexPrint("3!!!!\n");
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 				kTemp.emplace_back(&d_xyindex[osa_iter]);
 				kTemp.emplace_back(&d_zindex[osa_iter]);
-			}
-			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
-				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_trIndex[0]);
-					kTemp.emplace_back(&d_axIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_trIndex[osa_iter]);
-					kTemp.emplace_back(&d_axIndex[osa_iter]);
-				}
-			}
-			if (inputScalars.listmode > 0 && inputScalars.TOF) {
-				if (!inputScalars.loadTOF) {
-					kTemp.emplace_back(&d_TOFIndex[0]);
-				}
-				else {
-					kTemp.emplace_back(&d_TOFIndex[osa_iter]);
-				}
 			}
 			if (inputScalars.raw) {
 				kTemp.emplace_back(&d_L[osa_iter]);
@@ -2901,10 +2869,12 @@ public:
 				kTemp.emplace_back(&d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				kTemp.emplace_back(&d_scat[osa_iter]);
+			//mexPrint("4!!!!\n");
 			kTemp.emplace_back(&no_norm);
 			kTemp.emplace_back(&m_size);
 			kTemp.emplace_back(&osa_iter);
 			kTemp.emplace_back(&ii);
+			//mexPrint("5!!!!\n");
 		}
 		else if (inputScalars.FPType == 5) {
 			if (!inputScalars.loadTOF && inputScalars.listmode > 0)
@@ -2956,11 +2926,11 @@ public:
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
 				kTemp.emplace_back((void*)&length[osa_iter]);
 			}
-			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+			if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 				kTemp.emplace_back(&d_x[0]);
 			else
 				kTemp.emplace_back(&d_x[osa_iter]);
-			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
@@ -3153,11 +3123,11 @@ public:
 				kTemp.emplace_back(&inputScalars.rings);
 			}
 			else {
-				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+				if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 					kTemp.emplace_back(&d_x[0]);
 				else
 					kTemp.emplace_back(&d_x[osa_iter]);
-				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+				if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					kTemp.emplace_back(&d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
 					kTemp.emplace_back(&d_z[0]);
@@ -3181,10 +3151,10 @@ public:
 			kTemp.emplace_back(&d[ii]);
 			kTemp.emplace_back(&b[ii]);
 			kTemp.emplace_back(&bmax[ii]);
-			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
-				kTemp.emplace_back(&d_xyindex[osa_iter]);
-				kTemp.emplace_back(&d_zindex[osa_iter]);
-			}
+				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
+					kTemp.emplace_back(&d_xyindex[osa_iter]);
+					kTemp.emplace_back(&d_zindex[osa_iter]);
+				}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 				if (!inputScalars.loadTOF) {
 					kTemp.emplace_back(&d_trIndex[0]);
@@ -3485,14 +3455,12 @@ public:
 					kTemp.emplace_back(&inputScalars.det_per_ring);
 				}
 				else {
-					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
+					if ((inputScalars.listmode == 0 && !inputScalars.CT) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
 						kTemp.emplace_back(&d_x[0]);
 					else
 						kTemp.emplace_back(&d_x[osa_iter]);
-					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
+					if ((inputScalars.CT || inputScalars.PET || inputScalars.listmode > 0))
 						kTemp.emplace_back(&d_z[osa_iter]);
-					else if (inputScalars.indexBased && inputScalars.listmode > 0)
-						kTemp.emplace_back(&d_z[0]);
 					else
 						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
 				}
@@ -3500,24 +3468,6 @@ public:
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 					kTemp.emplace_back(&d_xyindex[osa_iter]);
 					kTemp.emplace_back(&d_zindex[osa_iter]);
-				}
-				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
-					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_trIndex[0]);
-						kTemp.emplace_back(&d_axIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_trIndex[osa_iter]);
-						kTemp.emplace_back(&d_axIndex[osa_iter]);
-					}
-				}
-				if (inputScalars.listmode > 0 && inputScalars.TOF) {
-					if (!inputScalars.loadTOF) {
-						kTemp.emplace_back(&d_TOFIndex[0]);
-					}
-					else {
-						kTemp.emplace_back(&d_TOFIndex[osa_iter]);
-					}
 				}
 				if (inputScalars.raw) {
 					kTemp.emplace_back(&d_L[osa_iter]);
@@ -3530,6 +3480,7 @@ public:
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);
+			//mexPrint("6!!!!\n");
 			if (inputScalars.maskBP) {
 				if (inputScalars.useBuffers)
 					kTemp.emplace_back(&d_maskBPB);
@@ -4591,49 +4542,6 @@ public:
 		}
 		if (inputScalars.verbose >= 3)
 			mexPrint("CUDA PDHG update computed");
-		return 0;
-	}
-
-	inline int rotateCustom(const scalarStruct& inputScalars, float cosa, float sina, const int ii = 0) {
-		if (inputScalars.verbose >= 3)
-			mexPrint("Starting CUDA bilinear image rotation computation");
-		CUresult status = CUDA_SUCCESS;
-		std::vector<void*> kArgs;
-		global[0] = (inputScalars.Nx[ii] + erotusPrior[0]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusPrior[1]) / localPrior[1];
-		global[2] = inputScalars.Nz[ii];
-		if (DEBUG) {
-			mexPrintBase("global[0] = %u\n", global[0]);
-			mexPrintBase("global[1] = %u\n", global[1]);
-			mexPrintBase("global[2] = %u\n", global[2]);
-			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
-			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
-			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
-			mexEval();
-		}
-		kArgs.emplace_back(reinterpret_cast<void*>(&d_rhs));
-		kArgs.emplace_back(reinterpret_cast<void*>(&d_im));
-		kArgs.emplace_back(&d_N[ii].x);
-		kArgs.emplace_back(&d_N[ii].y);
-		kArgs.emplace_back(&d_N[ii].z);
-		kArgs.emplace_back(&cosa);
-		kArgs.emplace_back(&sina);
-		// Compute the kernel
-		status = cuLaunchKernel(kernelRotate, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Failed to launch the bilinear image rotation kernel\n");
-			return -1;
-		}
-
-		status = cuCtxSynchronize();
-		if (status != CUDA_SUCCESS) {
-			getErrorString(status);
-			mexPrint("Queue finish failed after bilinear image rotation kernel\n");
-			return -1;
-		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA bilinear image rotation computed");
 		return 0;
 	}
 

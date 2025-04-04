@@ -65,6 +65,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 
 	size_t mDim = options.measElem / static_cast<size_t>(inputScalars.Nt);
 
+	inputScalars.koko = mDim / inputScalars.nBins;
 	if (inputScalars.listmode) {
 		if (inputScalars.indexBased) {
 			w_vec.trIndex = options.trIndices;
@@ -76,10 +77,7 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;
-		inputScalars.koko = mDim;
 	}
-	else
-		inputScalars.koko = mDim / inputScalars.nBins;
 	
 	
 	if (DEBUG) {
@@ -110,18 +108,22 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		mexPrintBase("inputScalars.Vmax = %f\n", inputScalars.Vmax);
 		mexPrintBase("inputScalars.size_V = %u\n", inputScalars.size_V);
 		mexPrintBase("MethodList.FDK = %u\n", MethodList.FDK);
+		mexPrintBase("inputScalars.nRaySPECT=%f\n", inputScalars.nRaySPECT);
 		mexPrintBase("w_vec.dPitchX = %f\n", w_vec.dPitchX);
+		mexPrintBase("inputScalars.colL= %f\n", inputScalars.colL);
+		mexPrintBase("inputScalars.colD= %f\n", inputScalars.colD);
+		mexPrintBase("inputScalars.dSeptal= %f\n", inputScalars.dSeptal);
+		mexPrintBase("inputScalars.nRaySPECT= %f\n", inputScalars.nRaySPECT);
+		mexPrintBase("inputScalars.hexOrientation= %f\n", inputScalars.hexOrientation);
+		mexPrintBase("inputScalars.coneMethod= %f\n", inputScalars.coneMethod);
 		mexEval();
 	}
 
 	if (inputScalars.verbose >= 3) {
 		mexPrint("Loaded struct values. Starting reconstruction itself...");
 	}
-	int status = reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
+	reconstructionAF(z_det, x, Sino, randoms, inputScalars, device, pituus, w_vec, MethodList, header_directory, x0,
 		outputPtr, FPptr, atten, norm, extraCorr, size_gauss, xy_index, z_index, residual);
-
-	if (status != 0)
-		mexPrint("Reconstruction failed!");
 
 	fflush(stdout);
 
