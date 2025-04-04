@@ -78,7 +78,7 @@ typedef struct Weighting_ {
 	std::vector<int32_t> mIt;
 	std::vector<float> alphaCP, LCP, LCP2;
 	float *rayShiftsDetector = nullptr, *rayShiftsSource = nullptr;
-	alphaBB
+	float alphaBB=1e-4f;
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected
@@ -95,5 +95,6 @@ typedef struct RecMethods_ {
 	bool CPType = false;
 	bool OSL = false;
 	bool FDK = false;
+	bool BB=false;
 	uint32_t OSLCOSEM = 0u, MAPCOSEM = 0u;
 } RecMethods;
