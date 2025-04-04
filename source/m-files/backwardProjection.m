@@ -49,7 +49,9 @@ if options.compute_sensitivity_image
 end
 if options.implementation == 4
     if options.projector_type == 6
-        fProj = reshape(input, options.nRowsD, options.nColsD, koko);
+        %fProj = reshape(input, options.nRowsD, options.nColsD, koko);
+        fProj = reshape(input, options.nRowsD, options.nColsD, []);
+        koko = size(fProj, 3); % Quick fix for custom reconstruction without reconstructions_main.m
         apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
         u1 = options.ub;
         for kk = 1 : koko
@@ -71,10 +73,6 @@ if options.implementation == 4
                 attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
                 attenuationImage = cumsum(attenuationImage, 1);
                 attenuationImage = exp(-options.crXY * attenuationImage);
-                %attenuationImageSum = sum(attenuationImage, 1);
-                %for ii = 1:size(attenuationImage, 1)
-                %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
-                %end
                 apuBP = apuBP .* attenuationImage;
             end
             apuBP2(:, kk) = apuBP(:);
@@ -101,10 +99,6 @@ if options.implementation == 4
                     attenuationImage = imrotate(attenuationImage, 180+options.angles(u1), 'bilinear','crop');
                     attenuationImage = cumsum(attenuationImage, 1);
                     attenuationImage = exp(-options.crXY * attenuationImage);
-                    %attenuationImageSum = sum(attenuationImage, 1);
-                    %for ii = 1:size(attenuationImage, 1)
-                    %    attenuationImage(ii, :, :) = attenuationImage(ii, :, :) ./ attenuationImageSum;
-                    %end
                     apuSumm = apuSumm .* attenuationImage;
                 end
                 apuBP2(:, kk) = apuSumm(:);

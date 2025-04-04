@@ -6,6 +6,7 @@ function options = loadProSpectaData(options)
     end
 
     function options = loadProjectionData(options)
+        fprintf("Loading Pro.Specta projection data... ")
         % Header file location
         info = dicominfo(options.fpath);
         
@@ -40,6 +41,7 @@ function options = loadProSpectaData(options)
 
         % Distances from the panel to the center of rotation
         options.radiusPerProj = [info.DetectorInformationSequence.Item_1.RadialPosition;info.DetectorInformationSequence.Item_2.RadialPosition];
+        fprintf("Ready\n")
     end
 
     function options = loadCTData(options)
