@@ -29,6 +29,9 @@
 #define transferAF(varA) cl::Buffer(*varA.device<cl_mem>(), true)
 #endif
 #define VAL 0.00001f
+#ifndef M_PI
+#define M_PI (3.14159265358979323846)
+#endif
 
 #pragma pack(1) 
 #pragma warning(disable : 4996)
