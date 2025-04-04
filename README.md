@@ -11,13 +11,15 @@ OMEGA is a software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https
 
 Documentation for the current version is available at https://omega-doc.readthedocs.io/en/latest/index.html
 
-The algorithms implemented so far are:
+The algorithms implemented so far include:
+### Projector models
 - Improved Siddon's ray tracer algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
 - Orthogonal distance-based ray tracer [3]
 - Volume of intersection ray tracer (THOR) [28].
 - Interpolation-based ray tracer [31]
 - Branchless distance-driven ray tracer [32,33]
 - Rotation-based projector [34]
+### Reconstruction algorithms
 - Maximum Likelihood Expectation Maximization (MLEM) [4,5]
 - Ordered Subsets Expectation Maximization (OSEM) [6]
 - Complete-data Ordered Subsets Expectation Maximization (COSEM) [7]
@@ -40,6 +42,7 @@ The algorithms implemented so far are:
 - CGLS [47]
 - (OS-)SART [48,49]
 - ASD-POCS [50]
+### Prior models
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Huber prior [45]
 - Median Root Prior (MRP) [16]
@@ -68,7 +71,7 @@ For manual compilation you're going to need a C++ compiler in order to compile t
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
-Visual studio can be downloaded from [here](https://visualstudio.microsoft.com/). For Visual studio you'll only need "Desktop development with C++".
+Visual Studio can be downloaded from [here](https://visualstudio.microsoft.com/). For Visual studio you'll only need "Desktop development with C++".
 
 On Ubuntu you can install g++ with `sudo apt install build-essential`.
 
@@ -148,7 +151,7 @@ In Windows, CUDA location is determined from the environmental variables (PATH).
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
 
 Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
-All the GPUs were tested in Linux except AMD Radeon 7900 XT which was tested in Windows.
+All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on Windows.
 
 ## Getting Started
 
@@ -168,13 +171,13 @@ See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for mor
 
 These features can be used as independent functions without any input needed from any other OMEGA files
 
-- Save images (matrices) in MATLAB/Octave in NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats ([saveImage.m](https://github.com/villekf/OMEGA/blob/master/source/saveImage.m))
-- Import NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats into MATLAB/Octave ([importData.m](https://github.com/villekf/OMEGA/blob/master/source/importData.m))
-- Save images (matrices) in MATLAB/Octave in Interfile ([saveInterfile.m](https://github.com/villekf/OMEGA/blob/master/source/saveInterfile.m)) or MetaImage formats ([saveMetaimage.m](https://github.com/villekf/OMEGA/blob/master/source/saveMetaimage.m))
-- Convert CT-attenuation coefficients into 511 keV attenuation coefficients ([attenuationCT_to_511.m](https://github.com/villekf/OMEGA/blob/master/source/attenuationCT_to_511.m))
-- (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/create_atten_matrix_CT.m))
-- Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/coo_to_csr.m))
-- Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_source_handle.m))
+- Save images (matrices) in MATLAB/Octave in NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats ([saveImage.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveImage.m))
+- Import NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats into MATLAB/Octave ([importData.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/importData.m))
+- Save images (matrices) in MATLAB/Octave in Interfile ([saveInterfile.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveInterfile.m)) or MetaImage formats ([saveMetaimage.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveMetaimage.m))
+- Convert CT-attenuation coefficients into 511 keV attenuation coefficients ([attenuationCT_to_511.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/attenuationCT_to_511.m))
+- (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/m-files/create_atten_matrix_CT.m))
+- Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/coo_to_csr.m))
+- Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_source_handle.m))
 
 
 
@@ -291,7 +294,7 @@ If you use some specific algorithm or prior, please cite one of references here 
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The Siddon ray tracer SPECT projector was implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The ray tracer projectors for SPECT were implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from [Jane and Aatos Erkko foundation](https://jaes.fi/en/), [Instrumentarium Science Foundation](http://instrufoundation.fi/en.php), 
 [Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). 
