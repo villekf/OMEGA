@@ -318,12 +318,11 @@ def transferData(options):
     options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     #For SPECT...
     options.param.crXY = ctypes.c_float(options.crXY)
-    #options.param.colL = ctypes.c_float(options.colL)
-    #options.param.colR = ctypes.c_float(options.colR)
-    #options.param.colD = ctypes.c_float(options.colD)
-    #options.param.nRays = ctypes.c_float(options.nRays)
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)
+    options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
+    options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
     # ...until here
     
 def reconstructions_mainCT(options):
@@ -337,20 +336,6 @@ def reconstructions_mainCT(options):
 
 def reconstructions_mainSPECT(options):
     options.SPECT = True
-    options.n_rays_transaxial = options.nRays
-    if options.swivelAngles.size == 0:
-        options.swivelAngles = options.angles + 180
-    if options.rayShiftsDetector.size == 0:
-        options.rayShiftsDetector = np.zeros((options.nRays*2, 1), dtype=np.float32)
-    if options.rayShiftsSource.size == 0:
-        options.rayShiftsSource = (0.2 * np.random.randn(2 * options.nRays, 1)).astype(np.float32)
-        options.rayShiftsSource[0] = 0
-        options.rayShiftsSource[1] = 0
-    if options.homeAngles.size == 0:
-        options.homeAngles = np.zeros_like(options.angles)
-    if getattr(options, 'flipImageZ', False):
-        options.SinM = np.flip(options.SinM, axis=1)
-
     if options.storeResidual:
         pz, FPOutputP, residual = reconstructions_main(options)
         return pz, FPOutputP, residual
