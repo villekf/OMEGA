@@ -1969,10 +1969,11 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				return -1;
 			}
 			 
-			vec.gradBB = -vec.rhs_os[0];
-			vec.imBB = vec.im_os[0] - w_vec.alphaBB * vec.gradBB;
-			//vec.imBB = - w_vec.alphaBB * vec.gradBB;
-			vec.gradBB.eval();   
+			vec.gradBB = -vec.rhs_os[0].copy();
+			vec.imBB = vec.im_os[0].copy();
+			vec.im_os[0] = vec.im_os[0] - w_vec.alphaBB * vec.gradBB;
+			vec.gradBB.eval();
+			vec.im_os[0].eval();
 
 	
 	}else if (MethodList.CGLS && subIter == 0) {

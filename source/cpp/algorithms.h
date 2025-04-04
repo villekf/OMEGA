@@ -543,8 +543,8 @@ inline int BB(AF_im_vectors &vec, Weighting &w_vec)
 	float num = af::dot<float>(s,s);
 
 	w_vec.alphaBB = (denmo !=0)? num / denmo :1e-4f; // Avoid division by zero
+	vec.imBB = vec.im_os[0].copy(); 
 	vec.im_os[0]= vec.imBB - w_vec.alphaBB * vec.gradBB;
-	vec.imBB = vec.im_os[0]; 
 	vec.gradBB = vec.rhs_os[0];
 
 
