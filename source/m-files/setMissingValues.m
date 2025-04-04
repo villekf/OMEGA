@@ -771,7 +771,11 @@ if ~isfield(options, 'useMAD')
     options.useMAD = true;
 end
 if ~isfield(options, 'useImages')
-    options.useImages = true;
+    if options.projector_type == 6
+        options.useImages = false;
+    else
+        options.useImages = true;
+    end
 end
 if ~isfield(options, 'useEFOV')
     options.useEFOV = false;
