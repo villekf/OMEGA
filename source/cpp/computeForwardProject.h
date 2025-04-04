@@ -186,6 +186,11 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
+	}else if (MethodList.BB) {
+		if (inputScalars.verbose >= 3)
+			mexPrint("Computing BB");
+
+		input  = input -y;
 	}
 	else if (MethodList.SART || MethodList.POCS) {
 		if (inputScalars.verbose >= 3)
