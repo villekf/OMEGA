@@ -572,11 +572,9 @@ inline T compute_element(T& t0, T& tc, const T L, const T tu, const int u, int& 
 void setThreads();
 
 template <typename T>
-inline T normPDF(const T x, const T mu, const T sigma) {
-
+inline T normPDF(const T x, const T mu, const T sigma, const T power = (T)(1.f)) {
 	const T a = (x - mu) / sigma;
-
-	return (static_cast<T>(_2PI) / sigma * std::exp((-0.5 * a * a)));
+	return (pow(static_cast<T>(_2PI) / sigma, power) * std::exp((-0.5 * a * a)));
 }
 
 template <typename T>
@@ -1062,7 +1060,7 @@ inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_
             return true;
         }
         CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2)+pow(coneOfResponseStdCoeffC, 2)) / (2.f*sqrt(2.f*log(2.f))); // Standard deviation for current parallel distance
-        local_ele = normPDF(d_orth, (T)0., CORstd);
+        local_ele = normPDF(d_orth, (T)0., CORstd, (T)2.f);
     } else {
         local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2, projType, SPECT);
     }
@@ -1077,7 +1075,7 @@ inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_
 			local_ele = V[(uint32_t)(std::round((local_ele - bmin) * CC))];
 	}
 	else {
-		if ((!SPECT && local_ele <= THR) || (SPECT && local_ele <= normPDF((T)(3*CORstd), (T)0., CORstd))) {
+		if ((!SPECT && local_ele <= THR) || (SPECT && local_ele <= normPDF((T)(3.5f*CORstd), (T)0., CORstd, (T)2.f))) {
 			return true;
 		}
 	}
