@@ -940,22 +940,33 @@ if options.verbose > 0
             disp(dispi)
         end
         if options.subsets > 1
+            if ismember(mod(options.subsets, 100), [11, 12, 13])
+                abbr = 'th';
+            elseif mod(options.subsets, 10) == 1
+                abbr = 'st';
+            elseif mod(options.subsets, 10) == 2
+                abbr = 'nd';
+            elseif mod(options.subsets, 10) == 3
+                abbr = 'rd';
+            else
+                abbr = 'th';
+            end
             if options.subset_type == 1
-                disp(['Every ' num2str(options.subsets) 'th column measurement is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' column measurement is taken per subset.'])
             elseif options.subset_type == 2
-                disp(['Every ' num2str(options.subsets) 'th row measurement is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' row measurement is taken per subset.'])
             elseif options.subset_type == 3
                 disp('Using random subset sampling.')
             elseif options.subset_type == 4
-                disp(['Every ' num2str(options.subsets) 'th sinogram column is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' sinogram column is taken per subset.'])
             elseif options.subset_type == 5
-                disp(['Every ' num2str(options.subsets) 'th sinogram row is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' sinogram row is taken per subset.'])
             elseif options.subset_type == 6
                 disp(['Using angle-based subset sampling with ' num2str(options.n_angles) ' angles combined per subset.'])
             elseif options.subset_type == 7
                 disp('Using golden angle-based subset sampling.')
             elseif options.subset_type == 8
-                disp(['Using every ' num2str(options.subsets) 'th sinogram/projection image.'])
+                disp(['Using every ' num2str(options.subsets) abbr ' sinogram/projection image.'])
             elseif options.subset_type == 9
                 disp('Using sinograms/projection images in random order.')
             elseif options.subset_type == 10

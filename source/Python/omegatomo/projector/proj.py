@@ -1367,22 +1367,32 @@ class projectorClass:
                 dispi += '.'
                 print(dispi)
                 if self.subsets > 1:
+                    if self.subsets % 100 in [11, 12, 13]:
+                        abbr = 'th'
+                    elif self.subsets % 10 == 1:
+                        abbr = 'st'
+                    elif self.subsets % 10 == 2:
+                        abbr = 'nd'
+                    elif self.subsets % 10 == 3:
+                        abbr = 'rd'
+                    else:
+                        abbr = 'th'
                     if self.subsetType == 1:
-                        print(f'Every {self.subsets}th column measurement is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} column measurement is taken per subset.')
                     elif self.subsetType == 2:
-                        print(f'Every {self.subsets}th row measurement is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} row measurement is taken per subset.')
                     elif self.subsetType == 3:
                         print('Using random subset sampling.')
                     elif self.subsetType == 4:
-                        print(f'Every {self.subsets}th sinogram column is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} sinogram column is taken per subset.')
                     elif self.subsetType == 5:
-                        print(f'Every {self.subsets}th sinogram row is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} sinogram row is taken per subset.')
                     elif self.subsetType == 6:
                         print(f'Using angle-based subset sampling with {self.n_angles} angles combined per subset.')
                     elif self.subsetType == 7:
                         print('Using golden angle-based subset sampling.')
                     elif self.subsetType == 8:
-                        print(f'Using every {self.subsets}th sinogram/projection image.')
+                        print(f'Using every {self.subsets}{abbr} sinogram/projection image.')
                     elif self.subsetType == 9:
                         print('Using sinograms/projection images in random order.')
                     elif self.subsetType == 10:
