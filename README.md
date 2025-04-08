@@ -3,11 +3,11 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 
 ## Purpose
 
-The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any ray-tracing based tomographic imaging. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A^T * y`) projections. While OMEGA allows the use of any ray-tracing based tomographic data, it is optimized for positron emission tomography (PET), computed tomography (CT) and single emission computed tomography (SPECT).
+The purpose of OMEGA is twofold. First, it is designed to allow easy, fast, and efficient reconstruction for any ray-tracing based tomographic imaging modality. Second, it is intended for easy algorithmic development by allowing easy matrix-free implementation of the forward (`A * x`) and backward (`A^T * y`) projection operations. While OMEGA allows the use of any ray-tracing based tomographic data, it is optimized for positron emission tomography (PET), computed tomography (CT) and single photon emission computed tomography (SPECT).
 
 ## Introduction
 
-OMEGA is a software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https://www.gnu.org/software/octave/) and [Python](https://www.python.org/) to reconstruct tomographic data. See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
+OMEGA is a piece of software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https://www.gnu.org/software/octave/) and [Python](https://www.python.org/) to reconstruct tomographic data. See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
 Documentation for the current version is available at https://omega-doc.readthedocs.io/en/latest/index.html
 
