@@ -49,9 +49,7 @@ if options.compute_sensitivity_image
 end
 if options.implementation == 4
     if options.projector_type == 6
-        %fProj = reshape(input, options.nRowsD, options.nColsD, koko);
-        fProj = reshape(input, options.nRowsD, options.nColsD, []);
-        koko = size(fProj, 3); % Quick fix for custom reconstruction without reconstructions_main.m
+        fProj = reshape(input, options.nRowsD, options.nColsD, koko);
         apuBP2 = zeros(options.Nx(1) * options.Ny(1) * options.Nz(1), koko, options.cType);
         u1 = options.ub;
         for kk = 1 : koko

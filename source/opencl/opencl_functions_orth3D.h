@@ -117,11 +117,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 			ind = CMINT3(uu, tempi, zz);
 #endif
 #ifdef SPECT
-    float d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
     float d_parallel = compute_element_parallel_3D(s1, s2, sZ, diff1, diff2, diffZ, center1, center2, centerZ);
     if (d_parallel < 0) { // Voxel behind detector
         return true;
     }
+    float d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2);
 #ifdef USEMAD
     float CORstd = DIVIDE(SQRT(FMAD(1.f, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), 2.f), POWR(coneOfResponseStdCoeffC, 2.f))), (2.f*SQRT(2.f*LOG(2.f))));
 #else

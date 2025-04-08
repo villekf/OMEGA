@@ -919,7 +919,12 @@ classdef projectorClass
                 else
                     lor2 = [];
                 end
-                [y, ~] = forwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
+                if obj.param.projector_type == 6
+                    koko = obj.nMeas(end);
+                else
+                    koko = obj.param.totMeas;
+                end
+                [y, ~] = forwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
                     obj.param.lor_a, sum(obj.param.summa), loopVar, 0);
                 if apu > 1
                     obj.param.subsets = apu;
@@ -1015,10 +1020,16 @@ classdef projectorClass
                     apu = obj.param.subsets;
                     obj.param.subsets = 1;
                 end
-                if nargout == 2
-                    [f, varargout{1}] = backwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                if obj.param.projector_type == 6
+                    koko = obj.nMeas(end);
                 else
-                    [f, ~] = backwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                    koko = obj.param.totMeas;
+                end
+                disp(koko)
+                if nargout == 2
+                    [f, varargout{1}] = backwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                else
+                    [f, ~] = backwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
                 end
                 if apu > 1
                     obj.param.subsets = apu;
