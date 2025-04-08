@@ -1988,7 +1988,20 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					mexPrint("LSQR initialization complete");
 			}
 		}
-		else if (MethodList.CGLS && subIter == 0) {
+		else if (MethodList.BB && subIter == 0){
+			status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+			if (status != 0) {
+				return -1;
+			}
+			 
+			vec.gradBB = -vec.rhs_os[0].copy();
+			vec.imBB = vec.im_os[0].copy();
+			vec.im_os[0] = vec.im_os[0] - w_vec.alphaBB * vec.gradBB;
+			vec.gradBB.eval();
+			vec.im_os[0].eval();
+
+	
+	}else if (MethodList.CGLS && subIter == 0) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing CGLS");
 			if (ii == 0)

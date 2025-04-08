@@ -731,6 +731,7 @@ inline void get_rec_methods(const mxArray* options, RecMethods& MethodList) {
 	MethodList.PDDY = getScalarBool(getField(options, 0, "PDDY"), -61);
 	MethodList.POCS = getScalarBool(getField(options, 0, "ASD_POCS"), -61);
 	MethodList.SAGA = getScalarBool(getField(options, 0, "SAGA"), -61);
+	MethodList.BB = getScalarBool(getField(options, 0, "BB"), -61);
 
 	// Whether MAP/prior-based algorithms are used
 	MethodList.MAP = getScalarBool(getField(options, 0, "MAP"), -61);
