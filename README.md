@@ -42,6 +42,7 @@ The algorithms implemented so far include:
 - CGLS [47]
 - (OS-)SART [48,49]
 - ASD-POCS [50]
+- Barzilai-Borwein method [51]
 ### Prior models
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Huber prior [45]
@@ -403,3 +404,5 @@ This work was supported by the Research Council of Finland ([Flagship of Advance
 49. G. Wang, and M. Jiang, "Ordered-Subset simultaneous algebraic reconstruction techniques (OS-SART)," Journal of X-Ray Science and Technology, 2004, 12, pp. 169-177.
 
 50. Emil Y. Sidky and Xiaochuan Pan, "Image reconstruction in circular cone-beam computed tomography by constrained, total-variation minimization," Phys. Med. Biol., 2008, 53, 4777, http://dx.doi.org/10.1088/0031-9155/53/17/021
+
+51. J. Barzilai and J. M. Borwein, “Two-Point Step Size Gradient Methods,” IMA Journal of Numerical Analysis, vol. 8, no. 1, pp. 141–148, 1988, https://doi.org/10.1093/imanum/8.1.141.
