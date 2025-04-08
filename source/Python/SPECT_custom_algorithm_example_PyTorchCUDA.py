@@ -216,6 +216,12 @@ options.verbose = 3
 # resampled to match FOV XZ-plane size and resolution.
 options.projector_type = 2
 
+### Use images instead of buffers? For rotation-based projector this
+# implies hardware texture interpolation, which typically has 8 bit 
+# precision. With buffers, software interpolation with 32 bit floats is
+# used.
+options.useImages = True
+
 ###########################################################################
 ###########################################################################
 ###########################################################################

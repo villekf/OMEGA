@@ -190,6 +190,12 @@ options.useCPU = False
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 2
 
+### Use images instead of buffers? For rotation-based projector this
+# implies hardware texture interpolation, which typically has 8 bit 
+# precision. With buffers, software interpolation with 32 bit floats is
+# used.
+options.useImages = True
+
 ######################### RECONSTRUCTION SETTINGS #########################
 ### Number of iterations (all reconstruction methods)
 options.Niter = 1
