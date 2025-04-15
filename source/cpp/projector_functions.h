@@ -1349,17 +1349,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 	const T bmaxx = static_cast<T>(param.Nx) * param.dx + param.bx;
 
 	int64_t lo = 0LL;
-//#ifdef _OPENMP
-//	size_t threads = omp_get_max_threads();
-//	if (DEBUG)
-//		mexPrintf("threadsOMP = %u\n", threads);
-//#else
-//	size_t threads = 1ULL;
-//	if (DEBUG)
-//		mexPrintf("threads = %u\n", threads);
-//#endif
-	//if (DEBUG)
-	//	mexPrintf("nMeas = %u\n", nMeas);
 
 	uint32_t nRays = param.nRays2D * param.nRays3D;
 #ifdef _OPENMP
@@ -1413,11 +1402,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 			if (param.subsetType >= 8 && param.subsets > 1) {
 				iz += (int64_t)param.nMeas;
 			}
-			/*if (lo == 0) {
-				mexPrintf("ix = %f\n", (T)ix);
-				mexPrintf("iy = %f\n", (T)iy);
-				mexPrintf("iz = %f\n", (T)iz);
-			}*/
 		}
 		else {
 			if ((param.listMode > 0 && param.computeSensIm == 0) || (!(CT || SPECT) && param.listMode == 0)) {
@@ -1976,18 +1960,18 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 								int tempk_b = tempk_a;
                                 if (ux >= 0) {
                                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
-                                        int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+                                        int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_b, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                             param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, tempk_b, true);
+                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
                                         if (uu == 0)
                                             break;
                                     }
                                 }
                                 else {
                                     for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
-                                        int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
+                                        int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_b, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                             param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, tempk_b, true);
+                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
                                         if (uu == 0)
                                             break;
                                     }
