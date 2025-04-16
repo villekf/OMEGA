@@ -516,21 +516,6 @@ inline void get_detector_coordinates_SPECT(const T* x, const T* z, Det<T>& detec
 	detectors.xd += z[idz] * indeksi1;
 	detectors.yd += z[idz + 1] * indeksi1;
 	detectors.zd += dPitchXY * indeksi2;
-
-	/*if (lorXY == 0 && lo == 0 && false) {
-		mexPrintf("dPitchXY = %f\n", (T)dPitchXY);
-		mexPrintf("ix = %f\n", (T)ix);
-		mexPrintf("iy = %f\n", (T)iy);
-		mexPrintf("iz = %f\n", (T)iz);
-		mexPrintf("indeksi1 = %f\n", (T)indeksi1);
-		mexPrintf("indeksi2 = %f\n", (T)indeksi2);
-		mexPrintf("detectors.xs = %f\n", (T)detectors.xs);
-		mexPrintf("detectors.ys = %f\n", (T)detectors.ys);
-		mexPrintf("detectors.zs = %f\n", (T)detectors.zs);
-		mexPrintf("detectors.xd = %f\n", (T)detectors.xd);
-		mexPrintf("detectors.yd = %f\n", (T)detectors.yd);
-		mexPrintf("detectors.zd = %f\n", (T)detectors.zd);
-	}*/
 	
 	if (nRays2D > 1) { // Add ray shift
 		const int idr = lorXY * 2;
