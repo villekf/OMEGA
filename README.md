@@ -3,21 +3,23 @@ Open-source multi-dimensional tomographic reconstruction software for MATLAB, GN
 
 ## Purpose
 
-The purpose of OMEGA is twofold. First it is designed to allow easy, fast and efficient reconstruction of any ray-tracing based tomographic imaging. Secondly, it is intended for easy algorithmic development as it allows easy matrix-free implementation of the forward (`A * x`)  and backward (`A^T * y`) projections. While OMEGA allows the use of any ray-tracing based tomographic data, it is optimized for positron emission tomography (PET), computed tomography (CT) and single emission computed tomography (SPECT).
+The purpose of OMEGA is twofold. First, it is designed to allow easy, fast, and efficient reconstruction for any ray-tracing based tomographic imaging modality. Second, it is intended for easy algorithmic development by allowing easy matrix-free implementation of the forward (`A * x`) and backward (`A^T * y`) projection operations. While OMEGA allows the use of any ray-tracing based tomographic data, it is optimized for positron emission tomography (PET), computed tomography (CT) and single photon emission computed tomography (SPECT).
 
 ## Introduction
 
-OMEGA is a software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https://www.gnu.org/software/octave/) and [Python](https://www.python.org/) to reconstruct tomographic data. See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
+OMEGA is a piece of software for [MATLAB](https://www.mathworks.com/), [GNU Octave](https://www.gnu.org/software/octave/) and [Python](https://www.python.org/) to reconstruct tomographic data. See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for more information on available features. See Known Issues and Limitations below for software limitations. If you wish to add your own code (e.g. reconstruction algorithm) see [Contributing code to OMEGA](https://github.com/villekf/OMEGA/wiki/Contributing-code-to-OMEGA).
 
 Documentation for the current version is available at https://omega-doc.readthedocs.io/en/latest/index.html
 
-The algorithms implemented so far are:
+The algorithms implemented so far include:
+### Projector models
 - Improved Siddon's ray tracer algorithm for the system matrix creation (code for regular Siddon available, but not used) [1,2]
 - Orthogonal distance-based ray tracer [3]
 - Volume of intersection ray tracer (THOR) [28].
 - Interpolation-based ray tracer [31]
 - Branchless distance-driven ray tracer [32,33]
 - Rotation-based projector [34]
+### Reconstruction algorithms
 - Maximum Likelihood Expectation Maximization (MLEM) [4,5]
 - Ordered Subsets Expectation Maximization (OSEM) [6]
 - Complete-data Ordered Subsets Expectation Maximization (COSEM) [7]
@@ -40,6 +42,8 @@ The algorithms implemented so far are:
 - CGLS [47]
 - (OS-)SART [48,49]
 - ASD-POCS [50]
+- Barzilai-Borwein method [51]
+### Prior models
 - Quadratic prior (Gibbs prior with quadratic potential function)
 - Huber prior [45]
 - Median Root Prior (MRP) [16]
@@ -68,7 +72,7 @@ For manual compilation you're going to need a C++ compiler in order to compile t
 
 MinGW++ for MATLAB can be downloaded from [here](https://se.mathworks.com/matlabcentral/fileexchange/52848-matlab-support-for-mingw-w64-c-c-compiler).
 
-Visual studio can be downloaded from [here](https://visualstudio.microsoft.com/). For Visual studio you'll only need "Desktop development with C++".
+Visual Studio can be downloaded from [here](https://visualstudio.microsoft.com/). For Visual studio you'll only need "Desktop development with C++".
 
 On Ubuntu you can install g++ with `sudo apt install build-essential`.
 
@@ -148,7 +152,7 @@ In Windows, CUDA location is determined from the environmental variables (PATH).
 For additional install help, see [installation help](https://omega-doc.readthedocs.io/en/latest/installation.html).
 
 Portions of version 2 were tested with the following GPUs: Nvidia Tesla A100, AMD Instinct MI100, Nvidia Tesla P100, Nvidia Tesla M40, Nvidia GeForce RTX 4060, Nvidia GeForce RTX 4090, AMD Radeon 7900 XT, Nvidia Titan RTX, Nvidia Quadro A6000 Ada, and Intel Arc A380.
-All the GPUs were tested in Linux except AMD Radeon 7900 XT which was tested in Windows.
+All the GPUs were tested on Linux except AMD Radeon 7900 XT which was tested on Windows.
 
 ## Getting Started
 
@@ -168,13 +172,13 @@ See [Features](https://omega-doc.readthedocs.io/en/latest/features.html) for mor
 
 These features can be used as independent functions without any input needed from any other OMEGA files
 
-- Save images (matrices) in MATLAB/Octave in NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats ([saveImage.m](https://github.com/villekf/OMEGA/blob/master/source/saveImage.m))
-- Import NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats into MATLAB/Octave ([importData.m](https://github.com/villekf/OMEGA/blob/master/source/importData.m))
-- Save images (matrices) in MATLAB/Octave in Interfile ([saveInterfile.m](https://github.com/villekf/OMEGA/blob/master/source/saveInterfile.m)) or MetaImage formats ([saveMetaimage.m](https://github.com/villekf/OMEGA/blob/master/source/saveMetaimage.m))
-- Convert CT-attenuation coefficients into 511 keV attenuation coefficients ([attenuationCT_to_511.m](https://github.com/villekf/OMEGA/blob/master/source/attenuationCT_to_511.m))
-- (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/create_atten_matrix_CT.m))
-- Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/coo_to_csr.m))
-- Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/Voxelized_source_handle.m))
+- Save images (matrices) in MATLAB/Octave in NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats ([saveImage.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveImage.m))
+- Import NIfTI, MetaImage, Interfile, Analyze 7.5, DICOM and raw binary formats into MATLAB/Octave ([importData.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/importData.m))
+- Save images (matrices) in MATLAB/Octave in Interfile ([saveInterfile.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveInterfile.m)) or MetaImage formats ([saveMetaimage.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/saveMetaimage.m))
+- Convert CT-attenuation coefficients into 511 keV attenuation coefficients ([attenuationCT_to_511.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/attenuationCT_to_511.m))
+- (Experimental) Convert CT-attenuation coefficients directly from CT DICOM images into 511 keV attenuation coefficients ([create_atten_matrix_CT.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/m-files/create_atten_matrix_CT.m))
+- Convert COO (Coordinate list) sparse matrix row indices into CSR (Compressed sparse row) indices ([coo_to_csr.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/coo_to_csr.m))
+- Convert voxelized phantoms/sources into GATE compatible files ([Voxelized_phantom_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_phantom_handle.m), [Voxelized_source_handle.m](https://github.com/villekf/OMEGA/blob/master/source/m-files/Voxelized_source_handle.m))
 
 
 
@@ -291,7 +295,7 @@ If you use some specific algorithm or prior, please cite one of references here 
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The Siddon ray tracer SPECT projector was implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The ray tracer projectors for SPECT were implemented by [Niilo Saarlemo](https://github.com/saarlemo). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from [Jane and Aatos Erkko foundation](https://jaes.fi/en/), [Instrumentarium Science Foundation](http://instrufoundation.fi/en.php), 
 [Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). 
@@ -400,3 +404,5 @@ This work was supported by the Research Council of Finland ([Flagship of Advance
 49. G. Wang, and M. Jiang, "Ordered-Subset simultaneous algebraic reconstruction techniques (OS-SART)," Journal of X-Ray Science and Technology, 2004, 12, pp. 169-177.
 
 50. Emil Y. Sidky and Xiaochuan Pan, "Image reconstruction in circular cone-beam computed tomography by constrained, total-variation minimization," Phys. Med. Biol., 2008, 53, 4777, http://dx.doi.org/10.1088/0031-9155/53/17/021
+
+51. J. Barzilai and J. M. Borwein, “Two-Point Step Size Gradient Methods,” IMA Journal of Numerical Analysis, vol. 8, no. 1, pp. 141–148, 1988, https://doi.org/10.1093/imanum/8.1.141.

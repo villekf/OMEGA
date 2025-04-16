@@ -6,9 +6,10 @@ function options = loadProSpectaData(options)
     end
 
     function options = loadProjectionData(options)
+        fprintf("Loading Pro.Specta projection data... ")
         % Header file location
         info = dicominfo(options.fpath);
-        options.SPECTinfo = info;
+        
         % Load projection images
         options.SinM = squeeze(dicomread(options.fpath));
 
@@ -40,6 +41,7 @@ function options = loadProSpectaData(options)
 
         % Distances from the panel to the center of rotation
         options.radiusPerProj = [info.DetectorInformationSequence.Item_1.RadialPosition;info.DetectorInformationSequence.Item_2.RadialPosition];
+        fprintf("Ready\n")
     end
 
     function options = loadCTData(options)
@@ -78,7 +80,6 @@ function options = loadProSpectaData(options)
 
         % Assign to attenuation map variable
         options.vaimennus = single(CTvol);
-        options.vaimennus = imrotate(options.vaimennus, options.offangle * 360 / (2*pi));
 
         % Map to linear attenuation coefficients
         options.vaimennus = options.vaimennus * options.HU.slope + options.HU.intercept;
@@ -86,7 +87,6 @@ function options = loadProSpectaData(options)
         % Convert to single
         options.vaimennus = single(options.vaimennus);
         options.vaimennus(options.vaimennus < 0) = 0;
-
         fprintf("Ready\n")
     end
 end

@@ -24,6 +24,25 @@
 #endif
 #endif
 
+// Used in ProjectorClass.h and ProjectorClassCUDA.h
+#if defined(OPENCL)
+#define OCL_CHECK(STATUS, MSG, RETURN) do { \
+    if ((STATUS) != CL_SUCCESS) { \
+        getErrorString(STATUS); \
+        mexPrint(MSG); \
+        return RETURN; \
+    } \
+} while(0)
+#elif defined(CUDA)
+#define CUDA_CHECK(STATUS, MSG, RETURN) do { \
+    if ((STATUS) != CUDA_SUCCESS) { \
+        getErrorString(STATUS); \
+        mexPrint(MSG); \
+        return RETURN; \
+    } \
+} while(0)
+#endif
+
 // Struct for the TV-prior
 typedef struct TVdata_ {
 #ifdef AF

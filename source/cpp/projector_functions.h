@@ -340,10 +340,10 @@ struct paramStruct {
 	T* rayShiftsDetector = nullptr;
 	// SPECT ray shifts, source end (collimator model)
 	T* rayShiftsSource = nullptr;
-	// Amount of forward projection masks
-	int64_t numMaskFP = 1;
-	// Total amount of projections (sinograms)
-	int64_t nProjectionsGlobal = 1;
+    // SPECT cone of response standard deviation parameters
+    T coneOfResponseStdCoeffA = 0.01;
+    T coneOfResponseStdCoeffB = 0.01;
+    T coneOfResponseStdCoeffC = 0.01;
 };
 
 // Compute the Euclidean norm of a vector
@@ -557,11 +557,9 @@ inline T compute_element(T& t0, T& tc, const T L, const T tu, const int u, int& 
 void setThreads();
 
 template <typename T>
-inline T normPDF(const T x, const T mu, const T sigma) {
-
+inline T normPDF(const T x, const T mu, const T sigma, const T power = (T)(1.f)) {
 	const T a = (x - mu) / sigma;
-
-	return (static_cast<T>(_2PI) / sigma * std::exp((-0.5 * a * a)));
+	return (pow(static_cast<T>(_2PI) / sigma, power) * std::exp((-0.5 * a * a)));
 }
 
 template <typename T>
@@ -974,21 +972,44 @@ inline bool siddon_pre_loop_3D(const T bx, const T by, const T bz, const T x_dif
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
 template <typename T>
-inline T compute_element_orth_3D(const T xs, const T ys, const T zs, const T xl, const T yl, const T zl, const T crystal_size_z,
-	const T xp, const int projType) {
-
+inline T compute_element_orth_3D(const T xs, const T ys, const T zs, const T xl, const T yl, const T zl, const T crystal_size_z, const T xp, const int projType, const bool SPECT = false) {
+    /* Variables
+        xs = detectors.ys
+        ys = (detectors.yd - detectors.ys) * (center1 - detectors.xs)
+        zs = (detectors.xd - detectors.xs) * (centerZ - detectors.zs) - (detectors.zd - detectors.zs) * (center1 - detectors.xs)
+        xl = (detectors.yd - detectors.ys) * (centerZ - detectors.zs)
+        yl = detectors.xd - detectors.xs
+        zl = detectors.zd - detectors.zs
+        xp: voxel centre in y-direction
+        crystal_size_z = ||ray||_2 / FWHM
+    */
 	const T x0 = xp - xs;
 
-	// Cross product
+	// Cross product (from https://math.stackexchange.com/questions/2353288/point-to-line-distance-in-3d-using-cross-product/2355960#2355960)
 	const T y1 = zl * x0 - xl;
 	const T z1 = -yl * x0 + ys;
 
-	const T normi = norm(zs, y1, z1);
+	const T norm1 = norm(zs, y1, z1);
+    if (SPECT) {  // Return pure orthogonal distance from ray to voxel
+        const T norm2 = norm(x0, yl, zl);
+        const T d = norm1 / norm2;
+        return d;
+    }
+	if (projType == 3) { // Return normalized distance
+		return (norm1 / crystal_size_z);
+    } else {
+        return (1.f - (norm1 / crystal_size_z));
+    }
+}
 
-	if (projType == 3)
-		return (normi / crystal_size_z);
-	else
-		return (1.f - normi / crystal_size_z);
+template <typename T>
+inline T compute_element_parallel_3D(const T v0x, const T v0y, const T v0z, const T v1x, const T v1y, const T v1z, const T px, const T py, const T pz) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v1x for example is detectors.xd-detectors.xs
+    const T dot1 = v1x*(px-v0x)+v1y*(py-v0y)+v1z*(pz-v0z); // v1 * (p-v0)
+    const T dot2 = v1x*v1x+v1y*v1y+v1z*v1z; // v1 * v1
+    const T t = dot1 / dot2;
+    const T rayLength = norm(v1x, v1y, v1z);
+    return ((1-t) * rayLength); // 1-t as SPECT collimator response is measured from the collimator-detector interface
 }
 
 // compute voxel index, orthogonal distance based or volume of intersection ray tracer
@@ -1000,12 +1021,34 @@ inline uint32_t compute_ind_orth_3D(const uint32_t tempi, const uint32_t tempijk
 // This function computes either the forward or backward projection for the current voxel
 // The normalized orthogonal distance or the volume of the (spherical) voxel is computed before the forward or backward projections
 template <typename T>
-inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_t d_N2, const uint32_t d_N3, const uint32_t d_Nxy, const int zz, const T s2, const T l3, const T l1, const T l2,
-	const T diff1, const T diffZ, const T kerroin, const T center2, const T bmin, const T bmax, const T Vmax, T* V, const bool XY, std::vector<T>& ax, const T temp, const T* input,
+inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_t d_N2, const uint32_t d_N3, const uint32_t d_Nxy, const int zz, const T s2, const T s1, const T sZ, const T l3, const T l1, const T l2,
+	const T diff1, const T diff2, const T diffZ, const T kerroin, const T center2, const T center1, const T centerZ, const T bmin, const T bmax, const T Vmax, T* V, const bool XY, std::vector<T>& ax, const T temp, const T* input,
 	T* d_Summ, T* d_output, const bool no_norm, const T element, const T sigma_x, T& D, const T DD, const T* TOFCenter, const T TOFSum, const bool TOF, const uint8_t fp, const int projType,
-	const uint32_t nBins, const int lor, const uint16_t nRays, const bool useMaskBP = false, const uint8_t* maskBP = nullptr, const T attApu = (T)0.f, const bool SPECT = false, 
-	const bool attenuationCorrection = false) {
-	T local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2, projType);
+	const uint32_t nBins, const int lor, const uint16_t nRays, const T coneOfResponseStdCoeffA, const T coneOfResponseStdCoeffB, const T coneOfResponseStdCoeffC, const T crXY, const bool useMaskBP = false, const uint8_t* maskBP = nullptr, const T attApu = (T)0.f, const bool SPECT = false, const bool attenuationCorrection = false) {
+	    /* Variables
+        s1 = detectors.xs
+        s2 = detectors.ys
+        sZ = detectors.zs
+        diff1 = detectors.xd - detectors.xs
+        diff2 = detectors.yd - detectors.ys
+        diffZ = detectors.zd - detectors.zs
+        center1: voxel centre point in x-direction
+        center2: voxel centre point in y-direction
+        centerZ: voxel centre point in z-direction
+    */
+    T local_ele = 0;
+    T CORstd = 0;
+    if (SPECT) {
+        T d_orth = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2, projType, SPECT);
+        T d_parallel = compute_element_parallel_3D(s1, s2, sZ, diff1, diff2, diffZ, center1, center2, centerZ);
+        if (d_parallel < 0) { // Voxel behind detector
+            return true;
+        }
+        CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2)+pow(coneOfResponseStdCoeffC, 2)) / (2.f*sqrt(2.f*log(2.f))); // Standard deviation for current parallel distance
+        local_ele = normPDF(d_orth, (T)0., CORstd, (T)2.f);
+    } else {
+        local_ele = compute_element_orth_3D(s2, l3, l1, l2, diff1, diffZ, kerroin, center2, projType, SPECT);
+    }
 	uint8_t maskVal = 1;
 	if (projType == 3) {
 		if (local_ele >= bmax) {
@@ -1017,7 +1060,7 @@ inline bool orthogonalHelper3D(const uint32_t tempi, const int uu, const uint32_
 			local_ele = V[(uint32_t)(std::round((local_ele - bmin) * CC))];
 	}
 	else {
-		if (local_ele <= THR) {
+		if ((!SPECT && local_ele <= THR) || (SPECT && local_ele <= normPDF((T)(3.5f*CORstd), (T)0., CORstd, (T)2.f))) {
 			return true;
 		}
 	}
@@ -1044,7 +1087,7 @@ template <typename T>
 inline int orthDistance3D(const uint32_t tempi, const T diff1, const T diff2, const T diffZ, const T center1, const T* center2, const T* centerZ, const T temp, int temp2, const int tempk,
 	const T s1, const T s2, const T sZ, const uint32_t d_Nxy, const T kerroin, const uint32_t d_N1, const uint32_t d_N2, const uint32_t d_N3, const uint32_t d_Nz, const T bmin,
 	const T bmax, const T Vmax, T* V, const bool XY, std::vector<T>& ax, const T* input, const bool no_norm, T* Summ, T* output, const T element, const T sigma_x, T& D, const T DD,
-	T* TOFCenter, const T TOFSum, const bool TOF, const uint8_t fp, const int projType, const uint32_t nBins, const int lor, const uint16_t nRays, int& k, const bool useMaskBP = false, const uint8_t* maskBP = nullptr, 
+	T* TOFCenter, const T TOFSum, const bool TOF, const uint8_t fp, const int projType, const uint32_t nBins, const int lor, const uint16_t nRays, int& k, const T coneOfResponseStdCoeffA, const T coneOfResponseStdCoeffB, const T coneOfResponseStdCoeffC, const T crXY, const bool useMaskBP = false, const uint8_t* maskBP = nullptr, 
 	const T attApu = (T)0.f, const bool SPECT = false, const bool attenuationCorrection = false, const int ku = 0, const bool preStep = false) {
 	int uu = 0;
 	bool breikki = false;
@@ -1068,18 +1111,16 @@ inline int orthDistance3D(const uint32_t tempi, const T diff1, const T diff2, co
 		// xl * z0
 		const T l2 = diff1 * z0;
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2[uu1], bmin, bmax, Vmax, V,
-				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, useMaskBP, 
-				maskBP, attApu, SPECT, attenuationCorrection);
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, s1, sZ, l3, l1, l2, diff2, diff1, diffZ, kerroin, center2[uu1], center1, centerZ[zz], bmin, bmax, Vmax, V,
+				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, useMaskBP, maskBP, attApu, SPECT, attenuationCorrection);
 			if (breikki) {
 				break;
 			}
 			uu++;
 		}
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2[uu2], bmin, bmax, Vmax, V,
-				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, useMaskBP, 
-				maskBP, attApu, SPECT, attenuationCorrection);
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, s1, sZ, l3, l1, l2, diff2, diff1, diffZ, kerroin, center2[uu1], center1, centerZ[zz], bmin, bmax, Vmax, V,
+				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, useMaskBP, maskBP, attApu, SPECT, attenuationCorrection);
 			if (breikki) {
 				break;
 			}
@@ -1094,18 +1135,16 @@ inline int orthDistance3D(const uint32_t tempi, const T diff1, const T diff2, co
 		const T l1 = diff2 * z0 - apu1;
 		const T l2 = diff1 * z0;
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2[uu1], bmin, bmax, Vmax, V,
-				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, useMaskBP, 
-				maskBP, attApu, SPECT, attenuationCorrection);
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, s1, sZ, l3, l1, l2, diff2, diff1, diffZ, kerroin, center2[uu1], center1, centerZ[zz], bmin, bmax, Vmax, V,
+				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, useMaskBP, maskBP, attApu, SPECT, attenuationCorrection);
 			if (breikki) {
 				break;
 			}
 			uu++;
 		}
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s2, l3, l1, l2, diff2, diffZ, kerroin, center2[uu2], bmin, bmax, Vmax, V,
-				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, useMaskBP, 
-				maskBP, attApu, SPECT, attenuationCorrection);
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s2, s1, sZ, l3, l1, l2, diff2, diff1, diffZ, kerroin, center2[uu1], center1, centerZ[zz], bmin, bmax, Vmax, V,
+				XY, ax, temp, input, Summ, output, no_norm, element, sigma_x, D, DD, TOFCenter, TOFSum, TOF, fp, projType, nBins, lor, nRays, coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY, useMaskBP, maskBP, attApu, SPECT, attenuationCorrection);
 			if (breikki) {
 				break;
 			}
@@ -1370,13 +1409,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		int64_t ind = lo;
 		if (param.useMaskFP) {
 			const int64_t idx1 = ix + iy * (int64_t)param.size_x;
-			int64_t idx2 = 0;
-			if (param.numMaskFP > 1) { // Shift to the correct detector panel mask 
-				int64_t numProjPerDetector = param.nProjectionsGlobal / param.numMaskFP;
-				int64_t currentDetector = iz / numProjPerDetector;
-				idx2 = (int64_t)param.size_x * (int64_t)param.size_x * currentDetector;
-			}
-			const bool maskVal = param.maskFP[idx1+idx2];
+			const bool maskVal = param.maskFP[idx1];
 			if (maskVal == false)
 				continue;
 		}
@@ -1404,7 +1437,6 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		int lor = -1;
 
 		// Loop through the rays
-		//for (int currentShift = 0; currentShift < nShift; currentShift++) {
 		for (int lorZ = 0; lorZ < param.nRays3D; lorZ++) {
 			for (int lorXY = 0; lorXY < param.nRays2D; lorXY++) {
 				lor++;
@@ -1630,7 +1662,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 						if (param.projType > 1) {
 							orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, indO, localIndZ, detectors.xs, detectors.ys, detectors.zs, Nyx, kerroin, d_N1, d_N3, d_N2, param.Nz, 
 								param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, d_d2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp, param.projType, 
-								param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
+								param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
 						}
 						else {
 							if (fp == 1) {
@@ -1915,7 +1947,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
                                         int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_b, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                             param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                            param.projType, param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
+                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
                                         if (uu == 0)
                                             break;
                                     }
@@ -1924,7 +1956,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                                     for (int kk = tempi_a + 1; kk < d_NNx; kk++) {
                                         int uu = orthDistance3D(kk, y_diff, x_diff, z_diff, center1[kk], center2, param.z_center, temp, tempj_a, tempk_b, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                             param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                            param.projType, param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
+                                            param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection, uz, true);
                                         if (uu == 0)
                                             break;
                                     }
@@ -1933,8 +1965,8 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                             if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
                                 orthDistance3D(localIndX, y_diff, x_diff, z_diff, center1[localIndX], center2, param.z_center, temp, localIndY, localIndZ, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                     param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele2, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                    param.projType, param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
-								tempiOld = tempi_a;
+                                    param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
+                                tempiOld = tempi_a;
                             }
                         }
                         else {
@@ -1970,7 +2002,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                             for (int ii = tempi_a - 1; ii >= 0; ii--) {
                                 int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                     param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                    param.projType, param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
+                                    param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
                                 if (uu == 0)
                                     break;
                             }
@@ -1981,7 +2013,7 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
                             for (int ii = tempi_a + 1; ii < d_NNx; ii++) {
                                 int uu = orthDistance3D(ii, y_diff, x_diff, z_diff, center1[ii], center2, param.z_center, temp, tempj_a, tempk_a, xs, ys, detectors.zs, Nyx, kerroin, d_N1, d_N2, d_N3,
                                     param.Nz, param.bmin, param.bmax, param.Vmax, param.V, XY, ax, input, param.noSensImage, SensImage, output, local_ele, param.sigma_x, D, DD, param.TOFCenters, TOFSum, param.TOF, fp,
-                                    param.projType, param.nBins, lor, nRays, tempk_b, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
+                                    param.projType, param.nBins, lor, nRays, tempk_b, param.coneOfResponseStdCoeffA, param.coneOfResponseStdCoeffB, param.coneOfResponseStdCoeffC, param.dPitchXY, param.useMaskBP, param.maskBP, attApu, SPECT, param.attenuationCorrection);
                                 if (uu == 0)
                                     break;
                             }
