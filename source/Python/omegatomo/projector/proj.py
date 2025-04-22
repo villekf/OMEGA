@@ -526,8 +526,8 @@ class projectorClass:
             if self.projector_type == 6 and len(self.SinM > 0):
                 endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
                 endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
-                padRows = (endSinogramRows-self.nRowsD)/2
-                padCols = (endSinogramCols-self.nColsD)/2
+                padRows = int((endSinogramRows-self.nRowsD)/2) # Pad this amount on both sides
+                padCols = int((endSinogramCols-self.nColsD)/2) # Pad this amount on both sides
                 if padRows < 0:
                     self.SinM = self.SinM[-padRows:padRows, :, :]
                 if padRows > 0:
