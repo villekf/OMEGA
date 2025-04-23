@@ -766,7 +766,7 @@ class projectorClass:
             self.Nz = np.array(self.Nz, dtype=np.uint32, ndmin=1)
         xx, yy, zz = computePixelSize(self)
         formSubsetIndices(self)
-        if (self.CT or self.PET or (self.SPECT and not(self.projector_type == 6))) and self.listmode == 0:
+        if ((self.CT or self.PET or self.SPECT) and self.projector_type != 6) and self.listmode == 0:
             if self.subsetType >= 8 and self.subsets > 1 and not self.FDK:
                 if self.CT:
                     x_det = np.reshape(x_det, (self.nProjections, 6))
@@ -792,8 +792,12 @@ class projectorClass:
                 if self.CT:
                     self.uV = self.uV[self.index,:]
         if self.listmode == 0:
-            self.x = x_det
-            self.z = z_det
+            if self.SPECT:
+                self.x = x_det.ravel('F')
+                self.z = z_det.ravel('F')
+            else:
+                self.x = x_det
+                self.z = z_det
         computePixelCenters(self, xx, yy, zz)
         computeVoxelVolumes(self)
         if (self.projector_type == 4 or self.projector_type == 5 or self.projector_type == 14 or self.projector_type == 41 
@@ -3243,12 +3247,12 @@ class projectorClass:
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                             kIndLoc += 1
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                             self.knlF.set_arg(kIndLoc, self.d_x[0].data)
                         else:
                             self.knlF.set_arg(kIndLoc, self.d_x[subset].data)
                         kIndLoc += 1
-                        if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                             self.knlF.set_arg(kIndLoc, self.d_z[subset].data)
                         else:
                             self.knlF.set_arg(kIndLoc, self.d_z[0].data)
@@ -3856,12 +3860,12 @@ class projectorClass:
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             self.knlB.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                             kIndLoc += 1
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                             self.knlB.set_arg(kIndLoc, self.d_x[0].data)
                         else:
                             self.knlB.set_arg(kIndLoc, self.d_x[subset].data)
                         kIndLoc += 1
-                        if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                             self.knlB.set_arg(kIndLoc, self.d_z[subset].data)
                         else:
                             self.knlB.set_arg(kIndLoc, self.d_z[0].data)
