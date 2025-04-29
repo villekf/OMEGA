@@ -6,7 +6,6 @@ import numpy as np
 from omegatomo import proj
 from omegatomo.reconstruction import reconstructions_mainSPECT
 from omegatomo.io.loadProSpectaData import loadProSpectaData
-import matplotlib.pyplot as plt
 
 # Initialize projector class for reconstruction
 options = proj.projectorClass()
@@ -31,12 +30,6 @@ options.crXY = 4.7952
 # Used for naming purposes (measurement data)
 options.machine_name = 'Prospecta'
  
-###########################################################################
-###########################################################################
-###########################################################################
-###########################################################################
- 
-
 ###########################################################################
 ###########################################################################
 ###########################################################################
@@ -72,7 +65,7 @@ options.vaimennus = np.zeros((options.Nx, options.Ny, options.Nz))
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
-# Positive values perform the rotation in clockwise direction
+# Positive values perform the rotation in counterclockwise direction
 options.offangle = 0
  
 ###########################################################################
@@ -188,7 +181,7 @@ options.useCPU = False
 # 6 = Rotation-based projector
 # See the documentation on some details on the projectors:
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
-options.projector_type = 2
+options.projector_type = 1
 
 ### Use images instead of buffers? For rotation-based projector this
 # implies hardware texture interpolation, which typically has 8 bit 
@@ -779,15 +772,13 @@ options.GGMRF_c = 5
 ###########################################################################
 ###########################################################################
  
-  
-
 ## Reconstructions
-
-    
 import time
 tic = time.perf_counter()
 pz, fp = reconstructions_mainSPECT(options)
 toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
-plt.imshow(pz[:,:,93], vmin=0)
-plt.show()
+
+# Plot
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(pz)

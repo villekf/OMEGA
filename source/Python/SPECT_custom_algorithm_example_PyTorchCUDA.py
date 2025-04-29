@@ -14,7 +14,6 @@ This example uses PyTorch and CuPy and thus requires CUDA (with CuPy and PyTorch
 
 import numpy as np
 from omegatomo import proj
-import matplotlib.pyplot as plt
 import torch
 
 options = proj.projectorClass()
@@ -30,6 +29,10 @@ options.useCUDA = True
 
 # Uses CuPy instead of PyCUDA (recommended)
 options.useCuPy = True
+
+# Use Pro.specta DICOM file?
+useProSpectaData = True
+options.fpath = ''
 
 ###########################################################################
 ###########################################################################
@@ -85,7 +88,7 @@ options.vaimennus = np.zeros((options.Nx, options.Ny, options.Nz), dtype=np.floa
 
 ### How much is the image rotated in degrees?
 # NOTE: The rotation is done in the detector space (before reconstruction).
-# Positive values perform the rotation in clockwise direction
+# Positive values perform the rotation in counterclockwise direction
 options.offangle = 0
 
 ###########################################################################
@@ -96,31 +99,31 @@ options.offangle = 0
 ###########################################################################
 ###########################################################################
 
-# Gantry angles
-options.angles = np.array([0])
+if useProSpectaData:
+    from omegatomo.io.loadProSpectaData import loadProSpectaData
+    loadProSpectaData(options)
+else:
+    # Gantry angles
+    options.angles = np.array([0])
 
-# Detector swivel angles
-options.swivelAngles = options.angles+180
+    # Detector swivel angles
+    options.swivelAngles = options.angles+180
 
-# Distance between detector surface and FOV centre (origin)
-options.radiusPerProj = 48*options.crXY*np.ones_like(options.angles); 
+    # Distance between detector surface and FOV centre (origin)
+    options.radiusPerProj = 48*options.crXY*np.ones_like(options.angles); 
 
-# Initial value for the forward projection example
-x0 = np.zeros((options.Nx, options.Ny, options.Nz), dtype=np.float32)
-x0[63, 63, 63] = 1
+    # Projection images for backward projection example
+    options.SinM = np.zeros((128, 128, len(options.angles)), dtype=np.float32)
+    options.SinM[63, 63, :] = 1
 
-# Projection images for backward projection example
-y0 = np.zeros((128, 128, len(options.angles)), dtype=np.float32)
-y0[63, 63, :] = 1
+    # Number of rows in a projection image
+    options.nRowsD = options.SinM.shape[0]
 
-# Number of rows in a projection image
-options.nRowsD = y0.shape[0]
+    # Number of columns in a projection image
+    options.nColsD = options.SinM.shape[1]
 
-# Number of columns in a projection image
-options.nColsD = y0.shape[1]
-
-# Number of projections
-options.nProjections = y0.shape[2]
+    # Number of projections
+    options.nProjections = options.SinM.shape[2]
 
 ###########################################################################
 ###########################################################################
@@ -195,7 +198,7 @@ options.name = 'spect_example'
 # These are e.g. time elapsed on various functions and what steps have been
 # completed. It is recommended to keep this 1.  Maximum value of 3 is
 # supported.
-options.verbose = 3
+options.verbose = 1
 
 ###########################################################################
 ###########################################################################
@@ -214,7 +217,7 @@ options.verbose = 3
 # https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 # NOTE: with rotation-based projector, the sinogram must be resized and
 # resampled to match FOV XZ-plane size and resolution.
-options.projector_type = 2
+options.projector_type = 1
 
 ### Use images instead of buffers? For rotation-based projector this
 # implies hardware texture interpolation, which typically has 8 bit 
@@ -227,31 +230,38 @@ options.useImages = True
 ###########################################################################
 ###########################################################################
 
+options.Niter = 5 # Number of iterations
+options.subsets = 8 # 1 for MLEM
+# 8: every nth projection (n=options.subsets)
+options.subsetType = 8 
+
 # Initialize projector
 options.addProjector()
 options.initProj()
-A = options
 
-d_x0 = torch.tensor(x0.ravel('F'), device='cuda') # Input as torch tensor
-d_y0 = torch.tensor(y0.ravel('F'), device='cuda') # Input as torch tensor
+### MLEM/OSEM
+m = options.SinM.ravel('F') # Measurements ()
+d_m = [None] * options.subsets
+d_f = torch.tensor(options.x0,device='cuda') # Transfer initial value to GPU (default = array of ones)
+for k in range(options.subsets): # Split data to subsets
+    d_m[k] = torch.tensor(m[options.nTotMeas[k].item() : options.nTotMeas[k + 1].item()], device='cuda')
+for it in range(options.Niter):
+    for k in range(options.subsets):
+        # This is necessary when using subsets
+        # Alternative, call options.forwardProject(d_f, k) to use forward projection
+        # options.backwardProject(m, k) for backprojection
+        options.subset = k
+        fp = options * d_f
+        Sens = options.T() * torch.ones(d_m[k].numel(), dtype=torch.float32, device='cuda')
+        Sens[Sens <= 0] = options.epps
+        bp = options.T() * (d_m[k] / fp)
+        d_f = d_f / Sens * bp
+        d_f = torch.clamp(d_f, min=0)
+    print(f'{"ML" if options.subsets==1 else "OS"}EM iteration {it+1}/{options.Niter} finished', end=f'{"\r" if it!=options.Niter-1 else "\n"}')
 
-## Compute forward projection with A * x
-d_y = A * d_x0
+# Back to CPU
+f = d_f.cpu().numpy()
+f = np.reshape(f, (options.Nx[0], options.Ny[0], options.Nz[0]), order='F')
 
-y = d_y.cpu().numpy()
-y = np.reshape(y, (options.nRowsD, options.nColsD, options.nProjections), order='F')
-plt.subplot(1, 2, 1)
-plt.imshow(y[:,:,0], vmin=0) # Plot first sinogram
-plt.title('First projection image', fontsize=6)
-
-# Compute backprojection with A.T() * y
-d_x = A.T() * d_y0
-
-x = d_x.cpu().numpy()
-x = np.reshape(x, (options.Nx[0], options.Ny[0], options.Nz[0]), order='F')
-plt.subplot(1, 2, 2)
-plt.imshow(x[:, :, 63], vmin=0) # Plot cross-section of backprojection
-plt.title('Cross-section of back projection', fontsize=6)
-
-# Show plot
-plt.show()
+from omegatomo.util.volume3Dviewer import volume3Dviewer
+volume3Dviewer(f)

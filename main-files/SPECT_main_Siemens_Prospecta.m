@@ -73,7 +73,7 @@ options.HU.intercept = 0.0151;
 
 %%% How much is the image rotated in degrees?
 % NOTE: The rotation is done in the detector space (before reconstruction).
-% Positive values perform the rotation in clockwise direction
+% Positive values perform the rotation in counterclockwise direction
 options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
