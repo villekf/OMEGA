@@ -791,7 +791,7 @@ class projectorClass:
                     z_det = z_det.ravel('C')
                 if self.CT:
                     self.uV = self.uV[self.index,:]
-        if self.listmode == 0:
+        if self.listmode == 0 and self.projector_type != 6:
             if self.SPECT:
                 self.x = x_det.ravel('F')
                 self.z = z_det.ravel('F')
@@ -1932,9 +1932,9 @@ class projectorClass:
                     # if self.FPType == 5:
                     #     raise ValueError('Not yet supported')
                     self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
-                    if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                    if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                         self.d_x[0] = cp.asarray(self.x.ravel())
-                    elif self.CT and self.listmode == 0:
+                    elif (self.CT or self.SPECT) and self.listmode == 0:
                         apu = self.x.ravel()
                         for i in range(self.subsets):
                             self.d_x[i] = cp.asarray(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -1943,7 +1943,7 @@ class projectorClass:
                         for i in range(self.subsets):
                             if self.loadTOF:
                                 self.d_x[i] = cp.asarray(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                    if (self.CT and self.listmode == 0):
+                    if ((self.CT or self.SPECT) and self.listmode == 0):
                         if self.pitch:
                             kerroin = 6
                         else:
@@ -2143,9 +2143,9 @@ class projectorClass:
                                 if k == 0:
                                     self.dSizeBP = cuda.gpuarray.vec.make_float2(self.dSizeXBP, self.dSizeZBP)
                     self.d_dPitch = cuda.gpuarray.vec.make_float2(self.dPitchX, self.dPitchY)
-                    if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                    if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                         self.d_x[0] = cuda.gpuarray.to_gpu(self.x.ravel())
-                    elif self.CT and self.listmode == 0:
+                    elif (self.CT or self.SPECT) and self.listmode == 0:
                         apu = self.x.ravel()
                         for i in range(self.subsets):
                             self.d_x[i] = cuda.gpuarray.to_gpu(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -2154,7 +2154,7 @@ class projectorClass:
                         for i in range(self.subsets):
                             if (i == 0 or self.loadTOF):
                                 self.d_x[i] = cuda.gpuarray.to_gpu(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                    if (self.CT and self.listmode == 0):
+                    if ((self.CT or self.SPECT) and self.listmode == 0):
                         if self.pitch:
                             kerroin = 6
                         else:
@@ -2344,9 +2344,9 @@ class projectorClass:
                 self.d_dPitch = cl.cltypes.make_float2(self.dPitchX, self.dPitchY)
                 self.d_x = [None] * self.subsets
                 self.d_z = [None] * self.subsets
-                if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                     self.d_x[0] = cl.array.to_device(self.queue, self.x.ravel())
-                elif self.CT and self.listmode == 0:
+                elif (self.CT or self.SPECT) and self.listmode == 0:
                     apu = self.x.ravel()
                     for i in range(self.subsets):
                         self.d_x[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -2355,7 +2355,7 @@ class projectorClass:
                     for i in range(self.subsets):
                         if self.loadTOF:
                             self.d_x[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                if (self.CT and self.listmode == 0):
+                if ((self.CT or self.SPECT) and self.listmode == 0):
                     if self.pitch:
                         kerroin = 6
                     else:
@@ -2688,7 +2688,7 @@ class projectorClass:
                     else:
                         apuArr = af.data.moddims(f, self.Nx[ii].item(), self.Ny[ii].item(), self.Nz[ii].item())
                     for kk in range(self.nProjSubset[subset].item()):
-                        kuvaRot = af.image.rotate(apuArr, -self.angles[u1].item(), method=af.INTERP.BILINEAR) # [128, 128, 96]
+                        kuvaRot = af.image.rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR) # [128, 128, 96]
                         kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [96, 128, 128]
                         kuvaRot = af.signal.convolve2(kuvaRot, self.d_gFilter[:, :, :, u1]) # [96, 128, 128]
                         kuvaRot = kuvaRot[:, :, self.blurPlanes[u1].item():] # [96, 128, 90]
@@ -2714,7 +2714,7 @@ class projectorClass:
                         else:
                             apuArr = torch.reshape(f, (self.Nz[ii].item(), self.Ny[ii].item(), self.Nx[ii].item()))
                         for kk in range(self.nProjSubset[subset].item()):
-                            kuvaRot = rotate(apuArr, -self.angles[u1].item(), InterpolationMode.BILINEAR)
+                            kuvaRot = rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
                             kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             kuvaRot = kuvaRot.unsqueeze(0)
                             kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2), groups=kuvaRot.shape[1])
@@ -2888,11 +2888,11 @@ class projectorClass:
                         elif self.FPType in [1, 2, 3]:
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
-                            if (((self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
+                            if (((self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
                                 kIndLoc += (self.d_x[0],)
                             else:
                                 kIndLoc += (self.d_x[subset], )
-                            if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                            if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                                 kIndLoc += (self.d_z[subset],)
                             else:
                                 kIndLoc += (self.d_z[0],)
@@ -3008,11 +3008,11 @@ class projectorClass:
                         if self.FPType in [1, 2, 3]:
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                            if (self.listmode == 0 and not self.CT):
+                            if (self.listmode == 0 and not (self.CT or self.SPECT)):
                                 kIndLoc += (self.d_x[0].gpudata,)
                             else:
                                 kIndLoc += (self.d_x[subset].gpudata, )
-                            if (self.CT or self.PET or self.listmode > 0):
+                            if (self.CT or self.PET or self.SPECT or self.listmode > 0):
                                 kIndLoc += (self.d_z[subset].gpudata,)
                             else:
                                 kIndLoc += (self.d_z[0].gpudata,)
@@ -3332,7 +3332,7 @@ class projectorClass:
                         kuvaRot = kuvaRot[:,:, self.blurPlanes[u1].item():] # [96, 128, 90]
                         kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
                         fApu[self.blurPlanes[u1].item():,:,:] = kuvaRot
-                        fApu = af.image.rotate(fApu, self.angles[u1], method=af.INTERP.BILINEAR)
+                        fApu = af.image.rotate(fApu, (180+self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR)
                         if isinstance(f, list):
                             f[ii][:, kk] = af.flat(fApu)
                         else:
@@ -3369,7 +3369,7 @@ class projectorClass:
                             kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             # kuvaRot = cp.transpose(kuvaRot, (2, 1, 0))
                             fApu[:,:,self.blurPlanes[u1].item():] = kuvaRot
-                            fApu = rotate(fApu, self.angles[u1].item(), InterpolationMode.BILINEAR)
+                            fApu = rotate(fApu, (180+self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
                             if isinstance(f, list):
                                 f[ii][kk,:] = torch.ravel(fApu)
                             else:
@@ -3414,11 +3414,11 @@ class projectorClass:
                                 kIndLoc += (self.d_atten[subset],)
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += ((self.nProjSubset[subset].item()),)
-                            if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                            if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                                 kIndLoc += (self.d_x[0],)
                             else:
                                 kIndLoc += (self.d_x[subset],)
-                            if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                            if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                                 kIndLoc += (self.d_z[subset],)
                             else:
                                 kIndLoc += (self.d_z[0],)
@@ -3646,11 +3646,11 @@ class projectorClass:
                                 kIndLoc += (self.d_atten[subset].gpudata,)
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                            if (self.listmode == 0 and not self.CT):
+                            if (self.listmode == 0 and not (self.CT or self.SPECT)):
                                 kIndLoc += (self.d_x[0].gpudata,)
                             else:
                                 kIndLoc += (self.d_x[subset].gpudata,)
-                            if (self.CT or self.PET or self.listmode > 0):
+                            if (self.CT or self.PET or self.SPECT or self.listmode > 0):
                                 kIndLoc += (self.d_z[subset].gpudata,)
                             else:
                                 kIndLoc += (self.d_z[0].gpudata,)
