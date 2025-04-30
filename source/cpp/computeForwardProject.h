@@ -247,7 +247,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 						input = af::moddims(input, inputScalars.nColsD, input.elements() / inputScalars.nColsD);
 				}
 				else
-					input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, length / (inputScalars.nRowsD * inputScalars.nColsD));
+					input = af::moddims(input, inputScalars.nRowsD, inputScalars.nColsD, input.elements() / (inputScalars.nRowsD * inputScalars.nColsD));
 				if (inputScalars.adaptiveType >= 1 && ii == 0) {
 					w_vec.Ffilter = af::ifft(w_vec.filter) * w_vec.sigmaCP[ii];
 					w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
