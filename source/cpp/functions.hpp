@@ -742,8 +742,8 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 		return -1;
 	}
 #else
-	status = proj.computeNLM(inputScalars, w_vec, beta);
 	proj.d_inputB = transferAF(im);
+	status = proj.computeNLM(inputScalars, w_vec, beta);
 	grad.unlock();
 	im.unlock();
 	w_vec.gaussianNLM.unlock();
