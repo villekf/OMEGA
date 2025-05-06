@@ -263,5 +263,9 @@ for it in range(options.Niter):
 f = d_f.cpu().numpy()
 f = np.reshape(f, (options.Nx[0], options.Ny[0], options.Nz[0]), order='F')
 
-from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(f)
+# Plot
+from matplotlib import pyplot as plt
+plt.imshow(pz[:,:,48], vmin=0)
+plt.show()
+#from omegatomo.util.volume3Dviewer import volume3Dviewer
+#volume3Dviewer(f)

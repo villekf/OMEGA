@@ -6,7 +6,8 @@ def volume3Dviewer(
     volume1: np.ndarray,
     scale = None,
     rotation = None,
-    volume2 = None
+    volume2 = None,
+    useColorbar = False
 ):
     """
     Display an interactive Matplotlib slider to scroll through the third dimension of a 3D volume.
@@ -97,16 +98,17 @@ def volume3Dviewer(
         ax_alpha = plt.axes([.05, .15, .05, .8])
         alphar = Slider(ax_alpha, '', 0.0, 1.0, valinit=0.5, orientation='vertical')
         alphar.valtext.set_visible(False)
-        
-    # Colorbar axes
-    ax_cbar1 = plt.axes([.85, .15, .02, .8])
-    _, vmin1, vmax1 = get_slice_scale(volume1, idx0)
-    cbar1 = plt.colorbar(img1, cax=ax_cbar1, ticks=[vmin1, vmax1], ticklocation='left')
-    #cbar1.ax.yaxis.set_ticks_position('left')
-    if overlay:
-        ax_cbar2 = plt.axes([.9, .15, .02, .8])
-        _, vmin2, vmax2 = get_slice_scale(volume2, idx0)
-        cbar2 = plt.colorbar(img2, cax=ax_cbar2, ticks=[vmin2, vmax2])
+    
+    if useColorbar:
+        # Colorbar axes
+        ax_cbar1 = plt.axes([.85, .15, .02, .8])
+        _, vmin1, vmax1 = get_slice_scale(volume1, idx0)
+        cbar1 = plt.colorbar(img1, cax=ax_cbar1, ticks=[vmin1, vmax1], ticklocation='left')
+        #cbar1.ax.yaxis.set_ticks_position('left')
+        if overlay:
+            ax_cbar2 = plt.axes([.9, .15, .02, .8])
+            _, vmin2, vmax2 = get_slice_scale(volume2, idx0)
+            cbar2 = plt.colorbar(img2, cax=ax_cbar2, ticks=[vmin2, vmax2])
         
     # Update callback
     def _update(val):
@@ -115,14 +117,14 @@ def volume3Dviewer(
         s1, vmin1, vmax1 = get_slice_scale(volume1, i)
         img1.set_data(s1)
         img1.set_clim(vmin1, vmax1)
-        if not (np.isnan(vmin1) or np.isnan(vmax1)):
+        if not (np.isnan(vmin1) or np.isnan(vmax1)) and useColorbar:
             cbar1.set_ticks([vmin1, vmax1])
 
         if overlay:
             s2, v2min, v2max = get_slice_scale(volume2, i)
             img2.set_data(s2)
             img2.set_clim(v2min, v2max)
-            if not (np.isnan(v2min) or np.isnan(v2max)):
+            if not (np.isnan(v2min) or np.isnan(v2max)) and useColorbar:
                 cbar2.set_ticks([v2min, v2max])
             a = alphar.val
             img1.set_alpha(a)

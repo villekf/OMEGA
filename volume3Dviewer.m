@@ -94,6 +94,11 @@ function varargout = volume3Dviewer(volume, varargin)
         end
     end
 
+    useColorbar = false;
+    if nargin >= 5 && ~isempty(varargin{4})
+        useColorbar = varargin{4}
+    end
+
     %% Volume 1 UI controls
     % Create a slider for the slice
     sliderSlice = uicontrol('Parent', varargout{1}, 'Style', 'slider', 'Units', 'normalized', 'Position', [.05, .05, .9, .05], ...
@@ -171,11 +176,13 @@ function varargout = volume3Dviewer(volume, varargin)
             ax2.UserData = linkprop([ax,ax2],...
                 {'Position','InnerPosition','DataAspectRatio','xtick','ytick', ...
                 'ydir','xdir','xlim','ylim'});
-            colorbar(ax2, 'Position', [.9, .15, .02, .8])
+            if useColorbar
+                colorbar(ax2, 'Position', [.9, .15, .02, .8])
+            end
         else
             colormap(ax, 'gray');
         end
-        if USING_MATLAB; colorbar(ax, 'Position', [.85, .15, .02, .8]); end
+        if (USING_MATLAB && useColorbar); colorbar(ax, 'Position', [.85, .15, .02, .8]); end
         axis(ax, "off", "equal")
         title(ax, ['Slice ' num2str(slice_num) '/' num2str(size(volume,3))]);
 

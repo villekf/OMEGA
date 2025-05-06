@@ -780,5 +780,8 @@ toc = time.perf_counter()
 print(f"{toc - tic:0.4f} seconds")
 
 # Plot
-from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(pz)
+from matplotlib import pyplot as plt
+plt.imshow(pz[:,:,48], vmin=0)
+plt.show()
+#from omegatomo.util.volume3Dviewer import volume3Dviewer
+#volume3Dviewer(pz)

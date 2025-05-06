@@ -262,5 +262,8 @@ f = np.reshape(f, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].ite
 f = np.nan_to_num(f, nan=options.epps)
 
 # Plot
-from omegatomo.util.volume3Dviewer import volume3Dviewer
-volume3Dviewer(f)
+from matplotlib import pyplot as plt
+plt.imshow(pz[:,:,48], vmin=0)
+plt.show()
+#from omegatomo.util.volume3Dviewer import volume3Dviewer
+#volume3Dviewer(f)

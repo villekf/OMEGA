@@ -1025,7 +1025,6 @@ classdef projectorClass
                 else
                     koko = obj.param.totMeas;
                 end
-                disp(koko)
                 if nargout == 2
                     [f, varargout{1}] = backwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
                 else
