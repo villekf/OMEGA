@@ -344,6 +344,66 @@ classdef projectorClass
                 if ~isa(obj.param.x, obj.param.cType)
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
+            elseif obj.param.SPECT
+                if obj.param.projector_type == 6
+                    %% Sinogram resizing
+                    % Sinogram size is (options.nRowsD, options.nColsD)
+                    % FOV size is (options.Nx, options.Ny, options.Nz)
+                    % nRowsD corresponds to Nx, nColsD corresponds to Nz.
+
+                    % Idea:
+                    % % Resample and resize sinogram to match FOV size and resolution
+                    % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
+                    sinogramSizeX = obj.param.crXY * obj.param.nRowsD; % Sinogram size in X
+                    sinogramSizeZ = obj.param.crXY * obj.param.nColsD; % Sinogram size in Z
+                    
+                    endSinogramRows = obj.param.FOVa_x / obj.param.crXY; % Desired amount of sinogram rows
+                    endSinogramCols = obj.param.axial_fov / obj.param.crXY; % Desired amount of sinogram columns
+                    obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
+                    obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
+                    obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
+                    obj.param.nColsD = obj.param.Nz; % Set new sinogram size
+                    
+                    % Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                    obj.param.SinM = imresize(obj.param.SinM, [obj.param.Nx, obj.param.Nz]); % Resample the sinogram
+                end
+                if numel(obj.param.swivelAngles) == 0
+                    obj.param.swivelAngles = obj.param.angles + 180;
+                end
+                if obj.param.offangle ~= 0
+                    obj.param.angles = obj.param.angles + obj.param.offangle;
+                    obj.param.swivelAngles = obj.param.swivelAngles + obj.param.offangle;
+                end
+                if isfield(obj.param, 'vaimennus')
+                    obj.param.vaimennus = imrotate(obj.param.vaimennus, obj.param.offangle, 'crop');
+                    if obj.param.flipImageX
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 2);
+                    end
+                    if obj.param.flipImageY
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 1);
+                    end
+                    if obj.param.flipImageZ
+                        obj.param.vaimennus = flip(obj.param.vaimennus, 3);
+                    end
+                end
+                if obj.param.flipImageZ % Flip image by flipping sinograms' z-axis in image space. X and Y are flipped in get_coordinates_SPECT (only for projector_type != 6)
+                    obj.param.SinM = flip(obj.param.SinM, 2);
+                end
+                % The following may or may not be required
+                obj.param.Ndist = obj.param.nRowsD;
+                obj.param.Nang = obj.param.nColsD;
+                obj.param.rings = obj.param.nColsD * obj.param.nBed;
+                obj.param.det_per_ring = obj.param.nRowsD * obj.param.nProjections;
+                obj.param.tot_time = 0;
+                obj.param.diameter = 0;
+                obj.param.ndist_side = 0;
+                obj.param.corrections_during_reconstruction = false;
+                obj.param.NSinos = obj.param.nProjections;
+                obj.param.TotSinos = obj.param.nProjections;
+                obj.param.dPitch = obj.param.cr_p;
+                obj.param.cr_pz = obj.param.crXY;
+                obj.param.linear_multip = 0;
+                obj.param.cryst_per_block = obj.param.nColsD * obj.param.nRowsD;
             end
             obj.param = convertOptions(obj.param);
             if ~obj.param.simple && obj.param.errorChecking
@@ -681,7 +741,7 @@ classdef projectorClass
             if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthTransaxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && isfield(obj.param,'tube_width_xy') && obj.param.tube_width_xy > 0
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(options,'tube_width_xy') && options.tube_width_xy > 0 || options.SPECT)
                     obj.param.orthTransaxial = true;
                 else
                     obj.param.orthTransaxial = false;
@@ -692,7 +752,7 @@ classdef projectorClass
             if (obj.param.projector_type == 2 || obj.param.projector_type == 3 || obj.param.projector_type == 22 || obj.param.projector_type == 33)
                 if obj.param.projector_type == 3 || obj.param.projector_type == 33
                     obj.param.orthAxial = true;
-                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0
+                elseif (obj.param.projector_type == 2 || obj.param.projector_type == 22) && (isfield(obj.param,'tube_width_z') && obj.param.tube_width_z > 0 || options.SPECT)
                     obj.param.orthAxial = true;
                 else
                     obj.param.orthAxial = false;
@@ -700,7 +760,6 @@ classdef projectorClass
             else
                 obj.param.orthAxial = false;
             end
-
 
             if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...
@@ -716,10 +775,16 @@ classdef projectorClass
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
             end
 
-            if obj.param.projector_type == 6
+            if obj.param.SPECT
                 obj.param = SPECTParameters(obj.param);
+            end
+
+            if obj.param.projector_type == 6
+                %obj.param = SPECTParameters(obj.param);
                 if obj.param.subsets > 1 && (obj.param.subset_type == 8 || obj.param.subset_type == 9 || obj.param.subset_type == 10 || obj.param.subset_type == 11)
                     obj.param.angles = obj.param.angles(obj.index);
+                    obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
+                    obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
                     obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
                     obj.param.gFilter = obj.param.gFilter(:,:,:,obj.index);
                 end
@@ -854,7 +919,12 @@ classdef projectorClass
                 else
                     lor2 = [];
                 end
-                [y, ~] = forwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
+                if obj.param.projector_type == 6
+                    koko = obj.nMeas(end);
+                else
+                    koko = obj.param.totMeas;
+                end
+                [y, ~] = forwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, lor2, ...
                     obj.param.lor_a, sum(obj.param.summa), loopVar, 0);
                 if apu > 1
                     obj.param.subsets = apu;
@@ -950,10 +1020,15 @@ classdef projectorClass
                     apu = obj.param.subsets;
                     obj.param.subsets = 1;
                 end
-                if nargout == 2
-                    [f, varargout{1}] = backwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                if obj.param.projector_type == 6
+                    koko = obj.nMeas(end);
                 else
-                    [f, ~] = backwardProjection(obj.param, input, obj.x, obj.z, obj.param.totMeas, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                    koko = obj.param.totMeas;
+                end
+                if nargout == 2
+                    [f, varargout{1}] = backwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
+                else
+                    [f, ~] = backwardProjection(obj.param, input, obj.x, obj.z, koko, obj.nMeas(end), obj.param.xy_index, obj.param.z_index, obj.param.normalization, corrVec, obj.param.LL, obj.param.TOF, noSensIm, 0);
                 end
                 if apu > 1
                     obj.param.subsets = apu;

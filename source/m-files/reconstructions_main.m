@@ -45,7 +45,7 @@ if tyyppi == 0
     disp('Preparing for reconstruction...')
 end
 
-% Crate the class object
+% Create the class object
 options = projectorClass(inputStruct);
 
 if numel(options.param.partitions) > 1

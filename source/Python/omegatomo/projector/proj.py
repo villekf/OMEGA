@@ -454,8 +454,10 @@ class projectorClass:
     rayShiftsDetector = np.empty(0, dtype=np.float32)
     rayShiftsSource = np.empty(0, dtype=np.float32)
     CORtoDetectorSurface = 0
-    homeAngles = np.empty(0, dtype = np.float32)
     swivelAngles = np.empty(0, dtype = np.float32)
+    coneOfResponseStdCoeffA = 0
+    coneOfResponseStdCoeffB = 0
+    coneOfResponseStdCoeffC = 0
     eFOVLength = 0.4
     FISTAType = 0
     maskFPZ = 1
@@ -521,6 +523,46 @@ class projectorClass:
                 self.angles = self.angles + self.offangle
             setCTCoordinates(self)
         if self.SPECT:
+            if self.projector_type == 6 and len(self.SinM > 0):
+                endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
+                endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
+                padRows = int((endSinogramRows-self.nRowsD)/2) # Pad this amount on both sides
+                padCols = int((endSinogramCols-self.nColsD)/2) # Pad this amount on both sides
+                if padRows < 0:
+                    self.SinM = self.SinM[-padRows:padRows, :, :]
+                if padRows > 0:
+                    self.SinM = np.pad(self.SinM, ((padRows, padRows), (0, 0), (0, 0)))
+                if padCols < 0:
+                    self.SinM = self.SinM[:, -padCols:padCols, :]
+                if padCols > 0:
+                    self.SinM = np.pad(self.SinM, ((0, 0), (padCols, padCols), (0, 0)))
+                self.nRowsD = self.Nx; # Set new sinogram size
+                self.nColsD = self.Nz; # Set new sinogram size
+                
+                # Now the sinogram and FOV XZ-plane match in physical dimensions but not in resolution.
+                from skimage.transform import resize
+                self.SinM = resize(self.SinM, (self.Nx, self.Nz), preserve_range=True)
+                
+            if self.swivelAngles.size == 0:
+                self.swivelAngles = self.angles + 180
+            if self.offangle != 0:
+                self.angles += self.offangle
+                self.swivelAngles += self.offangle
+            
+            if self.vaimennus.size > 0:
+                from skimage.transform import rotate
+                self.vaimennus = rotate(self.vaimennus, self.offangle)
+                if self.flipImageX:
+                    self.vaimennus = np.flip(self.vaimennus, 2)
+                if self.flipImageY:
+                    self.vaimennus = np.flip(self.vaimennus, 1)
+                if self.flipImageZ:
+                    self.vaimennus = np.flip(self.vaimennus, 3)
+                    
+            if self.flipImageZ:
+                self.SinM = np.flip(self.SinM, axis=2)
+            
+            self.n_rays_transaxial = self.nRays
             self.NSinos = self.nProjections
             self.TotSinos = self.nProjections
             self.dPitchX = self.cr_p
@@ -651,7 +693,7 @@ class projectorClass:
         self.x0 = self.x0.ravel('F')
         
         # Coordinates of the detectors
-        if not(self.projector_type == 6):
+        if self.projector_type != 6:
             if self.listmode == False:
                 if self.SPECT:
                     from .detcoord import getCoordinatesSPECT
@@ -724,7 +766,7 @@ class projectorClass:
             self.Nz = np.array(self.Nz, dtype=np.uint32, ndmin=1)
         xx, yy, zz = computePixelSize(self)
         formSubsetIndices(self)
-        if (self.CT or self.PET or (self.SPECT and not(self.projector_type == 6))) and self.listmode == 0:
+        if ((self.CT or self.PET or self.SPECT) and self.projector_type != 6) and self.listmode == 0:
             if self.subsetType >= 8 and self.subsets > 1 and not self.FDK:
                 if self.CT:
                     x_det = np.reshape(x_det, (self.nProjections, 6))
@@ -749,9 +791,13 @@ class projectorClass:
                     z_det = z_det.ravel('C')
                 if self.CT:
                     self.uV = self.uV[self.index,:]
-        if self.listmode == 0:
-            self.x = x_det
-            self.z = z_det
+        if self.listmode == 0 and self.projector_type != 6:
+            if self.SPECT:
+                self.x = x_det.ravel('F')
+                self.z = z_det.ravel('F')
+            else:
+                self.x = x_det
+                self.z = z_det
         computePixelCenters(self, xx, yy, zz)
         computeVoxelVolumes(self)
         if (self.projector_type == 4 or self.projector_type == 5 or self.projector_type == 14 or self.projector_type == 41 
@@ -761,13 +807,19 @@ class projectorClass:
         if self.offsetCorrection and self.subsets > 1:
             self.OffsetLimit = self.OffsetLimit[self.index];
 
-        if self.projector_type == 6:
+        if self.SPECT:
             from .detcoord import SPECTParameters
             SPECTParameters(self)
+
+        if self.projector_type == 6:
+            #from .detcoord import SPECTParameters
+            #SPECTParameters(self)
             if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11):
-                self.angles = self.angles[self.index];
-                self.blurPlanes = self.blurPlanes[self.index];
-                self.gFilter = self.gFilter[:,:,:,self.index];
+                self.angles = self.angles[self.index]
+                self.swivelAngles = self.swivelAngles[self.index]
+                self.radiusPerProj = self.radiusPerProj[self.index]
+                self.blurPlanes = self.blurPlanes[self.index]
+                self.gFilter = self.gFilter[:,:,:,self.index]
             # self.gFilter = self.gFilter.ravel('F').astype(dtype=np.float32)
         ## This part is used when the observation matrix is calculated on-the-fly
 
@@ -802,14 +854,14 @@ class projectorClass:
         if self.projector_type in [2, 3, 22, 33]:
             if self.projector_type in [3, 33]:
                 self.orthTransaxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_xy > 0):
+            elif (self.projector_type in [2, 22]) and (self.tube_width_xy > 0 or self.SPECT):
                 self.orthTransaxial = True
             else:
                 self.orthTransaxial = False
         if self.projector_type in [2, 3, 22, 33]:
             if self.projector_type in [3, 33]:
                 self.orthAxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_z > 0):
+            elif (self.projector_type in [2, 22]) and (self.tube_width_z > 0 or self.SPECT):
                 self.orthAxial = True
             else:
                 self.orthAxial = False
@@ -869,7 +921,7 @@ class projectorClass:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
         
         if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
-            raise ValueError(f"The numnber of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
+            raise ValueError(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
         
         if not self.CT and not self.SPECT and (self.ndist_side > 1 and self.Ndist % 2 == 0 or self.ndist_side < -1 and self.Ndist % 2 == 0) and not self.use_raw_data:
             raise ValueError("ndist_side can be either 1 or -1!")
@@ -1036,16 +1088,16 @@ class projectorClass:
         if self.projector_type == 6 and not self.SPECT:
             raise ValueError('Projector type 6 is only supported with SPECT data!')
             
-        if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11)) and self.SPECT:
-            raise ValueError('SPECT only supports projector types 1 and 6!')
+        if (not(self.projector_type == 6) and not(self.projector_type == 1) and not(self.projector_type == 11) and not(self.projector_type == 2) and not(self.projector_type == 22)) and self.SPECT:
+            raise ValueError('SPECT only supports projector types 1, 2 and 6!')
         
         if self.projector_type == 6:
-            if self.Nx != self.nRowsD:
-                raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
-            if self.Ny != self.nRowsD:
-                raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
-            if self.Nz != self.nColsD:
-                raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
+            #if self.Nx != self.nRowsD:
+            #    raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
+            #if self.Ny != self.nRowsD:
+            #    raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
+            #if self.Nz != self.nColsD:
+            #    raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
         
@@ -1319,22 +1371,32 @@ class projectorClass:
                 dispi += '.'
                 print(dispi)
                 if self.subsets > 1:
+                    if self.subsets % 100 in [11, 12, 13]:
+                        abbr = 'th'
+                    elif self.subsets % 10 == 1:
+                        abbr = 'st'
+                    elif self.subsets % 10 == 2:
+                        abbr = 'nd'
+                    elif self.subsets % 10 == 3:
+                        abbr = 'rd'
+                    else:
+                        abbr = 'th'
                     if self.subsetType == 1:
-                        print(f'Every {self.subsets}th column measurement is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} column measurement is taken per subset.')
                     elif self.subsetType == 2:
-                        print(f'Every {self.subsets}th row measurement is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} row measurement is taken per subset.')
                     elif self.subsetType == 3:
                         print('Using random subset sampling.')
                     elif self.subsetType == 4:
-                        print(f'Every {self.subsets}th sinogram column is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} sinogram column is taken per subset.')
                     elif self.subsetType == 5:
-                        print(f'Every {self.subsets}th sinogram row is taken per subset.')
+                        print(f'Every {self.subsets}{abbr} sinogram row is taken per subset.')
                     elif self.subsetType == 6:
                         print(f'Using angle-based subset sampling with {self.n_angles} angles combined per subset.')
                     elif self.subsetType == 7:
                         print('Using golden angle-based subset sampling.')
                     elif self.subsetType == 8:
-                        print(f'Using every {self.subsets}th sinogram/projection image.')
+                        print(f'Using every {self.subsets}{abbr} sinogram/projection image.')
                     elif self.subsetType == 9:
                         print('Using sinograms/projection images in random order.')
                     elif self.subsetType == 10:
@@ -1750,7 +1812,13 @@ class projectorClass:
             if self.CT:
                 bOpt += ('-DCT',)
             elif self.SPECT:
-                bOpt += ('-DSPECT',)
+                if self.useCUDA:
+                    if self.useCuPy:
+                        bOpt += ('-DSPECT',)
+                    else:
+                        bOpt += ('-DSPECT', )
+                else:
+                    bOpt += (' -DSPECT',)
             elif self.PET:
                 bOpt += ('-DPET',)
 
@@ -1864,9 +1932,9 @@ class projectorClass:
                     # if self.FPType == 5:
                     #     raise ValueError('Not yet supported')
                     self.d_Sens = cp.empty(shape=(1,1), dtype=cp.float32)
-                    if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                    if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                         self.d_x[0] = cp.asarray(self.x.ravel())
-                    elif self.CT and self.listmode == 0:
+                    elif (self.CT or self.SPECT) and self.listmode == 0:
                         apu = self.x.ravel()
                         for i in range(self.subsets):
                             self.d_x[i] = cp.asarray(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -1875,7 +1943,7 @@ class projectorClass:
                         for i in range(self.subsets):
                             if self.loadTOF:
                                 self.d_x[i] = cp.asarray(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                    if (self.CT and self.listmode == 0):
+                    if ((self.CT or self.SPECT) and self.listmode == 0):
                         if self.pitch:
                             kerroin = 6
                         else:
@@ -1936,6 +2004,9 @@ class projectorClass:
                             self.d_maskFP = cp.cuda.texture.TextureObject(res, tdes)
                     if self.TOF:
                         self.d_TOFCenter = cp.asarray(self.TOFCenter)
+                    if self.SPECT:
+                        self.d_rayShiftsDetector = cp.asarray(self.rayShiftsDetector)
+                        self.d_rayShiftsSource = cp.asarray(self.rayShiftsSource)
                     if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
                         self.d_V = cp.asarray(self.V)
                     if (self.normalization_correction):
@@ -1992,7 +2063,10 @@ class projectorClass:
                         self.d_gaussPSF = cp.asarray(self.gaussK.ravel('F'))
                         
                     if self.FPType in [1, 2, 3]:
-                        self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
+                        self.kIndF = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
+                        if self.SPECT:
+                            self.kIndF += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndF += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                     elif self.FPType == 4:
                         self.kIndF = (cp.uint32(self.nRowsD), cp.uint32(self.nColsD), cp.float32(self.dPitchX),cp.float32(self.dPitchY),cp.float32(self.dL),cp.float32(self.global_factor),)
                     elif self.FPType == 5:
@@ -2024,7 +2098,10 @@ class projectorClass:
                         self.kIndB += (cp.float32(self.dL),)
                         self.kIndB += (cp.float32(self.global_factor),)
                     if self.BPType in [1, 2, 3]:
-                        self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x), cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
+                        self.kIndB = (cp.float32(self.global_factor), cp.float32(self.epps), cp.uint32(self.nRowsD), cp.uint32(self.det_per_ring), cp.float32(self.sigma_x),)
+                        if self.SPECT:
+                            self.kIndB += (self.d_rayShiftsDetector, self.d_rayShiftsSource, cp.float32(self.coneOfResponseStdCoeffA), cp.float32(self.coneOfResponseStdCoeffB), cp.float32(self.coneOfResponseStdCoeffC),)
+                        self.kIndB += (cp.float32(self.dPitchX),cp.float32(self.dPitchY),)
                         if self.BPType in [2, 3]:
                             if self.BPType == 2:
                                 self.kIndB  += (cp.float32(self.tube_width_z),)
@@ -2066,9 +2143,9 @@ class projectorClass:
                                 if k == 0:
                                     self.dSizeBP = cuda.gpuarray.vec.make_float2(self.dSizeXBP, self.dSizeZBP)
                     self.d_dPitch = cuda.gpuarray.vec.make_float2(self.dPitchX, self.dPitchY)
-                    if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                    if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                         self.d_x[0] = cuda.gpuarray.to_gpu(self.x.ravel())
-                    elif self.CT and self.listmode == 0:
+                    elif (self.CT or self.SPECT) and self.listmode == 0:
                         apu = self.x.ravel()
                         for i in range(self.subsets):
                             self.d_x[i] = cuda.gpuarray.to_gpu(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -2077,7 +2154,7 @@ class projectorClass:
                         for i in range(self.subsets):
                             if (i == 0 or self.loadTOF):
                                 self.d_x[i] = cuda.gpuarray.to_gpu(apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                    if (self.CT and self.listmode == 0):
+                    if ((self.CT or self.SPECT) and self.listmode == 0):
                         if self.pitch:
                             kerroin = 6
                         else:
@@ -2106,6 +2183,9 @@ class projectorClass:
                         self.d_maskFP = cuda.gpuarray.to_gpu(self.maskFP)
                     if self.useMaskBP:
                         self.d_maskBP = cuda.gpuarray.to_gpu(self.maskBP)
+                    if self.SPECT:
+                        self.d_rayShiftsDetector = cuda.gpuarray.to_gpu(self.rayShiftsDetector)
+                        self.d_rayShiftsSource = cuda.gpuarray.to_gpu(self.rayShiftsSource)
                     if self.TOF:
                         self.d_TOFCenter = cuda.gpuarray.to_gpu(self.TOFCenter)
                     if (self.BPType == 2 or self.BPType == 3 or self.FPType == 2 or self.FPType == 3):
@@ -2152,7 +2232,11 @@ class projectorClass:
                         self.knlB = mod.get_function('projectorType4Backward')
                     elif self.BPType == 5:
                         self.knlB = mod.get_function('projectorType5Backward')
-                    self.kIndF = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()),)
+                    
+                    self.kIndF = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), )
+                    if self.SPECT:
+                        self.kIndF += (self.d_rayShiftsDetector.gpudata, self.d_rayShiftsSource.gpudata, np.float32(self.coneOfResponseStdCoeffA), np.float32(self.coneOfResponseStdCoeffB), np.float32(self.coneOfResponseStdCoeffC), )
+                    self.kIndF += (np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()), )
                     
                     if self.use_psf:
                         with open(headerDir + 'auxKernels.cl', encoding="utf8") as f:
@@ -2164,7 +2248,7 @@ class projectorClass:
                         self.d_gaussPSF = cuda.gpuarray.to_gpu(self.gaussK.ravel('F'))
                     
                     if self.FPType in [2,3]:
-                        if self.FPTye == 2:
+                        if self.FPType == 2:
                             self.kIndF += (np.float32(self.tube_width_z),)
                         else:
                             self.kIndF += (np.float32(self.tube_radius),)
@@ -2187,7 +2271,10 @@ class projectorClass:
                         self.kIndB += (np.float32(self.dL),)
                         self.kIndB += (np.float32(self.global_factor),)
                     if self.BPType in [1, 2, 3]:
-                        self.kIndB = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()),)
+                        self.kIndB = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), )
+                        if self.SPECT:
+                            self.kIndB += (self.d_rayShiftsDetector.gpudata, self.d_rayShiftsSource.gpudata, np.float32(self.coneOfResponseStdCoeffA), np.float32(self.coneOfResponseStdCoeffB), np.float32(self.coneOfResponseStdCoeffC), )
+                        self.kIndB += (np.float32(self.d_dPitch['x'].item()),np.float32(self.d_dPitch['y'].item()), )
                         if self.BPType in [2, 3]:
                             if self.BPType == 2:
                                 self.kIndB  += (np.float32(self.tube_width_z),)
@@ -2257,9 +2344,9 @@ class projectorClass:
                 self.d_dPitch = cl.cltypes.make_float2(self.dPitchX, self.dPitchY)
                 self.d_x = [None] * self.subsets
                 self.d_z = [None] * self.subsets
-                if (self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction:
+                if (self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction:
                     self.d_x[0] = cl.array.to_device(self.queue, self.x.ravel())
-                elif self.CT and self.listmode == 0:
+                elif (self.CT or self.SPECT) and self.listmode == 0:
                     apu = self.x.ravel()
                     for i in range(self.subsets):
                         self.d_x[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
@@ -2268,7 +2355,7 @@ class projectorClass:
                     for i in range(self.subsets):
                         if self.loadTOF:
                             self.d_x[i] = cl.array.to_device(self.queue, apu[self.nMeas[i] * 6 : self.nMeas[i + 1] * 6])
-                if (self.CT and self.listmode == 0):
+                if ((self.CT or self.SPECT) and self.listmode == 0):
                     if self.pitch:
                         kerroin = 6
                     else:
@@ -2298,6 +2385,9 @@ class projectorClass:
                     imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
                     self.d_atten = cl.Image(self.clctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, imformat, hostbuf=self.vaimennus, shape=(self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()))
                     # self.d_atten = cl.image_from_array(self.clctx, np.reshape(self.vaimennus, (self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F'))
+                if self.SPECT:
+                    self.d_rayShiftsDetector = cl.array.to_device(self.queue, self.rayShiftsDetector)
+                    self.d_rayShiftsSource = cl.array.to_device(self.queue, self.rayShiftsSource)
                 if self.useMaskFP:
                     self.d_maskFP = cl.image_from_array(self.clctx, self.maskFP)
                 if self.useMaskBP:
@@ -2384,6 +2474,17 @@ class projectorClass:
                     self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.sigma_x))
                     self.kIndF += 1
+                    if self.SPECT:
+                        self.knlF.set_arg(self.kIndF, self.d_rayShiftsDetector.data)
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, self.d_rayShiftsSource.data)
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
+                        self.kIndF += 1
+                        self.knlF.set_arg(self.kIndF, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
+                        self.kIndF += 1
                     self.knlF.set_arg(self.kIndF, self.d_dPitch)
                     self.kIndF += 1
                     if self.FPType in [2, 3]:
@@ -2446,6 +2547,17 @@ class projectorClass:
                     self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.sigma_x))
                     self.kIndB += 1
+                    if self.SPECT:
+                        self.knlB.set_arg(self.kIndB, self.d_rayShiftsDetector.data)
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, self.d_rayShiftsSource.data)
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffA))
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffB))
+                        self.kIndB += 1
+                        self.knlB.set_arg(self.kIndB, (cl.cltypes.float)(self.coneOfResponseStdCoeffC))
+                        self.kIndB += 1
                     self.knlB.set_arg(self.kIndB, self.d_dPitch)
                     self.kIndB += 1
                     if self.BPType in [2, 3]:
@@ -2576,7 +2688,7 @@ class projectorClass:
                     else:
                         apuArr = af.data.moddims(f, self.Nx[ii].item(), self.Ny[ii].item(), self.Nz[ii].item())
                     for kk in range(self.nProjSubset[subset].item()):
-                        kuvaRot = af.image.rotate(apuArr, -self.angles[u1].item(), method=af.INTERP.BILINEAR) # [128, 128, 96]
+                        kuvaRot = af.image.rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR) # [128, 128, 96]
                         kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [96, 128, 128]
                         kuvaRot = af.signal.convolve2(kuvaRot, self.d_gFilter[:, :, :, u1]) # [96, 128, 128]
                         kuvaRot = kuvaRot[:, :, self.blurPlanes[u1].item():] # [96, 128, 90]
@@ -2602,7 +2714,7 @@ class projectorClass:
                         else:
                             apuArr = torch.reshape(f, (self.Nz[ii].item(), self.Ny[ii].item(), self.Nx[ii].item()))
                         for kk in range(self.nProjSubset[subset].item()):
-                            kuvaRot = rotate(apuArr, -self.angles[u1].item(), InterpolationMode.BILINEAR)
+                            kuvaRot = rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
                             kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             kuvaRot = kuvaRot.unsqueeze(0)
                             kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2), groups=kuvaRot.shape[1])
@@ -2776,11 +2888,11 @@ class projectorClass:
                         elif self.FPType in [1, 2, 3]:
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
-                            if (((self.listmode == 0 and not self.CT) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
+                            if (((self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
                                 kIndLoc += (self.d_x[0],)
                             else:
                                 kIndLoc += (self.d_x[subset], )
-                            if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                            if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                                 kIndLoc += (self.d_z[subset],)
                             else:
                                 kIndLoc += (self.d_z[0],)
@@ -2896,11 +3008,11 @@ class projectorClass:
                         if self.FPType in [1, 2, 3]:
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                            if (self.listmode == 0 and not self.CT):
+                            if (self.listmode == 0 and not (self.CT or self.SPECT)):
                                 kIndLoc += (self.d_x[0].gpudata,)
                             else:
                                 kIndLoc += (self.d_x[subset].gpudata, )
-                            if (self.CT or self.PET or self.listmode > 0):
+                            if (self.CT or self.PET or self.SPECT or self.listmode > 0):
                                 kIndLoc += (self.d_z[subset].gpudata,)
                             else:
                                 kIndLoc += (self.d_z[0].gpudata,)
@@ -3135,12 +3247,12 @@ class projectorClass:
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                             kIndLoc += 1
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                             self.knlF.set_arg(kIndLoc, self.d_x[0].data)
                         else:
                             self.knlF.set_arg(kIndLoc, self.d_x[subset].data)
                         kIndLoc += 1
-                        if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                             self.knlF.set_arg(kIndLoc, self.d_z[subset].data)
                         else:
                             self.knlF.set_arg(kIndLoc, self.d_z[0].data)
@@ -3220,7 +3332,7 @@ class projectorClass:
                         kuvaRot = kuvaRot[:,:, self.blurPlanes[u1].item():] # [96, 128, 90]
                         kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
                         fApu[self.blurPlanes[u1].item():,:,:] = kuvaRot
-                        fApu = af.image.rotate(fApu, self.angles[u1], method=af.INTERP.BILINEAR)
+                        fApu = af.image.rotate(fApu, (180+self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR)
                         if isinstance(f, list):
                             f[ii][:, kk] = af.flat(fApu)
                         else:
@@ -3257,7 +3369,7 @@ class projectorClass:
                             kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
                             # kuvaRot = cp.transpose(kuvaRot, (2, 1, 0))
                             fApu[:,:,self.blurPlanes[u1].item():] = kuvaRot
-                            fApu = rotate(fApu, self.angles[u1].item(), InterpolationMode.BILINEAR)
+                            fApu = rotate(fApu, (180+self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
                             if isinstance(f, list):
                                 f[ii][kk,:] = torch.ravel(fApu)
                             else:
@@ -3302,11 +3414,11 @@ class projectorClass:
                                 kIndLoc += (self.d_atten[subset],)
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                                 kIndLoc += ((self.nProjSubset[subset].item()),)
-                            if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                            if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                                 kIndLoc += (self.d_x[0],)
                             else:
                                 kIndLoc += (self.d_x[subset],)
-                            if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                            if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                                 kIndLoc += (self.d_z[subset],)
                             else:
                                 kIndLoc += (self.d_z[0],)
@@ -3533,12 +3645,12 @@ class projectorClass:
                             if (self.attenuation_correction and not self.CTAttenuation):
                                 kIndLoc += (self.d_atten[subset].gpudata,)
                             if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
-                                kIndLoc += ((self.nProjSubset[subset].item()),)
-                            if (self.listmode == 0 and not self.CT):
+                                kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
+                            if (self.listmode == 0 and not (self.CT or self.SPECT)):
                                 kIndLoc += (self.d_x[0].gpudata,)
                             else:
                                 kIndLoc += (self.d_x[subset].gpudata,)
-                            if (self.CT or self.PET or self.listmode > 0):
+                            if (self.CT or self.PET or self.SPECT or self.listmode > 0):
                                 kIndLoc += (self.d_z[subset].gpudata,)
                             else:
                                 kIndLoc += (self.d_z[0].gpudata,)
@@ -3748,12 +3860,12 @@ class projectorClass:
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             self.knlB.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                             kIndLoc += 1
-                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not self.CT) or (not self.loadTOF and self.listmode > 0):
+                        if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
                             self.knlB.set_arg(kIndLoc, self.d_x[0].data)
                         else:
                             self.knlB.set_arg(kIndLoc, self.d_x[subset].data)
                         kIndLoc += 1
-                        if (self.CT or self.PET or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
+                        if (self.CT or self.PET or self.SPECT or (self.listmode > 0 and not self.useIndexBasedReconstruction)):
                             self.knlB.set_arg(kIndLoc, self.d_z[subset].data)
                         else:
                             self.knlB.set_arg(kIndLoc, self.d_z[0].data)
@@ -4286,4 +4398,7 @@ class projectorClass:
             ('crXY',ctypes.c_float),
             ('rayShiftsDetector',ctypes.POINTER(ctypes.c_float)),
             ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
+            ('coneOfResponseStdCoeffA',ctypes.c_float),
+            ('coneOfResponseStdCoeffB',ctypes.c_float),
+            ('coneOfResponseStdCoeffC',ctypes.c_float)
         ]
