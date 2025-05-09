@@ -256,7 +256,7 @@ for it in range(options.Niter):
         Sens[Sens <= 0] = options.epps
         bp = options.T() * (d_m[k] / fp)
         d_f = d_f / Sens * bp
-        d_f = torch.clamp(d_f, min=0)
+        d_f = torch.clamp(d_f, min=1e-6)
     print(f'{"ML" if options.subsets==1 else "OS"}EM iteration {it+1}/{options.Niter} finished', end=f'{"\r" if it!=options.Niter-1 else "\n"}')
 
 # Back to CPU
