@@ -50,7 +50,9 @@ if options.attenuation_correction
     end
 end
 
-if options.implementation == 4
+outputFP = [];
+A = [];
+if options.implementation == 4 || options.implementation == 1
     if options.projector_type == 6
         outputFP = zeros(options.nRowsD, options.nColsD, koko, options.cType);
         for ii = loopVar
