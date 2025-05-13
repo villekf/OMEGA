@@ -16,10 +16,17 @@ def indexMaker(options):
         options.index = np.empty(0, dtype=tyyppi)
         options.nMeas = np.zeros((subsets, 1), dtype = np.int64)
         if options.subsetType == 4 and options.use_raw_data == 0:
+            maksimi = np.size(np.arange(1, Nang, subsets))
             for i in range(subsets):
                 osa = np.size(np.arange(i, Nang, subsets))
                 index1 = np.tile(np.arange(i*Ndist, (i + 1) * Ndist, 1), (osa*NSinos)).astype(tyyppi)
                 index1 = index1 + np.repeat(np.arange(0, (osa)*NSinos, 1) * Ndist*subsets,Ndist).astype(tyyppi)
+                if Nang % subsets > 0:
+                    if osa < maksimi:
+                        erotus = osa - 1;
+                    else:
+                        erotus = Nang % subsets - subsets
+                    index1 = (np.int64(index1) + np.int64(np.repeat((np.arange(0, NSinos - 1, 1)) * Ndist * erotus, Ndist * osa))).astype(tyyppi)
                 options.index = np.append(options.index, index1)
                 options.nMeas[i] = np.size(index1)
         elif options.subsetType == 5:
@@ -65,11 +72,18 @@ def indexMaker(options):
         elif options.subsetType == 7:
             raise ValueError('Not supported in Python version')
         elif options.subsetType == 0:
-            val = totalLength // subsets
-            if totalLength % subsets > 0:
-                valEnd = totalLength - val * (subsets - 1)
+            if options.listmode:
+                val = totalLength // subsets
+                if totalLength % subsets > 0:
+                    valEnd = totalLength - val * (subsets - 1)
+                else:
+                    valEnd = val
             else:
-                valEnd = val
+                val = options.nProjections // subsets
+                if totalLength % subsets > 0:
+                    valEnd = options.nProjections - val * (subsets - 1)
+                else:
+                    valEnd = val
             options.nMeas = np.full(subsets - 1, val, dtype=np.int64)
             options.nMeas = np.append(options.nMeas, valEnd)
             options.index = np.zeros(1,dtype=tyyppi)

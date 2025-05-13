@@ -582,12 +582,6 @@ class projectorClass:
         if self.span == 1:
             self.TotSinos = self.rings**2
             self.NSinos = self.TotSinos
-        if (self.CT == False and self.SPECT == False) and ((self.subsetType > 7 and self.subsets > 1) or self.subsets == 1):
-            self.nProjections = self.NSinos
-            self.PET = True
-        else:
-            self.PET = False
-            self.nProjections = self.NSinos
         if self.TOF:
             if self.TOF_bins_used != self.TOF_bins:
                 # self.SinM = np.sum(self.SinM,3)
@@ -685,6 +679,12 @@ class projectorClass:
             # For Sinogram data, six different methods to select the subsets are
             # available. For raw data, three methods are available.
             self.listmode = 0
+        if (self.CT == False and self.SPECT == False) and (((self.subsetType > 7 or (self.subsetType == 0 and self.listmode == 0)) and self.subsets > 1) or self.subsets == 1):
+            self.nProjections = self.NSinos
+            self.PET = True
+        else:
+            self.PET = False
+            self.nProjections = self.NSinos
         if self.listmode and self.subsets > 1 and not(self.subsetType == 1) and not(self.subsetType == 3):
             print('Only subset types 0, 1, and 3 are supported with list-mode data! Switching to subset type 0.')
             self.subsetType = 0
@@ -1127,8 +1127,8 @@ class projectorClass:
             raise ValueError('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm!')
             
         
-        if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4)):
-            raise ValueError('Filtering-based preconditioner only works for subset types 4 and 8-11!')
+        if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
+            raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
             
         if self.verbose > 0:
             if self.use_ASCII and self.use_machine == 0:

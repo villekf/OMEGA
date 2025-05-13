@@ -88,7 +88,7 @@ def CTDetSource(options):
         options.angles = options.angles.reshape(-1, 1)
 
 def setCTCoordinates(options):
-    if options.subsets > 1 and options.subsetType < 8:
+    if options.subsets > 1 and options.subsetType < 8 and options.subsetType > 0:
         raise ValueError('Subset types < 8 with CT data are not yet supported in Python! Use custom detector coordinates instead or subset types >= 8.')
     if options.x.size == 0 or hasattr(options, 'coord'):
         CTDetSource(options)
