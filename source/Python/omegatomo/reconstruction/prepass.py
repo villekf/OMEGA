@@ -500,13 +500,18 @@ def computeWeights(options, GGMRF):
                         apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndy*2+1) * distY)))
                     else:
                         if options.Ndx != options.Ndz:
-                            apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndy*2+1) * distY), 
-                                                   (np.concatenate((np.zeros(options.Ndz-options.Ndx), np.repeat(jj, options.Ndx*2+1) * distX, np.zeros(options.Ndx-options.Ndx))))))
+                            apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndz*2+1) * distY), 
+                                                   (np.repeat(jj, options.Ndz*2+1) * distX)))
                         else:
                             apu = np.column_stack(((np.arange(options.Ndz, -options.Ndz-1, -1) * distZ), (np.repeat(kk, options.Ndy*2+1) * distY), (np.repeat(jj, options.Ndx*2+1) * distX)))
                     edist = np.sqrt(np.sum(apu**2, axis=1))
-                    cc[(options.Ndy*2+1)*(ll-1):(options.Ndy*2+1)*ll] = edist
-                    options.weights[(options.Ndz*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndz*2+1)*(options.Ndy*2+1)*lt] = cc
+                    if options.Ndx != options.Ndz:
+                        cc[(options.Ndz*2+1)*(ll-1):(options.Ndz*2+1)*ll] = edist
+                    else:
+                        cc[(options.Ndy*2+1)*(ll-1):(options.Ndy*2+1)*ll] = edist
+                if options.Ndx != options.Ndz:
+                    cc = cc[0:(options.Ndx*2+1)*(options.Ndz*2+1)]
+                options.weights[(options.Ndz*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndz*2+1)*(options.Ndy*2+1)*lt] = cc
         else:
             for jj in range(options.Ndz, -options.Ndz-1, -1):
                 lt += 1
@@ -523,7 +528,7 @@ def computeWeights(options, GGMRF):
                             apu = np.column_stack(((np.arange(options.Ndx, -options.Ndx-1, -1) * distX), (np.repeat(kk, options.Ndy*2+1) * distY), (np.repeat(jj, options.Ndz*2+1) * distZ)))
                     edist = np.sqrt(np.sum(apu**2, axis=1))
                     cc[(options.Ndy*2+1)*(ll-1):(options.Ndy*2+1)*ll] = edist
-                    options.weights[(options.Ndx*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndx*2+1)*(options.Ndy*2+1)*lt] = cc
+                options.weights[(options.Ndx*2+1)*(options.Ndy*2+1)*(lt-1):(options.Ndx*2+1)*(options.Ndy*2+1)*lt] = cc
         options.weights = 1.0 / options.weights
         options.weights = options.weights.astype(dtype=np.float32)
         
@@ -542,7 +547,7 @@ def quadWeights(options, isEmpty):
         
 def huberWeights(options):
     if np.size(options.weights_huber) == 0:
-        non_inf_weights_sum = np.nansum(options.weights)
+        non_inf_weights_sum = np.sum(options.weights[np.isfinite(options.weights)])
         options.weights_huber = options.weights / non_inf_weights_sum
         half_len = np.size(options.weights_huber) // 2
         options.weights_huber = np.concatenate((options.weights_huber[:half_len], options.weights_huber[half_len + 1:]))
@@ -706,7 +711,17 @@ def prepassPhase(options):
                 options.lambdaN = options.lambdaN / 10000.
         elif (options.BSREM or options.RAMLA or options.MBSREM or options.MRAMLA or options.ROSEM_MAP or options.ROSEM or options.PKMA or options.SPS or options.SART or options.ASD_POCS or options.SAGA):
             if np.size(options.lambdaN) < options.Niter:
-                raise ValueError('The number of relaxation values needs to be at least equal to the number of iterations!')
+                print('Warning: The number of relaxation values must be at least the number of iterations times the number of subsets! Computing custom relaxation values.')
+                lambda_vals = np.zeros(options.Niter, dtype=np.float32)
+                if options.stochasticSubsetSelection:
+                    for i in range(options.Niter):
+                        lambda_vals[i] = 1. / (0.4 / options.subsets * i + 1.)
+                else:
+                    for i in range(options.Niter):
+                        lambda_vals[i] = 1. / (i / 20. + 1.)
+                options.lambdaN = lambda_vals
+                if options.CT == True and not options.SART and not options.ASD_POCS:
+                    options.lambdaN = options.lambdaN / 10000.
             elif np.size(options.lambdaN) > options.Niter:
                 print('Warning: The number of relaxation values is more than the number of iterations. Later values are ignored!')
     
@@ -722,14 +737,12 @@ def prepassPhase(options):
         if options.PKMA and np.size(options.alpha_PKMA) < options.Niter * options.subsets:
             if np.size(options.alpha_PKMA) < options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
-            options.alpha_PKMA = np.zeros(options.Niter * options.subsets, dtype=np.float32)
-            oo = 0
-            for kk in range(options.Niter):
-                for ll in range(options.subsets):
-                    options.alpha_PKMA[oo] = 1. + (options.rho_PKMA * (kk * options.subsets + ll)) / (kk * options.subsets + ll + options.delta_PKMA)
-                    oo += 1
-            # if options.CT == True:
-            #     options.alpha_PKMA = options.alpha_PKMA / 10000.
+                options.alpha_PKMA = np.zeros(options.Niter * options.subsets, dtype=np.float32)
+                oo = 0
+                for kk in range(options.Niter):
+                    for ll in range(options.subsets):
+                        options.alpha_PKMA[oo] = 1. + (options.rho_PKMA * (kk * options.subsets + ll)) / (kk * options.subsets + ll + options.delta_PKMA)
+                        oo += 1
         elif options.PKMA:
             if np.size(options.alpha_PKMA) > options.Niter * options.subsets:
                 print('Warning: The number of PKMA alpha (momentum) values is higher than the total number of iterations times subsets. The final values will be ignored.')
@@ -811,7 +824,7 @@ def prepassPhase(options):
                     oo += 1
         else:
             options.thetaCP = options.alpha_PKMA.astype(dtype=np.float32)
-    
+        
     
     if options.PDHG or options.PDHGKL or options.PDHGL1 or options.ProxTV or options.TGV or options.FISTA or options.FISTAL1 or options.PDDY:
         if np.size(options.tauCP) < options.nMultiVolumes + 1:
@@ -832,6 +845,16 @@ def prepassPhase(options):
         options.Nf = 2 ** np.ceil(np.log2(options.Nx[0].item()))
         options.filterIm = rampFilt(options.Nf, options.filterWindow, options.cutoffFrequency, options.normalFilterSigma, True)
         options.filterIm = options.filterIm.astype(dtype=np.float32)
+
+    if options.precondTypeImage[3]:
+        if np.size(options.alphaPrecond) < options.Niter * options.subsets:
+            print('Warning: The number of alpha (momentum) values must be at least the number of iterations times the number of subsets! Computing custom alpha values.')
+            options.alphaPrecond = np.zeros(options.Niter * options.subsets, dtype=np.float32)
+            oo = 0
+            for kk in range(options.Niter):
+                for ll in range(options.subsets):
+                    options.alphaPrecond[oo] = 1. + (options.rho_PKMA * (kk * options.subsets + ll)) / (kk * options.subsets + ll + options.delta_PKMA)
+                    oo += 1
     
     if options.precondTypeMeas[1]:
         if options.subsets > 1 and options.subsetType == 5:

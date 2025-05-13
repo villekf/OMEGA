@@ -729,6 +729,7 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 			getErrorString(status);
 			im.unlock();
 			grad.unlock();
+			w_vec.gaussianNLM.unlock();
 			mexPrint("Failed to copy NLM image\n");
 			return -1;
 		}
@@ -1225,6 +1226,15 @@ inline int proxTGVDivAF(const std::vector<af::array>& q, std::vector<af::array>&
 inline int elementWiseAF(const af::array& vector, af::array& input, const bool mult, ProjectorClass& proj, const bool D2 = false) {
 	int status = 0;
 	uint64_t gSize[3] = { static_cast<uint64_t>(input.dims(0)), static_cast<uint64_t>(input.dims(1)), static_cast<uint64_t>(input.dims(2)) };
+	if (DEBUG) {
+		mexPrintBase("vector.dims[0] = %u\n", vector.dims(0));
+		mexPrintBase("vector.dims[1] = %u\n", vector.dims(1));
+		mexPrintBase("vector.dims[2] = %u\n", vector.dims(2));
+		mexPrintBase("input.dims[0] = %u\n", input.dims(0));
+		mexPrintBase("input.dims[1] = %u\n", input.dims(1));
+		mexPrintBase("input.dims[2] = %u\n", input.dims(2));
+		mexEval();
+	}
 	proj.d_vector = transferAF(vector);
 	proj.d_input = transferAF(input);
 	status = proj.elementWiseComp(mult, gSize, D2);
@@ -1268,7 +1278,7 @@ inline int PDHGUpdateAF(af::array& im, const af::array& rhs, const scalarStruct&
 
 inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStruct& inputScalars, ProjectorClass& proj, const float angle, const int ii = 0) {
 	int status = 0;
-    if (!inputScalars.useBuffers) {
+	if (!inputScalars.useBuffers) {
 #if defined(CUDA)
 		CUdeviceptr* input = im.device<CUdeviceptr>();
 		status = proj.transferTex(inputScalars, input);
@@ -1284,7 +1294,6 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
     } else {
         proj.d_im = transferAF(im);
     }
-	
 	proj.d_rhs = transferAF(imrot);
 	const float cosa = std::cos(-angle);
 	const float sina = std::sin(-angle);
@@ -1480,8 +1489,6 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 #else
 		apuBP = af::rotate(apuBP, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
-        /* P0 = computeOriginProjection(options, u1, voxelXY); % This is the translation vector in 2D: projection of origin onto detector normal */
-        /* apuBP = imtranslate(apuBP, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the BP volume */
 		if (DEBUG) {
 			mexPrintBase("w_vec.angles[u1] = %f\n", w_vec.angles[u1]);
 			mexEval();
@@ -1496,7 +1503,6 @@ inline void backprojectionType6(af::array& fProj, const Weighting& w_vec, AF_im_
 #else
 			attenuationImage = af::rotate(attenuationImage, (180+w_vec.angles[u1])*M_PI/180., true, AF_INTERP_BILINEAR);
 #endif
-            /* attenuationImage = imtranslate(attenuationImage, [P0(1); -P0(2); 0]', 'bilinear', 'FillValues', 0); % Translate the attenuation image*/
 			attenuationImage = af::accum(attenuationImage, 0);
 			attenuationImage = af::exp(-w_vec.dPitchX * attenuationImage);
 			apuBP *= attenuationImage;
@@ -1993,15 +1999,13 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			if (status != 0) {
 				return -1;
 			}
-			 
 			vec.gradBB = -vec.rhs_os[0].copy();
 			vec.imBB = vec.im_os[0].copy();
 			vec.im_os[0] = vec.im_os[0] - w_vec.alphaBB * vec.gradBB;
 			vec.gradBB.eval();
 			vec.im_os[0].eval();
-
-	
-	}else if (MethodList.CGLS && subIter == 0) {
+		}
+		else if (MethodList.CGLS && subIter == 0) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing CGLS");
 			if (ii == 0)

@@ -109,7 +109,7 @@ for kk = 1 : length(M)
     elseif ~cellfun('isempty',strfind(M{kk},'transformmatrix'))
         apu = apu(ind+1:end);
         ind = strfind(apu,' ');
-        transformmatrix = str2num(apu(ind + 1:end));
+        transformmatrix = str2num(apu(ind(1) + 1:end));
         if nargout >= 2
             varargout{1}.transformmatrix = transformmatrix;
         end

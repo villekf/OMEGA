@@ -405,6 +405,8 @@ struct inputStruct {
     float* V;
     // PSF values for PSF blurring
     float* gaussPSF;
+    // NLM weights
+    float* gaussianNLM;
     // Iterations to be saved
     uint32_t* saveNiter;
     // Number of voxels in each volume
@@ -478,9 +480,6 @@ struct inputStruct {
     // Momentum parameters
     float* alpha_PKMA;
     float* alphaPrecond;
-    // More reference images
-    float* NLM_ref;
-    float* RDP_ref;
     // Primal and dual variables
     float* tauCP;
     float* tauCPFilt;
@@ -496,20 +495,15 @@ struct inputStruct {
     uint16_t* axIndices;
     // SPECT values
     float crXY;
-    //float colL;
-    //float colR;
-    //float colD;
-    //float nRays;
     float* rayShiftsDetector;
     float* rayShiftsSource;
     float coneOfResponseStdCoeffA;
     float coneOfResponseStdCoeffB;
     float coneOfResponseStdCoeffC;
-    //float dSeptal;
-    //float hexOrientation;
-    //float nRaySPECT;
-    //float coneMethod;
     // SPECT end
+    // More reference images
+    float* NLM_ref;
+    float* RDP_ref;
 };
 
 void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting& w_vec, RecMethods& MethodList) {
@@ -638,7 +632,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     // Centers of the TOF-bins
     inputScalars.TOFCenter = options.TOFCenter;
 
-    // Index offset for TOF subsets
+    // Number of TOF bins
     inputScalars.nBins = options.TOF_bins;
 
     inputScalars.raw = options.use_raw_data;
@@ -838,18 +832,13 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
-    } else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
+    }
+	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
         inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
         inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
         inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
-        //inputScalars.colL = options.colL;
-        //inputScalars.colD = 2 * options.colR;
-        //inputScalars.dSeptal = options.dSeptal;
-        //inputScalars.nRaySPECT = options.nRaySPECT;
-        //inputScalars.hexOrientation = options.hexOrientation;
-        //inputScalars.coneMethod = options.coneMethod;
     } else {
         inputScalars.nColsD = options.Nang;
         inputScalars.nRowsD = options.Ndist;
@@ -1203,6 +1192,11 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (MethodList.PKMA) {
         w_vec.alphaM = options.alpha_PKMA;
         w_vec.lambda = options.lambdaN;
+        if (DEBUG) {
+            for (int uu = 0; uu < inputScalars.Niter; uu++)
+                mexPrintBase("w_vec.alphaM[uu] = %f\n", w_vec.alphaM[uu]);
+            mexEval();
+        }
     }
     if ((w_vec.precondTypeIm[5] || w_vec.precondTypeMeas[1]) && (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)) {
         w_vec.lambdaFiltered = w_vec.lambda;
@@ -1247,28 +1241,29 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.Nly = options.Nly;
         w_vec.Nlz = options.Nlz;
 #ifdef AF
-        w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), options.gaussPSF, afHost);
+        w_vec.gaussianNLM = af::array((2 * w_vec.Nlx + 1) * (2 * w_vec.Nly + 1) * (2 * w_vec.Nlz + 1), options.gaussianNLM, afHost);
 #endif
         if (DEBUG) {
             mexPrint("NLM loaded");
         }
     }
     if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) {
-        w_vec.tauCP = options.tauCPFilt;
-        w_vec.sigmaCP = options.sigmaCP;
         w_vec.powerIterations = options.powerIterations;
         if (DEBUG) {
             mexPrint("PIter loaded");
         }
     }
     if (MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1 || MethodList.ProxTGV || MethodList.ProxTV) {
-        if (w_vec.precondTypeMeas[1])
+        w_vec.sigmaCP = options.sigmaCP;
+        if (w_vec.precondTypeMeas[1]) {
+            w_vec.tauCP = options.tauCPFilt;
             w_vec.tauCP2 = options.tauCP;
+        }
         else
             w_vec.tauCP = options.tauCP;
         w_vec.sigma2CP = options.sigma2CP;
         w_vec.betaReg = options.beta;
-        w_vec.thetaCP = options.thetaCP;;
+        w_vec.thetaCP = options.thetaCP;
         w_vec.alpha0CPTGV = options.alpha0TGV;
         w_vec.alpha1CPTGV = options.alpha1TGV;
         w_vec.UseL2Ball = options.useL2Ball;
@@ -1283,6 +1278,14 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         }
         if (DEBUG) {
             mexPrint("CPType loaded");
+            mexPrintBase("w_vec.sigma2CP = %d\n", w_vec.sigma2CP[0]);
+            mexPrintBase("w_vec.sigmaCP = %d\n", w_vec.sigmaCP[0]);
+            mexPrintBase("w_vec.alpha1CPTGV = %d\n", w_vec.alpha1CPTGV);
+            mexPrintBase("w_vec.alpha0CPTGV = %d\n", w_vec.alpha0CPTGV);
+            mexPrintBase("options.sigma2CP = %d\n", options.sigma2CP[0]);
+            mexPrintBase("options.sigmaCP = %d\n", options.sigmaCP[0]);
+            mexPrintBase("options.thetaCP = %d\n", options.thetaCP[0]);
+            mexPrintBase("options.tauCP = %d\n", options.tauCP[0]);
         }
     }
     inputScalars.useFDKWeights = options.useFDKWeights;

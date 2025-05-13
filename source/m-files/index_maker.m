@@ -92,13 +92,25 @@ if subsets > 1 && options.subset_type < 8
     pituus = zeros(subsets, 1, 'int64');
     % Take every nth column from the sinogram
     if options.subset_type == 4 && ~options.use_raw_data
+        maksimi = numel(1 : subsets : Nang);
         for i=1:subsets
-            osa = length(i:subsets:Nang);
+            koko = i:subsets:Nang;
+            osa = length(koko);
             index1 = repmat(cast((i-1)*Ndist+1:i*Ndist, tyyppi)', osa*NSinos,1);
             if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
                 index1 = index1 + cast(repeat_elem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist), tyyppi);
             else
                 index1 = index1 + cast(repelem((0:(osa)*NSinos-1)'*Ndist*subsets,Ndist), tyyppi);
+            end
+            if mod(Nang,subsets) > 0
+                if osa < maksimi
+                    erotus = osa - 1;
+                else
+                    erotus = mod(Nang,subsets) - subsets;
+                end
+                index1 = cast((int64(index1) + int64(repelem((0:NSinos-1)'*Ndist*erotus,Ndist*osa))), tyyppi);
+                % ero = [zeros(Ndist*osa, 1, 'int64');repelem(Ndist*erotus, numel(index1) - Ndist*osa)'];
+                % index1 = cast(int64(index1) + ero, tyyppi);
             end
             index{i} = index1;
             pituus(i) = int64(length(index{i}));
@@ -185,11 +197,20 @@ if subsets > 1 && options.subset_type < 8
     elseif options.subset_type == 7 && ~options.use_raw_data
         [index, pituus] = goldenAngleSubsets(options);
     elseif options.subset_type == 0
-        val = floor(totalLength / subsets);
-        if mod(totalLength, subsets) > 0
-            valEnd = totalLength - val * (subsets - 1);
+        if options.listmode == 1
+            val = floor(totalLength / subsets);
+            if mod(totalLength, subsets) > 0
+                valEnd = totalLength - val * (subsets - 1);
+            else
+                valEnd = val;
+            end
         else
-            valEnd = val;
+            val = floor(options.nProjections / subsets);
+            if mod(options.nProjections, subsets) > 0
+                valEnd = options.nProjections - val * (subsets - 1);
+            else
+                valEnd = val;
+            end
         end
         for i = 1 : subsets - 1
             pituus(i) = val;

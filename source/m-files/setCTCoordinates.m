@@ -1,7 +1,7 @@
 function options = setCTCoordinates(options)
 %SETCTCOORDINATES Computes the CT source-detector coordinates
 %   Utility function
-if options.subsets > 1 && options.subset_type < 8
+if options.subsets > 1 && options.subset_type < 8 && options.subset_type > 0
     [options.x,options.y,options.z] = CTDetectorCoordinatesFull(options.angles,options.nProjections,options.nColsD,options.nRowsD,options.sourceToDetector,options.sourceToCRot,options.dPitch,...
         options.sourceOffsetRow,options.sourceOffsetCol,options.bedOffset, options.detOffsetRow, options.detOffsetCol);
     if abs(options.offangle) > 0

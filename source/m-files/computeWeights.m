@@ -26,14 +26,15 @@ if isempty(options.weights)
                     end
                 else
                     if options.Ndx ~= options.Ndz
+                        edist = zeros((options.Ndz*2+1),1);
                         if exist('OCTAVE_VERSION','builtin') == 0 && verLessThan('matlab','8.5')
-                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repeat_elem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repeat_elem(jj,options.Ndx*2+1) * distX),...
+                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repeat_elem(kk,options.Ndz*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repeat_elem(jj,options.Ndx*2+1) * distX),...
                                 zeros(options.Ndx-options.Ndx,1)]];
                         elseif exist('OCTAVE_VERSION','builtin') == 5 && verLessThan('octave','7')
-                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repelem(jj,options.Ndx*2+1) * distX),...
+                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndz*2+1) * distY), [zeros(options.Ndz-options.Ndx,1),(repelem(jj,options.Ndx*2+1) * distX),...
                                 zeros(options.Ndx-options.Ndx,1)]];
                         else
-                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndy*2+1) * distY)', [zeros(options.Ndz-options.Ndx,1),(repelem(jj,options.Ndx*2+1) * distX),...
+                            apu = [((options.Ndz:-1:-options.Ndz) * distZ)', (repelem(kk,options.Ndz*2+1) * distY)', [zeros(options.Ndz-options.Ndx,1),(repelem(jj,options.Ndz*2+1) * distX),...
                                 zeros(options.Ndx-options.Ndx,1)]'];
                         end
                     else
@@ -49,7 +50,14 @@ if isempty(options.weights)
                 for ii = 1 : length(apu)
                     edist(ii) = sqrt(apu(ii,:)*apu(ii,:)');
                 end
-                cc((options.Ndy*2+1)*(ll-1)+1:(options.Ndy*2+1)*ll) = edist;
+                if options.Ndx ~= options.Ndz
+                    cc((options.Ndz*2+1)*(ll-1)+1:(options.Ndz*2+1)*ll) = edist;
+                else
+                    cc((options.Ndy*2+1)*(ll-1)+1:(options.Ndy*2+1)*ll) = edist;
+                end
+            end
+            if options.Ndx ~= options.Ndz
+                cc = cc(1:(options.Ndx*2+1)*(options.Ndz*2+1));
             end
             options.weights((options.Ndz*2+1) * (options.Ndy*2+1) * (lt - 1) + 1: (options.Ndz*2+1) * (options.Ndy*2+1) * lt) = cc;
         end

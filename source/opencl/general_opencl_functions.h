@@ -83,6 +83,7 @@
 #define CUINT_sat_rtz(a) convert_uint_sat_rtz(a)
 #define CLONG_rtz(a) convert_long_rtz(a)
 #define EXP(a) native_exp(a)
+#define EXP3(a) native_exp(a)
 #define SINF(a) native_sin(a)
 #define COSF(a) native_cos(a)
 #define SQRT native_sqrt
@@ -170,6 +171,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define DEVICE inline __device__
 #define LOCAL __shared__
 #define EXP(a) __expf(a)
+#define EXP3(a) expf3(a)
 #define FMAD(a, b, c) __fmaf_rn(a, b, c)
 #define FMAD2(a, b, c) __fmaf_rn2(a, b, c)
 #define FMAD3(a, b, c) __fmaf_rn3(a, b, c)
@@ -216,6 +218,10 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 template <typename tyT> 
 inline __device__ tyT sign(tyT val) {
     return (tyT(0) < val) - (val < tyT(0));
+}
+
+inline __device__ float3 expf3(float3 a) {
+	return make_float3(__expf(a.x), __expf(a.y), __expf(a.z));
 }
 
 inline __device__ float clamp(float f, float a, float b) {
@@ -284,6 +290,10 @@ inline __device__ float2 operator*(float2 a, float b) {
 
 inline __device__ float2 operator/(float2 a, float2 b) {
 	return make_float2(a.x / b.x, a.y / b.y);
+}
+
+inline __device__ float2 operator/(float2 a, float b) {
+	return make_float2(a.x / b, a.y / b);
 }
 
 inline __device__ float3 operator-(float3 a) {
@@ -474,6 +484,7 @@ DEVICE float normPDF(const float x, const float mu, const float sigma) {
 
 	return _2PI / sigma * EXP(-0.5f * a * a);
 }
+
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
 	*D = length(diff * tc) - LL / 2.f;
 	*DD = *D;
@@ -510,7 +521,7 @@ DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCen
 }
 #endif //////////////// END TOF ////////////////
 
-#if defined(N_RAYS) && defined(SIDDON)
+#if defined(N_RAYS)
 DEVICE void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const float cr) {
 	float interval = cr / (CFLOAT(N_RAYS2D * 2));
 	(*s).x += (interval - cr / 2.f);
@@ -721,6 +732,13 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 #else
 	*d += apuX * indeksi.x + apuY * indeksi.y;
 #endif
+#ifdef PARALLEL
+#ifdef USEMAD
+	*s += FMAD3(apuX, indeksi.x, apuY * indeksi.y);
+#else
+	*s += apuX * indeksi.x + apuY * indeksi.y;
+#endif
+#endif
 #if defined(PROJ5) && defined(FP)
 #ifdef USEMAD
 	*dR = FMAD3(-apuX, 0.5f, *d);
@@ -740,6 +758,11 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 	(*d).x += indeksi.x * apuX;
 	(*d).y += indeksi.x * apuY;
 	(*d).z += indeksi.y * d_dPitch.y;
+#ifdef PARALLEL
+	(*s).x += indeksi.x * apuX;
+	(*s).y += indeksi.x * apuY;
+	(*s).z += indeksi.y * d_dPitch.y;
+#endif
 #if defined(PROJ5) && defined(FP)
 #ifdef USEMAD
 	*dR = CMFLOAT3(FMAD(-apuX, 0.5f, (*d).x), FMAD(-apuY, 0.5f, (*d).y), (*d).z);

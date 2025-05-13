@@ -206,7 +206,7 @@ if options.TV && options.TVtype == 2 && ~options.TV_use_anatomical
     warning('Using TV type = 2, but no anatomical reference set. Using TV type 1 instead.')
     options.TVtype = 1;
 end
-if options.projector_type > 7 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
+if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
         options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
         && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44
@@ -239,8 +239,8 @@ end
 if options.implementation == 3 && partitions > 1
     error('Implementation 3 does not support dynamic reconstruction!')
 end
-if options.precondTypeMeas(2) && (options.subset_type < 8 && options.subset_type ~= 4)
-    error('Filtering-based preconditioner only works for subset types 4 and 8-11!')
+if options.precondTypeMeas(2) && (options.subset_type < 8 && options.subset_type ~= 4 && options.subset_type ~= 0)
+    error('Filtering-based preconditioner only works for subset types 0, 4 and 8-11!')
 end
 if options.hyperbolic && options.implementation ~= 2
     error('Hyperbolic prior is only available when using implementation 2!')
@@ -319,12 +319,12 @@ if PRIOR_summa > 1 && MAP
     error('Only one prior at a time can be used!')
 end
 if OS_I4_summa > 1
-
+    dispi = [];
     reko = recNames(0);
     for kk = 1 : length(reko)
-        if kk == 1
+        if isempty(dispi) && options.(reko{kk})
             dispi = reko{kk};
-        else
+        elseif options.(reko{kk})
             dispi = [dispi, ', ' reko{kk}];
         end
         if kk == length(reko) && length(reko) > 1
@@ -361,7 +361,7 @@ end
 if (options.projector_type == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
-if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22 && options.projector_type ~= 7) && options.SPECT
+if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22) && options.SPECT
     error('SPECT only supports projector types 1, 2 and 6!')
 end
 if (options.projector_type == 6)
@@ -875,7 +875,7 @@ if options.verbose > 0
             disp('Arc correction ON.')
         end
         if options.use_raw_data && ~options.CT
-            if partitions == 1 || isempty(partitions)
+            if isempty(partitions) || partitions == 1 
                 dispi = 'Using STATIC raw data';
             else
                 dispi = 'Using DYNAMIC raw data';
@@ -900,7 +900,7 @@ if options.verbose > 0
             dispi = strcat(dispi, '.');
             disp(dispi)
         else
-            if partitions == 1
+            if isempty(partitions) || partitions == 1
                 if options.CT
                     dispi = 'Using STATIC projection data';
                 else

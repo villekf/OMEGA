@@ -308,7 +308,7 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	if (DEBUG) {
 		mexPrintBase("w_vec.alpha0CPTGV = %f\n", w_vec.alpha0CPTGV);
 		mexPrintBase("w_vec.alpha1CPTGV = %f\n", w_vec.alpha1CPTGV);
-		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP);
+		mexPrintBase("w_vec.sigma2CP = %f\n", w_vec.sigma2CP[0]);
 		mexPrintBase("osa_iter = %d\n", osa_iter);
 		mexPrintBase("vec.qProxTGV0 = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
@@ -366,13 +366,13 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars, af::array& dU, const float beta)
 {
 	int status = 0;
-	int32_t type = 0;
-	if (w_vec.NLTV)
-		type = 1;
-	else if (w_vec.NLM_MRP)
-		type = 2;
-	else
-		type = 0;
+	//int32_t type = 0;
+	//if (w_vec.NLTV)
+	//	type = 1;
+	//else if (w_vec.NLM_MRP)
+	//	type = 2;
+	//else
+	//	type = 0;
 	af::sync();
 	status = NLMAF(dU, im, inputScalars, w_vec, proj, beta);
 	return status;
@@ -440,7 +440,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 			*dU += af::constant(0.f, inputScalars.im_dim[0], 1);
 		}
 		else {
-			*dU += AD(vec.im_os[0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
+			*dU += beta * AD(vec.im_os[0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,
 				w_vec.DiffusionType, w_vec.med_no_norm);
 		}
 	}

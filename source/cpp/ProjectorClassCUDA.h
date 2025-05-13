@@ -464,6 +464,10 @@ class ProjectorClass {
 			os_options.push_back("-DBP");
 			os_options.push_back("-DATOMICF");
 			os_options.push_back("-DSENS");
+			if (inputScalars.BPType == 3)
+				os_options.push_back("-DVOL");
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+				os_options.push_back("-DORTH");
 			if (inputScalars.BPType == 4) {
 				os_options.push_back("-DPTYPE4");
 				os_options.push_back(buffer9);
@@ -538,31 +542,31 @@ class ProjectorClass {
 				//optionsAux.push_back("-DPROXNLM");
 				optionsAux.push_back("-DNLM_");
 				if (w_vec.NLM_MRP) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(2));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(2));
 					optionsAux.push_back(buffer11);
 				}
 				else if (w_vec.NLTV) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(1));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(1));
 					optionsAux.push_back(buffer11);
 				}
 				else if (w_vec.NLRD) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(3));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(3));
 					optionsAux.push_back(buffer11);
 				}
 				else if (w_vec.NLLange) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(4));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(4));
 					optionsAux.push_back(buffer11);
 				}
 				else if (w_vec.NLLangeFiltered) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(5));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(5));
 					optionsAux.push_back(buffer11);
 				}
 				else if (w_vec.NLGGMRF) {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(6));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(6));
 					optionsAux.push_back(buffer11);
 				}
 				else {
-					std::snprintf(buffer11, 30, "-DTYPE=%d", static_cast<int32_t>(0));
+					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(0));
 					optionsAux.push_back(buffer11);
 				}
 				if (w_vec.NLAdaptive)
@@ -679,9 +683,9 @@ class ProjectorClass {
 			}
 			if (MethodList.PKMA)
 				optionsAux.push_back("-DPKMA");
-			else if (MethodList.MBSREM)
+			else if (MethodList.MBSREM || MethodList.MRAMLA)
 				optionsAux.push_back("-DMBSREM");
-			else if (MethodList.BSREM)
+			else if (MethodList.BSREM || MethodList.RAMLA)
 				optionsAux.push_back("-DBSREM");
 			else if (MethodList.CPType) {
 				optionsAux.push_back("-DPDHG");
@@ -898,7 +902,7 @@ class ProjectorClass {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
-		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM) {
+		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			status = cuModuleGetFunction(&kernelPoisson, programAux, "PoissonUpdate");
             CUDA_CHECK(status, "Failed to create Poisson Update kernel\n", status);
 			if (DEBUG || inputScalars.verbose >= 2) {
@@ -916,9 +920,9 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTVq, programAux, "ProxTVq");
 			status = cuModuleGetFunction(&kernelProxTVDiv, programAux, "ProxTVDivergence");
 			status = cuModuleGetFunction(&kernelProxTVGrad, programAux, "ProxTVGradient");
-            CUDA_CHECK(status, "Failed to create CPTV kernel\n", status);
+            CUDA_CHECK(status, "Failed to create proximal TV kernel\n", status);
 			if (DEBUG || inputScalars.verbose >= 2) {
-				mexPrint("CPTV kernel successfully created\n");
+				mexPrint("Proximal TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.ProxRDP) {
@@ -946,9 +950,9 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTVGrad, programAux, "ProxTVGradient");
 			status = cuModuleGetFunction(&kernelProxTGVDiv, programAux, "ProxTGVDivergence");
 			status = cuModuleGetFunction(&kernelProxTGVSymmDeriv, programAux, "ProxTGVSymmDeriv");
-            CUDA_CHECK(status, "Failed to create CPTGV kernel\n", status);
+            CUDA_CHECK(status, "Failed to create proximal TGV kernel\n", status);
 			if (DEBUG || inputScalars.verbose >= 2) {
-				mexPrint("CPTGV kernel successfully created\n");
+				mexPrint("Proximal TGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
@@ -972,7 +976,6 @@ class ProjectorClass {
 		}
 		if (inputScalars.projector_type == 6) {
 			status = cuModuleGetFunction(&kernelRotate, programAux, "rotate");
-
 			CUDA_CHECK(status, "Failed to create bilinear rotation kernel\n", status);
             if (DEBUG || inputScalars.verbose >= 2) {
 				mexPrint("Bilinear rotation kernel successfully created\n");
@@ -1792,7 +1795,7 @@ public:
 					}
 					else
 						status = cuMemAlloc(&d_z[kk], sizeof(float) * length[kk] * 2);
-                    CUDA_CHECK(status, "\n", -1);
+					CUDA_CHECK(status, "\n", -1);
 					memAlloc.zType = 1;
 					memAlloc.zSteps++;
 				}
@@ -1878,6 +1881,7 @@ public:
 				}
 			}
 		}
+
         CUDA_CHECK(status, "Buffer creation failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
@@ -1931,7 +1935,7 @@ public:
 							status = cuMemcpyHtoD(d_maskFPB[kk], &w_vec.maskFP[pituus[kk] * vecSize], sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk]);
 					else
 						status = cuMemcpyHtoD(d_maskFPB[0], w_vec.maskFP, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD);
-                    CUDA_CHECK(status, "\n", -1);
+					CUDA_CHECK(status, "\n", -1);
 				}
 				else if (inputScalars.maskBP) {
 					status = cuMemcpyHtoD(d_maskBPB, w_vec.maskBP, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ);
@@ -1945,7 +1949,7 @@ public:
 			if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 				if (!inputScalars.useImages)
 					status = cuMemcpyHtoD(d_uref, w_vec.NLM_ref, sizeof(float) * inputScalars.im_dim[0]);
-                CUDA_CHECK(status, "\n", -1);
+				CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
 				status = cuMemcpyHtoD(d_angle, w_vec.angles, sizeof(float) * inputScalars.nProjections);
@@ -1971,7 +1975,7 @@ public:
 						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
 					else
 						status = cuMemcpyHtoD(d_z[kk], &z_det[pituus[kk] * 2], sizeof(float) * length[kk] * 2);
-                    CUDA_CHECK(status, "\n", -1);
+					CUDA_CHECK(status, "\n", -1);
 				}
 				else {
 					if (inputScalars.PET && inputScalars.listmode == 0) {
@@ -1982,10 +1986,7 @@ public:
 					}
 					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
 						status = cuMemcpyHtoD(d_z[kk], z_det, sizeof(float) * inputScalars.size_z);
-					if (status != CUDA_SUCCESS) {
-						getErrorString(status);
-						//return -1;
-					}
+					CUDA_CHECK(status, "\n", -1);
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					status = cuMemcpyHtoD(d_x[kk], &x[pituus[kk] * 6], sizeof(float) * length[kk] * 6);
@@ -2052,6 +2053,7 @@ public:
 				CUDA_CHECK(status, "\n", -1);
 			}
 		}
+
         CUDA_CHECK(status, "Buffer write failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer write succeeded\n");
@@ -2661,7 +2663,7 @@ public:
 			kTemp.emplace_back(&ii);
 		}
 		status = cuLaunchKernel(kernelFP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), NULL);
-		CUDA_CHECK(status, "\n", -1);
+		CUDA_CHECK(status, "Failed to launch forward projection kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Forward projection kernel launched successfully\n");
 		}
@@ -2952,7 +2954,7 @@ public:
 					status = cuTexObjectCreate(&d_inputImage, &resDescIm, &texDesc, &viewDesc);
 					CUDA_CHECK(status, "Image creation failed\n", -1);
 					status = cuCtxSynchronize();
-                    CUDA_CHECK(status, "Queue finish failed after image copy\n", -1);
+                    CUDA_CHECK(status, "Synchronize failed after image copy\n", -1);
 				}
 				if (inputScalars.BPType == 4) {
 					global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / local[0];
@@ -2997,7 +2999,6 @@ public:
 					mexPrintBase("im_dim = %u\n", inputScalars.im_dim[ii]);
 					mexPrintBase("no_norm = %u\n", no_norm);
 					mexEval();
-					//mexEvalString("pause(2);");
 				}
 				if (inputScalars.offset)
 					kTemp.emplace_back(&d_T[osa_iter]);
@@ -3182,12 +3183,12 @@ public:
 			//mexPrint("7!!!!\n");
 		}
 		status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
-		CUDA_CHECK(status, "\n", -1);
+		CUDA_CHECK(status, "Failed to launch backprojection kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 		status = cuCtxSynchronize();
-		CUDA_CHECK(status, "\n", -1);
+		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
 		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
 			if (!inputScalars.useBuffers) {
 				status = cuTexObjectDestroy(d_inputImage);
@@ -3279,7 +3280,7 @@ public:
 			mexPrint("Median kernel launched successfully\n");
 		}
 		status = cuCtxSynchronize();
-        CUDA_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
+        CUDA_CHECK(status, "Synchronize failed after MRP kernel\n", -1);
 		return 0;
 	}
 
@@ -3358,6 +3359,7 @@ public:
 		//Compute the kernel
 		status = cuLaunchKernel(kernelNLM, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the NLM kernel\n", status);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after NLM kernel\n", status);
 		if (inputScalars.useImages) {
@@ -3431,6 +3433,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelRDP, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the RDP kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
 		if (inputScalars.useImages) {
@@ -3505,6 +3508,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelGGMRF, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
 		if (inputScalars.useImages) {
@@ -3533,6 +3537,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelProxq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the Proximal RDP helper kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after proximal RDP helper kernel\n", -1);
 		return 0;
@@ -3556,8 +3561,9 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelProxTVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the Proximal TV kernel\n", -1);
+
 		status = cuCtxSynchronize();
-        CUDA_CHECK(status, "Queue finish failed after kernel\n", -1);
+        CUDA_CHECK(status, "Queue finish failed after proximal TV kernel\n", -1);
 		return 0;
 	}
 
@@ -3585,8 +3591,9 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelProxTGVq, globalQ / 64ULL, 1, 1, 64, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV kernel\n", -1);
+
 		status = cuCtxSynchronize();
-        CUDA_CHECK(status, "Queue finish failed after kernel\n", -1);
+        CUDA_CHECK(status, "Queue finish failed after TGV kernel\n", -1);
 		return 0;
 	}
 
@@ -3632,6 +3639,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelProxTVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the Proximal TV divergence kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
@@ -3750,7 +3758,7 @@ public:
 		status = cuLaunchKernel(kernelProxTGVSymmDeriv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the Proximal TGV symmetric derivative kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
-			mexPrint("Proximal TV gradient kernel launched successfully\n");
+			mexPrint("Proximal TGV symmetric derivative kernel launched successfully\n");
 		}
 
 		status = cuCtxSynchronize();
@@ -3818,6 +3826,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelProxTGVDiv, globalPriorEFOV[0], globalPriorEFOV[1], globalPriorEFOV[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Proximal TGV divergence kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after divergence kernel\n", -1);
 		if (inputScalars.verbose >= 3)
@@ -3860,6 +3869,7 @@ public:
 			status = cuLaunchKernel(kernelElementDivision, gSize[0], gSize[1], gSize[2], 1, 1, 1, 0, CLCommandQueue[0], kArgs.data(), NULL);
 		}
         CUDA_CHECK(status, "Failed to launch the element-wise kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after element-wise kernel\n", -1);
 		return 0;
@@ -3906,6 +3916,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelHyper, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
 		if (inputScalars.useImages) {
@@ -3993,14 +4004,20 @@ public:
 		CUresult status = CUDA_SUCCESS;
 		std::vector<void*> kArgs;
 		status = cuCtxSynchronize();
-		global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localPrior[1];
+		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
+		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
 		global[2] = inputScalars.Nz[ii];
 		bool apu = inputScalars.enforcePositivity;
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
+			mexPrintBase("erotusBP[0] = %u\n", erotusBP[0][ii]);
+			mexPrintBase("erotusBP[1] = %u\n", erotusBP[1][ii]);
+			mexPrintBase("erotusPDHG[0] = %u\n", erotusPDHG[0][ii]);
+			mexPrintBase("erotusPDHG[1] = %u\n", erotusPDHG[1][ii]);
+			mexPrintBase("localPrior[0] = %u\n", localPrior[0]);
+			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
 			mexPrintBase("d_N.s[0] = %u\n", d_N[ii].x);
 			mexPrintBase("d_N.s[1] = %u\n", d_N[ii].y);
 			mexPrintBase("d_N.s[2] = %u\n", d_N[ii].z);
@@ -4018,6 +4035,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelPoisson, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
 		CUDA_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
 		if (inputScalars.verbose >= 3)
@@ -4030,8 +4048,8 @@ public:
 			mexPrint("Starting CUDA PDHG update computation");
 		CUresult status = CUDA_SUCCESS;
 		std::vector<void*> kArgs;
-		global[0] = (inputScalars.Nx[ii] + erotusBP[0][ii]) / localPrior[0];
-		global[1] = (inputScalars.Ny[ii] + erotusBP[1][ii]) / localPrior[1];
+		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
+		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
 		global[2] = inputScalars.Nz[ii];
 		bool apu = inputScalars.enforcePositivity;
 		if (DEBUG) {
@@ -4056,6 +4074,7 @@ public:
 		// Compute the kernel
 		status = cuLaunchKernel(kernelPDHG, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
         CUDA_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
+
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
 		if (inputScalars.verbose >= 3)
@@ -4106,7 +4125,6 @@ public:
 				getErrorString(status);
 			}
         }
-
 		if (inputScalars.verbose >= 3)
 			mexPrint("CUDA bilinear image rotation computed");
 		return 0;
@@ -4164,4 +4182,5 @@ public:
 			mexPrint("Synchronization completed\n");
 		return 0;
 	}
+
 };

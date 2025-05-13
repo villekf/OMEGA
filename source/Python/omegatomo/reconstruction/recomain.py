@@ -259,6 +259,7 @@ def transferData(options):
     options.param.z_center = options.z_center.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.V = options.V.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.gaussPSF = options.gaussK.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.gaussianNLM = options.gaussianNLM.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.saveNiter = options.saveNIter.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     options.param.Nx = options.Nx.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
     options.param.Ny = options.Ny.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
@@ -305,8 +306,6 @@ def transferData(options):
     options.param.lambdaFiltered = options.lambdaFiltered.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.alpha_PKMA = options.alpha_PKMA.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.alphaPrecond = options.alphaPrecond.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.tauCP = options.tauCP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.tauCPFilt = options.tauCPFilt.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.sigmaCP = options.sigmaCP.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
@@ -324,6 +323,8 @@ def transferData(options):
     options.param.coneOfResponseStdCoeffB = ctypes.c_float(options.coneOfResponseStdCoeffB)
     options.param.coneOfResponseStdCoeffC = ctypes.c_float(options.coneOfResponseStdCoeffC)
     # ...until here
+    options.param.NLM_ref = options.NLM_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.RDP_ref = options.RDP_referenceImage.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     
 def reconstructions_mainCT(options):
     options.CT = True
@@ -416,6 +417,28 @@ def reconstructions_main(options):
         options.use_raw_data = False
         options.uV = np.float32(x)
         options.z = np.float32(z)
+    if (options.quad or options.FMH or options.L or options.weighted_mean or options.Huber or options.GGMRF) and options.MAP:
+        if hasattr(options, 'weights') and np.size(options.weights) > 0:
+            weights_flat = np.array(options.weights).flatten()
+            expected_length = (
+                (options.Ndx * 2 + 1) * 
+                (options.Ndy * 2 + 1) * 
+                (options.Ndz * 2 + 1)
+            )
+            if len(weights_flat) < expected_length:
+                raise ValueError(
+                    f'Weights vector is too short, needs to be {expected_length} in length'
+                )
+            elif len(weights_flat) > expected_length:
+                raise ValueError(
+                    f'Weights vector is too long, needs to be {expected_length} in length'
+                )
+            middle_index = int(np.ceil(expected_length / 2)) - 1
+            if not np.isinf(weights_flat[middle_index]):
+                weights_flat[middle_index] = np.inf
+            options.weights = weights_flat
+        else:
+            options.empty_weight = True
     parseInputs(options, True)
     if not options.CT and (not options.LSQR and not options.CGLS):
         options.SinM[options.SinM < 0.] = 0.

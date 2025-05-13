@@ -326,10 +326,14 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #endif
 #endif // END NLMREF
 #ifdef MASKPRIOR
+#ifdef USEIMAGES
 #ifdef MASKBP3D
 	, IMAGE3D maskBP
 #else
 	, IMAGE2D maskBP
+#endif
+#else
+	, const CLGLOBAL uchar* CLRESTRICT maskBP
 #endif
 #endif
 #ifdef EFOVZ // Compute only in the voxels of the actual FOV (when using extended FOV)
@@ -401,12 +405,125 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	if (any(ii >= N))
 #endif
 		return;
+#ifdef MASKPRIOR
+#ifdef USEIMAGES
+#ifdef CUDA
+#ifdef MASKBP3D
+    const int maskVal = tex3D<unsigned char>(maskBP, ii.x, ii.y, ii.z);
+#else
+    const int maskVal = tex2D<unsigned char>(maskBP, ii.x, ii.y);
+#endif
+#else
+#ifdef MASKBP3D
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(ii.x, ii.y, ii.z, 0)).w;
+#else
+    const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(ii.x, ii.y)).w;
+#endif
+#endif
+#else
+	const int maskVal = maskBP[n];
+#endif
+#ifndef MASKSCALE
+    if (maskVal == 0)
+        return;
+#endif
+#endif
 #if defined(NLMADAPTIVE)
 	float hh = 0.f;
 	const float pSize = CFLOAT((PWINDOWX * 2 + 1) * (PWINDOWY * 2 + 1) * (PWINDOWZ * 2 + 1));
 #endif
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX + PWINDOWX, LID1 + SWINDOWY + PWINDOWY, LID2 + SWINDOWZ + PWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
+#ifdef MASKSCALE
+	if (maskVal == 0) {
+#pragma unroll
+		for (int i = -1; i <= 1; i++) {
+#pragma unroll
+			for (int j = -1; j <= 1; j++) {
+				int k = 0;
+				if (i == 0 && j == 0)
+					continue;
+				float weight = 0.f;
+				float distance = 0.f;
+				int pz = 0;
+#pragma unroll
+					for (int py = -1; py <= 1; py++) {
+						int dim_g = (pz + 1) * (3) * (3) + (py + 1) * (3);
+#pragma unroll
+						for (int px = -1; px <= 1; px++) {
+							const float gg = gaussian[dim_g++];
+#ifdef NLMREF
+							const float Pk = lCacheRef[xxyyzz.x + i + px][xxyyzz.y + j + py][xxyyzz.z];
+							const float Pj = lCacheRef[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z];
+#else
+							const float Pk = lCache[xxyyzz.x + i + px][xxyyzz.y + j + py][xxyyzz.z];
+							const float Pj = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z];
+#endif
+							const float PP = Pj - Pk;
+							distance += gg * PP * PP;
+						}
+					}
+#if defined(NLMADAPTIVE)
+				hh = distance / pSize;
+				weight = EXP(-distance / (hh * h + s));
+#else
+ 				weight = EXP(-distance / h);
+#endif
+ 				weight_sum += weight;
+				const float uk = lCache[xxyyzz.x + i][xxyyzz.y + j][xxyyzz.z];
+ 				// Different NLM regularization methods
+				// NLTYPE 0 = MRF NLM
+				// NLTYPE 1 = NLTV
+				// NLTYPE 2 = NLM filtered (i.e. similar to MRP)
+				// NLTYPE 3 = NLRD
+				// NLTYPE 4 = NL Lange
+				// NLTYPE 5 = NLM filtered with Lange
+				// NLTYPE 6 = NLGGMRF
+				// NLTYPE 7 = ?
+#if NLTYPE == 2 || NLTYPE == 5 // START NLM NLTYPE
+				// NLMRP
+ 				output += weight * uk;
+#elif NLTYPE == 0
+ 				output += (weight * (uj - uk));
+#elif NLTYPE == 3
+				// NLRD
+				const float u = (uj - uk);
+#ifndef USEMAD // START FMAD
+				const float divPow = (uj + uk + gamma * fabs(u) + epps);
+				output += weight * u * (gamma * fabs(u) + uj + 3.f * uk + epps * epps) / (divPow * divPow); 
+#else
+				const float divPow = FMAD(gamma, fabs(u), uj + uk + epps);
+				output += weight * u * (FMAD(gamma, fabs(u), uj + 3.f * uk + epps * epps)) / (divPow * divPow); 
+#endif // END FMAD
+#elif NLTYPE == 4
+				// Lange
+				const float u = (uj - uk);
+				const float uabs = sign(u);
+				output += weight * (uabs - uabs / (fabs(u) / gamma + 1.f));
+#elif NLTYPE == 6
+				// NLGGMRF
+				const float delta = uj - uk;
+				const float deltapqc = 1.f + POWR(fabs(delta / c), p - q);
+				output += weight * (POWR(fabs(delta), p - 1.f) / deltapqc) * (p - gamma * (POWR(fabs(delta), p - q) / deltapqc)) * sign(delta);
+#elif NLTYPE == 7
+				const float u = (uk - uj);
+				const float apu = (u * u + gamma * gamma);
+// #ifndef USEMAD // START FMAD
+				output += ((2.f * u * u * u) / (apu * apu) - 2.f * (u / apu));
+// #else
+// 				output += ((2.f * u * u * u) / FMAD(apu, apu, -2.f * (u / apu)));
+// #endif // END FMAD
+#else
+ 				//NLTV
+				const float apuU = uj - uk;
+ 				output += (weight * apuU);
+ 				outputAla += weight * apuU * apuU;
+#endif // END NLM NLTYPE
+				}
+			}
+		}
+	else {
+#endif
 #if PWINDOWZ > 0
 #pragma unroll
 #endif
@@ -423,6 +540,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 					continue;
 				float weight = 0.f;
 				float distance = 0.f;
+				// nz, ny, nx = 0;
+				// float uk = 0.f;
+				// const float gg = EXP(-(CFLOAT((i)*(i)) / (2.f * 25.f) + CFLOAT((j)*(j)) / (2.f * 25.f) + CFLOAT((k)*(k)) / (2.f * 25.f)));
 #pragma unroll
 				for (int pz = -PWINDOWZ; pz <= PWINDOWZ; pz++) {
 #pragma unroll
@@ -436,12 +556,22 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 							const float Pj = lCacheRef[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
 #else
 							const float Pk = lCache[xxyyzz.x + i + px][xxyyzz.y + j + py][xxyyzz.z + k + pz];
+							// if (i == -SWINDOWX && j == -SWINDOWY && k == -SWINDOWZ)
+								// testi[nx][ny][nz] = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
+							// testi[px][py][pz] = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
 							const float Pj = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
+							// if (pz == 0 && py == 0 && pz == 0)
+							// 	uk = Pk;
 #endif
+							// const float PP = testi[nx][ny][nz] - Pk;
 							const float PP = Pj - Pk;
 							distance += gg * PP * PP;
+							// distance += PP * PP;
+							// nx++;
 						}
+						// ny++;
 					}
+					// nz++;
 				}
 #if defined(NLMADAPTIVE)
 				hh = distance / pSize;
@@ -502,6 +632,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 			}
 		}
 	}
+#ifdef MASKSCALE
+	}
+#endif
 	weight_sum = 1.f / weight_sum;
 	output *= weight_sum;
 #if NLTYPE == 2 // START NLM NLTYPE
@@ -636,7 +769,11 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #endif
 #ifdef MASKPRIOR
 #ifdef CUDA
+#ifdef MASKBP3D
+    const int maskVal = tex3D<unsigned char>(maskBP, xyz.x, xyz.y, xyz.z);
+#else
     const int maskVal = tex2D<unsigned char>(maskBP, xyz.x, xyz.y);
+#endif
 #else
 #ifdef MASKBP3D
     const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(xyz.x, xyz.y, xyz.z, 0)).w;
@@ -1575,8 +1712,6 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 		indZ += LSIZE2;
 	}
 	BARRIER
-	if (any(xyz >= N))
-		return;
 	const int3 xxyyzz = CMINT3(LID0 + SWINDOWX, LID1 + SWINDOWY, LID2 + SWINDOWZ);
 	const float uj = lCache[xxyyzz.x][xxyyzz.y][xxyyzz.z];
 	int uu = 0;
@@ -1610,7 +1745,7 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 CONSTANT sampler_t samplerTV = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP;
 #endif
 
-inline float sqrtVal(const float3 input, const float epps
+DEVICE float sqrtVal(const float3 input, const float epps
 #ifdef TVW1
 	, const float3 w
 #endif
@@ -1789,14 +1924,14 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #ifdef TVW1 // START TVW1
 	const float3 u4 = uijkP - uijk;
 	float3 w4 = (u4) / sigma;
-	w4 = EXP(-w4 * w4);
+	w4 = EXP3(-w4 * w4);
 	const float pvalijk = sqrtVal(u4, epps, w4);
 	float3 w1 = (u1) / sigma;
-	w1 = EXP(-w1 * w1);
+	w1 = EXP3(-w1 * w1);
 	float3 w2 = (u2) / sigma;
-	w2 = EXP(-w2 * w2);
+	w2 = EXP3(-w2 * w2);
 	float3 w3 = (u3) / sigma;
-	w3 = EXP(-w3 * w3);
+	w3 = EXP3(-w3 * w3);
 #ifdef USEMAD
 	grad[n] += beta * (-(FMAD(w4.x, u4.x, FMAD(w4.y, u4.y, w4.z * u4.z))) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3));
 #else
@@ -1939,7 +2074,6 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 #if defined(USEIMAGES) && defined(OPENCL)
 CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
 #endif
-
 KERNEL
 // Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
 void rotate(
@@ -1963,7 +2097,7 @@ void rotate(
     const float src_y = (xA * sina + yA * cosa + Ny/2) - 0.5f;
 
     if (src_x >= 0.0f && src_x < Nx && src_y >= 0.0f && src_y < Ny) {
-        float val = 0.f;
+		float val = 0.f;
 #ifdef USEIMAGES
 #if defined(CUDA)
         val = tex3D<float>(im, src_x, src_y, xyz.z);

@@ -3,6 +3,25 @@
 Created on Wed Mar  6 17:40:13 2024
 
 @author: Ville-Veikko Wettenhovi
+
+
+
+#########################################################################
+# Copyright (C) 2024-2025 Ville-Veikko Wettenhovi
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#########################################################################
 """
 
 import numpy as np
@@ -97,6 +116,7 @@ class projectorClass:
     maskBP = np.empty(0, dtype = np.uint8)
     maskPrior = np.empty(0, dtype = np.uint8)
     gaussK = np.empty(0, dtype = np.float32)
+    gaussianNLM = np.empty(0, dtype = np.float32)
     xy_index = np.empty(0, dtype=np.uint32)
     z_index = np.empty(0, dtype=np.uint16)
     tauCPFilt = 0.
@@ -222,7 +242,7 @@ class projectorClass:
     rho_PKMA = .45
     delta_PKMA = 100.
     delta2_PKMA = 100.
-    empty_weight = True
+    empty_weight = False
     projector_type = 11
     CT = False
     PET = False
@@ -810,10 +830,7 @@ class projectorClass:
         if self.SPECT:
             from .detcoord import SPECTParameters
             SPECTParameters(self)
-
         if self.projector_type == 6:
-            #from .detcoord import SPECTParameters
-            #SPECTParameters(self)
             if self.subsets > 1 and (self.subsetType == 8 or self.subsetType == 9 or self.subsetType == 10 or self.subsetType == 11):
                 self.angles = self.angles[self.index]
                 self.swivelAngles = self.swivelAngles[self.index]
@@ -1092,12 +1109,6 @@ class projectorClass:
             raise ValueError('SPECT only supports projector types 1, 2 and 6!')
         
         if self.projector_type == 6:
-            #if self.Nx != self.nRowsD:
-            #    raise ValueError('options.Nx has to be same as options.nRowsD when using projector type 6')
-            #if self.Ny != self.nRowsD:
-            #    raise ValueError('options.Ny has to be same as options.nRowsD when using projector type 6')
-            #if self.Nz != self.nColsD:
-            #    raise ValueError('options.Nz has to be same as options.nColsD when using projector type 6')
             if self.subsets > 1 and self.subsetType < 8:
                 raise ValueError('Subset types 0-7 are not supported with projector type 6!')
         
@@ -1554,6 +1565,10 @@ class projectorClass:
                 self.NyPrior = np.sum(self.maskPrior[int(np.round(self.maskPrior.shape[0]/2)),:], dtype=np.uint32)
                 if self.useMaskBP:
                     self.maskPrior = self.maskPrior + (1 - self.maskBP)
+        else:
+            self.NxPrior = self.Nx
+            self.NyPrior = self.Ny
+            self.NzPrior = self.Nz
         if self.offsetCorrection:
             self.OffsetLimit = np.zeros((self.nProjections, 1), dtype=np.float32);
             for kk in range(self.nProjections):
@@ -2232,7 +2247,6 @@ class projectorClass:
                         self.knlB = mod.get_function('projectorType4Backward')
                     elif self.BPType == 5:
                         self.knlB = mod.get_function('projectorType5Backward')
-                    
                     self.kIndF = (np.float32(self.global_factor), np.float32(self.epps), np.uint32(self.nRowsD), np.uint32(self.det_per_ring), np.float32(self.sigma_x), )
                     if self.SPECT:
                         self.kIndF += (self.d_rayShiftsDetector.gpudata, self.d_rayShiftsSource.gpudata, np.float32(self.coneOfResponseStdCoeffA), np.float32(self.coneOfResponseStdCoeffB), np.float32(self.coneOfResponseStdCoeffC), )
@@ -4341,6 +4355,7 @@ class projectorClass:
             ('z_center', ctypes.POINTER(ctypes.c_float)),
             ('V', ctypes.POINTER(ctypes.c_float)),
             ('gaussPSF', ctypes.POINTER(ctypes.c_float)),
+            ('gaussianNLM', ctypes.POINTER(ctypes.c_float)),
             ('saveNiter', ctypes.POINTER(ctypes.c_uint32)),
             ('Nx', ctypes.POINTER(ctypes.c_uint32)),
             ('Ny', ctypes.POINTER(ctypes.c_uint32)),
@@ -4384,8 +4399,6 @@ class projectorClass:
             ('lambdaFiltered', ctypes.POINTER(ctypes.c_float)),
             ('alpha_PKMA', ctypes.POINTER(ctypes.c_float)),
             ('alphaPrecond', ctypes.POINTER(ctypes.c_float)),
-            ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
-            ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
             ('tauCP', ctypes.POINTER(ctypes.c_float)),
             ('tauCPFilt', ctypes.POINTER(ctypes.c_float)),
             ('sigmaCP', ctypes.POINTER(ctypes.c_float)),
@@ -4401,4 +4414,6 @@ class projectorClass:
             ('coneOfResponseStdCoeffA',ctypes.c_float),
             ('coneOfResponseStdCoeffB',ctypes.c_float),
             ('coneOfResponseStdCoeffC',ctypes.c_float)
+            ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
+            ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
         ]

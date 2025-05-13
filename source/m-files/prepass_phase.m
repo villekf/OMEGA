@@ -317,7 +317,7 @@ if options.precondTypeImage(4)
         if isfield(options,'alpha_PKMA') && numel(options.alpha_PKMA) == options.Niter * options.subsets
             options.alphaPrecond = options.alpha_PKMA;
         end
-        if numel(options.alphaPrecond) < options.Niter * options.subsets
+        if ~isfield(options,'alphaPrecond') || numel(options.alphaPrecond) < options.Niter * options.subsets
             options.alphaPrecond = zeros(options.Niter * options.subsets,1);
             if ~isfield(options,'rhoPrecond')
                 if isfield(options,'rho_PKMA')

@@ -344,7 +344,7 @@ classdef projectorClass
                 if ~isa(obj.param.x, obj.param.cType)
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
-            elseif obj.param.SPECT
+			elseif obj.param.SPECT
                 if obj.param.projector_type == 6
                     %% Sinogram resizing
                     % Sinogram size is (options.nRowsD, options.nColsD)
@@ -438,11 +438,6 @@ classdef projectorClass
                     obj.param.Nang = obj.param.nColsD;
                 end
             end
-            if (~obj.param.CT && ~obj.param.SPECT) && ((obj.param.subset_type > 7 && obj.param.subsets > 1) || obj.param.subsets == 1)
-                obj.param.PET = true;
-            else
-                obj.param.PET = false;
-            end
             var = recNames(2);
             ll = 0;
             kk = 1;
@@ -467,8 +462,13 @@ classdef projectorClass
             if isfield(obj.param, 'maskBP') && numel(obj.param.maskBP) > 1 && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) && numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
                 error(['Incorrect size for the backward projection mask! Must be the size of a single image [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) '] or 3D stack [' num2str(obj.param.Nx(1)) ' ' num2str(obj.param.Ny(1)) ' ' num2str(obj.param.Nz(1)) ']'])
             elseif isfield(obj.param, 'maskBP') && (numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) || numel(obj.param.maskBP) ~= obj.param.Nx(1) * obj.param.Ny(1) * obj.param.Nz(1))
-                obj.param.useMaskBP = true;
-                obj.param.maskBPZ = size(obj.param.maskBP,3);
+                if obj.param.usePriorMask
+                    obj.param.useMaskBP = false;
+                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                else
+                    obj.param.useMaskBP = true;
+                    obj.param.maskBPZ = size(obj.param.maskBP,3);
+                end
             else
                 obj.param.useMaskBP = false;
             end
@@ -551,6 +551,11 @@ classdef projectorClass
                 % For Sinogram data, six different methods to select the subsets are
                 % available. For raw data, three methods are available.
                 obj.param.listmode = false;
+            end
+            if (~obj.param.CT && ~obj.param.SPECT) && ((obj.param.subset_type > 7 && obj.param.subsets > 1) || obj.param.subsets == 1 || (obj.param.listmode == 0 && obj.param.subset_type == 0))
+                obj.param.PET = true;
+            else
+                obj.param.PET = false;
             end
             if obj.param.listmode && obj.param.subsets > 1 && obj.param.subset_type ~= 1 && obj.param.subset_type ~= 3 && obj.param.subset_type ~= 0
                 warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
@@ -761,6 +766,7 @@ classdef projectorClass
                 obj.param.orthAxial = false;
             end
 
+
             if obj.param.projector_type == 4 || obj.param.projector_type == 5 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
                     || obj.param.projector_type == 15 || obj.param.projector_type == 45 || obj.param.projector_type == 54 || obj.param.projector_type == 51 ...
                     || obj.param.projector_type == 42 || obj.param.projector_type == 43 || obj.param.projector_type == 24 || obj.param.projector_type == 34
@@ -774,8 +780,7 @@ classdef projectorClass
             if obj.param.offsetCorrection && obj.param.subsets > 1
                 obj.param.OffsetLimit = obj.param.OffsetLimit(obj.index);
             end
-
-            if obj.param.SPECT
+			if obj.param.SPECT
                 obj.param = SPECTParameters(obj.param);
             end
 
@@ -791,7 +796,7 @@ classdef projectorClass
             end
             %% This part is used when the observation matrix is calculated on-the-fly
 
-            if length(obj.nMeas) == 1
+            if isscalar(obj.nMeas)
                 obj.nMeas = [int64(0);obj.nMeas];
             end
 
