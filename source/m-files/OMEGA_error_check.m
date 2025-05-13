@@ -206,7 +206,7 @@ if options.TV && options.TVtype == 2 && ~options.TV_use_anatomical
     warning('Using TV type = 2, but no anatomical reference set. Using TV type 1 instead.')
     options.TVtype = 1;
 end
-if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
+if options.projector_type > 7 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
         options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
         && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44
@@ -271,7 +271,7 @@ if options.implementation == 4 && exist('projector_mex','file') ~= 3
 end
 % if (options.CGLS || options.LSQR || options.FISTA || options.FISTAL1) && options.subsets > 1
 if (options.CGLS || options.LSQR) && options.subsets > 1
-    warning('CGLS or LSQR do not support subsets! Setting subsets to 1.')
+    warning('CGLS and LSQR do not support subsets! Setting subsets to 1.')
     options.subsets = 1;
 end
 if options.subsets <= 0
@@ -361,22 +361,16 @@ end
 if (options.projector_type == 6) && ~options.SPECT
     error('Projector type 6 is only supported with SPECT data!')
 end
-if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11) && options.SPECT
-    error('SPECT only supports projector types 1 and 6!')
+if (options.projector_type ~= 6 && options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 2 && options.projector_type ~= 22 && options.projector_type ~= 7) && options.SPECT
+    error('SPECT only supports projector types 1, 2 and 6!')
 end
 if (options.projector_type == 6)
-    if options.Nx(1) ~= options.nRowsD
-        error('options.Nx has to be the same as options.nRowsD when using projector type 6')
-    end
-    if options.Ny(1) ~= options.nRowsD
-        error('options.Ny has to be the same as options.nRowsD when using projector type 6')
-    end
-    if options.Nz(1) ~= options.nColsD
-        error('options.Nz has to be the same as options.nColsD when using projector type 6')
-    end
     if options.subsets > 1 && options.subset_type < 8
         error('Subset types 0-7 are not supported with projector type 6!')
     end
+end
+if (~options.use_raw_data && options.SPECT) && ~ismember(options.subset_type, [8,9,10,11])
+    error('Only subset types 8-11 are supported with SPECT sinogram reconstruction')
 end
 if options.FDK && (options.Niter > 1 || options.subsets > 1)
     if options.largeDim
@@ -946,22 +940,33 @@ if options.verbose > 0
             disp(dispi)
         end
         if options.subsets > 1
+            if ismember(mod(options.subsets, 100), [11, 12, 13])
+                abbr = 'th';
+            elseif mod(options.subsets, 10) == 1
+                abbr = 'st';
+            elseif mod(options.subsets, 10) == 2
+                abbr = 'nd';
+            elseif mod(options.subsets, 10) == 3
+                abbr = 'rd';
+            else
+                abbr = 'th';
+            end
             if options.subset_type == 1
-                disp(['Every ' num2str(options.subsets) 'th column measurement is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' column measurement is taken per subset.'])
             elseif options.subset_type == 2
-                disp(['Every ' num2str(options.subsets) 'th row measurement is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' row measurement is taken per subset.'])
             elseif options.subset_type == 3
                 disp('Using random subset sampling.')
             elseif options.subset_type == 4
-                disp(['Every ' num2str(options.subsets) 'th sinogram column is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' sinogram column is taken per subset.'])
             elseif options.subset_type == 5
-                disp(['Every ' num2str(options.subsets) 'th sinogram row is taken per subset.'])
+                disp(['Every ' num2str(options.subsets) abbr ' sinogram row is taken per subset.'])
             elseif options.subset_type == 6
                 disp(['Using angle-based subset sampling with ' num2str(options.n_angles) ' angles combined per subset.'])
             elseif options.subset_type == 7
                 disp('Using golden angle-based subset sampling.')
             elseif options.subset_type == 8
-                disp(['Using every ' num2str(options.subsets) 'th sinogram/projection image.'])
+                disp(['Using every ' num2str(options.subsets) abbr ' sinogram/projection image.'])
             elseif options.subset_type == 9
                 disp('Using sinograms/projection images in random order.')
             elseif options.subset_type == 10

@@ -502,6 +502,9 @@ struct inputStruct {
     //float nRays;
     float* rayShiftsDetector;
     float* rayShiftsSource;
+    float coneOfResponseStdCoeffA;
+    float coneOfResponseStdCoeffB;
+    float coneOfResponseStdCoeffC;
     //float dSeptal;
     //float hexOrientation;
     //float nRaySPECT;
@@ -835,9 +838,12 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     if (inputScalars.CT) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
-    } else if (inputScalars.SPECT && inputScalars.projector_type == 1) {
+    } else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
+        inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
+        inputScalars.coneOfResponseStdCoeffB = options.coneOfResponseStdCoeffB;
+        inputScalars.coneOfResponseStdCoeffC = options.coneOfResponseStdCoeffC;
         //inputScalars.colL = options.colL;
         //inputScalars.colD = 2 * options.colR;
         //inputScalars.dSeptal = options.dSeptal;
@@ -905,7 +911,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.nProjections = options.nProjections;
 		w_vec.dPitchX = options.crXY;
 		w_vec.dPitchY = options.crXY;
-		if (inputScalars.projector_type == 1) {
+		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2) {
 			w_vec.rayShiftsDetector = options.rayShiftsDetector;
 			w_vec.rayShiftsSource = options.rayShiftsSource;
 		}
