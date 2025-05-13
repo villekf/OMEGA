@@ -6,13 +6,15 @@
 
 - SPECT behavior changed with projector type 1
   - This is now closer to CT-functionality, meaning that subsets are projection-based
-  - Subset types 8-11 are now supported instead of 0, 1, and 3
+  - Subset types 0, 8-11 are now supported instead of 0, 1, and 3
   - You'll need to switch the subset type to a supported one after updating
   - Should be more memory efficient than the previous version
   
 - Most new features will be restricted to implementation 2 now and in the future (for Python this is the only one available)
   
 ### New features
+
+- Added support for projector type 2 for SPECT
 
 - Added support for 3D masks
   - Forward and backward projection masks can now be either 2D or 3D
@@ -42,9 +44,15 @@
 - Added support for SAGA algorithm, both emission and transmission likelihood
   - Implementation 2 only!
   
+- Added Barzilai-Borwain algorithm
+  - Implementation 2 only!
+  - MATLAB/Octave only at the moment
+  
 - Added support for attenuation correction when using projector type 6 (rotation-based SPECT projector)
 
-- Custom reconstructions are now supported with projector type 1 with SPECT data in Python
+- Projector type 6 now supports different FOV sizes
+
+- Custom reconstructions are now supported with projector type 1 and 2 with SPECT data in Python
   - Functionality is the same as with PET, CT, or the SPECT rotation-based projector
   - Easily create your own algorithms by using the built-in operators for forward and/or backward projections
   - Full GPU support
@@ -54,8 +62,20 @@
   - Implementation 2 only!
   
 - Added support for standalone GPU-based regularizers in Python
-  - Can be used with any data, as long as the input image is a vector and PyOpenCL, ArrayFire, CuPy or Pytorch format
+  - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or Pytorch format
   - Supports RDP, non-local regularizers and gradient-based TV
+  
+- Added support for parallel beam reconstruction
+  - Very slow
+  - Implementation 2 only!
+  
+- Subset type 0 now supports projection images as well
+  - First subset uses the N first projections, and so on
+  
+- volume3Dviewer can now display colorbar
+  - Can also be used in Python if your UI supports it
+  
+- volume3Dviewer can now be used to multimodal viewing, i.e. CT and PET/SPECT
   
 ### Bug fixes and enhancements
 
@@ -72,6 +92,36 @@
 - Gradient-based TV regularization should now work with CUDA
 
 - When using projector type 6 (SPECT), the image can now be correctly rotated when using `options.offangle`
+
+- MBSREM now works
+
+- Weighted TV and non-local regularizers correctly work with CUDA
+
+- Momentum-based preconditioner now works even if the momentum values are not provided
+
+- Quadrature-based preconditioner now works
+
+- Corrected default weights of various regularizers in Python
+
+- AD-MRP now correctly uses the regularization parameter
+
+- Projector types 2 and 3 work in CUDA with listmode data when using sensitivity image computation
+
+- PDHG and PKMA now work with CUDA
+
+- Subset type 4 now supports column sizes that are not divisible by the number of subsets
+
+- GGMRF weights now work when Ndx/Ndy and Ndz are different
+
+- MetaImage load should no longer throw warnings or errors
+
+- Static reconstruction is now correctly displayed if partitions is empty
+
+- If multiple algorithms are selected, MATLAB/Octave now correctly displays the selected algorithms
+
+- Filtering-based preconditioner now works with TOF data
+
+- Fixed non-local regularization when using CPU with implementation 2
 
 ## OMEGA v2.0.0
 
