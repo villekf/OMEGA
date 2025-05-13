@@ -474,7 +474,6 @@ DEVICE float normPDF(const float x, const float mu, const float sigma) {
 
 	return _2PI / sigma * EXP(-0.5f * a * a);
 }
-
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
 	*D = length(diff * tc) - LL / 2.f;
 	*DD = *D;
