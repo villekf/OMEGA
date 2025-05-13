@@ -206,6 +206,9 @@ if options.TV && options.TVtype == 2 && ~options.TV_use_anatomical
     warning('Using TV type = 2, but no anatomical reference set. Using TV type 1 instead.')
     options.TVtype = 1;
 end
+if options.implementation == 1 && (isfield(options,'maskBP') && ~isscalar(options.maskBP)) || (isfield(options,'maskFP') && ~isscalar(options.maskFP))
+    warning('Mask images are not supported with implementation 1!')
+end
 if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
         options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...

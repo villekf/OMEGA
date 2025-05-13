@@ -155,6 +155,9 @@ end
 if ~isfield(options, 'useMaskBP')
     options.useMaskBP = false;
 end
+if ~isfield(options, 'usePriorMask')
+    options.usePriorMask = false;
+end
 if ~isfield(options, 'offsetCorrection')
     options.offsetCorrection = false;
 end
