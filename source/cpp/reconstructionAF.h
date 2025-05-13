@@ -468,7 +468,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS || w_vec.precondTypeIm[6])) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Starting computation of E for MBSREM/MRAMLA/SPS");
-			af::array Sino = af::array(inputScalars.koko, &Sin[inputScalars.koko * tt], AFTYPE);
+			af::array Sino = af::array(inputScalars.koko * nBins, &Sin[inputScalars.koko * nBins * tt], AFTYPE);
 			af::array rand;
 			proj.memSize += (sizeof(float) * inputScalars.koko) / 1048576ULL;
 			if (inputScalars.randoms_correction)
@@ -478,7 +478,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				if (inputScalars.projector_type == 6)
 					E = af::constant(0.f, inputScalars.nRowsD, inputScalars.nColsD, inputScalars.nProjections);
 				else
-					E = af::constant(0.f, inputScalars.koko);
+					E = af::constant(0.f, inputScalars.koko * nBins);
 				for (uint32_t ll = 0; ll < inputScalars.subsetsUsed; ll++) {
 					uint64_t m_size = length[ll];
 					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
@@ -502,7 +502,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							}
 							af::sync();
 						}
-						E(af::seq(ll * m_size, (ll + 1) * m_size - 1)) += oneInput;
+						E(af::seq(ll * m_size * nBins, (ll + 1) * m_size * nBins - 1)) += oneInput;
 						if (DEBUG) {
 							mexPrintBase("E = %f\n", af::sum<float>(E));
 							mexPrintBase("E.dims(0) = %d\n", E.dims(0));
@@ -565,7 +565,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							uint64_t m_size = length[subIter];
 							if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 								m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[subIter];
-							af::array inputM = E(af::seq(ll * m_size, (ll + 1) * m_size - 1));
+							af::array inputM = E(af::seq(ll * m_size * nBins, (ll + 1) * m_size * nBins - 1));
 							computeIntegralImage(inputScalars, w_vec, length[subIter], inputM, meanBP);
 							af::sync();
 							if (inputScalars.projector_type == 6)

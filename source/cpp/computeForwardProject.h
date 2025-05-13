@@ -47,7 +47,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	}
 	if (inputScalars.randoms_correction) {
 		if ((MethodList.MBSREM || MethodList.MRAMLA || MethodList.SPS) && !inputScalars.CT && !af::allTrue<bool>(randomsData > 0.f)) {
-			indeksit = y > 0.f && randomsData == 0.f && input <= w_vec.epsilon_mramla;
+			if (inputScalars.TOF) {
+				const af::array indR = af::tile(randomsData == 0.f, inputScalars.nBins);
+				indeksit = y > 0.f && indR && input <= w_vec.epsilon_mramla;
+			}
+			else
+				indeksit = y > 0.f && randomsData == 0.f && input <= w_vec.epsilon_mramla;
 			indS = af::anyTrue<bool>(indeksit);
 		}
 		if (!inputScalars.CT) {
