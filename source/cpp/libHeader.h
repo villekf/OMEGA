@@ -833,7 +833,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
     }
-	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
+	else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11)) {
         inputScalars.nColsD = options.nColsD;
         inputScalars.nRowsD = options.nRowsD;
         inputScalars.coneOfResponseStdCoeffA = options.coneOfResponseStdCoeffA;
@@ -900,7 +900,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.nProjections = options.nProjections;
 		w_vec.dPitchX = options.crXY;
 		w_vec.dPitchY = options.crXY;
-		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2) {
+		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11) {
 			w_vec.rayShiftsDetector = options.rayShiftsDetector;
 			w_vec.rayShiftsSource = options.rayShiftsSource;
 		}

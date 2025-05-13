@@ -160,7 +160,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
-	} else if (inputScalars.SPECT && (inputScalars.projector_type == 1 || inputScalars.projector_type == 2)) {
+	} else if (inputScalars.SPECT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2)) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
         inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
