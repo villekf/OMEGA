@@ -65,7 +65,7 @@
   - Can be used with any data, as long as the input image is a vector and in PyOpenCL, ArrayFire, CuPy or Pytorch format
   - Supports RDP, non-local regularizers and gradient-based TV
   
-- Added support for parallel beam reconstruction
+- Added support for parallel beam reconstruction (`options.useParallelBeam`)
   - Very slow
   - Implementation 2 only!
   
@@ -73,9 +73,9 @@
   - First subset uses the N first projections, and so on
   
 - volume3Dviewer can now display colorbar
-  - Can also be used in Python if your UI supports it
+  - volume3Dviewer can also be used in Python if your UI supports it
   
-- volume3Dviewer can now be used to multimodal viewing, i.e. CT and PET/SPECT
+- volume3Dviewer can now be used in multimodal viewing, i.e. merge CT and PET/SPECT images
   
 ### Bug fixes and enhancements
 
