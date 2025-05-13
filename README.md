@@ -305,12 +305,12 @@ If you use some specific algorithm or prior, please cite one of references here 
 
 ## Acknowledgments
 
-Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The ray tracer projectors for SPECT were implemented by [Niilo Saarlemo](https://github.com/saarlemo). Barzilai-Borwein algorithm implemented by [Razieh Azizi](https://github.com/RaziAzizi). All other codes were written by Ville-Veikko Wettenhovi. Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
+Original versions of COSEM, ACOSEM, ECOSEM, RAMLA, MRAMLA, MRP, L-filter, FMH, weighted mean, quadratic prior, sinogram coordinate and sinogram creation MATLAB codes were written by Samuli Summala. Normalization coefficient and variance reduction codes were written by Anssi Manninen. Initial work on TOF was done by Jonna Kangasniemi. Initial work on SPECT was done by Matti Kortelainen and Akuroma George. First version of Volume3Dviewer was done by Nargiza Djurabekova. The ray tracer projectors for SPECT were implemented by [Niilo Saarlemo](https://github.com/saarlemo). Barzilai-Borwein algorithm implemented by [Razieh Azizi](https://github.com/RaziAzizi). All other codes were written by [Ville-Veikko Wettenhovi](https://github.com/villekf). Some pieces of code were copied from various websites (Stack Overflow, MATLAB Answers), the original sources of these codes can be found in the source files.
 
 This work was supported by a grant from [Jane and Aatos Erkko foundation](https://jaes.fi/en/), [Instrumentarium Science Foundation](http://instrufoundation.fi/en.php), 
 [Jenny and Antti Wihuri Foundation](https://wihurinrahasto.fi/?lang=en) and [The Finnish Research Impact Foundation](https://www.vaikuttavuussaatio.fi/en/). 
 This work has been supported by [University of Eastern Finland](https://www.uef.fi/en) and Academy of Finland. 
-This work was supported by the Research Council of Finland ([Flagship of Advanced Mathematics for Sensing Imaging and Modelling](https://fameflagship.fi/) grant 358944).
+This work was supported by the Research Council of Finland ([Flagship of Advanced Mathematics for Sensing, Imaging, and Modelling](https://fameflagship.fi/) grant 358944).
 
 
 ## References
