@@ -2089,7 +2089,10 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 	uu = af::sum<float>(mData);
 	af::array outputFP;
 	if (inputScalars.projector_type != 6) {
-		outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+		if (inputScalars.listmode == 0)
+			outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+		else
+			outputFP = af::constant(0.f, m_size);
 		af::sync();
 		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj);
 		af::sync();

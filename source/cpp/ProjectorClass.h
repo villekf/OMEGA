@@ -1850,7 +1850,7 @@ public:
 		cl_int status = CL_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt]);
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt]);
 				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * length[kk]) / 1048576ULL;
 			}

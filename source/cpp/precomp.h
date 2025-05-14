@@ -66,7 +66,7 @@ typedef struct structForScalars {
 	uint32_t g_dim_x = 0u, g_dim_y = 0u, g_dim_z = 0u, deblur_iterations = 0U;
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0;
 	std::vector<int64_t> im_dim{ 1, 0, 0, 0, 0, 0, 0 };
-	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, koko = 0, sizeLOR, 
+	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;
 	uint32_t* saveNIter = nullptr;
 	float* T = nullptr;

@@ -2337,7 +2337,7 @@ public:
 		CUresult status = CUDA_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
-				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt], sizeof(float) * length[kk]);
+				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt], sizeof(float) * length[kk]);
 				CUDA_CHECK(status, "\n", -1);
 			}
 		}
