@@ -51,6 +51,10 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				w_vec.lambda = w_vec.lambdaFiltered;
 			w_vec.precondTypeIm[5] = false;
 		}
+		if (MethodList.PKMA && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			vec.rhs_os[ii] = w_vec.D[ii] - vec.rhs_os[ii];
+		if ((MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM) && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			vec.rhs_os[ii] -= w_vec.D[ii];
 		if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
 			PDHG1(vec.rhs_os[ii], inputScalars, w_vec, vec, osa_iter + inputScalars.subsets * iter, ii);
 		if (MethodList.PDDY && ii == 0 && MAP) {

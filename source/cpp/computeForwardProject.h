@@ -18,7 +18,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		mexEval();
 	}
 	if (!inputScalars.CT)
-		input(input > 0.f) += inputScalars.epps;
+		input += inputScalars.epps;
 	if (w_vec.precondTypeMeas[1] && w_vec.filterIter > 0 && kk == w_vec.filterIter) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Filter iterations complete. Switching tau/sigma-values");
@@ -115,6 +115,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
+			if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+				input = y / (input);
+			else
 				input = y / (input) - 1.f;
 		}
 		input.eval();
@@ -136,6 +139,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		else {
 			if (inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
+			if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+				input = y / (input);
+			else
 				input = 1.f - y / (input);
 		}
 		input.eval();
@@ -165,7 +171,10 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				input(!indeksit) = y(!indeksit) / (input(!indeksit) + inputScalars.epps) - 1.f;
 			}
 			else
-				input = y / (input) - 1.f;
+				if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+					input = y / (input);
+				else
+					input = y / (input) - 1.f;
 		}
 		input.eval();
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
@@ -194,8 +203,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	}else if (MethodList.BB) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing BB");
-
-		input  = input -y;
+		input -= y;
+		input.eval();
 	}
 	else if (MethodList.SART || MethodList.POCS) {
 		if (inputScalars.verbose >= 3)
