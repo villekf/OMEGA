@@ -121,7 +121,11 @@
 
 - Filtering-based preconditioner now works with TOF data
 
+- TOF data now supports more algorithms, such as ACOSEM, and features
+
 - Fixed non-local regularization when using CPU with implementation 2
+
+- Fixed mask images when using sensitivity image with list-mode data
 
 ## OMEGA v2.0.0
 
