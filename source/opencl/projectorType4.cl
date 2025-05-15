@@ -123,7 +123,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     IMAGE2D maskFP,
 #endif
 #endif
-#if defined(MASKBP) && defined(BP) && !defined(CT)
+#if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
 #ifdef MASKBP3D
     IMAGE3D maskBP,
 #else
@@ -692,13 +692,15 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         if (no_norm == 0u)
             wSum[zz] = 0.f;
     }
-    float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
+    const float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
     const float2 koko = MFLOAT2(CFLOAT(d_size_x) * d_dPitch.x, CFLOAT(d_sizey) * d_dPitch.y );
     const float2 indeksi = MFLOAT2(CFLOAT(d_size_x) / 2.f, CFLOAT(d_sizey) / 2.f );
     for (int kk = 0; kk < d_nProjections; kk++) {
         float3 d1, d2, d3;
         float3 s;
+#ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+#endif
         d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
@@ -712,6 +714,35 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         const float3 normX = normalize(apuX) / koko.x;
         const float3 normY = normalize(apuY) / koko.y;
         const float3 cP = cross(d2, d3 - d1);
+        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
+        const float dApu = d_d.z * cP.z;
+#ifdef PARALLEL
+        const float apuXP = d_uv[kk * NA];
+        const float apuYP = d_uv[kk * NA + 1];
+        const float3 ss = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+        for (int xx = 0; xx < d_size_x; xx++) {
+            for (int yy = 0; yy < d_sizey; yy++) {
+                s = ss;
+	            const float2 indeksiP = MFLOAT2(CFLOAT(xx) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(yy) - CFLOAT(d_sizey) / 2.f + .5f);
+                (s).x += indeksiP.x * apuXP;
+                (s).y += indeksiP.x * apuYP;
+                (s).z += indeksiP.y * d_dPitch.y;
+                float3 d4 = d1, d5 = d1;
+                (d4).x += (indeksiP.x + .5f) * apuXP;
+                (d4).y += (indeksiP.x + .5f) * apuYP;
+                (d4).z += (indeksiP.y + .5f) * d_dPitch.y;
+                (d5).x += (indeksiP.x - .5f) * apuXP;
+                (d5).y += (indeksiP.x - .5f) * apuYP;
+                (d5).z += (indeksiP.y - .5f) * d_dPitch.y;
+                const float3 d44 = d4 - d3;
+                const float3 d55 = d5 - d3;
+                const float d4x = dot(d44, normX);
+                const float d4y = dot(d44, normY);
+                const float d5x = dot(d55, normX);
+                const float d5y = dot(d55, normY);
+                float2 scale = MFLOAT2(1.f / CFLOAT(d_size_x), 1.f / CFLOAT(d_sizey));
+                scale /= 2.f;
+#endif
         const float upperPart = dot(cP, s - d1);
         float3 v = dV - s;
         float lowerPart = -dot(v, cP);
@@ -720,8 +751,6 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #else
         const float vApu = FMAD(v.x, v.x, v.y * v.y);
 #endif
-        const float dApu = d_d.z * cP.z;
-        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
 #ifndef __CUDACC__ 
 #pragma unroll NVOXELS
 #endif
@@ -737,6 +766,13 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float3 p = FMAD3(t, v, s);
             const float l1 = FMAD(v.z, v.z, vApu);
 #endif
+// #ifdef PARALLEL
+//             if (p.x > d4.x || p.x < d5.x || p.y > d4.y || p.y < d5.y || p.z > d4.z || p.z < d5.z) {
+//                 v.z += d_d.z;
+//                 lowerPart -= dApu;
+//                 continue;
+//             }
+// #endif
 #ifdef FDK
             float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
             weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
@@ -747,6 +783,13 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             p -= d3;
             float px = dot(p, normX);
             float py = dot(p, normY);
+#ifdef PARALLEL
+            if (px > d4x + scale.x || px < d5x - scale.x || py > d4y + scale.y || py < d5y - scale.y) {
+                v.z += d_d.z;
+                lowerPart -= dApu;
+                continue;
+            }
+#endif
             float yVar = 0.f;
 #ifdef USEIMAGES
 #ifdef CUDA
@@ -798,6 +841,10 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             v.z += d_d.z;
             lowerPart -= dApu;
         }
+#ifdef PARALLEL
+        }
+    }
+#endif
     }
     for (int zz = 0; zz < NVOXELS; zz++) {
         const uint ind = i.z + zz;

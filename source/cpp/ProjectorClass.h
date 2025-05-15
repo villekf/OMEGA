@@ -2462,16 +2462,6 @@ public:
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
 					OCL_CHECK(status, "\n", -1);
-					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-						if (inputScalars.useBuffers)
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
-						else
-							if (inputScalars.maskBPZ > 1)
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-							else
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-						OCL_CHECK(status, "\n", -1);
-					}
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
@@ -2480,7 +2470,8 @@ public:
 			if (compSens) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
 				OCL_CHECK(status, "\n", -1);
-				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
+				OCL_CHECK(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]), "\n", -1);
+				//getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
 			}
 			else {

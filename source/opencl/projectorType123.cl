@@ -128,7 +128,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
     IMAGE2D maskFP,
 #endif
 #endif
-#if defined(MASKBP) && defined(BP) && !defined(FP)
+#if defined(MASKBP) && ((defined(BP) && !defined(FP)) || defined(SENS))
 #ifdef MASKBP3D
     IMAGE3D maskBP,
 #else
@@ -139,7 +139,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef MASKFP
 	const CLGLOBAL uchar* CLRESTRICT maskFP,
 #endif
-#if defined(MASKBP) && defined(BP) && !defined(FP)
+#if defined(MASKBP) && ((defined(BP) && !defined(FP)) || defined(SENS))
     const CLGLOBAL uchar* CLRESTRICT maskBP,
 #endif
 #endif
