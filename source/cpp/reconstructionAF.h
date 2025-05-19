@@ -707,7 +707,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						}
 						else {
 							for (int kk = 0; kk < inputScalars.subsets; kk++) {
-								vec.Summ[ii][kk] = vec.rhs_os[ii].as(f32) / static_cast<float>(inputScalars.subsets);
+								vec.Summ[ii][kk] = vec.rhs_os[ii].as(f32) / static_cast<float>(inputScalars.subsets) + inputScalars.epps;
+								vec.Summ[ii][kk](vec.Summ[ii][kk] == 0.f) = 1.f;
 								vec.Summ[ii][kk].eval();
 								if (DEBUG)
 									mexPrintBase("sum(vec.Summ[ii][kk]) = %f\n", af::sum<float>(vec.Summ[ii][kk]));
