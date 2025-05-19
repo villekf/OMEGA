@@ -334,6 +334,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	float D = 0.f;
 	float DD = 0.f;
 	TOFDis(v, tStart, L, &D, &DD);
+	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 #endif
     const float tStep = DIVIDE(dL, L);
@@ -403,12 +404,12 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f);
+			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 			denominator(ax, p, dL, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-			, dL, TOFSum, DD, TOFCenter, sigma_x, &D
+			, dL, TOFSum, DD, sigma_x, &D, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -454,7 +455,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 			rhs(dL * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, dL, sigma_x, &D, DD, TOFCenter, TOFSum
+			, dL, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif

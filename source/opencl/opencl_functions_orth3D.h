@@ -86,7 +86,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	CLGLOBAL CAST* d_Summ, CLGLOBAL CAST* d_output, const bool no_norm
 #endif
 #ifdef TOF
-	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFid
 #endif
@@ -190,7 +190,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-				, element, TOFSum, DD, TOFCenter, sigma_x, D
+				, element, TOFSum, DD, sigma_x, D, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -200,7 +200,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -225,7 +225,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 	const bool no_norm, CLGLOBAL CAST* Summ, CLGLOBAL CAST* d_rhs_OSEM 
 #endif
 #ifdef TOF
-	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFid
 #endif
@@ -288,7 +288,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -321,7 +321,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -368,7 +368,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -401,7 +401,7 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 				Summ, d_rhs_OSEM, no_norm
 #endif
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+				, element, sigma_x, D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
