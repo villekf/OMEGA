@@ -1590,7 +1590,12 @@ public:
 					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+					if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
+						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+					}
+					else
+						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 					viewDesc.height = inputScalars.Nx[0];
 					viewDesc.width = inputScalars.Ny[0];
 					viewDesc.depth = inputScalars.Nz[0];
@@ -2351,21 +2356,18 @@ public:
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
 	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
-		CUresult status = CUDA_SUCCESS;
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
 				if (inputScalars.useBuffers)
 					FPArgs.emplace_back(&d_attenB);
 				else
 					FPArgs.emplace_back(&d_attenIm);
-                CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
 				if (inputScalars.useBuffers)
 					BPArgs.emplace_back(&d_attenB);
 				else
 					BPArgs.emplace_back(&d_attenIm);
-                CUDA_CHECK(status, "\n", -1);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
 						SensArgs.emplace_back(&d_attenB);

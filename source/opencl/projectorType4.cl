@@ -418,12 +418,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			, lor
 #endif
 			);
-    // if (idx == 0) {
-    //     printf("ax[0] = %f\n", ax[0]);
-    //     printf("dL = %f\n", dL);
-    //     printf("d_OSEM = %f\n", tex3D<float>(d_OSEM, p.x, p.y, p.z));
-    //     // printf("d_OSEM = %f\n", read_imagef(d_OSEM, samplerForw, (T4)(p, (typeTT)0)).w);
-    // }
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
             const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
