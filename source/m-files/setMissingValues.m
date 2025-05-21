@@ -235,7 +235,7 @@ if ~isfield(options, 'deblurring')
     options.deblurring = false;
 end
 if ~isfield(options, 'use_64bit_atomics')
-    options.use_64bit_atomics = false;
+    options.use_64bit_atomics = true;
 end
 if ~isfield(options, 'use_CUDA')
     options.use_CUDA = false;
@@ -676,6 +676,9 @@ if ~isfield(options, 'weighted_center_weight')
 end
 if ~isfield(options, 'TVsmoothing')
     options.TVsmoothing = 1e-2;
+end
+if ~isfield(options, 'tau')
+    options.tau = 1e-8;
 end
 if ~isfield(options, 'TV_use_anatomical')
     options.TV_use_anatomical = false;
