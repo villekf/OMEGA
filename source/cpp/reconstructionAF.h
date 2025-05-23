@@ -272,6 +272,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			compute_norm_matrix = 2U;
 	}
 
+	if (MethodList.NLM || MethodList.MRP || MethodList.ProxTV || MethodList.RDP || MethodList.TV || MethodList.ProxTGV || MethodList.ProxRDP || MethodList.GGMRF || MethodList.Quad || MethodList.APLS ||
+		MethodList.FMH || MethodList.Huber || MethodList.hyperbolic || MethodList.L || MethodList.WeightedMean || MethodList.TGV)
+		MethodList.prior = true;
+
 	if (DEBUG) {
 		mexPrintBase("nProjections = %d\n", w_vec.nProjections);
 		mexPrintBase("nColsD = %u\n", inputScalars.nColsD);
@@ -286,6 +290,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("compute_norm_matrix = %u\n", compute_norm_matrix);
 		mexPrintBase("w_vec.computeD = %d\n", w_vec.computeD);
 		mexPrintBase("w_vec.computeM = %d\n", w_vec.computeM);
+		mexPrintBase("MethodList.prior = %d\n", MethodList.prior);
 		mexEval();
 	}
 
@@ -1311,7 +1316,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					}
 
 					// Enforce positivity if applicable
-					if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType) {
+					if (inputScalars.enforcePositivity && inputScalars.subsetsUsed > 1 && !MethodList.CPType && !MethodList.POCS) {
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 							vec.im_os[ii](vec.im_os[ii] < inputScalars.epps) = inputScalars.epps;
 					}

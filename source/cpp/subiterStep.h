@@ -75,7 +75,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		mexPrint("Priori\n");
 		mexEval();
 	}
-	if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS) {
+	if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART) {
 		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix);
 		if (status != 0)
 			return -1;
@@ -303,9 +303,9 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
 				mexEval();
 			}
-			vec.im_os[ii] = SART(vec.im_os[ii], *Sens, vec.rhs_os[ii], w_vec.lambda[iter]);
+			status = SART(inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter , *Sens, vec.rhs_os[ii], w_vec.lambda[iter], ii);
 			if (MethodList.POCS)
-				POCS(vec.im_os[ii], inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
+				status = POCS(inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
 		}
 		else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
 			if (inputScalars.verbose >= 3)
@@ -331,7 +331,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			  mexPrint("Computing BB");
 
 			  
-			  status = BB(vec, w_vec);
+			  status = BB(vec, w_vec, ii);
 
 		}
 		if (inputScalars.FISTAAcceleration) {

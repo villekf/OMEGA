@@ -60,9 +60,8 @@ typedef struct AF_im_vectors_ {
 	af::array C_co, dU;
 	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
 	std::vector<af::array> im_os, im_os_blurred, rhs_os, pCP, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS;
+	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
 	std::vector<std::vector<af::array>> Summ, stochasticHelper;
-	af::array gradBB, imBB;
 } AF_im_vectors;
 #endif
 
@@ -97,7 +96,8 @@ typedef struct Weighting_ {
 	std::vector<int32_t> mIt;
 	std::vector<float> alphaCP, LCP, LCP2;
 	float *rayShiftsDetector = nullptr, *rayShiftsSource = nullptr;
-	float alphaBB=1e-4f;
+	std::vector<float> alphaBB;
+
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected
@@ -114,6 +114,7 @@ typedef struct RecMethods_ {
 	bool CPType = false;
 	bool OSL = false;
 	bool FDK = false;
-	bool BB=false;
+	bool BB = false;
+	bool prior = false;
 	uint32_t OSLCOSEM = 0u, MAPCOSEM = 0u;
 } RecMethods;

@@ -1990,20 +1990,40 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				w_vec.phiLSQR = w_vec.betaLSQR;
 				w_vec.rhoLSQR = w_vec.alphaLSQR;
 				af::sync();
-				if (inputScalars.verbose >= 3)
+				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("LSQR initialization complete");
 			}
 		}
 		else if (MethodList.BB && subIter == 0){
-			status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
-			if (status != 0) {
-				return -1;
+			if (DEBUG || inputScalars.verbose >= 3)
+				mexPrint("Initializing BB");
+			if (inputScalars.projector_type == 6)
+				backprojectionType6(mData, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
+			else {
+				if (inputScalars.BPType == 5) {
+					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
+				}
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+				if (status != 0) {
+					return -1;
+				}
 			}
-			vec.gradBB = -vec.rhs_os[0].copy();
-			vec.imBB = vec.im_os[0].copy();
-			vec.im_os[0] = vec.im_os[0] - w_vec.alphaBB * vec.gradBB;
-			vec.gradBB.eval();
-			vec.im_os[0].eval();
+			af::sync();
+			if (vec.gradBB.size() < ii + 1)
+				vec.gradBB.emplace_back( -vec.rhs_os[ii].copy());
+			else
+				vec.gradBB[ii] = -vec.rhs_os[ii].copy();
+			if (vec.imBB.size() < ii + 1)
+				vec.imBB.emplace_back(vec.im_os[ii].copy());
+			else
+				vec.imBB[ii] = vec.im_os[ii].copy();
+			if (w_vec.alphaBB.size() < ii + 1)
+				w_vec.alphaBB.emplace_back(1e-4f);
+			vec.im_os[ii] = vec.im_os[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
+			vec.gradBB[ii].eval();
+			vec.im_os[ii].eval();
+			if (DEBUG || inputScalars.verbose >= 3)
+				mexPrint("BB initialization complete");
 		}
 		else if (MethodList.CGLS && subIter == 0) {
 			if (DEBUG || inputScalars.verbose >= 3)

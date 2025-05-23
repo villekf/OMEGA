@@ -262,8 +262,30 @@ inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline af::array SART(const af::array& im, const af::array& Summ, const af::array& rhs, const float lam) {
-	return (im + lam * (rhs / Summ));
+inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g,
+	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const af::array& Summ, const af::array& rhs, const float lam, const int ii = 0) {
+	af::array imOld;
+	if (MethodList.prior && !MethodList.POCS)
+		imOld = vec.im_os[ii].copy();
+	vec.im_os[ii] += lam * (rhs / Summ);
+	if (MethodList.prior && !MethodList.POCS) {
+		vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
+		af::eval(vec.im_os[ii]);
+		if (ii == 0) {
+			int status = 0;
+			const float dp = static_cast<float>(af::norm(vec.im_os[ii] - imOld));
+			for (int kk = 0; kk < w_vec.ng; kk++) {
+				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
+				if (status != 0)
+					return status;
+				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
+				af::eval(vec.dU);
+				vec.im_os[ii] -= dp * w_vec.beta * vec.dU;
+				af::eval(vec.im_os[ii]);
+			}
+		}
+	}
+	return 0;
 }
 
 // Necessary PDHG step, when using subsets, before regularization is applied
@@ -457,15 +479,17 @@ inline int FISTAL1(af::array& im, af::array& rhs, const scalarStruct& inputScala
 }
 
 // ASD-POCS
-inline void POCS(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
+inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& MethodList, AF_im_vectors& vec, ProjectorClass& proj, const af::array& mData, const af::array& g, 
 	std::vector<int64_t>& length, const int64_t* pituus, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
-	im(im < 0.f) = 0.f;
+	vec.im_os[ii](vec.im_os[ii] < 0.f) = 0.f;
 	if (DEBUG)
 		mexPrint("Computing ASD-POCS");
 	bool subsets = true;
-	if (inputScalars.subsetsUsed > 1)
+	if (inputScalars.subsetsUsed > 1 && iter == inputScalars.Niter - 1)
 		subsets = osa_iter < inputScalars.subsetsUsed - 1;
-	if (iter < inputScalars.Niter - 1 && subsets) {
+	else
+		subsets = iter < inputScalars.Niter - 1;
+	if (subsets && MethodList.prior) {
 		uint64_t m_size = length[osa_iter];
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 			m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
@@ -477,36 +501,43 @@ inline void POCS(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, co
 		int status = 0;
 		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
 		if (status != 0) {
-			return;
+			return status;
 		}
 		const float dd = static_cast<float>(af::norm(outputFP - mData));
-		const float dp = static_cast<float>(af::norm(im - vec.f0POCS[ii]));
+		const float dp = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
 			mexEval();
 		}
 		if (iter == 0 && osa_iter == 0)
 			w_vec.dtvg = w_vec.alphaPOCS * dp;
-		vec.f0POCS[ii] = im;
+		vec.f0POCS[ii] = vec.im_os[ii].copy();
 		if (DEBUG) {
 			mexPrintBase("dp = %f\n", dp);
+			mexPrintBase("w_vec.dtvg = %f\n", w_vec.dtvg);
 			mexEval();
 		}
 		if (ii == 0) {
 			for (int kk = 0; kk < w_vec.ng; kk++) {
 				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
-					return;
+					return status;
 				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
-				im -= w_vec.dtvg * vec.dU;
-				af::eval(im);
+				vec.im_os[ii] -= w_vec.dtvg * vec.dU;
+				af::eval(vec.im_os[ii]);
 				af::eval(vec.dU);
 			}
-			const float dg = static_cast<float>(af::norm(im - vec.f0POCS[ii]));
-			if (dg > w_vec.rMaxPOCS && dd > w_vec.POCSepps)
+			const float dg = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+			if (DEBUG) {
+				mexPrintBase("dg = %f\n", dg);
+				mexPrintBase("w_vec.rMaxPOCS * dp = %f\n", w_vec.rMaxPOCS * dp);
+				mexEval();
+			}
+			if (dg > w_vec.rMaxPOCS * dp && dd > w_vec.POCSepps)
 				w_vec.dtvg *= w_vec.POCSalphaRed;
 		}
 	}
+	return 0;
 }
 
 inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
@@ -538,18 +569,18 @@ inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_
 	return status;
 }
 
-inline int BB(AF_im_vectors &vec, Weighting &w_vec)
+inline int BB(AF_im_vectors &vec, Weighting &w_vec, const int ii = 0)
 {
 
-	af:: array s = vec.im_os[0] - vec.imBB;
-	af:: array y = vec.rhs_os[0] - vec.gradBB;
+	af::array s = vec.im_os[ii] - vec.imBB[ii];
+	af::array y = vec.rhs_os[ii] - vec.gradBB[ii];
 	float denmo = af::dot<float>(s,y);
 	float num = af::dot<float>(s,s);
 
-	w_vec.alphaBB = (denmo !=0)? num / denmo :1e-4f; // Avoid division by zero
-	vec.imBB = vec.im_os[0].copy(); 
-	vec.im_os[0]= vec.imBB - w_vec.alphaBB * vec.gradBB;
-	vec.gradBB = vec.rhs_os[0];
+	w_vec.alphaBB[ii] = (denmo != 0) ? num / denmo : 1e-4f; // Avoid division by zero
+	vec.imBB[ii] = vec.im_os[ii].copy();
+	vec.im_os[ii] = vec.imBB[ii] - w_vec.alphaBB[ii] * vec.gradBB[ii];
+	vec.gradBB[ii] = vec.rhs_os[ii];
 
 
 	return 0;

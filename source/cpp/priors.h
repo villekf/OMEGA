@@ -384,7 +384,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	int status = 0;
 	if (iter)
 		dU = &vec.im_os[0];
-	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA) {
+	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
 		vec.dU = af::constant(0.f, vec.im_os[0].elements());
 		dU = &vec.dU;
 	}
