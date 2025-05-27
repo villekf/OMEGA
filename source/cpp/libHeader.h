@@ -1327,7 +1327,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
 		}
     }
     // Transfer data back to host
-    if (CELL) {
+    if (CELL && inputScalars.nMultiVolumes > 0) {
         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
             if (DEBUG) {
                 mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);

@@ -355,7 +355,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	size_t mDim = mxGetNumberOfElements(Sin) / static_cast<size_t>(inputScalars.Nt);
 
 	mxArray* cell_array_ptr, * FPptr, *resPtr;
-	if (CELL)
+	if (CELL && inputScalars.nMultiVolumes > 0)
 		cell_array_ptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.nMultiVolumes) + 1, 1);
 	else
 		cell_array_ptr = mxCreateNumericArray(5, dim, mxSINGLE_CLASS, mxREAL);

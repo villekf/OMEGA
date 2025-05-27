@@ -773,7 +773,7 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int
 		}
 	}
 	// Transfer data back to host
-	if (CELL) {
+	if (CELL && inputScalars.nMultiVolumes > 0) {
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 			const mwSize dim[3] = { static_cast<mwSize>(inputScalars.Nx[ii]), static_cast<mwSize>(inputScalars.Ny[ii]), static_cast<mwSize>(inputScalars.Nz[ii]) };
 			if (DEBUG) {
