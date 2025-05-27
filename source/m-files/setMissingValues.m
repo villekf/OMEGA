@@ -315,6 +315,9 @@ end
 if ~isfield(options,'use_device')
     options.use_device = uint32(0);
 end
+if ~isfield(options,'implementation')
+    options.implementation = 2;
+end
 if ~isfield(options,'platform')
     options.platform = 0;
 end
@@ -408,14 +411,21 @@ end
 if ~isfield(options,'oOffsetZ')
     options.oOffsetZ = 0;
 end
+if ~isfield(options, 'FOVa_y')
+    if isfield(options, 'FOVa_x')
+        options.FOVa_y = options.FOVa_x;
+    else
+        options.FOVa_y = 0;
+    end
+end
 if ~isfield(options, 'FOVa_x')
     options.FOVa_x = 0;
 end
-if ~isfield(options, 'FOVa_y')
-    options.FOVa_y = 0;
-end
 if ~isfield(options, 'axial_fov')
     options.axial_fov = 0;
+end
+if ~isfield(options, 'x0')
+    options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
 end
 if ~isfield(options, 'dL')
     options.dL = options.FOVa_x / options.Nx / 1;
