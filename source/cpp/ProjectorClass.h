@@ -84,13 +84,15 @@ class ProjectorClass {
 		devices.push_back(devices2[usedDevices[0]]);
 		if (DEBUG) {
 			mexPrintBase("devices.size() = %u\n", devices.size());
+			mexPrintBase("devices[0] = %u\n", devices[0]);
 			mexEval();
 		}
 
 		// Create the command queues
 		// Enable out of order execution (devices can compute kernels at the same time)
 		for (size_t i = 0; i < devices.size(); i++) {
-			commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
+			//commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
+			commandQueues.push_back(cl::CommandQueue(context, devices[i], 0, &status));
 			OCL_CHECK(status, "\n", status);
 		}
 		if (DEBUG) {
