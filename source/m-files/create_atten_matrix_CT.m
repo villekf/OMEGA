@@ -14,7 +14,7 @@ function attenuation_factors = create_atten_matrix_CT(options, varargin)
 % EXPERIMENTAL CODE.
 %
 % Example:
-%   attenuation_factors = attenuationCT_to_511(options)
+%   attenuation_factors = attenuationCT_to_511(options, KVP, name)
 % INPUTS:
 %   Nx = Image dimension in x-axis
 %   Ny = y-axis
