@@ -903,6 +903,8 @@ class projectorClass:
         
         
     def OMEGAErrorCheck(self):
+        if self.FOVa_x > 0 and self.FOVa_y == 0:
+            self.FOVa_y = self.FOVa_x
         if not self.CT and not self.SPECT and (self.FOVa_x >= self.diameter or self.FOVa_y >= self.diameter) and self.diameter > 0:
             raise ValueError(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
         if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz):
@@ -4413,7 +4415,7 @@ class projectorClass:
             ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
             ('coneOfResponseStdCoeffA',ctypes.c_float),
             ('coneOfResponseStdCoeffB',ctypes.c_float),
-            ('coneOfResponseStdCoeffC',ctypes.c_float)
+            ('coneOfResponseStdCoeffC',ctypes.c_float),
             ('NLM_ref', ctypes.POINTER(ctypes.c_float)),
             ('RDP_ref', ctypes.POINTER(ctypes.c_float)),
         ]
