@@ -9,6 +9,9 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 	const int64_t subSum, const uint8_t compute_norm_matrix) {
 
 	int status = 0;
+	if (DEBUG || inputScalars.verbose >= 3) {
+		proj.tStartLocal = std::chrono::steady_clock::now();
+	}
 
 	af::array OSEMApu, COSEMApu, PDDYApu;
 	std::vector<af::array> FISTAApu;

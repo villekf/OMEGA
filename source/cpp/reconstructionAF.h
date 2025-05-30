@@ -1094,9 +1094,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							}
 						}
 						af::sync();
-						if (DEBUG || inputScalars.verbose >= 3) {
-							proj.tStartLocal = std::chrono::steady_clock::now();
-						}
 						if (DEBUG) {
 							mexPrintBase("outputFP.elements() = %d\n", outputFP.elements());
 							mexPrintBase("mData[subIter].elements() = %d\n", mData[subIter].elements());
@@ -1285,17 +1282,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						fProj.host(FPapu);
 					}
 					af::sync();
-					if (DEBUG || inputScalars.verbose >= 3) {
-						proj.tStartLocal = std::chrono::steady_clock::now();
-					}
 					status = computeForwardStep(MethodList, mData[subIter], fProj, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter);
 					if (status != 0)
 						return -1;
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 						backprojectionType6(fProj, w_vec, vec, inputScalars, length[osa_iter], uu, proj, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
-				}
-				if (DEBUG || inputScalars.verbose >= 3) {
-					proj.tStartLocal = std::chrono::steady_clock::now();
 				}
 				af::sync();
 				if (DEBUG) {

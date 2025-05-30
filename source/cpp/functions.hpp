@@ -1395,6 +1395,10 @@ inline float MBSREM_epsilon(const af::array& Sino, const af::array& D, const flo
 // SPECT forward projection (projector type 6)
 inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
 	const int64_t length, const int64_t uu, ProjectorClass& proj, const int ii = 0, const float* atten = nullptr) {
+	if (DEBUG || inputScalars.verbose >= 3) {
+		af::sync();
+		proj.tStartLocal = std::chrono::steady_clock::now();
+	}
 	if (DEBUG || inputScalars.verbose >= 3)
 		mexPrint("Starting SPECT forward projection");
 	int64_t u1 = uu;
@@ -1453,8 +1457,12 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		fProj(af::span, af::span, kk) += kuvaRot.copy();
 		u1++;
 	}
-	if (DEBUG || inputScalars.verbose >= 3)
-		mexPrint("SPECT forward projection complete");
+	if (DEBUG || inputScalars.verbose >= 3) {
+		proj.tEndLocal = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
+		mexPrintBase("SPECT forward projection completed in %f seconds\n", tDiff);
+		mexEval();
+	}
 }
 
 // SPECT backprojection (projector type 6)
