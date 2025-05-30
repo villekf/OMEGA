@@ -6,6 +6,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	Weighting& w_vec, const af::array& randomsData, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t iter = 0, const uint32_t subIter = 0, const int ii = 0, 
 	float* residual = nullptr) {
 
+	if (DEBUG || inputScalars.verbose >= 3) {
+		proj.tStartLocal = std::chrono::steady_clock::now();
+	}
 	af::deviceGC();
 	int status = 0;
 	af::array indeksit;
@@ -64,11 +67,9 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 			if (inputScalars.verbose >= 3)
 				mexPrint("Adding randoms/scatter data to forward projection");
 			if (inputScalars.TOF)
-				for (int to = 0; to < inputScalars.nBins; to++)
-					input(af::seq(randomsData.elements() * to, randomsData.elements() * (to + 1) - 1)) = input(af::seq(randomsData.elements() * to, randomsData.elements() * (to + 1) - 1)) + randomsData;
+				input += af::tile(randomsData, inputScalars.nBins);
 			else
 				input += randomsData;
-			input.eval();
 		}
 	}
 	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {
@@ -198,7 +199,8 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 		vec.rCGLS = input;
 		vec.rCGLS.eval();
-	}else if (MethodList.BB) {
+	}
+	else if (MethodList.BB) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing BB");
 		input -= y;
