@@ -904,6 +904,8 @@ public:
 	cl::Buffer d_outputCT, d_maskBPB, d_attenB;
 	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
 	std::vector<cl_int3> d_N;
@@ -1994,24 +1996,13 @@ public:
 		if (erotusF > 0)
 			erotusF = localF[0] - erotusF;
 		global = { static_cast<cl::size_type>(global[0] + erotusF), 1, 1 };
-		//else {
-			//erotus[0] = length[osa_iter] % local_size[0];
-
-			//if (erotus[0] > 0)
-			//	erotus[0] = (local_size[0] - erotus[0]);
-			//global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
-			//global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
-		//}
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
-			//mexPrintBase("local[0] = %u\n", local[0]);
-			//mexPrintBase("local[1] = %u\n", local[1]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
 			mexPrintBase("erotus[0] = %u\n", erotus[0]);
 			mexPrintBase("erotus[1] = %u\n", erotus[1]);
 			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
-			//mexPrintBase("local.dimensions() = %u\n", local.dimensions());
 			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
 			mexEval();
@@ -2047,9 +2038,6 @@ public:
 		kernelEstimate.setArg(kernelInd++, inputScalars.epps);
 		kernelEstimate.setArg(kernelInd++, d_N[ii]);
 		kernelEstimate.setArg(kernelInd++, no_norm);
-		//if (inputScalars.use_psf) {
-		//	kernelEstimate.setArg(kernelInd++, d_g);
-		//}
 		if (inputScalars.CT)
 			kernelEstimate.setArg(kernelInd++, inputScalars.flat);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelEstimate, cl::NDRange(), global, localPrior, NULL);
@@ -2091,6 +2079,11 @@ public:
 			if (erotus[0] > 0)
 				erotus[0] = (local_size[0] - erotus[0]);
 			global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+		}
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
 		}
 
 		if (DEBUG) {
@@ -2358,8 +2351,11 @@ public:
 		}
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("Forward projection completed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("Forward projection completed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2385,6 +2381,11 @@ public:
 			kernelApu = kernelBP;
 			kernelBP = kernelSensList;
 			kernelIndBPSubIter = kernelIndSens;
+		}
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
 		}
 
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
@@ -2819,8 +2820,11 @@ public:
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
 		}
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Backprojection computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("Backprojection completed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2871,6 +2875,11 @@ public:
 		cl_uint kernelIndMed = 0U;
 		uint64_t erotus[2] = { gSize[0] % localPrior[0], gSize[1] % localPrior[1] };
 		cl::NDRange global_size(gSize[0] + (localPrior[0] - erotus[0]), gSize[1] + (localPrior[1] - erotus[1]), gSize[2]);
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		if (DEBUG) {
 			mexPrintBase("global_size[0] = %d\n", global_size[0]);
@@ -2900,8 +2909,11 @@ public:
 		}
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL median kernel computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL MRP kernel computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2916,6 +2928,11 @@ public:
 	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, const float beta) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL NLM gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		const cl_int3 searchWindow = { static_cast<cl_int>(w_vec.Ndx) , static_cast<cl_int>(w_vec.Ndy) , static_cast<cl_int>(w_vec.Ndz) };
@@ -2984,8 +3001,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed after NLM kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL NLM gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL NLM gradient computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3001,6 +3021,11 @@ public:
 	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL RDP gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		status = (CLCommandQueue[0]).finish();
@@ -3054,8 +3079,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL RDP gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL RDP gradient computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3073,6 +3101,11 @@ public:
 	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const float beta) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL GGMRF gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		cl_uint kernelIndGGMRF = 0ULL;
@@ -3117,8 +3150,11 @@ public:
         OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL GGMRF gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL GGMRF gradient computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3480,6 +3516,11 @@ public:
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
@@ -3512,8 +3553,11 @@ public:
         OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL hyperbolic prior gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL hyperbolic prior gradient computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3532,6 +3576,11 @@ public:
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		//cl::detail::size_t_array region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
 		if (DEBUG) {
@@ -3569,8 +3618,11 @@ public:
         OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL TV gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL TV gradient computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3579,6 +3631,11 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL Poisson update (PKMA/MBSREM/BSREM) computation");
 		cl_int status = CL_SUCCESS;
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		cl_uint kernelIndPoisson = 0ULL;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
@@ -3605,8 +3662,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL Poisson update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL Poisson update computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3614,6 +3674,12 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL PDHG update computation");
 		cl_int status = CL_SUCCESS;
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
+		status = (CLCommandQueue[0]).finish();
 		cl_uint kernelIndPDHG = 0ULL;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 		if (DEBUG) {
@@ -3640,8 +3706,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL PDHG update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL PDHG update computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 

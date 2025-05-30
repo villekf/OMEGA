@@ -313,10 +313,7 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 		mexPrintBase("vec.qProxTGV0 = %f\n", af::sum<float>(vec.qProxTGV[0]));
 		mexEval();
 	}
-	//if (osa_iter > 100)
 	status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[osa_iter], w_vec.tauCP[0], proj);
-	//else
-	//status = proxTGVDivAF(vec.qProxTGV, vec.vProxTGV, vec.qProxTV, inputScalars, w_vec.thetaCP[osa_iter], 1.f, proj);
 #else
 	mexPrint("Proximal TGV not supported with CPU implementation!");
 	status = -1;
@@ -366,13 +363,6 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars, af::array& dU, const float beta)
 {
 	int status = 0;
-	//int32_t type = 0;
-	//if (w_vec.NLTV)
-	//	type = 1;
-	//else if (w_vec.NLM_MRP)
-	//	type = 2;
-	//else
-	//	type = 0;
 	af::sync();
 	status = NLMAF(dU, im, inputScalars, w_vec, proj, beta);
 	return status;

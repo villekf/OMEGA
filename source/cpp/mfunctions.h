@@ -82,9 +82,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.meanFP = getScalarBool(options, 0, "meanFP");
 		inputScalars.meanBP = getScalarBool(options, 0, "meanBP");
 	}
-	//if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
 	inputScalars.maskBP = getScalarBool(options, 0, "useMaskBP");
-	//}
 	inputScalars.maskFP = getScalarBool(options, 0, "useMaskFP");
 	if (type == 1)
 		inputScalars.maskBP = false;
@@ -99,7 +97,6 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	}
 	if (inputScalars.offset)
 		inputScalars.T = getSingles(options, "OffsetLimit");
-	//inputScalars.T = getScalarFloat(options, 0, "OffsetLimit");
 	inputScalars.nProjections = getScalarInt64(options, 0, "nProjections");
 	inputScalars.subsetType = getScalarUInt32(options, 0, "subset_type");
 	if (inputScalars.FPType == 4 || inputScalars.FPType == 5 || inputScalars.BPType == 4 || inputScalars.BPType == 5) {
@@ -114,7 +111,6 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 			dSizeX = getSingles(options, "dSizeX");
 			dSizeY = getSingles(options, "dSizeY");
-			//float* dSizeZ = getSingles(options, "dSizeZ");
 			dScaleX = getSingles(options, "dScaleX");
 			dScaleY = getSingles(options, "dScaleY");
 			dScaleZ = getSingles(options, "dScaleZ");
@@ -123,11 +119,9 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 			inputScalars.d_Scale4[ii].x = dScaleX4[ii];
 			inputScalars.d_Scale4[ii].y = dScaleY4[ii];
 			inputScalars.d_Scale4[ii].z = dScaleZ4[ii];
-			//inputScalars.d_Scale.s[3] = 0.f;
 			if (inputScalars.FPType == 5 || inputScalars.BPType == 5) {
 				inputScalars.dSize[ii].x = dSizeX[ii];
 				inputScalars.dSize[ii].y = dSizeY[ii];
-				//inputScalars.dSize[ii].z = dSizeZ[ii];
 				inputScalars.d_Scale[ii].x = dScaleX[ii];
 				inputScalars.d_Scale[ii].y = dScaleY[ii];
 				inputScalars.d_Scale[ii].z = dScaleZ[ii];
@@ -229,8 +223,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.maskPrior = getUint8s(options, "maskPrior");
 	else if (inputScalars.maskBP)
 		w_vec.maskPrior = getUint8s(options, "maskBP");
-	//if (MethodList.NLM || MethodList.MRP || MethodList.CPTV || MethodList.CPTVL1 || MethodList.CPTVKL || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical)
-	//	|| MethodList.CPTGV || MethodList.CPTGVKL || MethodList.CPTGVL1)
 	// CT-related variables such as number of projection images
 	if (inputScalars.CT) {
 		w_vec.nProjections = getScalarInt64(getField(options, 0, "nProjections"), -11);
@@ -306,8 +298,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		if (inputScalars.multiResolution) {
 			for (int kk = 1; kk <= inputScalars.nMultiVolumes; kk++) {
 				size_t dimApu = inputScalars.im_dim[kk - 1];
-				//std::string imText = "referenceImage" + std::to_string(kk);
-				//w_vec.preRef[kk] = af::array(inputScalars.im_dim[kk], getSingles(options, imText.c_str()));
 				w_vec.preRef[kk] = af::array(inputScalars.im_dim[kk], &ref[dimApu]);
 			}
 		}
@@ -392,15 +382,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mxArray* TVdata_init = getField(options, 0, "TVdata");
 			if (w_vec.data.TVtype == 1) {
 				w_vec.data.refIm = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s", 0), afHost);
-				//w_vec.data.s1 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s1", 0), afHost);
-				//w_vec.data.s2 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s2", 0), afHost);
-				//w_vec.data.s3 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s3", 0), afHost);
-				//w_vec.data.s4 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s4", 0), afHost);
-				//w_vec.data.s5 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s5", 0), afHost);
-				//w_vec.data.s6 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s6", 0), afHost);
-				//w_vec.data.s7 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s7", 0), afHost);
-				//w_vec.data.s8 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s8", 0), afHost);
-				//w_vec.data.s9 = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "s9", 0), afHost); 
 			}
 			else {
 				w_vec.data.refIm = af::array(inputScalars.im_dim[0], getSingles(TVdata_init, "reference_image", 0), afHost);
@@ -408,14 +389,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			w_vec.data.T = getScalarFloat(getField(options, 0, "T"), -17);
 			w_vec.data.C = getScalarFloat(getField(options, 0, "C"), -18);
 		}
-		// Additional weights for the TV type 3
-		//if (w_vec.data.TVtype == 3 && !MethodList.Quad && w_vec.data.TV_use_anatomical) {
-		//	w_vec.Ndx = getScalarUInt32(getField(options, 0, "Ndx"), -19);
-		//	w_vec.Ndy = getScalarUInt32(getField(options, 0, "Ndy"), -20);
-		//	w_vec.Ndz = getScalarUInt32(getField(options, 0, "Ndz"), -21);
-		//	w_vec.dimmu = (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1);
-		//	w_vec.weights_TV = af::array(w_vec.dimmu - 1, getSingles(options, "weights_quad", 0), afHost);
-		//}
 #endif
 		if (w_vec.data.TVtype == 4 || w_vec.data.TVtype == 6)
 			w_vec.data.SATVPhi = getScalarFloat(getField(options, 0, "SATVPhi"), -23);
@@ -589,11 +562,6 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		w_vec.h_ACOSEM = getScalarFloat(getField(options, 0, "h"), -43);
 		w_vec.h_ACOSEM_2 = 1.f / w_vec.h_ACOSEM;
 	}
-	//if (MethodList.TGV && MethodList.MAP) {
-	//	w_vec.data.TGVAlpha = getScalarFloat(getField(options, 0, "alpha1TGV"), -44);
-	//	w_vec.data.TGVBeta = getScalarFloat(getField(options, 0, "beta"), -45);
-	//	w_vec.data.NiterTGV = getScalarUInt32(getField(options, 0, "NiterTGV"), -46);
-	//}
 	if ((MethodList.NLM && MethodList.MAP) || MethodList.ProxNLM) {
 		w_vec.NLM_anatomical = getScalarBool(getField(options, 0, "NLM_use_anatomical"), -47);
 		w_vec.NLTV = getScalarBool(getField(options, 0, "NLTV"), -48);

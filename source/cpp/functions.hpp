@@ -539,7 +539,6 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 			else
 				vec.im_os[ii].unlock();
 		}
-		//delete im;
 #elif defined(OPENCL)
 		if (inputScalars.useBuffers) {
 			if (inputScalars.use_psf)
@@ -2059,15 +2058,12 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			vec.SAGASum.emplace_back(af::constant(0.f, vec.im_os[ii].elements()));
 			for (int uu = 0; uu < inputScalars.subsetsUsed; uu++)
 				vec.stochasticHelper[ii].emplace_back(af::constant(0.f, vec.im_os[ii].elements()));
-			//vec.stochasticHelper = af::constant(0.f, inputScalars.im_dim[ii], inputScalars.subsetsUsed, inputScalars.nMultiVolumes + 1);
 		}
 		if (MethodList.CPType) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing PDHG algorithm");
 			if (ii == 0 && !inputScalars.largeDim && inputScalars.currentSubset == 0) {
-				//vec.pCP.emplace_back(af::constant(0.f, m_size * inputScalars.nBins));
 				vec.pCP.resize(inputScalars.subsetsUsed);
-				//std::fill(vec.pCP.begin(), vec.pCP.end(), af::constant(0.f, m_size * inputScalars.nBins));
 				for (int uu = 0; uu < inputScalars.subsetsUsed; uu++) {
 					uint64_t mSize = length[uu];
 					if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)

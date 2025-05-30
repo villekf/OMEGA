@@ -220,11 +220,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 		mexPrintBase("nBins = %u\n", nBins);
 		mexEval();
 	}
-	//if (inputScalars.verbose >= 3 || DEBUG)
-	//	mexPrint("Loading the necessary variables for reconstruction...");
-
-	//if (inputScalars.verbose >= 3 || DEBUG)
-	//	mexPrint("Variables loaded");
 
 	// For the sensitivity image of the whole measurement domain, i.e. no subsets
 	uint64_t fullMSize = pituus[inputScalars.subsetsUsed];
@@ -995,8 +990,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					osa_iter = distribution(rng);
 					inputScalars.currentSubset = 0;
 				}
-				if (inputScalars.verbose >= 3)
+				if (DEBUG || inputScalars.verbose >= 3) {
+					af::sync();
+					proj.tStartGlobal = std::chrono::steady_clock::now();
 					mexPrintVar("Starting sub-iteration ", osa_iter + 1);
+				}
 
 				uint64_t m_size = length[osa_iter];
 				uint32_t subIter = osa_iter;
@@ -1096,6 +1094,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							}
 						}
 						af::sync();
+						if (DEBUG || inputScalars.verbose >= 3) {
+							proj.tStartLocal = std::chrono::steady_clock::now();
+						}
 						if (DEBUG) {
 							mexPrintBase("outputFP.elements() = %d\n", outputFP.elements());
 							mexPrintBase("mData[subIter].elements() = %d\n", mData[subIter].elements());
@@ -1209,6 +1210,9 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							else
 								vec.pCP[0] = af::constant(0.f, m_size * nBins);
 						}
+						if (DEBUG || inputScalars.verbose >= 3) {
+							proj.tStartLocal = std::chrono::steady_clock::now();
+						}
 						af::sync();
 						status = computeForwardStep(MethodList, mData[0], outputFP, m_size, inputScalars, w_vec, aRand[0], vec, proj, iter, 0);
 						if (status != 0)
@@ -1279,13 +1283,19 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 							mexEval();
 						}
 						fProj.host(FPapu);
-						af::sync();
+					}
+					af::sync();
+					if (DEBUG || inputScalars.verbose >= 3) {
+						proj.tStartLocal = std::chrono::steady_clock::now();
 					}
 					status = computeForwardStep(MethodList, mData[subIter], fProj, m_size, inputScalars, w_vec, aRand[subIter], vec, proj, iter, osa_iter);
 					if (status != 0)
 						return -1;
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++)
 						backprojectionType6(fProj, w_vec, vec, inputScalars, length[osa_iter], uu, proj, osa_iter, iter, compute_norm_matrix, iter0, ii, atten);
+				}
+				if (DEBUG || inputScalars.verbose >= 3) {
+					proj.tStartLocal = std::chrono::steady_clock::now();
 				}
 				af::sync();
 				if (DEBUG) {
@@ -1326,7 +1336,12 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1 && inputScalars.stochastic == false) {
 					mexPrintBase("Sub-iteration %d complete\n", osa_iter + 1u);
-					mexEval();
+					if (DEBUG || inputScalars.verbose >= 3) {
+						af::sync();
+						proj.tEndGlobal = std::chrono::steady_clock::now();
+						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
+						mexPrintBase("Sub-iteration took %f seconds\n", tDiff);
+					}
 				}
 
 				if (inputScalars.projector_type == 6)

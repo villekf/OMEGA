@@ -44,8 +44,6 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				else {
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
 				}
-				//if (MethodList.CPType)
-				//	w_vec.sigma2CP = w_vec.sigmaCP;
 			}
 			if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
 				w_vec.lambda = w_vec.lambdaFiltered;
@@ -357,7 +355,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			//}
 		}
 	}
-	if (inputScalars.verbose >= 3 || DEBUG)
-		mexPrint("Iterative algorithm computed");
+	if (DEBUG || inputScalars.verbose >= 3) {
+		af::sync();
+		proj.tEndLocal = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
+		mexPrintBase("Iterative algorithm computed in %f seconds\n", tDiff);
+	}
 	return status;
 }

@@ -32,8 +32,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				}
 				else
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
-				//if (MethodList.CPType)
-				//	w_vec.sigma2CP[ii] = w_vec.sigmaCP[ii];
 				if (inputScalars.adaptiveType == 1)
 					w_vec.alphaCP[ii] = 1.f;
 				else if (inputScalars.adaptiveType == 2)
@@ -383,7 +381,6 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input -= y;
 		status = applyMeasPreconditioning(w_vec, inputScalars, input, proj, subIter);
 		if (inputScalars.storeResidual) {
-			//residual[kk] = af::sum<float>(af::matmulTN(input, input)) * .5;
 			residual[kk] = af::norm(input);
 			residual[kk] = residual[kk] * residual[kk] * .5f;
 		}
@@ -393,10 +390,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 	input(af::isNaN(input)) = inputScalars.epps;
 	input(af::isInf(input)) = inputScalars.epps;
 	input.eval();
-
-	if (inputScalars.verbose >= 3)
-		mexPrint("Computations required for backprojection completed");
 	af::sync();
+	if (DEBUG || inputScalars.verbose >= 3) {
+		proj.tEndLocal = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
+		mexPrintBase("Computations required for backprojection completed in %f seconds\n", tDiff);
+	}
 	af::deviceGC();
 	return 0;
 }

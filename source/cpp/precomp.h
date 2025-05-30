@@ -18,6 +18,7 @@ struct float2a {
 #define CTYPE3 float3a
 #define CTYPE2 float2a
 #endif
+#include <chrono>
 #include <cstdio>
 #include <cstdint>
 #include <fstream>
