@@ -394,7 +394,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		temp *= global_factor;
 #endif
 #endif //////////////// END PET ////////////////
-    for (uint ii = 0; ii < NSTEPS; ii++) {
+    // for (uint ii = 0; ii < NSTEPS; ii++) {
+    while (t <= tEnd) {
 #ifndef USEMAD
         const float3 p = v * t + s;
 #else
@@ -463,8 +464,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			LL += dL;
 #endif
         t += tStep;
-        if (t > tEnd)
-            break;
+        // if (t > tEnd)
+        //     break;
     }
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
         if (LL == 0.f)
