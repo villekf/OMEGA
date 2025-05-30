@@ -1342,6 +1342,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
 						mexPrintBase("Sub-iteration took %f seconds\n", tDiff);
 					}
+					mexEval();
 				}
 
 				if (inputScalars.projector_type == 6)
