@@ -11,21 +11,27 @@ bx = zeros(1,size(FOV,2));
 by = zeros(1,size(FOV,2));
 bz = zeros(1,size(FOV,2));
 for kk = size(FOV,2) : - 1 : 1
+    % We compute the pixel boundaries for each volume if a multi-resolution
+    % volume, otherwise for the main volume only
+    % xx(1), yy(1) and zz(1) is the boundary coordinate of the first voxel
+    % These are the boundary coordinates, not center
     xx = double(linspace(etaisyys(1,kk) + offset(1), -etaisyys(1,kk) + offset(1), N(1,kk) + 1));
     yy = double(linspace(etaisyys(2,kk) + offset(2), -etaisyys(2,kk) + offset(2), N(2,kk) + 1));
     zz = double(linspace(etaisyys(3,kk) + offset(3), -etaisyys(3,kk) + offset(3), N(3,kk) + 1));
 
-    % Distance of adjacent pixels
+    % Distance of adjacent voxels, i.e. voxel size
     dx(kk) = diff(xx(1:2));
     dy(kk) = diff(yy(1:2));
     dz(kk) = diff(zz(1:2));
 
     % Distance of image from the origin
+    % Different cases for different volumes
     if kk == 1
         bx(kk) = xx(1,1);
         by(kk) = yy(1,1);
         bz(kk) = zz(1,1);
     else
+        % Top and bottom volumes
         if kk > 5 || (size(FOV,2) == 5 && kk > 3)
             if mod(kk,2) == 1
                 by(kk) = offset(2) + FOV(2,1) / 2;
@@ -34,6 +40,7 @@ for kk = size(FOV,2) : - 1 : 1
             end
             bx(kk) = xx(1,1);
             bz(kk) = zz(1,1);
+        % Side volumes
         elseif (kk > 3 && kk < 6) || (size(FOV,2) == 5 && kk > 1)
             if mod(kk,2) == 1
                 bx(kk) = etaisyys(1,1) + offset(1) + FOV(1,1);
@@ -42,6 +49,7 @@ for kk = size(FOV,2) : - 1 : 1
             end
             by(kk) = yy(1,1);
             bz(kk) = zz(1,1);
+        % Front and back volumes
         elseif kk > 1 && kk < 4
             bx(kk) = xx(1,1);
             by(kk) = yy(1,1);
