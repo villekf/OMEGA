@@ -337,6 +337,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ORTH // Orthogonal or volume-based
 	float b1, b2, d1, d2;
 	float _bz = b.z, dz = d_d.z;
+    float3 center; // Center of current voxel
 #endif
 
 #if defined(N_RAYS) //////////////// MULTIRAY ////////////////
@@ -638,8 +639,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, indO, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z, 
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1168,8 +1174,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				tempk_b = tempk_a;
                 if (ux >= 0) {
                     for (int kk = tempi_a - 1; kk >= 0; kk--) {
-						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_b, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        int uu = orthDistance3D(kk, 
+                            diff, //diff.y, diff.x, diff.z, 
+                            center, //xcenter, 
+                            s, // s.x, s.y, s.z,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1197,8 +1208,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 }
                 else {
                     for (int kk = tempi_a + 1; kk < d_NN.x; kk++) {
-						const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
-                        int uu = orthDistance3D(kk, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_b, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+						//const float xcenter = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        center.x = b1 + d1 * CFLOAT(kk) + d1 / 2.f;
+                        int uu = orthDistance3D(kk, 
+                            diff, //diff.y, diff.x, diff.z, 
+                            center, //xcenter, 
+                            s, // s.x, s.y, s.z,
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1226,8 +1242,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                 }
             }
 			if (tz0_a >= tx0_a && ty0_a >= tx0_a) {
-				const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
-				orthDistance3D(localInd.x, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, localInd.y, localInd.z, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(localInd.x) + d1 / 2.f;
+				orthDistance3D(localInd.x, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1354,8 +1375,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (tempiOld != tempi_a)
 				tempi_a++;
 			for (int ii = tempi_a - 1; ii >= 0; ii--) {
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				int uu = orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1385,8 +1411,13 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			if (tempiOld != tempi_a)
 				tempi_a--;
 			for (int ii = tempi_a + 1; ii < d_NN.x; ii++) {
-				const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
-				int uu = orthDistance3D(ii, diff.y, diff.x, diff.z, xcenter, b2, d2, _bz, dz, temp, tempj_a, tempk_a, s.x, s.y, s.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+                center.x = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
+				int uu = orthDistance3D(ii, 
+                    diff, //diff.y, diff.x, diff.z, 
+                    center, //xcenter, 
+                    s, // s.x, s.y, s.z,
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else

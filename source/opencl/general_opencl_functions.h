@@ -328,6 +328,10 @@ inline __device__ float3 operator*(float3 a, float b) {
 	return make_float3(a.x * b, a.y * b, a.z * b);
 }
 
+inline __device__ float3 operator*(float b, float3 a) {
+	return make_float3(a.x * b, a.y * b, a.z * b);
+}
+
 inline __device__ void operator*=(float3& a, float3 b) {
 	a.x *= b.x;
 	a.y *= b.y;
@@ -802,19 +806,26 @@ DEVICE void getDetectorCoordinatesSPECT(
 	(*s).y += indeksi.x * apuY;
 	(*s).z += indeksi.y * d_dPitch.y;
 #if defined(N_RAYS)
-	if (N_RAYS2D > 1) {
-		int idr = lorXY * 2;
-		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
-		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
-		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
-		(*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
-		(*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
-		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
-	}
+    int idr = lorXY * 2;
+    (*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
+    (*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
+    (*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
+    (*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
+    (*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
+    (*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
 #endif
-	(*s).x += 100.f * ((*s).x - (*d).x);
-	(*s).y += 100.f * ((*s).y - (*d).y);
-	(*s).z += 100.f * ((*s).z - (*d).z);
+    *d += 100.f * (*d - *s);
+
+    // Uncomment for original (wrong) ray direction
+    //float tmpX = (*d).x;
+    //float tmpY = (*d).y;
+    //float tmpZ = (*d).z;
+    //(*d).x = (*s).x;
+    //(*d).y = (*s).y;
+    //(*d).z = (*s).z;
+    //(*s).x = tmpX;
+    //(*s).y = tmpY;
+    //(*s).z = tmpZ;
 }
 #else
 #if defined(RAW) || defined(SENS)
