@@ -397,7 +397,7 @@ classdef projectorClass
                 obj.param.tot_time = 0;
                 obj.param.diameter = 0;
                 obj.param.ndist_side = 0;
-                obj.param.corrections_during_reconstruction = false;
+                %obj.param.corrections_during_reconstruction = false;
                 obj.param.NSinos = obj.param.nProjections;
                 obj.param.TotSinos = obj.param.nProjections;
                 obj.param.dPitch = obj.param.cr_p;
