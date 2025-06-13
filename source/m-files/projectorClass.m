@@ -791,7 +791,7 @@ classdef projectorClass
                     obj.param.swivelAngles = obj.param.swivelAngles(obj.index);
                     obj.param.radiusPerProj = obj.param.radiusPerProj(obj.index);
                     obj.param.blurPlanes = obj.param.blurPlanes(obj.index);
-                    obj.param.gFilter = obj.param.gFilter(:,:,:,obj.index);
+                    obj.param.blurPlanes2 = obj.param.blurPlanes2(obj.index);
                 end
             end
             %% This part is used when the observation matrix is calculated on-the-fly

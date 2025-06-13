@@ -262,13 +262,16 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 			mexEval();
 		}
 		w_vec.angles = getSingles(options, "angles");
-		w_vec.gFilter = af::array(ind[0], ind[1], ind[2], ind[3], getSingles(options, "gFilter"));
+        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
 		w_vec.distInt = getUint32s(options, "blurPlanes");
+        w_vec.distInt2 = getInt32s(options, "blurPlanes2");
+        w_vec.swivelAngles = getSingles(options, "swivelAngles");
+        w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
 		if (DEBUG) {
 			mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
 			mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));
 			mexPrintBase("w_vec.gFilter.dims(2) = %d\n", w_vec.gFilter.dims(2));
-			mexPrintBase("w_vec.gFilter.dims(3) = %d\n", w_vec.gFilter.dims(3));
+			//mexPrintBase("w_vec.gFilter.dims(3) = %d\n", w_vec.gFilter.dims(3));
 			mexPrintBase("w_vec.distInt[0] = %d\n", w_vec.distInt[0]);
 			mexEval();
 		}

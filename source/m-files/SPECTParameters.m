@@ -45,7 +45,7 @@ if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray t
     % Now the collimator response FWHM is sqrt((az+b)^2+c^2) where z is distance along detector element normal vector
 end
 if options.projector_type == 6
-    DistanceToFirstRow = options.radiusPerProj-(double(options.Nx)/2-0.5)*double(options.dx);
+    DistanceToFirstRow = 0.5*options.dx;
     Distances = repmat(DistanceToFirstRow,1,options.Nx)+repmat((0:double(options.Nx)-1)*double(options.dx),length(DistanceToFirstRow),1);
     Distances = Distances-options.colL-options.colD; %these are distances to the actual detector surface
 
@@ -79,7 +79,8 @@ if options.projector_type == 6
             s2 = double(repmat(permute(options.sigmaXY,[4 3 2 1]), size(xx,1), size(yy,2), 1));
             options.gFilter = exp(-(xx.^2./(2*s1.^2) + yy.^2./(2*s2.^2)));
         end
-        [~,ind] = max(options.radiusPerProj);
+        %[~,ind] = max(options.radiusPerProj);
+        ind = 1;
         [rowE,colE] = find(options.gFilter(:,:,end,ind) > 1e-6);
         [rowS,colS] = find(options.gFilter(:,:,end,ind) > 1e-6);
         rowS = min(rowS);
@@ -89,9 +90,14 @@ if options.projector_type == 6
         options.gFilter = options.gFilter(rowS:rowE,colS:colE,:,:);
         options.gFilter = options.gFilter ./ sum(sum(options.gFilter));
     end
-    [~, options.blurPlanes] = max(Distances>0,[],2);
+
+    panelTilt = options.swivelAngles - options.angles + 180;
+    options.blurPlanes = (options.FOVa_x/2 - (options.radiusPerProj .* cosd(panelTilt) - options.CORtoDetectorSurface)) / options.dx; % PSF shift
+    options.blurPlanes2 = options.radiusPerProj .* sind(panelTilt) / options.dx; % Panel shift
+
     if options.implementation == 2
-        options.blurPlanes = uint32(options.blurPlanes - 1);
+        options.blurPlanes = uint32(options.blurPlanes);
+        options.blurPlanes2 = int32(options.blurPlanes2);
     end
     if ~isfield(options,'angles') || numel(options.angles) == 0
         options.angles = (repelem(options.startAngle, options.nProjections / options.nHeads, 1) + repmat((0:options.angleIncrement:options.angleIncrement * (options.nProjections / options.nHeads - 1))', options.nHeads, 1) + options.offangle);
