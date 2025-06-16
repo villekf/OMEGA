@@ -439,6 +439,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	int tempk_b = 0;
 	bool XY = false;
 	float kerroin = 0.f;
+#if defined(SPECT)
+    kerroin = L;
+#else
 #if !defined(VOL) // Orthogonal
 	kerroin = L * orthWidth;
 #elif defined(VOL) // Volume-based
@@ -447,6 +450,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	float TotV = L * M_1_PI_F * orthWidth * orthWidth;
 #else
 	float TotV = M_1_PI_F * orthWidth * orthWidth;
+#endif
 #endif
 #endif
 #endif //////////////// END ORTHOGONAL OR VOLUME-BASED RAY TRACER OR SIDDON ////////////////

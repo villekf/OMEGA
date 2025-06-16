@@ -354,9 +354,7 @@ classdef projectorClass
                     % Idea:
                     % % Resample and resize sinogram to match FOV size and resolution
                     % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
-                    sinogramSizeX = obj.param.crXY * obj.param.nRowsD; % Sinogram size in X
-                    sinogramSizeZ = obj.param.crXY * obj.param.nColsD; % Sinogram size in Z
-                    
+
                     endSinogramRows = obj.param.FOVa_x / obj.param.crXY; % Desired amount of sinogram rows
                     endSinogramCols = obj.param.axial_fov / obj.param.crXY; % Desired amount of sinogram columns
                     obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows

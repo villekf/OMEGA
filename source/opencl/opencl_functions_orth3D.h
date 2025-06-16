@@ -2,7 +2,7 @@
 /*******************************************************************************************************************************************
 * Special functions for the 3D orthogonal distance-based ray tracer and volume of intersection ray tracer.
 *
-* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -15,39 +15,45 @@
 
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
-DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z, const float xp) {
-	const float x0 = xp - xs;
+// See for example https://math.stackexchange.com/questions/2353288/point-to-line-distance-in-3d-using-cross-product/2355960#2355960
+DEVICE float compute_element_orth_3D(
+    const float3 s, // Source position
+    const float3 l, // Precomputed cross product elements
+    const float3 diff, // Spans the ray
+    const float3 center, // Center of the voxel
+    const float norm2
+) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The orthogonal distance d from the voxel center p to the ray is equal to d = |v1 x (v0-p)| / |v1|. The term |v1| is precomputed, and in PET reconstruction includes the crystal size.
 
-	// Cross product
+    // Precomputed:
+    //l.x = diff.x * (center.z - s.z) - diff.z  * (center.x - s.x);
+    //l.y = diff.y * (center.z - s.z);
+    //l.z = diff.y * (center.x - s.x);
+
 #ifdef USEMAD
-	const float y1 = FMAD(zl, x0, - xl);
-	const float z1 = FMAD(-yl, x0, ys);
+    const float x0 = FMAD(-1.f, s.y, center.y);
+	const float y1 = FMAD(diff.z, x0, - l.y);
+	const float z1 = FMAD(-diff.x, x0, l.z);
 #else
-	const float y1 = zl * x0 - xl;
-	const float z1 = -yl * x0 + ys;
+    const float x0 = center.y - s.y;
+	const float y1 = diff.z * x0 - l.y;
+	const float z1 = -diff.x * x0 + l.z;
 #endif
-	const float norm1 = length(CMFLOAT3(zs, y1, z1));
-#ifdef SPECT
-    const float norm2 = length(CMFLOAT3(x0, yl, zl));
-    const float d = norm1 / norm2;
-    return d;
-#else
-#ifdef VOL
-	return (norm1 / crystal_size_z);
-#else
-	return (1.f - (norm1 / crystal_size_z));
+	const float norm1 = length(CMFLOAT3(l.x, y1, z1));
+    return 
+#if !defined(VOL) && !defined(SPECT)
+    1.f - 
 #endif
-#endif
+    norm1 / norm2;
 }
 
 #ifdef SPECT
 DEVICE float compute_element_parallel_3D(const float3 v0, const float3 v1, const float3 p) {
     // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The parallel distance d is computed as the distance from the source to the projection of point p onto the ray. That is, d = v1*(p-v0) / (v1*v1) * |v1| = v1*(p-v0) / |v1|
-    return dot(v1, p - v0) * length(v1) / dot(v1,v1);
-    //return length(v1) - dot(v1, p - v0) / length(v1); // This works with the old (wrong) ray direction
+    return dot(v1, p - v0) * length(v1) / dot(v1, v1);
 }
 
-#define _2PI 0.3989423f
+#define _2PI 0.3989423f // 1/sqrt(2*pi)
 DEVICE float normPDF2(const float x, const float mu, const float sigma) {
 #ifdef USEMAD
     const float a = FMAD(-1.f, DIVIDE(mu, sigma), DIVIDE(x, sigma));
@@ -69,9 +75,9 @@ DEVICE LONG compute_ind_orth_3D(const uint tempi, const uint tempijk, const int 
 // The normalized orthogonal distance or the volume of the (spherical) voxel is computed before the forward or backward projections
 DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, const uint d_N3, const uint d_Nxy, const int zz, 
     const float3 s,
-    const float l3, const float l1, const float l2,
-	const float3 diff, const float kerroin, const float3 center, const float bmin, const float bmax, const float Vmax,
-	CONSTANT float* V, const bool XY, float* ax, const float temp, 
+    const float3 l,
+	const float3 diff, 
+    const float kerroin, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const float temp, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -113,7 +119,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     if (d_parallel < 0) { // Voxel behind detector
         return false;
     }
-    float d_orth = compute_element_orth_3D(s.y, l3, l1, l2, diff.x, diff.z, kerroin, center.y);
+    float d_orth = compute_element_orth_3D(s, l, diff, center, kerroin);
 #ifdef USEMAD
     float CORstd = DIVIDE(SQRT(FMAD(1.f, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), 2.f), POWR(coneOfResponseStdCoeffC, 2.f))), (2.f*SQRT(2.f*LOG(2.f))));
 #else
@@ -121,7 +127,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
     float local_ele = normPDF2(d_orth, 0.f, CORstd);
 #else
-	float local_ele = compute_element_orth_3D(s.y, l3, l1, l2, diff.x, diff.z, kerroin, center.y);
+	float local_ele = compute_element_orth_3D(s, l, diff, center, kerroin);
 #endif
 #ifdef VOL
 	if (local_ele > bmax) {
@@ -245,10 +251,11 @@ DEVICE int orthDistance3D(const int tempi,
 ) {
 	int uu = 0;
 	bool breikki = false;
+    float3 l; // Precomputed cross product elements
 	// y0
 	const float v0 = center.x - s.x;
 	// xl * y0
-	const float l3 = diff.y * v0;
+    l.z = diff.y * v0;
 	// zl * y0
 	const float apu1 = diff.z * v0;
 	const int maksimiZ = CINT(d_Nz);
@@ -266,17 +273,16 @@ DEVICE int orthDistance3D(const int tempi,
 		center.z = bz + CFLOAT(zz) * dz + dz / 2.f;
 		const float z0 = center.z - s.z;
 		// x1 = yl * z0 - zl * y0
-		const float l1 = diff.x * z0 - apu1;
+		l.x = diff.x * z0 - apu1;
 		// xl * z0
-		const float l2 = diff.y * z0;
+		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 #endif
 			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l3, l1, l2, diff, kerroin, center, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -308,8 +314,7 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l3, l1, l2, diff, kerroin, center, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -347,16 +352,15 @@ DEVICE int orthDistance3D(const int tempi,
 	for (zz = tempk - 1; zz >= minimiZ; zz--) {
 		center.z = bz + CFLOAT(zz) * dz + dz / 2.f;
 		const float z0 = center.z - s.z;
-		const float l1 = diff.x * z0 - apu1;
-		const float l2 = diff.y * z0;
+		l.x = diff.x * z0 - apu1;
+		l.y = diff.y * z0;
 #ifdef CRYSTXY
 		for (uu1 = temp2; uu1 < maksimiXY; uu1++) {
 #else
 		uu1 = temp2;
 #endif
 			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l3, l1, l2, diff, kerroin, center, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -388,8 +392,7 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l3, l1, l2, diff, kerroin, center, bmin, bmax, Vmax, V, 
-				XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
