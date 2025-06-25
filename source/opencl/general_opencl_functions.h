@@ -449,13 +449,21 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 }
 #endif
 #ifdef USEIMAGES
-#define IMTYPE IMAGE3D
+    #define IMTYPE IMAGE3D
+    #ifdef MASKBP3D
+        #define MASKBPTYPE IMAGE3D
+    #else
+        #define MASKBPTYPE IMAGE2D
+    #endif
+    #ifdef MASKFP3D
+        #define MASKFPTYPE IMAGE3D
+    #else
+        #define MASKFPTYPE IMAGE2D
+    #endif
 #else
-#ifdef OPENCL
-#define IMTYPE const __global float* restrict
-#elif defined(CUDA)
-#define IMTYPE const float*
-#endif
+    #define IMTYPE const CLGLOBAL float* CLRESTRICT 
+    #define MASKBPTYPE const CLGLOBAL uchar* CLRESTRICT 
+    #define MASKFPTYPE const CLGLOBAL uchar* CLRESTRICT 
 #endif
 
 
@@ -940,17 +948,18 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 #if defined(ATN) && !defined(CT)
 DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, float* jelppi, const int ii) {
 	if (ii == 0) {
-#ifdef CUDA
-		*jelppi += (val * -tex3D<float>(d_atten, ind.x, ind.y, ind.z));
-#else
+        *jelppi += val * -
 #if defined(PTYPE4)
-		*jelppi += (val * -read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w);
+		read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w;
 #else
 #ifdef USEIMAGES
-		*jelppi += (val * -read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w);
+#ifdef CUDA
+		tex3D<float>(d_atten, ind.x, ind.y, ind.z);
 #else
-		*jelppi += (val * -d_atten[ind]);
+		read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w;
 #endif
+#else
+		d_atten[ind];
 #endif
 #endif
 	}
@@ -1265,11 +1274,10 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 
 #if defined(FP) && !defined(PROJ5)
 DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, const float temp, const int kk) {
-
+    output[idx] += ax[kk]
 #ifndef CT
-	output[idx] += ax[kk] * temp;
-#else
-	output[idx] += ax[kk];
+	* temp
 #endif
+    ;
 }
 #endif

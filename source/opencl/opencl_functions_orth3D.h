@@ -71,6 +71,27 @@ DEVICE LONG compute_ind_orth_3D(const uint tempi, const uint tempijk, const int 
 	return local_ind;
 }
 
+DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
+    return 
+    #ifdef USEIMAGES
+    #ifdef CUDA
+    #ifdef MASKBP3D
+        tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
+    #else
+        tex2D<unsigned char>(maskBP, ind.x, ind.y);
+    #endif
+    #else
+    #ifdef MASKBP3D
+        read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+    #else
+        read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+    #endif
+    #endif
+    #else
+        maskBP[ind];
+    #endif
+}
+
 // This function computes either the forward or backward projection for the current voxel
 // The normalized orthogonal distance or the volume of the (spherical) voxel is computed before the forward or backward projections
 DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, const uint d_N3, const uint d_Nxy, const int zz, 
@@ -93,15 +114,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 	, float jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-#ifdef USEIMAGES
-#ifdef MASKBP3D
-	, const int ii, IMAGE3D maskBP
-#else
-	, const int ii, IMAGE2D maskBP
-#endif
-#else
-, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
-#endif
+    , const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
     , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
@@ -109,11 +122,31 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 ) {
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES)
 	int3 ind;
-		if (XY)
-			ind = CMINT3(tempi, uu, zz);
-		else
-			ind = CMINT3(uu, tempi, zz);
+    if (XY)
+        ind = CMINT3(tempi, uu, zz);
+    else
+        ind = CMINT3(uu, tempi, zz);
 #endif
+#if defined(BP) || (defined(FP) && !defined(USEIMAGES))
+	LONG local_ind = 0;
+	local_ind = compute_ind_orth_3D(CUINT(tempi), uu * d_N3, (zz), d_N2, d_Nxy);
+#endif
+#if (defined(FP) && !defined(USEIMAGES))
+	const LONG ind = CLONG_rtz(local_ind);
+#endif
+#if (defined(BP) && defined(MASKBP)) && !defined(USEIMAGES)
+    const LONG ind = CLONG_rtz(local_ind
+#if !defined(MASKBP3D)
+    - zz * d_Nxy
+#endif
+    );
+#endif
+#if defined(BP) && defined(MASKBP)
+    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
+        return false;
+    }
+#endif
+
 #ifdef SPECT
     float d_parallel = compute_element_parallel_3D(s, diff, center);
     if (d_parallel < 0) { // Voxel behind detector
@@ -149,48 +182,12 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(SPECT) && defined(ATN)
 	local_ele *= jelppi;
 #endif
-#ifdef BP
-#if defined(MASKBP)
-	if (ii == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
-#ifdef MASKBP3D
-		const int maskVal = tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
-#else
-		const int maskVal = tex2D<unsigned char>(maskBP, ind.x, ind.y);
-#endif
-#else
-#ifdef MASKBP3D
-		const int maskVal = read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
-#else
-		const int maskVal = read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
-#endif
-#endif
-#else
-#ifdef MASKBP3D
-		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3 + zz * d_Nxy];
-#else
-		const int maskVal = maskBP[tempi * d_N2 + uu * d_N3];
-#endif
-#endif
-		if (maskVal == 0)
-			return false;
-	}
-#endif
-#endif
-#if defined(BP) || (defined(FP) && !defined(USEIMAGES))
-	LONG local_ind = 0;
-	local_ind = compute_ind_orth_3D(CUINT(tempi), uu * d_N3, (zz), d_N2, d_Nxy);
-#if defined(FP) && !defined(USEIMAGES)
-	const LONG ind = CLONG_rtz(local_ind);
-#endif
-#endif
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 	denominator(ax, ind, local_ele, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-				, element, TOFSum, DD, TOFCenter, sigma_x, D
+        , element, TOFSum, DD, TOFCenter, sigma_x, D
 #ifdef LISTMODE
-				, TOFid
+        , TOFid
 #endif
 #endif //////////////// END TOF ////////////////
 	);
@@ -198,12 +195,12 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
 	rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-				, element, sigma_x, D, DD, TOFCenter, TOFSum
+        , element, sigma_x, D, DD, TOFCenter, TOFSum
 #ifdef LISTMODE
-				, TOFid
+        , TOFid
 #endif
 #endif
-				);
+    );
 #endif
 	return false;
 }
@@ -235,15 +232,7 @@ DEVICE int orthDistance3D(const int tempi,
 	, float jelppi
 #endif
 #if defined(MASKBP) && defined(BP)
-#ifdef USEIMAGES
-#ifdef MASKBP3D
-	, const int ii, IMAGE3D maskBP
-#else
-	, const int ii, IMAGE2D maskBP
-#endif
-#else
-	, const int ii, const CLGLOBAL uchar* CLRESTRICT maskBP
-#endif
+	, const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
     , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY

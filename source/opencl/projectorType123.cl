@@ -119,31 +119,14 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const CLGLOBAL float* CLRESTRICT d_atten,
 #endif
 	///////////////////////// END PET ATTENUATION CORRECTION /////////////////////////
-	///////////////////////// FORWARD PROJECTION MASK /////////////////////////
-#ifdef USEIMAGES
+	///////////////////////// FORWARD/BACKWARD PROJECTION MASK /////////////////////////
 #ifdef MASKFP
-#ifdef MASKFP3D
-    IMAGE3D maskFP,
-#else
-    IMAGE2D maskFP,
-#endif
+    MASKFPTYPE maskFP,
 #endif
 #if defined(MASKBP) && defined(BP) && !defined(FP)
-#ifdef MASKBP3D
-    IMAGE3D maskBP,
-#else
-    IMAGE2D maskBP,
+    MASKBPTYPE maskBP,
 #endif
-#endif
-#else
-#ifdef MASKFP
-	const CLGLOBAL uchar* CLRESTRICT maskFP,
-#endif
-#if defined(MASKBP) && defined(BP) && !defined(FP)
-    const CLGLOBAL uchar* CLRESTRICT maskBP,
-#endif
-#endif
-	///////////////////////// END FORWARD PROJECTION MASK /////////////////////////
+	///////////////////////// END FORWARD/BACKWARD PROJECTION MASK /////////////////////////
 	///////////////////////// FULL PROJECTIONS/SINOGRAMS /////////////////////////
 #if (defined(CT) || defined(SPECT) || defined(PET)) && !defined(LISTMODE)
 	const LONG d_nProjections,
