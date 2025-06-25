@@ -1466,13 +1466,14 @@ public:
 			std::memset(&resDesc, 0, sizeof(resDesc));
 			std::memset(&viewDesc, 0, sizeof(viewDesc));
 			if (inputScalars.maskBPZ > 1) {
-				std::memset(&arr2DDesc, 0, sizeof(arr3DDesc));
+				std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 				arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
 				arr3DDesc.NumChannels = 1;
 				arr3DDesc.Height = inputScalars.Nx[0];
 				arr3DDesc.Width = inputScalars.Ny[0];
 				arr3DDesc.Depth = inputScalars.Nz[0];
 				status = cuArray3DCreate(&maskArrayPrior, &arr3DDesc);
+                CUDA_CHECK(status, "\n", -1);
 				CUDA_MEMCPY3D cpy3d;
 				std::memset(&cpy3d, 0, sizeof(cpy3d));
 				cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
@@ -1485,8 +1486,8 @@ public:
 				cpy3d.Height = inputScalars.Nx[0];
 				cpy3d.Depth = inputScalars.maskBPZ;
 				status = cuMemcpy3D(&cpy3d);
-			}
-			else {
+                CUDA_CHECK(status, "\n", -1);
+			} else {
 				std::memset(&arr2DDesc, 0, sizeof(arr2DDesc));
 				arr2DDesc.Format = CUarray_format::CU_AD_FORMAT_UNSIGNED_INT8;
 				arr2DDesc.NumChannels = 1;
