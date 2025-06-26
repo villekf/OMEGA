@@ -995,7 +995,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				if (DEBUG || inputScalars.verbose >= 2) {
 					af::sync();
 					proj.tStartGlobal = std::chrono::steady_clock::now();
-					mexPrintVar("Starting sub-iteration ", osa_iter + 1);
+					if (DEBUG || inputScalars.verbose >= 3)
+						mexPrintVar("Starting sub-iteration ", osa_iter + 1);
 				}
 
 				uint64_t m_size = length[osa_iter];
