@@ -439,7 +439,7 @@ if options.use_machine == 1
                 varargout{3} = trIndices;
             end
         end
-        if nargout >= 4 && options.randoms_correction
+        if nargout >= 4 && options.randoms_correction && ~options.useIndexBasedReconstruction
             varargout{4} = Rcoordinate;
         elseif nargout >= 4
             if options.useIndexBasedReconstruction
@@ -448,12 +448,12 @@ if options.use_machine == 1
                 varargout{4} = [];
             end
         end
-        if nargout >= 5 && options.randoms_correction
+        if nargout >= 5 && options.randoms_correction && options.useIndexBasedReconstruction
             varargout{5} = DtrIndices;
         elseif nargout >= 5
                 varargout{5} = [];
         end
-        if nargout >= 6 && options.randoms_correction
+        if nargout >= 6 && options.randoms_correction && options.useIndexBasedReconstruction
             varargout{6} = DaxIndices;
         elseif nargout >= 6
                 varargout{6} = [];
