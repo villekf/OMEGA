@@ -973,6 +973,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 			if (inputScalars.verbose >= 3 || DEBUG)
 				mexPrintVar("Starting iteration ", iter + 1);
+			if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
+				af::sync();
+				proj.tStartGlobal = std::chrono::steady_clock::now();
+			}
 
 			uint32_t curIter = 0;
 			// Save the current iteration number if the current iteration is saved
@@ -1370,6 +1374,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			if (inputScalars.verbose > 0) {
 				if (DEBUG || inputScalars.verbose >= 2) {
 					af::sync();
+					if (inputScalars.subsetsUsed == 1 && (inputScalars.verbose >= 2 || DEBUG)) {
+						proj.tEndGlobal = std::chrono::steady_clock::now();
+						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
+						totTime += tDiff.count();
+					}
 					iterTime = totTime - cumulativeTime;
 					cumulativeTime += iterTime;
 					mexPrintBase("Iteration %d complete in %f seconds\n", iter + 1u, iterTime);
