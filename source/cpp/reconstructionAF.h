@@ -102,6 +102,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 	int64_t oo = 0u;
 	size_t ll = 0ULL;
+
+	double totTime = 0., iterTime = 0., cumulativeTime = 0.;
 	
 	
 	if (DEBUG) {
@@ -990,7 +992,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					osa_iter = distribution(rng);
 					inputScalars.currentSubset = 0;
 				}
-				if (DEBUG || inputScalars.verbose >= 3) {
+				if (DEBUG || inputScalars.verbose >= 2) {
 					af::sync();
 					proj.tStartGlobal = std::chrono::steady_clock::now();
 					mexPrintVar("Starting sub-iteration ", osa_iter + 1);
@@ -1326,13 +1328,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				}
 
 				if (inputScalars.verbose > 0 && inputScalars.subsetsUsed > 1 && inputScalars.stochastic == false) {
-					mexPrintBase("Sub-iteration %d complete\n", osa_iter + 1u);
-					if (DEBUG || inputScalars.verbose >= 3) {
+					
+					if (DEBUG || inputScalars.verbose >= 2) {
 						af::sync();
 						proj.tEndGlobal = std::chrono::steady_clock::now();
 						const std::chrono::duration<double> tDiff = proj.tEndGlobal - proj.tStartGlobal;
-						mexPrintBase("Sub-iteration took %f seconds\n", tDiff);
+						mexPrintBase("Sub-iteration %d complete in %f seconds\n", osa_iter + 1u, tDiff);
+						totTime += tDiff.count();
 					}
+					else
+						mexPrintBase("Sub-iteration %d complete\n", osa_iter + 1u);
 					mexEval();
 				}
 
@@ -1362,7 +1367,15 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 				proj.no_norm = 1u;
 
 			if (inputScalars.verbose > 0) {
-				mexPrintBase("Iteration %d complete\n", iter + 1u);
+				if (DEBUG || inputScalars.verbose >= 2) {
+					af::sync();
+					iterTime = totTime - cumulativeTime;
+					cumulativeTime += iterTime;
+					mexPrintBase("Iteration %d complete in %f seconds\n", iter + 1u, iterTime);
+					mexPrintBase("Estimated time left: %f seconds\n", iterTime * (inputScalars.Niter - 1 - iter));
+				}
+				else
+					mexPrintBase("Iteration %d complete\n", iter + 1u);
 				mexEval();
 			}
 			af::deviceGC();
@@ -1401,8 +1414,8 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 	af::sync();
 	af::deviceGC();
 
-	if (inputScalars.verbose >= 3 || DEBUG) {
-		mexPrint("Reconstructions complete, setting the output values\n");
+	if (inputScalars.verbose >= 2 || DEBUG) {
+		mexPrintBase("Reconstruction complete in %f seconds\n", totTime);
 	}
 
 	return 0;
