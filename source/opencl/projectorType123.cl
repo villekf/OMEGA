@@ -181,12 +181,8 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	///////////////////////// END RAW PET DATA /////////////////////////
 	///////////////////////// FORWARD OR BACKWARD PROJECTIONS /////////////////////////
-#if defined(FP) //&& defined(USEIMAGES)
-#ifdef USEIMAGES
-	IMAGE3D d_OSEM, 
-#else
-	const CLGLOBAL float* CLRESTRICT d_OSEM, 
-#endif
+#if defined(FP)
+    IMTYPE d_OSEM,
 #else
 	const CLGLOBAL float* CLRESTRICT d_OSEM, 
 #endif
@@ -243,31 +239,18 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	const float3 b = make_float3(bx, by, bz);
 	const float3 d_bmax = make_float3(d_bmaxx, d_bmaxy, d_bmaxz);
 #endif
-#ifdef MASKFP // Mask image
-#ifdef USEIMAGES
-#ifdef CUDA
+#ifdef MASKFP // FP mask
+    const typeT maskInd = i
+#ifndef USEIMAGES
+    .x + i.y * d_size_x
 #ifdef MASKFP3D
-	const int maskVal = tex3D<unsigned char>(maskFP, i.x, i.y, i.z);
-#else
-	const int maskVal = tex2D<unsigned char>(maskFP, i.x, i.y);
-#endif
-#else
-#ifdef MASKFP3D
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int4)(i.x, i.y, i.z, 0)).w;
-#else
-	const int maskVal = read_imageui(maskFP, sampler_MASK, (int2)(i.x, i.y)).w;
+     + i.z * d_size_x * d_sizey
 #endif
 #endif
-#else
-#ifdef MASKFP3D
-	const int maskVal = maskFP[i.x + i.y * d_size_x + i.z * d_size_x * d_sizey];
-#else
-	const int maskVal = maskFP[i.x + i.y * d_size_x];
-#endif
-#endif
-	if (maskVal == 0)
+    ;
+	if (readMaskFP(maskFP, maskInd) == 0)
 		return;
-#endif
+#endif // End FP mask
 #if defined(LISTMODE) && defined(TOF)
 	const int TOFid = TOFIndex[idx];
 #endif
@@ -676,27 +659,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 				int maskVal = 1;
 				if (aa == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
+                    const typeT maskInd = localInd
+#ifndef USEIMAGES
+                        .x + localInd.y * d_Nxyz.x
 #ifdef MASKBP3D
-					maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
-#else
-					maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
-#endif
-#else
-#ifdef MASKBP3D
-					maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
-#else
-					maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
+                        + localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-#else
-#ifdef MASKBP3D
-					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x + localInd.z * d_Nxyz.x * d_Nxyz.y];
-#else
-					maskVal = maskBP[localInd.x + localInd.y * d_Nxyz.x];
-#endif
-#endif
+                    ;
+                    maskVal = readMaskBP(maskBP, maskInd);
 				}
 				if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////
@@ -1283,27 +1254,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(MASKBP) //////////////// MASKBP ////////////////
 			int maskVal = 1;
 			if (aa == 0) {
-#ifdef USEIMAGES
-#ifdef CUDA
+                const typeT maskInd = localInd
+#ifndef USEIMAGES
+                    .x * d_N2 + localInd.y * d_N3
 #ifdef MASKBP3D
-				maskVal = tex3D<unsigned char>(maskBP, localInd.x, localInd.y, localInd.z);
-#else
-				maskVal = tex2D<unsigned char>(maskBP, localInd.x, localInd.y);
-#endif
-#else
-#ifdef MASKBP3D
-				maskVal = read_imageui(maskBP, sampler_MASK, (int4)(localInd.x, localInd.y,  localInd.z, 0)).w;
-#else
-				maskVal = read_imageui(maskBP, sampler_MASK, (int2)(localInd.x, localInd.y)).w;
+                    + localInd.z * d_Nxyz.x * d_Nxyz.y
 #endif
 #endif
-#else
-#ifdef MASKBP3D
-				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3 + localInd.z * d_Nxyz.x * d_Nxyz.y];
-#else
-				maskVal = maskBP[localInd.x * d_N2 + localInd.y * d_N3];
-#endif
-#endif
+                ;
+                maskVal = readMaskBP(maskBP, maskInd);
 			}
 			if (maskVal > 0)
 #endif //////////////// END MASKBP ////////////////

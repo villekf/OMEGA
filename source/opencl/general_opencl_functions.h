@@ -467,6 +467,48 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 #endif
 
 
+DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
+    return 
+    #ifdef USEIMAGES
+    #ifdef CUDA
+    #ifdef MASKBP3D
+        tex3D<unsigned char>(maskBP, ind.x, ind.y, ind.z);
+    #else
+        tex2D<unsigned char>(maskBP, ind.x, ind.y);
+    #endif
+    #else
+    #ifdef MASKBP3D
+        read_imageui(maskBP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+    #else
+        read_imageui(maskBP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+    #endif
+    #endif
+    #else
+        maskBP[ind];
+    #endif
+}
+
+DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
+    return
+#ifdef USEIMAGES
+#ifdef CUDA
+#ifdef MASKFP3D
+        tex3D<unsigned char>(maskFP, ind.x, ind.y, ind.z);
+#else
+        tex2D<unsigned char>(maskFP, ind.x, ind.y);
+#endif
+#else
+#ifdef MASKFP3D
+        read_imageui(maskFP, sampler_MASK, (int4)(ind.x, ind.y, ind.z, 0)).w;
+#else
+        read_imageui(maskFP, sampler_MASK, (int2)(ind.x, ind.y)).w;
+#endif
+#endif
+#else
+        maskFP[ind];
+#endif
+}
+
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
 // NOTE: Includes code for an OpenCL extension that enables float atomics, but this is currently only supported by Intel and POCL
