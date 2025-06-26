@@ -22,7 +22,7 @@
 * d_sizey = the number of detector elements (columns),
 * d_dPitch = Either a vector of float2 or two floats if PYTHON is defined, the detector size/pitch in both "row" and "column" directions
 * d_L = Interpolation length, i.e. the length that is moved everytime the interpolation is done, forward projection only
-* global_factor = a global correction factor, e.g. dead time, can be simply 1.f
+* global_factor = a global correction factor, e.g. dead time, can be simply 1.h
 * maskFP = 2D/3D Forward projection mask, i.e. LORs/measurements with 0 will be skipped
 * maskBP = 2D/3D backward projection mask, i.e. voxels with 0 will be skipped
 * d_TOFCenter = Offset of the TOF center from the first center of the FOV,
@@ -82,36 +82,36 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     const float dL, const float global_factor, 
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
-	CONSTANT float* TOFCenter, const float sigma_x, 
+	CONSTANT FLOAT* TOFCenter, const float sigma_x, 
 #endif
 	///////////////////////// END TOF BINS /////////////////////////
     ////////////////////////////////////////////////////////////////////////
 #if !defined(CT) && defined(ATN) && !defined(ATNM)
 	IMAGE3D d_atten,
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
-	const CLGLOBAL float* CLRESTRICT d_atten,
+	const CLGLOBAL FLOAT* CLRESTRICT d_atten,
 #endif
     ////////////////////////////////////////////////////////////////////////
 #ifdef PYTHON
-	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float bx, const float by, const float bz, 
-    const float d_bmaxx, const float d_bmaxy, const float d_bmaxz, const float d_scalex, const float d_scaley, const float d_scalez,
+	const uint d_Nx, const uint d_Ny, const uint d_Nz, const FLOAT bx, const FLOAT by, const FLOAT bz, 
+    const FLOAT d_bmaxx, const FLOAT d_bmaxy, const FLOAT d_bmaxz, const FLOAT d_scalex, const FLOAT d_scaley, const FLOAT d_scalez,
 #else
 	const uint3 d_N, const float3 b, const float3 bmax, const float3 d_scale, 
 #endif
 #ifdef FP
-    IMAGE3D d_OSEM, CLGLOBAL float* CLRESTRICT d_output,
+    IMAGE3D d_OSEM, CLGLOBAL FLOAT* CLRESTRICT d_output,
 #else
-    const CLGLOBAL float* CLRESTRICT d_OSEM, CLGLOBAL CAST* CLRESTRICT d_output,
+    const CLGLOBAL FLOAT* CLRESTRICT d_OSEM, CLGLOBAL CAST* CLRESTRICT d_output,
 #endif
 #if !defined(USEGLOBAL)
-	CONSTANT float* d_xyz,
+	CONSTANT FLOAT* d_xyz,
 #else
-	const CLGLOBAL float* CLRESTRICT d_xyz,
+	const CLGLOBAL FLOAT* CLRESTRICT d_xyz,
 #endif
 #if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
-    const CLGLOBAL float* CLRESTRICT d_uv,
+    const CLGLOBAL FLOAT* CLRESTRICT d_uv,
 #else
-    CONSTANT float* d_uv,
+    CONSTANT FLOAT* d_uv,
 #endif
 #ifdef SENS
 	const int rings, const uint d_det_per_ring,
@@ -145,12 +145,12 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 	///////////////////////// PET NORMALIZATION DATA /////////////////////////
 #ifdef NORM
-    const CLGLOBAL float* CLRESTRICT d_norm,
+    const CLGLOBAL FLOAT* CLRESTRICT d_norm,
 #endif
 	///////////////////////// END PET NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
 #ifdef SCATTER
-    const CLGLOBAL float* CLRESTRICT d_scat,
+    const CLGLOBAL FLOAT* CLRESTRICT d_scat,
 #endif
 	///////////////////////// END EXTRA CORRECTION DATA /////////////////////////
 #if defined(BP) && !defined(CT)
@@ -216,17 +216,17 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #if defined(BP) && !defined(CT)
 #if defined(LISTMODE) && defined(TOF) && !defined(SENS)
 	for (int to = 0; to < NBINS; to++)
-		ax[to] = 0.f;
-	ax[TOFid] = d_OSEM[idx];
+		ax[to] = (float)0.f;
+	ax[TOFid] = (float)d_OSEM[idx];
 #else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
 #ifdef SENS
-		ax[to] = 1.f;
+		ax[to] = (float)1.f;
 #else
-		ax[to] = d_OSEM[idx + to * m_size];
+		ax[to] = (float)d_OSEM[idx + to * m_size];
 #endif
 #endif
 #else
@@ -235,25 +235,25 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #pragma unroll NBINS * N_RAYS
 #endif
 	for (int to = 0; to < NBINS * N_RAYS; to++)
-		ax[to] = 0.f;
+		ax[to] = (float)0.f;
 #else
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++)
-		ax[to] = 0.f;
+		ax[to] = (float)0.f;
 #endif
 #endif
 
 #ifndef CT
 
 #ifdef NORM // Normalization included
-	float local_norm = 0.f;
-	local_norm = d_norm[idx];
+	FLOAT local_norm = (FLOAT)0.f;
+	local_norm = (float)d_norm[idx];
 #endif
 #ifdef SCATTER // Scatter data included
-	float local_scat = 0.f;
-	local_scat = d_scat[idx];
+	FLOAT local_scat = (FLOAT)0.f;
+	local_scat = (float)d_scat[idx];
 #endif
 #endif
 
@@ -304,17 +304,17 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	);
 #endif
     float3 v = d - s;
-    const float3 bmin = b;
-    const float3 tBack = (bmin - s) / v;
-    const float3 tFront = (bmax - s) / v;
+    const float3 bmin = (b);
+    const float3 tBack = (bmin - CFLOAT3(s)) / CFLOAT3(v);
+    const float3 tFront = ((bmax) - CFLOAT3(s)) / CFLOAT3(v);
 
     const float3 tMin = fmin(tFront, tBack);
     const float3 tMax = fmax(tFront, tBack);
 
-    const float tStart = fmax(fmax(tMin.x, tMin.y), tMin.z);
-    const float tEnd = fmin(fmin(tMax.x, tMax.y), tMax.z);
+    const float tStart = (fmax(fmax(tMin.x, tMin.y), tMin.z));
+    const float tEnd = (fmin(fmin(tMax.x, tMax.y), tMax.z));
 #ifdef TOF //////////////// TOF ////////////////
-    float TOFSum = 0.f;
+    float TOFSum = (float)0.f;
 #endif //////////////// END TOF ////////////////
     if (tStart >= tEnd)
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
@@ -325,32 +325,32 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	float L = length(v);
 #ifndef CT
 #if !defined(TOTLENGTH)
-	float LL = 0.f;
+	float LL = (float)0.f;
 #endif
 #ifdef ATN // Attenuation included
-	float jelppi = 0.f;
+	float jelppi = (float)0.f;
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-	float D = 0.f;
-	float DD = 0.f;
-	TOFDis(v, tStart, L, &D, &DD);
+	float D = (float)0.f;
+	float DD = (float)0.f;
+	TOFDis(v, (float)tStart, L, &D, &DD);
 	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 #endif
-    const float tStep = DIVIDE(dL, L);
+    const float tStep = (float)(DIVIDE(dL, L));
 
-    s = (s - bmin) * d_scale;
-    v *= d_scale;
-    float temp = 0.f;
+    s = (s - CFLOAT3(bmin)) * CFLOAT3(d_scale);
+    v *= CFLOAT3(d_scale);
+    float temp = (float)0.f;
 
     float t = tStart;
 #if (defined(ATN) && defined(BP)) || (defined(BP) && !defined(TOTLENGTH) && !defined(CT))
     for (uint ii = 0; ii < NSTEPS; ii++) {
 #if (defined(ATN) && defined(BP))
 #ifndef USEMAD
-        const float3 p = t * v + s;
+        const float3 p = (float)t * v + s;
 #else
-        const float3 p = FMAD3(t, v, s);
+        const float3 p = FMAD3((float)t, v, s);
 #endif
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #else
@@ -365,17 +365,17 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #if !defined(CT) //////////////// PET ////////////////
 #if defined(TOTLENGTH) //////////////// TOTLENGTH ////////////////
 #ifdef N_RAYS //////////////// MULTIRAY ////////////////
-		temp = 1.f / (L * CFLOAT(N_RAYS));
+		temp = (FLOAT)1.f / (L * CFLOAT(N_RAYS));
 #else
-		temp = 1.f / L;
+		temp = (FLOAT)1.f / L;
 #endif //////////////// END MULTIRAY ////////////////
 #elif !defined(TOTLENGTH) && defined(BP) //////////////// NOTTOTLENGTH+BP ////////////////
-		if (LL == 0.f)
+		if (LL == (FLOAT)0.f)
 			LL = L;
 #ifdef N_RAYS  //////////////// MULTIRAY ////////////////
-		temp = 1.f / (LL * CFLOAT(N_RAYS));
+		temp = (FLOAT)1.f / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
-		temp = 1.f / LL;
+		temp = (FLOAT)1.f / LL;
 #endif //////////////// END MULTIRAY ////////////////
 #endif //////////////// END TOTLENGTH ////////////////
 #if defined(ATN) && defined(BP)
@@ -397,9 +397,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     // for (uint ii = 0; ii < NSTEPS; ii++) {
     while (t <= tEnd) {
 #ifndef USEMAD
-        const float3 p = v * t + s;
+        const float3 p = v * (float)t + s;
 #else
-        const float3 p = FMAD3(t, v, s);
+        const float3 p = FMAD3((float)t, v, s);
 #endif
 #if defined(ATN) && defined(FP)
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
@@ -471,9 +471,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
         if (LL == 0.f)
             LL = L;
 #if defined(N_RAYS) && !defined(ORTH) //////////////// MULTIRAY ////////////////
-        temp = 1.f / (LL * CFLOAT(N_RAYS));
+        temp = (float)1.f / (LL * CFLOAT(N_RAYS));
 #else //////////////// SINGLERAY ////////////////
-		temp = 1.f / LL;
+		temp = (float)1.f / LL;
 #endif //////////////// END MULTIRAY ////////////////
 #ifdef NORM
         temp *= local_norm;
@@ -529,7 +529,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
     for (size_t to = 0; to < NBINS; to++) {
 #endif
-        float apu = 0.f;
+        float apu = (float)0.f;
 #ifndef __CUDACC__ 
 #pragma unroll N_RAYS
 #endif
@@ -549,7 +549,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
     for (size_t to = 0; to < NBINS; to++) {
 #endif
-        forwardProjectAF(d_output, ax, idx, 1.f, to);
+        forwardProjectAF(d_output, ax, idx, 1.h, to);
 #ifdef TOF
         idx += m_size;
 #endif
@@ -596,16 +596,16 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 KERNEL2
 void projectorType4Backward(const uint d_size_x, const uint d_sizey, 
 #ifdef PYTHON
-	const float d_dPitchX, const float d_dPitchY, 
+	const FLOAT d_dPitchX, const FLOAT d_dPitchY, 
 #else
 	const float2 d_dPitch, 
 #endif
 #ifdef OFFSET
-    CONSTANT float* T, 
+    CONSTANT FLOAT* T, 
 #endif
 #ifdef PYTHON
-	const uint d_Nx, const uint d_Ny, const uint d_Nz, const float bx, const float by, const float bz, 
-    const float d_dx, const float d_dy, const float d_dz,
+	const uint d_Nx, const uint d_Ny, const uint d_Nz, const FLOAT bx, const FLOAT by, const FLOAT bz, 
+    const FLOAT d_dx, const FLOAT d_dy, const FLOAT d_dz,
 #else
 	const uint3 d_N, const float3 b, const float3 d_d, 
 #endif
@@ -613,18 +613,18 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #ifdef USEIMAGES
     IMAGE3D d_forw, 
 #else
-    const CLGLOBAL float* CLRESTRICT d_forw, 
+    const CLGLOBAL FLOAT* CLRESTRICT d_forw, 
 #endif
 #ifdef FDK
-    CONSTANT float* angle, const float DSC, 
+    CONSTANT FLOAT* angle, const float DSC, 
 #endif
-    CLGLOBAL float* CLRESTRICT d_OSEM, 
+    CLGLOBAL FLOAT* CLRESTRICT d_OSEM, 
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* CLRESTRICT d_xyz,
+	const CLGLOBAL FLOAT* CLRESTRICT d_xyz,
 #else
-    CONSTANT float* d_xyz, 
+    CONSTANT FLOAT* d_xyz, 
 #endif
-    CONSTANT float* d_uv, CLGLOBAL float* CLRESTRICT d_Summ, 
+    CONSTANT FLOAT* d_uv, CLGLOBAL FLOAT* CLRESTRICT d_Summ, 
     const uchar no_norm, 
 #ifdef USEIMAGES
 #ifdef MASKBP
@@ -684,42 +684,54 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
     float temp[NVOXELS];
     float wSum[NVOXELS];
     for (int zz = 0; zz < NVOXELS; zz++) {
-        temp[zz] = 0.f;
+        temp[zz] = (float)0.f;
         if (no_norm == 0u)
-            wSum[zz] = 0.f;
+            wSum[zz] = (float)0.f;
     }
-    const float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
-    const float2 koko = MFLOAT2(CFLOAT(d_size_x) * d_dPitch.x, CFLOAT(d_sizey) * d_dPitch.y );
-    const float2 indeksi = MFLOAT2(CFLOAT(d_size_x) / 2.f, CFLOAT(d_sizey) / 2.f );
+    const float3 dV = (CFLOAT3(i) * (d_d) + (d_d / 2.f + b));
+    const float2 koko = {(float)(d_size_x) * d_dPitch.x, (float)(d_sizey) * d_dPitch.y };
+    const float2 indeksi = {(float)(d_size_x) / 2.f, (float)(d_sizey) / 2.f };
+    float lowerPart;
+#if STYPE == 12
+    for (int kk = 0; kk < d_nProjections; kk += 2) {
+    // for (int kk = 0; kk < d_nProjections / 2; kk++) {
+        // kk *= 2;
+#else
     for (int kk = 0; kk < d_nProjections; kk++) {
+#endif
         float3 d1, d2, d3;
         float3 s;
 #ifndef PARALLEL
-        s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+        s = CFLOAT3(CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]));
 #endif
-        d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
+        d1 = CFLOAT3(CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]));
+// #ifdef OFFSET
+//         const FLOAT R = distance(s, d1);
+//         const FLOAT3 origin = CFLOAT3(d_N) / 2.h * d_d + b;
+//         const FLOAT R2 = distance(s, origin);
+// #endif
 #if defined(PITCH)
-        const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
-        const float3 apuY = CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5]) * indeksi.y;
+        const float3 apuX = CFLOAT3(CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2])) * indeksi.x;
+        const float3 apuY = CFLOAT3(CMFLOAT3(d_uv[kk * NA + 3], d_uv[kk * NA + 4], d_uv[kk * NA + 5])) * indeksi.y;
 #else
-        const float3 apuX = MFLOAT3(indeksi.x * d_uv[kk * NA], indeksi.x * d_uv[kk * NA + 1], 0.f);
-        const float3 apuY = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
+        const float3 apuX = indeksi.x * CFLOAT3(MFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], (FLOAT)0.f));
+        const float3 apuY = CFLOAT3(MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y));
 #endif
         d2 = apuX - apuY;
         d3 = d1 - apuX - apuY;
         const float3 normX = normalize(apuX) / koko.x;
         const float3 normY = normalize(apuY) / koko.y;
-        const float3 cP = cross(d2, d3 - d1);
-        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
+        const float3 cP = cross((d2), (d3 - d1));
+        const float pz = ((float)(kk) + 0.5f) / (float)(d_nProjections);
         const float dApu = d_d.z * cP.z;
 #ifdef PARALLEL
         const float apuXP = d_uv[kk * NA];
         const float apuYP = d_uv[kk * NA + 1];
-        const float3 ss = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+        const float3 ss = CFLOAT3(CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]));
         for (int xx = 0; xx < d_size_x; xx++) {
             for (int yy = 0; yy < d_sizey; yy++) {
                 s = ss;
-	            const float2 indeksiP = MFLOAT2(CFLOAT(xx) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(yy) - CFLOAT(d_sizey) / 2.f + .5f);
+	            const float2 indeksiP = MFLOAT2((float)(xx) - (float)(d_size_x) / 2.f + .5f, (float)(yy) - (float)(d_sizey) / 2.f + .5f);
                 (s).x += indeksiP.x * apuXP;
                 (s).y += indeksiP.x * apuYP;
                 (s).z += indeksiP.y * d_dPitch.y;
@@ -739,13 +751,42 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 float2 scale = MFLOAT2(1.f / CFLOAT(d_size_x), 1.f / CFLOAT(d_sizey));
                 scale /= 2.f;
 #endif
-        const float upperPart = dot(cP, s - d1);
+        const float upperPart = dot(cP, (s - d1));
         float3 v = dV - s;
-        float lowerPart = -dot(v, cP);
+        lowerPart = -dot((v), cP);
 #ifndef USEMAD
         const float vApu = v.x * v.x + v.y * v.y;
 #else
         const float vApu = FMAD(v.x, v.x, v.y * v.y);
+#endif
+#if STYPE == 12
+        float3 d1_2, d2_2, d3_2;
+        float3 s_2;
+        const int uu = kk + 1;
+        s_2 = CFLOAT3(CMFLOAT3(d_xyz[uu * 6], d_xyz[uu * 6 + 1], d_xyz[uu * 6 + 2]));
+        d1_2 = CFLOAT3(CMFLOAT3(d_xyz[uu * 6 + 3], d_xyz[uu * 6 + 4], d_xyz[uu * 6 + 5]));
+#if defined(PITCH)
+        const float3 apuX_2 = CFLOAT3(CMFLOAT3(d_uv[uu * NA], d_uv[uu * NA + 1], d_uv[uu * NA + 2])) * indeksi.x;
+        const float3 apuY_2 = CFLOAT3(CMFLOAT3(d_uv[uu * NA + 3], d_uv[uu * NA + 4], d_uv[uu * NA + 5])) * indeksi.y;
+#else
+        const float3 apuX_2 = indeksi.x * MFLOAT3(d_uv[uu * NA], d_uv[uu * NA + 1], (FLOAT)0.f);
+        const float3 apuY_2 = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
+#endif
+        d2_2 = apuX_2 - apuY_2;
+        d3_2 = d1_2 - apuX_2 - apuY_2;
+        const float3 normX_2 = normalize(apuX_2) / koko.x;
+        const float3 normY_2 = normalize(apuY_2) / koko.y;
+        const float3 cP_2 = cross(d2_2, d3_2 - d1_2);
+        const float pz_2 = (CFLOAT(uu) + 0.5f) / CFLOAT(d_nProjections);
+        const float dApu_2 = d_d.z * cP_2.z;
+        const float upperPart_2 = dot(cP_2, s_2 - d1_2);
+        float3 v_2 = dV - s_2;
+        float lowerPart_2 = -dot(v_2, cP_2);
+#ifndef USEMAD
+        const float vApu_2 = v_2.x * v_2.x + v_2.y * v_2.y;
+#else
+        const float vApu_2 = FMAD(v_2.x, v_2.x, v_2.y * v_2.y);
+#endif
 #endif
 #ifndef __CUDACC__ 
 #pragma unroll NVOXELS
@@ -754,7 +795,7 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             const uint ind = i.z + zz;
             if (ind >= d_N.z)
                 break;
-            const float t = DIVIDE(upperPart, lowerPart);
+            const float t = (DIVIDE(upperPart, lowerPart));
 #ifndef USEMAD
             float3 p = s + v * t;
             const float l1 = vApu + v.z * v.z;
@@ -770,11 +811,11 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 //             }
 // #endif
 #ifdef FDK
-            float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
-            weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
+            FLOAT weight = ((FLOAT)DSC + (FLOAT)dV.x * COSF(angle[kk]) - (FLOAT)dV.y * SINF(angle[kk]));
+            weight = (FLOAT)(DSC * DSC) / (weight * weight) * ((FLOAT)M_PI_F / ((FLOAT)(d_nProjections) * (FLOAT)d_dPitch.x));
 #else
             const float L = distance(p, s);
-            const float weight = (L * L * L) / (l1)*kerroin;
+            const float weight = (float)((L * L * L) / (l1)*kerroin);
 #endif
             p -= d3;
             float px = dot(p, normX);
@@ -786,14 +827,19 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 continue;
             }
 #endif
-            float yVar = 0.f;
+            float yVar = (float)0.f;
 #ifdef USEIMAGES
 #ifdef CUDA
             if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
                 yVar = tex3D<float>(d_forw, px, py, pz);
 #else
             if (px <= 1.f && py <= 1.f && pz <= 1.f && px >= 0.f && py >= 0.f && pz >= 0.f)
+#ifdef HALF
+                // yVar = read_imageh(d_forw, samplerIm, convert_float4((half4)(px, py, pz, 0.f))).w;
+                yVar = (float)read_imageh(d_forw, samplerIm, (float4)(px, py, pz, 0.f)).w;
+#else
                 yVar = read_imagef(d_forw, samplerIm, CFLOAT4(px, py, pz, 0.f)).w;
+#endif
 #endif
 #else
             if (px < 1.f && py < 1.f && pz < 1.f && px >= 0.f && py >= 0.f && pz >= 0.f) {
@@ -803,39 +849,112 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 yVar = d_forw[indX + indY + indZ];
             }
 #endif
+#if STYPE == 12
+            const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
+#ifndef USEMAD
+            float3 p_2 = s_2 + v_2 * t_2;
+            const float l1_2 = vApu_2 + v_2.z * v_2.z;
+#else
+            float3 p_2 = FMAD3(t_2, v_2, s_2);
+            const float l1_2 = FMAD(v_2.z, v_2.z, vApu_2);
+#endif
+            const float L_2 = distance(p_2, s_2);
+            const FLOAT weight_2 = (FLOAT)((L_2 * L_2 * L_2) / (l1_2)*kerroin);
+            p_2 -= d3_2;
+            float px_2 = dot(p_2, normX_2);
+            float py_2 = dot(p_2, normY_2);
+            FLOAT yVar_2 = (FLOAT)0.f;
+#ifdef USEIMAGES
+#ifdef CUDA
+            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+                yVar_2 = tex3D<FLOAT>(d_forw, px_2, py_2, pz_2);
+#else
+            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+#ifdef HALF
+                yVar_2 = read_imageh(d_forw, samplerIm, (float4)(px_2, py_2, pz_2, 0.f)).w;
+#else
+                yVar_2 = read_imagef(d_forw, samplerIm, CFLOAT4(px_2, py_2, pz_2, 0.f)).w;
+#endif
+#endif
+#else
+            if (px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f) {
+                const LONG indX = CLONG_rtz(px_2 * CFLOAT(d_size_x));
+                const LONG indY = CLONG_rtz(py_2 * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+                const LONG indZ = CLONG_rtz(pz_2 * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+                yVar_2 = d_forw[indX + indY + indZ];
+            }
+#endif
+#endif
 #ifdef OFFSET
             float TT;
             float Tloc = T[kk];
             if (Tloc > koko.x / 2.f) {
                 px = fabs(px - 1.f);
+                // px = (1.f - px);
                 TT = koko.x - Tloc;
             }
             else
                 TT = Tloc;
+            // if (px < 0.5f)
+                // px = fabs(px - 1.f);
+                // px = (1.f - px);
+            // TT *= 2.0f;
             px *= koko.x;
             px -= TT;
+#if STYPE == 12
+            float TT_2;
+            float Tloc_2 = T[uu];
+            if (Tloc_2 > koko.x / 2.h) {
+                px_2 = fabs(px_2 - 1.h);
+                TT_2 = koko.x - Tloc_2;
+            }
+            else
+                TT_2 = Tloc_2;
+            // TT_2 *= .5f;
+            px_2 *= koko.x;
+            px_2 -= TT_2;
 #endif
-            if (yVar != 0.f) {
+#endif
+            float w = 1.f;
+#if STYPE == 12
+            float w_2 = 1.f;
+            if (yVar != (float)0.f || yVar_2 != (float)0.f) {
+#else
+            if (yVar != (float)0.f) {
+#endif
 #ifdef OFFSET
+#if STYPE == 12
+                if (px_2 <= TT_2 && px_2 >= -TT_2) {
+                    w_2 = .5f * (1.f + SINF(M_PI_F * px_2 / (TT_2 * 2.f)));
+                }
+                else if (px_2 < -TT_2) {
+                    w_2 = 0.f;
+                }
+#endif
                 if (px <= TT && px >= -TT) {
-                    float w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
-                    temp[zz] += w * yVar * weight;
-                    if (no_norm == 0u)
-                        wSum[zz] += w * weight;
+                    w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
+                    // w = (.5f * (SINF((M_PI_F * atan2(px, R)) / (2.h * atan2(TT, R))) + 1.h));
                 }
                 else if (px < -TT) {
+                    w = 0.f;
                 }
-                else {
 #endif
-                    temp[zz] += yVar * weight;
-                    if (no_norm == 0u)
-                        wSum[zz] += weight;
-#ifdef OFFSET
-                }
+#if STYPE == 12
+                temp[zz] += (((FLOAT)(w) * yVar * weight + (FLOAT)(w_2) * yVar_2 * weight_2) / (FLOAT)(w + w_2));
+                if (no_norm == 0u)
+                    wSum[zz] += ((FLOAT)(w) * weight + (FLOAT)(w_2) * weight_2) / (FLOAT)(w + w_2);
+#else
+                temp[zz] += (float)(w) * yVar * weight;
+                if (no_norm == 0u)
+                    wSum[zz] += (float)(w) * weight;
 #endif
             }
             v.z += d_d.z;
             lowerPart -= dApu;
+#if STYPE == 12
+            v_2.z += d_d.z;
+            lowerPart_2 -= dApu_2;
+#endif
         }
 #ifdef PARALLEL
         }
@@ -846,10 +965,11 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         const uint ind = i.z + zz;
         if (ind >= d_N.z)
             break;
-            d_OSEM[idx] += temp[zz];
+            d_OSEM[idx] += (FLOAT)temp[zz];
+            // d_OSEM[idx] += convert_float(lowerPart);
 
             if (no_norm == 0u)
-                d_Summ[idx] = wSum[zz];
+                d_Summ[idx] = (FLOAT)wSum[zz];
         idx += d_N.y * d_N.x;
     }
 }

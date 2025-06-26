@@ -1,6 +1,8 @@
 # OMEGA
 Open-source multi-dimensional tomographic reconstruction software for MATLAB, GNU Octave and Python.
 
+This is an experiment half-precision branch! Only projector type 4 is supported. Use the half-precision with options.useHalf = true.
+
 ## Table of contents
 - [Introduction](#introduction)
     - [Projector models](#projector-models)

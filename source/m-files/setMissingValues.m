@@ -943,3 +943,6 @@ end
 if ~isfield(options, 'swivelAngles')
     options.swivelAngles = [];
 end
+if ~isfield(options, 'useHalf')
+    options.useHalf = false;
+end

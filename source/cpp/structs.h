@@ -1,6 +1,6 @@
 #pragma once
 // If true, displays a lot of debug messages
-#define DEBUG false
+#define DEBUG true
 // If true, uses the (correct) method to compute the inverse of measurement-based filtered PDHG, if false uses the same version as non-filtered one
 // Only affects measurement-based filtering
 #define FINVERSE true
@@ -73,6 +73,7 @@ typedef struct Weighting_ {
 	af::array gaussianNLM, gFilter, filter, filterIm, Ffilter;
 	af_flux_function FluxType;
 	af_diffusion_eq DiffusionType;
+	af::dtype dType = af_dtype::f32;
 #endif
 	TVdata data;
 	float* lambda = nullptr, * alphaM = nullptr, * sigma_PKMA = nullptr, * uv = nullptr, * angles = nullptr, * NLM_ref = nullptr, * refImage = nullptr,

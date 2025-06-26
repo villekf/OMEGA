@@ -102,6 +102,18 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		if (MethodList.OSEM || MethodList.ECOSEM) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing OSEM/ECOSEM");
+			if (DEBUG) {
+				mexPrintBase("vec.im_os = %f\n", af::sum<float>(vec.im_os[0]));
+				mexPrintBase("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os[0]));
+				mexPrintBase("Sens = %f\n", af::sum<float>(*Sens));
+				mexPrintBase("min(rhs_os) = %f\n", af::min<float>(vec.rhs_os[0]));
+				mexPrintBase("max(rhs_os) = %f\n", af::max<float>(vec.rhs_os[0]));
+				mexPrintBase("min(im_os) = %f\n", af::min<float>(vec.im_os[0]));
+				mexPrintBase("max(im_os) = %f\n", af::max<float>(vec.im_os[0]));
+				mexPrintBase("min(Sens) = %f\n", af::min<float>(*Sens));
+				mexPrintBase("max(Sens) = %f\n", af::max<float>(*Sens));
+				mexEval();
+			}
 			if (MethodList.ECOSEM)
 				OSEMApu = EM(vec.im_os[ii], *Sens, vec.rhs_os[ii] + inputScalars.epps);
 			else
@@ -109,6 +121,12 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 					vec.im_os[ii] = EM(vec.im_os[ii], *Sens, inputScalars.flat * vec.rhs_os[ii]);
 				else
 					vec.im_os[ii] = EM(vec.im_os[ii], *Sens, vec.rhs_os[ii] + inputScalars.epps);
+			if (DEBUG) {
+				mexPrintBase("vec.im_os = %f\n", af::sum<float>(vec.im_os[0]));
+				mexPrintBase("min(im_os) = %f\n", af::min<float>(vec.im_os[0]));
+				mexPrintBase("max(im_os) = %f\n", af::max<float>(vec.im_os[0]));
+				mexEval();
+			}
 		}
 
 		// Modfied Row-action Maximum Likelihood (MRAMLA)
@@ -357,6 +375,16 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				}
 			//}
 		}
+	}
+	if (inputScalars.useHalf) {
+		//if (inputScalars.use_psf) {
+		//	vec.im_os_blurred[0](af::isInf(vec.im_os_blurred[0])) = inputScalars.epps;
+		//	vec.im_os_blurred[0](af::isNaN(vec.im_os_blurred[0])) = inputScalars.epps;
+		//}
+		//else {
+			vec.im_os[0](af::isInf(vec.im_os[0])) = inputScalars.epps;
+			vec.im_os[0](af::isNaN(vec.im_os[0])) = inputScalars.epps;
+		//}
 	}
 	if (DEBUG || inputScalars.verbose >= 3) {
 		af::sync();

@@ -147,6 +147,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.TGV2D = getScalarBool(options, 0, "use2DTGV");
 	inputScalars.adaptiveType = getScalarUInt32(options, 0, "PDAdaptiveType");
 	inputScalars.storeFP = getScalarBool(options, 0, "storeFP");
+	inputScalars.useHalf = getScalarBool(options, 0, "useHalf");
 	inputScalars.useTotLength = getScalarBool(options, 0, "useTotLength");
 	const uint32_t* devPointer = getUint32s(options, "use_device");
 	size_t devLength = mxGetNumberOfElements(mxGetField(options, 0, "use_device"));
@@ -174,12 +175,12 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.deblur_iterations = getScalarUInt32(getField(options, 0, "deblur_iterations"));
 	}
 
-	inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
-	inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
-	if (inputScalars.multiResolution) {
-		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-			inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
-	}
+	//inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
+	//inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
+	//if (inputScalars.multiResolution) {
+	//	for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
+	//		inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+	//}
 }
 
 // Loads the input data and forms device data variables
@@ -778,10 +779,21 @@ inline void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int
 				//vec.rhs_os[0].host(&output[oo]);
 			}
 			else if (MethodList.FDK && !inputScalars.largeDim) {
-				vec.rhs_os[0].host(&apuF[oo]);
+				if (inputScalars.useHalf) {
+					const af::array imTemp = vec.rhs_os[0].copy().as(f32);
+					imTemp.host(&apuF[oo]);
+				}
+				else
+					vec.rhs_os[0].host(&apuF[oo]);
 			}
-			else
-				vec.im_os[0].host(&apuF[oo]);
+			else {
+				if (inputScalars.useHalf) {
+					const af::array imTemp = vec.im_os[0].copy().as(f32);
+					imTemp.host(&apuF[oo]);
+				}
+				else
+					vec.im_os[0].host(&apuF[oo]);
+			}
 			if (inputScalars.verbose >= 3)
 				mexPrint("Data transfered to host");
 		}

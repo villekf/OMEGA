@@ -11,7 +11,8 @@
 /// <returns>MLEM/OSEM image</returns>
 inline af::array EM(const af::array& im, const af::array& Summ, const af::array& rhs)
 {
-	return (im / Summ * rhs);
+	//return (im * (rhs / Summ));
+	return (im * (rhs));
 }
 
 /// <summary>
@@ -158,8 +159,8 @@ inline int PKMA(af::array& im, af::array& rhs, Weighting& w_vec, const scalarStr
 	applyImagePreconditioning(w_vec, inputScalars, rhs, im, proj, kk, ii);
 	if (inputScalars.computeRelaxation) {
 		if (kk == 0 && ii == 0) {
-			w_vec.lambda[iter] = af::norm(im) / af::norm(rhs) * .25f;
-			const float kerroin = af::norm(im) / af::norm(rhs * w_vec.lambda[iter]);
+			w_vec.lambda[iter] = af::norm(im.as(f32)) / af::norm(rhs.as(f32)) * .25f;
+			const float kerroin = af::norm(im.as(f32)) / af::norm(rhs.as(f32) * w_vec.lambda[iter]);
 			const float kerroin2 = std::fabs(af::max<float>(im) / af::max<float>(rhs));
 			const float kerroin3 = af::median<float>(im) / af::median<float>(rhs);
 			if (DEBUG) {
@@ -223,7 +224,7 @@ inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 		af::array temp = vec.im_os[0];
 		for (int ll = 1; ll <= inputScalars.nMultiVolumes; ll++)
 			temp = af::join(0, vec.im_os[ll], temp);
-		w_vec.alphaLSQR = af::norm(temp);
+		w_vec.alphaLSQR = af::norm(temp.as(f32));
 		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
 			vec.im_os[ll] = vec.im_os[ll] / w_vec.alphaLSQR;
 		const float rho_ = sqrt(w_vec.rhoLSQR * w_vec.rhoLSQR + w_vec.betaLSQR * w_vec.betaLSQR);
@@ -273,12 +274,12 @@ inline int SART(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		af::eval(vec.im_os[ii]);
 		if (ii == 0) {
 			int status = 0;
-			const float dp = static_cast<float>(af::norm(vec.im_os[ii] - imOld));
+			const float dp = static_cast<float>(af::norm(vec.im_os[ii].as(f32) - imOld.as(f32)));
 			for (int kk = 0; kk < w_vec.ng; kk++) {
 				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
+				vec.dU /= (af::norm(vec.dU.as(f32)) + inputScalars.epps);
 				af::eval(vec.dU);
 				vec.im_os[ii] -= dp * w_vec.beta * vec.dU;
 				af::eval(vec.im_os[ii]);
@@ -350,7 +351,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 	if ((w_vec.precondTypeMeas[1] && subIter + inputScalars.subsetsUsed * iter >= w_vec.filterIter) || !w_vec.precondTypeMeas[1]) {
 		if (ii == 0 && inputScalars.adaptiveType == 1) {
 			const af::array q = (im_old - im) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii];
-			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old - im)) * af::norm(q)));
+			const float w = af::dot<float>((im_old - im), q) / (static_cast<float>(af::norm((im_old.as(f32) - im.as(f32))) * af::norm(q.as(f32))));
 			if (w < 0.f) {
 				w_vec.tauCP[ii] = w_vec.tauCP[ii] / (1.f + w_vec.alphaCP[ii]);
 				w_vec.sigmaCP[ii] = w_vec.sigmaCP[ii] * (1.f + w_vec.alphaCP[ii]);
@@ -376,9 +377,9 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			const float q = af::sum<float>(af::abs((vec.im_os[ii]) / w_vec.tauCP[ii] + inputScalars.subsetsUsed * vec.rhsCP[ii]));
 			af::array outputFP;
 			if (inputScalars.listmode == 0)
-				outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+				outputFP = af::constant(0.f, m_size * inputScalars.nBins, w_vec.dType);
 			else
-				outputFP = af::constant(0.f, m_size);
+				outputFP = af::constant(0.f, m_size, w_vec.dType);
 			status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, subIter, length, g, m_size, proj, ii, pituus);
 			if (status != 0) {
 				return status;
@@ -495,16 +496,16 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 			m_size = static_cast<uint64_t>(inputScalars.nRowsD) * static_cast<uint64_t>(inputScalars.nColsD) * length[osa_iter];
 		af::array outputFP;
 		if (inputScalars.listmode == 0)
-			outputFP = af::constant(0.f, m_size * inputScalars.nBins);
+			outputFP = af::constant(0.f, m_size * inputScalars.nBins, w_vec.dType);
 		else
-			outputFP = af::constant(0.f, m_size);
+			outputFP = af::constant(0.f, m_size, w_vec.dType);
 		int status = 0;
 		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, ii, pituus);
 		if (status != 0) {
 			return status;
 		}
-		const float dd = static_cast<float>(af::norm(outputFP - mData));
-		const float dp = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+		const float dd = static_cast<float>(af::norm(outputFP.as(f32) - mData.as(f32)));
+		const float dp = static_cast<float>(af::norm(vec.im_os[ii].as(f32) - vec.f0POCS[ii].as(f32)));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
 			mexEval();
@@ -522,12 +523,12 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 				status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsetsUsed * iter);
 				if (status != 0)
 					return status;
-				vec.dU /= (af::norm(vec.dU) + inputScalars.epps);
+				vec.dU /= (af::norm(vec.dU.as(f32)) + inputScalars.epps);
 				vec.im_os[ii] -= w_vec.dtvg * vec.dU;
 				af::eval(vec.im_os[ii]);
 				af::eval(vec.dU);
 			}
-			const float dg = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
+			const float dg = static_cast<float>(af::norm(vec.im_os[ii].as(f32) - vec.f0POCS[ii].as(f32)));
 			if (DEBUG) {
 				mexPrintBase("dg = %f\n", dg);
 				mexPrintBase("w_vec.rMaxPOCS * dp = %f\n", w_vec.rMaxPOCS * dp);
@@ -542,7 +543,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 
 inline int SAGA(af::array& im, scalarStruct& inputScalars, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const uint32_t osa_iter, const uint32_t iter, const int ii = 0) {
 	const uint32_t kk = iter * inputScalars.subsets + inputScalars.currentSubset;
-	af::array grad = af::constant(0.f, im.elements());
+	af::array grad = af::constant(0.f, im.elements(), w_vec.dType);
 	if (DEBUG) {
 		mexPrintBase("du = %d\n", vec.dU.elements());
 		mexPrintBase("vec.rhs_os[ii].elements() = %d\n", vec.rhs_os[ii].elements());

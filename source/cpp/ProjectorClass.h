@@ -13,6 +13,7 @@
 *******************************************************************************************************************************************/
 #pragma once
 #include "structs.h"
+#include "cl_half.h"
 /// <summary>
 /// Class object for forward and backward projections. OpenCL version
 /// </summary>
@@ -37,10 +38,59 @@ class ProjectorClass {
 	size_t erotusPrior[3];
 	size_t erotusPriorEFOV[3];
 	size_t erotusSens[3];
+	size_t fSize = sizeof(cl_float);
 	// Local and global sizes
 	cl::NDRange local, global, localPrior, globalPrior, globalPriorEFOV;
 
 	bool constantBuffer = false;
+
+	template <typename T>
+	int createBuffer(cl::CommandQueue& CLCommandQueue, cl::Buffer& buffer, const cl_bool flags, const size_t numElements, const T* floatArray, const bool useHalf = false, const size_t start = 0) {
+		int status = CL_SUCCESS;
+		if (DEBUG) {
+			mexPrintBase("useHalf = %u\n", useHalf);
+			mexEval();
+		}
+		if (useHalf) {
+			std::vector<cl_half> halfArray(numElements);
+
+			// Use OpenCL's built-in conversion
+			size_t ind = 0;
+			for (size_t i = start; i < numElements + start; i++) {
+				halfArray[ind++] = cl_half_from_float(floatArray[i], CL_HALF_RTE);
+			}
+
+			status = CLCommandQueue.enqueueWriteBuffer(buffer, flags, 0, sizeof(cl_half) * numElements, halfArray.data());
+		}
+		else
+			status = CLCommandQueue.enqueueWriteBuffer(buffer, flags, 0, sizeof(T) * numElements, &floatArray[start]);
+
+		return status;
+
+	}
+
+	int createImage(cl::CommandQueue& CLCommandQueue, cl::Image3D& image, const cl_bool flags, const size_t numElements, const float* floatArray, const bool useHalf = false) {
+		int status = CL_SUCCESS;
+		if (DEBUG) {
+			mexPrintBase("useHalf = %u\n", useHalf);
+			mexEval();
+		}
+		if (useHalf) {
+			std::vector<cl_half> halfArray(numElements);
+
+			// Use OpenCL's built-in conversion
+			size_t ind = 0;
+			for (size_t i = 0; i < numElements; i++) {
+				halfArray[ind++] = cl_half_from_float(floatArray[i], CL_HALF_RTE);
+			}
+			status = CLCommandQueue.enqueueWriteImage(image, flags, origin, region, 0, 0, halfArray.data());
+		}
+		else
+			status = CLCommandQueue.enqueueWriteImage(image, flags, origin, region, 0, 0, floatArray);
+
+		return status;
+
+	}
 
 	// Get the OpenCL context for the current platform
 	cl_int clGetPlatformsContext(const uint32_t platform, cl::Context& context, std::vector<cl::CommandQueue>& commandQueues, const std::vector<uint32_t>& usedDevices, std::vector<cl::Device>& devices) {
@@ -133,6 +183,8 @@ class ProjectorClass {
 		std::string contentAux;
 		std::string options = "-cl-single-precision-constant";
 		options += " -DOPENCL";
+		if (inputScalars.useHalf)
+			options += " -DHALF";
 		if (inputScalars.useMAD) {
 			options += " -cl-fast-relaxed-math";
 			options += " -DUSEMAD";
@@ -283,7 +335,7 @@ class ProjectorClass {
 				if (DEBUG) {
 					mexPrint("Trying to build FP 1-3 program\n");
 				}
-				status = buildProgram(inputScalars.verbose, contentFP, CLContext, CLDeviceID, programFP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_optionsFP);
+				status = buildProgram(inputScalars.verbose, contentFP, CLContext, CLDeviceID, programFP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_optionsFP, inputScalars.useHalf);
 				if (status == CL_SUCCESS && DEBUG) {
 					mexPrint("FP 1-3 program built\n");
 				}
@@ -297,7 +349,7 @@ class ProjectorClass {
 					os_options += " -DVOL";
 				if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
 					os_options += " -DORTH";
-				status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options);
+				status = buildProgram(inputScalars.verbose, contentBP, CLContext, CLDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_options, inputScalars.useHalf);
 				if (status == CL_SUCCESS && DEBUG) {
 					mexPrint("BP 1-3 program built\n");
 				}
@@ -375,6 +427,8 @@ class ProjectorClass {
 			contentAux = contentHeader + contentAAux;
 			options = "-cl-single-precision-constant";
 			options += " -DOPENCL";
+			if (inputScalars.useHalf)
+				options += " -DHALF";
 			if (inputScalars.useMAD) {
 				options += " -cl-fast-relaxed-math";
 				options += " -DUSEMAD";
@@ -578,7 +632,7 @@ class ProjectorClass {
 	/// <param name="options preprocessor values for the build"></param>
 	/// <returns></returns>
 	inline cl_int buildProgram(const int8_t verbose, std::string contentFP, cl::Context& CLContext, cl::Device& CLDeviceID, cl::Program& program,
-		bool& atomic_64bit, const bool atomic_32bit, std::string options) {
+		bool& atomic_64bit, const bool atomic_32bit, std::string options, const bool half = false) {
 		cl_int status = CL_SUCCESS;
 		size_t pituus;
 		if (atomic_64bit) {
@@ -593,7 +647,10 @@ class ProjectorClass {
 			options += (" -DTH=" + std::to_string(TH32));
 		}
 		else {
-			options += " -DCAST=float";
+			if (half)
+				options += " -DCAST=half";
+			else
+				options += " -DCAST=float";
 		}
 		if (DEBUG || verbose >= 2)
 			mexPrintBase("%s\n", options.c_str());
@@ -934,7 +991,7 @@ public:
 	cl::detail::size_t_array origin = { { 0, 0, 0 } }; 
 	cl::detail::size_t_array region = { { 0, 0, 0 } };
 	// Image format
-	cl::ImageFormat format;
+	cl::ImageFormat format, formatHalf;
 	cl::ImageFormat formatMask;
 	std::vector<std::vector<size_t>> erotusBP, erotusPDHG;
 	cl_uchar no_norm = 0;
@@ -974,6 +1031,8 @@ public:
 		local_sizePrior[2] = 1ULL;
 		cl_int status = CL_SUCCESS;
 		proj6 = 0;
+		if (inputScalars.useHalf)
+			fSize = sizeof(cl_half);
 
 		// Create the OpenCL context and command queue and assign the device
 #ifdef AF
@@ -1002,7 +1061,7 @@ public:
 		}
 		cl_ulong constantBufferSize = CLDeviceID[0].getInfo<CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE>(&status);
 
-		if ((inputScalars.size_of_x + inputScalars.size_z) * sizeof(float) >= constantBufferSize)
+		if ((inputScalars.size_of_x + inputScalars.size_z) * fSize >= constantBufferSize)
 			constantBuffer = true;
 
 		cl::Program programFP, programBP, programAux, programSens;
@@ -1020,6 +1079,8 @@ public:
 		}
 		format.image_channel_order = CL_A;
 		format.image_channel_data_type = CL_FLOAT;
+		formatHalf.image_channel_order = CL_A;
+		formatHalf.image_channel_data_type = CL_HALF_FLOAT;
 		formatMask.image_channel_order = CL_A;
 		formatMask.image_channel_data_type = CL_UNSIGNED_INT8;
 
@@ -1134,6 +1195,9 @@ public:
 		const scalarStruct& inputScalars, const Weighting& w_vec, const RecMethods& MethodList) {
 		cl_int status = CL_SUCCESS;
 		size_t vecSize = 1;
+		cl::ImageFormat usedFormat = format;
+		if (inputScalars.useHalf)
+			usedFormat = formatHalf;
 		cl::size_type imX = inputScalars.Nx[0];
 		cl::size_type imY = inputScalars.Ny[0];
 		cl::size_type imZ = inputScalars.Nz[0];
@@ -1141,26 +1205,26 @@ public:
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages)
-				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+				d_urefIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, usedFormat, imX, imY, imZ, 0, 0, NULL, &status);
 			else
-				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.im_dim[0], NULL, &status);
 			OCL_CHECK(status, "\n", -1);
 		}
 		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages) {
-				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
+				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, usedFormat, region[0], region[1], region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
 			}
 		}
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
 			if (inputScalars.useImages) {
-				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
+				d_RDPrefI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, usedFormat, region[0], region[1], region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create RDP reference image\n", -1);
 			}
 		}
 		// Create the necessary buffers
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, NULL, &status);
+			d_weights = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, NULL, &status);
 			OCL_CHECK(status, "\n", -1);
 		}
 		if ((inputScalars.useExtendedFOV && !inputScalars.multiResolution) || inputScalars.maskBP) {
@@ -1181,29 +1245,29 @@ public:
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_V, NULL, &status);
+				d_V = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_V, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			// Detector coordinates
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
-				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status);
+				d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_of_x, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1)
-					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
-				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x / 2, NULL, &status));
+					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_of_x, NULL, &status));
+				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_of_x / 2, NULL, &status));
 				else
-					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
+					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_of_x, NULL, &status));
 				OCL_CHECK(status, "\n", -1);
 			}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				imZ = inputScalars.Nz[0];
 				if (inputScalars.useBuffers)
-					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
+					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.im_dim[0], NULL, &status);
 				else
-					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, usedFormat, imX, imY, imZ, 0, 0, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
@@ -1250,9 +1314,9 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.SPECT) {
-				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
+				d_rayShiftsDetector = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * 2 * inputScalars.n_rays, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
-				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * 2 * inputScalars.n_rays, NULL, &status);
+				d_rayShiftsSource = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * 2 * inputScalars.n_rays, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.eFOV) {
@@ -1260,19 +1324,19 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
-				d_angle = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nProjections, NULL, &status);
+				d_angle = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.nProjections, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			// TOF bin centers
 			if (inputScalars.TOF) {
-				d_TOFCenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.nBins, NULL, &status);
+				d_TOFCenter = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.nBins, NULL, &status);
 				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 				if (inputScalars.nLayers > 1)
-					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
+					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_z, NULL, &status));
 				else
-					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
+					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_z, NULL, &status));
 				OCL_CHECK(status, "\n", -1);
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
@@ -1284,42 +1348,42 @@ public:
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode != 1) {
 					if (inputScalars.pitch)
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * 6, NULL, &status);
 					else
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * 2, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				else {
 					if (inputScalars.PET && inputScalars.listmode == 0)
 						if (inputScalars.nLayers > 1)
-							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 3, NULL, &status);
+							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * 3, NULL, &status);
 						else
-							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
+							d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * 2, NULL, &status);
 					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased))
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * inputScalars.size_z, NULL, &status);
 					else
-						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
+						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
+					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk], NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
-						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
+						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * 6, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
-					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * vecSize, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
-					d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					d_scat[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * vecSize, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
+					d_atten[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length[kk] * vecSize, NULL, &status);
 					OCL_CHECK(status, "\n", -1);
 				}
 				// Indices corresponding to the detector index (Sinogram data) or the detector number (raw data) at each measurement
@@ -1353,13 +1417,11 @@ public:
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
 		}
-
-
 		// assign values to the buffers
 		if (MethodList.GGMRF || (MethodList.RDP && w_vec.RDPLargeNeighbor) || MethodList.hyperbolic) {
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_weights, CL_FALSE, 0, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights);
+			status = createBuffer(CLCommandQueue[0], d_weights, CL_FALSE, (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1, w_vec.weights, inputScalars.useHalf);
 			OCL_CHECK(status, "\n", -1);
-			memSize += (sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
+			memSize += (fSize * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1)) / 1048576ULL;
 		}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			cl::detail::size_t_array region = { { 0, 0, 0 } };
@@ -1367,10 +1429,10 @@ public:
 			region[1] = inputScalars.Ny[0];
 			region[2] = inputScalars.Nz[0];
 			if (inputScalars.useImages)
-				status = CLCommandQueue[0].enqueueWriteImage(d_urefIm, CL_FALSE, origin, region, 0, 0, w_vec.NLM_ref);
+				status = createImage(CLCommandQueue[0], d_urefIm, CL_FALSE, inputScalars.im_dim[0], w_vec.NLM_ref, inputScalars.useHalf);
 			else
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_uref, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], w_vec.NLM_ref);
-			memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
+				status = createBuffer(CLCommandQueue[0], d_uref, CL_FALSE, inputScalars.im_dim[0], w_vec.NLM_ref, inputScalars.useHalf);
+			memSize += (fSize * inputScalars.im_dim[0]) / 1048576ULL;
 		}
 		if (inputScalars.maskFP || inputScalars.maskBP || inputScalars.useExtendedFOV) {
 			//mexPrintBase("inputScalars.useBuffers = %u\n", inputScalars.useBuffers);
@@ -1437,53 +1499,56 @@ public:
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_V, CL_FALSE, 0, sizeof(float) * inputScalars.size_V, inputScalars.V);
+				status = createBuffer(CLCommandQueue[0], d_V, CL_TRUE, inputScalars.size_V, inputScalars.V, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * inputScalars.size_V) / 1048576ULL;
+				memSize += (fSize * inputScalars.size_V) / 1048576ULL;
 			}
 			if ((!(inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) || inputScalars.indexBased) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+				status = createBuffer(CLCommandQueue[0], d_x[0], CL_TRUE, inputScalars.size_of_x, x, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * inputScalars.size_of_x) / 1048576ULL;
+				memSize += (fSize * inputScalars.size_of_x) / 1048576ULL;
 			}
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-				if (inputScalars.nLayers > 1) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
+				//if (inputScalars.nLayers > 1) {
+					status = createBuffer(CLCommandQueue[0], d_xFull[0], CL_FALSE, inputScalars.size_of_x, x, inputScalars.useHalf);
 					OCL_CHECK(status, "\n", -1);
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
+					status = createBuffer(CLCommandQueue[0], d_zFull[0], CL_FALSE, inputScalars.size_z, z_det, inputScalars.useHalf);
 					OCL_CHECK(status, "\n", -1);
-				}
-				else {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_of_x, x);
-					OCL_CHECK(status, "\n", -1);
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-					OCL_CHECK(status, "\n", -1);
-				}
+				//}
+				//else {
+				//	status = CLCommandQueue[0].enqueueWriteBuffer(d_xFull[0], CL_FALSE, 0, fSize * inputScalars.size_of_x, x);
+				//	OCL_CHECK(status, "\n", -1);
+				//	status = CLCommandQueue[0].enqueueWriteBuffer(d_zFull[0], CL_FALSE, 0, fSize * inputScalars.size_z, z_det);
+				//	status = createBuffer(CLCommandQueue[0], d_zFull[0], CL_FALSE, inputScalars.size_z, z_det, inputScalars.useHalf);
+				//	OCL_CHECK(status, "\n", -1);
+				//}
+				memSize += (fSize * inputScalars.size_of_x) / 1048576ULL;
+				memSize += (fSize * inputScalars.size_z) / 1048576ULL;
 			}
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.useBuffers)
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_attenB, CL_FALSE, 0, sizeof(float) * inputScalars.im_dim[0], atten);
+					status = createBuffer(CLCommandQueue[0], d_attenB, CL_FALSE, inputScalars.im_dim[0], atten, inputScalars.useHalf);
 				else {
 					cl::detail::size_t_array region = { { 0, 0, 0 } };
 					region[0] = inputScalars.Nx[0];
 					region[1] = inputScalars.Ny[0];
 					region[2] = inputScalars.Nz[0];
-					status = CLCommandQueue[0].enqueueWriteImage(d_attenIm, CL_FALSE, origin, region, 0, 0, atten);
+					status = createImage(CLCommandQueue[0], d_attenIm, CL_FALSE, inputScalars.im_dim[0], atten, inputScalars.useHalf);
 					OCL_CHECK(status, "\n", -1);
 				}
-				memSize += (sizeof(float) * inputScalars.im_dim[0]) / 1048576ULL;
+				memSize += (fSize * inputScalars.im_dim[0]) / 1048576ULL;
 			}
 			if (inputScalars.CT && MethodList.FDK && inputScalars.useFDKWeights) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_angle, CL_FALSE, 0, sizeof(float) * inputScalars.nProjections, w_vec.angles);
+				status = createBuffer(CLCommandQueue[0], d_angle, CL_FALSE, inputScalars.nProjections, w_vec.angles, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * inputScalars.nProjections) / 1048576ULL;
+				memSize += (fSize * inputScalars.nProjections) / 1048576ULL;
 			}
 			if (inputScalars.TOF) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_TOFCenter, CL_FALSE, 0, sizeof(float) * inputScalars.nBins, inputScalars.TOFCenter);
+				status = createBuffer(CLCommandQueue[0], d_TOFCenter, CL_FALSE, inputScalars.nBins, inputScalars.TOFCenter, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * inputScalars.nBins) / 1048576ULL;
+				memSize += (fSize * inputScalars.nBins) / 1048576ULL;
 			}
-			status = CLCommandQueue[0].finish();
+			//status = CLCommandQueue[0].finish();
 			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.eFOV) {
 				status = CLCommandQueue[0].enqueueWriteBuffer(d_eFOVIndices, CL_FALSE, 0, sizeof(uint8_t) * inputScalars.Nz[0], w_vec.eFOVIndices);
@@ -1491,50 +1556,50 @@ public:
 				memSize += (sizeof(uint8_t) * inputScalars.Nz[0]) / 1048576ULL;
 			}
 			if (inputScalars.SPECT) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsDetector, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsDetector);
+				status = createBuffer(CLCommandQueue[0], d_rayShiftsDetector, CL_TRUE, 2 * inputScalars.n_rays, w_vec.rayShiftsDetector, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
+				memSize += (fSize * 2 * inputScalars.n_rays) / 1048576ULL;
 
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_rayShiftsSource, CL_FALSE, 0, sizeof(float) * 2 * inputScalars.n_rays, w_vec.rayShiftsSource);
+				status = createBuffer(CLCommandQueue[0], d_rayShiftsSource, CL_TRUE, 2 * inputScalars.n_rays, w_vec.rayShiftsSource, inputScalars.useHalf);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * 2 * inputScalars.n_rays) / 1048576ULL;
+				memSize += (fSize * 2 * inputScalars.n_rays) / 1048576ULL;
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
 					int64_t kerroin = 2;
 					if (inputScalars.pitch)
 						kerroin = 6;
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
+					status = createBuffer(CLCommandQueue[0], d_z[kk], CL_FALSE, length[kk] * kerroin, z_det, inputScalars.useHalf, pituus[kk] * kerroin);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
+					memSize += (fSize * length[kk] * kerroin) / 1048576ULL;
 				}
 				else {
 					if (inputScalars.PET && inputScalars.listmode == 0) {
 						int64_t kerroin = 2;
 						if (inputScalars.nLayers > 1)
 							int64_t kerroin = 3;
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * length[kk] * kerroin, &z_det[pituus[kk] * kerroin]);
-						memSize += (sizeof(float) * length[kk] * kerroin) / 1048576ULL;
+						status = createBuffer(CLCommandQueue[0], d_z[kk], CL_TRUE, length[kk] * kerroin, z_det, inputScalars.useHalf, pituus[kk] * kerroin);
+						memSize += (fSize * length[kk] * kerroin) / 1048576ULL;
 					}
 					else if (kk == inputScalars.osa_iter0 && (inputScalars.listmode == 0 || inputScalars.indexBased)) {
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_z[kk], CL_FALSE, 0, sizeof(float) * inputScalars.size_z, z_det);
-						memSize += (sizeof(float) * inputScalars.size_z) / 1048576ULL;
+						status = createBuffer(CLCommandQueue[0], d_z[kk], CL_TRUE, inputScalars.size_z, z_det, inputScalars.useHalf);
+						memSize += (fSize * inputScalars.size_z) / 1048576ULL;
 					}
 					OCL_CHECK(status, "\n", -1);
 				}
 				if ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &x[pituus[kk] * 6]);
+					status = createBuffer(CLCommandQueue[0], d_x[kk], CL_FALSE, length[kk] * 6, x, inputScalars.useHalf, pituus[kk] * 6);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
+					memSize += (fSize * length[kk] * 6) / 1048576ULL;
 				}
 				else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
-						status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
+						status = createBuffer(CLCommandQueue[0], d_x[kk], CL_FALSE, length[kk] * 6, w_vec.listCoord, inputScalars.useHalf, pituus[kk] * 6);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
+					memSize += (fSize * length[kk] * 6) / 1048576ULL;
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_T[kk], CL_FALSE, 0, sizeof(float) * length[kk], &inputScalars.T[pituus[kk]]);
+					status = createBuffer(CLCommandQueue[0], d_T[kk], CL_FALSE, length[kk], inputScalars.T, inputScalars.useHalf, pituus[kk]);
 					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.raw) {
@@ -1569,19 +1634,19 @@ public:
 				status = CLCommandQueue[0].finish();
 				OCL_CHECK(status, "\n", -1);
 				if (inputScalars.size_norm > 1ULL && inputScalars.normalization_correction) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_norm[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &norm[pituus[kk] * vecSize]);
+					status = createBuffer(CLCommandQueue[0], d_norm[kk], CL_TRUE, length[kk] * vecSize, norm, inputScalars.useHalf, pituus[kk] * vecSize);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+					memSize += (fSize * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (inputScalars.size_scat > 1ULL && inputScalars.scatter == 1U) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &extraCorr[pituus[kk] * vecSize]);
+					status = createBuffer(CLCommandQueue[0], d_scat[kk], CL_TRUE, length[kk] * vecSize, extraCorr, inputScalars.useHalf, pituus[kk] * vecSize);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+					memSize += (fSize * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (inputScalars.attenuation_correction && !inputScalars.CTAttenuation) {
-					status = CLCommandQueue[0].enqueueWriteBuffer(d_atten[kk], CL_FALSE, 0, sizeof(float) * length[kk] * vecSize, &atten[pituus[kk] * vecSize]);
+					status = createBuffer(CLCommandQueue[0], d_atten[kk], CL_TRUE, length[kk] * vecSize, atten, inputScalars.useHalf, pituus[kk] * vecSize);
 					OCL_CHECK(status, "\n", -1);
-					memSize += (sizeof(float) * length[kk] * vecSize) / 1048576ULL;
+					memSize += (fSize * length[kk] * vecSize) / 1048576ULL;
 				}
 				if (DEBUG) {
 					mexPrintBase("length[kk] = %d\n", length[kk]);
@@ -1854,9 +1919,9 @@ public:
 		cl_int status = CL_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt]);
+				status = createBuffer(CLCommandQueue[0], d_scat[kk], CL_FALSE, length[kk], extraCorr, inputScalars.useHalf, pituus[kk] + inputScalars.kokoNonTOF * tt);
 				OCL_CHECK(status, "\n", -1);
-				memSize += (sizeof(float) * length[kk]) / 1048576ULL;
+				memSize += (fSize * length[kk]) / 1048576ULL;
 			}
 		}
 		return 0;
@@ -1909,9 +1974,9 @@ public:
 			OCL_CHECK(status, "\n", -1);
 		}
 		else {
-			d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length * 6, NULL, &status);
+			d_x[0] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, fSize * length * 6, NULL, &status);
 			OCL_CHECK(status, "\n", -1);
-			status = CLCommandQueue[0].enqueueWriteBuffer(d_x[0], CL_FALSE, 0, sizeof(float) * length * 6, listCoord);
+			status = createBuffer(CLCommandQueue[0], d_x[0], CL_FALSE, length * 6, listCoord, inputScalars.useHalf);
 			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.TOF) {
@@ -2553,7 +2618,10 @@ public:
 						imY++;
 					}
 					cl::detail::size_t_array region = { imX, imY, imZ };
-					d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
+					if (inputScalars.useHalf)
+						d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatHalf, imX, imY, imZ, 0, 0, NULL, &status);
+					else
+						d_inputImage = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
 					OCL_CHECK(status, "Image creation failed\n", -1);
 
 					status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);

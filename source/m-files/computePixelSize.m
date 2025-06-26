@@ -1,6 +1,22 @@
 function [xx,yy,zz,dx,dy,dz,bx,by,bz] = computePixelSize(FOV, N, offset, cType)
 %COMPUTEPIXELSIZE Computes the pixel size and distance from origin
 %   Utility function for OMEGA
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Copyright (C) 2021-2025 Ville-Veikko Wettenhovi
+%
+% This program is free software: you can redistribute it and/or modify it
+% under the terms of the GNU General Public License as published by the
+% Free Software Foundation, either version 3 of the License, or (at your
+% option) any later version.
+%
+% This program is distributed in the hope that it will be useful, but
+% WITHOUT ANY WARRANTY; without even the implied warranty of
+% MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+% Public License for more details.
+%
+% You should have received a copy of the GNU General Public License along
+% with this program. If not, see <https://www.gnu.org/licenses/>.
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Pixel boundaries
 etaisyys = -(FOV) / 2;
@@ -31,7 +47,7 @@ for kk = size(FOV,2) : - 1 : 1
         by(kk) = yy(1,1);
         bz(kk) = zz(1,1);
     else
-        % Top and bottom volumes
+        % Side volumes
         if kk > 5 || (size(FOV,2) == 5 && kk > 3)
             if mod(kk,2) == 1
                 by(kk) = offset(2) + FOV(2,1) / 2;
@@ -40,7 +56,7 @@ for kk = size(FOV,2) : - 1 : 1
             end
             bx(kk) = xx(1,1);
             bz(kk) = zz(1,1);
-        % Side volumes
+        % Top and bottom volumes
         elseif (kk > 3 && kk < 6) || (size(FOV,2) == 5 && kk > 1)
             if mod(kk,2) == 1
                 bx(kk) = etaisyys(1,1) + offset(1) + FOV(1,1);

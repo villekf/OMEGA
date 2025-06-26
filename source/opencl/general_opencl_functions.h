@@ -19,7 +19,17 @@
 *
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
-
+#ifdef HALF
+#define FLOAT half
+// #define FLOAT2 half2
+#define FLOAT3 half3
+// #define FLOAT4 half4
+#else
+#define FLOAT float
+// #define FLOAT2 float2
+#define FLOAT3 float3
+// #define FLOAT4 float4
+#endif
 #ifdef ATOMIC
 #pragma OPENCL EXTENSION cl_khr_int64_base_atomics : enable
 #endif
@@ -60,6 +70,7 @@
 #define typeTT int
 #endif
 #ifdef OPENCL
+#pragma OPENCL EXTENSION cl_khr_fp16 : enable
 #define LONG long
 #define ULONG ulong
 #define CLGLOBAL __global
@@ -72,10 +83,20 @@
 #define UINT_sat(a) convert_uint_sat(a)
 #define RIMAGEF(a, b, c) read_imagef(a, b, c).w
 #define CINT_rtz(a) convert_int_rtz(a)
+#define CINT3_rtz(a) convert_int3_rtz(a)
+#ifdef HALF
+#define DIVIDE(a,b) a/b
+#define DIVIDE3(a,b) a/b
+#define CFLOAT(a) convert_float(a)
+#define CFLOAT3(a) convert_float3(a)
+#define CFLOAT3_(a) convert_half3(a)
+#else
 #define DIVIDE(a,b) native_divide(a,b)
 #define DIVIDE3(a,b) native_divide(a,b)
 #define CFLOAT(a) convert_float(a)
 #define CFLOAT3(a) convert_float3(a)
+#define CFLOAT3_(a) convert_float3(a)
+#endif
 #define CUINT(a) convert_uint(a)
 #define CUINT_rtp(a) convert_uint_rtp(a)
 #define CUINT_rtz(a) convert_uint_rtz(a)
@@ -96,7 +117,6 @@
 #define LOG native_log
 #define CLAMP3(a, b, c) clamp(a, b, c)
 #define CINT(a) convert_int(a)
-#define CINT3_rtz(a) convert_int3_rtz(a)
 #define FMAD(a,b,c) mad(a,b,c)
 #define FMAD2(a,b,c) mad(a,b,c)
 #define FMAD3(a,b,c) mad(a,b,c)
@@ -122,7 +142,7 @@
 #define MUINT3(a, b, c) {a, b, c}
 #define MFLOAT2(a, b) {a, b}
 #define MFLOAT3(a, b, c) {a, b, c}
-#define CMFLOAT3 (float3)
+#define CMFLOAT3 (FLOAT3)
 #define CMINT3 (int3)
 #define CMINT4 (int4)
 #define BARRIER barrier(CLK_LOCAL_MEM_FENCE | CLK_GLOBAL_MEM_FENCE);
@@ -142,7 +162,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define M_PI_2_F 1.570796f
 #define M_SQRT1_2_F 0.7071068f
 #define M_1_PI_F 0.3183099f
-#define CAST float
+#define CAST FLOAT
 #define LONG long long
 #define ULONG unsigned long long
 #define uint unsigned int
@@ -153,7 +173,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define CINT_rtz(a) __float2int_rz(a)
 #define DIVIDE(a,b) fdividef(a,b)
 #define DIVIDE3(a,b) fdividef3(a,b)
-#define CFLOAT(a) (float)(a)
+#define CFLOAT(a) (FLOAT)(a)
 #define CFLOAT3(a) make_int3_float3(a)
 #define CUINT(a) (unsigned int)(a)
 #define CUINT_rtp(a) __float2uint_ru(a)
@@ -220,28 +240,28 @@ inline __device__ tyT sign(tyT val) {
     return (tyT(0) < val) - (val < tyT(0));
 }
 
-inline __device__ float3 expf3(float3 a) {
+inline __device__ FLOAT3 expf3(FLOAT3 a) {
 	return make_float3(__expf(a.x), __expf(a.y), __expf(a.z));
 }
 
-inline __device__ float clamp(float f, float a, float b) {
+inline __device__ FLOAT clamp(FLOAT f, FLOAT a, FLOAT b) {
     return fmaxf(a, fminf(f, b));
 }
 
-inline __device__ float3 clamp3(float3 a, float b, float3 c) {
+inline __device__ FLOAT3 clamp3(FLOAT3 a, FLOAT b, FLOAT3 c) {
 	return make_float3(clamp(a.x, b, c.x), clamp(a.y, b, c.y), clamp(a.z, b, c.z));
 }
 
-inline __device__ float3 fdividef3(float3 a, float3 b) {
+inline __device__ FLOAT3 fdividef3(FLOAT3 a, FLOAT3 b) {
 	return make_float3(fdividef(a.x, b.x), fdividef(a.y, b.y), fdividef(a.z, b.z));
 }
 
-inline __device__ int3 __float2int_rz3(float3 a) {
+inline __device__ int3 __float2int_rz3(FLOAT3 a) {
 	return make_int3(__float2int_rz(a.x), __float2int_rz(a.y), __float2int_rz(a.z));
 }
 
-inline __device__ float3 make_int3_float3(int3 a) {
-	return make_float3((float)a.x, (float)a.y, (float)a.z);
+inline __device__ FLOAT3 make_int3_float3(int3 a) {
+	return make_float3((FLOAT)a.x, (FLOAT)a.y, (FLOAT)a.z);
 }
 
 inline __device__ int3 operator-(int3 a, int3 b) {
@@ -260,7 +280,7 @@ inline __device__ float2 operator-(float2 a, float2 b) {
 	return make_float2(a.x - b.x, a.y - b.y);
 }
 
-inline __device__ float2 operator-(float a, float2 b) {
+inline __device__ float2 operator-(FLOAT a, float2 b) {
 	return make_float2(a - b.x, a - b.y);
 }
 
@@ -268,11 +288,11 @@ inline __device__ float2 operator+(float2 a, float2 b) {
 	return make_float2(a.x + b.x, a.y + b.y);
 }
 
-inline __device__ float2 operator+(float a, float2 b) {
+inline __device__ float2 operator+(FLOAT a, float2 b) {
 	return make_float2(a + b.x, a + b.y);
 }
 
-inline __device__ float2 operator+(float2 a, float b) {
+inline __device__ float2 operator+(float2 a, FLOAT b) {
 	return make_float2(a.x + b, a.y + b);
 }
 
@@ -280,11 +300,11 @@ inline __device__ float2 operator*(float2 a, float2 b) {
 	return make_float2(a.x * b.x, a.y * b.y);
 }
 
-inline __device__ float2 operator*(float b, float2 a) {
+inline __device__ float2 operator*(FLOAT b, float2 a) {
 	return make_float2(a.x * b, a.y * b);
 }
 
-inline __device__ float2 operator*(float2 a, float b) {
+inline __device__ float2 operator*(float2 a, FLOAT b) {
 	return make_float2(a.x * b, a.y * b);
 }
 
@@ -292,66 +312,66 @@ inline __device__ float2 operator/(float2 a, float2 b) {
 	return make_float2(a.x / b.x, a.y / b.y);
 }
 
-inline __device__ float2 operator/(float2 a, float b) {
+inline __device__ float2 operator/(float2 a, FLOAT b) {
 	return make_float2(a.x / b, a.y / b);
 }
 
-inline __device__ float3 operator-(float3 a) {
+inline __device__ FLOAT3 operator-(FLOAT3 a) {
 	return make_float3(-a.x, -a.y, -a.z);
 }
 
-inline __device__ float3 operator-(float3 a, float3 b) {
+inline __device__ FLOAT3 operator-(FLOAT3 a, FLOAT3 b) {
 	return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-inline __device__ float3 operator-(float3 a, float b) {
+inline __device__ FLOAT3 operator-(FLOAT3 a, FLOAT b) {
 	return make_float3(a.x - b, a.y - b, a.z - b);
 }
 
-inline __device__ float3 operator+(float3 a, float3 b) {
+inline __device__ FLOAT3 operator+(FLOAT3 a, FLOAT3 b) {
 	return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
-inline __device__ float3 operator/(float3 a, float3 b) {
+inline __device__ FLOAT3 operator/(FLOAT3 a, FLOAT3 b) {
 	return make_float3(a.x / b.x, a.y / b.y, a.z / b.z);
 }
 
-inline __device__ float3 operator/(float3 a, float b) {
+inline __device__ FLOAT3 operator/(FLOAT3 a, FLOAT b) {
 	return make_float3(a.x / b, a.y / b, a.z / b);
 }
 
-inline __device__ float3 operator*(float3 a, float3 b) {
+inline __device__ FLOAT3 operator*(FLOAT3 a, FLOAT3 b) {
 	return make_float3(a.x * b.x, a.y * b.y, a.z * b.z);
 }
 
-inline __device__ float3 operator*(float3 a, float b) {
+inline __device__ FLOAT3 operator*(FLOAT3 a, FLOAT b) {
 	return make_float3(a.x * b, a.y * b, a.z * b);
 }
 
-inline __device__ void operator*=(float3& a, float3 b) {
+inline __device__ void operator*=(FLOAT3& a, FLOAT3 b) {
 	a.x *= b.x;
 	a.y *= b.y;
 	a.z *= b.z;
 }
 
-inline __device__ void operator-=(float3& a, float3 b) {
+inline __device__ void operator-=(FLOAT3& a, FLOAT3 b) {
 	a.x -= b.x;
 	a.y -= b.y;
 	a.z -= b.z;
 }
 
-inline __device__ void operator+=(float3& a, float3 b) {
+inline __device__ void operator+=(FLOAT3& a, FLOAT3 b) {
 	a.x += b.x;
 	a.y += b.y;
 	a.z += b.z;
 }
 
-inline __device__ void operator-=(float2& a, float b) {
+inline __device__ void operator-=(float2& a, FLOAT b) {
 	a.x -= b;
 	a.y -= b;
 }
 
-inline __device__ void operator*=(float2& a, float b) {
+inline __device__ void operator*=(float2& a, FLOAT b) {
 	a.x *= b;
 	a.y *= b;
 }
@@ -361,52 +381,52 @@ inline __device__ void operator+=(float2& a, float2 b) {
 	a.y += b.y;
 }
 
-inline __device__ float3 fmin(float3 a, float3 b) {
+inline __device__ FLOAT3 fmin(FLOAT3 a, FLOAT3 b) {
     return make_float3(a.x < b.x ? a.x : b.x, a.y < b.y ? a.y : b.y, a.z < b.z ? a.z : b.z);
 }
 
-inline __device__ float3 fmax(float3 a, float3 b) {
+inline __device__ FLOAT3 fmax(FLOAT3 a, FLOAT3 b) {
     return make_float3(a.x > b.x ? a.x : b.x, a.y > b.y ? a.y : b.y, a.z > b.z ? a.z : b.z);
 }
 
-inline __device__ float dot(float3 a, float3 b) {
+inline __device__ FLOAT dot(FLOAT3 a, FLOAT3 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
-inline __device__ float length(float3 v) {
+inline __device__ FLOAT length(FLOAT3 v) {
     return sqrtf(dot(v, v));
 }
 
-inline __device__ float3 cross(float3 a, float3 b) {
+inline __device__ FLOAT3 cross(FLOAT3 a, FLOAT3 b) {
     return make_float3(a.y*b.z - a.z*b.y, a.z*b.x - a.x*b.z, a.x*b.y - a.y*b.x);
 }
 
-inline __device__ float3 normalize(float3 v) {
-    float invLen = rsqrtf(dot(v, v));
+inline __device__ FLOAT3 normalize(FLOAT3 v) {
+    FLOAT invLen = rsqrtf(dot(v, v));
     return v * invLen;
 }
 
-inline __device__ float3 __fmaf_rn3(float a, float3 b, float3 c) {
+inline __device__ FLOAT3 __fmaf_rn3(FLOAT a, FLOAT3 b, FLOAT3 c) {
 	return make_float3(__fmaf_rn(a, b.x, c.x), __fmaf_rn(a, b.y, c.y), __fmaf_rn(a, b.z, c.z));
 }
 
-inline __device__ float3 __fmaf_rn3(float3 a, float b, float3 c) {
+inline __device__ FLOAT3 __fmaf_rn3(FLOAT3 a, FLOAT b, FLOAT3 c) {
 	return make_float3(__fmaf_rn(a.x, b, c.x), __fmaf_rn(a.y, b, c.y), __fmaf_rn(a.z, b, c.z));
 }
 
-inline __device__ float3 __fmaf_rn3(float3 a, float3 b, float3 c) {
+inline __device__ FLOAT3 __fmaf_rn3(FLOAT3 a, FLOAT3 b, FLOAT3 c) {
 	return make_float3(__fmaf_rn(a.x, b.x, c.x), __fmaf_rn(a.y, b.y, c.y), __fmaf_rn(a.z, b.z, c.z));
 }
 
-inline __device__ float2 __fmaf_rn2(float a, float2 b, float2 c) {
+inline __device__ float2 __fmaf_rn2(FLOAT a, float2 b, float2 c) {
 	return make_float2(__fmaf_rn(a, b.x, c.x), __fmaf_rn(a, b.y, c.y));
 }
 
-inline __device__ float distance(float3 a, float3 b) {
+inline __device__ FLOAT distance(FLOAT3 a, FLOAT3 b) {
     return length(a - b);
 }
 
-inline __device__ float3 fabs(float3 v) {
+inline __device__ FLOAT3 fabs(FLOAT3 v) {
     return make_float3(fabs(v.x), fabs(v.y), fabs(v.z));
 }
 
@@ -448,19 +468,33 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
 #define IMTYPE IMAGE3D
 #else
 #ifdef OPENCL
-#define IMTYPE const __global float* restrict
+#define IMTYPE const __global FLOAT* restrict
 #elif defined(CUDA)
-#define IMTYPE const float*
+#define IMTYPE const FLOAT*
 #endif
 #endif
 
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
-// NOTE: Includes code for an OpenCL extension that enables float atomics, but this is currently only supported by Intel and POCL
+// NOTE: Includes code for an OpenCL extension that enables FLOAT atomics, but this is currently only supported by Intel and POCL
 #if defined(ATOMICF) && !defined(ATOMIC) && !defined(ATOMIC32) && defined(OPENCL)
 // #pragma OPENCL EXTENSION cl_ext_float_atomics : enable
 // #define atomicAdd(a,b) atomic_fetch_add((volatile atomic_float *)(a),(b)) 
+#ifdef HALF
+void atomicAdd(volatile CLGLOBAL half *addr, half val) {
+	union {
+		unsigned short u16;
+		half        f16;
+	} next, expected, current;
+	current.f16 = *addr;
+	do {
+		expected.f16 = current.f16;
+		next.f16 = expected.f16 + val;
+		current.u16 = atomic_cmpxchg((volatile CLGLOBAL unsigned short *)addr, expected.u16, next.u16);
+	} while (current.u16 != expected.u16);
+}
+#else
 void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 	union {
 		unsigned int u32;
@@ -474,41 +508,42 @@ void atomicAdd(volatile CLGLOBAL float *addr, float val) {
 	} while (current.u32 != expected.u32);
 }
 #endif
+#endif
 
 #ifdef TOF //////////////// TOF ////////////////
 #define _2PI 0.3989423f
 
-DEVICE float normPDF(const float x, const float mu, const float sigma) {
+DEVICE float normPDF(const float x, const FLOAT mu, const float sigma) {
 
 	const float a = (x - mu) / sigma;
 
-	return _2PI / sigma * EXP(-0.5f * a * a);
+	return _2PI / sigma * EXP(-(float)0.5f * a * a);
 }
 
 DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, float* DD) {
-	*D = length(diff * tc) - LL / 2.f;
+	*D = length(diff * tc) - LL / (float)2.f;
 	*DD = *D;
 }
 
-DEVICE float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, float dX) {
+DEVICE float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const FLOAT TOFCenter, float dX) {
 	float output = normPDF(D, TOFCenter, sigma_x);
 	dX *= sign(DD);
 #pragma unroll
 	for (int tr = 1; tr < CINT(TRAPZ_BINS) - 1; tr++)
 #ifdef USEMAD
-		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, sigma_x) * 2.f);
+		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, sigma_x) * (float)2.f);
 	output += normPDF(FMAD(-element, sign(DD), D), TOFCenter, sigma_x);
 #else
-		output += (normPDF(D - dX * CFLOAT(tr), TOFCenter, sigma_x) * 2.f);
+		output += (normPDF(D - dX * CFLOAT(tr), TOFCenter, sigma_x) * (float)2.f);
 	output += normPDF(D - element * sign(DD), TOFCenter, sigma_x);
 #endif
 	return output;
 }
 
 
-DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCenter, const float sigma_x, float* D, const float epps, float* TOFWeights) {
-	float TOFSum = 0.f;
-	const float dX = element / (TRAPZ_BINS - 1.f);
+DEVICE float TOFLoop(const float DD, const float element, CONSTANT FLOAT* TOFCenter, const float sigma_x, float* D, const float epps, float* TOFWeights) {
+	float TOFSum = (float)0.f;
+	const float dX = element / (float)(TRAPZ_BINS - 1.f);
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
@@ -529,7 +564,7 @@ DEVICE void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const
 	(*d).x += (interval - cr / 2.f);
 	(*s).y += (interval - cr / 2.f);
 	(*d).y += (interval - cr / 2.f);
-	interval *= 2.f;
+	interval *= (float)2.f;
 	(*s).x += interval * lor;
 	(*d).x += interval * lor;
 	(*s).y += interval * lor;
@@ -540,7 +575,7 @@ DEVICE void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const 
 	float interval = cr / (CFLOAT(N_RAYS3D * 2));
 	(*s).z += (interval - cr / 2.f);
 	(*d).z += (interval - cr / 2.f);
-	interval *= 2.f;
+	interval *= (float)2.f;
 	(*s).z += interval * lor;
 	(*d).z += interval * lor;
 }
@@ -554,16 +589,25 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 #ifdef USEIMAGES
 	*ax = (local_ele * tex3D<float>(d_OSEM, local_ind.x, local_ind.y, local_ind.z));
 #else
-	*ax = (local_ele * d_OSEM[local_ind]);
+	*ax = (local_ele * (float)d_OSEM[local_ind]);
 #endif
 #else
 #ifdef PTYPE4
-	*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
+    if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
+#ifdef HALF
+		*ax = (local_ele * (float)(read_imageh(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w));
+#else
+		*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
+#endif
 #else
 #ifdef USEIMAGES
-	*ax = (local_ele * read_imagef(d_OSEM, samplerSiddon, (T4)(local_ind, (typeTT)0)).w);
+#ifdef HALF
+	*ax = (local_ele * (float)(read_imageh(d_OSEM, samplerSiddon, (T4)(local_ind, (typeTT)0)).w));
 #else
-	*ax = (local_ele * d_OSEM[local_ind]);
+	*ax = (local_ele * read_imagef(d_OSEM, samplerSiddon, (T4)(local_ind, (typeTT)0)).w);
+#endif
+#else
+	*ax = (local_ele * (float)d_OSEM[local_ind]);
 #endif
 #endif
 #endif
@@ -573,7 +617,7 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 // Includes TOF-specific weighting
 DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
-	, const float element, const float TOFSum, const float DD, const float sigma_x, float* D, float* TOFWeights
+	, const float element, const float TOFSum, const float DD, const float sigma_x, float* D, FLOAT* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
@@ -582,7 +626,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 	, const int lor
 #endif
 ) {
-	float apu = 0.f;
+	float apu = (float)0.f;
 	forwardProject(local_ele, &apu, localInd, d_OSEM);
 #ifdef TOF
 	const float dX = apu / TOFSum;
@@ -617,16 +661,16 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 // Compute the backprojection
 DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
-	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
+	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, FLOAT* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
 #endif
 ) {
 #ifdef TOF
-	float val = 0.f;
+	float val = (float)0.f;
 	const float dX = local_ele / TOFSum;
-	float yaxTOF = 0.f;
+	float yaxTOF = (float)0.f;
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
@@ -648,17 +692,17 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #ifdef ATOMIC
 	atom_add(&d_rhs_OSEM[local_ind], convert_long(yaxTOF * TH));
 #elif defined(ATOMIC32)
-	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
+	atomic_add(&d_rhs_OSEM[local_ind], CINT((float)yaxTOF * TH));
 #else
-	atomicAdd(&d_rhs_OSEM[local_ind], (yaxTOF));
+	atomicAdd(&d_rhs_OSEM[local_ind], (FLOAT)(yaxTOF));
 #endif
 	if (no_norm == 0u)
 #ifdef ATOMIC
 		atom_add(&d_Summ[local_ind], convert_long(val * TH));
 #elif defined(ATOMIC32)
-		atomic_add(&d_Summ[local_ind], CINT(val * TH));
+		atomic_add(&d_Summ[local_ind], CINT((float)val * TH));
 #else
-		atomicAdd(&d_Summ[local_ind], val);
+		atomicAdd(&d_Summ[local_ind], (FLOAT)val);
 #endif
 }
 #endif
@@ -669,11 +713,11 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #ifdef INDEXBASED
 DEVICE void getDetectorCoordinatesListmode(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL FLOAT* d_xy,
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT FLOAT* d_xy, 
 #endif
-	CONSTANT float* d_z, const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
+	CONSTANT FLOAT* d_z, const CLGLOBAL ushort* trIndex, const CLGLOBAL ushort* axIndex, float3* s, float3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -693,7 +737,7 @@ DEVICE void getDetectorCoordinatesListmode(
 #endif
 }
 #else
-DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* s, float3* d, const size_t idx
+DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL FLOAT* d_xyz, float3* s, float3* d, const size_t idx
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -713,20 +757,20 @@ DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* 
 
 // Detector coordinates for CT data
 #if defined(CT) && !defined(SPECTMASK)
-DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
+DEVICE void getDetectorCoordinatesCT(CONSTANT FLOAT* d_xyz, CONSTANT FLOAT* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
 	const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
 #endif
 ) {
 	int id = i.z * 6;
-	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
-	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	*s = convert_float3(CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]));
+	*d = convert_float3(CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]));
+	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / (float)2.f + (float).5f, CFLOAT(i.y) - CFLOAT(d_sizey) / (float)2.f + (float).5f);
 	id = i.z * NA;
 #if defined(PITCH)
-	const float3 apuX = MFLOAT3(d_uv[id], d_uv[id + 1], d_uv[id + 2]);
-	const float3 apuY = MFLOAT3(d_uv[id + 3], d_uv[id + 4], d_uv[id + 5]);
+	const float3 apuX = convert_float3(CMFLOAT3(d_uv[id], d_uv[id + 1], d_uv[id + 2]));
+	const float3 apuY = convert_float3(CMFLOAT3(d_uv[id + 3], d_uv[id + 4], d_uv[id + 5]));
 #ifdef USEMAD
 	*d += FMAD3(apuX, indeksi.x, apuY * indeksi.y);
 #else
@@ -741,15 +785,15 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 #endif
 #if defined(PROJ5) && defined(FP)
 #ifdef USEMAD
-	*dR = FMAD3(-apuX, 0.5f, *d);
-	*dL = FMAD3(apuX, 0.5f, *d);
-	*dU = FMAD3(apuY, 0.5f, *d);
-	*dD = FMAD3(-apuY, 0.5f, *d);
+	*dR = FMAD3(-apuX, (float)0.5f, *d);
+	*dL = FMAD3(apuX, (float)0.5f, *d);
+	*dU = FMAD3(apuY, (float)0.5f, *d);
+	*dD = FMAD3(-apuY, (float)0.5f, *d);
 #else
-	*dR = *d - apuX * 0.5f;
-	*dL = *d + apuX * 0.5f;
-	*dU = *d + apuY * 0.5f;
-	*dD = *d - apuY * 0.5f;
+	*dR = *d - apuX * (float)0.5f;
+	*dL = *d + apuX * (float)0.5f;
+	*dU = *d + apuY * (float)0.5f;
+	*dD = *d - apuY * (float)0.5f;
 #endif
 #endif
 #else
@@ -757,21 +801,21 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 	const float apuY = d_uv[id + 1];
 	(*d).x += indeksi.x * apuX;
 	(*d).y += indeksi.x * apuY;
-	(*d).z += indeksi.y * d_dPitch.y;
+	(*d).z += indeksi.y * (float)d_dPitch.y;
 #ifdef PARALLEL
 	(*s).x += indeksi.x * apuX;
 	(*s).y += indeksi.x * apuY;
-	(*s).z += indeksi.y * d_dPitch.y;
+	(*s).z += indeksi.y * (float)d_dPitch.y;
 #endif
 #if defined(PROJ5) && defined(FP)
 #ifdef USEMAD
-	*dR = CMFLOAT3(FMAD(-apuX, 0.5f, (*d).x), FMAD(-apuY, 0.5f, (*d).y), (*d).z);
-	*dL = CMFLOAT3(FMAD(apuX, 0.5f, (*d).x), FMAD(apuY, 0.5f, (*d).y), (*d).z);
+	*dR = CMFLOAT3(FMAD(-apuX, (float)0.5f, (*d).x), FMAD(-apuY, 0.5f, (*d).y), (*d).z);
+	*dL = CMFLOAT3(FMAD(apuX, (float)0.5f, (*d).x), FMAD(apuY, 0.5f, (*d).y), (*d).z);
 	*dU = CMFLOAT3((*d).x, (*d).y, FMAD(d_dPitch.y, 0.5f, (*d).z));
 	*dD = CMFLOAT3((*d).x, (*d).y, FMAD(-d_dPitch.y, 0.5f, (*d).z));
 #else
-	*dR = CMFLOAT3((*d).x - apuX * 0.5f, (*d).y - apuY * 0.5f, (*d).z);
-	*dL = CMFLOAT3((*d).x + apuX * 0.5f, (*d).y + apuY * 0.5f, (*d).z);
+	*dR = CMFLOAT3((*d).x - apuX * (float)0.5f, (*d).y - apuY * 0.5f, (*d).z);
+	*dL = CMFLOAT3((*d).x + apuX * (float)0.5f, (*d).y + apuY * 0.5f, (*d).z);
 	*dU = CMFLOAT3((*d).x, (*d).y, (*d).z + d_dPitch.y * 0.5f);
 	*dD = CMFLOAT3((*d).x, (*d).y, (*d).z - d_dPitch.y * 0.5f);
 #endif
@@ -782,48 +826,57 @@ DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv
 #elif defined(SPECT)
 DEVICE void getDetectorCoordinatesSPECT(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xyz,
+	const CLGLOBAL FLOAT* d_xyz,
 #else
-	CONSTANT float* d_xyz, 
+	CONSTANT FLOAT* d_xyz, 
 #endif
-    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
+    CONSTANT FLOAT* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL FLOAT* d_rayShiftsDetector, const CLGLOBAL FLOAT* d_rayShiftsSource, int lorXY) {
 	int id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
+	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / (float)2.f + (float).5f, CFLOAT(i.y) - CFLOAT(d_sizey) / (float)2.f + (float).5f);
 	id = i.z * NA;
 
 	const float apuX = d_uv[id];
 	const float apuY = d_uv[id + 1];
 	(*d).x += indeksi.x * apuX;
 	(*d).y += indeksi.x * apuY;
-	(*d).z += indeksi.y * d_dPitch.y;
+	(*d).z += indeksi.y * (float)d_dPitch.y;
 	(*s).x += indeksi.x * apuX;
 	(*s).y += indeksi.x * apuY;
-	(*s).z += indeksi.y * d_dPitch.y;
+	(*s).z += indeksi.y * (float)d_dPitch.y;
 #if defined(N_RAYS)
 	if (N_RAYS2D > 1) {
 		int idr = lorXY * 2;
-		(*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
-		(*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
-		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
-		(*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
-		(*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
-		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
+		(*d).x += apuX * d_rayShiftsDetector[idr] / (float)2.f;
+		(*d).y += apuY * d_rayShiftsDetector[idr] / (float)2.f;
+		(*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / (float)2.f;
+		(*s).x += apuX * d_rayShiftsSource[idr] / (float)2.f;
+		(*s).y += apuY * d_rayShiftsSource[idr] / (float)2.f;
+		(*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / (float)2.f;
 	}
 #endif
-	(*s).x += 100.f * ((*s).x - (*d).x);
-	(*s).y += 100.f * ((*s).y - (*d).y);
-	(*s).z += 100.f * ((*s).z - (*d).z);
+	(*s).x += (float)500.f * ((*s).x - (*d).x);
+	(*s).y += (float)500.f * ((*s).y - (*d).y);
+	(*s).z += (float)500.f * ((*s).z - (*d).z);
+	// float tmpX = (*s).x;
+	// float tmpY = (*s).y;
+	// float tmpZ = (*s).z;
+	// (*s).x = (*d).x;
+	// (*s).y = (*d).y;
+	// (*s).z = (*d).z;
+	// (*d).x = tmpX;
+	// (*d).y = tmpY;
+	// (*d).z = tmpZ;
 }
 #else
 #if defined(RAW) || defined(SENS)
 // Get the detector coordinates for the current (raw) measurement
 DEVICE void getDetectorCoordinatesRaw(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL FLOAT* d_xy,
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT FLOAT* d_xy, 
 #endif
 	CONSTANT float *d_z, const int3 i, float3* s, float3* d, const int2 indz
 #if defined(N_RAYS)
@@ -851,11 +904,11 @@ DEVICE void getDetectorCoordinatesRaw(
 DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBAL ushort *d_zindex, const size_t idx,
 	float3* s, float3* d, 
 #if defined(CT) || !defined(USEGLOBAL)
-	CONSTANT float *d_xy, 
+	CONSTANT FLOAT *d_xy, 
 #else
-	const CLGLOBAL float *d_xy, 
+	const CLGLOBAL FLOAT *d_xy, 
 #endif
-	CONSTANT float *d_z
+	CONSTANT FLOAT *d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -896,11 +949,11 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
 DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, 
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xy,
+	const CLGLOBAL FLOAT* d_xy,
 #else
-	CONSTANT float* d_xy, 
+	CONSTANT FLOAT* d_xy, 
 #endif
-	CONSTANT float* d_z
+	CONSTANT FLOAT* d_z
 #if defined(N_RAYS)
 	, const int lorXY, const int lorZ, const float2 cr
 #endif
@@ -911,11 +964,11 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 	const int id = (i.x + i.y * d_size_x) * 4;
 	const int idz = i.z * 2;
 #if defined(NLAYERS)
-	*s = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4], d_xy[id + layer * d_size_x * d_sizey * 4 + 1], d_z[idz]);
-	*d = CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4 + 2], d_xy[id + layer * d_size_x * d_sizey * 4 + 3], d_z[idz + 1]);
+	*s = CFLOAT3(CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4], d_xy[id + layer * d_size_x * d_sizey * 4 + 1], (d_z[idz])));
+	*d = CFLOAT3(CMFLOAT3(d_xy[id + layer * d_size_x * d_sizey * 4 + 2], d_xy[id + layer * d_size_x * d_sizey * 4 + 3], (d_z[idz + 1])));
 #else
-	*s = CMFLOAT3(d_xy[id], d_xy[id + 1], d_z[idz]);
-	*d = CMFLOAT3(d_xy[id + 2], d_xy[id + 3], d_z[idz + 1]);
+	*s = CFLOAT3(CMFLOAT3(d_xy[id], d_xy[id + 1], (d_z[idz])));
+	*d = CFLOAT3(CMFLOAT3(d_xy[id + 2], d_xy[id + 3], (d_z[idz + 1])));
 #endif
 #if defined(N_RAYS)
 	if (N_RAYS3D > 1)
@@ -933,10 +986,18 @@ DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten
 		*jelppi += (val * -tex3D<float>(d_atten, ind.x, ind.y, ind.z));
 #else
 #if defined(PTYPE4)
+#ifdef HALF
+		*jelppi += (val * (float)(-read_imageh(d_atten, samplerForw, convert_float4(ind.x, ind.y, ind.z, 0.h)).w));
+#else
 		*jelppi += (val * -read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w);
+#endif
 #else
 #ifdef USEIMAGES
+#ifdef HALF
+		*jelppi += (val * (float)(-read_imageh(d_atten, samplerSiddon, convert_float4(ind.x, ind.y, ind.z, 0.h)).w));
+#else
 		*jelppi += (val * -read_imagef(d_atten, samplerSiddon, (int4)(ind.x, ind.y, ind.z, 0)).w);
+#endif
 #else
 		*jelppi += (val * -d_atten[ind]);
 #endif
@@ -1253,7 +1314,7 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 #endif
 
 #if defined(FP) && !defined(PROJ5)
-DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, const float temp, const int kk) {
+DEVICE void forwardProjectAF(CLGLOBAL FLOAT* output, float* ax, size_t idx, const float temp, const int kk) {
 
 #ifndef CT
 	output[idx] += ax[kk] * temp;

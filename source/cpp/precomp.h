@@ -55,7 +55,8 @@ typedef struct structForScalars {
 		saveIter = false, enforcePositivity = false, computeSensImag = false, useMAD = true, useImages = false, eFOV = false,
 		useExtendedFOV = false, use64BitIndices = false, TGV2D = false, multiResolution = false, offset = false, relaxScaling = false,
 		computeRelaxation = false, storeFP = false, deconvolution = false, CTAttenuation = true, largeDim = false, storeResidual = false,
-		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true;
+		useBuffers = true, useFDKWeights = false, indexBased = false, FISTAAcceleration = false, stochastic = false, useTotLength = true,
+		useHalf = false;
 	int64_t Nf = 0;
 	std::vector<CTYPE3> d_Scale;
 	std::vector<CTYPE3> d_Scale4;
@@ -66,7 +67,7 @@ typedef struct structForScalars {
 	uint16_t n_rays = 1, n_rays3D = 1;
 	uint32_t g_dim_x = 0u, g_dim_y = 0u, g_dim_z = 0u, deblur_iterations = 0U;
 	int64_t nBins = 1, nProjections = 0, numelY = 0, numelZ = 0, TOFSize = 0;
-	std::vector<int64_t> im_dim{ 1, 0, 0, 0, 0, 0, 0 };
+	std::vector<int64_t> im_dim{ 1 };
 	size_t size_of_x, size_atten = 1, size_norm = 1, size_center_x, size_center_y, size_center_z, size_V = 1, size_scat = 1, kokoTOF = 0, kokoNonTOF = 0, sizeLOR,
 		sizeL, sizeXY, sizeZ, saveIterationsMiddle = 0ULL;
 	uint32_t* saveNIter = nullptr;

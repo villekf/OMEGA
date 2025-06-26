@@ -5,7 +5,7 @@ inline int MRP(const af::array& im, const uint32_t medx, const uint32_t medy, co
 	ProjectorClass& proj, af::array& dU, const float beta, const bool med_no_norm = false) {
 	int status = 0;
 	af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], medx, medy, medz);
-	af::array grad = af::constant(0.f, im.elements());
+	af::array grad = af::constant(0.f, im.elements(), im.type());
 	status = MRPAF(padd, grad, inputScalars, proj, medx, medy, medz);
 	if (status != 0)
 		return -1;
@@ -60,11 +60,11 @@ inline af::array FMH(const af::array& im, const uint32_t Ndx, const uint32_t Ndy
 	const af::array padd = af::flat(padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz));
 	uint32_t luup;
 	if (inputScalars.Nz[0] == 1 || Ndz == 0) {
-		grad = af::constant(0.f, inputScalars.im_dim[0], 5);
+		grad = af::constant(0.f, inputScalars.im_dim[0], 5, im.type());
 		luup = 4;
 	}
 	else {
-		grad = af::constant(0.f, inputScalars.im_dim[0], 14);
+		grad = af::constant(0.f, inputScalars.im_dim[0], 14, im.type());
 		luup = 13;
 	}
 	for (uint32_t ii = 0; ii < luup; ii++) {
@@ -100,7 +100,7 @@ inline af::array L_filter(const af::array& im, const uint32_t Ndx, const uint32_
 inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const uint32_t Ndy, const uint32_t Ndz, const scalarStruct& inputScalars,
 	const af::array& weighted_weights, const float w_sum, const uint32_t mean_type = 1, const bool med_no_norm = false)
 {
-	af::array grad = af::constant(0.f, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0]);
+	af::array grad = af::constant(0.f, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], im.type());
 	const float wsum = af::sum<float>(af::flat(weighted_weights));
 	if (mean_type == 1U) {
 		af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx, Ndy, Ndz);
@@ -124,7 +124,7 @@ inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const ui
 			grad = af::exp(af::convolve3(af::log(padd), weighted_weights / wsum));
 	}
 	else if (mean_type == 4U) {
-		grad = af::constant(0.f, im.dims(0));
+		grad = af::constant(0.f, im.dims(0), im.type());
 		af::array padd = padding(im, inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0], Ndx * 2, Ndy * 2, Ndz * 2);
 		af::array m = af::convolve3(padd, weighted_weights / wsum);
 		if (Ndz == 0 || inputScalars.Nz[0] == 1) {
@@ -159,7 +159,7 @@ inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const ui
 		else {
 			m = m(af::seq(Ndx, inputScalars.Nx[0] + Ndx * 3 - 1), af::seq(Ndy, inputScalars.Ny[0] + Ndy * 3 - 1), af::seq(Ndz, inputScalars.Nz[0] + Ndz * 3 - 1));
 		}
-		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements());
+		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements(), im.type());
 		int jj = 0;
 		for (int ll = 0; ll < weighted_weights.dims(2); ll++) {
 			for (int kk = 0; kk < weighted_weights.dims(1); kk++) {
@@ -187,7 +187,7 @@ inline af::array Weighted_mean(const af::array& im, const uint32_t Ndx, const ui
 		else {
 			m = m(af::seq(Ndx, inputScalars.Nx[0] + Ndx * 3 - 1), af::seq(Ndy, inputScalars.Ny[0] + Ndy * 3 - 1), af::seq(Ndz, inputScalars.Nz[0] + Ndz * 3 - 1));
 		}
-		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements());
+		af::array mm = af::constant(0.f, im.dims(0), weighted_weights.elements(), im.type());
 		int jj = 0;
 		for (int ll = 0; ll < weighted_weights.dims(2); ll++) {
 			for (int kk = 0; kk < weighted_weights.dims(1); kk++) {
@@ -375,7 +375,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	if (iter)
 		dU = &vec.im_os[0];
 	else if (MethodList.RBIOSL || MethodList.OSLOSEM || MethodList.OSLCOSEM || MethodList.POCS || MethodList.SAGA || MethodList.SART) {
-		vec.dU = af::constant(0.f, vec.im_os[0].elements());
+		vec.dU = af::constant(0.f, vec.im_os[0].elements(), w_vec.dType);
 		dU = &vec.dU;
 	}
 	else
@@ -427,7 +427,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing AD prior gradient");
 		if (osa_iter == 0u) {
-			*dU += af::constant(0.f, inputScalars.im_dim[0], 1);
+			*dU += af::constant(0.f, inputScalars.im_dim[0], 1, w_vec.dType);
 		}
 		else {
 			*dU += beta * AD(vec.im_os[0], inputScalars, w_vec.TimeStepAD, w_vec.KAD, w_vec.NiterAD, w_vec.FluxType,

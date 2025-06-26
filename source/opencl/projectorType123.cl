@@ -81,8 +81,8 @@ extern "C" __global__
 void projectorType123(const float global_factor, const float d_epps, const uint d_size_x, const uint d_det_per_ring,
 	const float sigma_x,
 #if defined(SPECT)
-	const CLGLOBAL float* CLRESTRICT d_rayShiftsDetector,
-	const CLGLOBAL float* CLRESTRICT d_rayShiftsSource,
+	const CLGLOBAL FLOAT* CLRESTRICT d_rayShiftsDetector,
+	const CLGLOBAL FLOAT* CLRESTRICT d_rayShiftsSource,
     const float coneOfResponseStdCoeffA,
     const float coneOfResponseStdCoeffB,
     const float coneOfResponseStdCoeffC,
@@ -99,12 +99,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	///////////////////////// TOF BINS /////////////////////////
 #ifdef TOF
-	CONSTANT float* TOFCenter, 
+	CONSTANT FLOAT* TOFCenter, 
 #endif
 	///////////////////////// END TOF BINS /////////////////////////
 	///////////////////////// ORTHOGONAL-BASED RAY TRACER /////////////////////////
 #ifdef ORTH
-	CONSTANT float* V, 
+	CONSTANT FLOAT* V, 
 #endif
 	///////////////////////// END ORTHOGONAL-BASED RAY TRACER /////////////////////////
 	const uint d_sizey, 
@@ -113,10 +113,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef USEIMAGES
 	IMAGE3D d_atten,
 #else
-	const CLGLOBAL float* CLRESTRICT d_atten,
+	const CLGLOBAL FLOAT* CLRESTRICT d_atten,
 #endif
 #elif !defined(CT) && !defined(ATN) && defined(ATNM)
-	const CLGLOBAL float* CLRESTRICT d_atten,
+	const CLGLOBAL FLOAT* CLRESTRICT d_atten,
 #endif
 	///////////////////////// END PET ATTENUATION CORRECTION /////////////////////////
 	///////////////////////// FORWARD PROJECTION MASK /////////////////////////
@@ -150,15 +150,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 	///////////////////////// END FULL PROJECTIONS/SINOGRAMS /////////////////////////
 #if !defined(USEGLOBAL)
-	CONSTANT float* d_xy,
+	CONSTANT FLOAT* d_xy,
 #else
-	const CLGLOBAL float* CLRESTRICT d_xy,
+	const CLGLOBAL FLOAT* CLRESTRICT d_xy,
 #endif
 	///////////////////////// LISTMODE DATA /////////////////////////
 #if (defined(LISTMODE) && !defined(SENS) && !defined(INDEXBASED))
-	const CLGLOBAL float* CLRESTRICT d_z,
+	const CLGLOBAL FLOAT* CLRESTRICT d_z,
 #else
-	CONSTANT float* d_z,
+	CONSTANT FLOAT* d_z,
 #endif
 #ifdef SENS
 	const uint rings,
@@ -166,12 +166,12 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 	///////////////////////// END LISTMODE DATA /////////////////////////
 	///////////////////////// PET NORMALIZATION DATA /////////////////////////
 #ifdef NORM
-	const CLGLOBAL float* CLRESTRICT d_norm, 
+	const CLGLOBAL FLOAT* CLRESTRICT d_norm, 
 #endif
 	///////////////////////// END PET NORMALIZATION DATA /////////////////////////
 	///////////////////////// EXTRA CORRECTION DATA /////////////////////////
 #ifdef SCATTER
-	const CLGLOBAL float* CLRESTRICT d_scat, 
+	const CLGLOBAL FLOAT* CLRESTRICT d_scat, 
 #endif
 	///////////////////////// END EXTRA CORRECTION DATA /////////////////////////
 	CLGLOBAL CAST* CLRESTRICT d_Summ, 
@@ -202,10 +202,10 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef USEIMAGES
 	IMAGE3D d_OSEM, 
 #else
-	const CLGLOBAL float* CLRESTRICT d_OSEM, 
+	const CLGLOBAL FLOAT* CLRESTRICT d_OSEM, 
 #endif
 #else
-	const CLGLOBAL float* CLRESTRICT d_OSEM, 
+	const CLGLOBAL FLOAT* CLRESTRICT d_OSEM, 
 #endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
 	/* Not yet implemented //////////////
@@ -217,7 +217,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(BP)
 	CLGLOBAL CAST* d_output,
 #else
-	CLGLOBAL float* d_output,
+	CLGLOBAL FLOAT* d_output,
 #endif
 	///////////////////////// END FORWARD OR BACKWARD PROJECTIONS /////////////////////////
 	const uchar no_norm, const ULONG m_size, const uint currentSubset, const int aa) {

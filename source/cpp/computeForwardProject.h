@@ -64,7 +64,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				mexPrintBase("randomsData.dims(1) = %d\n", randomsData.dims(1));
 				mexEval();
 			}
-			if (inputScalars.verbose >= 3)
+			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Adding randoms/scatter data to forward projection");
 			if (inputScalars.TOF)
 				input += af::tile(randomsData, inputScalars.nBins);
@@ -122,7 +122,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 	}
 	else if (MethodList.PKMA) {
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Computing PKMA");
 		if (inputScalars.CT) {
 			input(input < 0.f) = 0.f;
@@ -136,7 +136,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				input = y - af::exp(-input) * inputScalars.flat;
 		}
 		else {
-			if (inputScalars.verbose >= 3)
+			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("PET/SPECT mode");
 			if (inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
 				input = y / (input);
@@ -207,7 +207,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 	}
 	else if (MethodList.SART || MethodList.POCS) {
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Computing SART or ASD-POCS");
 		if (MethodList.POCS)
 			vec.f0POCS = vec.im_os;
@@ -221,7 +221,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		input.eval();
 	}
 	else if (MethodList.PDHG || MethodList.PDDY) {
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Computing PDHG");
 		if (DEBUG) {
 			mexPrintBase("rdim0 = %u\n", y.dims(0));
@@ -251,7 +251,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 		if (w_vec.precondTypeMeas[1] && subIter + iter * inputScalars.subsets < w_vec.filterIter) {
 			if (FINVERSE) {
-				if (inputScalars.verbose >= 3)
+				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("Computing inverse with circulant matrix");
 				input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res);
 				if (inputScalars.subsetType == 5 || inputScalars.subsetType == 4) {
@@ -267,9 +267,13 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 					w_vec.Ffilter(0) = w_vec.Ffilter(0) + 1.f;
 					w_vec.Ffilter = af::real(af::fft(w_vec.Ffilter));
 				}
+				if (inputScalars.useHalf)
+					input = input.as(f32);
 				status = filteringInverse(w_vec.Ffilter, input, proj, inputScalars.Nf);
 				if (status != 0)
 					return -1;
+				if (inputScalars.useHalf)
+					input = input.as(f16);
 			}
 			else {
 				af::array apu = af::tile(w_vec.filter, res.elements() / w_vec.filter.elements());
@@ -291,12 +295,12 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 		}
 		else {
 			if (MethodList.ProxTGV) {
-				if (inputScalars.verbose >= 3)
+				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("Computing Proximal TGV");
 				input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res) / (1.f + w_vec.sigmaCP[ii] * w_vec.betaReg);
 			}
 			else {
-				if (inputScalars.verbose >= 3)
+				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("Computing PDHG");
 				input = (vec.pCP[subIter] + w_vec.sigmaCP[ii] * res) / (1.f + w_vec.sigmaCP[ii]);
 			}

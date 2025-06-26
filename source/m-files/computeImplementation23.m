@@ -14,7 +14,7 @@ res = [];
 %     type = varargin{1};
 % end
 if options.use_32bit_atomics && options.use_64bit_atomics
-    options.use_32bit_atomics = false;
+    options.use_64bit_atomics = false;
 end
 if options.use_64bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
     options.use_64bit_atomics = false;
@@ -22,6 +22,13 @@ end
 if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
     options.use_32bit_atomics = false;
 end
+if options.useHalf && options.use_64bit_atomics
+    options.use_64bit_atomics = false;
+    options.use_32bit_atomics = true;
+end
+% if options.useHalf
+%     options.epps = 1e-5;
+% end
 % if type <= 0
 %     rekot = varargin{2};
 %     if numel(varargin) >= 3 && ~isempty(varargin{3})

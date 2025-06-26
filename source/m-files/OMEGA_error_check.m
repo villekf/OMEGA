@@ -172,11 +172,14 @@ if ~options.largeDim && isempty(options.x0)
         options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
     end
 end
-if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz
+if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz && ~options.useEFOV
     error(['Initial value has a matrix size smaller (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size ('...
         num2str(options.Nx*options.Ny*options.Nz) ')!'])
+elseif ~options.largeDim && options.useEFOV && (size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.NxOrig*options.NyOrig*options.NzOrig)
+    error(['Initial value has a matrix size smaller (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size ('...
+        num2str(options.NxOrig*options.NyOrig*options.NzOrig) ')!'])
 end
-if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) > options.Nx*options.Ny*options.Nz
+if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) > options.Nx*options.Ny*options.Nz && ~options.useEFOV
     warning(['Initial value has a matrix size larger (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size (' ...
         num2str(options.Nx*options.Ny*options.Nz) ')! Attempting automatic resize.'])
     apuVar = numel(options.x0) / (options.Nx * options.Ny * options.Nz);
@@ -401,7 +404,9 @@ if options.TOF_bins_used > 1 && options.use_raw_data && ~options.CT && ~options.
     error('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = false).')
 end
 if options.corrections_during_reconstruction && (options.scatter_correction || options.randoms_correction) && (options.PDHG || options.PDHGL1 || options.FISTA || options.LSQR || options.CGLS || options.FISTAL1)
-    error('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm!')
+    warning('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
+    options.randoms_correction = false;
+    options.scatter_correction = false;
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0
@@ -446,6 +451,9 @@ if options.verbose > 0
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(1)+1)];
                 else
                     k1 = strfind(inffo, ['-' num2str(options.use_device) '-']);
+                    if isempty(k1)
+                        k1 = strfind(inffo, ['[' num2str(options.use_device) ']']);
+                    end
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(options.use_device + 1)+1)];
                 end
             end
