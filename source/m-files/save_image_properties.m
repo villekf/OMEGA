@@ -474,4 +474,7 @@ if options.implementation == 2
     image_properties.ImagesWereUsed = options.useImages;
     image_properties.MADWasUsed = options.useMAD;
 end
+if options.projector_type == 4 || options.projector_type == 45
+    image_properties.interpolationLength = options.dL;
+end
 % pz{end,1} = image_properties;
