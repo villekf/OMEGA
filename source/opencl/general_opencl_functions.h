@@ -558,7 +558,8 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 #endif
 #else
 #ifdef PTYPE4
-	*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
+    if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
+		*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
 #else
 #ifdef USEIMAGES
 	*ax = (local_ele * read_imagef(d_OSEM, samplerSiddon, (T4)(local_ind, (typeTT)0)).w);
