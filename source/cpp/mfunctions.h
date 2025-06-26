@@ -174,12 +174,12 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.deblur_iterations = getScalarUInt32(getField(options, 0, "deblur_iterations"));
 	}
 
-	inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
-	inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
-	if (inputScalars.multiResolution) {
-		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-			inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
-	}
+	//inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
+	//inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
+	//if (inputScalars.multiResolution) {
+	//	for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
+	//		inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+	//}
 }
 
 // Loads the input data and forms device data variables

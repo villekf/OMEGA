@@ -439,8 +439,17 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
 	inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
 	if (inputScalars.multiResolution) {
-		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-			inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
+			inputScalars.im_dim.emplace_back(static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]));
+			if (DEBUG) {
+				mexPrintBase("inputScalars.im_dim = %u\n", inputScalars.im_dim[ii]);
+				mexPrintBase("inputScalars.Nx = %u\n", inputScalars.Nx[ii]);
+				mexPrintBase("inputScalars.Ny = %u\n", inputScalars.Ny[ii]);
+				mexPrintBase("inputScalars.Nz = %u\n", inputScalars.Nz[ii]);
+				mexPrintBase("ii = %u\n", ii);
+				mexEval();
+			}
+		}
 	}
 
 	// Load the necessary data from the MATLAB input (options) and create the necessary variables

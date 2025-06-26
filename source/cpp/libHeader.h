@@ -857,7 +857,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
     if (inputScalars.multiResolution) {
         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-            inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+            inputScalars.im_dim.emplace_back(static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]));
     }
 	
     Ni = 1;
