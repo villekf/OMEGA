@@ -74,14 +74,11 @@ function varargout = volume3Dviewer(volume, varargin)
         end
     end
 
-    orientation = [0 0]; % Orientation
     if nargin >= 3 && ~isempty(varargin{2})
         if varargin{2}(1) == 1
-            orientation = [1 0];
-        %     volume = flipud(permute(volume, [1 3 2]));
+            volume = flipud(permute(volume, [1 3 2]));
         elseif varargin{2}(2) == 1
-            orientation = [0 1];
-        %     volume = flipud(permute(volume, [3 2 1]));
+            volume = flipud(permute(volume, [3 2 1]));
         end
     end
 
@@ -96,7 +93,7 @@ function varargout = volume3Dviewer(volume, varargin)
 
     useColorbar = false;
     if nargin >= 5 && ~isempty(varargin{4})
-        useColorbar = varargin{4}
+        useColorbar = varargin{4};
     end
 
     %% Volume 1 UI controls
@@ -139,21 +136,9 @@ function varargout = volume3Dviewer(volume, varargin)
     % Function to draw slice using imagesc
     function drawSlice(ax, volume, scale, slice_num)
         if isempty(scale) % Display the selected slice using imagesc
-            if orientation(2) == 1
-                imagesc(ax, squeeze(volume(slice_num, :, :)));
-            elseif orientation(1) == 1
-                imagesc(ax, squeeze(volume(:, slice_num, :)));
-            else
-                imagesc(ax, volume(:, :, slice_num));
-            end
+            imagesc(ax, volume(:, :, slice_num));
         else
-            if orientation(2) == 1
-                imagesc(ax, squeeze(volume(slice_num, :, :)), scale);
-            elseif orientation(1) == 1
-                imagesc(ax, squeeze(volume(:, slice_num, :)), scale);
-            else
-                imagesc(ax, volume(:, :, slice_num), scale);
-            end
+            imagesc(ax, volume(:, :, slice_num), scale);
         end
     end
 
