@@ -160,12 +160,18 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	if (inputScalars.CT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"), -10);
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"), -10);
-	} else if (inputScalars.SPECT && (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2)) {
+	} else if (inputScalars.SPECT) {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "nColsD"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "nRowsD"));
-        inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
-        inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
-        inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
+        if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2) {
+            inputScalars.coneOfResponseStdCoeffA = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffA"));
+            inputScalars.coneOfResponseStdCoeffB = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffB"));
+            inputScalars.coneOfResponseStdCoeffC = getScalarFloat(getField(options, 0, "coneOfResponseStdCoeffC"));
+        }
+        /*if (inputScalars.FPType == 6 || inputScalars.BPType == 6) {
+            inputScalars.FOVa_y = getScalarFloat(getField(options, 0, "FOVa_y"));
+            inputScalars.CORtoDetectorSurface = getScalarFloat(getField(options, 0, "CORtoDetectorSurface"));
+        }*/
 	} else {
 		inputScalars.nColsD = getScalarUInt32(getField(options, 0, "Nang"));
 		inputScalars.nRowsD = getScalarUInt32(getField(options, 0, "Ndist"));
@@ -263,10 +269,10 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 		}
 		w_vec.angles = getSingles(options, "angles");
         w_vec.gFilter = af::array(ind[0], ind[1], ind[2], getSingles(options, "gFilter"));
-		w_vec.distInt = getUint32s(options, "blurPlanes");
+		w_vec.distInt = getInt32s(options, "blurPlanes");
         w_vec.distInt2 = getInt32s(options, "blurPlanes2");
         w_vec.swivelAngles = getSingles(options, "swivelAngles");
-        w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
+        //w_vec.radiusPerProj = getSingles(options, "radiusPerProj");
 		if (DEBUG) {
 			mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
 			mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));

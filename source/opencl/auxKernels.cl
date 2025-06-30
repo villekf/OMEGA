@@ -2074,17 +2074,8 @@ void PDHGUpdate(CLGLOBAL float* CLRESTRICT im, const CLGLOBAL float* CLRESTRICT 
 #if defined(USEIMAGES) && defined(OPENCL)
 CONSTANT sampler_t samplerRotate = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_LINEAR | CLK_ADDRESS_CLAMP;
 #endif
-KERNEL
 // Initial version from: https://stackoverflow.com/questions/9833316/cuda-image-rotation/10008412#10008412
-void rotate(
-    CLGLOBAL float* CLRESTRICT rotim
-#ifdef USEIMAGES
-    , IMAGE3D im
-#else
-    , const CLGLOBAL float* CLRESTRICT im
-#endif
-    , const int Nx, const int Ny, const int Nz, const float cosa, const float sina
-) {
+KERNEL void rotate(CLGLOBAL float* CLRESTRICT rotim, IMTYPE im, const int Nx, const int Ny, const int Nz, const float cosa, const float sina) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 	if (xyz.x >= Nx || xyz.y >= Ny || xyz.z >= Nz)
 		return;

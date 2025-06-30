@@ -358,11 +358,11 @@ classdef projectorClass
                     else
                         fprintf('disabling backprojection mask\n')
                         obj.param.useMaskBP = false;
-                        obj.param.maskBP = [];
                     end
-                elseif ~obj.param.useMaskBP && isfield(obj.param, 'maskBP')
+                end
+                if ~obj.param.useMaskBP && isfield(obj.param, 'maskBP')
                     obj.param.useMaskBP = false;
-                    obj.param.maskBP = [];
+                    obj.param = rmfield(obj.param, 'maskBP');
                 end
 
                 %% Sinogram resizing and resampling for rotation-based projector
