@@ -1405,6 +1405,27 @@ inline af::array rotateHelperType6(const af::array im, const scalarStruct& input
     return imrot;
 }
 
+inline af::array translateHelperType6(const af::array im, const int shift0, const int shift1, const int shift2) { // TODO: custom translation kernel
+    af::array imtrans;
+    imtrans = af::shift(im, shift0, shift1, shift2); // ArrayFire performs circular shift.
+    if (shift0 > 0) {
+        imtrans(af::seq(0, shift0), af::span, af::span) = 0.f;
+    } else if (shift0 < 0) {
+        imtrans(af::seq(af::end+shift0, af::end), af::span, af::span) = 0.f;
+    }
+    if (shift1 > 0) {
+        imtrans(af::span, af::seq(0, shift1), af::span) = 0.f;
+    } else if (shift1 < 0) {
+        imtrans(af::span, af::seq(af::end+shift1, af::end), af::span) = 0.f;
+    }
+    if (shift2 > 0) {
+        imtrans(af::span, af::span, af::seq(0, shift2)) = 0.f;
+    } else if (shift2 < 0) {
+        imtrans(af::span, af::span, af::seq(af::end+shift2, af::end)) = 0.f;
+    }
+    return imtrans;
+}
+
 // SPECT forward projection (projector type 6)
 inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_im_vectors& vec, const scalarStruct& inputScalars,
 	const int64_t length, const int64_t uu, ProjectorClass& proj, const int ii = 0, const float* atten = nullptr) {
@@ -1422,14 +1443,10 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
             mexPrint("Projector 6 FP step 1 complete");
 
         // 2. Translate the image
-        ////kuvaRot = af::shift(kuvaRot, 0, -w_vec.distInt2[u1], 0);
-        //if (-w_vec.distInt2[u1] > 0) {
-        //    kuvaRot(af::span, af::seq(0, -w_vec.distInt2[u1]), af::span) = 0.f;
-        //} else if (-w_vec.distInt2[u1] < 0) {
-        //    kuvaRot(af::span, af::seq(af::end-w_vec.distInt2[u1], af::end), af::span) = 0.f;
-        //}
-        //if (DEBUG || inputScalars.verbose > 2)
-        //    mexPrint("Projector 6 FP step 2 complete");
+        if (w_vec.distInt2[u1] != 0)
+            kuvaRot = translateHelperType6(kuvaRot, 0, -w_vec.distInt2[u1], 0);
+        if (DEBUG || inputScalars.verbose > 2)
+            mexPrint("Projector 6 FP step 2 complete");
 
         // 3. Process and apply attenuation image
         if (inputScalars.attenuation_correction && (atten != nullptr)) {
@@ -1450,12 +1467,7 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
             * A negative value indicates that the detector is outside the FOV
             * * After shift, set last w_vec.distInt[u1] elements through z-axis to zero
         */
-        af::array PSF = af::shift(w_vec.gFilter, 0, 0, w_vec.distInt[u1]); // Shift PSF by previously scaled radiusPerProj
-        if (w_vec.distInt[u1] > 0) {
-            PSF(af::span, af::span, af::seq(0, w_vec.distInt[u1])) = 0.f; // af::shift performs circular shift; assign zeros to overflowing part
-        } else if (w_vec.distInt[u1] < 0) {
-            PSF(af::span, af::span, af::seq(af::end + w_vec.distInt[u1], af::end)) = 0.f;
-        }
+        af::array PSF = translateHelperType6(w_vec.gFilter, 0, 0, w_vec.distInt[u1]);
         PSF = PSF(af::span, af::span, af::seq(0, inputScalars.Nx[0]-1));
         kuvaRot = af::reorder(kuvaRot, 2, 1, 0);
         kuvaRot = af::convolve2(kuvaRot, PSF);
@@ -1470,14 +1482,6 @@ inline void forwardProjectionType6(af::array& fProj, const Weighting& w_vec, AF_
 		kuvaRot = af::reorder(kuvaRot, 1, 2, 0);
         if (DEBUG || inputScalars.verbose > 2)
             mexPrint("Projector 6 FP step 5 complete");
-
-        /*mexPrintBase("kuvaRot.dims(0) = %d\n", kuvaRot.dims(0));
-        mexPrintBase("kuvaRot.dims(1) = %d\n", kuvaRot.dims(1));
-        mexPrintBase("kuvaRot.dims(2) = %d\n", kuvaRot.dims(2));
-        mexPrintBase("fProj.dims(0) = %d\n", fProj.dims(0));
-        mexPrintBase("fProj.dims(1) = %d\n", fProj.dims(1));
-        mexPrintBase("fProj.dims(2) = %d\n", fProj.dims(2));
-		mexEval();*/
 
 		fProj(af::span, af::span, kk) += kuvaRot.copy();
 		u1++;
@@ -1527,12 +1531,7 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
             * A negative value indicates that the detector is outside the FOV
             * * After shift, set last N elements through z-axis to zero
         */
-        af::array PSF = af::shift(w_vec.gFilter, 0, 0, w_vec.distInt[u1]); // Shift PSF by previously scaled radiusPerProj
-        if (w_vec.distInt[u1] > 0) {
-            PSF(af::span, af::span, af::seq(0, w_vec.distInt[u1])) = 0.f; // af::shift performs circular shift; assign zeros to overflowing part
-        } else if (w_vec.distInt[u1] < 0) {
-            PSF(af::span, af::span, af::seq(af::end + w_vec.distInt[u1], af::end)) = 0.f;
-        }
+        af::array PSF = translateHelperType6(w_vec.gFilter, 0, 0, w_vec.distInt[u1]);
         PSF = PSF(af::span, af::span, af::seq(0, inputScalars.Nx[0]-1));
         kuvaRot = af::convolve2(kuvaRot, PSF);
         af::eval(kuvaRot);        
@@ -1542,12 +1541,8 @@ inline af::array backProjectionType6Helper(af::array &fProj, const Weighting& w_
         // 4. Translate the image
         //mexPrintBase("w_vec.distInt2[u1] = %d\n", w_vec.distInt2[u1]);
 		//mexEval();
-        ////kuvaRot = af::shift(kuvaRot, 0, w_vec.distInt2[u1], 0);
-        //if (w_vec.distInt2[u1] > 0) {
-        //    kuvaRot(af::span, af::seq(0, w_vec.distInt2[u1]), af::span) = 0.f;
-        //} else if (w_vec.distInt2[u1] < 0) {
-        //    kuvaRot(af::span, af::seq(af::end+w_vec.distInt2[u1], af::end), af::span) = 0.f;
-        //}
+        if (w_vec.distInt2[u1] != 0)
+            kuvaRot = translateHelperType6(kuvaRot, 0, w_vec.distInt2[u1], 0);
         af::eval(kuvaRot);
 
         // 5. Rotate the image
