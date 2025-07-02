@@ -244,21 +244,31 @@ inline void LSQR(const scalarStruct& inputScalars, Weighting& w_vec, const uint3
 	}
 }
 
-inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0) {
+inline void CGLS(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t iter, AF_im_vectors& vec, const int ii = 0, const bool largeDim = false) {
 	if (ii == inputScalars.nMultiVolumes) {
-		float gamma_ = 0.f;
-		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-			gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
-		const float beta = gamma_ / w_vec.gammaCGLS;
-		for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++) {
-			vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[ll];
-			vec.fCGLS[ll].eval();
-			if (iter == inputScalars.Niter - 1)
-				vec.im_os[ll] = vec.fCGLS[ll];
-			else
-				vec.im_os[ll] = vec.rhs_os[ll] + beta * vec.im_os[ll];
+		if (!largeDim) {
+			float gamma_ = 0.f;
+			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++)
+				gamma_ += af::dot<float>(vec.rhs_os[ll], vec.rhs_os[ll]);
+			//gamma_ += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
+			const float beta = gamma_ / w_vec.gammaCGLS;
+			for (int ll = ii; ll <= inputScalars.nMultiVolumes; ll++) {
+				vec.fCGLS[ll] = vec.fCGLS[ll] + w_vec.alphaCGLS * vec.im_os[ll];
+				vec.fCGLS[ll].eval();
+				if (iter == inputScalars.Niter - 1)
+					vec.im_os[ll] = vec.fCGLS[ll];
+				else
+					vec.im_os[ll] = vec.rhs_os[ll] + beta * vec.im_os[ll];
+			}
+			w_vec.gammaCGLS = gamma_;
 		}
-		w_vec.gammaCGLS = gamma_;
+		else {
+			w_vec.gammaTempCGLS += af::dot<float>(vec.rhs_os[0], vec.rhs_os[0]);
+			vec.fCGLS[0] = vec.fCGLS[0] + w_vec.alphaCGLS * vec.im_os[0];
+			vec.fCGLS[0].eval();
+			if (iter == inputScalars.Niter - 1)
+				vec.im_os[0] = vec.fCGLS[0];
+		}
 	}
 }
 
@@ -294,16 +304,19 @@ inline void PDHG1(af::array& rhs, const scalarStruct& inputScalars, Weighting& w
 		vec.rhsCP[ii] = rhs.copy();
 	if (inputScalars.subsetsUsed > 1) {
 		if (DEBUG) {
-			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
 			mexPrintBase("vec.uCP[ii] = %f\n", af::sum<float>(vec.uCP[ii]));
 			mexPrintBase("w_vec.thetaCP[subIter] = %f\n", w_vec.thetaCP[subIter]);
 			mexEval();
 		}
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
 		vec.uCP[ii] += rhs;
 		vec.uCP[ii].eval();
 		rhs = vec.uCP[ii] + (static_cast<float>(inputScalars.subsetsUsed) * w_vec.thetaCP[subIter]) * rhs;
+		if (DEBUG) {
+			mexPrintBase("rhs = %f\n", af::sum<float>(rhs));
+			mexEval();
+		}
 	}
 }
 
@@ -322,7 +335,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 			return -1;
 	}
 	if (inputScalars.subsetsUsed > 1) {
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG w/ subsets");
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, 1.f, w_vec.tauCP[ii], proj, ii);
@@ -334,7 +347,7 @@ inline int PDHG2(af::array& im, af::array& rhs, scalarStruct& inputScalars, Weig
 #endif
 	}
 	else {
-		if (inputScalars.verbose >= 3)
+		if (DEBUG || inputScalars.verbose >= 3)
 			mexPrint("Using PDHG W/O subsets");
 #ifndef CPU
 		status = PDHGUpdateAF(im, rhs, inputScalars, vec, inputScalars.epps, w_vec.thetaCP[kk], w_vec.tauCP[ii], proj, ii);

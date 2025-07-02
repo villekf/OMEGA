@@ -379,7 +379,8 @@ class ProjectorClass {
 				options += " -cl-fast-relaxed-math";
 				options += " -DUSEMAD";
 			}
-			
+			if (inputScalars.largeDim)
+				options += " -DLARGEDIM";
 			if (inputScalars.useImages)
 				options += " -DUSEIMAGES";
 			if (inputScalars.useExtendedFOV)
@@ -1147,7 +1148,7 @@ public:
 			OCL_CHECK(status, "\n", -1);
 		}
 		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
-			if (inputScalars.useImages) {
+			if (inputScalars.useImages && !inputScalars.largeDim) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
 			}
@@ -2925,7 +2926,7 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
-	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, const float beta) {
+	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL NLM gradient computation");
 		std::chrono::steady_clock::time_point tStart;
@@ -2937,10 +2938,24 @@ public:
 		cl_int status = CL_SUCCESS;
 		const cl_int3 searchWindow = { static_cast<cl_int>(w_vec.Ndx) , static_cast<cl_int>(w_vec.Ndy) , static_cast<cl_int>(w_vec.Ndz) };
 		const cl_int3 patchWindow = { static_cast<cl_int>(w_vec.Nlx) , static_cast<cl_int>(w_vec.Nly) , static_cast<cl_int>(w_vec.Nlz) };
-		//const cl_int3 N = { static_cast<cl_int>(inputScalars.Nx), static_cast<cl_int>(inputScalars.Ny), static_cast<cl_int>(inputScalars.Nz) };
 		cl_uint kernelIndNLM = 0ULL;
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -2957,6 +2972,11 @@ public:
 			mexPrintBase("localPrior[0] = %u\n", localPrior[0]);
 			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
 			mexPrintBase("localPrior[2] = %u\n", localPrior[2]);
+			mexPrintBase("Nz = %u\n", Nz);
+			mexPrintBase("kk = %u\n", kk);
+			mexPrintBase("nOffset.x = %u\n", nOffset.s0);
+			mexPrintBase("nOffset.y = %u\n", nOffset.s1);
+			mexPrintBase("d_N[0].z = %u\n", d_N[0].s2);
 			mexPrintBase("w_vec.h2 = %f\n", w_vec.h2);
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
@@ -2996,6 +3016,8 @@ public:
 				kernelNLM.setArg(kernelIndNLM++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelNLM.setArg(kernelIndNLM++, d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kernelNLM.setArg(kernelIndNLM++, nOffset);
 		 //Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelNLM, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
@@ -3006,6 +3028,8 @@ public:
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("OpenCL NLM gradient computed in %f seconds\n", tDiff);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3018,7 +3042,7 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const Weighting& w_vec, const float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL RDP gradient computation");
 		std::chrono::steady_clock::time_point tStart;
@@ -3030,6 +3054,23 @@ public:
 		cl_int status = CL_SUCCESS;
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed before RDP kernel\n", -1);
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, NzOrig };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
+		else if (inputScalars.largeDim)
+			nOffset = { Nz - NzOrig, Nz };
 		cl_uint kernelIndRDP = 0ULL;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
@@ -3074,6 +3115,8 @@ public:
 				else
 					kernelRDP.setArg(kernelIndRDP++, d_RDPref);
 		}
+		if (inputScalars.largeDim)
+			kernelRDP.setArg(kernelIndRDP++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
@@ -3084,6 +3127,8 @@ public:
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("OpenCL RDP gradient computed in %f seconds\n", tDiff);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3098,7 +3143,7 @@ public:
 	/// <param name="c constant controlling the approximate threshold of transition between low and high contrast regions"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const float beta) {
+	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL GGMRF gradient computation");
 		std::chrono::steady_clock::time_point tStart;
@@ -3108,6 +3153,23 @@ public:
 		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		cl_uint kernelIndGGMRF = 0ULL;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
@@ -3145,6 +3207,8 @@ public:
 				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior3);
 			else
 				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior);
+		if (inputScalars.largeDim)
+			kernelGGMRF.setArg(kernelIndGGMRF++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
@@ -3155,6 +3219,8 @@ public:
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("OpenCL GGMRF gradient computed in %f seconds\n", tDiff);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3510,7 +3576,7 @@ public:
 	/// <param name="sigma adjustable weighting parameter"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const float beta) {
+	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL hyperbolic prior gradient computation");
 		cl_int status = CL_SUCCESS;
@@ -3527,6 +3593,23 @@ public:
 			mexPrintBase("beta = %f\n", beta);
 			mexEval();
 		}
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		cl_uint kernelIndHyper = 0ULL;
 		kernelHyper.setArg(kernelIndHyper++, d_W);
 		if (inputScalars.useImages) {
@@ -3548,6 +3631,8 @@ public:
 				kernelHyper.setArg(kernelIndHyper++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelHyper.setArg(kernelIndHyper++, d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kernelHyper.setArg(kernelIndHyper++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelHyper, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
@@ -3558,6 +3643,8 @@ public:
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("OpenCL hyperbolic prior gradient computed in %f seconds\n", tDiff);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3570,7 +3657,7 @@ public:
 	/// <param name="sigma various adjustable parameters for some of the priors"></param>
 	/// <param name="smooth smoothing value that allows differentiation"></param>
 	/// <returns></returns>
-	inline int TVGradient(const scalarStruct& inputScalars, const float sigma, const float smooth, const float beta, const float C = 0.f, const int type = 0) {
+	inline int TVGradient(const scalarStruct& inputScalars, const float sigma, const float smooth, const Weighting& w_vec, const float beta, const int kk = 0, const float C = 0.f, const int type = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL TV gradient computation");
 		cl_int status = CL_SUCCESS;
@@ -3589,6 +3676,23 @@ public:
 			mexPrintBase("beta = %f\n", beta);
 			mexEval();
 		}
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - 1 };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { 1, Nz - 1 };
+		else if (inputScalars.largeDim)
+			nOffset = { 1, Nz };
 		cl_uint kernelIndTV = 0ULL;
 		kernelTV.setArg(kernelIndTV++, d_W);
 		if (inputScalars.useImages) {
@@ -3613,6 +3717,8 @@ public:
 			kernelTV.setArg(kernelIndTV++, C);
 		if (type > 0)
 			kernelTV.setArg(kernelIndTV++, d_refIm);
+		if (inputScalars.largeDim)
+			kernelTV.setArg(kernelIndTV++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTV, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
@@ -3623,6 +3729,8 @@ public:
 			const std::chrono::duration<double> tDiff = tEnd - tStart;
 			mexPrintBase("OpenCL TV gradient computed in %f seconds\n", tDiff);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 

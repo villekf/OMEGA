@@ -455,12 +455,13 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	// Load the necessary data from the MATLAB input (options) and create the necessary variables
 	form_data_variables(w_vec, options, inputScalars, MethodList);
 
+	const float* randoms = getSingles(sc_ra, "solu");
 #if !defined MTYPE 
 	const float* Sino = getSingles(Sin, "solu");
-	const float* randoms = getSingles(sc_ra, "solu");
+	//const float* randoms = getSingles(sc_ra, "solu");
 #else
 	const uint16_t* Sino = getUint16s(Sin, "solu");
-	const uint16_t* randoms = getUint16s(sc_ra, "solu");
+	//const uint16_t* randoms = getUint16s(sc_ra, "solu");
 #endif
 	const float* extraCorr = getSingles(options, "ScatterC", 0);
 	const float* x0 = getSingles(options, "x0");

@@ -457,6 +457,8 @@ class ProjectorClass {
 			char buffer20[30];
 			optionsAux.push_back(buffer0);
 			optionsAux.push_back("-DCUDA");
+			if (inputScalars.largeDim)
+				optionsAux.push_back("-DLARGEDIM");
 			if (inputScalars.useMAD) {
 				optionsAux.push_back("--use_fast_math");
 				optionsAux.push_back("-DUSEMAD");
@@ -3116,7 +3118,7 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
-	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, float beta) {
+	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, float beta, const int kk = 0) {
 		CUresult status = CUDA_SUCCESS;
 		CUevent tStart, tEnd;
 		if (DEBUG || inputScalars.verbose >= 3) {
@@ -3127,11 +3129,26 @@ public:
 			mexPrint("Starting CUDA NLM gradient computation");
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
-		const int3 searchWindow = { static_cast<int>(w_vec.Ndx) , static_cast<int>(w_vec.Ndy) , static_cast<int>(w_vec.Ndz) };
-		const int3 patchWindow = { static_cast<int>(w_vec.Nlx) , static_cast<int>(w_vec.Nly) , static_cast<int>(w_vec.Nlz) };
+		//const int3 searchWindow = { static_cast<int>(w_vec.Ndx) , static_cast<int>(w_vec.Ndy) , static_cast<int>(w_vec.Ndz) };
+		//const int3 patchWindow = { static_cast<int>(w_vec.Nlx) , static_cast<int>(w_vec.Nly) , static_cast<int>(w_vec.Nlz) };
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -3149,6 +3166,11 @@ public:
 			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
 			mexPrintBase("localPrior[2] = %u\n", localPrior[2]);
 			mexPrintBase("w_vec.h2 = %f\n", w_vec.h2);
+			mexPrintBase("Nz = %u\n", Nz);
+			mexPrintBase("kk = %u\n", kk);
+			mexPrintBase("nOffset.x = %u\n", nOffset.x);
+			mexPrintBase("nOffset.y = %u\n", nOffset.y);
+			mexPrintBase("d_N[0].z = %u\n", d_N[0].z);
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
 			mexEval();
@@ -3185,6 +3207,8 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		//Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
@@ -3212,6 +3236,8 @@ public:
 			milliseconds /= 1000.f;
 			mexPrintBase("CUDA NLM gradient completed in %f seconds\n", milliseconds);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3224,7 +3250,7 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, float gamma, float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+	inline int computeRDP(const scalarStruct& inputScalars, float gamma, const Weighting& w_vec, float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA RDP gradient computation");
 		std::vector<void*> kArgs;
@@ -3235,8 +3261,23 @@ public:
 			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, NzOrig };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
+		else if (inputScalars.largeDim)
+			nOffset = { Nz - NzOrig, Nz };
 		status = cuCtxSynchronize();
 		if (DEBUG) {
 			mexPrintBase("inputScalars.epps = %.9f\n", inputScalars.epps);
@@ -3273,6 +3314,8 @@ public:
 				else
 					kArgs.emplace_back(reinterpret_cast<void*>(&d_RDPref));
 		}
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
@@ -3306,6 +3349,8 @@ public:
 			milliseconds /= 1000.f;
 			mexPrintBase("CUDA RDP gradient completed in %f seconds\n", milliseconds);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3320,7 +3365,7 @@ public:
 	/// <param name="c constant controlling the approximate threshold of transition between low and high contrast regions"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int computeGGMRF(const scalarStruct& inputScalars, float p, float q, float c, float pqc, float beta) {
+	inline int computeGGMRF(const scalarStruct& inputScalars, float p, float q, float c, float pqc, const Weighting& w_vec, float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA GGMRF gradient computation");
 		CUresult status = CUDA_SUCCESS;
@@ -3329,8 +3374,23 @@ public:
 			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
 		if (DEBUG) {
@@ -3362,6 +3422,8 @@ public:
 		kArgs.emplace_back(&beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
 			kArgs.emplace_back(&d_maskPrior);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
@@ -3389,6 +3451,8 @@ public:
 			milliseconds /= 1000.f;
 			mexPrintBase("CUDA GGMRF gradient completed in %f seconds\n", milliseconds);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3748,7 +3812,7 @@ public:
 	/// <param name="sigma adjustable weighting parameter"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int hyperGradient(const scalarStruct& inputScalars, float sigma, float beta) {
+	inline int hyperGradient(const scalarStruct& inputScalars, float sigma, const Weighting& w_vec, float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA hyperbolic prior gradient computation");
 		CUresult status = CUDA_SUCCESS;
@@ -3757,8 +3821,23 @@ public:
 			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
@@ -3784,6 +3863,8 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
@@ -3811,6 +3892,8 @@ public:
 			milliseconds /= 1000.f;
 			mexPrintBase("CUDA hyperbolic prior gradient completed in %f seconds\n", milliseconds);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3823,7 +3906,7 @@ public:
 	/// <param name="sigma various adjustable parameters for some of the priors"></param>
 	/// <param name="smooth smoothing value that allows differentiation"></param>
 	/// <returns></returns>
-	inline int TVGradient(const scalarStruct& inputScalars, float sigma, float smooth, float beta, float C = 0.f, const int type = 0) {
+	inline int TVGradient(const scalarStruct& inputScalars, float sigma, float smooth, const Weighting& w_vec, float beta, const int kk = 0, float C = 0.f, const int type = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA TV gradient computation");
 		CUresult status = CUDA_SUCCESS;
@@ -3833,8 +3916,23 @@ public:
 			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
 		status = cuCtxSynchronize();
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] =  inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - 1 };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { 1, Nz - 1 };
+		else if (inputScalars.largeDim)
+			nOffset = { 1, Nz };
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("smooth = %f\n", smooth);
@@ -3862,6 +3960,8 @@ public:
 			kArgs.emplace_back(&C);
 		if (type > 0)
 			kArgs.emplace_back(reinterpret_cast<void*>(&d_refIm));
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
 		if (DEBUG || inputScalars.verbose >= 3)
 			cuEventRecord(tStart, CLCommandQueue[0]);
@@ -3888,6 +3988,8 @@ public:
 			milliseconds /= 1000.f;
 			mexPrintBase("CUDA TV gradient completed in %f seconds\n", milliseconds);
 		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -4052,7 +4154,7 @@ public:
 		return 0;
 	}
 
-	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input, const bool RDP = false) {
+	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input, const bool RDP = false, const uint32_t Nz = 1) {
 
 		CUresult status = CUDA_SUCCESS;
 		CUDA_TEXTURE_DESC texDesc;
@@ -4067,9 +4169,9 @@ public:
 		arr3DDesc.NumChannels = 1;
 		arr3DDesc.Height = inputScalars.Nx[0];
 		arr3DDesc.Width = inputScalars.Ny[0];
-		arr3DDesc.Depth = inputScalars.Nz[0];
+		arr3DDesc.Depth = Nz;
 		status = cuArray3DCreate(&imArray, &arr3DDesc);
-        CUDA_CHECK(status, "Failed to create NLM image array\n", -1);
+        CUDA_CHECK(status, "Failed to create image array\n", -1);
 		CUDA_MEMCPY3D cpy3d;
 		std::memset(&cpy3d, 0, sizeof(cpy3d));
 		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
@@ -4080,9 +4182,9 @@ public:
 		cpy3d.dstArray = imArray;
 		cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
 		cpy3d.Height = inputScalars.Nx[0];
-		cpy3d.Depth = inputScalars.Nz[0];
+		cpy3d.Depth = Nz;
 		status = cuMemcpy3D(&cpy3d);
-        CUDA_CHECK(status, "Failed to copy NLM image array\n", -1);
+        CUDA_CHECK(status, "Failed to copy image array\n", -1);
 		resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 		resDesc.res.array.hArray = imArray;
 		texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
@@ -4091,13 +4193,13 @@ public:
 		texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 		viewDesc.height = inputScalars.Nx[0];
 		viewDesc.width = inputScalars.Ny[0];
-		viewDesc.depth = inputScalars.Nz[0];
+		viewDesc.depth = Nz;
 		viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
 		if (RDP)
 			status = cuTexObjectCreate(&d_RDPrefI, &resDesc, &texDesc, &viewDesc);
 		else
 			status = cuTexObjectCreate(&d_inputI, &resDesc, &texDesc, &viewDesc);
-        CUDA_CHECK(status, "NLM image copy failed\n", -1);
+        CUDA_CHECK(status, "Image copy failed\n", -1);
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Synchronization failed\n", -1);
 		if (DEBUG)

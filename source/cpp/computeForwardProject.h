@@ -70,6 +70,7 @@ inline int computeForwardStep(const RecMethods& MethodList, af::array& y, af::ar
 				input += af::tile(randomsData, inputScalars.nBins);
 			else
 				input += randomsData;
+			input.eval();
 		}
 	}
 	if (MethodList.CPType && inputScalars.subsetsUsed > 1) {

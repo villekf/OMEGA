@@ -691,7 +691,7 @@ elseif options.param.implementation == 2 || options.param.implementation == 3
         if iscell(options.param.SinM)
             options.param.SinM = cell2mat(options.param.SinM);
         end
-        if ~isa(options.param.SinM, 'single')
+        if ~isa(options.param.SinM, 'single') && options.param.loadTOF
             options.param.SinM = single(options.param.SinM);
         end
         if (options.param.randoms_correction || options.param.scatter_correction) && options.param.corrections_during_reconstruction

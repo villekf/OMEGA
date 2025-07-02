@@ -222,7 +222,7 @@ if options.use_CPU && (options.projector_type == 5 || options.projector_type == 
         || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15)
     error('Selected projector type is not supported with CPU implementation!')
 end
-if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM) && ~options.largeDim
+if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
 end
 if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
@@ -276,7 +276,7 @@ if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
 % if (options.CGLS || options.LSQR || options.FISTA || options.FISTAL1) && options.subsets > 1
-if (options.CGLS || options.LSQR) && options.subsets > 1
+if (options.CGLS || options.LSQR) && options.subsets > 1 && ~options.largeDim
     warning('CGLS and LSQR do not support subsets! Setting subsets to 1.')
     options.subsets = 1;
 end
@@ -387,6 +387,14 @@ if options.FDK && (options.Niter > 1 || options.subsets > 1)
         options.Niter = 1;
     end
 end
+if options.largeDim
+    if ~options.PDHG && ~options.FDK && ~options.PKMA && ~options.PDDY && ~options.PDHGL1 && ~options.PDHGKL
+        error('Large dimension support is only available for PDHG, PKMA, and FDK!')
+    end
+    if options.MRP || options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD
+        error('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
+    end
+end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
@@ -407,6 +415,9 @@ if options.corrections_during_reconstruction && (options.scatter_correction || o
     warning('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
     options.randoms_correction = false;
     options.scatter_correction = false;
+end
+if options.useIndexBasedReconstruction && (options.randoms_correction || options.scatter_correction) && options.TOF_bins > 1
+    error('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0

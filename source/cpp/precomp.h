@@ -32,11 +32,11 @@ struct largeDimStruct {
 	float bmaxZOrig;
 	float d_Scale4ZOrig;
 	int64_t imDimOrig;
-	std::vector<uint32_t> Nz;
+	std::vector<uint32_t> Nz, NzPr, startPr, endPr;
 	std::vector<float> bz;
 	std::vector<float> bmaxZ;
 	std::vector<float> d_Scale4Z;
-	std::vector<int64_t> imDim, cumDim;
+	std::vector<int64_t> imDim, cumDim, imDimPr, cumDimPr;
 };
 
 typedef struct structForScalars {

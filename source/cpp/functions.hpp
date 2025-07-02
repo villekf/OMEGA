@@ -37,14 +37,20 @@
 #pragma warning(disable : 4996)
 
 // This function sets the variables needed for the special large dimensional reconstruction method
-inline void largeDimCreate(scalarStruct& inputScalars) {
+inline void largeDimCreate(scalarStruct& inputScalars, const RecMethods& MethodList, const Weighting& w_vec) {
 	inputScalars.lDimStruct.Nz.resize(inputScalars.subsets);
+	inputScalars.lDimStruct.NzPr.resize(inputScalars.subsets);
+	inputScalars.lDimStruct.startPr.resize(inputScalars.subsets);
+	inputScalars.lDimStruct.endPr.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.imDim.resize(inputScalars.subsets);
+	inputScalars.lDimStruct.imDimPr.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.cumDim.resize(inputScalars.subsets + 1);
+	inputScalars.lDimStruct.cumDimPr.resize(inputScalars.subsets + 1);
 	inputScalars.lDimStruct.bz.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.bmaxZ.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.d_Scale4Z.resize(inputScalars.subsets);
 	inputScalars.lDimStruct.cumDim[0] = 0LL;
+	inputScalars.lDimStruct.cumDimPr[0] = 0LL;
 	const uint32_t intZ = inputScalars.Nz[0] / inputScalars.subsets;
 	const uint32_t remainder = inputScalars.Nz[0] % inputScalars.subsets;
 	for (int kk = 0; kk < inputScalars.subsets; kk++) {
@@ -57,9 +63,84 @@ inline void largeDimCreate(scalarStruct& inputScalars) {
 			inputScalars.lDimStruct.bz[kk] = inputScalars.lDimStruct.bmaxZ[kk - 1];
 		}
 		inputScalars.lDimStruct.bmaxZ[kk] = inputScalars.lDimStruct.bz[kk] + inputScalars.lDimStruct.Nz[kk] * inputScalars.dz[0];
-		inputScalars.lDimStruct.imDim[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk]);
-		inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
+		if (MethodList.NLM || MethodList.RDP || MethodList.hyperbolic || MethodList.GGMRF || MethodList.TV) {
+			inputScalars.lDimStruct.imDim[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk]);
+			inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
+			if (kk < inputScalars.subsetsUsed - 1 && kk > 0) {
+				if (MethodList.NLM) {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U + w_vec.Nlz * 2U));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U + w_vec.Nlz * 2U;
+				}
+				else if (MethodList.TV && (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + 2U));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + 2U;
+				}
+				else {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz * 2U;
+				}
+			}
+			else {
+				if (MethodList.NLM) {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz + w_vec.Nlz));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz + w_vec.Nlz;
+				}
+				else if (MethodList.TV && (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + 1));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + 1;
+				}
+				else {
+					inputScalars.lDimStruct.imDimPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz));
+					inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk] + w_vec.Ndz;
+				}
+			}
+			if (kk == 0) {
+				if (MethodList.NLM)
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (w_vec.Ndz + w_vec.Nlz);
+				else if (MethodList.TV && (MethodList.RDP && !w_vec.RDPLargeNeighbor))
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+				else
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * w_vec.Ndz;
+				inputScalars.lDimStruct.startPr[kk] = 0;
+			}
+			else
+				if (MethodList.NLM) {
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * (w_vec.Ndz + w_vec.Nlz);
+					inputScalars.lDimStruct.startPr[kk] = (w_vec.Ndz + w_vec.Nlz) * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+				}
+				else if (MethodList.TV && (MethodList.RDP && !w_vec.RDPLargeNeighbor)) {
+					inputScalars.lDimStruct.startPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+				}
+				else {
+					inputScalars.lDimStruct.startPr[kk] = w_vec.Ndz * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+					inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk] - static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * w_vec.Ndz;
+				}
+			if (kk == inputScalars.subsetsUsed - 1)
+				inputScalars.lDimStruct.endPr[kk] = 0U;
+			else
+				if (MethodList.NLM)
+					inputScalars.lDimStruct.endPr[kk] = (w_vec.Ndz + w_vec.Nlz) * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+				else if (MethodList.TV && (MethodList.RDP && !w_vec.RDPLargeNeighbor))
+					inputScalars.lDimStruct.endPr[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+				else
+					inputScalars.lDimStruct.endPr[kk] = w_vec.Ndz * static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]);
+		}
+		else {
+			inputScalars.lDimStruct.imDim[kk] = static_cast<int64_t>(inputScalars.Nx[0]) * static_cast<int64_t>(inputScalars.Ny[0]) * static_cast<int64_t>(inputScalars.lDimStruct.Nz[kk]);
+			inputScalars.lDimStruct.cumDim[kk + 1] = inputScalars.lDimStruct.cumDim[kk] + inputScalars.lDimStruct.imDim[kk];
+			inputScalars.lDimStruct.imDimPr[kk] = inputScalars.lDimStruct.imDim[kk];
+			inputScalars.lDimStruct.cumDimPr[kk + 1] = inputScalars.lDimStruct.cumDim[kk + 1];
+			inputScalars.lDimStruct.NzPr[kk] = inputScalars.lDimStruct.Nz[kk];
+		}
 		inputScalars.lDimStruct.d_Scale4Z[kk] = 1.f / (static_cast<float>(inputScalars.lDimStruct.Nz[kk]) * inputScalars.dz[0]);
+		if (DEBUG) {
+			mexPrintBase("inputScalars.lDimStruct.NzPr[kk] = %u\n", inputScalars.lDimStruct.NzPr[kk]);
+			mexPrintBase("inputScalars.lDimStruct.Nz[kk] = %u\n", inputScalars.lDimStruct.Nz[kk]);
+			mexPrintBase("inputScalars.lDimStruct.imDim[kk] = %u\n", inputScalars.lDimStruct.imDim[kk]);
+			mexPrintBase("inputScalars.lDimStruct.imDimPr[kk] = %u\n", inputScalars.lDimStruct.imDimPr[kk]);
+			mexEval();
+		}
 	}
 }
 
@@ -712,7 +793,7 @@ inline int MRPAF(af::array& padd, af::array& grad, const scalarStruct& inputScal
 }
 
 // NLM
-inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const float beta) {
+inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, Weighting& w_vec, ProjectorClass& proj, const float beta, const int kk = 0) {
 
 	int status = 0;
 	proj.d_W = transferAF(grad);
@@ -720,9 +801,25 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 #ifndef CPU
 	if (inputScalars.useImages) {
 #ifdef CUDA
+		uint32_t Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
+		if (inputScalars.largeDim) {
+			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			OCL_CHECK(status, "Failed to create prior image\n", -1);
+			if (DEBUG) {
+				mexPrintBase("inputScalars.lDimStruct.NzPr[kk] = %u\n", inputScalars.lDimStruct.NzPr[kk]);
+				mexPrintBase("inputScalars.lDimStruct.Nz[kk] = %u\n", inputScalars.lDimStruct.Nz[kk]);
+				mexPrintBase("proj.region[2] = %u\n", proj.region[2]);
+				mexPrintBase("im.elements() = %u\n", im.elements());
+				mexPrintBase("grad.elements() = %u\n", grad.elements());
+				mexEval();
+			}
+		}
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
 			getErrorString(status);
@@ -732,12 +829,14 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 			mexPrint("Failed to copy NLM image\n");
 			return -1;
 		}
+		if (inputScalars.largeDim)
+			proj.region[2] = inputScalars.Nz[0];
 #endif
 	}
 	else {
 		proj.d_inputB = transferAF(im);
 	}
-	status = proj.computeNLM(inputScalars, w_vec, beta);
+	status = proj.computeNLM(inputScalars, w_vec, beta, kk);
 	grad.unlock();
 	im.unlock();
 	w_vec.gaussianNLM.unlock();
@@ -753,25 +852,37 @@ inline int NLMAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad *= beta;
 	grad.eval();
 #endif
+#ifdef OPENCL
+	if (inputScalars.largeDim)
+		proj.region[2] = inputScalars.Nz[0];
+#endif
 	return status;
 }
 
 // RDP
-inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, const float beta, const af::array& RDPref, 
-	const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, const float beta, const af::array& RDPref, const Weighting& w_vec,
+	const bool RDPLargeNeighbor = false, const bool useRDPRef = false, const int kk = 0) {
 	im.eval();
 	int status = 0;
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
 #ifdef CUDA
+		uint32_t Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, Nz);
 		if (RDPLargeNeighbor && useRDPRef) {
 			CUdeviceptr* inputRef = RDPref.device<CUdeviceptr>();
 			status = proj.transferTex(inputScalars, inputRef, true);
 		}
 #else
+		if (inputScalars.largeDim) {
+			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			OCL_CHECK(status, "Failed to create prior image\n", -1);
+		}
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
 			getErrorString(status);
@@ -802,7 +913,7 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
 		mexEval();
 	}
-	status = proj.computeRDP(inputScalars, gamma, beta, RDPLargeNeighbor, useRDPRef);
+	status = proj.computeRDP(inputScalars, gamma, w_vec, beta, kk, RDPLargeNeighbor, useRDPRef);
 	grad.unlock();
 	im.unlock();
 	if (RDPLargeNeighbor && useRDPRef)
@@ -816,20 +927,33 @@ inline int RDPAF(af::array& grad, const af::array& im, const scalarStruct& input
 	grad.unlock();
 	im.unlock();
 #endif
+#ifdef OPENCL
+	if (inputScalars.largeDim)
+		proj.region[2] = inputScalars.Nz[0];
+#endif
 	return status;
 }
 
 // GGMRF
-inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, const float beta) {
+inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, 
+	const float beta, const Weighting& w_vec, const int kk = 0) {
 	im.eval();
 	int status = 0;
 	proj.d_W = transferAF(grad);
 #ifndef CPU
 	if (inputScalars.useImages) {
 #ifdef CUDA
+		uint32_t Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
+		if (inputScalars.largeDim) {
+			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			OCL_CHECK(status, "Failed to create prior image\n", -1);
+		}
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
 			getErrorString(status);
@@ -848,7 +972,7 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
 		mexEval();
 	}
-	status = proj.computeGGMRF(inputScalars, p, q, c, pqc, beta);
+	status = proj.computeGGMRF(inputScalars, p, q, c, pqc, w_vec, beta, kk);
 	grad.unlock();
 	im.unlock();
 	if (status != 0) {
@@ -860,11 +984,15 @@ inline int GGMRFAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	grad.unlock();
 	im.unlock();
 #endif
+#ifdef OPENCL
+	if (inputScalars.largeDim)
+		proj.region[2] = inputScalars.Nz[0];
+#endif
 	return status;
 }
 
 // TV
-inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, const TVdata& data, ProjectorClass& proj, const float beta) {
+inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, const TVdata& data, ProjectorClass& proj, const float beta, const Weighting& w_vec, const int kk = 0) {
 	im.eval();
 	int status = 0;
 	int type = 0;
@@ -885,9 +1013,17 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 #ifndef CPU
 	if (inputScalars.useImages) {
 #ifdef CUDA
+		uint32_t Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
+		if (inputScalars.largeDim) {
+			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			OCL_CHECK(status, "Failed to create prior image\n", -1);
+		}
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
 			getErrorString(status);
@@ -907,7 +1043,7 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 		mexEval();
 	}
 	const float smooth = data.TVsmoothing;
-	status = proj.TVGradient(inputScalars, sigma, smooth, beta, C, type);
+	status = proj.TVGradient(inputScalars, sigma, smooth, w_vec, beta, kk, C, type);
 	grad.unlock();
 	im.unlock();
 	if (data.TV_use_anatomical)
@@ -923,12 +1059,16 @@ inline int TVAF(af::array& grad, const af::array& im, const scalarStruct& inputS
 	if (data.TV_use_anatomical)
 		data.refIm.unlock();
 #endif
+#ifdef OPENCL
+	if (inputScalars.largeDim)
+		proj.region[2] = inputScalars.Nz[0];
+#endif
 	return status;
 }
 
 // Hyperbolic prior
 // No CPU support
-inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, ProjectorClass& proj, const float beta) {
+inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inputScalars, const float sigma, ProjectorClass& proj, const float beta, const Weighting& w_vec, const int kk = 0) {
 	im.eval();
 	int status = 0;
 	int type = 0;
@@ -936,9 +1076,17 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	proj.d_W = transferAF(grad);
 	if (inputScalars.useImages) {
 #ifdef CUDA
+		uint32_t Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, Nz);
 #else
+		if (inputScalars.largeDim) {
+			proj.region[2] = inputScalars.lDimStruct.NzPr[kk];
+			proj.d_inputI = cl::Image3D(proj.CLContext, CL_MEM_READ_ONLY, proj.format, proj.region[0], proj.region[1], proj.region[2], 0, 0, NULL, &status);
+			OCL_CHECK(status, "Failed to create prior image\n", -1);
+		}
 		status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
 		if (status != 0) {
 			getErrorString(status);
@@ -957,7 +1105,7 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 		mexPrintBase("sum(isnan(im)) = %f\n", af::sum<float>(isNaN(im)));
 		mexEval();
 	}
-	status = proj.hyperGradient(inputScalars, sigma, beta);
+	status = proj.hyperGradient(inputScalars, sigma, w_vec, beta, kk);
 	grad.unlock();
 	im.unlock();
 	if (status != 0) {
@@ -965,6 +1113,10 @@ inline int hyperAF(af::array& grad, const af::array& im, const scalarStruct& inp
 	}
 #else
 
+#endif
+#ifdef OPENCL
+	if (inputScalars.largeDim)
+		proj.region[2] = inputScalars.Nz[0];
 #endif
 	return status;
 }
@@ -1280,7 +1432,7 @@ inline int rotateCustomAF(af::array& imrot, const af::array& im, const scalarStr
 	if (!inputScalars.useBuffers) {
 #if defined(CUDA)
 		CUdeviceptr* input = im.device<CUdeviceptr>();
-		status = proj.transferTex(inputScalars, input);
+		status = proj.transferTex(inputScalars, input, false, inputScalars.Nz[0]);
 #elif defined(OPENCL)
         status = proj.CLCommandQueue[0].enqueueCopyBufferToImage(cl::Buffer(*im.device<cl_mem>(), true), proj.d_inputI, 0, proj.origin, proj.region);
         if (status != 0) {
@@ -2032,7 +2184,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("BB initialization complete");
 		}
-		else if (MethodList.CGLS && subIter == 0) {
+		else if (MethodList.CGLS && subIter == 0 && !inputScalars.largeDim) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing CGLS");
 			if (ii == 0)
@@ -2055,7 +2207,8 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			vec.im_os[ii] = vec.rhs_os[ii].copy();
 			if (ii == inputScalars.nMultiVolumes) {
 				for (int ll = 0; ll <= inputScalars.nMultiVolumes; ll++)
-					w_vec.gammaCGLS += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
+					w_vec.gammaCGLS += af::dot<float>(vec.rhs_os[ll], vec.rhs_os[ll]);
+					//w_vec.gammaCGLS += af::sum<float>(vec.rhs_os[ll] * vec.rhs_os[ll]);
 				if (DEBUG || inputScalars.verbose >= 3)
 					mexPrint("CGLS initialization complete");
 			}

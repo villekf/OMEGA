@@ -240,21 +240,21 @@ inline af::array AD(const af::array& im, const scalarStruct& inputScalars, const
 
 // Compute the TV prior
 inline int TVprior(const scalarStruct& inputScalars, const TVdata& S, const af::array& ima, const Weighting& w_vec, ProjectorClass& proj, af::array& dU, 
-	const float beta) {
+	const float beta, const int kk = 0) {
 	af::array gradi;
 	int status = 0;
 
-	status = TVAF(dU, ima, inputScalars, w_vec.data.SATVPhi, S, proj, beta);
+	status = TVAF(dU, ima, inputScalars, w_vec.data.SATVPhi, S, proj, beta, w_vec, kk);
 
 	return status;
 }
 
 // Compute the hyperbolic prior
-inline int hyperbolic(const scalarStruct& inputScalars, const af::array& ima, const Weighting& w_vec, ProjectorClass& proj, af::array& dU, const float beta) {
+inline int hyperbolic(const scalarStruct& inputScalars, const af::array& ima, const Weighting& w_vec, ProjectorClass& proj, af::array& dU, const float beta, const int kk = 0) {
 	af::array gradi;
 	int status = 0;
 
-	status = hyperAF(dU, ima, inputScalars, w_vec.data.SATVPhi, proj, beta);
+	status = hyperAF(dU, ima, inputScalars, w_vec.data.SATVPhi, proj, beta, w_vec, kk);
 
 	return status;
 }
@@ -321,8 +321,8 @@ inline int proxTGV(const af::array& im, const scalarStruct& inputScalars, AF_im_
 	return status;
 }
 
-inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, 
-	const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+inline int RDP(const af::array& im, const scalarStruct& inputScalars, const float gamma, ProjectorClass& proj, af::array& dU, const float beta, const af::array& RDPref, const Weighting& w_vec,
+	const bool RDPLargeNeighbor = false, const bool useRDPRef = false, const int kk = 0) {
 
 	int status = 0;
 	af::sync();
@@ -331,7 +331,7 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 		mexPrintBase("isnan(im_RDP) = %d\n", af::anyTrue<bool>(af::isNaN(im)));
 		mexEval();
 	}
-	status = RDPAF(dU, im, inputScalars, gamma, proj, beta, RDPref, RDPLargeNeighbor, useRDPRef);
+	status = RDPAF(dU, im, inputScalars, gamma, proj, beta, RDPref, w_vec, RDPLargeNeighbor, useRDPRef, kk);
 	if (DEBUG) {
 		mexPrintBase("grad = %f\n", af::sum<float>(dU));
 		mexPrintBase("min(grad) = %f\n", af::min<float>(dU));
@@ -341,7 +341,7 @@ inline int RDP(const af::array& im, const scalarStruct& inputScalars, const floa
 	return status;
 }
 
-inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, af::array& dU, const float beta) {
+inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, ProjectorClass& proj, af::array& dU, const Weighting& w_vec, const float beta, const int kk = 0) {
 
 	int status = 0;
 	af::sync();
@@ -350,7 +350,7 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 		mexPrintBase("isnan(im_GGMRF) = %d\n", af::anyTrue<bool>(af::isNaN(im)));
 		mexEval();
 	}
-	status = GGMRFAF(dU, im, inputScalars, p, q, c, pqc, proj, beta);
+	status = GGMRFAF(dU, im, inputScalars, p, q, c, pqc, proj, beta, w_vec, kk);
 	if (DEBUG) {
 		mexPrintBase("grad = %f\n", af::sum<float>(dU));
 		mexEval();
@@ -360,16 +360,17 @@ inline int GGMRF(const af::array& im, const scalarStruct& inputScalars, const fl
 
 
 
-inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars, af::array& dU, const float beta)
+inline int NLM(ProjectorClass& proj, const af::array& im, Weighting& w_vec, const scalarStruct& inputScalars, af::array& dU, const float beta, const int kk = 0)
 {
 	int status = 0;
 	af::sync();
-	status = NLMAF(dU, im, inputScalars, w_vec, proj, beta);
+	status = NLMAF(dU, im, inputScalars, w_vec, proj, beta, kk);
 	return status;
 }
 
 
-inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, const bool iter = false) {
+inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const scalarStruct& inputScalars, ProjectorClass& proj, const float beta, const uint32_t osa_iter = 0, const uint8_t compute_norm_matrix = 0, 
+	const bool iter = false, const int kk = 0) {
 	af::array* dU = nullptr;
 	int status = 0;
 	if (iter)
@@ -416,12 +417,12 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.TV) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing TV prior gradient");
-		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta);
+		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.hyperbolic) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing hyperbolic prior gradient");
-		status = hyperbolic(inputScalars, vec.im_os[0], w_vec, proj, *dU, beta);
+		status = hyperbolic(inputScalars, vec.im_os[0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.AD) {
 		if (inputScalars.verbose >= 3)
@@ -437,7 +438,7 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.APLS) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing APLS prior gradient");
-		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta);
+		status = TVprior(inputScalars, w_vec.data, vec.im_os[0], w_vec, proj, *dU, beta, kk);
 	}
 	else if (MethodList.ProxTGV || MethodList.TGV) {
 		if (inputScalars.verbose >= 3)
@@ -454,17 +455,17 @@ inline int applyPrior(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& Me
 	else if (MethodList.NLM) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing NLM prior gradient");
-		status = NLM(proj, vec.im_os[0], w_vec, inputScalars, *dU, beta);
+		status = NLM(proj, vec.im_os[0], w_vec, inputScalars, *dU, beta, kk);
 	}
 	else if (MethodList.RDP) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing RDP prior gradient");
-		status = RDP(vec.im_os[0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical);
+		status = RDP(vec.im_os[0], inputScalars, w_vec.RDP_gamma, proj, *dU, beta, w_vec.RDPref, w_vec, w_vec.RDPLargeNeighbor, w_vec.RDP_anatomical, kk);
 	}
 	else if (MethodList.GGMRF) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Computing GGMRF prior gradient");
-		status = GGMRF(vec.im_os[0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, beta);
+		status = GGMRF(vec.im_os[0], inputScalars, w_vec.GGMRF_p, w_vec.GGMRF_q, w_vec.GGMRF_c, w_vec.GGMRF_pqc, proj, *dU, w_vec, beta, kk);
 	}
 	af::deviceGC();
 	if (inputScalars.verbose >= 3 && (MethodList.MRP || MethodList.Quad || MethodList.Huber || MethodList.L || MethodList.FMH || MethodList.TV 

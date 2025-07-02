@@ -575,6 +575,11 @@ classdef projectorClass
                         [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
                     end
                 else
+                    if obj.param.TOF
+                        if numel(obj.param.TOFIndices) ~= numel(obj.param.SinM)
+                            error('The number of TOF indices does not correspond to the number of events!')
+                        end
+                    end
                     if ~obj.param.useIndexBasedReconstruction
                         if size(obj.param.x,2) == 2
                             obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];
