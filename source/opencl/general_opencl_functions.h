@@ -154,7 +154,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define DIVIDE(a,b) fdividef(a,b)
 #define DIVIDE3(a,b) fdividef3(a,b)
 #define CFLOAT(a) (float)(a)
-#define CFLOAT3(a) make_int3_float3(a)
+#define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) (unsigned int)(a)
 #define CUINT_rtp(a) __float2uint_ru(a)
 #define CUINT_rtz(a) __float2uint_rd(a)
@@ -412,6 +412,11 @@ inline __device__ float3 fabs(float3 v) {
 
 inline __device__ float2 fabs(float2 v) {
     return make_float2(fabs(v.x), fabs(v.y));
+}
+
+template<typename T>
+inline __device__ float3 convert_float3(const T& a) {
+    return make_float3(static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z));
 }
 #endif
 

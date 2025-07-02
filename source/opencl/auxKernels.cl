@@ -339,6 +339,9 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 #ifdef EFOVZ // Compute only in the voxels of the actual FOV (when using extended FOV)
 	, CONSTANT uchar* fovIndices
 #endif
+#ifdef LARGEDIM
+	, const uint2 nOffset
+#endif
 ) {
 #ifdef PYTHON
 	const int3 N = MINT3(Nx, Ny, Nz);
@@ -524,6 +527,17 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 		}
 	else {
 #endif
+		float pCache[PWINDOWX * 2 + 1][PWINDOWY * 2 + 1][PWINDOWZ * 2 + 1];
+#pragma unroll
+				for (int pz = -PWINDOWZ; pz <= PWINDOWZ; pz++) {
+#pragma unroll
+					for (int py = -PWINDOWY; py <= PWINDOWY; py++) {
+#pragma unroll
+						for (int px = -PWINDOWX; px <= PWINDOWX; px++) {
+							pCache[px + PWINDOWX][py + PWINDOWY][pz + PWINDOWZ] = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
+						}
+					}
+				}
 #if PWINDOWZ > 0
 #pragma unroll
 #endif
@@ -540,9 +554,6 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 					continue;
 				float weight = 0.f;
 				float distance = 0.f;
-				// nz, ny, nx = 0;
-				// float uk = 0.f;
-				// const float gg = EXP(-(CFLOAT((i)*(i)) / (2.f * 25.f) + CFLOAT((j)*(j)) / (2.f * 25.f) + CFLOAT((k)*(k)) / (2.f * 25.f)));
 #pragma unroll
 				for (int pz = -PWINDOWZ; pz <= PWINDOWZ; pz++) {
 #pragma unroll
@@ -556,22 +567,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 							const float Pj = lCacheRef[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
 #else
 							const float Pk = lCache[xxyyzz.x + i + px][xxyyzz.y + j + py][xxyyzz.z + k + pz];
-							// if (i == -SWINDOWX && j == -SWINDOWY && k == -SWINDOWZ)
-								// testi[nx][ny][nz] = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
-							// testi[px][py][pz] = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
-							const float Pj = lCache[xxyyzz.x + px][xxyyzz.y + py][xxyyzz.z + pz];
-							// if (pz == 0 && py == 0 && pz == 0)
-							// 	uk = Pk;
+							const float Pj = pCache[px + PWINDOWX][py + PWINDOWY][pz + PWINDOWZ];
 #endif
-							// const float PP = testi[nx][ny][nz] - Pk;
 							const float PP = Pj - Pk;
 							distance += gg * PP * PP;
-							// distance += PP * PP;
-							// nx++;
 						}
-						// ny++;
 					}
-					// nz++;
 				}
 #if defined(NLMADAPTIVE)
 				hh = distance / pSize;
@@ -651,7 +652,12 @@ void NLM(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, CO
 	output /= SQRT(FMAD(outputAla, weight_sum, epps));
 #endif // END FMAD
 #endif // END NLM NLTYPE
+#ifdef LARGEDIM
+	if (ii.z >= nOffset.x && ii.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * output;
+#else
 	grad[n] += beta * output;
+#endif
 }
 #endif // END NLM
 
@@ -699,6 +705,9 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 #else
 	, const CLGLOBAL float* CLRESTRICT u_ref
 #endif
+#endif
+#ifdef LARGEDIM
+	, const uint2 nOffset
 #endif
 ) {
 #ifdef PYTHON
@@ -814,7 +823,12 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 	}
 	if (isnan(output))
 		output = 0.f;
+#ifdef LARGEDIM
+	if (xyz.z > nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * output;
+#else
 	grad[n] += beta * output;
+#endif
 #else
 #ifdef USEIMAGES
 #ifdef CUDA
@@ -880,7 +894,12 @@ void RDPKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT
 		output.x = 0.f;
 	if (isnan(output.y))
 		output.y = 0.f;
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * (output.x + output.y);
+#else
 	grad[n] += beta * (output.x + output.y);
+#endif
 #endif // END RDPCORNERS
 }
 #endif // END RDP
@@ -899,6 +918,9 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, IMAGE3D u,
 void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT u, 
 #endif
 	CONSTANT float* weight, const int3 N, const float p, const float q, const float c, const float pqc, const float beta
+#ifdef LARGEDIM
+	, const uint2 nOffset
+#endif
 ) {
 
 	LTYPE3 ii = MINT3(GID0, GID1, GID2);
@@ -959,7 +981,12 @@ void GGMRFKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRI
 			}
 		}
 	}
+#ifdef LARGEDIM
+	if (ii.z >= nOffset.x && ii.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * output;
+#else
 	grad[n] += beta * output;
+#endif
 }
 #endif
 
@@ -1653,6 +1680,9 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 #ifdef EFOVZ
 	, CONSTANT uchar* fovIndices
 #endif
+#ifdef LARGEDIM
+	, const uint2 nOffset
+#endif
 ) {
 	LTYPE3 xyz = MINT3(GID0, GID1, GID2);
 #ifdef CUDA
@@ -1726,7 +1756,12 @@ void hyperbolicKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLR
 			}
 		}
 	}
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * output;
+#else
 	grad[n] += beta * output;
+#endif
 }
 #endif
 
@@ -1796,6 +1831,9 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 #endif
 #if defined(ANATOMICAL1) || defined(ANATOMICAL2) || defined(ANATOMICAL3)
 	, CLGLOBAL float* CLRESTRICT S
+#endif
+#ifdef LARGEDIM
+	, const uint2 nOffset
 #endif
 ) {
 #ifdef PYTHON
@@ -1870,7 +1908,12 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float2 uabsy = uy / (fabs(uy) + epps);
 	const float2 uabsz = uz / (fabs(uz) + epps);
 	float2 output = uabsx - uabsx / (fabs(ux) / sigma + 1.f) + uabsy - uabsy / (fabs(uy) / sigma + 1.f) + uabsz - uabsz / (fabs(uz) / sigma + 1.f);
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * (output.x + output.y);
+#else
 	grad[n] += beta * (output.x + output.y);
+#endif
 #else
 #ifdef USEIMAGES
 #ifdef CUDA
@@ -1932,10 +1975,19 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	w2 = EXP3(-w2 * w2);
 	float3 w3 = (u3) / sigma;
 	w3 = EXP3(-w3 * w3);
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+#ifdef USEMAD
+		grad[n - N.x * N.y * nOffset.x] += beta * (-(FMAD(w4.x, u4.x, FMAD(w4.y, u4.y, w4.z * u4.z))) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3));
+#else
+		grad[n - N.x * N.y * nOffset.x] += beta * (-(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3));
+#endif
+#else
 #ifdef USEMAD
 	grad[n] += beta * (-(FMAD(w4.x, u4.x, FMAD(w4.y, u4.y, w4.z * u4.z))) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3));
 #else
 	grad[n] += beta * (-(w4.x * u4.x + w4.y * u4.y + w4.z * u4.z) / pvalijk + (w1.x * (uijk - uijkM.x)) / sqrtVal(u1, epps, w1) + (w2.y * (uijk - uijkM.y)) / sqrtVal(u2, epps, w2) + (w3.y * (uijk - uijkM.z)) / sqrtVal(u3, epps, w3));
+#endif
 #endif
 #else
 #ifdef ANATOMICAL1 // TV type 1
@@ -1956,7 +2008,12 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float dy = s[4] * (2.f * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
 	const float dz = s[8] * (2.f * (uijk - uijkM.z)) + s[6] * u3.x + s[5] * u3.y + s[7] * u3.y + s[2] * u3.x;
 	const float d = s[1] * val.x + s[2] * val.x + s[3] * val.x + s[6] * val.x + s[1] * val.y + s[3] * val.y + s[5] * val.y + s[7] * val.y + s[2] * val.z + s[5] * val.z + s[6] * val.z + s[7] * val.z + s[0] * 2.f * val.x + s[4] * 2.f * val.y + s[8] * 2.f * val.z;
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * .5f * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+#else
 	grad[n] += beta * .5f * (d / pvalijk + dx / pvalijkX + dy / pvalijkY + dz / pvalijkZ);
+#endif
 #elif defined(ANATOMICAL2) // TV type 2
 	float3 uijkR = MFLOAT3(0.f, 0.f, 0.f);
 	if (xyz.x < N.x - 1)
@@ -1968,7 +2025,12 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float3 apuS = (uijkR - S[n]);
 	const float3 apu = uijkP - uijk;
 	const float pvalijk = native_sqrt(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
+#else
 	grad[n] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
+#endif
 #elif defined(ANATOMICAL3) // APLS
 	float3 uijkR = MFLOAT3(0.f, 0.f, 0.f);
 	if (xyz.x < N.x - 1)
@@ -1988,12 +2050,24 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	const float pvalijkY = native_sqrt(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + apuRXYZ * apuRXYZ + epps);
 	apuRXYZ = uijkR.x * u3.x + uijkR.y * u3.y + uijkR.z * u3.z;
 	const float pvalijkZ = native_sqrt(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * .5f * ((6.f * uijk - 2.f * uijkP.x - 2.f * uijkP.y - 2.f * uijkP.z + 2.f * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
+			2.f * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + 2.f * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
+			2.f * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+#else
 	grad[n] += beta * .5f * ((6.f * uijk - 2.f * uijkP.x - 2.f * uijkP.y - 2.f * uijkP.z + 2.f * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
 		2.f * (u1.x - epsilon.x * (epsilon.x * u1.x + epsilon.y * u1.y + epsilon.z * u1.z)) / pvalijkX + 2.f * (u2.y - epsilon.y * (epsilon.x * u2.x + epsilon.y * u2.y + epsilon.z * u2.z)) / pvalijkY + 
 		2.f * (u3.z - epsilon.z * (epsilon.x * u3.x + epsilon.y * u3.y + epsilon.z * u3.z))/ pvalijkZ + 1e-7f);
+#endif
 #else // Non-reference image TV
 	const float pvalijk = sqrtVal(uijkP - uijk, epps);
+#ifdef LARGEDIM
+	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
+		grad[n - N.x * N.y * nOffset.x] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
+#else
 	grad[n] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
+#endif
 #endif
 #endif // END TVW1
 #endif // END JPTV || SATV
