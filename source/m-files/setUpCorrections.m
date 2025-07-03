@@ -53,10 +53,10 @@ function options = setUpCorrections(options)
 %           |_______________________________________|
 
 %                       _________________
-%                       |               |           
-%                       |               |           
-%                       |      4        |           
-%                       |               |           
+%                       |               |
+%                       |               |
+%                       |      4        |
+%                       |               |
 %            ___________|_______________|___________
 %           |           |               |           |
 %           |           |               |           |
@@ -65,11 +65,11 @@ function options = setUpCorrections(options)
 %           |           |               |           |
 %           |           |               |           |
 %           |___________|_______________|___________|
-%                       |               |           
-%                       |               |           
-%                       |      3        |           
-%                       |               |           
-%                       |_______________|           
+%                       |               |
+%                       |               |
+%                       |      3        |
+%                       |               |
+%                       |_______________|
 
 
 if options.useEFOV
@@ -81,7 +81,7 @@ if options.useEFOV
     options.NzFull = nz;
     if options.useMultiResolutionVolumes
 
-        
+
         if ~isfield(options, 'multiResolutionScale')
             warning('No scale value input for multi-resolution reconstruction. Using default value of 1/4 of the original voxel size.')
             options.multiResolutionScale = .25;
@@ -89,61 +89,49 @@ if options.useEFOV
         if options.axialEFOV && options.transaxialEFOV
             options.nMultiVolumes = 6;
 
-                NxM = round(options.NxOrig * options.multiResolutionScale);
-                dxM = options.FOVxOrig / NxM;
-                NyM = round(options.NyOrig * options.multiResolutionScale);
-                dyM = options.FOVyOrig / NyM;
-                NzM = round(options.NzOrig * options.multiResolutionScale);
-                dzM = options.axialFOVOrig / NzM;
+            NxM = round(options.NxOrig * options.multiResolutionScale);
+            dxM = options.FOVxOrig / NxM;
+            NyM = round(options.NyOrig * options.multiResolutionScale);
+            dyM = options.FOVyOrig / NyM;
+            NzM = round(options.NzOrig * options.multiResolutionScale);
+            dzM = options.axialFOVOrig / NzM;
 
-                NxM2 = round((options.FOVa_x - options.FOVxOrig) / 2 / dxM) * 2;
-                FOVxM = NxM2 * dxM;
-                NyM2 = round((options.FOVa_y - options.FOVyOrig) / 2 / dyM) * 2;
-                FOVyM = NyM2 * dyM;
-                NzM2 = round((options.axial_fov - options.axialFOVOrig) / 2 / dzM) * 2;
-                FOVzM = NzM2 * dzM;
+            NxM2 = round((options.FOVa_x - options.FOVxOrig) / 2 / dxM) * 2;
+            FOVxM = NxM2 * dxM;
+            NyM2 = round((options.FOVa_y - options.FOVyOrig) / 2 / dyM) * 2;
+            FOVyM = NyM2 * dyM;
+            NzM2 = round((options.axial_fov - options.axialFOVOrig) / 2 / dzM) * 2;
+            FOVzM = NzM2 * dzM;
 
-                options.FOVa_x = ([options.FOVxOrig, options.FOVxOrig, options.FOVxOrig, ...
-                    FOVxM / 2, FOVxM / 2, ...
-                    options.FOVxOrig, options.FOVxOrig]);
+            options.FOVa_x = ([options.FOVxOrig, options.FOVxOrig, options.FOVxOrig, ...
+                FOVxM / 2, FOVxM / 2, ...
+                options.FOVxOrig, options.FOVxOrig]);
 
-                options.FOVa_y = ([options.FOVyOrig, options.FOVyOrig, options.FOVyOrig, ...
-                    FOVyM + options.FOVyOrig, FOVyM + options.FOVyOrig, ...
-                    FOVyM / 2, FOVyM / 2]);
-                % options.FOVa_y = ([options.FOVyOrig, options.FOVyOrig, options.FOVyOrig, ...
-                %     options.FOVyOrig, options.FOVyOrig, ...
-                %     FOVyM / 2, FOVyM / 2]);
+            options.FOVa_y = ([options.FOVyOrig, options.FOVyOrig, options.FOVyOrig, ...
+                FOVyM + options.FOVyOrig, FOVyM + options.FOVyOrig, ...
+                FOVyM / 2, FOVyM / 2]);
 
-                options.axial_fov = ([options.axialFOVOrig, FOVzM / 2, FOVzM / 2, ...
-                    FOVzM + options.axialFOVOrig, FOVzM + options.axialFOVOrig,...
-                    FOVzM + options.axialFOVOrig, FOVzM + options.axialFOVOrig]);
-                % options.axial_fov = ([options.axialFOVOrig, FOVzM / 2, FOVzM / 2, ...
-                %     options.axialFOVOrig, options.axialFOVOrig,...
-                %     options.axialFOVOrig, options.axialFOVOrig]);
+            options.axial_fov = ([options.axialFOVOrig, FOVzM / 2, FOVzM / 2, ...
+                FOVzM + options.axialFOVOrig, FOVzM + options.axialFOVOrig,...
+                FOVzM + options.axialFOVOrig, FOVzM + options.axialFOVOrig]);
 
-                options.Nx = uint32([options.NxOrig, NxM, NxM, ...
-                    NxM2 / 2, NxM2 / 2, ...
-                    NxM, NxM]);
+            options.Nx = uint32([options.NxOrig, NxM, NxM, ...
+                NxM2 / 2, NxM2 / 2, ...
+                NxM, NxM]);
 
-                options.Ny = uint32([options.NyOrig, NyM, NyM, ...
-                    NyM + NyM2, NyM + NyM2, ...
-                    NyM2 / 2, NyM2 / 2]);
-                % options.Ny = uint32([options.NyOrig, NyM, NyM, ...
-                %     NyM, NyM, ...
-                %     NyM2 / 2, NyM2 / 2]);
+            options.Ny = uint32([options.NyOrig, NyM, NyM, ...
+                NyM + NyM2, NyM + NyM2, ...
+                NyM2 / 2, NyM2 / 2]);
 
-                options.Nz = uint32([options.NzOrig, NzM2 / 2, NzM2 / 2, ...
-                    NzM + NzM2, NzM + NzM2, ...
-                    NzM + NzM2, NzM + NzM2]);
-                % options.Nz = uint32([options.NzOrig, NzM2 / 2, NzM2 / 2, ...
-                %     NzM, NzM, ...
-                %     NzM, NzM]);
+            options.Nz = uint32([options.NzOrig, NzM2 / 2, NzM2 / 2, ...
+                NzM + NzM2, NzM + NzM2, ...
+                NzM + NzM2, NzM + NzM2]);
 
-                disp(['Extended FOV is ' num2str((FOVxM + options.FOVxOrig)/options.FOVxOrig * 100) ' % of the original'])
+            disp(['Extended FOV is ' num2str((FOVxM + options.FOVxOrig)/options.FOVxOrig * 100) ' % of the original'])
             % If the initial value only covers the original, dense, volume,
             % it needs to be resized to match the extended FOV with
             % multi-resolution
-            if size(options.x0, 1) == nx
+            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
                 if exist('imresize3','file') == 2
                     apu = single(imresize3(options.x0,options.multiResolutionScale));
                 else
@@ -180,58 +168,59 @@ if options.useEFOV
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
                     options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
                 end
-            elseif size(options.x0, 1) == options.NxOrig
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2)) * 1e-5;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3)) * 1e-5;
-                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4)) * 1e-5;
-                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5)) * 1e-5;
-                options.x5 = ones(options.Nx(6), options.Ny(6), options.Nz(6)) * 1e-5;
-                options.x6 = ones(options.Nx(7), options.Ny(7), options.Nz(7)) * 1e-5;
+            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
+                val = min(options.x0(:));
+                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
+                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
+                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4), options.cType) * val;
+                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
+                options.x5 = ones(options.Nx(6), options.Ny(6), options.Nz(6), options.cType) * val;
+                options.x6 = ones(options.Nx(7), options.Ny(7), options.Nz(7), options.cType) * val;
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
                     options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
                 end
             end
-        % The above case handles a situation where both the transaxial and
-        % axial FOVs are extended. Here only the transaxial FOV is extended
+            % The above case handles a situation where both the transaxial and
+            % axial FOVs are extended. Here only the transaxial FOV is extended
         elseif options.transaxialEFOV && ~options.axialEFOV
             options.nMultiVolumes = 4;
-                NxM = round(options.NxOrig * options.multiResolutionScale);
-                dxM = options.FOVxOrig / NxM;
-                NyM = round(options.NyOrig * options.multiResolutionScale);
-                dyM = options.FOVyOrig / NyM;
-                NzM = round(options.NzOrig * options.multiResolutionScale);
+            NxM = round(options.NxOrig * options.multiResolutionScale);
+            dxM = options.FOVxOrig / NxM;
+            NyM = round(options.NyOrig * options.multiResolutionScale);
+            dyM = options.FOVyOrig / NyM;
+            NzM = round(options.NzOrig * options.multiResolutionScale);
 
-                NxM2 = round((options.FOVa_x - options.FOVxOrig) / 2 / dxM) * 2;
-                FOVxM = NxM2 * dxM;
-                NyM2 = round((options.FOVa_y - options.FOVyOrig) / 2 / dyM) * 2;
-                FOVyM = NyM2 * dyM;
+            NxM2 = round((options.FOVa_x - options.FOVxOrig) / 2 / dxM) * 2;
+            FOVxM = NxM2 * dxM;
+            NyM2 = round((options.FOVa_y - options.FOVyOrig) / 2 / dyM) * 2;
+            FOVyM = NyM2 * dyM;
 
-                options.FOVa_x = ([options.FOVxOrig, ...
-                    FOVxM / 2, FOVxM / 2, ...
-                    options.FOVxOrig, options.FOVxOrig]);
+            options.FOVa_x = ([options.FOVxOrig, ...
+                FOVxM / 2, FOVxM / 2, ...
+                options.FOVxOrig, options.FOVxOrig]);
 
-                options.FOVa_y = ([options.FOVyOrig, ...
-                    FOVyM + options.FOVyOrig, FOVyM + options.FOVyOrig, ...
-                    FOVyM / 2, FOVyM / 2]);
+            options.FOVa_y = ([options.FOVyOrig, ...
+                FOVyM + options.FOVyOrig, FOVyM + options.FOVyOrig, ...
+                FOVyM / 2, FOVyM / 2]);
 
-                options.axial_fov = ([options.axialFOVOrig, ...
-                    options.axialFOVOrig, options.axialFOVOrig,...
-                    options.axialFOVOrig, options.axialFOVOrig]);
+            options.axial_fov = ([options.axialFOVOrig, ...
+                options.axialFOVOrig, options.axialFOVOrig,...
+                options.axialFOVOrig, options.axialFOVOrig]);
 
-                options.Nx = uint32([options.NxOrig, ...
-                    NyM2 / 2, NyM2 / 2, ...
-                    NxM, NxM]);
+            options.Nx = uint32([options.NxOrig, ...
+                NxM2 / 2, NxM2 / 2, ...
+                NxM, NxM]);
 
-                options.Ny = uint32([options.NyOrig, ...
-                    NxM + NyM2, NxM + NyM2, ...
-                    NyM2 / 2, NyM2 / 2]);
+            options.Ny = uint32([options.NyOrig, ...
+                NyM + NyM2, NyM + NyM2, ...
+                NyM2 / 2, NyM2 / 2]);
 
-                options.Nz = uint32([options.NzOrig, NzM, NzM, ...
-                    NzM, NzM]);
+            options.Nz = uint32([options.NzOrig, NzM, NzM, ...
+                NzM, NzM]);
 
-                disp(['Extended FOV is ' num2str((FOVxM + options.FOVxOrig)/options.FOVxOrig * 100) ' % of the original'])
-            if size(options.x0, 1) == nx
+            disp(['Extended FOV is ' num2str((FOVxM + options.FOVxOrig)/options.FOVxOrig * 100) ' % of the original'])
+            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
                 if exist('imresize3','file') == 2
                     apu = single(imresize3(options.x0,options.multiResolutionScale));
                 else
@@ -255,41 +244,42 @@ if options.useEFOV
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:)];
                     options = rmfield(options, {'x1','x2','x3','x4'});
                 end
-            elseif size(options.x0, 1) == options.NxOrig
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2)) * 1e-5;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3)) * 1e-5;
-                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4)) * 1e-5;
-                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5)) * 1e-5;
+            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
+                val = min(options.x0(:));
+                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
+                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
+                options.x3 = ones(options.Nx(4), options.Ny(4), options.Nz(4), options.cType) * val;
+                options.x4 = ones(options.Nx(5), options.Ny(5), options.Nz(5), options.cType) * val;
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
+                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:)];
+                    options = rmfield(options, {'x1','x2','x3','x4'});
                 end
             end
-        % Only axial FOV is extended
+            % Only axial FOV is extended
         else
             options.nMultiVolumes = 2;
-                NxM = round(options.NxOrig * options.multiResolutionScale);
-                NyM = round(options.NyOrig * options.multiResolutionScale);
-                NzM = round(options.NzOrig * options.multiResolutionScale);
-                dzM = options.axialFOVOrig / NzM;
+            NxM = round(options.NxOrig * options.multiResolutionScale);
+            NyM = round(options.NyOrig * options.multiResolutionScale);
+            NzM = round(options.NzOrig * options.multiResolutionScale);
+            dzM = options.axialFOVOrig / NzM;
 
-                NzM2 = round((options.axial_fov - options.axialFOVOrig) / 2 / dzM) * 2;
-                FOVzM = NzM2 * dzM;
+            NzM2 = round((options.axial_fov - options.axialFOVOrig) / 2 / dzM) * 2;
+            FOVzM = NzM2 * dzM;
 
-                options.FOVa_x = ([options.FOVxOrig, options.FOVxOrig, options.FOVxOrig]);
+            options.FOVa_x = ([options.FOVxOrig, options.FOVxOrig, options.FOVxOrig]);
 
-                options.FOVa_y = ([options.FOVyOrig, options.FOVyOrig, options.FOVyOrig]);
+            options.FOVa_y = ([options.FOVyOrig, options.FOVyOrig, options.FOVyOrig]);
 
-                options.axial_fov = ([options.axialFOVOrig, FOVzM / 2, FOVzM / 2]);
+            options.axial_fov = ([options.axialFOVOrig, FOVzM / 2, FOVzM / 2]);
 
-                options.Nx = uint32([options.NxOrig, NxM, NxM]);
+            options.Nx = uint32([options.NxOrig, NxM, NxM]);
 
-                options.Ny = uint32([options.NyOrig, NyM, NyM]);
+            options.Ny = uint32([options.NyOrig, NyM, NyM]);
 
-                options.Nz = uint32([options.NzOrig, NzM2 / 2, NzM2 / 2]);
+            options.Nz = uint32([options.NzOrig, NzM2 / 2, NzM2 / 2]);
 
-                disp(['Extended FOV is ' num2str((FOVzM + options.axialFOVOrig)/options.axialFOVOrig * 100) ' % of the original'])
-            if size(options.x0, 1) == nx
+            disp(['Extended FOV is ' num2str((FOVzM + options.axialFOVOrig)/options.axialFOVOrig * 100) ' % of the original'])
+            if size(options.x0, 1) == nx && min(options.x0(:)) ~= max(options.x0(:))
                 if exist('imresize3','file') == 2
                     apu = single(imresize3(options.x0,options.multiResolutionScale));
                 else
@@ -306,12 +296,13 @@ if options.useEFOV
                     options.x0 = [options.x0(:);options.x1(:); options.x2(:)];
                     options = rmfield(options, {'x1','x2'});
                 end
-            elseif size(options.x0, 1) == options.NxOrig
-                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2)) * 1e-5;
-                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3)) * 1e-5;
+            elseif size(options.x0, 1) == options.NxOrig || min(options.x0(:)) == max(options.x0(:))
+                val = min(options.x0(:));
+                options.x1 = ones(options.Nx(2), options.Ny(2), options.Nz(2), options.cType) * val;
+                options.x2 = ones(options.Nx(3), options.Ny(3), options.Nz(3), options.cType) * val;
                 if options.implementation == 2 || options.implementation == 3 || options.implementation == 5
-                    options.x0 = [options.x0(:);options.x1(:); options.x2(:); options.x3(:); options.x4(:); options.x5(:); options.x6(:)];
-                    options = rmfield(options, {'x1','x2','x3','x4','x5','x6'});
+                    options.x0 = [options.x0(:);options.x1(:); options.x2(:)];
+                    options = rmfield(options, {'x1','x2'});
                 end
             end
         end
@@ -345,55 +336,25 @@ else
     options.NzFull = options.Nz;
 end
 if options.offsetCorrection
-    %     distance = zeros(options.nRowsD, options.nProjections);
     options.OffsetLimit = zeros(options.nProjections, 1, options.cType);
     for kk = 1 : options.nProjections
-        % kk = 1;
         sx = options.x(1,kk);
         sy = options.x(2,kk);
         sz = options.x(3,kk);
         s = [sx;sy;sz];
-%         sx = [sx;sx];
-%         sy = [sy;sy];
         dx = options.x(4,kk);
         dy = options.x(5,kk);
         dz = options.x(6,kk);
-        % p = [options.oOffsetX;options.oOffsetY;options.oOffsetZ];
         d = [dx;dy;dz];
-        % dist = norm(cross((d -s),(s - p))) / norm(d - s);
         ii = (0 : 0.25 : options.nRowsD)' - options.nRowsD / 2;
-%         jj = .5;
         if options.pitch
-        dx = dx + options.z(1,kk) * ii + options.z(4,kk) * ii;
-        dy = dy + options.z(2,kk) * ii + options.z(5,kk) * ii;
+            dx = dx + options.z(1,kk) * ii + options.z(4,kk) * ii;
+            dy = dy + options.z(2,kk) * ii + options.z(5,kk) * ii;
         else
-        dx = dx + options.z(1,kk) * ii;
-        dy = dy + options.z(2,kk) * ii;
+            dx = dx + options.z(1,kk) * ii;
+            dy = dy + options.z(2,kk) * ii;
         end
-        % dz = dz + options.z(3,kk) * ii + options.z(6,kk) * ii;
-        % apuX = [options.z(1,kk);options.z(2,kk);options.z(3,kk)] * options.nRowsD / 2;
-        % apuY = [options.z(4,kk);options.z(5,kk);options.z(6,kk)] * options.nColsD / 2;
-        % apuX = [options.z(1,kk);options.z(2,kk);options.z(3,kk)];
-        % apuY = [options.z(4,kk);options.z(5,kk);options.z(6,kk)];
-
-        % d1 = [dx(10);dy(10);dz(10)];
-        % d2 = apuX - apuY;
-        % d3 = d - apuX - apuY;
-        % n = cross(d2 - d, d3 - d);
-        % n = cross(apuX, apuY);
-        % n = n ./ norm(n);
-        % v = s - d;
-        % point = s - dot(v, n) .* n;
-        % boundary = [dx(end);dy(end);dz];
-        % dist = norm(point - boundary);
-        % d = [dx;dy;dz];
-        % n = abs(s - d) / norm(s-d);
-        % p = [options.oOffsetX;options.oOffsetY;options.oOffsetZ];
-%         dx = [dx + options.z(1,kk) * (options.nRowsD / 2) + options.z(4,kk) * (options.nRowsD / 2); dx - options.z(1,kk) * (options.nRowsD / 2) - options.z(4,kk) * (options.nRowsD / 2)];
-%         dy = [dy + options.z(2,kk) * (options.nRowsD / 2) + options.z(5,kk) * (options.nRowsD / 2); dy - options.z(2,kk) * (options.nRowsD / 2) - options.z(5,kk) * (options.nRowsD / 2)];
         dist = abs((dx - sx) .* (sy) - ((sx) .* (dy - sy))) ./ sqrt((dx - sx).^2 + (dy - sy).^2);
-%         % dist = norm((s-p) - (dot((s-p),n) .* n));
-% %         options.OffsetLimit(kk) = min(dist) * 1.85;
         [~, ind] = min(dist);
 %         %     distance(:,kk) = dist;
 %         %     indeksit(kk) = ind;
