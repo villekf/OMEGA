@@ -356,18 +356,7 @@ if options.offsetCorrection
         end
         dist = abs((dx - sx) .* (sy) - ((sx) .* (dy - sy))) ./ sqrt((dx - sx).^2 + (dy - sy).^2);
         [~, ind] = min(dist);
-%         %     distance(:,kk) = dist;
-%         %     indeksit(kk) = ind;
-%         %     end
-%         if ind > options.nRowsD / 2 * 4
-%             ind = options.nRowsD * 4 - ind;
-%         end
-        options.OffsetLimit(kk) = (ind + 0) * options.dPitchY/4;
-        % options.OffsetLimit(kk) = dist;
-        % options.OffsetLimit(kk) = (options.nRowsD * 4 - ind) * options.dPitchY/4;
-        % else
-        %     options.OffsetLimit(kk) = (options.nRowsD - ind) * options.dPitchY;
-        % end
+        options.OffsetLimit(kk) = (ind) * options.dPitchY/4;
     end
 end
 end
