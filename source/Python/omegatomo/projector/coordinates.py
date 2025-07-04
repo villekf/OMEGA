@@ -6,12 +6,12 @@ import numpy as np
 def computePixelSize(options):
     FOV = np.column_stack((options.FOVa_x,options.FOVa_y, options.axial_fov)).astype(dtype=np.float32)
     etaisyys = -(FOV) / 2
-    options.dx = np.zeros((FOV.shape[0],1),dtype=np.float32);
-    options.dy = np.zeros((FOV.shape[0],1),dtype=np.float32);
-    options.dz = np.zeros((FOV.shape[0],1),dtype=np.float32);
-    options.bx = np.zeros((FOV.shape[0],1),dtype=np.float32);
-    options.by = np.zeros((FOV.shape[0],1),dtype=np.float32);
-    options.bz = np.zeros((FOV.shape[0],1),dtype=np.float32);
+    options.dx = np.zeros((FOV.shape[0]),dtype=np.float32)
+    options.dy = np.zeros((FOV.shape[0]),dtype=np.float32)
+    options.dz = np.zeros((FOV.shape[0]),dtype=np.float32)
+    options.bx = np.zeros((FOV.shape[0]),dtype=np.float32)
+    options.by = np.zeros((FOV.shape[0]),dtype=np.float32)
+    options.bz = np.zeros((FOV.shape[0]),dtype=np.float32)
     for kk in range(FOV.shape[0] - 1, -1, -1):
         if isinstance(options.Nx, np.ndarray):
             xx = np.linspace(etaisyys[kk,0] + options.oOffsetX, -etaisyys[kk,0] + options.oOffsetX, options.Nx[kk].item() + 1, dtype=np.float32)

@@ -96,7 +96,10 @@ def loadCorrections(options):
                 try:
                     from pymatreader import read_mat
                     var = read_mat(options.attenuation_datafile)
-                    options.vaimennus = np.array(next(iter(var.items()))[1])
+                    if list(var)[0] == '__header__':
+                        options.vaimennus = np.array(var[list(var)[3]]).astype(np.float32)
+                    else:
+                        options.vaimennus = np.array(var[list(var)[0]]).astype(np.float32)
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             elif len(options.attenuation_datafile) > 0 and  (options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'npy' or options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'npz'):
@@ -127,13 +130,16 @@ def loadCorrections(options):
                     try:
                         from pymatreader import read_mat
                         var = read_mat(options.attenuation_datafile)
-                        options.vaimennus = np.array(next(iter(var.items()))[1])
+                        if list(var)[0] == '__header__':
+                            options.vaimennus = np.array(var[list(var)[3]]).astype(np.float32)
+                        else:
+                            options.vaimennus = np.array(var[list(var)[0]]).astype(np.float32)
                     except ModuleNotFoundError:
                         print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                 elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
                     apu = np.load(nimi, allow_pickle=True)
                     variables = list(apu.keys())
-                    options.vaimennus = apu[variables[0]]
+                    options.vaimennus = apu[variables[3]]
                 else:
                     ValueError('Unsupported datatype!')
         if options.CT_attenuation:
@@ -370,7 +376,7 @@ def parseInputs(options, mDataFound = False):
             options.randoms_correction = False
             
     
-    if mDataFound and not options.largeDim:
+    if mDataFound and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.ravel(order='F').astype(dtype=np.float32)
 
 
@@ -378,7 +384,6 @@ def TVPrepass(options):
     from skimage.transform import resize #scikit-image
     def assembleS(alkuarvo,T,Ny,Nx,Nz):
         S = np.zeros((Nx * Ny * Nz * 3, 3),order='F',dtype=np.float32)
-        # Compute the weighting gamma and tensor S
         f = -np.diff(alkuarvo, axis=1, append=0)
         f = np.concatenate((f, np.zeros((Nx, 1, Nz),order='F',dtype=np.float32)), axis=1)
         f = f.reshape(-1)

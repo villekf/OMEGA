@@ -156,29 +156,6 @@ def getCoordinates(options):
             x,y = detectorCoordinates(options);
             if options.nLayers > 1:
                 koko = x.size / 2
-                # x = np.zeros(options.Ndist * options.Nang * 4, 2);
-                # y = np.zeros(options.Ndist * options.Nang * 4, 2);
-                # for kk = 1 : options.nLayers
-                #     if options.cryst_per_block(1) == options.cryst_per_block(2)
-                #         [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
-                #     else
-                #         if kk == 2
-                #             [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko), options.nLayers);
-                #         else
-                #             [x1, y1] = sinogram_coordinates_2D(options, xp(1 + (kk - 1) * koko : kk * koko), yp(1 + (kk - 1) * koko : kk * koko));
-                #         end
-                #     end
-                #     x1(ismember(x1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(x1, [0 0], 'rows')), 1);
-                #     y1(ismember(y1, [0 0], 'rows'),:) = repmat([inf inf], nnz(ismember(y1, [0 0], 'rows')), 1);
-                #     x(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = x1;
-                #     y(1 + (kk - 1) * options.Ndist * options.Nang * 3: options.Ndist * options.Nang + (kk - 1) * options.Ndist * options.Nang * 3,:) = y1;
-                # end
-                # ind2 = 1 + options.Ndist * options.Nang * 3;
-                # ind1 = options.Ndist * options.Nang;
-                # x(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [x(ind2:end,1) x(1 : ind1, 2)];
-                # y(1 + options.Ndist * options.Nang : options.Ndist * options.Nang * 2,:) = [y(ind2:end,1) y(1 : ind1, 2)];
-                # x(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [x(1 : ind1, 1) x(ind2:end,2)];
-                # y(1 + options.Ndist * options.Nang * 2 : options.Ndist * options.Nang * 3,:) = [y(1 : ind1, 1) y(ind2:end,2)];
             else:
                 x, y = sinogramCoordinates2D(options, x, y)
     
@@ -485,24 +462,6 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
             i[kk] = -i[kk]
     
     # The sinogram corners need to the swapped
-    
-    # if nargout >= 6
-    #     temppi = j*2 < -i;
-    #     temppi2 = (i <= (j-det_w_pseudo/2)*2);
-        
-    #     temppi3 = false(det_w_pseudo);
-    #     temppi3(tril(true(det_w_pseudo))) = temppi;
-    #     temppi = logical(temppi3 + tril(temppi3,-1)');
-        
-    #     temppi3 = false(det_w_pseudo);
-    #     temppi3(tril(true(det_w_pseudo))) = temppi2;
-    #     temppi2 = logical(temppi3 + tril(temppi3,-1)');
-        
-    #     swap1 = triu(temppi);
-    #     swap3 = tril(temppi);
-    #     swap2 = triu(temppi2);
-    #     swap4 = tril(temppi2);
-    #     varargout{6} = cat(3, swap1, swap2, swap3, swap4);
     swap = np.logical_or((j * 2) < -i, i <= ((j - det_w_pseudo // 2) * 2))
     L3 = L[swap,0]
     L[swap,0] = L[swap,1]
@@ -535,56 +494,15 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     y = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
     x2 = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
     y2 = np.zeros((Ndist, Nang),dtype=np.float32,order='F')
-    # Accumulate the coordinates
-    # if mashing > 1:
-    #     x = npg.aggregate(np.column_stack((i,j)), xx1, func='mean', size=[Ndist,Nang],fill_value=np.nan)
-    #     y = npg.aggregate(np.column_stack((i,j)), yy1, func='mean', size=[Ndist,Nang],fill_value=np.nan)
-    #     x2 = npg.aggregate(np.column_stack((i,j)), xx2, func='mean', size=[Ndist,Nang],fill_value=np.nan)
-    #     y2 = npg.aggregate(np.column_stack((i,j)), yy2, func='mean', size=[Ndist,Nang],fill_value=np.nan)
-    # else:
     np.add.at(x, (i, j), xx1)
     np.add.at(y, (i, j), yy1)
     np.add.at(x2, (i, j), xx2)
     np.add.at(y2, (i, j), yy2)
 
-# Use np.add.at to accumulate values from xx1 at indices specified by i and j
-    
-    # Remove NaN values
-    # Source: https://stackoverflow.com/questions/37662180/interpolate-missing-values-2d-python
-    # if np.sum(np.isnan(x.flatten())) > 0:
-    #     xi = np.arange(0, x.shape[1])
-    #     yi = np.arange(0, x.shape[0])
-    #     #mask invalid values
-    #     x = np.ma.masked_invalid(x)
-    #     xx, yy = np.meshgrid(xi, yi)
-    #     #get only the valid values
-    #     x1 = xx[~x.mask]
-    #     y1 = yy[~x.mask]
-    #     newarr = x[~x.mask]
-    #     x = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method='linear')
-    #     y = np.ma.masked_invalid(y)
-    #     x1 = xx[~y.mask]
-    #     y1 = yy[~y.mask]
-    #     newarr = y[~y.mask]
-    #     y = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method='linear')
-    #     x2 = np.ma.masked_invalid(x2)
-    #     x1 = xx[~x2.mask]
-    #     y1 = yy[~x2.mask]
-    #     newarr = x2[~x2.mask]
-    #     x2 = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method='linear')
-    #     y2 = np.ma.masked_invalid(y2)
-    #     x1 = xx[~y2.mask]
-    #     y1 = yy[~y2.mask]
-    #     newarr = y2[~y2.mask]
-    #     y2 = interpolate.griddata((x1, y1), newarr.ravel(), (xx, yy), method='linear')
     
     # If mashing is present, combine the coordinates
     if mashing > 1:
         from skimage.measure import block_reduce
-        # x = np.reshape(x,(Ndist,Nang));
-        # x2 = np.reshape(x2,(Ndist,Nang));
-        # y = np.reshape(y,(Ndist,Nang));
-        # y2 = np.reshape(y2,(Ndist,Nang));
         # Compute the mean coordinates
         x = block_reduce(x, block_size=(1,mashing), func=np.mean)
         y = block_reduce(y, block_size=(1,mashing), func=np.mean)
@@ -597,13 +515,15 @@ def sinogramCoordinates2D(options, x, y, nLayers = 1):
     y = np.column_stack((y.ravel('F'), y2.ravel('F')))
     return x, y
     
-def sinogramCoordinates3D(options):
+def sinogramCoordinates3D(options, layers = (1,1)):
     import math
+    layer1 = layers[0]
+    layer2 = layers[1]
     cr_pz = options.cr_pz
     Nz = options.rings * 2 - 1
     
     if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
-        z_length = float(options.rings + 1 + len(options.ringGaps)) * cr_pz
+        z_length = float(options.rings + 1) * cr_pz + np.sum(options.ringGaps)
     else:
         z_length = float(options.rings + 1) * cr_pz
     
@@ -620,16 +540,23 @@ def sinogramCoordinates3D(options):
     
     # Compute the 3D coordinates
     if options.span > 1:
-        if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
-            z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2 + len(options.ringGaps))
-        else:
-            z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2)
+        z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2)
+        z = z[:options.rings]
+        # if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
+        #     z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2 + len(options.ringGaps))
+        # else:
+        #     z = np.linspace(cr_pz, z_length + cr_pz, options.rings + 2)
         
         if len(options.ringGaps) > 0 and np.sum(options.ringGaps) > 0:
-            z = z[:options.rings + len(options.ringGaps)]
-            z = np.delete(z, options.ringGaps + 1)
-        else:
-            z = z[:options.rings]
+            gaps = np.cumsum(options.ringGaps)
+            for kk in range(1, int(options.rings / options.cryst_per_block_axial)):
+                start_idx = options.cryst_per_block_axial * kk
+                end_idx = options.cryst_per_block_axial * (kk + 1)
+                z[start_idx:end_idx] = z[start_idx:end_idx] + gaps[kk - 1]
+            # z = z[:options.rings + len(options.ringGaps)]
+            # z = np.delete(z, options.ringGaps + 1)
+        # else:
+        #     z = z[:options.rings]
         
         if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
             z += apu
@@ -696,43 +623,74 @@ def sinogramCoordinates3D(options):
         # z[ind1] = np.fliplr(z[ind1])
     else:
         dif = cr_pz
-        if len(options.ringGaps) > 0 and sum(options.ringGaps) > 0:
-            z = np.zeros(((options.rings + len(options.ringGaps))**2, 2))
-            z2 = np.zeros(((options.rings + len(options.ringGaps))**2, 2))
-            loppu = options.rings + len(options.ringGaps)
-        else:
-            z = np.zeros((options.rings**2, 2))
-            z2 = np.zeros((options.rings**2, 2))
-            loppu = options.rings
-        
-        ind = np.arange(0, cr_pz * loppu, cr_pz)
-        
+
         if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-            ind += apu
-            layers = np.repeat(np.array([[0], [1]]), options.cryst_per_block_axial[1], axis=1)
-            layers = np.repeat(np.concatenate((layers, np.array([[0]])), axis=1), options.linear_multip, axis=1)
+            gap_start = ((float(options.rings) * cr_pz) - (options.cryst_per_block_axial[0] * options.linear_multip) * cr_pz) / options.linear_multip / 2
+            gap = np.arange(gap_start, gap_start * 2 * options.linear_multip + 1e-6, gap_start * 2)
+
+        z = np.zeros((options.rings**2, 2))
+        loppu = options.rings
+        ind1 = np.ones((loppu, 1))
         
-        for t in range(1, loppu + 1):
-            if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-                z[(t - 1) * loppu:t * loppu, :] = np.column_stack((dif * (t - 1) * np.ones(loppu), ind))
-                z2[(t - 1) * loppu:t * loppu, :] = np.column_stack((layers[t - 1] * np.ones(loppu), layers))
+        if options.nLayers > 1:
+            if options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] and layer2 == 1:
+                r = options.cryst_per_block_axial[-1] * options.linear_multip
+                apu = np.repeat(gap, options.cryst_per_block_axial[-1]).reshape(-1, 1)
+                ind2 = np.arange(0, cr_pz * r, cr_pz).reshape(-1, 1) + apu
+                insert_indices = np.setdiff1d(np.arange(len(ind2)), np.arange(options.cryst_per_block[0]-1, len(ind2), options.cryst_per_block[0]))
+                ind3 = np.full((loppu, 1), np.inf)
+                ind3[insert_indices] = ind2[insert_indices]
+                ind2 = ind3
+            elif options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0] and layer2 == 1:
+                r = options.cryst_per_block_axial[0] * options.linear_multip
+                apu = np.repeat(gap, options.cryst_per_block_axial[0]).reshape(-1, 1)
+                ind2 = np.arange(0, cr_pz * r, cr_pz).reshape(-1, 1) + apu
+                ind3 = np.full((loppu, 1), np.inf)
+                insert_indices = np.setdiff1d(np.arange(len(ind3)), np.arange(options.cryst_per_block[-1]-1, len(ind3), options.cryst_per_block[-1]))
+                ind3[insert_indices] = ind2[insert_indices]
+                ind2 = ind3
             else:
-                z[(t - 1) * loppu:t * loppu, :] = np.column_stack((dif * (t - 1) * np.ones(loppu), ind))
+                ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
         
-        if len(options.ringGaps) > 0 and sum(options.ringGaps) > 0:
-            ind = np.tile(options.ringGaps, (loppu, 1)) + np.repeat(np.arange(loppu), 3) * loppu + 1
-            ind += np.tile(np.arange(len(options.ringGaps)), (len(ind) // len(options.ringGaps), 1))
-            z[ind.flatten() - 1, :] = []
-            for kk in range(len(options.ringGaps), 0, -1):
-                z[options.rings * (options.ringGaps[kk - 1] + kk - 2):options.rings * (options.ringGaps[kk - 1] + kk - 1), :] = []
-        z -= (maxZ / 2 - cr_pz)
+            if (options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] or options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0]) and layer1 == 1:
+                apu1 = np.full((loppu, 1), np.inf)
+                if options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0]:
+                    apu = np.repeat(gap, options.cryst_per_block_axial[0]).reshape(-1, 1)
+                    insert_indices = np.setdiff1d(np.arange(len(ind1)), np.arange(options.cryst_per_block[-1]-1, len(ind1), options.cryst_per_block[-1]))
+                else:
+                    apu = np.repeat(gap, options.cryst_per_block_axial[-1]).reshape(-1, 1)
+                    insert_indices = np.setdiff1d(np.arange(len(ind1)), np.arange(options.cryst_per_block[0]-1, len(ind1), options.cryst_per_block[0]))
+                apu1[insert_indices] = apu[insert_indices]
+        else:
+            ind2 = np.arange(0, cr_pz * loppu, cr_pz).reshape(-1, 1)
         
-        if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1]:
-            apuZ = np.zeros(options.rings**2)
-            apuZ[np.all(z2 == [1, 1], axis=1)] = 3
-            apuZ[np.all(z2 == [1, 0], axis=1)] = 1
-            apuZ[np.all(z2 == [0, 1], axis=1)] = 2
-            z = np.column_stack((apuZ, z))
+        uu = 0
+        if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
+            gaps = np.repeat(np.insert(np.cumsum(options.ringGaps), 0, 0), options.cryst_per_block_axial).reshape(-1, 1)
+        
+        yy = 0
+        for t in range(1, loppu + 1):
+            idx_start = (t - 1) * loppu
+            idx_end = t * loppu
+            if options.nLayers > 1 and options.cryst_per_block_axial[0] != options.cryst_per_block_axial[1] and layer1 == 1:
+                z[idx_start:idx_end, :] = np.hstack([dif * uu * ind1 + apu1[t - 1], ind2])
+                uu += 1
+            else:
+                z[idx_start:idx_end, :] = np.hstack([dif * (t - 1) * ind1, ind2])
+                if hasattr(options, 'ringGaps') and np.sum(options.ringGaps) > 0:
+                    z[idx_start:idx_end, 1] += np.squeeze(gaps[:loppu])
+                    if (t % (options.cryst_per_block_axial + 1)) == 0:
+                        yy += 1
+                    if yy > 0:
+                        z[idx_start:idx_end, 0] += yy * options.ringGaps[yy - 1]
+        
+            if options.nLayers > 1 and ((options.cryst_per_block_axial[0] > options.cryst_per_block_axial[-1] and layer1 == 1) or (options.cryst_per_block_axial[-1] > options.cryst_per_block_axial[0] and layer1 == 1)):
+                if np.isinf(apu1[t - 1]):
+                    z[idx_start:idx_end, :] = np.hstack([np.inf * ind1, ind2])
+                    uu -= 1
+        
+        z[np.isnan(z)] = np.inf
+        z = z - (maxZ / 2 - cr_pz)
     return z
 
 
@@ -812,15 +770,6 @@ def SPECTParameters(options):
             options.angles = (np.repeat(options.startAngle, (options.nProjections // options.nHeads)) + np.tile(np.arange(0,options.angleIncrement * (options.nProjections / options.nHeads),options.angleIncrement), (options.nHeads, 1)))
         options.uu = 1
         options.ub = 1
-        #if abs(options.offangle) > 0:
-        #    if np.max(np.abs(options.angles.flatten())) > 10. * np.pi:
-        #        options.angles = options.angles + (options.offangle * 180./np.pi)
-        #    else:
-        #        options.angles = options.angles + options.offangle
-        #if np.max(np.abs(options.angles.flatten())) > 10. * np.pi and options.implementation == 2:
-        #    options.angles = options.angles / 180. * np.pi
-        #if options.flip_image:
-        #    options.angles = -(options.angles)
         options.angles = options.angles.ravel('F').astype(dtype=np.float32)
         options.swivelAngles = options.swivelAngles.ravel('F').astype(dtype=np.float32)
         options.radiusPerProj = options.radiusPerProj.ravel('F').astype(dtype=np.float32)
