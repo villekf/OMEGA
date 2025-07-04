@@ -262,8 +262,8 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-if options.useIndexBasedReconstruction && options.projector_type > 3
-    error('Index-based recpnstruction only supports projector types 1-3!')
+if options.useIndexBasedReconstruction && options.projector_type > 4
+    error('Index-based reconstruction only supports projector types 1-4!')
 end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
