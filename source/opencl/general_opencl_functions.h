@@ -840,42 +840,29 @@ DEVICE void getDetectorCoordinatesSPECT(
 #else
 	CONSTANT float* d_xyz, 
 #endif
-    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY) {
-	int id = i.z * 6;
+    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+	uint id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
-	const float2 indeksi = MFLOAT2(CFLOAT(i.x) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(i.y) - CFLOAT(d_sizey) / 2.f + .5f);
-	id = i.z * NA;
+	const float2 shift_det_elem = MFLOAT2(
+        d_dPitch.x * (CFLOAT(i.x) + (1.f - CFLOAT(d_size_x)) * .5f),
+        d_dPitch.y * (CFLOAT(i.y) + (1.f - CFLOAT(d_sizey)) * .5f)
+    ); // Amount of shift from sinogram center to current detector element
+	
+    id = i.z * NA; // Index of d_uv (detector panel normal vector)
+    uint idShift = 2*lorXY + (2*N_RAYS) * idx; // Index of rayShiftsDetector
 
-	const float apuX = d_uv[id];
-	const float apuY = d_uv[id + 1];
-	(*d).x += indeksi.x * apuX;
-	(*d).y += indeksi.x * apuY;
-	(*d).z += indeksi.y * d_dPitch.y;
-	(*s).x += indeksi.x * apuX;
-	(*s).y += indeksi.x * apuY;
-	(*s).z += indeksi.y * d_dPitch.y;
-#if defined(N_RAYS)
-    int idr = lorXY * 2;
-    (*d).x += apuX * d_rayShiftsDetector[idr] / 2.f;
-    (*d).y += apuY * d_rayShiftsDetector[idr] / 2.f;
-    (*d).z += d_dPitch.y * d_rayShiftsDetector[idr+1] / 2.f;
-    (*s).x += apuX * d_rayShiftsSource[idr] / 2.f;
-    (*s).y += apuY * d_rayShiftsSource[idr] / 2.f;
-    (*s).z += d_dPitch.y * d_rayShiftsSource[idr+1] / 2.f;
-#endif
-    *d += 100.f * (*d - *s);
+	const float apuX = d_uv[id]; // X component of detector panel normal vector
+	const float apuY = d_uv[id + 1]; // Y component of detector panel normal vector
+    
+	(*d).x += apuX * (shift_det_elem.x + d_rayShiftsDetector[idShift]); // Shift to current element + shift to rayShiftsDetector
+	(*d).y += apuY * (shift_det_elem.x + d_rayShiftsDetector[idShift]);
+	(*d).z += shift_det_elem.y + d_rayShiftsDetector[idShift+1];
+	(*s).x += apuX * (shift_det_elem.x + d_rayShiftsSource[idShift]);
+	(*s).y += apuY * (shift_det_elem.x + d_rayShiftsSource[idShift]);
+	(*s).z += shift_det_elem.y + d_rayShiftsSource[idShift+1];
 
-    // Uncomment for original (wrong) ray direction
-    //float tmpX = (*d).x;
-    //float tmpY = (*d).y;
-    //float tmpZ = (*d).z;
-    //(*d).x = (*s).x;
-    //(*d).y = (*s).y;
-    //(*d).z = (*s).z;
-    //(*s).x = tmpX;
-    //(*s).y = tmpY;
-    //(*s).z = tmpZ;
+    *d += 100.f * (*d - *s); // Extend rays across FOV
 }
 #else
 #if defined(RAW) || defined(SENS)

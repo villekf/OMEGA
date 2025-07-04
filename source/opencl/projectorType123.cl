@@ -327,7 +327,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #if defined(CT) && !defined(LISTMODE) && !defined(PET) // CT data
 	getDetectorCoordinatesCT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize);
 #elif defined(SPECT) && !defined(LISTMODE) && !defined(PET) // SPECT data
-	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY);
+	getDetectorCoordinatesSPECT(d_xy, d_z, &s, &d, i, d_size_x, d_sizey, crystalSize, d_rayShiftsDetector, d_rayShiftsSource, lorXY, idx);
 #elif defined(LISTMODE) && !defined(SENS) // Listmode data
 #if defined(INDEXBASED)
 	getDetectorCoordinatesListmode(d_xy, d_z, trIndex, axIndex, &s, &d, idx

@@ -252,12 +252,6 @@ class ProjectorClass {
 			options.push_back("-DPET");
 		else if (inputScalars.SPECT) {
 			options.push_back("-DSPECT");
-			//std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
-			//options.push_back(buffer2);
-			//std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
-			//options.push_back(buffer3);
-			//std::snprintf(buffer4, 30, "-DN_RAYS3D=%d", static_cast<int32_t>(inputScalars.n_rays3D));
-			//options.push_back(buffer4);
 		}
 
 		std::snprintf(buffer1, 30, "-DNBINS=%d", static_cast<int32_t>(inputScalars.nBins));
@@ -268,7 +262,7 @@ class ProjectorClass {
 			options.push_back("-DLISTMODE2");
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options.push_back("-DINDEXBASED");
-		if (siddonVal && (inputScalars.n_rays * inputScalars.n_rays3D) > 1) {
+		if (siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1) || (inputScalars.SPECT)) {
 			std::snprintf(buffer2, 30, "-DN_RAYS=%d", static_cast<int32_t>(inputScalars.n_rays * inputScalars.n_rays3D));
 			options.push_back(buffer2);
 			std::snprintf(buffer3, 30, "-DN_RAYS2D=%d", static_cast<int32_t>(inputScalars.n_rays));
@@ -1778,8 +1772,8 @@ public:
 				memAlloc.zFull = true;
 			}
 			if (inputScalars.SPECT) {
-				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
-				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemAlloc(&d_rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
+				status = cuMemAlloc(&d_rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
 				memAlloc.rayShifts = true;
 			}
@@ -1965,9 +1959,9 @@ public:
 				CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.SPECT) {
-				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemcpyHtoD(d_rayShiftsDetector, w_vec.rayShiftsDetector, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
-				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays);
+				status = cuMemcpyHtoD(d_rayShiftsSource, w_vec.rayShiftsSource, sizeof(float) * 2 * inputScalars.n_rays * inputScalars.nRowsD * inputScalars.nColsD * inputScalars.nProjections);
 				CUDA_CHECK(status, "\n", -1);
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {

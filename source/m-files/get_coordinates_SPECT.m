@@ -27,8 +27,8 @@ function [x, z] = get_coordinates_SPECT(options)
         x(5, ii) = x(2, ii) + options.colL * sind(alpha2);
         x(6, ii) = 0;
         
-        z(1, ii) = options.crXY * cosd(alpha2+90);
-        z(2, ii) = options.crXY * sind(alpha2+90);
+        z(1, ii) = cosd(alpha2+90);
+        z(2, ii) = sind(alpha2+90);
     end
 
     if options.flipImageX % Horizontal

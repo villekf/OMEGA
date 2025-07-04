@@ -23,18 +23,22 @@ function options = SPECTParameters(options)
 
 if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Ray tracing projectors
     if numel(options.rayShiftsDetector) == 0
-        options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
+        options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)); % Collimator modeling
         if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*options.crXY*2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
+            options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
         end
         options.rayShiftsDetector(1:2) = 0;
     end
     if numel(options.rayShiftsSource) == 0
-        options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)/options.crXY); % Collimator modeling
+        options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)); % Collimator modeling
         if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*options.crXY*2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
+            options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
         end
         options.rayShiftsSource(1:2) = 0;
+    end
+    if options.implementation == 2
+        options.rayShiftsDetector = single(options.rayShiftsDetector(:));
+        options.rayShiftsSource = single(options.rayShiftsSource(:));
     end
 end
 if ismember(options.projector_type, [12, 2, 21, 22]) % Orthogonal distance ray tracer
