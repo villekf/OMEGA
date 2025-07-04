@@ -2099,6 +2099,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 		uint64_t yy = 0u;
 		af::array mDataApu;
 		if (MethodList.LSQR && subIter == 0) {
+			mData = mData.as(f32);
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing LSQR");
 			vec.fLSQR.emplace_back(vec.im_os[ii].copy());
@@ -2154,6 +2155,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 			}
 		}
 		else if (MethodList.BB && subIter == 0){
+			mData = mData.as(f32);
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing BB");
 			if (inputScalars.projector_type == 6)
@@ -2187,6 +2189,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 		else if (MethodList.CGLS && subIter == 0 && !inputScalars.largeDim) {
 			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Initializing CGLS");
+			mData = mData.as(f32);
 			if (ii == 0)
 				vec.rCGLS = mData;
 			mDataApu = mData.copy();
@@ -2263,7 +2266,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 	if (inputScalars.verbose >= 3)
 		mexPrint("Computing ACOSEM weight");
 	int status = 0;
-	uu = af::sum<float>(mData);
+	uu = af::sum<float>(mData.as(f32));
 	af::array outputFP;
 	if (inputScalars.projector_type != 6) {
 		if (inputScalars.listmode == 0)

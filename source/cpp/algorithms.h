@@ -516,7 +516,7 @@ inline int POCS(scalarStruct& inputScalars, Weighting& w_vec, const RecMethods& 
 		if (status != 0) {
 			return status;
 		}
-		const float dd = static_cast<float>(af::norm(outputFP - mData));
+		const float dd = static_cast<float>(af::norm(outputFP - mData.as(f32)));
 		const float dp = static_cast<float>(af::norm(vec.im_os[ii] - vec.f0POCS[ii]));
 		if (DEBUG) {
 			mexPrintBase("dd = %f\n", dd);
