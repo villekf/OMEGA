@@ -60,37 +60,34 @@ function outputFP = forwardProjectionType6(options, recApu, loopVar, koko)
         u1 = options.uu;
         apuArr = reshape(recApu, options.Nx(ii), options.Ny(ii), options.Nz(ii));
 
-        %options.Nx(ii)
-        %options.Ny(ii)
-        %options.Nz(ii)
         for kk = 1:koko % todo add support for non-square fov
-            
             kuvaRot = apuArr;
             panelTilt = options.swivelAngles(u1) - options.angles(u1) + 180;
             panelShift = options.radiusPerProj(u1) * sind(panelTilt) / voxelSize;
             PSFshift = (options.FOVa_y/2 - (options.radiusPerProj(u1) * cosd(panelTilt) - options.CORtoDetectorSurface)) / voxelSize;
 
+            % 1. Rotate the image
             kuvaRot = imrotate(kuvaRot, -options.swivelAngles(u1), 'bilinear','crop');
-            kuvaRot = imtranslate(kuvaRot, [-panelShift, 0,0], FillValues=0); % Translate image by r0*sin(beta)
+            %volume3Dviewer(kuvaRot)
+            
+            % 2. Translate the image
+            kuvaRot = imtranslate(kuvaRot, [-panelShift, 0, 0]);
+            %volume3Dviewer(kuvaRot)
 
-            %size(kuvaRot)
-            
-            PSF = permute(options.gFilter, [3, 2, 1]);
-            PSF = imtranslate(PSF, [0, PSFshift, 0], FillValues=0);
-            
-            %size(PSF)
-            % Translate PSF by r0*cos(beta)-CORtodetsurface
+            % 3. Attenuation correction
+
+
+            % 4. Convolve with detector PSF
+            PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+            PSF = PSF(:, :, 1:options.Nx(1));
+            PSF = permute(PSF, [3 2 1]);
             for jj = 1 : options.Ny(1)
                 kuvaRot(jj, :, :) = conv2(squeeze(kuvaRot(jj, :, :)), squeeze(PSF(jj,:,:)), 'same');
             end
             
-            %kuvaRot = permute(kuvaRot, [3, 2, 1]);
-            %volume3Dviewer(kuvaRot)
-            %error("break")
+            % 5. Sum
             kuvaRot = sum(kuvaRot, 1);
             kuvaRot = squeeze(kuvaRot);
-            size(kuvaRot);
-            size(outputFP(:, :, kk));
             outputFP(:, :, kk) = outputFP(:, :, kk) + kuvaRot;
             u1 = u1 + 1;
         end

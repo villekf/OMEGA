@@ -65,34 +65,39 @@ function output = backwardProjectionType6(options, input, koko)
         % 3. translate 
         % 4. rotate
 
-        % 1.
+        % 1. Smear the input FP across the image volume
         kuvaRot = fProj(:, :, kk);
         kuvaRot = permute(kuvaRot, [2 1 3]);
-        kuvaRot = repmat(kuvaRot, 1, 1, options.Ny(1));
+        kuvaRot = repmat(kuvaRot, 1, 1, options.Nx(1));
         kuvaRot = permute(kuvaRot, [3, 2, 1]);
-        
-        % % Attenuation correction here
-        % if options.attenuation_correction
-        %     attenuationImage = options.vaimennus;
-        %     attenuationImage = imrotate(attenuationImage, 180+options.swivelAngles(u1), 'bilinear','crop');
-        %     attenuationImage = cumsum(attenuationImage, 1);
-        %     attenuationImage = exp(-options.crXY * attenuationImage);
-        %     kuvaRot = kuvaRot .* attenuationImage;
-        % end
-    
-        % 2.
-        PSF = permute(options.gFilter, [3, 2, 1]);
-        PSF = imtranslate(PSF, [0, PSFshift, 0], FillValues=0); % Translate PSF by r0*cos(beta)-CORtodetsurface
-        for ii = 1 : options.Ny(1)
+
+%        % 2. Attenuation correction
+%        if options.attenuation_correction
+%            attenuationImage = options.vaimennus;
+%            %volume3Dviewer(attenuationImage)
+%    
+%            attenuationImage = imrotate(attenuationImage, -options.swivelAngles(u1), 'bilinear','crop');
+%            attenuationImage = imtranslate(attenuationImage, [-panelShift, 0,0], FillValues=0);
+%            attenuationImage = cumsum(attenuationImage, 1);
+%            attenuationImage = exp(-options.dx * attenuationImage);
+%            %volume3Dviewer(kuvaRot)
+%            kuvaRot = kuvaRot .* attenuationImage;
+%        end
+
+        % 3. Convolve with detector PSF
+        PSF = imtranslate(options.gFilter, [0, 0, options.blurPlanes(u1)], FillValues=0);
+        PSF = PSF(:, :, 1:options.Nx(1));
+        PSF = permute(PSF, [3 2 1]);
+        for ii = 1 : options.Nx(1)
             kuvaRot(ii, :, :) = conv2(squeeze(kuvaRot(ii, :, :)), squeeze(PSF(ii,:,:)), 'same');
         end
-
-        % 3.
-        kuvaRot = imtranslate(kuvaRot, [panelShift, 0,0], FillValues=0); % Translate image by r0*sin(beta)
-
-        % 4.
-        kuvaRot = imrotate(kuvaRot, options.swivelAngles(u1), 'bilinear','crop');
         
+        % 4. Translate the image
+        kuvaRot = imtranslate(kuvaRot, [0, -panelShift, 0]);
+        
+        % 5. Rotate the image
+        kuvaRot = imrotate(kuvaRot, options.swivelAngles(u1), 'bilinear','crop');
+
         output = output + kuvaRot(:);
         u1 = u1 + 1;
     end
