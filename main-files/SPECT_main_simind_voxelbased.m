@@ -1,13 +1,15 @@
 %% MATLAB codes for SPECT reconstruction from SIMIND output
 % This example has been tested using SIMIND v8.0 and the respective
-% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF). The
-% fpath variable should point to the SIMIND output folder containing fname.a00,
-% .cor, and .h00 files.
-% You can find example data from https://github.com/saarlemo/diplomity-/tree/main/data
+% tutorial sections 8(NEMA image quality phantom) and 9 (Brain CBF).
+
+% Pinhole data can be generated with
+% mpirun -np 30 simind_mpi nema nema_pinhole/fz:phantom/45:3/tr:11/tr:15/cc:ge-ph02/76:128/77:128/28:0.33/mp/55:1/53:1/42:-5/29:180
+
+% Parallel-hole data can be generated with
+% mpirun -np 30 simind_mpi nema nema_parallel/fz:phantom/45:3/tr:11/tr:15/cc:g8-luhr/76:128/77:128/28:0.33/mp/55:0/53:1/42:-5/29:180
 
 clear
-fpath = 'cbf1';
-options = loadSIMINDSPECTData(fpath);
+options.fpath = '/path/to/data/nema_pinhole';
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -17,29 +19,12 @@ options = loadSIMINDSPECTData(fpath);
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Transaxial FOV size (mm), this is the length of the x (horizontal) side
-% of the FOV
-% Note that with SPECT data using projector_type = 6, this is not exactly
-% used as the FOV size but rather as the value used to compute the voxel
-% size
-options.FOVa_x = 4.664 * 128;%1 * 364;
-
-%%% Transaxial FOV size (mm), this is the length of the y (vertical) side
-% of the FOV
-options.FOVa_y = options.FOVa_x;
-
-%%% Axial FOV (mm)
-% This is unused if projector_type = 6. Cubic voxels are always assumed!
-options.axial_fov = 4.664 * 128;%3.75 * 110;
+%%% Crystal size (mm)
+options.crXY = 3.3;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
-options.machine_name = 'Two_Heads_SPECT_example';
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+options.machine_name = 'SIMIND';
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -50,31 +35,121 @@ options.machine_name = 'Two_Heads_SPECT_example';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-%%% Reconstructed image pixel count (X-direction)
+%%% Reconstructed image pixel count
 % NOTE: Non-square image sizes (X- and Y-direction) may not work
-options.Nx = 128;
+options.Nx = 1*128; % X-direction
+options.Ny = 1*128; % Y-direction
+options.Nz = 1*128; % Z-direction (number of axial slices)
 
-%%% Y-direction
-options.Ny = 128;
+%%% FOV size [mm]
+% NOTE: Non-cubical voxels may not work
+options.FOVa_x = options.crXY*128; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.crXY*128; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.crXY*128; % [mm], z-axis of FOV (axial)
 
-%%% Z-direction (number of slices) (axial)
-% If you're using projector_type = 6, this HAS to be same as options.nColsD
-options.Nz = 128;
+%%% Flip the image?
+options.flipImageX = false;
+options.flipImageY = false;
+options.flipImageZ = false;
 
-%%% Flip the image (in vertical direction)?
-options.flip_image = false;
+%%% Use back projection mask?
+options.useMaskBP = false;
 
-%%% How much is the image rotated?
+%%% How much is the image rotated in degrees?
 % NOTE: The rotation is done in the detector space (before reconstruction).
-% This current setting is for systems whose detector blocks start from the
-% right hand side when viewing the device from front.
 % Positive values perform the rotation in counterclockwise direction
 options.offangle = 0;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% CORRECTIONS %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%% Attenuation correction %%%%%%%%%%%%%%%%%%%%%%%%%%
+% Currently only a set of DICOM files is supported for the attenuation map.
+options.attenuation_correction = false;
+options.keV = 140; % NM photon energy [keV], used for scaling HU values
+
+%%%%%%%%%%%%%%%%%%%%%%%% Normalization correction %%%%%%%%%%%%%%%%%%%%%%%%%
+% If set to true, normalization correction is applied to either the
+% projection data or in the image reconstruction by using predefined
+% normalization coefficients.
+options.normalization_correction = false;
+options.normalization = [];
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%% Resolution recovery %%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%% Collimator-detector response function (CDRF)
+% For projector types 2 and 6 you can either input either:
+% 1. the collimator parameters (default) for an analytic solution for round (and hexagonal) holes (this may be unoptimal),
+% 2. the standard deviations for both transaxial and axial directions or
+% 3. the (Gaussian) PSF filter
+% 4. the shifts of each ray traced 
+
+% NOTE: For projector type 1 the CDRF is determined by
+% options.rayShiftsDetector and options.rayShiftsSource defined in option 
+% 4. These can also be calculated automatically when collimator parameters
+% (1.) are input.
+
+% NOTE: With projector_type == 2 (orthogonal distance projector), only the
+% collimator parameters below are used for CDR calculation i.e. the
+% collimator hole is assumed to be a circle. Thus only 1. below is
+% supported with projector_type == 2
+
+% 1. The collimator parameters (projector types 1, 2 and 6)
+% Pinhole collimator
+options.colD = 167.5; % Separation of collimator and detector
+options.colFxy = 0; % Focal distance XY, 0 for pinhole
+options.colFz = 0; % Focal distance Z, 0 for pinhole
+
+% % Parallel-hole collimator
+% options.colD = 0;
+% options.colFxy = Inf;
+% options.colFz = Inf;
+
+% 2. If you have the standard deviations for transaxial (XY) and axial (Z)
+% directions, you can input them here instead of the above values The
+% dimensions need to be options.nProjections x options.Nx. Only for
+% projector type 6.
+% options.sigmaZ = repmat(1, options.nProjections, options.Nx); 
+% options.sigmaXY = repmat(1, options.nProjections, options.Nx);
+
+% 3. You can input the filter for the CDRF directly. This should be of the
+% size filterSizeXY x filterSizeZ. Only for
+% projector type 6.
+% options.gFilter = ones(1, 1, options.Nx);
+
+% 4. For the Siddon ray tracer, the CDRF is defined by shifting the rays to
+% the shape of the collimator hole. The values of rayShiftsDetector and
+% rayShiftsSource represent [shift1XY, shift1Z, shift2XY, ...] in mm. Size
+% should be 2*nRays x nColsD x nRowsD x nProjections. If not input, values
+% are calculated automatically.
+options.nRays = 1; % Number of rays traced per detector element
+% options.rayShiftsDetector = [];
+% options.rayShiftsSource = [];
+
+
+%%%%%%%%%%%%%%%%%%%% Corrections during reconstruction %%%%%%%%%%%%%%%%%%%%
+% If set to true, all the corrections are performed during the
+% reconstruction step, otherwise the corrections are performed to the
+% sinogram/raw data before reconstruction (i.e. precorrected). I.e. this
+% can be considered as e.g. normalization weighted reconstruction if
+% normalization correction is applied.
+% NOTE: Attenuation correction and resolution recovery are always performed
+% during reconstruction regardless of the choice here.
+options.corrections_during_reconstruction = false;
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOAD DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+options = loadSIMINDSPECTData(options);
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -99,14 +174,6 @@ options.verbose = 1;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -118,9 +185,9 @@ options.verbose = 1;
 % (Requires ArrayFire. Compiles with MinGW ONLY when ArrayFire was compiled
 % with MinGW as well (cannot use the prebuilt binaries)).
 % 4 = Matrix-free reconstruction with OpenMP (parallel), standard C++
-% See the doc for more information:
+% See the documentation for more information:
 % https://omega-doc.readthedocs.io/en/latest/implementation.html
-options.implementation = 4;
+options.implementation = 2;
 
 % Applies to implementation 2 ONLY
 %%% OpenCL/CUDA device used
@@ -132,7 +199,7 @@ options.use_device = 0;
 %%% Use CUDA
 % Selecting this to true will use CUDA kernels/code instead of OpenCL. This
 % only works if the CUDA code was successfully built.
-options.use_CUDA = false;
+options.use_CUDA = true;
 
 % Implementation 2 ONLY
 %%% Use CPU
@@ -142,18 +209,15 @@ options.use_CPU = false;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% PROJECTOR %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Type of projector to use for the geometric matrix
 % 1 = (Improved) Siddon ray-based projector
+% 2 = Orthogonal distance ray tracing
 % 6 = Rotation-based projector
 % See the documentation on some details on the projectors:
 % https://omega-doc.readthedocs.io/en/latest/selectingprojector.html
 options.projector_type = 1;
 
-% For Siddon ray-based projector:
-% Number of rays traced per collimator hole
-options.nRaySPECT = 1;
-
 %%%%%%%%%%%%%%%%%%%%%%%%% RECONSTRUCTION SETTINGS %%%%%%%%%%%%%%%%%%%%%%%%%
 %%% Number of iterations (all reconstruction methods)
-options.Niter = 2;
+options.Niter = 10;
 %%% Save specific intermediate iterations
 % You can specify the intermediate iterations you wish to save here. Note
 % that this uses zero-based indexing, i.e. 0 is the first iteration (not
@@ -169,25 +233,15 @@ options.saveNIter = [];
 options.subsets = 8;
 
 %%% Subset type (n = subsets)
-% For SPECT, the supported types depend on the projector type.
-% projector_type = 1 supports subset_type 0, 1 and 3
-% projector_type = 6 supports types 8-11
-% 0 = Divide the data into N segments with the original data ordering
-% 1 = Every nth (column) measurement is taken
-% 3 = Measurements are selected randomly (recommended for projector_type = 1)
 % 8 = Use every nth projection image (recommended for projector_type = 6)
 % 9 = Randomly select the projection images
 % 10 = Use golden angle sampling to select the subsets (not recommended for
 % PET)
 % 11 = Use prime factor sampling to select the projection images
-options.subset_type = 3;
+options.subset_type = 8;
 
 %%% Initial value for the reconstruction
 options.x0 = ones(options.Nx, options.Ny, options.Nz);
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -706,12 +760,6 @@ options.GGMRF_c = 5;
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%% OPENCL DEVICE INFO %%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -721,10 +769,7 @@ options.GGMRF_c = 5;
 % Uncomment the below line and run it to determine the available device
 % numbers
 % ArrayFire_OpenCL_device_info();
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 
 %% Reconstructions
 tStart = tic;
@@ -733,8 +778,4 @@ tElapsed = toc(tStart);
 disp(['Reconstruction process took ' num2str(tElapsed) ' seconds'])
 
 %% Plot
-volume3Dviewer(pz, 'fit')
-
-%% Save
-% save(strcat('brain_phantom_proj', num2str(options.projector_type),...
-%  '_model', num2str(options.coneMethod), '_nRay', num2str(options.nRaySPECT), '.mat'), 'options', 'pz')
+volume3Dviewer(pz)

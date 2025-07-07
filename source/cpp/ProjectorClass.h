@@ -236,7 +236,7 @@ class ProjectorClass {
 			options += " -DLISTMODE2";
 		if (inputScalars.listmode > 0 && inputScalars.indexBased)
 			options += " -DINDEXBASED";
-		if (siddonVal && (((inputScalars.n_rays * inputScalars.n_rays3D) > 1) || inputScalars.SPECT)) {
+		if ((siddonVal && ((inputScalars.n_rays * inputScalars.n_rays3D) > 1)) || inputScalars.SPECT) {
 			options += (" -DN_RAYS=" + std::to_string(inputScalars.n_rays * inputScalars.n_rays3D));
 			options += (" -DN_RAYS2D=" + std::to_string(inputScalars.n_rays));
 			options += (" -DN_RAYS3D=" + std::to_string(inputScalars.n_rays3D));

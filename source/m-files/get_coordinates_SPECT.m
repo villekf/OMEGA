@@ -23,8 +23,8 @@ function [x, z] = get_coordinates_SPECT(options)
         x(1, ii) = r1 * cosd(alpha1) + r2 * cosd(alpha2);
         x(2, ii) = r1 * sind(alpha1) + r2 * sind(alpha2);
         x(3, ii) = 0;
-        x(4, ii) = x(1, ii) + options.colL * cosd(alpha2);
-        x(5, ii) = x(2, ii) + options.colL * sind(alpha2);
+        x(4, ii) = x(1, ii) + (options.colD + 0.5 * options.colL) * cosd(alpha2);
+        x(5, ii) = x(2, ii) + (options.colD + 0.5 * options.colL) * sind(alpha2);
         x(6, ii) = 0;
         
         z(1, ii) = cosd(alpha2+90);

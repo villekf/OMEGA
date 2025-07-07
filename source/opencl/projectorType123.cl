@@ -636,6 +636,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
+#ifdef N_RAYS
+                    , lor
+#endif
 				);
 #else //////////////// SIDDON ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
@@ -1159,6 +1162,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef SPECT
                         , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
+#ifdef N_RAYS
+                        , lor
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1193,6 +1199,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef SPECT
                         , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
+#ifdef N_RAYS
+                    , lor
+#endif
                         );
                         if (uu == 0)
                             break;
@@ -1226,6 +1235,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 #ifdef ORTH
@@ -1348,6 +1360,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
 #endif
+#ifdef N_RAYS
+                    , lor
+#endif
 				);
 				if (uu == 0)
 					break;
@@ -1383,6 +1398,9 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 				);
 				if (uu == 0)

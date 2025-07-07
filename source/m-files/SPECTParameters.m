@@ -21,20 +21,47 @@ function options = SPECTParameters(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Ray tracing projectors
+if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelling, ray tracing projectors
     if numel(options.rayShiftsDetector) == 0
-        options.rayShiftsDetector = single(options.colR*(2*rand(2*options.nRays, 1)-1)); % Collimator modeling
-        if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsDetector = options.rayShiftsDetector + options.iR / (2*sqrt(2*log(2)))*randn(2*options.nRays, 1);
+        options.rayShiftsDetector = [0; 0];
+        options.rayShiftsDetector = repmat(options.rayShiftsDetector, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+
+        if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
+            dx = linspace(-(options.nRowsD/2-0.5)*options.crXY, (options.nRowsD/2-0.5)*options.crXY, options.nRowsD);
+            dy = linspace(-(options.nColsD/2-0.5)*options.crXY, (options.nColsD/2-0.5)*options.crXY, options.nColsD);
+            
+            for ii = 1:options.nRowsD
+                for jj = 1:options.nColsD
+                    for kk = 1:options.nRays
+                        options.rayShiftsDetector(2*(kk-1)+1, ii, jj, :) = -dx(ii);
+                        options.rayShiftsDetector(2*(kk-1)+2, ii, jj, :) = -dy(jj);
+                    end
+                end
+            end
         end
-        options.rayShiftsDetector(1:2) = 0;
     end
     if numel(options.rayShiftsSource) == 0
-        options.rayShiftsSource = single(options.colR*(2*rand(2*options.nRays, 1)-1)); % Collimator modeling
-        if options.iR > 0 % Detector intrinsic resolution
-            options.rayShiftsSource = options.rayShiftsSource + (options.iR / (2*sqrt(2*log(2)))) * randn(2*options.nRays, 1);
+        options.rayShiftsSource = [0; 0];
+        options.rayShiftsSource = repmat(options.rayShiftsSource, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
+
+        if options.nRays > 1 % Multiray shifts
+            nRays = sqrt(options.nRays);
+            [tmp_x, tmp_y] = meshgrid(linspace(-0.5, 0.5, nRays));
+            if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
+                tmp_x = options.crXY * tmp_x;
+                tmp_y = options.crXY * tmp_y;
+            elseif ismember(options.colFxy, [-Inf, Inf]) && ismember(options.colFz, [-Inf, Inf]) % Parallel-hole collimator
+                tmp_x = options.colR * tmp_x;
+                tmp_y = options.colR * tmp_y;
+            end
+
+            tmp_shift = reshape([tmp_x(:), tmp_y(:)].', 1, [])';
+
+            for kk = 1:options.nRays
+                options.rayShiftsSource(2*(kk-1)+1) = tmp_shift(2*(kk-1)+1);
+                options.rayShiftsSource(2*(kk-1)+2) = tmp_shift(2*(kk-1)+2);
+            end
         end
-        options.rayShiftsSource(1:2) = 0;
     end
     if options.implementation == 2
         options.rayShiftsDetector = single(options.rayShiftsDetector(:));

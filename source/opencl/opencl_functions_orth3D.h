@@ -98,6 +98,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #ifdef SPECT
     , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
 #endif
+#ifdef N_RAYS
+    , int lor
+#endif
 ) {
 #if (defined(FP) || (defined(MASKBP) && defined(BP))) && defined(USEIMAGES) ///////////////////// 2D/3D indices /////////////////////
 	int3 ind;
@@ -168,6 +171,9 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
         , TOFid
 #endif
 #endif //////////////// END TOF ////////////////
+#ifdef N_RAYS //////////////// MULTIRAY
+        , lor
+#endif //////////////// END MULTIRAY
 	);
 #endif //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) //////////////// BACKWARD PROJECTION ////////////////
@@ -214,6 +220,9 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef SPECT
     , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
+#endif
+#ifdef N_RAYS
+    , int lor
 #endif
 ) {
 	int uu = 0;
@@ -270,6 +279,9 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
 #endif
+#ifdef N_RAYS
+                    , lor
+#endif
 			);
 #ifdef CRYSTXY
 			if (breikki) {
@@ -301,6 +313,9 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 			if (breikki) {
@@ -348,6 +363,9 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
 #endif
+#ifdef N_RAYS
+                    , lor
+#endif
 			);
 #ifdef CRYSTXY
 			if (breikki) {
@@ -379,6 +397,9 @@ DEVICE int orthDistance3D(const int tempi,
 #endif
 #ifdef SPECT
                 , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+#endif
+#ifdef N_RAYS
+                    , lor
 #endif
 			);
 			if (breikki) {

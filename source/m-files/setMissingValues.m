@@ -903,16 +903,22 @@ end
 if ~isfield(options, 'coneOfResponseStdCoeffC')
     options.coneOfResponseStdCoeffC = 0.1;
 end
-if ~isfield(options, 'colL')
+if ~isfield(options, 'colL') % SPECT collimator hole length
     options.colL = 1;
 end
-if ~isfield(options, 'colD')
+if ~isfield(options, 'colD') % SPECT collimator distance from detector surface
     options.colD = 1;
 end
-if ~isfield(options, 'colR')
+if ~isfield(options, 'colR') % SPECT collimator hole radius
     options.colR = 1;
 end
-if ~isfield(options, 'crXY')
+if ~isfield(options, 'colFxy') % SPECT collimator focal distance
+    options.colFxy = Inf; % Parallel-hole
+end
+if ~isfield(options, 'colFz') % SPECT collimator focal distance
+    options.colFz = Inf; % Parallel-hole
+end
+if ~isfield(options, 'crXY') % SPECT detector crystal size
     options.crXY = 1;
 end
 if ~isfield(options, 'rayShiftsDetector')
@@ -922,9 +928,9 @@ if ~isfield(options, 'rayShiftsSource')
     options.rayShiftsSource = [];
 end
 if ~isfield(options, 'iR')
-    options.iR = 0;
+    options.iR = 1;
 end
-if ~isfield(options, 'CORtoDetectorSurface')
+if ~isfield(options, 'CORtoDetectorSurface') % SPECT detector surface distance from detector centre of rotation
     options.CORtoDetectorSurface = 0;
 end
 if ~isfield(options, 'swivelAngles')

@@ -1,10 +1,10 @@
-function options = loadSIMINDSPECTData(fname)
+function options = loadSIMINDSPECTData(options)
 %LOADSIMINDSPECTDATA Reads voxel-based SIMIND SPECT data to be reconstructed by OMEGA. 
     %   Utility function for OMEGA
     contains = @(str, pattern) ~cellfun('isempty', strfind(str, pattern));
+
     % Load header
-    options.fpath = strcat(fname, '.h00');
-    fid = fopen(options.fpath);
+    fid = fopen(strcat(options.fpath, '.h00'));
     hdr = textscan(fid,'%s','Delimiter','=');
     hdr = hdr{1};
     fclose(fid);
@@ -49,7 +49,6 @@ function options = loadSIMINDSPECTData(fname)
 
     % Collimator hole length (mm)
     ind = find(contains(hdr, ';# Collimator thickness')) + 1;
-    options.collimatorLength = str2double(hdr{ind});
     options.colL = str2double(hdr{ind});
 
     % Collimator hole radius (mm), larger inner radius
@@ -65,12 +64,11 @@ function options = loadSIMINDSPECTData(fname)
     options.iR = str2double(hdr{ind});
 
     % Load detector radius per projection
-    options.radiusPerProj = load(strcat(fname, '.cor'));
-    options.radiusPerProj = options.radiusPerProj(:, 1) .* 10;
+    options.radiusPerProj = readmatrix(strcat(options.fpath, '.cor'), FileType="text");
+    options.radiusPerProj = 10 * options.radiusPerProj(:, 1);
 
     % Load data
-    DataPath = strcat(fname, '.a00');
-    fid = fopen(DataPath);
+    fid = fopen(strcat(options.fpath, '.a00'));
     data = fread(fid, inf, "float32");
     fclose(fid);
     options.SinM = reshape(data, matrixSizeX, matrixSizeY, options.nProjections);
@@ -81,9 +79,34 @@ function options = loadSIMINDSPECTData(fname)
     % Number of columns in a projection image
     options.nColsD = size(options.SinM, 2);
 
-    % Distance from collimator to the detector (mm)
-    options.colD = 0;
+    if isfile(strcat(options.fpath, 'hict')) && isfile(strcat(options.fpath, '.ict')) % Attenuation map
+        fid = fopen(strcat(options.fpath, '.h00'));
+        hdrCT = textscan(fid,'%s','Delimiter','=');
+        hdrCT = hdrCT{1};
+        fclose(fid);
 
-    % Collimator hexagon orientation: 1=vertical diameter smaller, 2=horizontal diameter smaller
-    options.hexOrientation = 1;
+        ind = find(contains(hdrCT, '!matrix size [1]')) + 1;
+        Nx = str2double(hdr{ind});
+
+        ind = find(contains(hdrCT, '!matrix size [2]')) + 1;
+        Ny = str2double(hdr{ind});
+
+        ind = find(contains(hdrCT, '!matrix size [3]')) + 1;
+        Nz = str2double(hdr{ind});
+
+        fid = fopen(strcat(options.fpath, '.ict'));
+        I = fread(fid, 'uint16');
+        fclose(fid);
+        I = reshape(I, [Nx, Ny, Nz]);
+        I = rot90(I, 3);
+        I = flip(I, 1);
+        %options.vaimennus = single(I);
+    end
+
+    % SIMIND cannot simulate swiveling detector heads:
+    options.swivelAngles = options.angles + 180;
+    options.CORtoDetectorSurface = 0;
+
+    % SIMIND measures radius to top of collimator
+    options.radiusPerProj = options.radiusPerProj + options.colD + options.colL;
 end
