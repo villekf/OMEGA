@@ -1,7 +1,7 @@
 /*******************************************************************************************************************************************
-* Class object for forward and backward projections.
+* Class object for forward and backward projections. OpenCL version.
 *
-* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify  it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or  (at your option) any later version.
@@ -596,7 +596,7 @@ class ProjectorClass {
 		else {
 			options += " -DCAST=float";
 		}
-		if (DEBUG || verbose >= 2)
+		if (DEBUG || verbose >= 3)
 			mexPrintBase("%s\n", options.c_str());
 		if (atomic_64bit) {
 			cl::string apu = CLDeviceID.getInfo<CL_DEVICE_EXTENSIONS>();
@@ -613,7 +613,7 @@ class ProjectorClass {
 				cl::Program::Sources source(testi);
 				program = cl::Program(CLContext, source);
 				status = program.build(options.c_str());
-				if (status == CL_SUCCESS && (DEBUG || verbose >= 2)) {
+				if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 					mexPrint("OpenCL program (64-bit atomics) built\n");
 				}
 				else if (status != CL_SUCCESS) {
@@ -647,7 +647,7 @@ class ProjectorClass {
 			cl::Program::Sources source(testi);
 			program = cl::Program(CLContext, source);
 			status = program.build(options.c_str());
-			if (status == CL_SUCCESS && (DEBUG || verbose >= 2)) {
+			if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 				mexPrint("OpenCL program built\n");
 			}
 			else if (status != CL_SUCCESS) {
@@ -692,7 +692,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 4) {
 				kernelFP = cl::Kernel(programFP, "projectorType4Forward", &status);
                 OCL_CHECK(status, "Failed to create projector type 4 FP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 4 FP successfully created\n");
 				}
 			}
@@ -704,7 +704,7 @@ class ProjectorClass {
 				else
 					kernelBP = cl::Kernel(programBP, "projectorType4Backward", &status);
                 OCL_CHECK(status, "Failed to create projector type 4 BP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 4 BP successfully created\n");
 				}
 			}
@@ -713,7 +713,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 5) {
 				kernelFP = cl::Kernel(programFP, "projectorType5Forward", &status);
                 OCL_CHECK(status, "Failed to create projector type 5 FP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 5 FP successfully created\n");
 				}
 			}
@@ -723,7 +723,7 @@ class ProjectorClass {
 				else //if (inputScalars.BPType == 5)
 					kernelBP = cl::Kernel(programBP, "projectorType5Backward", &status);
                 OCL_CHECK(status, "Failed to create projector type 5 BP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 5 BP successfully created\n");
 				}
 			}
@@ -734,7 +734,7 @@ class ProjectorClass {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
 				kernelBP = cl::Kernel(programBP, "projectorType123", &status);
             OCL_CHECK(status, "Failed to create OS-methods kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("OpenCL kernel successfully created\n");
 			}
 		}
@@ -742,56 +742,56 @@ class ProjectorClass {
 		if (MethodList.NLM) {
 			kernelNLM = cl::Kernel(programAux, "NLM", &status);
             OCL_CHECK(status, "Failed to create NLM kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.MRP) {
 			kernelMed = cl::Kernel(programAux, "medianFilter3D", &status);
             OCL_CHECK(status, "Failed to create Median kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Median kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
 			kernelRDP = cl::Kernel(programAux, "RDPKernel", &status);
             OCL_CHECK(status, "Failed to create RDP kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("RDP kernel successfully created\n");
 			}
 		}
 		if (MethodList.GGMRF) {
 			kernelGGMRF = cl::Kernel(programAux, "GGMRFKernel", &status);
             OCL_CHECK(status, "Failed to create GGMRF kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
 		if (MethodList.TV || MethodList.APLS) {
 			kernelTV = cl::Kernel(programAux, "TVKernel", &status);
             OCL_CHECK(status, "Failed to create TV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.hyperbolic) {
 			kernelHyper = cl::Kernel(programAux, "hyperbolicKernel", &status);
             OCL_CHECK(status, "Failed to create hyperbolic prior kernel\n", -1);
-		    if (DEBUG || inputScalars.verbose >= 2) {
+		    if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
 		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			kernelPoisson = cl::Kernel(programAux, "PoissonUpdate", &status);
             OCL_CHECK(status, "Failed to create Poisson Update kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
 		if (MethodList.CPType) {
 			kernelPDHG = cl::Kernel(programAux, "PDHGUpdate", &status);
             OCL_CHECK(status, "Failed to create PDHG Update kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
@@ -800,7 +800,7 @@ class ProjectorClass {
 			kernelProxTVDiv = cl::Kernel(programAux, "ProxTVDivergence", &status);
 			kernelProxTVGrad = cl::Kernel(programAux, "ProxTVGradient", &status);
             OCL_CHECK(status, "Failed to create CPTV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("CPTV kernel successfully created\n");
 			}
 		}
@@ -809,7 +809,7 @@ class ProjectorClass {
 			kernelProxRDP = cl::Kernel(programAux, "ProxRDP", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
             OCL_CHECK(status, "Failed to create proximal RDP kernel\n", -1);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal RDP kernel successfully created\n");
 			}
 		}
@@ -818,7 +818,7 @@ class ProjectorClass {
 			kernelProxNLM = cl::Kernel(programAux, "ProxNLM", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
             OCL_CHECK(status, "Failed to create proximal NLM kernel\n", -1);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal NLM kernel successfully created\n");
 			}
 		}
@@ -830,19 +830,19 @@ class ProjectorClass {
 			kernelProxTGVDiv = cl::Kernel(programAux, "ProxTGVDivergence", &status);
 			kernelProxTGVSymmDeriv = cl::Kernel(programAux, "ProxTGVSymmDeriv", &status);
             OCL_CHECK(status, "Failed to create CPTGV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("CPTGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 			kernelElementMultiply = cl::Kernel(programAux, "vectorElementMultiply", &status);
             OCL_CHECK(status, "Failed to create element-wise multiplication kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 			kernelElementDivision = cl::Kernel(programAux, "vectorElementDivision", &status);
             OCL_CHECK(status, "Failed to create element-wise division kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 		}
@@ -857,7 +857,7 @@ class ProjectorClass {
 				kernelPSF = cl::Kernel(programAux, "Convolution3D", &status);
 			}
             OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Implementation 3 kernels successfully created\n");
 			}
 		}
@@ -1010,13 +1010,13 @@ public:
 
 		status = createProgram(CLContext, CLDeviceID[0], programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
         OCL_CHECK(status, "Error while creating program\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("OpenCL programs successfully created\n");
 		}
 
 		status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, programFP, programBP, programAux, programSens, MethodList, w_vec, inputScalars, type);
         OCL_CHECK(status, "Failed to create kernels\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("OpenCL kernels successfully created\n");
 		}
 		format.image_channel_order = CL_A;

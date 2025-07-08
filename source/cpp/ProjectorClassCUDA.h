@@ -1,7 +1,7 @@
 /*******************************************************************************************************************************************
-* Class object for forward and backward projections.
+* Class object for forward and backward projections. CUDA version.
 *
-* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify  it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or  (at your option) any later version.
@@ -98,7 +98,7 @@ class ProjectorClass {
 	}
 
 	/// <summary>
-	/// This function creates the CUDA programs for the forward and backward projections and for NLM/MRP/RDP/TV
+	/// This function creates the CUDA programs for the forward and backward projections and for NLM/MRP/RDP/TV/hyperbolic
 	/// </summary>
 	/// <param name="programFP the program to store forward projection program"></param>
 	/// <param name="programBP the program to store backprojection program"></param>
@@ -761,7 +761,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 4) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType4Forward");
                 CUDA_CHECK(status, "Failed to create projector type 4 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 4 FP successfully created\n");
 				}
 			}
@@ -773,7 +773,7 @@ class ProjectorClass {
 				else
 					status = cuModuleGetFunction(&kernelBP, programBP, "projectorType4Backward");
                 CUDA_CHECK(status, "Failed to create projector type 4 BP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 4 BP successfully created\n");
 				}
 			}
@@ -782,7 +782,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 5) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType5Forward");
                 CUDA_CHECK(status, "Failed to create projector type 5 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 5 FP successfully created\n");
 				}
 			}
@@ -792,7 +792,7 @@ class ProjectorClass {
 				else
 					status = cuModuleGetFunction(&kernelBP, programBP, "projectorType5Backward");
                 CUDA_CHECK(status, "Failed to create projector type 5 BP kernel\n", status);
-                if (DEBUG || inputScalars.verbose >= 2) {
+                if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 5 BP successfully created\n");
 				}
 			}
@@ -801,14 +801,14 @@ class ProjectorClass {
 			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType123");
                 CUDA_CHECK(status, "Failed to create projector type 1-3 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 1-3 FP successfully created\n");
 				}
 			}
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				status = cuModuleGetFunction(&kernelBP, programBP, "projectorType123");
                 CUDA_CHECK(status, "Failed to create projector type 1-3 BP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 1-3 BP successfully created\n");
 				}
 			}
@@ -818,56 +818,56 @@ class ProjectorClass {
 		if (MethodList.NLM) {
 			status = cuModuleGetFunction(&kernelNLM, programAux, "NLM");
             CUDA_CHECK(status, "Failed to create NLM kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.MRP) {
 			status = cuModuleGetFunction(&kernelMed, programAux, "medianFilter3D");
             CUDA_CHECK(status, "Failed to create Median kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Median kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
 			status = cuModuleGetFunction(&kernelRDP, programAux, "RDPKernel");
             CUDA_CHECK(status, "Failed to create RDP kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("RDP kernel successfully created\n");
 			}
 		}
 		if (MethodList.GGMRF) {
 			status = cuModuleGetFunction(&kernelGGMRF, programAux, "GGMRFKernel");
             CUDA_CHECK(status, "Failed to create GGMRF kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
 		if (MethodList.TV) {
 			status = cuModuleGetFunction(&kernelTV, programAux, "TVKernel");
             CUDA_CHECK(status, "Failed to create TV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.hyperbolic) {
 			status = cuModuleGetFunction(&kernelHyper, programAux, "hyperbolicKernel");
             CUDA_CHECK(status, "Failed to create hyperbolic prior kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
 		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			status = cuModuleGetFunction(&kernelPoisson, programAux, "PoissonUpdate");
             CUDA_CHECK(status, "Failed to create Poisson Update kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
 		if (MethodList.CPType) {
 			status = cuModuleGetFunction(&kernelPDHG, programAux, "PDHGUpdate");
             CUDA_CHECK(status, "Failed to create PDHG Update kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
@@ -876,7 +876,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTVDiv, programAux, "ProxTVDivergence");
 			status = cuModuleGetFunction(&kernelProxTVGrad, programAux, "ProxTVGradient");
             CUDA_CHECK(status, "Failed to create proximal TV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal TV kernel successfully created\n");
 			}
 		}
@@ -885,7 +885,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxRDP, programAux, "ProxRDP");
 			status = cuModuleGetFunction(&kernelProxTrans, programAux, "ProxTrans");
             CUDA_CHECK(status, "Failed to create proximal RDP kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal RDP kernel successfully created\n");
 			}
 		}
@@ -894,7 +894,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxNLM, programAux, "ProxNLM");
 			status = cuModuleGetFunction(&kernelProxTrans, programAux, "ProxTrans");
             CUDA_CHECK(status, "Failed to create proximal NLM kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal NLM kernel successfully created\n");
 			}
 		}
@@ -906,19 +906,19 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTGVDiv, programAux, "ProxTGVDivergence");
 			status = cuModuleGetFunction(&kernelProxTGVSymmDeriv, programAux, "ProxTGVSymmDeriv");
             CUDA_CHECK(status, "Failed to create proximal TGV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal TGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 			status = cuModuleGetFunction(&kernelElementMultiply, programAux, "vectorElementMultiply");
             CUDA_CHECK(status, "Failed to create element-wise multiplication kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 			status = cuModuleGetFunction(&kernelElementDivision, programAux, "vectorElementDivision");
             CUDA_CHECK(status, "Failed to create element-wise division kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 		}
@@ -932,7 +932,7 @@ class ProjectorClass {
 		if (inputScalars.projector_type == 6) {
 			status = cuModuleGetFunction(&kernelRotate, programAux, "rotate");
 			CUDA_CHECK(status, "Failed to create bilinear rotation kernel\n", status);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Bilinear rotation kernel successfully created\n");
 			}
 		}
@@ -1159,13 +1159,13 @@ public:
 			std::cerr << "Error while creating program" << std::endl;
 			return -1;
 		}
-		else if (DEBUG || inputScalars.verbose >= 2) {
+		else if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("CUDA programs successfully created\n");
 		}
 
 		status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, programFP, programBP, programAux, MethodList, w_vec, inputScalars, type);
 		CUDA_CHECK(status, "Failed to create kernels\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("CUDA kernels successfully created\n");
 		}
 
