@@ -623,7 +623,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 #else
 			apuF = cell;
 #endif
-			if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+			if ((MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) && tt == 0) {
 				apuM = new float[inputScalars.kokoTOF];
 				apuU = new float[inputScalars.im_dim[0]];
 			}
@@ -1536,11 +1536,11 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			mexEval();
 		}
 		if (inputScalars.largeDim) {
-			if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
+			if ((MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) && tt == inputScalars.Nt - 1) {
 				delete[] apuM;
 				delete[] apuU;
 			}
-			if (w_vec.computeD)
+			if (w_vec.computeD && tt == inputScalars.Nt - 1)
 				delete[] apuD;
 		}
 	}
