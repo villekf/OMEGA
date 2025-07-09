@@ -3,7 +3,7 @@
 * ring number and position values to compute the corresponding sinogram
 * index value. This index value is the output of this function.
 *
-* Copyright (C) 2020-2024 Ville-Veikko Wettenhovi
+* Copyright (C) 2020-2025 Ville-Veikko Wettenhovi
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -22,6 +22,15 @@
 #include "dIndices.h"
 #include <thread>
 
+inline void mexPrint(const char* str) {
+#ifdef MATLAB
+	mexPrintf("%s\n", str);
+	mexEvalString("pause(.0001);");
+#else
+	fprintf(stdout, "%s\n", str);
+	fflush(stdout);
+#endif
+}
 
 
 template<typename T>
@@ -178,6 +187,10 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 		bool swap = false;
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, TOFSize,
 			detWPseudo, rings, binN, nDistSide, swap, tPoint, layer, nLayers);
+		if (indeksi >= TOFSize * nLayers * Nt) {
+			mexPrint("Sinogram index is larger than the maximum possible! Aborting!");
+			break;
+		}
 		if (indeksi >= 0) {
 			// Trues
 			if (store_trues && trues_index[kk]) {
