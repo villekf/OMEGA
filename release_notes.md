@@ -76,6 +76,38 @@
   - volume3Dviewer can also be used in Python if your UI supports it
   
 - volume3Dviewer can now be used in multimodal viewing, i.e. merge CT and PET/SPECT images
+
+- "Large dimensionality" support now works correctly with non-local regularizers, RDP, GGMRF, TV, and hyperbolic prior
+  - Enable with `options.largeDim = true`
+  - Only a subset of the image is reconstructed at a time, allowing any reconstructions with practically any GPU
+
+- Large dimensionality now also supports EM and sensitivity image based preconditioners
+
+- Major overhaul of the verbosity
+  - Verbose level 1 stays the same
+  - Verbose level 2 now has less messages but has more timing information, i.e. the time spent per sub-iteration and the approximate time left
+  - Verbose level 3 contains some messages that were previously shown with level 2. Also, verbosity level 3 gives even more timing information, down to kernel and step level
+  - I.e. with verbosity level of 3, you can now see, for example, the time spent in forward and backward projections, as well as in other steps
+
+- Multi-resolution reconstruction now keeps the voxel size fixed in the multi-resolution volumes and adjusts the FOV accordingly, previously it was the other way around
+
+- Measurement data can now be used in unsigned 16-bit integer format without needing to convert it first to single precision
+  - Implementation 2 only!
+  - Decreases memory usage when uint16 data is used
+  
+- SART supports regularization now
+
+- Hybrid projectors are now available in broader capacity
+  - Previously combinations such as 43 were unavailable, but now they work
+  - BDD still only supports combinations with 1 or 4
+  - Rotation-based projector doesn't support hybrid methods
+  
+- Improved dynamic reconstruction support
+  - Should now work with any data
+  
+- The support for gaps between rings is now better
+  - Now a specific length of the gap can be input instead of the number of gaps
+  - The gap lengths need to be input for each gap
   
 ### Bug fixes and enhancements
 
@@ -126,6 +158,10 @@
 - Fixed non-local regularization when using CPU with implementation 2
 
 - Fixed mask images when using sensitivity image with list-mode data
+
+- If the multi-resolution volumes were previously extracted (by setting CELL true), but no multi-resolution volumes were present an error was thrown. Now the volumes are extracted only if they exist
+
+- ASD-POCS should now work in all cases
 
 ## OMEGA v2.0.0
 
