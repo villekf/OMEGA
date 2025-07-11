@@ -216,23 +216,40 @@ def formSubsetIndices(options):
             if options.useIndexBasedReconstruction:
                 if options.trIndex.shape[0] != 2:
                     options.trIndex = np.reshape(options.trIndex, (2, -1), order='F')
-                options.trIndex = options.trIndex[:,options.index]
+                if options.Nt > 1:
+                    options.trIndex = options.trIndex[:,options.index,:]
+                else:
+                    options.trIndex = options.trIndex[:,options.index]
                 if options.axIndex.shape[0] != 2:
                     options.axIndex = np.reshape(options.axIndex, (2, -1), order='F')
-                options.axIndex = options.axIndex[:,options.index]
+                if options.Nt > 1:
+                    options.axIndex = options.axIndex[:,options.index,:]
+                else:
+                    options.axIndex = options.axIndex[:,options.index]
             else:
                 if not (options.x.shape[0] == 6):
                     options.x = np.reshape(options.x, (6, options.x.size // 6))
-                options.x = options.x[:,options.index]
+                if options.Nt > 1:
+                    options.x = options.x[:,options.index,:]
+                else:
+                    options.x = options.x[:,options.index]
             if options.TOF_bins_used > 1:
-                options.TOFIndices = options.TOFIndices[options.index]
+                if options.Nt > 1:
+                    options.TOFIndices = options.TOFIndices[options.index,:]
+                else:
+                    options.TOFIndices = options.TOFIndices[options.index]
         options.x = options.x.ravel('F')
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
     elif options.listmode > 0 and (options.subsetType == 8 or options.subsetType == 9) and options.subsets > 1:
-        options.z = options.z[options.index,:]
-        if options.uV.shape[0] == options.nProjections:
-            options.uV = options.uV[options.index,:]
+        if options.Nt > 1:
+            options.z = options.z[options.index,:,:]
+            if options.uV.shape[0] == options.nProjections:
+                options.uV = options.uV[options.index,:,:]
+        else:
+            options.z = options.z[options.index,:]
+            if options.uV.shape[0] == options.nProjections:
+                options.uV = options.uV[options.index,:]
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
     elif options.use_raw_data == 0 and ((options.subsets > 1 and (options.subsetType == 3 or options.subsetType == 6 or options.subsetType == 7))):

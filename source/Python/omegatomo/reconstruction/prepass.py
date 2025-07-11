@@ -201,9 +201,15 @@ def parseInputs(options, mDataFound = False):
             if options.Nt > 1:
                 for ff in range(1, options.Nt + 1):
                     if not options.use_raw_data:
-                        temp = options.SinM[:,:,:,:,ff - 1]
-                        if options.NSinos != options.TotSinos:
-                            temp = temp[:, :, :options.NSinos, :]
+                        if options.listmode == 0:
+                            if options.TOF:
+                                temp = options.SinM[:,:,:,:,ff - 1]
+                            else:
+                                temp = options.SinM[:,:,:,ff - 1]
+                            if options.NSinos != options.TotSinos:
+                                temp = temp[:, :, :options.NSinos, :]
+                        else:
+                            temp = options.SinM[:,ff - 1]
                     # else:
                     #     temp = np.single(np.full(options.SinM[ff - 1]))
             
@@ -211,16 +217,25 @@ def parseInputs(options, mDataFound = False):
                         if options.subsetType >= 8:
                             temp = temp[:, :, options.index, :]
                         else:
+                            koko = (temp.shape[0], temp.shape[1], temp.shape[2], temp.shape[3])
                             temp = np.reshape(temp, (temp.size // options.TOF_bins, options.TOF_bins),order='F')
                             temp = temp[options.index, :]
+                            temp = np.reshape(temp, koko, order='F')
                     else:
                         if options.subsetType >= 8:
                             temp = temp[:, :, options.index]
                         else:
+                            if temp.ndim == 3:
+                                koko = (temp.shape[0], temp.shape[1], temp.shape[2])
+                            else:
+                                koko = (temp.shape[0])
                             temp = temp.ravel(order='F')
                             temp = temp[options.index]
-                            temp = np.reshape(temp, (options.nRowsD, options.nColsD, options.nProjections), order='F')
-                    options.SinM[:,:,:,:,ff - 1] = temp
+                            temp = np.reshape(temp, koko, order='F')
+                    if options.TOF and options.listmode == 0:
+                        options.SinM[:,:,:,:,ff - 1] = temp
+                    else:
+                        options.SinM[:,:,:,ff - 1] = temp
             else:
                 if not options.use_raw_data:
                     if options.NSinos != options.TotSinos:
