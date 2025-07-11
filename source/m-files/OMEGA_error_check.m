@@ -213,13 +213,15 @@ if options.implementation == 1 && (isfield(options,'maskBP') && ~isscalar(option
     warning('Mask images are not supported with implementation 1!')
 end
 if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
-        options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
+        options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 && options.projector_type ~= 23 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
-        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44
+        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44 && options.projector_type ~= 43 && options.projector_type ~= 42 ...
+        && options.projector_type ~= 24 && options.projector_type ~= 34 && options.projector_type ~= 35 && options.projector_type ~= 25
     error('The selected projector type is not supported!')
 end
 if options.use_CPU && (options.projector_type == 5 || options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 45 ...
-        || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15)
+        || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 42 || options.projector_type == 43 ...
+        || options.projector_type == 24 || options.projector_type == 34)
     error('Selected projector type is not supported with CPU implementation!')
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
@@ -399,7 +401,7 @@ if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
-        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14) && ~options.CT && ~options.SPECT
+        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14 && options.projector_type ~= 34 && options.projector_type ~= 43) && ~options.CT && ~options.SPECT
     error('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
 end
 if options.TOF_bins_used > 1 && options.TOF_width <= 0 && ~options.CT && ~options.SPECT
@@ -724,34 +726,61 @@ if options.verbose > 0
                 dispi = [dispi, ' in 2.5D mode.'];
             end
             disp(dispi)
-        elseif options.projector_type == 21
-            disp('Improved Siddon''s algorithm selected for forward projection, orthogonal for backprojection.')
-        elseif options.projector_type == 12
-            disp('Orthogonal selected for forward projection, improved Siddon''s algorithm for backprojection.')
         elseif options.projector_type == 3 || options.projector_type == 33
             disp('Volume of intersection based ray tracer selected.');
-        elseif options.projector_type == 31
-            disp('Improved Siddon''s algorithm selected for forward projection, Volume of intersection based ray tracer for backprojection.')
-        elseif options.projector_type == 13
-            disp('Volume of intersection based ray tracer selected for forward projection, improved Siddon''s algorithm for backprojection.')
-        elseif options.projector_type == 4
+        elseif options.projector_type == 4 || options.projector_type == 44
             disp('Interpolation-based projector selected.')
-        elseif options.projector_type == 5
+        elseif options.projector_type == 5 || options.projector_type == 55
             disp('Branchless distance-driven based projector selected.')
-        elseif options.projector_type == 41
-            disp('Interpolation-based projector selected for forward projection, improved Siddon for backprojection.')
-        elseif options.projector_type == 14
-            disp('Improved Siddon projector selected for forward projection, interpolation-based projector for backprojection.')
-        elseif options.projector_type == 15
-            disp('Improved Siddon projector selected for forward projection, branchless distance-driven projector for backprojection.')
-        elseif options.projector_type == 45
-            disp('Interpolation-based projector selected for forward projection, branchless distance-driven projector for backprojection.')
-        elseif options.projector_type == 54
-            disp('Branchless distance-driven projector selected for forward projection, interpolation-based projector for backprojection.')
-        elseif options.projector_type == 51
-            disp('Branchless distance-driven projector selected for forward projection, improved Siddon for backprojection.')
-        elseif options.projector_type == 6
+        elseif options.projector_type == 6 || options.projector_type == 66
             disp('Rotation-based projector selected (SPECT).')
+        elseif options.projector_type > 10
+            fpType = floor(options.projector_type / 10);
+            bpType = options.projector_type - fpType * 10;
+            dispi = [];
+            if fpType == 1
+                dispi = [dispi, 'Improved Siddon''s algorithm selected for forward projection, '];
+            elseif fpType == 2
+                dispi = [dispi, 'Orthogonal distance-based ray-tracer selected for forward projection, '];
+            elseif fpType == 3
+                dispi = [dispi, 'Volume of intersection based ray tracer selected for forward projection, '];
+            elseif fpType == 4
+                dispi = [dispi, 'Interpolation-based projector selected for forward projection, '];
+            elseif fpType == 5
+                dispi = [dispi, 'Branchless distance-driven projector selected for forward projection, '];
+            end
+            if bpType == 1
+                dispi = [dispi, 'improved Siddon''s algorithm for backprojection.'];
+            elseif bpType == 2
+                dispi = [dispi, 'orthogonal distance-based ray-tracer for backprojection.'];
+            elseif bpType == 3
+                dispi = [dispi, 'volume of intersection based ray tracer for backprojection.'];
+            elseif bpType == 4
+                dispi = [dispi, 'interpolation-based projector for backprojection.'];
+            elseif bpType == 5
+                dispi = [dispi, 'branchless distance-driven projector for backprojection.'];
+            end
+            disp(dispi)
+        % elseif options.projector_type == 21
+        %     disp('Improved Siddon''s algorithm selected for forward projection, orthogonal for backprojection.')
+        % elseif options.projector_type == 12
+        %     disp('Orthogonal selected for forward projection, improved Siddon''s algorithm for backprojection.')
+        % elseif options.projector_type == 31
+        %     disp('Improved Siddon''s algorithm selected for forward projection, Volume of intersection based ray tracer for backprojection.')
+        % elseif options.projector_type == 13
+        %     disp('Volume of intersection based ray tracer selected for forward projection, improved Siddon''s algorithm for backprojection.')
+        % elseif options.projector_type == 41
+        %     disp('Interpolation-based projector selected for forward projection, improved Siddon for backprojection.')
+        % elseif options.projector_type == 14
+        %     disp('Improved Siddon projector selected for forward projection, interpolation-based projector for backprojection.')
+        % elseif options.projector_type == 15
+        %     disp('Improved Siddon projector selected for forward projection, branchless distance-driven projector for backprojection.')
+        % elseif options.projector_type == 45
+        %     disp('Interpolation-based projector selected for forward projection, branchless distance-driven projector for backprojection.')
+        % elseif options.projector_type == 54
+        %     disp('Branchless distance-driven projector selected for forward projection, interpolation-based projector for backprojection.')
+        % elseif options.projector_type == 51
+        %     disp('Branchless distance-driven projector selected for forward projection, improved Siddon for backprojection.')
         end
         if options.use_psf
             if options.deblurring

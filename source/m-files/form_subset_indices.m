@@ -73,6 +73,11 @@ if options.subset_type >= 8 || options.subsets == 1
 else
     kerroin = 1;
 end
+if numel(options.partitions) > 1
+    partitions = numel(options.partitions);
+else
+    partitions = options.partitions;
+end
 % if nargin >= 14 && ~isempty(varargin{5}) && options.precompute_lor
 %     storeMatrix = varargin{5};
 % else
@@ -112,22 +117,35 @@ end
 if options.listmode > 0 && options.subset_type < 8 && options.subsets > 1
     if options.subset_type > 0
         if options.useIndexBasedReconstruction
-            if size(options.trIndex, 1) ~= 2
-                options.trIndex = reshape(options.trIndex, 2, []);
+            if partitions > 1
+                options.trIndex = options.trIndex(:,index,:);
+                options.axIndex = options.axIndex(:,index,:);
+            else
+                if size(options.trIndex, 1) ~= 2
+                    options.trIndex = reshape(options.trIndex, 2, []);
+                end
+                options.trIndex = options.trIndex(:,index);
+                if size(options.axIndex, 1) ~= 2
+                    options.axIndex = reshape(options.axIndex, 2, []);
+                end
+                options.axIndex = options.axIndex(:,index);
             end
-            options.trIndex = options.trIndex(:,index);
-            if size(options.axIndex, 1) ~= 2
-                options.axIndex = reshape(options.axIndex, 2, []);
-            end
-            options.axIndex = options.axIndex(:,index);
         else
-            if size(options.x, 1) ~= 6
-                options.x = reshape(options.x, 6, []);
+            if partitions > 1
+                options.x = options.x(:,index,:);
+            else
+                if size(options.x, 1) ~= 6
+                    options.x = reshape(options.x, 6, []);
+                end
+                options.x = options.x(:,index);
             end
-            options.x = options.x(:,index);
         end
         if options.TOF_bins > 1
-            options.TOFIndices = options.TOFIndices(index);
+            if partitions > 1
+                options.TOFIndices = options.TOFIndices(index,:);
+            else
+                options.TOFIndices = options.TOFIndices(index);
+            end
         end
     end
     options.x = options.x(:);

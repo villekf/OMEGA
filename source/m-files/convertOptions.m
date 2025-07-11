@@ -92,7 +92,7 @@ if options.projector_type < 4
                 options.projector_type = 11;
             elseif options.projector_type == 2
                 options.projector_type = 22;
-            else
+            elseif options.projector_type == 3
                 options.projector_type = 33;
             end
             break;

@@ -13,8 +13,20 @@ if options.subsets > 1 && options.subset_type > 0
         if partitions > 1
             for ff = 1 : partitions
                 if ~options.use_raw_data
-                    temp = options.SinM{ff};
-                    if options.NSinos ~= options.TotSinos
+                    if iscell(options.SinM)
+                        temp = options.SinM{ff};
+                    else
+                        if options.listmode == 0
+                            if options.TOF
+                                temp = options.SinM(:,:,:,:,ff);
+                            else
+                                temp = options.SinM(:,:,:,ff);
+                            end
+                        else
+                            temp = options.SinM(:,ff);
+                        end
+                    end
+                    if options.NSinos ~= options.TotSinos && options.listmode == 0
                         temp = temp(:,:,1:options.NSinos,:);
                     end
                 else
@@ -34,7 +46,19 @@ if options.subsets > 1 && options.subset_type > 0
                         temp = temp(index);
                     end
                 end
-                options.SinM{ff} = temp(:);
+                if iscell(options.SinM)
+                    options.SinM{ff} = temp(:);
+                else
+                    if options.listmode == 0
+                        if options.TOF
+                            options.SinM(:,:,:,:,ff) = temp;
+                        else
+                            options.SinM(:,:,:,ff) = temp;
+                        end
+                    else
+                        options.SinM(:,ff) = temp;
+                    end
+                end
             end
             clear temp
         else
@@ -135,7 +159,11 @@ if options.subsets > 1 && options.subset_type > 0
             if partitions > 1
                 for ff = 1 : partitions
                     if ~options.use_raw_data
-                        temp = options.SinDelayed{ff};
+                        if iscell(options.SinDelayed)
+                            temp = options.SinDelayed{ff};
+                        else
+                            temp = options.SinDelayed(:,:,:,ff);
+                        end
                         if options.NSinos ~= options.TotSinos
                             temp = temp(:,:,1:options.NSinos);
                         end
@@ -145,11 +173,15 @@ if options.subsets > 1 && options.subset_type > 0
                     if options.subset_type >= 8
                         temp = reshape(temp, options.nRowsD, options.nColsD, []);
                         temp = temp(:,:,index);
-                        temp = temp(:);
+                        % temp = temp(:);
                     else
                         temp = temp(index);
                     end
-                    options.SinDelayed{ff} = temp;
+                    if iscell(options.SinDelayed)
+                        options.SinDelayed{ff} = temp;
+                    else
+                        options.SinDelayed(:,:,:,ff) = temp;
+                    end
                 end
                 clear temp
             else

@@ -58,19 +58,22 @@ else
     crystal_size_z = (options.tube_width_xy);
 end
 if options.projector_type == 1 || options.projector_type == 11 ...
-        || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33
+        || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33 ...
+        || options.projector_type == 13 || options.projector_type == 23 || options.projector_type == 12 || options.projector_type == 32 || options.projector_type == 31
     kernel_file = 'projectorType123.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
     header_directory = strrep(kernel_path,'projectorType123','');
-elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
+elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45 ...
+        || options.projector_type == 42 || options.projector_type == 43 || options.projector_type == 24 || options.projector_type == 34
     kernel_file = 'projectorType4.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
     header_directory = strrep(kernel_path,'projectorType4','');
-elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54
+elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54 ...
+         || options.projector_type == 52  || options.projector_type == 53  || options.projector_type == 35  || options.projector_type == 25
     kernel_file = 'projectorType5.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
