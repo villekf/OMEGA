@@ -13,6 +13,7 @@
 * You should have received a copy of the GNU General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 *******************************************************************************************************************************************/
 
+#ifndef PTYPE4
 // Compute the orthogonal distance from the ray to the current voxel (center)
 // For orthogonal distance-based ray tracer, the distance is normalized
 DEVICE float compute_element_orth_3D(const float xs, const float ys, const float zs, const float xl, const float yl, const float zl, const float crystal_size_z, const float xp) {
@@ -436,3 +437,5 @@ DEVICE int orthDistance3D(const int tempi, const float diff1, const float diff2,
 #endif
 	return uu;
 }
+
+#endif
