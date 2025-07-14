@@ -50,7 +50,7 @@ end
 if ~options.CT && ~options.SPECT && (options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter)
     warning(['Transaxial FOV is larger than the scanner diameter (' num2str(options.diameter) ')!'])
 end
-if ~options.CT && ~options.SPECT && (options.axial_fov) < (options.rings(1) * options.cr_pz - options.cr_pz)
+if ~options.CT && ~options.SPECT && (options.axial_fov) < (options.rings(1) * options.cr_pz - options.cr_pz) && options.rings > 0
     warning('Axial FOV is too small, crystal ring(s) on the boundary have no slices!')
 end
 if ~preCondImAlg && any(options.precondTypeImage)
@@ -84,7 +84,7 @@ end
 if ~options.CT && ~options.SPECT && (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data
     error('Span value has to be odd and positive!')
 end
-if ~options.CT && ~options.SPECT && options.ring_difference >= options.rings(end) && ~options.use_raw_data
+if isfield(options, 'rings') && ~options.CT && ~options.SPECT && options.ring_difference >= options.rings(end) && ~options.use_raw_data
     warning(['Ring difference can be at most ' num2str(options.rings-1) '. Setting it to the maximum possible.'])
     options.ring_difference = options.rings - 1;
 end

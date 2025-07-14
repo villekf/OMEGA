@@ -108,17 +108,17 @@ R = [cos(angles) -sin(angles); sin(angles) cos(angles)];
 sourceCoordX = -sourceToCRot;
 sourceCoordY = horizontalOffset;
 sourceCoordZ = verticalOffset;
-if numel(sourceCoordX) == 1
+if isscalar(sourceCoordX)
     sourceCoordX = repmat(sourceCoordX, nProjections, 1);
 elseif numel(sourceCoordX) ~= nProjections
     sourceCoordX = repmat(sourceCoordX, nProjections / numel(sourceCoordX), 1);
 end
-if numel(sourceCoordZ) == 1
+if isscalar(sourceCoordZ)
     sourceCoordZ = repmat(sourceCoordZ, nProjections, 1);
 elseif numel(sourceCoordZ) ~= nProjections
     sourceCoordZ = repmat(sourceCoordZ, nProjections / numel(sourceCoordZ), 1);
 end
-if numel(sourceCoordY) == 1
+if isscalar(sourceCoordY)
     sourceCoordY = repmat(sourceCoordY, nProjections, 1);
 elseif numel(sourceCoordY) ~= nProjections
     sourceCoordY = repmat(sourceCoordY, nProjections / numel(sourceCoordY), 1);
@@ -158,9 +158,9 @@ end
 
 x = [sXY(:,1) XY(:,1)];
 y = [sXY(:,2) XY(:,2)];
-if numel(sourceCoordZ) == 1
+if isscalar(sourceCoordZ)
     z = [repmat(sourceCoordZ,numel(detCoordZ),1) reshape(detCoordZ,[],1)];
-elseif numel(detCoordZ) == 1
+elseif isscalar(detCoordZ)
     z = [reshape(sourceCoordZ,[],1) repmat(detCoordZ,numel(sourceCoordZ),1)];
 else
     z = [sourceCoordZ reshape(detCoordZ,[],1)];
