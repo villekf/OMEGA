@@ -159,7 +159,7 @@ class projectorClass:
     oneD_weights = False
     fmh_center_weight = 4.
     ring_difference_raw = 1
-    ring_difference = 1
+    ring_difference = 0
     obtain_trues = False
     reconstruct_trues = False
     store_scatter = False
@@ -223,7 +223,7 @@ class projectorClass:
     V = np.empty(0, dtype = np.float32)
     uu = 0
     ub = 0
-    det_w_pseudo = 1
+    det_w_pseudo = 0
     startAngle = 0.
     nHeads = 1
     angleIncrement = 0.
@@ -284,7 +284,7 @@ class projectorClass:
     compute_sensitivity_image = False
     listmode = 0
     nProjections = 1
-    Ndist = 1
+    Ndist = 400
     Nang = 1
     NSinos = 1
     dL = 0
@@ -300,14 +300,16 @@ class projectorClass:
     attenuation_correction = 0
     normalization_correction = 0
     global_correction_factor = 1.
-    rings = 1
+    rings = 0
+    linear_multip = 0
+    detectors = 0
     NxOrig = 1
     NyOrig = 1
     NzOrig = 1
     NxPrior = 1
     NyPrior = 1
     NzPrior = 1
-    det_per_ring = Nang * Ndist
+    det_per_ring = 0
     h_ACOSEM = 2.
     U = 10000.
     Ndx = 1
@@ -600,6 +602,25 @@ class projectorClass:
         self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
                                                       or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 or self.projector_type == 14 or self.projector_type == 41 
                                                       or self.projector_type == 44 or self.projector_type == 34 or self.projector_type == 43)
+        
+        if self.rings == 0 and self.cryst_per_block_axial >= 1 and self.linear_multip >= 1:
+            self.rings = self.cryst_per_block_axial * self.linear_multip
+        rings = self.rings
+        if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and self.cryst_per_block >= 1:
+            self.det_per_ring = self.blocks_per_ring * self.cryst_per_block
+        if self.det_w_pseudo == 0:
+            self.det_w_pseudo = self.det_per_ring
+        if self.use_raw_data and self.x.size > 1:
+            det_per_ring = self.x.size
+        else:
+            det_per_ring = self.det_per_ring
+        if self.detectors == 0:
+            self.detectors = self.det_w_pseudo * self.rings
+        if self.ring_difference == 0 and self.rings > 0:
+            self.ring_difference = self.rings - 1;
+        if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
+            self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference), -self.span*2)))
+            self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
         if self.span == 1:
             self.TotSinos = self.rings**2
             self.NSinos = self.TotSinos
@@ -608,11 +629,11 @@ class projectorClass:
                 # self.SinM = np.sum(self.SinM,3)
                 self.sigma_x = 0.
                 # self.TOF = False
-            else:
-                c = 2.99792458e11
+            elif self.TOFCenter.size == 0:
+                c = 2.99792458e11 # speed of light in mm/s
                 self.sigma_x = (c*self.TOF_FWHM/2.) / (2. * math.sqrt(2. * math.log(2.)))
                 edges_user = np.linspace(-self.TOF_width * self.TOF_bins/2, self.TOF_width * self.TOF_bins / 2, self.TOF_bins + 1, dtype=np.float32)
-                edges_user = edges_user[0:-1] + self.TOF_width/2.
+                edges_user = edges_user[0:-1] + self.TOF_width/2. # the most probable value where annihilation occured
                 self.TOFCenter = np.zeros(np.shape(edges_user),dtype = np.float32, order='F')
                 self.TOFCenter[0] = edges_user[math.floor(np.size(edges_user)/2)]
                 self.TOFCenter[1::2] = edges_user[math.floor(np.size(edges_user)/2) + 1:]
@@ -620,6 +641,8 @@ class projectorClass:
                 if self.TOF_offset > 0:
                     self.TOFCenter = self.TOFCenter + self.TOF_offset
                 self.TOFCenter = -self.TOFCenter * c / 2.
+            else:
+                self.TOFCenter = np.float32(self.TOFCenter)
         else:
             self.sigma_x = 0.
         if self.maskFP.size > 1 and ((not(self.maskFP.size == (self.nRowsD * self.nColsD)) and not(self.maskFP.size == (self.nRowsD * self.nColsD * self.nProjections)) 
@@ -644,11 +667,6 @@ class projectorClass:
         else:
             self.useMaskBP = False
         list_mode_format = False
-        rings = self.rings
-        if self.use_raw_data and self.x.size > 1:
-            det_per_ring = self.x.size
-        else:
-            det_per_ring = self.det_per_ring
         
         if self.use_raw_data:
             rings = rings - np.sum(self.pseudot)
@@ -723,6 +741,8 @@ class projectorClass:
         indexMaker(self)
         self.setUpCorrections()
         self.x0 = self.x0.ravel('F')
+        if self.CT and self.projector_type == 1 and not self.useCPU:
+            self.projector_type = 4
         
         # Coordinates of the detectors
         if self.projector_type != 6:
@@ -915,7 +935,7 @@ class projectorClass:
             self.FOVa_y = self.FOVa_x
         if not self.CT and not self.SPECT and (self.FOVa_x >= self.diameter or self.FOVa_y >= self.diameter) and self.diameter > 0:
             raise ValueError(f"Transaxial FOV is larger than the scanner diameter ({self.diameter})!")
-        if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz):
+        if not self.CT and not self.SPECT and self.axial_fov < (self.rings * self.cr_pz - self.cr_pz) and self.rings > 0:
             raise ValueError("Axial FOV is too small, crystal ring(s) on the boundary have no slices!")
         
         if not(self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.PKMA or self.FISTA or self.FISTAL1 or self.MBSREM or self.SPS or self.MRAMLA) and any(self.precondTypeImage):
@@ -937,7 +957,7 @@ class projectorClass:
         if not self.CT and not self.SPECT and (self.span % 2 == 0 or self.span <= 0) and not self.use_raw_data:
             raise ValueError("Span value has to be odd and positive!")
         
-        if not self.CT and not self.SPECT and self.ring_difference >= self.rings and not self.use_raw_data:
+        if not self.CT and not self.SPECT and self.ring_difference >= self.rings and not self.use_raw_data and self.rings > 0:
             print(f"Ring difference can be at most {self.rings - 1}. Setting it to the maximum possible.")
             self.ring_difference = self.rings - 1
         

@@ -158,7 +158,8 @@ def computeProjectorScalingValues(options):
         options.dScaleX = options.dScaleX.astype(dtype=np.float32)
         options.dScaleY = options.dScaleY.astype(dtype=np.float32)
         options.dScaleZ = options.dScaleZ.astype(dtype=np.float32)
-    if options.projector_type == 4 or options.projector_type == 14 or options.projector_type == 54:
+    # if options.projector_type == 4 or options.projector_type == 14 or options.projector_type == 54:
+    if options.projector_type in [4, 14, 41, 42, 43, 44, 45, 54]:
         options.kerroin = (options.dx * options.dy * options.dz) / (options.dPitchX * options.dPitchY * options.sourceToDetector)
         if options.dL == 0:
             if isinstance(options.FOVa_x, np.ndarray):

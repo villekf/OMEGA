@@ -513,9 +513,9 @@ def reconstructions_main(options):
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
-    if options.useMultiResolutionVolumes:
+    if options.useMultiResolutionVolumes and not options.storeMultiResolution:
         output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig), order = 'F')
-    else:
+    elif not options.storeMultiResolution:
         output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0]), order = 'F')
     if options.subsets == 1 and options.storeFP == True:
         FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
