@@ -182,7 +182,7 @@
   
 - Support for custom prior computations removed
   - Custom prior(s) can still be implemented by using the forward/backward projector class
-  - This is most conveniantly achieved nowadays by using the Python version
+  - This is most conveniently achieved nowadays by using the Python version
   
 - All implementations now support only one algorithm and (optional) prior combination at a time
 
@@ -193,7 +193,7 @@
   
 - Orthogonal and volume-of-intersection based projectors are no longer supported by implementation 1
 
-- Multi-GPU/heterogenous computing support has been dropped for implementation 3
+- Multi-GPU/heterogeneous computing support has been dropped for implementation 3
   - You can, however, select the platform and the device now rather than having the device selected automatically
 
 - Changed the name of the class objects to `projectorClass`
@@ -372,7 +372,7 @@
   
 - Added seven different image-based preconditioners and two measurement-based preconditioners
   - For image-based these include diagonal, EM, IEM, momentum, normalized gradient, filtering, and curvature based preconditioners
-  - For measuremented-based, only diagonal and filtering-based preconditioners are available
+  - For measurement-based, only diagonal and filtering-based preconditioners are available
   - Support is limited to only a few algorithms (MBSREM, PKMA, PDHG (and its variations), FISTA)
   
 - Added several new algorithms
