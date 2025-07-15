@@ -494,7 +494,6 @@ struct inputStruct {
     uint16_t* trIndices;
     uint16_t* axIndices;
     // SPECT values
-    float crXY;
     float* rayShiftsDetector;
     float* rayShiftsSource;
     float coneOfResponseStdCoeffA;
@@ -898,8 +897,8 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         w_vec.dPitchY = options.dPitchY;
     } else if (inputScalars.SPECT) {
         w_vec.nProjections = options.nProjections;
-		w_vec.dPitchX = options.crXY;
-		w_vec.dPitchY = options.crXY;
+		w_vec.dPitchX = options.dPitchX;
+		w_vec.dPitchY = options.dPitchY;
 		if (inputScalars.projector_type == 1 || inputScalars.projector_type == 2 || inputScalars.projector_type == 22 || inputScalars.projector_type == 11) {
 			w_vec.rayShiftsDetector = options.rayShiftsDetector;
 			w_vec.rayShiftsSource = options.rayShiftsSource;

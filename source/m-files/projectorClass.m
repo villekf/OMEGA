@@ -375,8 +375,8 @@ classdef projectorClass
                     % % Resample and resize sinogram to match FOV size and resolution
                     % % For example if FOV size is 256x256x256 (2mm) and sinogram is 128x128 (2mm), pad sinogram to 256x256
 
-                    endSinogramRows = obj.param.FOVa_x / obj.param.crXY; % Desired amount of sinogram rows
-                    endSinogramCols = obj.param.axial_fov / obj.param.crXY; % Desired amount of sinogram columns
+                    endSinogramRows = obj.param.FOVa_x / obj.param.dPitchX; % Desired amount of sinogram rows
+                    endSinogramCols = obj.param.axial_fov / obj.param.dPitchY; % Desired amount of sinogram columns
                     obj.param.SinM = resize(obj.param.SinM, endSinogramRows, Dimension=1, FillValue=0, Side="both"); % Pad or trim sinogram rows
                     obj.param.SinM = resize(obj.param.SinM, endSinogramCols, Dimension=2, FillValue=0, Side="both"); % Pad or trim sinogram columns
                     obj.param.nRowsD = obj.param.Nx; % Set new sinogram size
@@ -420,7 +420,7 @@ classdef projectorClass
                 obj.param.NSinos = obj.param.nProjections;
                 obj.param.TotSinos = obj.param.nProjections;
                 obj.param.dPitch = obj.param.cr_p;
-                obj.param.cr_pz = obj.param.crXY;
+                obj.param.cr_pz = obj.param.dPitchY;
                 obj.param.linear_multip = 0;
                 obj.param.cryst_per_block = obj.param.nColsD * obj.param.nRowsD;
             end
@@ -641,6 +641,7 @@ classdef projectorClass
                 if obj.param.listmode
                     size_x = uint32(numel(obj.param.x) / 6);
                 end
+            elseif obj.param.SPECT
             else
                 obj.param.angles = 0;
                 obj.param.dPitch = obj.param.cr_p;

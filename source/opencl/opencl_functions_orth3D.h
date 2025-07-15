@@ -96,7 +96,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     , const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
     , int lor
@@ -219,7 +219,7 @@ DEVICE int orthDistance3D(const int tempi,
 	, const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crXY
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crystalSize
 #endif
 #ifdef N_RAYS
     , int lor
@@ -277,7 +277,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -312,7 +312,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -361,7 +361,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -396,7 +396,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crXY
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor

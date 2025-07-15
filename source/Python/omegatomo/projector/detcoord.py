@@ -233,8 +233,8 @@ def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.nd
         x[1, ii] = x[4, ii] + options.colL * np.sin(np.deg2rad(alpha2))
         x[2, ii] = 0
         
-        z[0, ii] = options.crXY * np.cos(np.deg2rad(alpha2 + 90))
-        z[1, ii] = options.crXY * np.sin(np.deg2rad(alpha2 + 90))
+        z[0, ii] = options.dPitchX * np.cos(np.deg2rad(alpha2 + 90))
+        z[1, ii] = options.dPitchY * np.sin(np.deg2rad(alpha2 + 90))
     
     if options.flipImageX:  # Horizontal
         x[0, :] = -x[0, :]
@@ -741,15 +741,15 @@ def SPECTParameters(options):
     if options.projector_type in [1, 2]: # Ray tracing projectors
         if options.rayShiftsDetector.size == 0: # Collimator modeling
             #options.rayShiftsDetector = np.zeros((2*options.nRays, 1), dtype=np.float32)
-            options.rayShiftsDetector = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.crXY)
+            options.rayShiftsDetector = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.dPitchX)
             if options.iR > 0: # Detector intrinsic resolution
-                options.rayShiftsDetector += np.float32((options.iR / (2*2*options.crXY * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
+                options.rayShiftsDetector += np.float32((options.iR / (2*2*options.dPitchX * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
             options.rayShiftsDetector[:2] = 0.
         if options.rayShiftsSource.size == 0: # Collimator modeling
             #options.rayShiftsSource = np.zeros((2*options.nRays, 1), dtype=np.float32)
-            options.rayShiftsSource = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.crXY)
+            options.rayShiftsSource = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.dPitchX)
             if options.iR > 0: # Detector intrinsic resolution
-                options.rayShiftsSource += np.float32((options.iR / (2*2*options.crXY * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
+                options.rayShiftsSource += np.float32((options.iR / (2*2*options.dPitchX * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
             options.rayShiftsSource[:2] = 0.
 
     if options.projector_type == 2: # Orthogonal distance ray tracer

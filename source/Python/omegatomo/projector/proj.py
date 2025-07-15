@@ -470,7 +470,6 @@ class projectorClass:
     flipImageX = False
     flipImageY = False
     flipImageZ = False
-    crXY = 1
     rayShiftsDetector = np.empty(0, dtype=np.float32)
     rayShiftsSource = np.empty(0, dtype=np.float32)
     CORtoDetectorSurface = 0
@@ -544,8 +543,8 @@ class projectorClass:
             setCTCoordinates(self)
         if self.SPECT:
             if self.projector_type == 6 and len(self.SinM > 0):
-                endSinogramRows = self.FOVa_x / self.crXY; # Desired amount of sinogram rows
-                endSinogramCols = self.axial_fov / self.crXY; # Desired amount of sinogram columns
+                endSinogramRows = self.FOVa_x / self.dPitchX; # Desired amount of sinogram rows
+                endSinogramCols = self.axial_fov / self.dPitchY; # Desired amount of sinogram columns
                 padRows = int((endSinogramRows-self.nRowsD)/2) # Pad this amount on both sides
                 padCols = int((endSinogramCols-self.nColsD)/2) # Pad this amount on both sides
                 if padRows < 0:
@@ -763,10 +762,10 @@ class projectorClass:
                 size_x = self.x.size // 6
         else:
             if self.SPECT == True:
-                self.dPitch = self.crXY
-                self.dPitchY = self.crXY
-                self.dPitchX = self.crXY
-                self.cr_p = self.crXY
+                self.dPitch = self.dPitchX
+                self.dPitchY = self.dPitchY
+                self.dPitchX = self.dPitchX
+                self.cr_p = self.dPitchX
             else:
                 self.dPitch = self.cr_p
                 self.dPitchY = self.cr_p
@@ -4408,7 +4407,6 @@ class projectorClass:
             ('TV_ref', ctypes.POINTER(ctypes.c_float)),
             ('trIndices', ctypes.POINTER(ctypes.c_uint16)),
             ('axIndices', ctypes.POINTER(ctypes.c_uint16)),
-            ('crXY',ctypes.c_float),
             ('rayShiftsDetector',ctypes.POINTER(ctypes.c_float)),
             ('rayShiftsSource',ctypes.POINTER(ctypes.c_float)),
             ('coneOfResponseStdCoeffA',ctypes.c_float),

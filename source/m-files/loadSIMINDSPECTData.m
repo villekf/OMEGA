@@ -41,7 +41,8 @@ function options = loadSIMINDSPECTData(options)
 
     % Crystal size XY
     ind = find(contains(hdr, 'scaling factor (mm/pixel) [1]')) + 1;
-    options.crXY = str2double(hdr{ind});
+    options.dPitchX = str2double(hdr{ind});
+    options.dPitchY = str2double(hdr{ind});
 
     % Crystal thickness (mm)
     ind = find(contains(hdr, ';# Crystal Thickness')) + 1;
@@ -79,20 +80,20 @@ function options = loadSIMINDSPECTData(options)
     % Number of columns in a projection image
     options.nColsD = size(options.SinM, 2);
 
-    if isfile(strcat(options.fpath, 'hict')) && isfile(strcat(options.fpath, '.ict')) % Attenuation map
-        fid = fopen(strcat(options.fpath, '.h00'));
+    if isfile(strcat(options.fpath, '.hct')) && isfile(strcat(options.fpath, '.ict')) % Attenuation map
+        fid = fopen(strcat(options.fpath, '.hct'));
         hdrCT = textscan(fid,'%s','Delimiter','=');
         hdrCT = hdrCT{1};
         fclose(fid);
 
         ind = find(contains(hdrCT, '!matrix size [1]')) + 1;
-        Nx = str2double(hdr{ind});
+        Nx = str2double(hdrCT{ind});
 
         ind = find(contains(hdrCT, '!matrix size [2]')) + 1;
-        Ny = str2double(hdr{ind});
+        Ny = str2double(hdrCT{ind});
 
         ind = find(contains(hdrCT, '!matrix size [3]')) + 1;
-        Nz = str2double(hdr{ind});
+        Nz = str2double(hdrCT{ind});
 
         fid = fopen(strcat(options.fpath, '.ict'));
         I = fread(fid, 'uint16');
@@ -100,7 +101,7 @@ function options = loadSIMINDSPECTData(options)
         I = reshape(I, [Nx, Ny, Nz]);
         I = rot90(I, 3);
         I = flip(I, 1);
-        %options.vaimennus = single(I);
+        options.vaimennus = single(I);
     end
 
     % SIMIND cannot simulate swiveling detector heads:

@@ -27,8 +27,8 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
         options.rayShiftsDetector = repmat(options.rayShiftsDetector, [options.nRays, options.nRowsD, options.nColsD, options.nProjections]);
 
         if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
-            dx = linspace(-(options.nRowsD/2-0.5)*options.crXY, (options.nRowsD/2-0.5)*options.crXY, options.nRowsD);
-            dy = linspace(-(options.nColsD/2-0.5)*options.crXY, (options.nColsD/2-0.5)*options.crXY, options.nColsD);
+            dx = linspace(-(options.nRowsD/2-0.5)*options.dPitchX, (options.nRowsD/2-0.5)*options.dPitchX, options.nRowsD);
+            dy = linspace(-(options.nColsD/2-0.5)*options.dPitchY, (options.nColsD/2-0.5)*options.dPitchY, options.nColsD);
             
             for ii = 1:options.nRowsD
                 for jj = 1:options.nColsD
@@ -48,8 +48,8 @@ if ismember(options.projector_type, [1, 11, 12, 2, 21, 22]) % Collimator modelli
             nRays = sqrt(options.nRays);
             [tmp_x, tmp_y] = meshgrid(linspace(-0.5, 0.5, nRays));
             if options.colFxy == 0 && options.colFz == 0 % Pinhole collimator
-                tmp_x = options.crXY * tmp_x;
-                tmp_y = options.crXY * tmp_y;
+                tmp_x = options.dPitchX * tmp_x;
+                tmp_y = options.dPitchY * tmp_y;
             elseif ismember(options.colFxy, [-Inf, Inf]) && ismember(options.colFz, [-Inf, Inf]) % Parallel-hole collimator
                 tmp_x = options.colR * tmp_x;
                 tmp_y = options.colR * tmp_y;

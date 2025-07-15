@@ -316,7 +316,6 @@ def transferData(options):
     options.param.trIndices = options.trIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     options.param.axIndices = options.axIndex.ctypes.data_as(ctypes.POINTER(ctypes.c_uint16))
     #For SPECT...
-    options.param.crXY = ctypes.c_float(options.crXY)
     options.param.rayShiftsDetector = options.rayShiftsDetector.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.rayShiftsSource = options.rayShiftsSource.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.param.coneOfResponseStdCoeffA = ctypes.c_float(options.coneOfResponseStdCoeffA)

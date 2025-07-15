@@ -20,7 +20,8 @@ options.fpath = '/path/to/data/nema_pinhole';
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%% Crystal size (mm)
-options.crXY = 3.3;
+options.dPitchX = 3.3;
+options.dPitchY = 3.3;
 
 %%% Scanner name
 % Used for naming purposes (measurement data)
@@ -43,9 +44,9 @@ options.Nz = 1*128; % Z-direction (number of axial slices)
 
 %%% FOV size [mm]
 % NOTE: Non-cubical voxels may not work
-options.FOVa_x = options.crXY*128; % [mm], x-axis of FOV (transaxial)
-options.FOVa_y = options.crXY*128; % [mm], y-axis of FOV (transaxial)
-options.axial_fov = options.crXY*128; % [mm], z-axis of FOV (axial)
+options.FOVa_x = options.dPitchX*128; % [mm], x-axis of FOV (transaxial)
+options.FOVa_y = options.dPitchX*128; % [mm], y-axis of FOV (transaxial)
+options.axial_fov = options.dPitchY*128; % [mm], z-axis of FOV (axial)
 
 %%% Flip the image?
 options.flipImageX = false;
