@@ -78,7 +78,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     const float3 s,
     const float3 l,
 	const float3 diff, 
-    const float kerroin, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const float temp, 
+    const float orth_ray_length, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const float temp, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -129,7 +129,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     if (d_parallel < 0) { // Voxel behind detector
         return false;
     }
-    float d_orth = compute_element_orth_3D(s, l, diff, center, kerroin);
+    float d_orth = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
 #ifdef USEMAD
     float CORstd = DIVIDE(SQRT(FMAD(1.f, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), 2.f), POWR(coneOfResponseStdCoeffC, 2.f))), (2.f*SQRT(2.f*LOG(2.f))));
 #else
@@ -137,7 +137,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
     float local_ele = normPDF2(d_orth, 0.f, CORstd);
 #else ////////////////////// NOT SPECT ////////////////////
-	float local_ele = compute_element_orth_3D(s, l, diff, center, kerroin);
+	float local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
 #endif //////////// END SPECT / NOT SPECT /////////////
 #ifdef VOL
 	if (local_ele > bmax) {
@@ -199,7 +199,7 @@ DEVICE int orthDistance3D(const int tempi,
     float3 center, // center of the current voxel
     const float3 s, // detectors.[x/y/z]s
     const float b2, const float d2, const float bz, const float dz, const float temp, int temp2, const int tempk, 
-	const uint d_Nxy, const float kerroin,
+	const uint d_Nxy, const float orth_ray_length,
 	const uint d_N1, const uint d_N2, const uint d_N3, const uint d_Nz, const float bmin, 
 	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const bool preStep, int* k, const int ku, 
 #if defined(FP)
@@ -259,7 +259,7 @@ DEVICE int orthDistance3D(const int tempi,
 		uu1 = temp2;
 #endif
 			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -294,7 +294,7 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -343,7 +343,7 @@ DEVICE int orthDistance3D(const int tempi,
 		uu1 = temp2;
 #endif
 			center.y = b2 + CFLOAT(uu1) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu1, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
@@ -378,7 +378,7 @@ DEVICE int orthDistance3D(const int tempi,
 #ifdef CRYSTXY
 		for (uu2 = temp2 - 1; uu2 >= minimiXY; uu2--) {
 			center.y = b2 + CFLOAT(uu2) * d2 + d2 / 2.f;
-			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, kerroin, center, bmin, bmax, Vmax, V, XY, ax, temp, 
+			breikki = orthogonalHelper3D(tempi, uu2, d_N2, d_N3, d_Nxy, zz, s, l, diff, orth_ray_length, center, bmin, bmax, Vmax, V, XY, ax, temp, 
 #if defined(FP)
 				d_OSEM
 #else
