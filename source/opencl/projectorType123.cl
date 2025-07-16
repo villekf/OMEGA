@@ -404,14 +404,15 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef ORTH //////////////// ORTHOGONAL OR VOLUME-BASED RAY TRACER ////////////////
 	int tempk_b = 0;
 	bool XY = false;
-	float kerroin = 0.f;
+	float orth_ray_length = 0.f;
 #if defined(SPECT)
-    kerroin = L;
+    orth_ray_length = L;
+    float orth_ray_length_inv_signed = L / dot(diff, diff);
 #else
 #if !defined(VOL) // Orthogonal
-	kerroin = L * orthWidth;
+	orth_ray_length = L * orthWidth;
 #elif defined(VOL) // Volume-based
-	kerroin = L;
+	orth_ray_length = L;
 #if defined(TOTLENGTH)
 	float TotV = L * M_1_PI_F * orthWidth * orthWidth;
 #else
@@ -615,7 +616,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z, 
-                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, kerroin, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, indO, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N3, d_N2, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -634,7 +635,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1141,7 +1142,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1160,7 +1161,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                         , lor
@@ -1178,7 +1179,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                             diff, //diff.y, diff.x, diff.z, 
                             center, //xcenter, 
                             s, // s.x, s.y, s.z,
-                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
+                            b2, d2, _bz, dz, temp, tempj_a, tempk_b, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, true, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
                             d_OSEM
 #else //////////////// BP ////////////////
@@ -1197,7 +1198,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1215,7 +1216,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, localInd.y, localInd.z, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP) //////////////// FP ////////////////
 					d_OSEM
 #else //////////////// BP ////////////////
@@ -1234,7 +1235,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1339,7 +1340,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1358,7 +1359,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1378,7 +1379,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                     diff, //diff.y, diff.x, diff.z, 
                     center, //xcenter, 
                     s, // s.x, s.y, s.z,
-                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, kerroin, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
+                    b2, d2, _bz, dz, temp, tempj_a, tempk_a, d_Nxy, orth_ray_length, d_N1, d_N2, d_N3, d_Nxyz.z, bmin, bmax, Vmax, V, XY, ax, false, &tempk_b, uz, 
 #if defined(FP)
 					d_OSEM
 #else
@@ -1397,7 +1398,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor

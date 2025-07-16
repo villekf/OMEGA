@@ -21,7 +21,7 @@ DEVICE float compute_element_orth_3D(
     const float3 l, // Precomputed cross product elements
     const float3 diff, // Spans the ray
     const float3 center, // Center of the voxel
-    const float norm2
+    const float orth_ray_length // Precomputed length |diff|, in PET scaled with tube width
 ) {
     // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The orthogonal distance d from the voxel center p to the ray is equal to d = |v1 x (v0-p)| / |v1|. The term |v1| is precomputed, and in PET reconstruction includes the crystal size.
 
@@ -44,13 +44,14 @@ DEVICE float compute_element_orth_3D(
 #if !defined(VOL) && !defined(SPECT)
     1.f - 
 #endif
-    norm1 / norm2;
+    norm1 / orth_ray_length;
 }
 
 #ifdef SPECT
-DEVICE float compute_element_parallel_3D(const float3 v0, const float3 v1, const float3 p) {
-    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The parallel distance d is computed as the distance from the source to the projection of point p onto the ray. That is, d = v1*(p-v0) / (v1*v1) * |v1| = v1*(p-v0) / |v1|
-    return dot(v1, p - v0) * length(v1) / dot(v1, v1);
+DEVICE float compute_element_parallel_3D(const float3 v0, const float3 v1, const float3 p, const float orth_ray_length_inv_signed) {
+    // In this function the ray is defined as v0+t*v1, where v0 is the source end of the ray and v0+v1 is the detector end of the ray. Thus 0<=t<=1. The parallel distance d is computed as the distance from the source to the projection of point p onto the ray. That is, d = v1*(p-v0) / (v1*v1) * |v1|
+    //return dot(v1, p - v0) * length(v1) / dot(v1, v1);
+    return dot(v1, p - v0) * orth_ray_length_inv_signed;
 }
 
 #define _2PI 0.3989423f // 1/sqrt(2*pi)
@@ -96,7 +97,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     , const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
     , int lor
@@ -124,7 +125,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     );
 #endif ///////////////////// END 2D/3D indices /////////////////////
 #ifdef SPECT ////////////////////////// SPECT ////////////////////
-    float d_parallel = compute_element_parallel_3D(s, diff, center);
+    float d_parallel = compute_element_parallel_3D(s, diff, center, orth_ray_length_inv_signed);
     if (d_parallel < 0) { // Voxel behind detector
         return false;
     }
@@ -219,7 +220,7 @@ DEVICE int orthDistance3D(const int tempi,
 	, const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
     , int lor
@@ -277,7 +278,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -312,7 +313,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -361,7 +362,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
@@ -396,7 +397,7 @@ DEVICE int orthDistance3D(const int tempi,
 				, ii, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, orth_ray_length_inv_signed
 #endif
 #ifdef N_RAYS
                     , lor
