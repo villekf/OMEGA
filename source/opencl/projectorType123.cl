@@ -634,7 +634,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1160,7 +1160,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                         , lor
@@ -1197,7 +1197,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 						, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                        , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1234,7 +1234,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif //////////////// END MASKBP ////////////////
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1358,7 +1358,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor
@@ -1397,7 +1397,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				, aa, maskBP
 #endif
 #ifdef SPECT
-                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC, crystalSize
+                , coneOfResponseStdCoeffA, coneOfResponseStdCoeffB, coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
                     , lor

@@ -123,11 +123,6 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 #endif
     );
 #endif ///////////////////// END 2D/3D indices /////////////////////
-#if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
-    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
-        return false;
-    }
-#endif ///////////////////// END BP MASK /////////////////////////
 #ifdef SPECT ////////////////////////// SPECT ////////////////////
     float d_parallel = compute_element_parallel_3D(s, diff, center);
     if (d_parallel < 0) { // Voxel behind detector
@@ -160,6 +155,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
 		return true;
 	}
 #endif
+#if defined(BP) && defined(MASKBP) ///////////////////// APPLY BP MASK /////////////////////////
+    if ((ii == 0) && (readMaskBP(maskBP, ind) == 0)) {
+        return false;
+    }
+#endif ///////////////////// END BP MASK /////////////////////////
 #if defined(SPECT) && defined(ATN)
 	local_ele *= jelppi;
 #endif
@@ -219,7 +219,7 @@ DEVICE int orthDistance3D(const int tempi,
 	, const int ii, MASKBPTYPE maskBP
 #endif
 #ifdef SPECT
-    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC, const float2 crystalSize
+    , const float coneOfResponseStdCoeffA, const float coneOfResponseStdCoeffB, const float coneOfResponseStdCoeffC
 #endif
 #ifdef N_RAYS
     , int lor
