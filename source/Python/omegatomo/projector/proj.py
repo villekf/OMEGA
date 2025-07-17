@@ -124,15 +124,12 @@ class projectorClass:
     tauCP = 0.
     sigma2CP = 1.
     thetaCP = 1.
-    normalization_self = np.array([True, True, True, True])
     machine_name = ""
     fpath = ""
     filterWindow = "hamming"
     sampling_interpolation_method = "linear"
     arc_interpolation = "linear"
     scatterPath = ""
-    transaxialEFOV = False
-    axialEFOV = False
     DOI = 0.
     cryst_per_block = np.empty(0, dtype = np.uint32)
     cryst_per_block_axial = cryst_per_block
@@ -174,7 +171,7 @@ class projectorClass:
     nBed = 1
     TOF_FWHM = 0.
     TOF_width = 0.
-    TOF_bins_used = 1
+    TOF_bins_used = 0
     span = 3
     cutoffFrequency = 1.
     normalFilterSigma = 0.25
@@ -263,6 +260,7 @@ class projectorClass:
     save_iter = False
     deblurring = False
     use_64bit_atomics = True
+    use_32bit_atomics = False
     n_rays_transaxial = 1
     n_rays_axial = 1
     RDPIncludeCorners = False
@@ -289,10 +287,9 @@ class projectorClass:
     NSinos = 1
     dL = 0
     epps = 1e-5
-    cr_p = 1.
-    cr_pz = 1.
-    use_32bit_atomics = False
-    verbose = 0
+    cr_p = 0.
+    cr_pz = 0.
+    verbose = 1
     partitions = 1
     Nt = 1
     randoms_correction = 0
@@ -327,9 +324,9 @@ class projectorClass:
     DiffusionType = 2
     eta = 1e-5
     APLSsmoothing = 1e-5
-    Nlx = 2
-    Nly = 2
-    Nlz = 2
+    Nlx = 1
+    Nly = 1
+    Nlz = 1
     TOF = False
     TOF_bins = 1
     NiterAD = 1
@@ -360,8 +357,6 @@ class projectorClass:
     flat = 0.
     use2DTGV = False
     hyperbolicDelta = 1.
-    useMultiResolutionVolumes = False
-    nMultiVolumes = 0
     relaxationScaling = False
     computeRelaxationParameters = False
     PDAdaptiveType = 0
@@ -441,11 +436,17 @@ class projectorClass:
     TV_referenceImage = ''
     NLM_referenceImage = ''
     RDP_referenceImage = ''
+    useMultiResolutionVolumes = False
+    nMultiVolumes = 0
     storeMultiResolution = False
     extrapLength = 0.2
     axialExtrapolation = False
     transaxialExtrapolation = False
-    NLM_gauss = 0.7
+    useExtrapolationWeighting = False
+    transaxialEFOV = False
+    axialEFOV = False
+    eFOVLength = 0.4
+    NLM_gauss = 2.
     TOF_noise_FWHM = 0.
     TOF_offset = 0.
     gFSize = None
@@ -481,7 +482,6 @@ class projectorClass:
     coneOfResponseStdCoeffA = 0
     coneOfResponseStdCoeffB = 0
     coneOfResponseStdCoeffC = 0
-    eFOVLength = 0.4
     FISTAType = 0
     maskFPZ = 1
     maskBPZ = 1
@@ -495,7 +495,6 @@ class projectorClass:
     def addProjector(self):
         if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV:
             self.MAP = True
-        self.OMEGAErrorCheck()
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchY == 0.:
@@ -599,12 +598,25 @@ class projectorClass:
             self.Ndist = self.nRowsD
             self.Nang = self.nColsD
             self.use_raw_data = 0
-        self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
-                                                      or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 or self.projector_type == 14 or self.projector_type == 41 
-                                                      or self.projector_type == 44 or self.projector_type == 34 or self.projector_type == 43)
         
+        if (type(self.cryst_per_block_axial) == np.ndarray and self.cryst_per_block_axial.size == 0) and ((type(self.cryst_per_block) == np.ndarray and self.cryst_per_block.size > 0) 
+                                                                                                          or (type(self.cryst_per_block) != np.ndarray and self.cryst_per_block > 0)):
+            self.cryst_per_block_axial = self.cryst_per_block
         if self.rings == 0 and self.cryst_per_block_axial >= 1 and self.linear_multip >= 1:
             self.rings = self.cryst_per_block_axial * self.linear_multip
+        if self.dPitchX > 0. and self.dPitchY == 0.:
+            self.dPitchY = self.dPitchX
+        if self.cr_p > 0. and self.cr_pz == 0.:
+            self.cr_pz = self.cr_p
+        if self.cr_p == 0. and self.dPitchX > 0.:
+            self.cr_p = self.dPitchX
+        if self.cr_pz == 0. and self.dPitchY > 0.:
+            self.cr_pz = self.dPitchY
+        if self.axial_fov == 0. and (self.cr_pz > 0. or self.dPitchY > 0.):
+            if self.dPitchY > 0.:
+                self.axial_fov = self.dPitchY
+            else:
+                self.axial_fov = self.cr_pz
         rings = self.rings
         if self.det_per_ring == 0 and self.blocks_per_ring >= 1 and self.cryst_per_block >= 1:
             self.det_per_ring = self.blocks_per_ring * self.cryst_per_block
@@ -624,7 +636,14 @@ class projectorClass:
         if self.span == 1:
             self.TotSinos = self.rings**2
             self.NSinos = self.TotSinos
+        self.OMEGAErrorCheck()
+        self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
+                                                      or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 
+                                                      or self.projector_type == 14 or self.projector_type == 41 or self.projector_type == 44 
+                                                      or self.projector_type == 34 or self.projector_type == 43)
         if self.TOF:
+            if self.TOF_bins_used == 0 and self.TOF_bins > 0:
+                self.TOF_bins_used = self.TOF_bins
             if self.TOF_bins_used != self.TOF_bins:
                 # self.SinM = np.sum(self.SinM,3)
                 self.sigma_x = 0.
@@ -741,7 +760,7 @@ class projectorClass:
         indexMaker(self)
         self.setUpCorrections()
         self.x0 = self.x0.ravel('F')
-        if self.CT and self.projector_type == 1 and not self.useCPU:
+        if self.CT and self.projector_type == 11 and not self.useCPU:
             self.projector_type = 4
         
         # Coordinates of the detectors
@@ -978,27 +997,6 @@ class projectorClass:
         if self.useIndexBasedReconstruction and self.projector_type > 4:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         
-        # if not self.CT and not self.SPECT and ((self.sampling % 2 > 0 and self.sampling != 1) or self.sampling < 0) and not self.use_raw_data:
-        #     raise ValueError("Sampling rate has to be divisible by two and positive or one!")
-        
-        # if not self.CT and not self.SPECT and ((self.sampling_raw % 2 > 0 and self.sampling_raw != 1) or self.sampling_raw < 0) and self.use_raw_data:
-        #     raise ValueError("Sampling rate has to be divisible by two and positive or one!")
-        
-        # if (self.sampling > 1 and not self.use_raw_data) or (self.sampling_raw > 1 and self.use_raw_data) and self.implementation == 1:
-        #     print("Increased sampling rate is not supported with implementation 1. Using sample rate of 1.")
-        #     self.sampling = 1
-        
-        # if self.SPECT and self.implementation == 1:
-        #     raise ValueError("Implementation 1 is not supported with SPECT data.")
-        
-        # if not self.CT and not self.SPECT and self.arc_correction and self.use_raw_data:
-        #     print("Arc correction is not supported for raw data. Disabling arc correction.")
-        #     self.arc_correction = False
-        
-        # if not self.CT and not self.SPECT and self.arc_correction and self.implementation == 1:
-        #     print("Arc correction is not supported with implementation 1. Disabling arc correction.")
-        #     self.arc_correction = False
-        
         if self.Nt < 1:
             if isinstance(self.partitions, np.ndarray) and self.partitions.size > 0:
                 self.Nt = self.partitions.size
@@ -1048,19 +1046,6 @@ class projectorClass:
                 self.x0 = resize(self.x0, (self.Nx, self.Ny, self.Nz))
             except ModuleNotFoundError:
                 print('skimage package not found! Unable to perform automatic resize! Install scikit-image package with "pip install scikit-image".')
-            # apuVar = np.prod(self.x0.shape) / (self.Nx * self.Ny * self.Nz) ** (1 / 3)
-        # if os.name == 'posix':
-        #     if len(self.fpath) > 1 and self.fpath[-1] != '/':
-        #         self.fpath += '/'
-        # elif os.name == 'nt':
-        #     if len(self.fpath) > 1 and self.fpath[-1] not in ('\\', '/'):
-        #         self.fpath += '\\'
-        # else:
-        #     if len(self.fpath) > 1 and self.fpath[-1] != '/':
-        #         self.fpath += '/'
-        # if not self.CT and not self.SPECT and self.use_LMF and self.randoms_correction:
-        #     print('Randoms correction is set to true although LMF input is selected. No randoms correction will be performed.')
-        #     self.randoms_correction = False
         if self.TV_use_anatomical and self.TV and not os.path.exists(self.TV_referenceImage) and self.MAP and not isinstance(self.TV_referenceImage, np.ndarray):
             raise FileNotFoundError('Anatomical reference image for TV was not found on path!')
         if self.NLM_use_anatomical and self.NLM and not os.path.exists(self.NLM_referenceImage) and self.MAP and not isinstance(self.NLM_referenceImage, np.ndarray):
@@ -1086,14 +1071,6 @@ class projectorClass:
             raise ValueError('The selected projector type is not supported with CPU implementation!')
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
-        # if len(self.epps) > 1:
-        #     print('Epsilon has to be a scalar value! Using the default value (1e-6).')
-        #     self.epps = 1e-6
-        # if not self.CT and not self.SPECT and self.store_scatter and sum(self.scatter_components) <= 0:
-        #     raise ValueError('Store scatter selected, but no scatter components have been selected!')
-        # if not self.CT and not self.SPECT and self.use_machine == 2 and self.use_raw_data:
-        #     print('Sinogram data cannot be used when raw data is set to true, using raw data instead')
-        #     self.use_machine = 1
         if not self.CT and not self.SPECT and self.reconstruct_trues and self.reconstruct_scatter:
             print('Both reconstruct trues and scatter selected, reconstructing only trues.')
             self.reconstruct_scatter = False
@@ -1151,15 +1128,14 @@ class projectorClass:
         if self.TOF_bins_used > 1 and self.TOF_FWHM == 0 and not self.CT and not self.SPECT:
             raise ValueError('TOF enabled, but the TOF FWHM (self.TOF_FWHM) is zero. FWHM must be nonzero.')
         
-        # if self.TOF_bins > 1 and self.use_raw_data and not self.CT and not self.SPECT:
-        #     raise ValueError('TOF data is only available with sinogram data. Disable raw data (self.use_raw_data = False).')
-        
         if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1):
             print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
             self.scatter_correction = False
             self.randoms_correction = False     
         if self.useIndexBasedReconstruction and (self.randoms_correction or self.scatter_correction) and self.TOF_bins > 1:
             raise ValueError('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
+        if self.subsetType == 3 and self.maskFP.size > 1:
+            raise ValueError('Forward projection mask is not supported with subset type 3!')
         
         if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
@@ -1320,24 +1296,6 @@ class projectorClass:
                     elif bpType == 5:
                         dispi += "branchless distance-driven projector for backprojection."
                     print(dispi)
-                # elif self.projector_type == 21:
-                #     print("Improved Siddon's algorithm selected for forward projection, orthogonal for backprojection.")
-                # elif self.projector_type == 31:
-                #     print('Improved Siddon''s algorithm selected for forward projection, Volume of intersection based ray tracer for backprojection.')
-                # elif self.projector_type == 13:
-                #     print('Volume of intersection based ray tracer selected for forward projection, improved Siddon''s algorithm for backprojection.')
-                # elif self.projector_type == 41:
-                #     print('Interpolation-based projector selected for forward projection, improved Siddon for backprojection.')
-                # elif self.projector_type == 14:
-                #     print('Improved Siddon projector selected for forward projection, interpolation-based projector for backprojection.')
-                # elif self.projector_type == 15:
-                #     print('Improved Siddon projector selected for forward projection, branchless distance-driven projector for backprojection.')
-                # elif self.projector_type == 45:
-                #     print('Interpolation-based projector selected for forward projection, branchless distance-driven projector for backprojection.')
-                # elif self.projector_type == 54:
-                #     print('Branchless distance-driven projector selected for forward projection, interpolation-based projector for backprojection.')
-                # elif self.projector_type == 51:
-                #     print('Branchless distance-driven projector selected for forward projection, improved Siddon for backprojection.')
         
                 if self.use_psf:
                     if self.deblurring:
