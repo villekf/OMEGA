@@ -69,18 +69,39 @@ end
 if ~isfield(options, 'dPitchY') && isfield(options, 'dPitch')
     options.dPitchY = options.dPitch;
 end
+if ~isfield(options, 'dPitchX')
+    options.dPitchX = 0;
+end
+if ~isfield(options, 'dPitchY')
+    if options.dPitchX > 0
+        options.dPitchY = options.dPitchX;
+    else
+        options.dPitchY = 0;
+    end
+end
 if ~isfield(options, 'cr_p')
     if options.dPitchX > 0
         options.cr_p = options.dPitchX;
     else
-        options.cr_p = 1;
+        options.cr_p = 0;
     end
 end
 if ~isfield(options, 'cr_pz')
     if options.dPitchY > 0
         options.cr_pz = options.dPitchY;
     else
-        options.cr_pz = 1;
+        if options.cr_p > 0
+            options.cr_pz = options.cr_p;
+        else
+            options.cr_pz = 0;
+        end
+    end
+end
+if ~isfield(options, 'axial_fov')
+    if options.dPitchY > 0
+        options.axial_fov = options.dPitchY;
+    else
+        options.axial_fov = options.cr_pz;
     end
 end
 if ~isfield(options, 'custom')
@@ -96,7 +117,11 @@ if ~isfield(options, 'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end
 if ~isfield(options, 'TOF_bins_used') || options.TOF_bins_used == 0
-    options.TOF_bins_used = 1;
+    if options.TOF_bins > 1
+        options.TOF_bins_used = options.TOF_bins;
+    else
+        options.TOF_bins_used = 1;
+    end
 end
 if ~isfield(options, 'TOF_FWHM')
     options.TOF_FWHM = 0;
@@ -410,7 +435,7 @@ if ~isfield(options,'sampling_raw')
     options.sampling_raw = 1;
 end
 if ~isfield(options,'nProjections')
-    options.nProjections = 0;
+    options.nProjections = 1;
 end
 if ~isfield(options,'oOffsetX')
     options.oOffsetX = 0;
@@ -431,8 +456,8 @@ end
 if ~isfield(options, 'FOVa_x')
     options.FOVa_x = 0;
 end
-if ~isfield(options, 'axial_fov')
-    options.axial_fov = 0;
+if ~isfield(options, 'Nz')
+    options.Nz = 1;
 end
 if ~isfield(options, 'x0')
     options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
@@ -671,14 +696,14 @@ if ~isfield(options,'Nang')
     if isfield(options,'det_w_pseudo') && options.det_w_pseudo > 0 
         options.Nang = options.det_w_pseudo / 2;
     else
-        options.Nang = 0;
+        options.Nang = 1;
     end
 end
 if ~isfield(options,'NSinos')
     if isfield(options, 'TotSinos')
         options.NSinos = options.TotSinos;
     else
-        options.NSinos = 0;
+        options.NSinos = 1;
     end
 end
 if ~isfield(options, 'segment_table') && isfield(options, 'span') && options.span > 0
@@ -918,6 +943,9 @@ if isfield(options,'Ndist') && ~isfield(options,'nRowsD')
 end
 if isfield(options,'Nang') && ~isfield(options,'nColsD')
     options.nColsD = options.Nang;
+end
+if ~isfield(options,'nColsD')
+    options.nColsD = 1;
 end
 if ~isfield(options, 'derivType')
     options.derivType = 0;
