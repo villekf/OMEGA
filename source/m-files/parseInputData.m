@@ -219,4 +219,7 @@ if options.subsets > 1 && options.subset_type > 0
             options.CT_attenuation = true;
         end
     end
+    if options.useMaskFP && options.maskFPZ > 1 && options.subset_type >= 8
+        options.maskFP = options.maskFP(:,:,index);
+    end
 end

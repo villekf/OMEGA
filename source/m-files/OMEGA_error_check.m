@@ -421,6 +421,9 @@ end
 if options.useIndexBasedReconstruction && (options.randoms_correction || options.scatter_correction) && options.TOF_bins > 1
     error('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
 end
+if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
+    error('Forward projection mask is not supported with subset type 3!')
+end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0
     if options.use_ASCII && options.use_machine == 0

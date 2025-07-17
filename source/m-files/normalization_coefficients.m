@@ -1,39 +1,30 @@
 function [varargout] = normalization_coefficients(options)
 %% Args
-
-%options: Sinogram data, detector pair coordinates, ring heights, apparatus radius
-
-%normalization_attenuation_correction: apply attenuation correction
-%yes = [inner_cylinder_radius (cm) cylinder_attenuation_constant (cm^2/m)] | no = empty)
-%If inner_cylinder_radius=inf, cylinder is assumed to cover entire FOV
-%If left empty uniform illumination for each LOR is assumed
-
-%options.normalization_scatter_correction: fit gaussian to scatter tail from cylinder
-%normalization data (Too narrow scatter tail may lead to unaccurate fit).
-%Not supported for list-mode data.
-
-%options.normalization_options(1): apply axial geometric correction (yes = 1 | no = 0)
-
-%options.normalization_options(2): apply detector effiency correction. (Fansum = 1 | SPC = 2 | no = 0)
-%Fan_sum uses 3-D fansum method for both data types or SPC "single-plane
-%Casey" method for list mode-data (SPC computationally more expensive). SPC is
-%supposed to be used with FOV covering source
-%Fansum version includes block profile correction. Using
-%options.normalization_options(2)=2 with fansum uses block profile correction
-%before detector effiency correction
-
-%options.normalization_options(4): apply transaxial geometric correction for plane source data (yes = 1 | no = 0)
-%With cylinders transaxial correction produces appropriate coeffs for LORs
-%passing cylinder (LORs passing near cylinder edges can also be inaccurate)
-%Accuracy of radial sorting can be adjusted in transaxial correction section
-
-%options.normalization_options(3): apply block profile correction. If using fansum
-%correction is nested with effiency correction
-%If using SPC block profile correction is done separately
-
-%TRANAXIAL AND BLOCK PROFILE CORRECTION GROUP SORTING CAN BE ADJUSTED IN
-%THEIR SECTIONS
-
+% options: Sinogram data, detector pair coordinates, ring heights, apparatus radius
+% normalization_attenuation_correction: apply attenuation correction
+% yes = [inner_cylinder_radius (cm) cylinder_attenuation_constant (cm^2/m)] | no = empty)
+% If inner_cylinder_radius=inf, cylinder is assumed to cover entire FOV
+% If left empty uniform illumination for each LOR is assumed
+% options.normalization_scatter_correction: fit gaussian to scatter tail from cylinder
+% normalization data (Too narrow scatter tail may lead to unaccurate fit).
+% Not supported for list-mode data.
+% options.normalization_options(1): apply axial geometric correction (yes = 1 | no = 0)
+% options.normalization_options(2): apply detector effiency correction. (Fansum = 1 | SPC = 2 | no = 0)
+% Fan_sum uses 3-D fansum method for both data types or SPC "single-plane
+% Casey" method for list mode-data (SPC computationally more expensive). SPC is
+% supposed to be used with FOV covering source
+% Fansum version includes block profile correction. Using
+% options.normalization_options(2)=2 with fansum uses block profile correction
+% before detector effiency correction
+% options.normalization_options(4): apply transaxial geometric correction for plane source data (yes = 1 | no = 0)
+% With cylinders transaxial correction produces appropriate coeffs for LORs
+% passing cylinder (LORs passing near cylinder edges can also be inaccurate)
+% Accuracy of radial sorting can be adjusted in transaxial correction section
+% options.normalization_options(3): apply block profile correction. If using fansum
+% correction is nested with effiency correction
+% If using SPC block profile correction is done separately
+% TRANAXIAL AND BLOCK PROFILE CORRECTION GROUP SORTING CAN BE ADJUSTED IN
+% THEIR SECTIONS
 %% Returns
 % Normalization matrix containing all coeffs
 % Corrected sinogram

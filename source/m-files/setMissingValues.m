@@ -69,6 +69,20 @@ end
 if ~isfield(options, 'dPitchY') && isfield(options, 'dPitch')
     options.dPitchY = options.dPitch;
 end
+if ~isfield(options, 'cr_p')
+    if options.dPitchX > 0
+        options.cr_p = options.dPitchX;
+    else
+        options.cr_p = 1;
+    end
+end
+if ~isfield(options, 'cr_pz')
+    if options.dPitchY > 0
+        options.cr_pz = options.dPitchY;
+    else
+        options.cr_pz = 1;
+    end
+end
 if ~isfield(options, 'custom')
     options.custom = false;
 end
@@ -232,6 +246,9 @@ if ~isfield(options, 'tube_width_xy')
 end
 if ~isfield(options, 'use_psf')
     options.use_psf = false;
+end
+if ~isfield(options, 'FWHM')
+    options.FWHM = [options.dPitchX options.dPitchX options.dPitchY];
 end
 if ~isfield(options, 'save_iter')
     options.save_iter = false;
@@ -421,7 +438,7 @@ if ~isfield(options, 'x0')
     options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
 end
 if ~isfield(options, 'dL')
-    options.dL = options.FOVa_x / options.Nx / 1;
+    options.dL = 0;
 end
 if ~isfield(options, 'epps')
     options.epps = 1e-5;
@@ -446,12 +463,6 @@ if ~isfield(options, 'diameter')
 end
 if ~isfield(options, 'span')
     options.span = 3;
-end
-if ~isfield(options, 'cr_p')
-    options.cr_p = 1;
-end
-if ~isfield(options, 'cr_pz')
-    options.cr_pz = 1;
 end
 if ~isfield(options, 'binning')
     options.binning = 1;
@@ -478,7 +489,7 @@ if ~isfield(options, 'precompute_all')
     options.precompute_all = false;
 end
 if ~isfield(options, 'verbose')
-    options.verbose = false;
+    options.verbose = 1;
 end
 if ~isfield(options, 'tot_time')
     options.tot_time = inf;
