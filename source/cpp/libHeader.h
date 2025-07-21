@@ -450,8 +450,10 @@ struct inputStruct {
     uint8_t* TOFIndices;
     // Angles for SPECT or CT
     float* angles;
-    // Blur planes for rotation-based projector in SPECT
-    uint32_t* blurPlanes;
+    float* swivelAngles; // Only for SPECT rotation-based projector
+    // PSF shifts and lateral FOV shifts for SPECT projector
+    int32_t* blurPlanes;
+    int32_t* blurPlanes2;
     // Blurring kernel for the rotation-based projector
     float* gFilter;
     uint64_t* gFSize;
@@ -921,13 +923,14 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
             mexEval();
         }
         w_vec.angles = options.angles;
-        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], ind[3], options.gFilter);
+        w_vec.swivelAngles = options.swivelAngles;
+        w_vec.gFilter = af::array(ind[0], ind[1], ind[2], options.gFilter);
         w_vec.distInt = options.blurPlanes;
+        w_vec.distInt2 = options.blurPlanes2;
         if (DEBUG) {
             mexPrintBase("w_vec.gFilter.dims(0) = %d\n", w_vec.gFilter.dims(0));
             mexPrintBase("w_vec.gFilter.dims(1) = %d\n", w_vec.gFilter.dims(1));
             mexPrintBase("w_vec.gFilter.dims(2) = %d\n", w_vec.gFilter.dims(2));
-            mexPrintBase("w_vec.gFilter.dims(3) = %d\n", w_vec.gFilter.dims(3));
             mexPrintBase("w_vec.distInt[0] = %d\n", w_vec.distInt[0]);
             mexEval();
         }

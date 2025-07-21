@@ -11,7 +11,6 @@ import os
 from .prepass import prepassPhase
 from .prepass import parseInputs
 from .prepass import loadCorrections
-from .prepass import sinogramToX
 
 def transferData(options):
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
@@ -286,7 +285,9 @@ def transferData(options):
     options.param.maskPrior = options.maskPrior.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.TOFIndices = options.TOFIndices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8))
     options.param.angles = options.angles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
-    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_uint32))
+    options.param.swivelAngles = options.swivelAngles.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    options.param.blurPlanes = options.blurPlanes.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
+    options.param.blurPlanes2 = options.blurPlanes2.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))
     options.param.gFilter = options.gFilter.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     options.gFSize = np.array(options.gFilter.shape, dtype=np.uint64)
     options.param.gFSize = options.gFSize.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))

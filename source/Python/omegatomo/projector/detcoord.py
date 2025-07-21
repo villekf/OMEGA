@@ -207,45 +207,45 @@ def getCoordinates(options):
             x = np.asfortranarray(np.vstack((x, y)))
     return x, y, z
     
-def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.ndarray]:
+def getCoordinatesSPECT(options: proj.projectorClass) -> Tuple[np.ndarray, np.ndarray]: # TODO this function
     n1: int = len(options.angles)
     n2: int = len(options.radiusPerProj)
     n3: int = len(options.swivelAngles)
     assert (n1 == n2) and (n2 == n3), "The amount of angles, radii and swivel angles have to be equal."
-    
+
     nProjections: int = n1
-    
+
     x: np.ndarray = np.zeros((6, nProjections), dtype=np.float32)
     z: np.ndarray = np.zeros((2, nProjections), dtype=np.float32)
-    
+
     for ii in range(nProjections):
         r1: float = options.radiusPerProj[ii]
         r2: float = options.CORtoDetectorSurface
-        
+
         alpha1: float = options.angles[ii]
         alpha2: float = options.swivelAngles[ii]
-        
-        x[3, ii] = r1 * np.cos(np.deg2rad(alpha1)) + r2 * np.cos(np.deg2rad(alpha2))
-        x[4, ii] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2))
-        x[5, ii] = 0
-        
-        x[0, ii] = x[3, ii] + options.colL * np.cos(np.deg2rad(alpha2))
-        x[1, ii] = x[4, ii] + options.colL * np.sin(np.deg2rad(alpha2))
+
+        x[0, ii] = r1 * np.cos(np.deg2rad(alpha1)) + r2 * np.cos(np.deg2rad(alpha2))
+        x[1, ii] = r1 * np.sin(np.deg2rad(alpha1)) + r2 * np.sin(np.deg2rad(alpha2))
         x[2, ii] = 0
-        
-        z[0, ii] = options.dPitchX * np.cos(np.deg2rad(alpha2 + 90))
-        z[1, ii] = options.dPitchY * np.sin(np.deg2rad(alpha2 + 90))
-    
+
+        x[3, ii] = x[0, ii] + (options.colD + 0.5 * options.colL) * np.cos(np.deg2rad(alpha2))
+        x[4, ii] = x[1, ii] + (options.colD + 0.5 * options.colL) * np.sin(np.deg2rad(alpha2))
+        x[5, ii] = 0
+
+        z[0, ii] = np.cos(np.deg2rad(alpha2 + 90))
+        z[1, ii] = np.sin(np.deg2rad(alpha2 + 90))
+
     if options.flipImageX:  # Horizontal
         x[0, :] = -x[0, :]
         x[3, :] = -x[3, :]
         z[0, :] = -z[0, :]
-    
+
     if options.flipImageY: # Vertical
         x[1, :] = -x[1, :]
         x[4, :] = -x[4, :]
         z[1, :] = -z[1, :]
-    #return x, z
+
     return np.asfortranarray(x), np.asfortranarray(z)
     
 def detectorCoordinates(options):
@@ -736,92 +736,106 @@ def sinogramCoordinates3D(options):
     return z
 
 
-def SPECTParameters(options):
-    import math
-    if options.projector_type in [1, 2]: # Ray tracing projectors
+def SPECTParameters(options: proj.projectorClass) -> None:
+    if options.projector_type in [1, 11, 12, 2, 21, 22]: # Ray tracing projectors
         if options.rayShiftsDetector.size == 0: # Collimator modeling
-            #options.rayShiftsDetector = np.zeros((2*options.nRays, 1), dtype=np.float32)
-            options.rayShiftsDetector = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.dPitchX)
-            if options.iR > 0: # Detector intrinsic resolution
-                options.rayShiftsDetector += np.float32((options.iR / (2*2*options.dPitchX * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
-            options.rayShiftsDetector[:2] = 0.
-        if options.rayShiftsSource.size == 0: # Collimator modeling
-            #options.rayShiftsSource = np.zeros((2*options.nRays, 1), dtype=np.float32)
-            options.rayShiftsSource = np.float32(options.colR*(2*np.random.rand(2 * options.nRays, 1) - 1) / options.dPitchX)
-            if options.iR > 0: # Detector intrinsic resolution
-                options.rayShiftsSource += np.float32((options.iR / (2*2*options.dPitchX * np.sqrt(2*np.log(2)))*np.random.randn(2*options.nRays, 1)))
-            options.rayShiftsSource[:2] = 0.
+            options.rayShiftsDetector = np.zeros((2*options.nRays, options.nRowsD, options.nColsD, options.nProjections), dtype=np.float32)
+            
+            if options.colFxy == 0 and options.colFz == 0:
+                dx = np.linspace(-(options.nRowsD / 2 - 0.5) * options.dPitchX, (options.nRowsD / 2 - 0.5) * options.dPitchX, options.nRowsD)
+                dy = np.linspace(-(options.nColsD / 2 - 0.5) * options.dPitchY, (options.nColsD / 2 - 0.5) * options.dPitchY, options.nColsD)
+                
+                for ii in range(options.nRowsD):
+                    for jj in range(options.nColsD):
+                        for kk in range(options.nRays):
+                            options.rayShiftsDetector[2 * kk, ii, jj, :] = -dx[ii]
+                            options.rayShiftsDetector[2 * kk + 1, ii, jj, :] = -dy[jj]    
 
-    if options.projector_type == 2: # Orthogonal distance ray tracer
+        if options.rayShiftsSource.size == 0:
+            options.rayShiftsSource = np.zeros((2*options.nRays, options.nRowsD, options.nColsD, options.nProjections), dtype=np.float32)
+            
+            if options.nRays > 1: # Multiray shifts
+                nRays = int(np.sqrt(options.nRays))
+                tmp_x, tmp_y = np.meshgrid(np.linspace(-0.5, 0.5, nRays), np.linspace(-0.5, 0.5, nRays))
+                if options.colFxy == 0 and options.colFz == 0: # Pinhole collimator
+                    tmp_x *= options.dPitchX
+                    tmp_y *= options.dPitchY
+                elif np.isinf(options.colFxy) and np.isinf(options.colFz):  # Parallel-hole collimator
+                    tmp_x *= options.colR
+                    tmp_y *= options.colR
+
+                tmp_shift = np.vstack((tmp_x.ravel(), tmp_y.ravel())).reshape(-1, order='F')
+
+                for kk in range(options.nRays):
+                    options.rayShiftsSource[2 * kk] = tmp_shift[2 * kk]
+                    options.rayShiftsSource[2 * kk + 1] = tmp_shift[2 * kk + 1]
+
+    if options.projector_type in [12, 21, 2, 22]: # Orthogonal distance ray tracer
         options.coneOfResponseStdCoeffA = 2*options.colR/options.colL
         options.coneOfResponseStdCoeffB = 2*options.colR/options.colL*(options.colL+options.colD+options.cr_p/2)
         options.coneOfResponseStdCoeffC = options.iR
 
     if options.projector_type == 6: # Rotation-based projector
-        DistanceToFirstRow = options.radiusPerProj - (options.Nx.item() / 2. - 0.5) * options.dx[0].item()
-        DistanceToFirstRow = DistanceToFirstRow.reshape((-1, 1), order='F')
-        Distances = np.asfortranarray(np.tile(DistanceToFirstRow,(1,options.Nx.item())) + np.tile(np.arange(0, options.Nx.item(),dtype=np.float32) * options.dx[0].item(), (DistanceToFirstRow.size,1)))
-        Distances = Distances - options.colL - options.colD #these are distances to the actual detector surface
-        
+        DistanceToFirstRow = 0.5 * options.dx
+        Distances = DistanceToFirstRow[..., np.newaxis] + np.arange(options.Nx * 4, dtype=np.float32) * options.dx
+        Distances -= (options.colL + options.colD)  # distances to detector surface
+
         if options.gFilter.size == 0:
             if options.sigmaZ < 0.:
                 Rg = 2. * options.colR * (options.colL + options.colD + Distances + options.cr_p / 2.) / options.colL #Anger, "Scintillation Camera with Multichannel Collimators", J Nucl Med 5:515-531 (1964)
                 Rg[Rg < 0] = 0.
                 FWHMrot = 1.
-        
+
                 FWHM = np.sqrt(Rg**2 + options.iR**2)
                 FWHM_pixel = FWHM / options.dx[0]
                 expr = FWHM_pixel**2 - FWHMrot**2
-                expr[expr <= 0] = 10**-16;
+                expr[expr <= 0] = 10**-16
+
                 FWHM_WithinPlane = np.sqrt(expr)
-        
                 #Parametrit CDR-mallinnukseen
-                options.sigmaZ = FWHM_pixel / (2. * math.sqrt(2. * math.log(2.)))
-                options.sigmaXY = FWHM_WithinPlane / (2. * math.sqrt(2. * math.log(2.)))
+                options.sigmaZ = FWHM_pixel / (2. * np.sqrt(2. * np.log(2.)))
+                options.sigmaXY = FWHM_WithinPlane / (2. * np.sqrt(2. * np.log(2.)))
+
             maxI = max(options.Nx[0].item(), max(options.Ny[0].item(), options.Nz[0].item()))
             y = np.arange(maxI // 2 - 1, -maxI // 2, -1, dtype=np.float32).reshape((1, -1), order='F')
             x = np.arange(maxI // 2 - 1, -maxI // 2, -1, dtype=np.float32).reshape((1, -1), order='F')
             xx = np.tile(x.T, (1, x.shape[1]))
             yy = np.tile(y, (xx.shape[1], 1))
+
             if np.any(options.sigmaXY < 0.):
-                options.sigmaZ = np.reshape(options.sigmaZ, (options.sigmaZ.shape[0], options.sigmaZ.shape[1], 1, 1), order='F')
-                s1 = np.asfortranarray(np.tile(np.transpose(options.sigmaZ, (3, 2, 1, 0)), (xx.shape[0], yy.shape[1], 1, 1)))
-                xx = np.asfortranarray(np.reshape(xx,(xx.shape[0], xx.shape[1], 1, 1), order='F'))
-                yy = np.asfortranarray(np.reshape(yy,(yy.shape[0], yy.shape[1], 1, 1), order='F'))
-                options.gFilter = (1. / (2. * np.pi * s1) * np.exp(-(xx**2 + yy**2) / (2. * s1)))
+                s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
+                options.gFilter = (1 / (2 * np.pi * s1)) * np.exp(-(xx[:, :, None]**2 + yy[:, :, None]**2) / (2 * s1))
             else:
-                options.sigmaZ = np.reshape(options.sigmaZ, (options.sigmaZ.shape[0], options.sigmaZ.shape[1], 1, 1), order='F')
-                options.sigmaXY = np.reshape(options.sigmaXY, (options.sigmaXY.shape[0], options.sigmaXY.shape[1], 1, 1), order='F')
-                s1 = np.asfortranarray(np.tile(np.transpose(options.sigmaZ, (3, 2, 1, 0)), (xx.shape[0], yy.shape[1], 1, 1)))
-                s2 = np.asfortranarray(np.tile(np.transpose(options.sigmaXY, (3, 2, 1, 0)), (xx.shape[0], yy.shape[1], 1, 1)))
-                xx = np.asfortranarray(np.reshape(xx,(xx.shape[0], xx.shape[1], 1, 1), order='F'))
-                yy = np.asfortranarray(np.reshape(yy,(yy.shape[0], yy.shape[1], 1, 1), order='F'))
-                options.gFilter = np.exp(-(xx**2 / (2. * s1**2) + yy**2 / (2. * s2**2)))
-            ind = np.argmax((options.radiusPerProj))
-            
-            rowE = np.where(options.gFilter[:, :, -1, ind] > 1e-6)[0].max()
-            colE = np.where(options.gFilter[:, :, -1, ind] > 1e-6)[-1].max()
-            
-            rowS = np.where(options.gFilter[:, :, -1, ind] > 1e-6)[0].min()
-            colS = np.where(options.gFilter[:, :, -1, ind] > 1e-6)[1].min()
-            options.gFilter = options.gFilter[rowS:rowE+1,colS:colE+1,:,:]
-            options.gFilter = options.gFilter / np.sum(options.gFilter)
-            options.gFilter = options.gFilter.astype(dtype=np.float32)
-        options.blurPlanes = np.argmax(Distances>0,1)
+                s1 = np.tile(options.sigmaZ, (xx.shape[0], yy.shape[1], 1))
+                s2 = np.tile(options.sigmaXY, (xx.shape[0], yy.shape[1], 1))
+                options.gFilter = np.exp(-(xx[:, :, None]**2 / (2 * s1**2) + yy[:, :, None]**2 / (2 * s2**2)))
+
+
+            mid_slice = options.gFilter[:, :, options.gFilter.shape[2] // 4]
+            rowE, colE = np.where(mid_slice > 1e-6)
+            rowS = rowE.min()
+            colS = colE.min()
+            rowE = rowE.max()
+            colE = colE.max()
+
+            options.gFilter = options.gFilter[rowS:rowE+1, colS:colE+1, :]
+            options.gFilter /= np.sum(options.gFilter)
+
+
+        panelTilt = options.swivelAngles - options.angles + 180
+        options.blurPlanes = (options.FOVa_x / 2 - (options.radiusPerProj * np.cos(np.deg2rad(panelTilt)) - options.CORtoDetectorSurface)) / options.dx
+        options.blurPlanes2 = options.radiusPerProj * np.sin(np.deg2rad(panelTilt)) / options.dx
+
         if options.angles.size == 0:
             options.angles = (np.repeat(options.startAngle, (options.nProjections // options.nHeads)) + np.tile(np.arange(0,options.angleIncrement * (options.nProjections / options.nHeads),options.angleIncrement), (options.nHeads, 1)))
         options.uu = 1
         options.ub = 1
-        #if abs(options.offangle) > 0:
-        #    if np.max(np.abs(options.angles.flatten())) > 10. * np.pi:
-        #        options.angles = options.angles + (options.offangle * 180./np.pi)
-        #    else:
-        #        options.angles = options.angles + options.offangle
-        #if np.max(np.abs(options.angles.flatten())) > 10. * np.pi and options.implementation == 2:
-        #    options.angles = options.angles / 180. * np.pi
-        #if options.flip_image:
-        #    options.angles = -(options.angles)
+
+        options.gFilter = np.asfortranarray(options.gFilter.astype(dtype=np.float32))
         options.angles = options.angles.ravel('F').astype(dtype=np.float32)
         options.swivelAngles = options.swivelAngles.ravel('F').astype(dtype=np.float32)
         options.radiusPerProj = options.radiusPerProj.ravel('F').astype(dtype=np.float32)
-        options.blurPlanes = options.blurPlanes.ravel('F').astype(dtype=np.uint32)
+        options.blurPlanes = options.blurPlanes.ravel('F').astype(dtype=np.int32)
+        options.blurPlanes2 = options.blurPlanes2.ravel('F').astype(dtype=np.int32)
+
+        return None
