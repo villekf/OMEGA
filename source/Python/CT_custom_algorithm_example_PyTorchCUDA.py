@@ -15,8 +15,8 @@ of these algorithms.
 This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
 """
 import numpy as np
-from omegatomo import proj
-from omegatomo.io.loadProjectionImages import loadProjectionImages
+from omegatomo.projector import proj
+from omegatomo.fileio.loadProjectionImages import loadProjectionImages
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction.prepass import linearizeData
 from omegatomo.util.powermethod import powerMethod

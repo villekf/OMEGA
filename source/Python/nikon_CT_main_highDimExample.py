@@ -19,8 +19,8 @@ regularization methods are supported, such as RDP, TV, NLM and GGMRF.
 """
 
 import numpy as np
-from omegatomo import proj
-from omegatomo.io import loadNikonData
+from omegatomo.projector import proj
+from omegatomo.fileio import loadNikonData
 from omegatomo.reconstruction import reconstructions_mainCT
 import matplotlib as plt
 

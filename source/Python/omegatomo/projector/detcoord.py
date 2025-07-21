@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from typing import Tuple
 
 def CTDetSource(options):

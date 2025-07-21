@@ -15,7 +15,7 @@ Instead of the rotation of the panel, you can also input the direction vectors.
 Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction import reconstructions_mainCT
 import matplotlib as plt

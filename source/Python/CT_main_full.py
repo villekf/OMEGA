@@ -10,8 +10,8 @@
 """
 
 import numpy as np
-from omegatomo import proj
-from omegatomo.io.loadProjectionImages import loadProjectionImages
+from omegatomo.projector import proj
+from omegatomo.fileio.loadProjectionImages import loadProjectionImages
 from omegatomo.reconstruction import reconstructions_mainCT
 from omegatomo.util import CTEFOVCorrection
 import matplotlib as plt

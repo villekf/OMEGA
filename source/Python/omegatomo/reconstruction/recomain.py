@@ -4,14 +4,8 @@ Created on Thu Mar  7 13:50:49 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import time
 import numpy as np
 import ctypes
-import os
-from .prepass import prepassPhase
-from .prepass import parseInputs
-from .prepass import loadCorrections
-from .prepass import sinogramToX
 
 def transferData(options):
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
@@ -347,6 +341,12 @@ def reconstructions_mainSPECT(options):
 def reconstructions_main(options):
     import tkinter as tk
     from tkinter.filedialog import askopenfilename
+    import time
+    import os
+    from .prepass import prepassPhase
+    from .prepass import parseInputs
+    from .prepass import loadCorrections
+    from .prepass import sinogramToX
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
@@ -464,10 +464,15 @@ def reconstructions_main(options):
         residual = np.zeros(options.Niter * options.subsets, dtype=np.float32)
     else:
         residual = np.zeros(1, dtype=np.float32)
-    options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+    fPath = os.path.dirname( __file__ )
+    if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
+        libdir = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')), "libs")
+        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'opencl')) + "/"
+    else:
+        libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
+        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
-    libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
     # point_ptr = ctypes.pointer(options.param)
     if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)

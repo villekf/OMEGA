@@ -9,9 +9,9 @@
 # available from: https://doi.org/10.5281/zenodo.3528056
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
-from omegatomo.io.loadInveon import loadInveonData
+from omegatomo.fileio.loadInveon import loadInveonData
 from omegatomo.util import CTEFOVCorrection
 
 options = proj.projectorClass()
@@ -1464,7 +1464,7 @@ options.DOI = 4.584
 
 # Load ROOT data
 # if options.use_root:
-#     from omegatomo.io import loadROOT
+#     from omegatomo.fileio import loadROOT
 #     # Sino = uncorrected sinogram
 #     # SinoT = Trues sinogram
 #     # SinoC = Scattered events sinogram

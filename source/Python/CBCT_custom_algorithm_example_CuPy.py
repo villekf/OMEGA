@@ -11,7 +11,7 @@ For CUDA, there are no recommendations on which version to use. This version is 
 Example data available from: https://doi.org/10.5281/zenodo.12722386
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.util import CTEFOVCorrection
 from omegatomo.reconstruction.prepass import linearizeData
 from omegatomo.util.powermethod import powerMethod

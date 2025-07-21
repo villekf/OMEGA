@@ -24,6 +24,7 @@ Created on Wed Mar  6 17:40:13 2024
 #########################################################################
 """
 
+# from SimpleITK import GetSpacing
 import numpy as np
 import ctypes
 import math
@@ -34,11 +35,6 @@ from .coordinates import computeProjectorScalingValues
 from .coordinates import computeVoxelVolumes
 from .indices import indexMaker
 from .indices import formSubsetIndices
-try:
-    import arrayfire as af
-except ModuleNotFoundError:
-    print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
-# from SimpleITK import GetSpacing
 
 class projectorClass:
     # These parameters are either NumPy arrays or variables that are not needed in the C++ code
@@ -1192,6 +1188,12 @@ class projectorClass:
                 if self.deviceNum < 0:
                     raise ValueError('Device number has to be positive!')
                 try:
+                    import arrayfire as af
+                    AFinstalled = True
+                except ModuleNotFoundError:
+                    print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
+                    AFinstalled = False
+                if AFinstalled:
                     if not self.useCUDA and af.get_active_backend() != 'opencl':
                         af.set_backend('opencl')
                     dispaus = f"Using implementation {self.implementation} with "
@@ -1202,7 +1204,7 @@ class projectorClass:
                     loc2 = info[loc:].find('(Compute')
                     dispaus += info[loc + 4 : loc + loc2 - 1]
                     print(dispaus)
-                except NameError:
+                else:
                     print('Selected device number is ' + str(self.deviceNum))
                     
                 algorithms = [

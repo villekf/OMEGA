@@ -9,7 +9,7 @@
 # are also supported: 
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
 
 options = proj.projectorClass()
@@ -1267,7 +1267,7 @@ options.storeFP = False
 
 # Load ROOT data
 if options.use_root:
-    from omegatomo.io import loadROOT
+    from omegatomo.fileio import loadROOT
     if options.useIndexBasedReconstruction:
         Sino, SinoT, SinoC, SinoR, SinoD, options.trIndices, options.axIndices, DtrIndices, DaxIndices = loadROOT(options)
         if options.randoms_correction:

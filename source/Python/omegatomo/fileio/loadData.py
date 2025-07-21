@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 
-import os
-import ctypes
-import numpy as np
-import math
-import glob
-from omegatomo.projector import computePixelSize
 
 
 def loadROOT(options, store_coordinates = False):
     import ROOT
+    import os
+    import ctypes
+    import numpy as np
+    import math
+    import glob
+    from omegatomo.projector import computePixelSize
     
     totSinos = options.TotSinos;
     if options.span == 1:
@@ -104,7 +104,11 @@ def loadROOT(options, store_coordinates = False):
         SinoD = np.zeros(1, dtype=np.uint16, order='F')
     seg = np.cumsum(options.segment_table)
     
-    libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
+    fPath = os.path.dirname( __file__ )
+    if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
+        libdir = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')), "libs")
+    else:
+        libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
     # dir2 = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..','..')), 'cpp')
     if os.name == 'posix':
         libname = str(os.path.join(libdir,"libRoot.so"))

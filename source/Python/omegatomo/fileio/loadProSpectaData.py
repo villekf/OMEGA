@@ -1,7 +1,8 @@
-from pydicom import dcmread
-import numpy as np
+
 
 def loadProSpectaData(options):
+    from pydicom import dcmread
+    import numpy as np
     dcm = dcmread(options.fpath)
 
     # Load projection images

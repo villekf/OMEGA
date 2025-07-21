@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-import numpy as np
    
 def indexMaker(options):
+    import numpy as np
     subsets = options.subsets;
     Ndist = options.Ndist;
     Nang = options.Nang;

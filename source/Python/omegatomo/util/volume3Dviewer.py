@@ -1,6 +1,4 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider
 
 def volume3Dviewer(
     volume1: np.ndarray,
@@ -28,6 +26,9 @@ def volume3Dviewer(
         If provided, must be same shape as volume1. Overlays volume2 under its own colormap
         with a vertical slider controlling blend (alpha).
     """
+    
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Slider
     
     # Rotation
     if rotation not in [None, [0, 0, 1], [0, 1, 0], [1, 0, 0]]:

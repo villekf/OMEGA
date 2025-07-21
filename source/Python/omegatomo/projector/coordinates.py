@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
 
+import numpy as np
     
 def computePixelSize(options):
     FOV = np.column_stack((options.FOVa_x,options.FOVa_y, options.axial_fov)).astype(dtype=np.float32)

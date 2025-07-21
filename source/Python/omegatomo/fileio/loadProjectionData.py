@@ -5,15 +5,17 @@ Created on Thu Mar  7 13:29:39 2024
 @author: Ville-Veikko Wettenhovi
 """
 
-import numpy as np
-import os
-import glob
-import tkinter as tk
-from tkinter.filedialog import askopenfilename
-import re
 
 
-def loadProjectionData(ftype, fpath = '', dims = np.zeros(3, dtype=np.uint64), binning = 1, headerBytes = 0, loadAll = True):
+def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes = 0, loadAll = True):
+    import numpy as np
+    import os
+    import glob
+    import tkinter as tk
+    from tkinter.filedialog import askopenfilename
+    import re
+    if dims == None:
+        dims = np.zeros(3, dtype=np.uint64)
     def atoi(text):
         return int(text) if text.isdigit() else text
     

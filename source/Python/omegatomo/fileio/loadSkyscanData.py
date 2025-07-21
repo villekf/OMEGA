@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import os
-import tkinter as tk
-from tkinter.filedialog import askopenfilename
-from omegatomo.io.loadProjectionImages import loadProjectionImages
 
 def loadSkyscanData(options):
+    import numpy as np
+    import os
+    import tkinter as tk
+    from tkinter.filedialog import askopenfilename
+    from omegatomo.fileio.loadProjectionImages import loadProjectionImages
     def select_file():
     
         if len(options.fpath) == 0:

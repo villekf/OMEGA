@@ -3,9 +3,9 @@
 Python codes for SPECT reconstruction from DICOM data
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_mainSPECT
-from omegatomo.io.loadProSpectaData import loadProSpectaData
+from omegatomo.fileio.loadProSpectaData import loadProSpectaData
 
 # Initialize projector class for reconstruction
 options = proj.projectorClass()

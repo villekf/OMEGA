@@ -9,7 +9,7 @@
 # are also supported: 
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
 
 options = proj.projectorClass()
@@ -483,7 +483,7 @@ options.RDP_gamma = 10
 
 # Load ROOT data
 if options.use_root:
-    from omegatomo.io import loadROOT
+    from omegatomo.fileio import loadROOT
     # Sino = uncorrected sinogram
     # SinoT = Trues sinogram
     # SinoC = Scattered events sinogram

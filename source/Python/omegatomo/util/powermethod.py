@@ -5,9 +5,9 @@ Created on Thu Apr 18 17:44:17 2024
 @author: Ville-Veikko Wettenhovi
 """
 
-from omegatomo.util.measprecond import applyMeasPreconditioning
 
 def powerMethod(A):
+    from omegatomo.util.measprecond import applyMeasPreconditioning
     if A.useAF:
         import arrayfire as af
     elif A.useTorch:

@@ -7,9 +7,9 @@
 # available from: https://doi.org/10.5281/zenodo.3528056
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 from omegatomo.reconstruction import reconstructions_main
-from omegatomo.io.loadInveon import loadInveonData
+from omegatomo.fileio.loadInveon import loadInveonData
 
 options = proj.projectorClass()
 

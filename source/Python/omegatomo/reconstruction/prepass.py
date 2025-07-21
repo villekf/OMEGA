@@ -6,10 +6,6 @@ Created on Thu Mar  7 13:57:46 2024
 """
 
 import numpy as np
-import os
-import tkinter as tk
-from tkinter.filedialog import askopenfilename
-from .rampfilt import rampFilt
 
 def sinogramToX(angles, radii, nx, ny, crxy, flipImage, offAngle):
     """
@@ -77,6 +73,9 @@ def linearizeData(options):
     options.SinM = np.log(options.flat / options.SinM.astype(dtype=np.float32))
 
 def loadCorrections(options):
+    import os
+    import tkinter as tk
+    from tkinter.filedialog import askopenfilename
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
             if len(options.attenuation_datafile) > 0 and options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'mhd':
@@ -180,6 +179,7 @@ def loadCorrections(options):
                     if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and ~options.use_raw_data:
                         ValueError('Size mismatch between the current data and the normalization data file')
                 elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
+                    from pymatreader import read_mat
                     var = read_mat(nimi)
                     options.normalization = np.array(var["normalization"])
                 elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
@@ -389,6 +389,8 @@ def parseInputs(options, mDataFound = False):
             options.scatter_correction = False
         if options.randoms_correction and not options.corrections_during_reconstruction:
             options.randoms_correction = False
+        if options.useMaskFP and options.maskFPZ > 1 and options.subsetType >= 8:
+            options.maskFP = options.maskFP[:,:,options.index];
             
     
     if mDataFound and not options.largeDim and options.loadTOF:
@@ -472,6 +474,7 @@ def TVPrepass(options):
         options.TV_referenceImage = options.TV_referenceImage.ravel('F').astype(dtype=np.float32)
         
 def APLSPrepass(options):
+    import numpy as np
     from skimage.transform import resize #scikit-image
     if isinstance(options.APLS_ref_image, str):
         if len(options.APLS_ref_image) == 0:
@@ -502,6 +505,7 @@ def APLSPrepass(options):
     options.APLS_ref_image = options.APLS_ref_image.ravel('F')
 
 def computeWeights(options, GGMRF):
+    import numpy as np
     distX = options.FOVa_x[0] / options.Nx[0]
     distY = options.FOVa_y[0] / options.Ny[0]
     distZ = options.axial_fov[0] / options.Nz[0]
@@ -553,6 +557,7 @@ def computeWeights(options, GGMRF):
         options.weights = options.weights.astype(dtype=np.float32)
         
 def quadWeights(options, isEmpty):
+    import numpy as np
     if isEmpty:
         non_inf_weights_sum = np.sum(options.weights[~np.isinf(options.weights)])
         options.weights_quad = options.weights / non_inf_weights_sum
@@ -566,6 +571,7 @@ def quadWeights(options, isEmpty):
     options.weights_quad = options.weights_quad.astype(dtype=np.float32)
         
 def huberWeights(options):
+    import numpy as np
     if np.size(options.weights_huber) == 0:
         non_inf_weights_sum = np.sum(options.weights[np.isfinite(options.weights)])
         options.weights_huber = options.weights / non_inf_weights_sum
@@ -610,6 +616,7 @@ def NLMPrepass(options):
         options.NLM_referenceImage = options.NLM_referenceImage.ravel('F').astype(dtype=np.float32)
 
 def prepassPhase(options):
+    from .rampfilt import rampFilt
     options.Nf = options.nRowsD
     if not isinstance(options.tauCP, np.ndarray):
         options.tauCP = np.array(options.tauCP, dtype=np.float32, ndmin=1)

@@ -4,9 +4,9 @@ Created on Thu Mar  7 14:08:02 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import numpy as np
 
 def CTEFOVCorrection(options):
+    import numpy as np
     if options.useExtrapolation:
         print('Extrapolating the projections')
         Pn = int(np.floor(options.SinM.shape[0] * options.extrapLength))
