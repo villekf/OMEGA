@@ -523,16 +523,20 @@ def reconstructions_main(options):
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
-    if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-        output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
-    elif not options.storeMultiResolution:
-        output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
-    if options.subsets == 1 and options.storeFP == True:
-        FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
-    toc = time.perf_counter()
-    if (options.verbose > 0):
-        print(f"Reconstruction took {toc - tic:0.4f} seconds")
-    if options.storeResidual:
-        return output, FPOutput, residual
-    else:
-        return output, FPOutput
+    try:
+        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
+        elif not options.storeMultiResolution and options.Nt == 1:
+            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
+        else:
+            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+        if options.subsets == 1 and options.storeFP == True:
+            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
+    finally:
+        toc = time.perf_counter()
+        if (options.verbose > 0):
+            print(f"Reconstruction took {toc - tic:0.4f} seconds")
+        if options.storeResidual:
+            return output, FPOutput, residual
+        else:
+            return output, FPOutput
