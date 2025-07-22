@@ -457,8 +457,10 @@ def reconstructions_main(options):
         output = np.zeros(options.NxOrig * options.NyOrig * options.NzOrig * options.Nt, dtype=np.float32, order = 'F')
     else:
         output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
+    if options.saveNIter.size > 0:
+        output = np.tile(output, options.saveNIter.size + 1)
     if options.storeFP:
-        FPOutput = np.zeros(options.SinM.size, dtype=np.float32, order = 'F')
+        FPOutput = np.zeros(options.SinM.size * options.Niter, dtype=np.float32, order = 'F')
     else:
         FPOutput = np.empty(0, dtype=np.float32)
     if options.storeResidual:
@@ -520,9 +522,9 @@ def reconstructions_main(options):
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
     if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-        output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig), order = 'F')
+        output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
     elif not options.storeMultiResolution:
-        output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0]), order = 'F')
+        output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
     if options.subsets == 1 and options.storeFP == True:
         FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
     toc = time.perf_counter()
