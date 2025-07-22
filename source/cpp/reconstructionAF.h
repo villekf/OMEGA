@@ -882,7 +882,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			}
 			// Use power method to compute the tau/primal value, if necessary
 			if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f)
-				status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, g, apuF);
+				status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, g, apuF);
 			if (status != 0) {
 				return -1;
 			}
