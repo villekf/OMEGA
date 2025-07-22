@@ -917,3 +917,6 @@ def prepassPhase(options):
         options.RDP_referenceImage = np.empty(0, dtype=np.float32)
     if isinstance(options.TV_referenceImage, str):
         options.TV_referenceImage = np.empty(0, dtype=np.float32)
+    if (options.PKMA or options.MBSREM or options.SPS or options.RAMLA or options.BSREM or options.ROSEM or options.ROSEM_MAP or options.MRAMLA or options.SAGA) and (options.precondTypeMeas[1] or options.precondTypeImage[5]):
+        if (options.lambdaFiltered.size != options.lambdaN.size and options.filteringIterations < options.subsets * options.Niter) or options.lambdaFiltered.size == 0:
+            options.lambdaFiltered = options.lambdaN;
