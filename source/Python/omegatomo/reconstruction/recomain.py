@@ -166,6 +166,7 @@ def transferData(options):
     options.param.useIndexBasedReconstruction = ctypes.c_bool(options.useIndexBasedReconstruction)
     options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
     options.param.useTotLength = ctypes.c_bool(options.useTotLength)
+    options.param.useParallelBeam = ctypes.c_bool(options.useParallelBeam)
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)

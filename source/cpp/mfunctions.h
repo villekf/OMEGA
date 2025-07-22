@@ -138,6 +138,7 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 	inputScalars.useExtendedFOV = getScalarBool(options, 0, "useEFOV");
 	if (inputScalars.useExtendedFOV)
 		inputScalars.eFOV = mxGetNumberOfElements(getField(options, 0, "eFOVIndices")) > 1;
+	inputScalars.useParallelBeam = getScalarBool(options, 0, "useParallelBeam");
 	inputScalars.NxOrig = getScalarUInt32(options, 0, "NxOrig");
 	inputScalars.NyOrig = getScalarUInt32(options, 0, "NyOrig");
 	inputScalars.NzOrig = getScalarUInt32(options, 0, "NzOrig");
@@ -174,12 +175,14 @@ inline void loadInput(scalarStruct& inputScalars, const mxArray* options, const 
 		inputScalars.deblur_iterations = getScalarUInt32(getField(options, 0, "deblur_iterations"));
 	}
 
-	//inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
-	//inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
-	//if (inputScalars.multiResolution) {
-	//	for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-	//		inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
-	//}
+	if (type >= 0) {
+		inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
+		inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
+		if (inputScalars.multiResolution) {
+			for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
+				inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+		}
+	}
 }
 
 // Loads the input data and forms device data variables

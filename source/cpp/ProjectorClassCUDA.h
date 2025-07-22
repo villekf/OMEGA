@@ -191,6 +191,8 @@ class ProjectorClass {
 			std::string contentFBP((std::istreambuf_iterator<char>(sourceFileBP)), std::istreambuf_iterator<char>());
 			contentBP = contentHeader + contentFBP;
 		}
+		if (inputScalars.useParallelBeam)
+			options.push_back("-DPARALLEL");
 
 		// Load the source text file
 		// Set all preprocessor definitions

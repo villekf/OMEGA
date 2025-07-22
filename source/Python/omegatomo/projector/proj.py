@@ -484,6 +484,7 @@ class projectorClass:
     stochasticSubsetSelection = False
     useTotLength = True
     TOFIndices = np.empty(0, dtype = np.uint8)
+    useParallelBeam = False
 
     def __init__(self):
         # C-struct
@@ -1955,6 +1956,7 @@ class projectorClass:
             ('useIndexBasedReconstruction', ctypes.c_bool),
             ('stochasticSubsetSelection', ctypes.c_bool),
             ('useTotLength', ctypes.c_bool),
+            ('useParallelBeam', ctypes.c_bool),
             ('OSEM', ctypes.c_bool),
             ('LSQR', ctypes.c_bool),
             ('CGLS', ctypes.c_bool),
