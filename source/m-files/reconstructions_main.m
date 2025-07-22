@@ -289,11 +289,7 @@ if options.param.implementation ~= 2 && options.param.implementation ~= 3
 
         if (options.param.MBSREM || options.param.MRAMLA || options.param.SPS || options.param.precondTypeImage(7))
             if options.param.randoms_correction && ~options.param.CT && (options.param.MBSREM || options.param.MRAMLA)
-                if iscell(options.param.SinDelayed)
-                    allTrue = options.param.SinDelayed{llo} > 0;
-                else
-                    allTrue = options.param.SinDelayed > 0;
-                end
+                allTrue = SinD > 0;
             else
                 allTrue = false;
             end
