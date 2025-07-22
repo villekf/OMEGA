@@ -459,6 +459,8 @@ def reconstructions_main(options):
         output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
     if options.saveNIter.size > 0:
         output = np.tile(output, options.saveNIter.size + 1)
+    elif options.save_iter:
+        output = np.tile(output, options.Niter + 1)
     if options.storeFP:
         FPOutput = np.zeros(options.SinM.size * options.Niter, dtype=np.float32, order = 'F')
     else:
