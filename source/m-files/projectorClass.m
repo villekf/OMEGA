@@ -345,26 +345,6 @@ classdef projectorClass
                     obj.param.x = cast(obj.param.x, obj.param.cType);
                 end
 			elseif obj.param.SPECT
-                %% SPECT BP mask
-                if obj.param.useMaskBP && (~isfield(obj.param, 'maskBP') || numel(obj.param.maskBP) == 0) 
-                    fprintf('Backprojection mask not set, ')
-                    if isfield(obj.param, 'vaimennus') && numel(obj.param.vaimennus) > 0  % Calculate BP mask from attenuation map
-                        fprintf('computing mask from attenuation map\n')
-                        obj.param.maskBP = imbinarize(obj.param.vaimennus);
-                        obj.param.maskBP = imclose(obj.param.maskBP, strel('disk', ceil(mean([obj.param.Nx, obj.param.Ny] / 8))));
-                        obj.param.maskBP = imdilate(obj.param.maskBP, strel('disk', ceil(mean([obj.param.Nx, obj.param.Ny] / 64))));
-                        obj.param.maskBP = uint8(obj.param.maskBP);
-                        obj.param.maskBPZ = size(obj.param.maskBP, 3);
-                    else
-                        fprintf('disabling backprojection mask\n')
-                        obj.param.useMaskBP = false;
-                    end
-                end
-                if ~obj.param.useMaskBP && isfield(obj.param, 'maskBP')
-                    obj.param.useMaskBP = false;
-                    obj.param = rmfield(obj.param, 'maskBP');
-                end
-
                 %% Sinogram resizing and resampling for rotation-based projector
                 if obj.param.projector_type == 6
                     % Sinogram size is (options.nRowsD, options.nColsD)
@@ -488,7 +468,7 @@ classdef projectorClass
                     obj.param.useMaskBP = true;
                     obj.param.maskBPZ = size(obj.param.maskBP,3);
                 end
-            else
+            elseif ~(obj.param.attenuation_correction && obj.param.SPECT)
                 obj.param.useMaskBP = false;
             end
             rings = obj.param.rings;

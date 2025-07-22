@@ -147,7 +147,8 @@ if options.attenuation_correction && ~options.SPECT % PET attenuation
             options.vaimennus = atn(:);
         end
     end
-elseif options.attenuation_correction && options.SPECT % SPECT attenuation
+elseif options.attenuation_correction && options.SPECT 
+    %% SPECT attenuation correction
     if ~isfield(options, 'vaimennus') || isempty(options.vaimennus)
         if isempty(options.fpathCT) % Get folder if necessary
             options.fpathCT = uigetdir(matlabroot,'Select the folder containing attenuation DICOM files');
@@ -922,6 +923,7 @@ end
 
 % Other SPECT corrections
 if options.SPECT
+    %% SPECT scatter correction
     if options.scatter_correction % From 10.1371/journal.pone.0269542
         primaryWindowWidth = diff(options.scatterStruct.primaryWindow);
         scatterWindowWidths = diff(options.scatterStruct.scatterWindows, 1, 2);
@@ -945,6 +947,26 @@ if options.SPECT
     end
 
     randoms_correction = false;
+
+    %% SPECT BP mask
+    if options.useMaskBP && (~isfield(options, 'maskBP') || numel(options.maskBP) == 0) 
+        fprintf('Backprojection mask not set, ')
+        if isfield(options, 'vaimennus') && numel(options.vaimennus) > 0  % Calculate BP mask from attenuation map
+            fprintf('computing mask from attenuation map\n')
+            options.maskBP = imbinarize(options.vaimennus);
+            options.maskBP = imclose(options.maskBP, strel('disk', ceil(mean([options.Nx, options.Ny] / 8))));
+            options.maskBP = imdilate(options.maskBP, strel('disk', ceil(mean([options.Nx, options.Ny] / 64))));
+            options.maskBP = uint8(options.maskBP);
+            options.maskBPZ = size(options.maskBP, 3);
+        else
+            fprintf('disabling backprojection mask\n')
+            options.useMaskBP = false;
+        end
+    end
+    if ~options.useMaskBP && isfield(options, 'maskBP')
+        options.useMaskBP = false;
+        options = rmfield(options, 'maskBP');
+    end
 end
 
 % Global correction factor
