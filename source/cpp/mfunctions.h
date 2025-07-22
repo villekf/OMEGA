@@ -353,7 +353,7 @@ inline void form_data_variables(Weighting& w_vec, const mxArray* options, scalar
 	}
 
 	// The complete sensitivity image is computed
-	if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || (w_vec.precondTypeIm[0]
+	if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0 || (w_vec.precondTypeIm[0]
 		|| w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2])) {
 		if (DEBUG) {
 			mexPrintBase("w_vec.precondTypeIm[1] = %u\n", w_vec.precondTypeIm[1]);
