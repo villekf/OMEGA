@@ -665,9 +665,9 @@ end
 if ~isfield(options, 'rings')
     if isfield(options, 'cryst_per_block')
         if isfield(options, 'linear_multip') && isfield(options, 'cryst_per_block')
-            options.rings = options.linear_multip * options.cryst_per_block;
+            options.rings = options.linear_multip * options.cryst_per_block(end);
         elseif isfield(options, 'cryst_per_block')
-            options.rings = options.cryst_per_block;
+            options.rings = options.cryst_per_block(end);
         end
     else
         options.rings = 1;
@@ -681,13 +681,13 @@ if ~isfield(options, 'ring_difference_raw')
 end
 if ~isfield(options, 'det_per_ring')
     if isfield(options, 'blocks_per_ring') && isfield(options, 'cryst_per_block')
-        options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
+        options.det_per_ring = options.blocks_per_ring*options.cryst_per_block(end);
     else
         options.det_per_ring = options.Nang * 2 * options.Ndist;
     end
 end
 if ~isfield(options, 'det_w_pseudo')
-    options.det_w_pseudo = options.det_per_ring;
+    options.det_w_pseudo = options.det_per_ring(end);
 end
 if ~isfield(options, 'detectors')
     options.detectors = options.det_w_pseudo*options.rings;
@@ -985,6 +985,9 @@ if ~isfield(options,'maskBPZ')
 end
 if ~isfield(options, 'stochasticSubsetSelection')
     options.stochasticSubsetSelection = false;
+end
+if ~isfield(options, 'useParallelBeam')
+    options.useParallelBeam = false;
 end
 if ~isfield(options, 'useTotLength')
     options.useTotLength = true;
