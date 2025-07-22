@@ -96,7 +96,8 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 	const uint32_t transaxial_multip, const uint32_t* rings, const uint64_t* sinoSize, const uint32_t Ndist, const uint32_t* Nang, const uint32_t ringDifference, const uint32_t span, 
 	const H* seg, const int64_t Nt, const uint64_t TOFSize, const int32_t nDistSide, T* Sino, T* SinoT, T* SinoC, T* SinoR, T* SinoD, 
 	const uint32_t* detWPseudo, const int32_t nPseudos, const double binSize, const double FWHM, const bool verbose, const int32_t nLayers, const float dx, const float dy, const float dz,
-	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const int64_t imDim, const bool indexBased, T* tIndex, const D mPtr = 0) {
+	const float bx, const float by, const float bz, const int64_t Nx, const int64_t Ny, const int64_t Nz, const bool dualLayerSubmodule, const int64_t imDim, const bool indexBased, T* tIndex, 
+	uint8_t* TOFIndex, const D mPtr) {
 
 	int nthreads = 1;
 	bool scatterTrues[] = {true, true, true, true};
@@ -114,6 +115,7 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 #endif
 
 	Int_t moduleID1F = 0, moduleID2F = 0, submoduleID1F = 0, submoduleID2F = 0;
+	Char_t testi;
 
 	TTree* Coincidences;
 	TFile* inFile = new TFile(rootFile, "read");
@@ -535,6 +537,8 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 			trIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_pos2) + layerID2 * detWPseudo[0];
 			axIndex[kk * 2] = static_cast<uint16_t>(ring_number1) + layerID1 * rings[0];
 			axIndex[kk * 2 + 1] = static_cast<uint16_t>(ring_number2) + layerID2 * rings[0];
+			if (TOFSize > sinoSize[0])
+				TOFIndex[kk] = static_cast<uint8_t>(bins);
 		}
 		else {
 			if ((layer == 0 || layer == 1) && nLayers > 1) {
@@ -596,6 +600,8 @@ void histogram(const char* rootFile, const C* tPoints, const double alku, const 
 				coord[kk * 6 + 5] = globalPosZ2;
 				if (dynamic)
 					tIndex[kk] = static_cast<uint16_t>(tPoint);
+				if (TOFSize > sinoSize[0])
+					TOFIndex[kk] = static_cast<uint8_t>(bins);
 			}
 		}
 	}
