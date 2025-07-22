@@ -50,7 +50,7 @@ end
 if ~options.CT && ~options.SPECT && (options.FOVa_x >= options.diameter || options.FOVa_y >= options.diameter)
     warning(['Transaxial FOV is larger than the scanner diameter (' num2str(options.diameter) ')!'])
 end
-if ~options.CT && ~options.SPECT && (options.axial_fov) < (options.rings(1) * options.cr_pz - options.cr_pz)
+if ~options.CT && ~options.SPECT && (options.axial_fov) < (options.rings(1) * options.cr_pz - options.cr_pz) && options.rings > 0
     warning('Axial FOV is too small, crystal ring(s) on the boundary have no slices!')
 end
 if ~preCondImAlg && any(options.precondTypeImage)
@@ -84,7 +84,7 @@ end
 if ~options.CT && ~options.SPECT && (mod(options.span,2) == 0 || options.span <= 0) && ~options.use_raw_data
     error('Span value has to be odd and positive!')
 end
-if ~options.CT && ~options.SPECT && options.ring_difference >= options.rings(end) && ~options.use_raw_data
+if isfield(options, 'rings') && ~options.CT && ~options.SPECT && options.ring_difference >= options.rings(end) && ~options.use_raw_data
     warning(['Ring difference can be at most ' num2str(options.rings-1) '. Setting it to the maximum possible.'])
     options.ring_difference = options.rings - 1;
 end
@@ -172,11 +172,14 @@ if ~options.largeDim && isempty(options.x0)
         options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-4;
     end
 end
-if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz
+if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz && ~options.useEFOV
     error(['Initial value has a matrix size smaller (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size ('...
         num2str(options.Nx*options.Ny*options.Nz) ')!'])
+elseif ~options.largeDim && options.useEFOV && (size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.Nx*options.Ny*options.Nz && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) < options.NxOrig*options.NyOrig*options.NzOrig)
+    error(['Initial value has a matrix size smaller (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size ('...
+        num2str(options.NxOrig*options.NyOrig*options.NzOrig) ')!'])
 end
-if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) > options.Nx*options.Ny*options.Nz
+if ~options.largeDim && size(options.x0,1)*size(options.x0,2)*size(options.x0,3) > options.Nx*options.Ny*options.Nz && ~options.useEFOV
     warning(['Initial value has a matrix size larger (' num2str(size(options.x0,1)*size(options.x0,2)*size(options.x0,3)) ') than the actual image size (' ...
         num2str(options.Nx*options.Ny*options.Nz) ')! Attempting automatic resize.'])
     apuVar = numel(options.x0) / (options.Nx * options.Ny * options.Nz);
@@ -210,16 +213,18 @@ if options.implementation == 1 && ((isfield(options,'maskBP') && ~isscalar(optio
     warning('Mask images are not supported with implementation 1!')
 end
 if options.projector_type > 6 && options.projector_type ~= 11 && options.projector_type ~= 14 && options.projector_type ~= 12 && options.projector_type ~= 13 && ...
-        options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 ...
+        options.projector_type ~= 21 && options.projector_type ~= 22 && options.projector_type ~= 31 && options.projector_type ~= 32 && options.projector_type ~= 23 ...
         && options.projector_type ~= 33 && options.projector_type ~= 41 && options.projector_type ~= 51 && options.projector_type ~= 15 && options.projector_type ~= 45 ...
-        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44
+        && options.projector_type ~= 54 && options.projector_type ~= 55 && options.projector_type ~= 44 && options.projector_type ~= 43 && options.projector_type ~= 42 ...
+        && options.projector_type ~= 24 && options.projector_type ~= 34 && options.projector_type ~= 35 && options.projector_type ~= 25
     error('The selected projector type is not supported!')
 end
 if options.use_CPU && (options.projector_type == 5 || options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 45 ...
-        || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15)
+        || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 42 || options.projector_type == 43 ...
+        || options.projector_type == 24 || options.projector_type == 34)
     error('Selected projector type is not supported with CPU implementation!')
 end
-if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM) && ~options.largeDim
+if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
     warning('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
 end
 if options.APLS && exist(options.APLS_reference_image,'file') ~= 2 && MAP
@@ -259,8 +264,8 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-if options.useIndexBasedReconstruction && options.projector_type > 3
-    error('Index-based recpnstruction only supports projector types 1-3!')
+if options.useIndexBasedReconstruction && options.projector_type > 4
+    error('Index-based reconstruction only supports projector types 1-4!')
 end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
     warning('Both reconstruct trues and scatter selected, reconstructing only trues.')
@@ -273,7 +278,7 @@ if options.implementation == 4 && exist('projector_mex','file') ~= 3
     error('MEX-file for implementation 4 not found. Run install_mex first.')
 end
 % if (options.CGLS || options.LSQR || options.FISTA || options.FISTAL1) && options.subsets > 1
-if (options.CGLS || options.LSQR) && options.subsets > 1
+if (options.CGLS || options.LSQR) && options.subsets > 1 && ~options.largeDim
     warning('CGLS and LSQR do not support subsets! Setting subsets to 1.')
     options.subsets = 1;
 end
@@ -384,11 +389,19 @@ if options.FDK && (options.Niter > 1 || options.subsets > 1)
         options.Niter = 1;
     end
 end
+if options.largeDim
+    if ~options.PDHG && ~options.FDK && ~options.PKMA && ~options.PDDY && ~options.PDHGL1 && ~options.PDHGKL
+        error('Large dimension support is only available for PDHG, PKMA, and FDK!')
+    end
+    if options.MRP || options.quad || options.Huber || options.weighted_mean || options.FMH || options.ProxTV || options.TGV || options.L || options.AD
+        error('Large dimension support is only available for non-local methods, RDP, GGMRF, hyperbolic prior and TV!')
+    end
+end
 if options.use_CUDA && options.use_CPU && options.implementation == 2
     error('Both CUDA and CPU selected! Select only one!')
 end
 if options.TOF_bins_used > 1 && (options.projector_type ~= 1 && options.projector_type ~= 11 && options.projector_type ~= 3 && options.projector_type ~= 33 && options.projector_type ~= 31 ...
-        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14) && ~options.CT && ~options.SPECT
+        && options.projector_type ~= 13 && options.projector_type ~= 4 && options.projector_type ~= 41 && options.projector_type ~= 14 && options.projector_type ~= 34 && options.projector_type ~= 43) && ~options.CT && ~options.SPECT
     error('TOF is currently only supported with improved Siddon (projector_type = 1), interpolation-based projector (projector_type = 4) and volume of intersection (projector_type = 3)')
 end
 if options.TOF_bins_used > 1 && options.TOF_width <= 0 && ~options.CT && ~options.SPECT
@@ -401,7 +414,15 @@ if options.TOF_bins_used > 1 && options.use_raw_data && ~options.CT && ~options.
     error('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = false).')
 end
 if options.corrections_during_reconstruction && (options.scatter_correction || options.randoms_correction) && (options.PDHG || options.PDHGL1 || options.FISTA || options.LSQR || options.CGLS || options.FISTAL1)
-    error('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm!')
+    warning('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
+    options.randoms_correction = false;
+    options.scatter_correction = false;
+end
+if options.useIndexBasedReconstruction && (options.randoms_correction || options.scatter_correction) && options.TOF_bins > 1
+    error('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
+end
+if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
+    error('Forward projection mask is not supported with subset type 3!')
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0
@@ -446,6 +467,9 @@ if options.verbose > 0
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(1)+1)];
                 else
                     k1 = strfind(inffo, ['-' num2str(options.use_device) '-']);
+                    if isempty(k1)
+                        k1 = strfind(inffo, ['[' num2str(options.use_device) ']']);
+                    end
                     dispaus = [dispaus, ' with ', inffo(k1 + 4:k2(options.use_device + 1)+1)];
                 end
             end
@@ -705,34 +729,61 @@ if options.verbose > 0
                 dispi = [dispi, ' in 2.5D mode.'];
             end
             disp(dispi)
-        elseif options.projector_type == 21
-            disp('Improved Siddon''s algorithm selected for forward projection, orthogonal for backprojection.')
-        elseif options.projector_type == 12
-            disp('Orthogonal selected for forward projection, improved Siddon''s algorithm for backprojection.')
         elseif options.projector_type == 3 || options.projector_type == 33
             disp('Volume of intersection based ray tracer selected.');
-        elseif options.projector_type == 31
-            disp('Improved Siddon''s algorithm selected for forward projection, Volume of intersection based ray tracer for backprojection.')
-        elseif options.projector_type == 13
-            disp('Volume of intersection based ray tracer selected for forward projection, improved Siddon''s algorithm for backprojection.')
-        elseif options.projector_type == 4
+        elseif options.projector_type == 4 || options.projector_type == 44
             disp('Interpolation-based projector selected.')
-        elseif options.projector_type == 5
+        elseif options.projector_type == 5 || options.projector_type == 55
             disp('Branchless distance-driven based projector selected.')
-        elseif options.projector_type == 41
-            disp('Interpolation-based projector selected for forward projection, improved Siddon for backprojection.')
-        elseif options.projector_type == 14
-            disp('Improved Siddon projector selected for forward projection, interpolation-based projector for backprojection.')
-        elseif options.projector_type == 15
-            disp('Improved Siddon projector selected for forward projection, branchless distance-driven projector for backprojection.')
-        elseif options.projector_type == 45
-            disp('Interpolation-based projector selected for forward projection, branchless distance-driven projector for backprojection.')
-        elseif options.projector_type == 54
-            disp('Branchless distance-driven projector selected for forward projection, interpolation-based projector for backprojection.')
-        elseif options.projector_type == 51
-            disp('Branchless distance-driven projector selected for forward projection, improved Siddon for backprojection.')
-        elseif options.projector_type == 6
+        elseif options.projector_type == 6 || options.projector_type == 66
             disp('Rotation-based projector selected (SPECT).')
+        elseif options.projector_type > 10
+            fpType = floor(options.projector_type / 10);
+            bpType = options.projector_type - fpType * 10;
+            dispi = [];
+            if fpType == 1
+                dispi = [dispi, 'Improved Siddon''s algorithm selected for forward projection, '];
+            elseif fpType == 2
+                dispi = [dispi, 'Orthogonal distance-based ray-tracer selected for forward projection, '];
+            elseif fpType == 3
+                dispi = [dispi, 'Volume of intersection based ray tracer selected for forward projection, '];
+            elseif fpType == 4
+                dispi = [dispi, 'Interpolation-based projector selected for forward projection, '];
+            elseif fpType == 5
+                dispi = [dispi, 'Branchless distance-driven projector selected for forward projection, '];
+            end
+            if bpType == 1
+                dispi = [dispi, 'improved Siddon''s algorithm for backprojection.'];
+            elseif bpType == 2
+                dispi = [dispi, 'orthogonal distance-based ray-tracer for backprojection.'];
+            elseif bpType == 3
+                dispi = [dispi, 'volume of intersection based ray tracer for backprojection.'];
+            elseif bpType == 4
+                dispi = [dispi, 'interpolation-based projector for backprojection.'];
+            elseif bpType == 5
+                dispi = [dispi, 'branchless distance-driven projector for backprojection.'];
+            end
+            disp(dispi)
+        % elseif options.projector_type == 21
+        %     disp('Improved Siddon''s algorithm selected for forward projection, orthogonal for backprojection.')
+        % elseif options.projector_type == 12
+        %     disp('Orthogonal selected for forward projection, improved Siddon''s algorithm for backprojection.')
+        % elseif options.projector_type == 31
+        %     disp('Improved Siddon''s algorithm selected for forward projection, Volume of intersection based ray tracer for backprojection.')
+        % elseif options.projector_type == 13
+        %     disp('Volume of intersection based ray tracer selected for forward projection, improved Siddon''s algorithm for backprojection.')
+        % elseif options.projector_type == 41
+        %     disp('Interpolation-based projector selected for forward projection, improved Siddon for backprojection.')
+        % elseif options.projector_type == 14
+        %     disp('Improved Siddon projector selected for forward projection, interpolation-based projector for backprojection.')
+        % elseif options.projector_type == 15
+        %     disp('Improved Siddon projector selected for forward projection, branchless distance-driven projector for backprojection.')
+        % elseif options.projector_type == 45
+        %     disp('Interpolation-based projector selected for forward projection, branchless distance-driven projector for backprojection.')
+        % elseif options.projector_type == 54
+        %     disp('Branchless distance-driven projector selected for forward projection, interpolation-based projector for backprojection.')
+        % elseif options.projector_type == 51
+        %     disp('Branchless distance-driven projector selected for forward projection, improved Siddon for backprojection.')
         end
         if options.use_psf
             if options.deblurring

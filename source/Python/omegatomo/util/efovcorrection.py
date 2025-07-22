@@ -4,9 +4,9 @@ Created on Thu Mar  7 14:08:02 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import numpy as np
 
 def CTEFOVCorrection(options):
+    import numpy as np
     if options.useExtrapolation:
         print('Extrapolating the projections')
         Pn = int(np.floor(options.SinM.shape[0] * options.extrapLength))
@@ -24,33 +24,37 @@ def CTEFOVCorrection(options):
         newProj[erotus1 // 2 : options.SinM.shape[0] + erotus1 // 2, erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = options.SinM
         if options.transaxialExtrapolation:
             apu = np.tile(options.SinM[0,:,:], (erotus1 // 2, 1, 1)) + 1e-10
-            apu = np.log(np.single(options.flat) / apu)
-            pituus = int(np.round(apu.shape[0] / (6/6)))
-            pituus2 = apu.shape[0] - pituus
-            if pituus2 == 0:
-                apu = apu * (np.log(np.linspace(1, np.exp(1), pituus)).reshape((-1, 1, 1)) + 1e-10)
-            else:
-                apu = apu * (np.concatenate((np.zeros((pituus2), dtype=apu.dtype), np.log(np.linspace(1, np.exp(1), pituus)))).reshape((-1, 1, 1)) + 1e-10)
-            apu = np.single(options.flat) / np.exp(apu)
+            if options.useExtrapolationWeighting:
+                apu = np.log(np.single(options.flat) / apu)
+                pituus = int(np.round(apu.shape[0] / (6/6)))
+                pituus2 = apu.shape[0] - pituus
+                if pituus2 == 0:
+                    apu = apu * (np.log(np.linspace(1, np.exp(1), pituus)).reshape((-1, 1, 1)) + 1e-10)
+                else:
+                    apu = apu * (np.concatenate((np.zeros((pituus2), dtype=apu.dtype), np.log(np.linspace(1, np.exp(1), pituus)))).reshape((-1, 1, 1)) + 1e-10)
+                apu = np.single(options.flat) / np.exp(apu)
             newProj[0: erotus1 // 2, erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = apu
             apu = np.tile(options.SinM[-1,:,:], (erotus1 // 2, 1, 1)) + 1e-10
-            apu = np.log(np.single(options.flat) / apu)
-            if pituus2 == 0:
-                apu = apu * (np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1) + 1e-10)
-            else:
-                apu = apu * (np.concatenate((np.log(np.linspace(np.exp(1), 1, pituus))), np.zeros((pituus2), dtype=apu.dtype)).reshape(-1, 1, 1) + 1e-10)
-            apu = np.single(options.flat) / np.exp(apu)
+            if options.useExtrapolationWeighting:
+                apu = np.log(np.single(options.flat) / apu)
+                if pituus2 == 0:
+                    apu = apu * (np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1) + 1e-10)
+                else:
+                    apu = apu * (np.concatenate((np.log(np.linspace(np.exp(1), 1, pituus))), np.zeros((pituus2), dtype=apu.dtype)).reshape(-1, 1, 1) + 1e-10)
+                apu = np.single(options.flat) / np.exp(apu)
             newProj[options.SinM.shape[0] + erotus1 // 2 : , erotus2 // 2 : options.SinM.shape[1] + erotus2 // 2, :] = apu
         if options.axialExtrapolation:
             apu = np.tile(newProj[:,erotus2 // 2, :].reshape(newProj.shape[0], 1, newProj.shape[2]), (1, erotus2 // 2, 1)) + 1e-10
-            apu = np.log(np.single(options.flat) / apu)
-            apu = apu * (np.log(np.linspace(1, np.exp(1), apu.shape[1])).reshape(1, -1, 1) + 1e-10)
-            apu = np.single(options.flat) / np.exp(apu)
+            if options.useExtrapolationWeighting:
+                apu = np.log(np.single(options.flat) / apu)
+                apu = apu * (np.log(np.linspace(1, np.exp(1), apu.shape[1])).reshape(1, -1, 1) + 1e-10)
+                apu = np.single(options.flat) / np.exp(apu)
             newProj[:, : erotus2 // 2, :] = apu
             apu = np.tile(newProj[:,options.SinM.shape[1] + erotus2 // 2 - 1, :].reshape(newProj.shape[0], 1, newProj.shape[2]), (1, erotus2 // 2, 1)) + 1e-10
-            apu = np.log(np.single(options.flat) / apu)
-            apu = apu * (np.log(np.linspace(np.exp(1), 1, apu.shape[1])).reshape(1, -1, 1) + 1e-10)
-            apu = np.single(options.flat) / np.exp(apu)
+            if options.useExtrapolationWeighting:
+                apu = np.log(np.single(options.flat) / apu)
+                apu = apu * (np.log(np.linspace(np.exp(1), 1, apu.shape[1])).reshape(1, -1, 1) + 1e-10)
+                apu = np.single(options.flat) / np.exp(apu)
             newProj[:, options.SinM.shape[1] + erotus2 // 2 : , :] = apu
         options.SinM = newProj
         options.nRowsDOrig = options.nRowsD
@@ -62,27 +66,31 @@ def CTEFOVCorrection(options):
             newProj[erotus1 // 2 : options.ScatterC.shape[0] + erotus1 // 2, erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2,:] = options.ScatterC
             if options.transaxialExtrapolation:
                 apu = np.tile(np.reshape(options.ScatterC[0,:,:], (1, options.ScatterC.shape[1], options.ScatterC.shape[2])), (erotus1 // 2, 1, 1))
-                apu = np.log(np.single(options.flat) / apu)
-                pituus = int(np.round(apu.shape[0] / (6/6)))
-                pituus2 = apu.shape[0] - pituus
-                apu = apu * np.log(np.linspace(1, np.exp(1), pituus)).reshape(-1, 1, 1)
-                apu = np.single(options.flat) / np.exp(apu)
+                if options.useExtrapolationWeighting:
+                    apu = np.log(np.single(options.flat) / apu)
+                    pituus = int(np.round(apu.shape[0] / (6/6)))
+                    pituus2 = apu.shape[0] - pituus
+                    apu = apu * np.log(np.linspace(1, np.exp(1), pituus)).reshape(-1, 1, 1)
+                    apu = np.single(options.flat) / np.exp(apu)
                 newProj[0: erotus1 // 2, erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2, :] = apu
                 apu = np.tile(options.ScatterC[-1,:,:], (erotus1 // 2, 1, 1))
-                apu = np.log(np.single(options.flat) / apu)
-                apu = apu * np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1)
-                apu = np.single(options.flat) / np.exp(apu)
+                if options.useExtrapolationWeighting:
+                    apu = np.log(np.single(options.flat) / apu)
+                    apu = apu * np.log(np.linspace(np.exp(1), 1, pituus)).reshape(-1, 1, 1)
+                    apu = np.single(options.flat) / np.exp(apu)
                 newProj[options.ScatterC.shape[0] + erotus1 // 2 : , erotus2 // 2 : options.ScatterC.shape[1] + erotus2 // 2, :] = apu
             if options.axialExtrapolation:
                 apu = np.tile(np.reshape(newProj[:,erotus2 // 2, :], (newProj.shape[0], 1, newProj.shape[2])), (1, erotus2 // 2, 1))
-                apu = np.log(np.single(options.flat) / apu)
-                apu = apu * np.reshape(np.log(np.linspace(1, np.exp(1), apu.shape[1])), (1, -1, 1))
-                apu = np.single(options.flat) / np.exp(apu)
+                if options.useExtrapolationWeighting:
+                    apu = np.log(np.single(options.flat) / apu)
+                    apu = apu * np.reshape(np.log(np.linspace(1, np.exp(1), apu.shape[1])), (1, -1, 1))
+                    apu = np.single(options.flat) / np.exp(apu)
                 newProj[:, 0: erotus2 // 2, :] = apu
                 apu = np.tile(np.reshape(newProj[:,options.ScatterC.shape[1] + erotus2 // 2, :], (newProj.shape[0], 1, newProj.shape[2])), (1, erotus2 // 2, 1))
-                apu = np.log(np.single(options.flat) / apu)
-                apu = apu * np.reshape(np.log(np.linspace(np.exp(1), 1, apu.shape[1])), (1, -1, 1))
-                apu = np.single(options.flat) / np.exp(apu)
+                if options.useExtrapolationWeighting:
+                    apu = np.log(np.single(options.flat) / apu)
+                    apu = apu * np.reshape(np.log(np.linspace(np.exp(1), 1, apu.shape[1])), (1, -1, 1))
+                    apu = np.single(options.flat) / np.exp(apu)
                 newProj[:, options.ScatterC.shape[1] + erotus2 // 2 : , :] = apu
             options.ScatterC = newProj
     if options.useEFOV:

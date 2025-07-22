@@ -6,9 +6,12 @@
 inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMethods& MethodList, const uint32_t iter,
 	uint32_t osa_iter, scalarStruct& inputScalars, std::vector<int64_t>& length, bool& break_iter, 
 	const int64_t* pituus, const af::array& g, ProjectorClass& proj, const af::array& mData, uint64_t m_size, 
-	const int64_t subSum, const uint8_t compute_norm_matrix) {
+	const int64_t subSum, const uint8_t compute_norm_matrix, const int kk = 0, const bool largeDim = false, const int vv = 0) {
 
 	int status = 0;
+	if (DEBUG || inputScalars.verbose >= 3) {
+		proj.tStartLocal = std::chrono::steady_clock::now();
+	}
 
 	af::array OSEMApu, COSEMApu, PDDYApu;
 	std::vector<af::array> FISTAApu;
@@ -23,11 +26,11 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		|| MethodList.ProxTV || MethodList.ProxRDP || MethodList.ProxNLM || MethodList.GGMRF)
 		MAP = true;
 
-	if (DEBUG) {
+	if (DEBUG && kk == 0) {
 		mexPrintBase("vec.rhs_os = %f\n", af::sum<float>(vec.rhs_os[0]));
 		mexEval();
 	}
-	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+	for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
 		if (inputScalars.FISTAAcceleration)
 			FISTAApu.emplace_back(vec.im_os[ii].copy());
 
@@ -44,13 +47,15 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				else {
 					w_vec.sigmaCP[ii] = w_vec.tauCP2[ii];
 				}
-				//if (MethodList.CPType)
-				//	w_vec.sigma2CP = w_vec.sigmaCP;
 			}
 			if (MethodList.MRAMLA || MethodList.MBSREM || MethodList.SPS || MethodList.RAMLA || MethodList.BSREM || MethodList.ROSEM || MethodList.ROSEMMAP || MethodList.PKMA || MethodList.SAGA)
 				w_vec.lambda = w_vec.lambdaFiltered;
 			w_vec.precondTypeIm[5] = false;
 		}
+		if (MethodList.PKMA && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			vec.rhs_os[ii] = w_vec.D[ii] - vec.rhs_os[ii];
+		if ((MethodList.RAMLA || MethodList.MRAMLA || MethodList.BSREM || MethodList.MBSREM) && inputScalars.listmode > 0 && (w_vec.precondTypeIm[0] || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
+			vec.rhs_os[ii] -= w_vec.D[ii];
 		if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
 			PDHG1(vec.rhs_os[ii], inputScalars, w_vec, vec, osa_iter + inputScalars.subsets * iter, ii);
 		if (MethodList.PDDY && ii == 0 && MAP) {
@@ -71,8 +76,8 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		mexPrint("Priori\n");
 		mexEval();
 	}
-	if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS) {
-		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix);
+	if (!MethodList.BSREM && !MethodList.ROSEMMAP && !MethodList.POCS && !MethodList.SART && kk == 0) {
+		status = applyPrior(vec, w_vec, MethodList, inputScalars, proj, w_vec.beta, osa_iter + inputScalars.subsets * iter, compute_norm_matrix, false, vv);
 		if (status != 0)
 			return -1;
 		if (DEBUG) {
@@ -80,10 +85,18 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			mexEval();
 		}
 	}
-	if (MethodList.PDDY && MAP)
+	if (MethodList.PDDY && MAP && kk == 0)
 		vec.im_os[0] = PDDYApu.copy();
+	if (largeDim && kk == 0 && vec.im_os[0].elements() > vec.rhs_os[0].elements()) {
+		if (vv == 0)
+			vec.im_os[0] = vec.im_os[0](af::seq(0, vec.rhs_os[0].elements() - 1));
+		else if (vv < inputScalars.subsetsUsed - 1)
+				vec.im_os[0] = vec.im_os[0](af::seq(inputScalars.lDimStruct.startPr[vv], vec.rhs_os[0].elements() - 1 + inputScalars.lDimStruct.endPr[vv]));
+		else
+				vec.im_os[0] = vec.im_os[0](af::seq(inputScalars.lDimStruct.startPr[vv], af::end));
+	}
 
-	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
+	for (int ii = kk; ii <= inputScalars.nMultiVolumes; ii++) {
 		af::array* Sens = nullptr;
 		if (compute_norm_matrix == 1u) {
 			Sens = &vec.Summ[ii][0];
@@ -273,7 +286,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			}
 		}
 		else if (MethodList.PKMA) {
-			if (inputScalars.verbose >= 3)
+			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Computing PKMA");
 			status = PKMA(vec.im_os[ii], vec.rhs_os[ii], w_vec, inputScalars, iter, osa_iter, proj, ii);
 		}
@@ -290,7 +303,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 		else if (MethodList.CGLS) {
 			if (inputScalars.verbose >= 3)
 				mexPrint("Computing CGLS");
-			CGLS(inputScalars, w_vec, iter, vec);
+			CGLS(inputScalars, w_vec, iter, vec, ii, inputScalars.largeDim);
 		}
 		else if (MethodList.SART || MethodList.POCS) {
 			if (inputScalars.verbose >= 3)
@@ -299,12 +312,12 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				mexPrintBase("w_vec.lambda[iter] = %f\n", w_vec.lambda[iter]);
 				mexEval();
 			}
-			vec.im_os[ii] = SART(vec.im_os[ii], *Sens, vec.rhs_os[ii], w_vec.lambda[iter]);
+			status = SART(inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter , *Sens, vec.rhs_os[ii], w_vec.lambda[iter], ii);
 			if (MethodList.POCS)
-				POCS(vec.im_os[ii], inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
+				status = POCS(inputScalars, w_vec, MethodList, vec, proj, mData, g, length, pituus, osa_iter, iter, ii);
 		}
 		else if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY) {
-			if (inputScalars.verbose >= 3)
+			if (DEBUG || inputScalars.verbose >= 3)
 				mexPrint("Computing PDHG/PDHGKL/PDHGL1/PDDY");
 			status = PDHG2(vec.im_os[ii], vec.rhs_os[ii], inputScalars, w_vec, vec, proj, iter, osa_iter, ii, pituus, g, m_size, length);
 		}
@@ -327,7 +340,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			  mexPrint("Computing BB");
 
 			  
-			  status = BB(vec, w_vec);
+			  status = BB(vec, w_vec, ii);
 
 		}
 		if (inputScalars.FISTAAcceleration) {
@@ -352,8 +365,13 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				}
 			//}
 		}
+		vec.im_os[ii].eval();
 	}
-	if (inputScalars.verbose >= 3 || DEBUG)
-		mexPrint("Iterative algorithm computed");
+	if (DEBUG || inputScalars.verbose >= 3) {
+		af::sync();
+		proj.tEndLocal = std::chrono::steady_clock::now();
+		const std::chrono::duration<double> tDiff = proj.tEndLocal - proj.tStartLocal;
+		mexPrintBase("Iterative algorithm computed in %f seconds\n", tDiff);
+	}
 	return status;
 }

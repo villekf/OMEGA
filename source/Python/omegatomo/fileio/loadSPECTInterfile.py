@@ -5,10 +5,10 @@ Created on Mon May  6 11:14:26 2024
 @author: Ville-Veikko Wettenhovi
 """
 
-import os
-import numpy as np
 
 def loadSPECTInterfile(options):
+    import os
+    import numpy as np
 
     try:
         fid = open(options.fpath)

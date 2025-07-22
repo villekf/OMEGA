@@ -38,7 +38,8 @@ Nz = options.rings*2-1;
 % ring_difference = options.ring_difference;
 
 if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-    z_length = double(options.rings + 1+ numel(options.ringGaps)) * cr_pz;
+    % z_length = double(options.rings + 1+ numel(options.ringGaps)) * cr_pz;
+    z_length = double(options.rings + 1) * cr_pz + sum(options.ringGaps);
 else
     z_length = double(options.rings + 1) * cr_pz;
 end
@@ -59,19 +60,13 @@ end
 
 if options.span > 1
     % Ring coordinates
+    z = linspace(cr_pz, z_length + cr_pz, options.rings + 2)';
+    z = z(1 : options.rings);
     if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-        z = linspace(cr_pz, z_length + cr_pz, options.rings + 2 + numel(options.ringGaps))';
-    else
-        z = linspace(cr_pz, z_length + cr_pz, options.rings + 2)';
-    end
-    %     if min(z(:)) == 0
-    %         z = z + (options.axial_fov - options.rings * options.cr_pz)/2 + options.cr_pz/2;
-    %     end
-    if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-        z = z(1 : options.rings + numel(options.ringGaps));
-        z(options.ringGaps + 1) = [];
-    else
-        z = z(1 : options.rings);
+        gaps = cumsum(options.ringGaps);
+        for kk = 1 : options.rings / options.cryst_per_block_axial - 1
+            z(options.cryst_per_block_axial*kk + 1: options.cryst_per_block_axial * (kk + 1)) = z(options.cryst_per_block_axial*kk + 1: options.cryst_per_block_axial * (kk + 1)) + gaps(kk);
+        end
     end
     if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
         z = z + apu;
@@ -142,30 +137,10 @@ else
         gap = ((double(options.rings) * cr_pz) - (options.cryst_per_block_axial(1) * options.linear_multip)*cr_pz) / options.linear_multip / 2;
         gap = gap : gap * 2 : gap * options.linear_multip * 2;
     end
-    % Michelogram row/column indices for each segment
-    %     p = zeros(floor((ring_difference-ceil(span/2))/span) + 2,1);
-    %     for kk = 0 : floor((ring_difference-ceil(span/2))/span)
-    %         p(kk+2) = ceil(span/2)*2 + (span*2)*kk;
-    %     end
-
-    if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-        z = zeros((options.rings + numel(options.ringGaps))^2,2);
-        z2 = zeros((options.rings + numel(options.ringGaps))^2,2);
-        loppu = options.rings + numel(options.ringGaps);
-    else
-        z = zeros(options.rings^2,2);
-        z2 = zeros(options.rings^2,2);
-        loppu = options.rings;
-    end
-    % if options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer1 == 2
-    %     ind1(options.cryst_per_block_axial(1) : options.cryst_per_block_axial(1) : end) = inf;
-    % elseif options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer1 == 1
-    %     ind1(options.cryst_per_block_axial(end) : options.cryst_per_block_axial(end) : end) = inf;
-    % end
+    z = zeros(options.rings^2,2);
+    loppu = options.rings;
     ind1 = ones(loppu,1);
     if options.nLayers > 1
-        % apu = ind2;
-        % ind3 = ind2;
         if options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer2 == 1
             r = options.cryst_per_block_axial(end) * options.linear_multip;
             apu = repelem(gap, options.cryst_per_block_axial(end))';
@@ -195,58 +170,38 @@ else
                 insert_indices = setdiff(1:length(ind1), options.cryst_per_block(1):options.cryst_per_block(1):length(ind1));
             end
             apu1(insert_indices) = apu;
-            % ind1 = ind1 + apu;
         end
-        % if options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer1 == 2
-        %     ind3(options.cryst_per_block_axial(1) : options.cryst_per_block_axial(1) : end) = inf;
-        % elseif options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer1 == 1
-        %     ind3(options.cryst_per_block_axial(end) : options.cryst_per_block_axial(end) : end) = inf;
-        % end
-        % apu = apu(isinf(ind3));
     else
         ind2 = (0 : cr_pz : cr_pz * (loppu - 1))';
     end
-    % if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-    %     ind = ind + apu;
-    %     layers = repmat([0;1], options.cryst_per_block_axial(2), 1);
-    %     layers = repmat([layers;0], options.linear_multip, 1);
-    % end
     uu = 0;
+    if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
+        gaps = repelem([0;cumsum(options.ringGaps)], options.cryst_per_block_axial,1);
+    end
+    yy = 0;
     for t=1:loppu
-        % if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-        %     z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (t-1) * ones(loppu,1) + apu(t) ind];
-        %     z2((t-1) * loppu + 1 : t * loppu,:) = [ layers(t) * ones(loppu,1) layers];
-        % else
         if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2) && layer1 == 1
             z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (uu) * ind1 + apu1(t) ind2];
             uu = uu + 1;
         else
             z((t-1) * loppu + 1 : t * loppu,:) = [ dif * (t-1) * ind1 ind2];
+            if isfield(options, 'ringGaps') && sum(options.ringGaps) > 0
+                z((t-1) * loppu + 1 : t * loppu,2) = z((t-1) * loppu + 1 : t * loppu,2) + gaps;
+                if mod(t, options.cryst_per_block_axial + 1) == 0
+                    yy = yy + 1;
+                end
+                if yy > 0
+                    z((t-1) * loppu + 1 : t * loppu,1) = z((t-1) * loppu + 1 : t * loppu,1) + yy * repmat(options.ringGaps(yy), loppu, 1);
+                end
+            end
         end
             if options.nLayers > 1 && ((options.cryst_per_block_axial(1) > options.cryst_per_block_axial(end) && layer1 == 1) || (options.cryst_per_block_axial(end) > options.cryst_per_block_axial(1) && layer1 == 1))
-                % KalPa = dif * (t-1);
                 if isinf(apu1(t))
                     z((t-1) * loppu + 1 : t * loppu,:) = [ inf * ind1 ind2];
                     uu = uu - 1;
                 end
             end
-        % end
     end
     z(isnan(z)) = inf;
-    if isfield(options, 'ringGaps') && numel(options.ringGaps) > 0 && sum(options.ringGaps) > 0
-        ind = repmat(options.ringGaps,loppu,1) + repelem(0:loppu - 1,3)' * loppu + 1;
-        ind = ind + repmat((0:numel(options.ringGaps)-1)',numel(ind)/numel(options.ringGaps),1);
-        z(ind,:) = [];
-        for kk = numel(options.ringGaps) : - 1 : 1
-            z(options.rings * (options.ringGaps(kk) + kk - 1) + 1 : options.rings * (options.ringGaps(kk) + 1 + kk - 1),:) = [];
-        end
-    end
     z = z - (maxZ/2 - cr_pz);
-    % if options.nLayers > 1 && options.cryst_per_block_axial(1) ~= options.cryst_per_block_axial(2)
-    %     apuZ = zeros(options.rings^2,1);
-    %     apuZ(ismember(z2,[1 1], 'rows')) = 3;
-    %     apuZ(ismember(z2,[1 0], 'rows')) = 1;
-    %     apuZ(ismember(z2,[0 1], 'rows')) = 2;
-    %     z = [apuZ z];
-    % end
 end

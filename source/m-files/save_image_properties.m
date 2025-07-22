@@ -63,6 +63,26 @@ elseif options.projector_type == 3 || options.projector_type == 33
     image_properties.Projector = 'Volume-based ray tracer';
     image_properties.tubeRadius = options.tube_radius;
     image_properties.voxelRadius = options.voxel_radius;
+elseif options.projector_type == 13
+    image_properties.Projector = 'Improved Siddon for forward projection, volume-based ray tracer for backprojection';
+elseif options.projector_type == 23
+    image_properties.Projector = 'Orthogonal distance-based ray tracer for forward projection, volume-based ray tracer for backprojection';
+elseif options.projector_type == 12
+    image_properties.Projector = 'Improved Siddon for forward projection, orthogonal distance-based ray tracer for backprojection';
+elseif options.projector_type == 32
+    image_properties.Projector = 'Volume-based ray tracer for forward projection, orthogonal distance-based ray tracer for backprojection';
+elseif options.projector_type == 31
+    image_properties.Projector = 'Volume-based ray tracer for forward projection, improved Siddon for backprojection';
+elseif options.projector_type == 21
+    image_properties.Projector = 'Orthogonal distance-based ray tracer for forward projection, improved Siddon for backprojection';
+elseif options.projector_type == 43
+    image_properties.Projector = 'Interpolation-based ray tracer for forward projection, volume-based ray tracer for backprojection';
+elseif options.projector_type == 42
+    image_properties.Projector = 'Interpolation-based ray tracer for forward projection, orthogonal distance-based ray tracer for backprojection';
+elseif options.projector_type == 34
+    image_properties.Projector = 'Volume-based ray tracer for forward projection, interpolation-based ray tracer for backprojection';
+elseif options.projector_type == 24
+    image_properties.Projector = 'Orthogonal distance-based ray tracer for forward projection, interpolation-based ray tracerfor backprojection';
 elseif options.projector_type == 4
     image_properties.Projector = 'Interpolation-based ray tracer';
 elseif options.projector_type == 14
@@ -81,6 +101,8 @@ elseif options.projector_type == 5
     image_properties.Projector = 'Branchless distance-driven projector';
 elseif options.projector_type == 6
     image_properties.Projector = 'SPECT rotation-based projector';
+else
+    image_properties.Projector = ['Proj types ' num2str(floor(options.projector_type / 10)) ' and ' num2str(options.projector_type - floor(options.projector_type / 10) * 10)];
 end
 image_properties.Projector = [image_properties.Projector ' (' num2str(options.projector_type) ')'];
 if options.use_psf
@@ -473,5 +495,8 @@ if options.implementation == 2
     image_properties.savedIterationNumbers = options.saveNIter + 1;
     image_properties.ImagesWereUsed = options.useImages;
     image_properties.MADWasUsed = options.useMAD;
+end
+if options.projector_type == 4 || options.projector_type == 45
+    image_properties.interpolationLength = options.dL;
 end
 % pz{end,1} = image_properties;

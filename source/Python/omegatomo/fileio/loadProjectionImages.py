@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
-import numpy as np
-import os
-import tkinter as tk
-from tkinter.filedialog import askopenfilename
 
 def loadProjectionImages(nProjections, binning = 1, fpath = ''):
+    import numpy as np
+    import os
+    import tkinter as tk
+    from tkinter.filedialog import askopenfilename
     from imageio import imread
     def select_file(fpath):
         file = None

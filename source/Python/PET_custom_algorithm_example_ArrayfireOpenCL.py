@@ -14,7 +14,7 @@ of these algorithms.
 This example uses Arrayfire with PyOpenCL and thus requires OpenCl (and PyOpenCL and Arrayfire)!
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 import matplotlib as plt
 
 options = proj.projectorClass()

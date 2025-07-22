@@ -1,7 +1,7 @@
 /*******************************************************************************************************************************************
-* Class object for forward and backward projections.
+* Class object for forward and backward projections. CUDA version.
 *
-* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify  it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or  (at your option) any later version.
@@ -98,7 +98,7 @@ class ProjectorClass {
 	}
 
 	/// <summary>
-	/// This function creates the CUDA programs for the forward and backward projections and for NLM/MRP/RDP/TV
+	/// This function creates the CUDA programs for the forward and backward projections and for NLM/MRP/RDP/TV/hyperbolic
 	/// </summary>
 	/// <param name="programFP the program to store forward projection program"></param>
 	/// <param name="programBP the program to store backprojection program"></param>
@@ -160,11 +160,8 @@ class ProjectorClass {
 				options.push_back("-DCRYSTXY");
 			if (inputScalars.orthZ)
 				options.push_back("-DCRYSTZ");
-			//std::ifstream sourceHeader1(kernelFile + "general_orth_opencl_functions.h");
-			//std::string contentHeader1((std::istreambuf_iterator<char>(sourceHeader1)), std::istreambuf_iterator<char>());
 			std::ifstream sourceHeader3(kernelFile + "opencl_functions_orth3D.h");
 			std::string contentHeader3((std::istreambuf_iterator<char>(sourceHeader3)), std::istreambuf_iterator<char>());
-			//contentHeader += contentHeader1 + contentHeader3;
 			contentHeader += contentHeader3;
 		}
 
@@ -172,9 +169,6 @@ class ProjectorClass {
 		kernel_pathBP = kernelFile;
 		if (inputScalars.FPType > 0 && inputScalars.FPType != 6) {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
-				//	kernel_path += "multidevice_siddon_no_precomp.cu");
-				//else
 				kernel_path += "projectorType123.cl";
 			}
 			else if (inputScalars.FPType == 4)
@@ -187,9 +181,6 @@ class ProjectorClass {
 		}
 		if (inputScalars.BPType > 0 && inputScalars.BPType != 6) {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
-				//if (!inputScalars.precompute && (inputScalars.n_rays * inputScalars.n_rays3D) > 1)
-				//	kernel_pathBP += "multidevice_siddon_no_precomp.cu");
-				//else
 				kernel_pathBP += "projectorType123.cl";
 			}
 			else if (inputScalars.BPType == 4)
@@ -204,8 +195,6 @@ class ProjectorClass {
 		// Load the source text file
 		// Set all preprocessor definitions
 		const bool siddonVal = (inputScalars.FPType == 1 || inputScalars.BPType == 1 || inputScalars.FPType == 4 || inputScalars.BPType == 4) ? true : false;
-		//if (inputScalars.FPType == 3 || inputScalars.BPType == 3)
-		//	options.push_back("-DVOL");
 		if (inputScalars.raw == 1)
 			options.push_back("-DRAW");
 		if (inputScalars.maskFP) {
@@ -224,8 +213,6 @@ class ProjectorClass {
 			options.push_back("-DFDK");
 		if (inputScalars.offset)
 			options.push_back("-DOFFSET");
-		//if (inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
-		//	options.push_back("-DORTH");
 		if (inputScalars.attenuation_correction == 1u && inputScalars.CTAttenuation)
 			options.push_back("-DATN");
 		else if (inputScalars.attenuation_correction == 1u && !inputScalars.CTAttenuation)
@@ -294,7 +281,6 @@ class ProjectorClass {
 			mexPrintBase("path = %s\n", kernel_path.c_str());
 			mexPrintBase("pathBP = %s\n", kernel_pathBP.c_str());
 			mexPrintBase("file = %s\n", kernelFile.c_str());
-			//mexPrintBase("contentFP = %s\n", contentFP.c_str());
 			mexPrintBase("inputScalars.BPType = %u\n", inputScalars.BPType);
 			mexPrintBase("inputScalars.FPType = %u\n", inputScalars.FPType);
 			mexEval();
@@ -303,13 +289,6 @@ class ProjectorClass {
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::vector<const char*> os_options = options;
 			os_options.push_back("-DAF");
-			//if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.TOF) && inputScalars.dec > 0)
-			//	os_options += (" -DDEC=" + std::to_string(inputScalars.dec));
-			//os_options += (" -DN_REKOS=" + std::to_string(inputScalars.nRekos));
-			//if (inputScalars.nRekos == 1)
-			//	os_options.push_back("-DNREKOS1");
-			//else if (inputScalars.nRekos == 2)
-			//	os_options.push_back("-DNREKOS2");
 			os_options.push_back("-DSIDDON");
 			os_options.push_back("-DATOMICF");
 			std::vector<const char*> os_optionsFP = os_options;
@@ -318,17 +297,6 @@ class ProjectorClass {
 				os_optionsFP.push_back("-DVOL");
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3)
 				os_optionsFP.push_back("-DORTH");
-			//if (inputScalars.projector_type < 4) {
-			//	os_optionsFP.push_back("-DBP");
-			//	if (MethodList.MRAMLA || MethodList.MBSREM)
-			//		os_optionsFP.push_back("-DMRAMLA");
-			//	if (MethodList.COSEM || MethodList.ACOSEM || MethodList.OSLCOSEM > 0u || MethodList.ECOSEM)
-			//		os_optionsFP.push_back("-DCOSEM");
-			//}
-
-			//if (inputScalars.projector_type < 4)
-			//	status = buildProgram(inputScalars.verbose, contentBP, CLContext, CUDeviceID, programBP, inputScalars.atomic_64bit, inputScalars.atomic_32bit, os_optionsFP);
-			//else {
 			if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 				if (DEBUG) {
 					mexPrint("Trying to build FP 1-3 program\n");
@@ -367,10 +335,6 @@ class ProjectorClass {
 				os_options.push_back("-DFP");
 			if (inputScalars.BPType == 4 && inputScalars.CT)
 				os_options.push_back("-DBP");
-			//if (inputScalars.subsets > 1)
-			//	os_options += (" -DSTYPE=" + std::to_string(inputScalars.subsetType));
-			//if (inputScalars.projector_type == 41)
-			//	os_options.push_back("-DPTYPE41");
 			os_options.push_back("-DPTYPE4");
 			if (!inputScalars.largeDim) {
 				std::snprintf(buffer9, 30, "-DNVOXELS=%d", static_cast<int32_t>(NVOXELS));
@@ -493,6 +457,8 @@ class ProjectorClass {
 			char buffer20[30];
 			optionsAux.push_back(buffer0);
 			optionsAux.push_back("-DCUDA");
+			if (inputScalars.largeDim)
+				optionsAux.push_back("-DLARGEDIM");
 			if (inputScalars.useMAD) {
 				optionsAux.push_back("--use_fast_math");
 				optionsAux.push_back("-DUSEMAD");
@@ -533,7 +499,6 @@ class ProjectorClass {
 				optionsAux.push_back(buffer13);
 			}
 			if (MethodList.NLM || MethodList.ProxNLM) {
-				//optionsAux.push_back("-DPROXNLM");
 				optionsAux.push_back("-DNLM_");
 				if (w_vec.NLM_MRP) {
 					std::snprintf(buffer11, 30, "-DNLTYPE=%d", static_cast<int32_t>(2));
@@ -721,14 +686,11 @@ class ProjectorClass {
 				mexPrintBase("%s ", options[ll]);
 			mexPrintBase("%s\n", "");
 		}
-		//const char* sourceCode = new char[content.size()];
-		//sourceCode = content.c_str();
 		status = nvrtcCreateProgram(&program, content.c_str(), "32bit", 0, NULL, NULL);
 		if (status != NVRTC_SUCCESS) {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
-		//mexPrintBase("%s\n", content.c_str());
 
 		// Build the program
 		status = nvrtcCompileProgram(program, options.size(), options.data());
@@ -771,7 +733,6 @@ class ProjectorClass {
 			std::cerr << nvrtcGetErrorString(status) << std::endl;
 			return status;
 		}
-		//delete[] sourceCode;
 		delete[] ptx;
 		return status;
 	}
@@ -800,7 +761,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 4) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType4Forward");
                 CUDA_CHECK(status, "Failed to create projector type 4 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 4 FP successfully created\n");
 				}
 			}
@@ -812,7 +773,7 @@ class ProjectorClass {
 				else
 					status = cuModuleGetFunction(&kernelBP, programBP, "projectorType4Backward");
                 CUDA_CHECK(status, "Failed to create projector type 4 BP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 4 BP successfully created\n");
 				}
 			}
@@ -821,7 +782,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 5) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType5Forward");
                 CUDA_CHECK(status, "Failed to create projector type 5 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 5 FP successfully created\n");
 				}
 			}
@@ -831,7 +792,7 @@ class ProjectorClass {
 				else
 					status = cuModuleGetFunction(&kernelBP, programBP, "projectorType5Backward");
                 CUDA_CHECK(status, "Failed to create projector type 5 BP kernel\n", status);
-                if (DEBUG || inputScalars.verbose >= 2) {
+                if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 5 BP successfully created\n");
 				}
 			}
@@ -840,14 +801,14 @@ class ProjectorClass {
 			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)) {
 				status = cuModuleGetFunction(&kernelFP, programFP, "projectorType123");
                 CUDA_CHECK(status, "Failed to create projector type 1-3 FP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 1-3 FP successfully created\n");
 				}
 			}
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				status = cuModuleGetFunction(&kernelBP, programBP, "projectorType123");
                 CUDA_CHECK(status, "Failed to create projector type 1-3 BP kernel\n", status);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("CUDA kernel for projector type 1-3 BP successfully created\n");
 				}
 			}
@@ -857,56 +818,56 @@ class ProjectorClass {
 		if (MethodList.NLM) {
 			status = cuModuleGetFunction(&kernelNLM, programAux, "NLM");
             CUDA_CHECK(status, "Failed to create NLM kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.MRP) {
 			status = cuModuleGetFunction(&kernelMed, programAux, "medianFilter3D");
             CUDA_CHECK(status, "Failed to create Median kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Median kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
 			status = cuModuleGetFunction(&kernelRDP, programAux, "RDPKernel");
             CUDA_CHECK(status, "Failed to create RDP kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("RDP kernel successfully created\n");
 			}
 		}
 		if (MethodList.GGMRF) {
 			status = cuModuleGetFunction(&kernelGGMRF, programAux, "GGMRFKernel");
             CUDA_CHECK(status, "Failed to create GGMRF kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
 		if (MethodList.TV) {
 			status = cuModuleGetFunction(&kernelTV, programAux, "TVKernel");
             CUDA_CHECK(status, "Failed to create TV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.hyperbolic) {
 			status = cuModuleGetFunction(&kernelHyper, programAux, "hyperbolicKernel");
             CUDA_CHECK(status, "Failed to create hyperbolic prior kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
 		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			status = cuModuleGetFunction(&kernelPoisson, programAux, "PoissonUpdate");
             CUDA_CHECK(status, "Failed to create Poisson Update kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
 		if (MethodList.CPType) {
 			status = cuModuleGetFunction(&kernelPDHG, programAux, "PDHGUpdate");
             CUDA_CHECK(status, "Failed to create PDHG Update kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
@@ -915,7 +876,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTVDiv, programAux, "ProxTVDivergence");
 			status = cuModuleGetFunction(&kernelProxTVGrad, programAux, "ProxTVGradient");
             CUDA_CHECK(status, "Failed to create proximal TV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal TV kernel successfully created\n");
 			}
 		}
@@ -924,7 +885,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxRDP, programAux, "ProxRDP");
 			status = cuModuleGetFunction(&kernelProxTrans, programAux, "ProxTrans");
             CUDA_CHECK(status, "Failed to create proximal RDP kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal RDP kernel successfully created\n");
 			}
 		}
@@ -933,7 +894,7 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxNLM, programAux, "ProxNLM");
 			status = cuModuleGetFunction(&kernelProxTrans, programAux, "ProxTrans");
             CUDA_CHECK(status, "Failed to create proximal NLM kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal NLM kernel successfully created\n");
 			}
 		}
@@ -945,19 +906,19 @@ class ProjectorClass {
 			status = cuModuleGetFunction(&kernelProxTGVDiv, programAux, "ProxTGVDivergence");
 			status = cuModuleGetFunction(&kernelProxTGVSymmDeriv, programAux, "ProxTGVSymmDeriv");
             CUDA_CHECK(status, "Failed to create proximal TGV kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal TGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 			status = cuModuleGetFunction(&kernelElementMultiply, programAux, "vectorElementMultiply");
             CUDA_CHECK(status, "Failed to create element-wise multiplication kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 			status = cuModuleGetFunction(&kernelElementDivision, programAux, "vectorElementDivision");
             CUDA_CHECK(status, "Failed to create element-wise division kernel\n", status);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 		}
@@ -971,42 +932,13 @@ class ProjectorClass {
 		if (inputScalars.projector_type == 6) {
 			status = cuModuleGetFunction(&kernelRotate, programAux, "rotate");
 			CUDA_CHECK(status, "Failed to create bilinear rotation kernel\n", status);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Bilinear rotation kernel successfully created\n");
 			}
 		}
-		//if (type == 0) {
-		//	kernelsumma = cuModuleGetFunction(programAux, "summa", &status);
-		//	if (status != CUDA_SUCCESS) {
-		//		getErrorString(status);
-		//		mexPrint("Failed to create implementation 3 kernels\n");
-		//		return status;
-		//	}
-		//	kernelEstimate = cuModuleGetFunction(programAux, "computeEstimate", &status);
-		//	if (status != CUDA_SUCCESS) {
-		//		getErrorString(status);
-		//		mexPrint("Failed to create implementation 3 kernels\n");
-		//		return status;
-		//	}
-		//	kernelForward = cuModuleGetFunction(programAux, "forward", &status);
-		//	if (inputScalars.use_psf)
-		//		kernelPSFf = cuModuleGetFunction(programAux, "Convolution3D_f", &status);
-		//	//kernelDiv = cuModuleGetFunction(programAux, "vectorDiv", &status);
-		//	//kernelMult = cuModuleGetFunction(programAux, "vectorMult", &status);
-
-		//	if (status != CUDA_SUCCESS) {
-		//		getErrorString(status);
-		//		mexPrint("Failed to create implementation 3 kernels\n");
-		//		return status;
-		//	}
-		//	else if (DEBUG || inputScalars.verbose >= 2) {
-		//		mexPrint("Implementation 3 kernels successfully created\n");
-		//	}
-		//}
 		return status;
 	}
 public:
-	//CUcontext CLContext;
 	std::vector<CUdevice> CUDeviceID;
 	std::vector<CUstream> CLCommandQueue;
 	CUfunction kernelMBSREM, kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelProxTVq, kernelProxTVDiv, kernelProxTVGrad, kernelElementMultiply, kernelElementDivision,
@@ -1023,9 +955,10 @@ public:
 	CUdeviceptr *d_vector, *d_input;
 	CUdeviceptr* d_im, *d_rhs, *d_U, d_g, d_uref, *d_refIm, d_attenB, d_maskBPB, *d_RDPref;
 	CUdeviceptr d_rayShiftsDetector, d_rayShiftsSource; // SPECT
-	//CUdeviceptr d_outputCT;
 	std::vector<void*> FPArgs, BPArgs, SensArgs;
 	CUDA_im_vectors vec_opencl;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<float3> b, d, bmax;
 	// Image dimensions
@@ -1067,12 +1000,6 @@ public:
 			getErrorString(cuModuleUnload(programAux));
 		if (memAlloc.SensMod)
 			getErrorString(cuModuleUnload(programSens));
-		//if (memAlloc.xC)
-		//	getErrorString(cuMemFree(d_xcenter));
-		//if (memAlloc.yC)
-		//	getErrorString(cuMemFree(d_ycenter));
-		//if (memAlloc.zC)
-		//	getErrorString(cuMemFree(d_zcenter));
 		if (memAlloc.attenM) {
 			for (int kk = 0; kk < memAlloc.aSteps; kk++) {
 				getErrorString(cuMemFree(d_atten[kk]));
@@ -1223,51 +1150,24 @@ public:
 
 
 		// Create the CUDA context and command queue and assign the device
-//#ifdef AF
-		//CLContext = afcu::getContext(true);
-		//std::vector<CUdevice> devices = CLContext.getInfo<CL_CONTEXT_DEVICES>(&status);
-		//if (status != CUDA_SUCCESS) {
-		//	getErrorString(status);
-		//	return status;
-		//}
 		int af_id = af::getDevice();
 		CUDeviceID.push_back(afcu::getNativeId(af_id));
-		//CUstream testi = afcu::getStream(CUDeviceID[0]);
 		CLCommandQueue.push_back(afcu::getStream(CUDeviceID[0]));
-//#else
-//		status = clGetPlatformsContext(inputScalars.platform, CLContext, CLCommandQueue, inputScalars.usedDevices, CUDeviceID);
-//#endif
-		// For NVIDIA cards, 32 local size seems more optimal with 1D kernelFP
-		//std::string deviceName = CUDeviceID[0].getInfo<CL_DEVICE_VENDOR>(&status);
-		//std::string NV("NVIDIA Corporation");
-		//if (NV.compare(deviceName) == 0 && (inputScalars.projector_type == 1 || inputScalars.projector_type == 11) && local_size[1] == 1ULL)
-		//	local_size[0] = 32ULL;
-		//if (DEBUG) {
-		//	unsigned long long apu = CUDeviceID[0].getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>(&status);
-		//	unsigned int apu2 = CUDeviceID[0].getInfo<CL_DEVICE_ADDRESS_BITS>(&status);
-		//	mexPrintBase("CL_DEVICE_MAX_MEM_ALLOC_SIZE = %llu\n", apu);
-		//	mexPrintBase("CL_DEVICE_ADDRESS_BITS = %u\n", apu2);
-		//	mexEval();
-		//}
 
 		status2 = createProgram(programFP, programBP, programAux, header_directory, inputScalars, MethodList, w_vec, local_size, type);
 		if (status2 != NVRTC_SUCCESS) {
 			std::cerr << "Error while creating program" << std::endl;
 			return -1;
 		}
-		else if (DEBUG || inputScalars.verbose >= 2) {
+		else if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("CUDA programs successfully created\n");
 		}
 
 		status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, programFP, programBP, programAux, MethodList, w_vec, inputScalars, type);
 		CUDA_CHECK(status, "Failed to create kernels\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("CUDA kernels successfully created\n");
 		}
-		//format.image_channel_order = CL_A;
-		//format.image_channel_data_type = CL_FLOAT;
-		//formatMask.image_channel_order = CL_A;
-		//formatMask.image_channel_data_type = CL_UNSIGNED_INT8;
 
 		if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0) {
 			erotus[0] = inputScalars.nRowsD % local_size[0];
@@ -1361,7 +1261,6 @@ public:
 		}
 		if (DEBUG)
 			mexPrint("Luuppi valmis\n");
-		//vec_opencl.d_rhs_os.resize(1);
 		d_Summ.resize(1);
 		d_Summ[0] = nullptr;
 		return 0;
@@ -1402,14 +1301,6 @@ public:
 			CUDA_CHECK(status, "\n", -1);
 			memAlloc.GGMRF = true;
 		}
-		//else if (MethodList.hyperbolic) {
-		//	status = cuMemAlloc(&d_weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
-		//	if (status != CUDA_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//	memAlloc.GGMRF = true;
-		//}
 		if (w_vec.NLM_anatomical && (MethodList.NLM || MethodList.ProxNLM)) {
 			if (inputScalars.useImages) {
 				std::memset(&texDesc, 0, sizeof(texDesc));
@@ -1505,7 +1396,6 @@ public:
 			resDesc.res.array.hArray = maskArrayPrior;
 			texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 			texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-			//texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 			texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 			texDesc.flags = CU_TRSF_READ_AS_INTEGER;
 			viewDesc.height = inputScalars.Nx[0];
@@ -1532,24 +1422,6 @@ public:
 				CUDA_CHECK(status, "\n", -1);
 				memAlloc.xFull = true;
 			}
-			//status = cuMemAlloc(&d_xcenter, sizeof(float) * inputScalars.size_center_x);;
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//memAlloc.xC = true;
-			//status = cuMemAlloc(&d_ycenter, sizeof(float) * inputScalars.size_center_y);
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//memAlloc.yC = true;
-			//status = cuMemAlloc(&d_zcenter, sizeof(float) * inputScalars.size_center_z);
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//memAlloc.zC = true;
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
 				if (inputScalars.useBuffers)
@@ -1585,7 +1457,12 @@ public:
 					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-					texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
+					if (inputScalars.FPType == 4 || inputScalars.BPType == 4) {
+						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
+						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+					}
+					else
+						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 					viewDesc.height = inputScalars.Nx[0];
 					viewDesc.width = inputScalars.Ny[0];
 					viewDesc.depth = inputScalars.Nz[0];
@@ -1660,7 +1537,6 @@ public:
 						texDesc.flags = CU_TRSF_READ_AS_INTEGER;
 						viewDesc.height = inputScalars.nRowsD;
 						viewDesc.width = inputScalars.nColsD;
-						//viewDesc.depth = 1;
 						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
 						if (inputScalars.maskFPZ > 1) {
 							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
@@ -1733,12 +1609,10 @@ public:
 						resDesc.res.array.hArray = maskArrayBP;
 						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						//texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 						texDesc.flags = CU_TRSF_READ_AS_INTEGER;
 						viewDesc.height = inputScalars.Nx[0];
 						viewDesc.width = inputScalars.Ny[0];
-						//viewDesc.depth = 1;
 						viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_UINT_1X8;
 						if (inputScalars.maskBPZ > 1) {
 							viewDesc.depth = inputScalars.maskBPZ;
@@ -1888,13 +1762,6 @@ public:
 			status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * (w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1);
 			CUDA_CHECK(status, "\n", -1);
 		}
-		//else if (MethodList.hyperbolic) {
-		//	status = cuMemcpyHtoD(d_weights, w_vec.weights, sizeof(float) * ((w_vec.Ndx * 2 + 1) * (w_vec.Ndy * 2 + 1) * (w_vec.Ndz * 2 + 1) - 1));
-		//	if (status != CUDA_SUCCESS) {
-		//		getErrorString(status);
-		//		return -1;
-		//	}
-		//}
 		if (inputScalars.projector_type != 6) {
 			status = cuMemcpyHtoD(d_V, inputScalars.V, sizeof(float) * inputScalars.size_V);
 			CUDA_CHECK(status, "\n", -1);
@@ -1908,21 +1775,6 @@ public:
 				status = cuMemcpyHtoD(d_zFull[0], z_det, sizeof(float) * inputScalars.size_z);
 				CUDA_CHECK(status, "\n", -1);
 			}
-			//status = cuMemcpyHtoD(d_xcenter, inputScalars.x_center, sizeof(float) * inputScalars.size_center_x);
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//status = cuMemcpyHtoD(d_ycenter, inputScalars.y_center, sizeof(float) * inputScalars.size_center_y);
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
-			//status = cuMemcpyHtoD(d_zcenter, inputScalars.z_center, sizeof(float) * inputScalars.size_center_z);
-			//if (status != CUDA_SUCCESS) {
-			//	getErrorString(status);
-			//	return -1;
-			//}
 			if ((inputScalars.maskFP || inputScalars.maskBP) && inputScalars.useBuffers) {
 				if (inputScalars.maskFP) {
 					if (inputScalars.maskFPZ > 1)
@@ -2086,8 +1938,6 @@ public:
 		const uint16_t* z_index, const uint16_t* L, const int64_t* pituus, const float* atten, const float* norm, const float* extraCorr,
 		const std::vector<int64_t>& length, const RecMethods& MethodList, const int type = 0) {
 		int status = 0;
-		//if (inputScalars.precompute)
-		//	d_lor.resize(inputScalars.subsets);
 		if (inputScalars.raw)
 			d_L.resize(inputScalars.subsetsUsed);
 		if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1) {
@@ -2101,8 +1951,6 @@ public:
 		if (inputScalars.listmode > 0 && inputScalars.TOF) {
 			d_TOFIndex.resize(inputScalars.subsetsUsed);
 		}
-		//if (inputScalars.randoms_correction)
-		//	d_sc_ra.resize(inputScalars.subsets);
 		if (inputScalars.normalization_correction)
 			d_norm.resize(inputScalars.subsetsUsed);
 		if (inputScalars.scatter)
@@ -2113,27 +1961,6 @@ public:
 		d_z.resize(inputScalars.subsetsUsed);
 		if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
 			d_T.resize(inputScalars.subsetsUsed);
-		//d_Sino.resize(inputScalars.TOFsubsets);
-		//if (type < 2) {
-		//	for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-		//		cl::size_type imX = inputScalars.Nx[ii];
-		//		cl::size_type imY = inputScalars.Ny[ii];
-		//		cl::size_type imZ = inputScalars.Nz[ii];
-		//		if (inputScalars.FPType == 5) {
-		//			vec_opencl.d_image_os_int.emplace_back(CUtexObject(CLContext, CL_MEM_READ_ONLY, format, imY + 1, imZ + 1, imX, 0, 0, NULL, &status));
-		//			imX++;
-		//			cl::size_type aY = imY;
-		//			imY = imZ + 1;
-		//			imZ = aY;
-		//		}
-		//		vec_opencl.d_image_os.emplace_back(CUtexObject(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status));
-		//		if (status != CUDA_SUCCESS) {
-		//			getErrorString(status);
-		//			mexPrint("Failed to create input images\n");
-		//			return status;
-		//		}
-		//	}
-		//}
 
 		status = createAndWriteBuffers(length, x, z_det, xy_index, z_index, L, pituus, atten, norm, extraCorr, inputScalars, w_vec, MethodList);
 		if (status != 0) {
@@ -2185,7 +2012,6 @@ public:
 			FPArgs.emplace_back(&inputScalars.epps);
 			FPArgs.emplace_back(&inputScalars.nRowsD);
 			FPArgs.emplace_back(&inputScalars.det_per_ring);
-			//FPArgs.emplace_back(&inputScalars.Nxy);
 			FPArgs.emplace_back(&inputScalars.sigma_x);
 
 			if (inputScalars.SPECT) {
@@ -2212,7 +2038,6 @@ public:
 			BPArgs.emplace_back(&inputScalars.epps);
 			BPArgs.emplace_back(&inputScalars.nRowsD);
 			BPArgs.emplace_back(&inputScalars.det_per_ring);
-			//BPArgs.emplace_back(&inputScalars.Nxy);
 			BPArgs.emplace_back(&inputScalars.sigma_x);
 
 			if (inputScalars.SPECT) {
@@ -2238,7 +2063,6 @@ public:
 				SensArgs.emplace_back(&inputScalars.epps);
 				SensArgs.emplace_back(&inputScalars.nRowsD);
 				SensArgs.emplace_back(&inputScalars.det_per_ring);
-				//SensArgs.emplace_back(&inputScalars.Nxy);
 				SensArgs.emplace_back(&inputScalars.sigma_x);
 				SensArgs.emplace_back(&dPitch);
 				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2252,8 +2076,6 @@ public:
 				}
 			}
 		}
-		//if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5))
-		//	BPArgs.emplace_back(&inputScalars.T);
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			if (inputScalars.TOF) {
 				FPArgs.emplace_back(&d_TOFCenter);
@@ -2263,9 +2085,6 @@ public:
 				}
 			}
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				//FPArgs.emplace_back(&d_xcenter);
-				//FPArgs.emplace_back(&d_ycenter);
-				//FPArgs.emplace_back(&d_zcenter);
 				FPArgs.emplace_back(&d_V);
 			}
 			FPArgs.emplace_back(&inputScalars.nColsD);
@@ -2279,9 +2098,6 @@ public:
 				}
 			}
 			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				//BPArgs.emplace_back(&d_xcenter);
-				//BPArgs.emplace_back(&d_ycenter);
-				//BPArgs.emplace_back(&d_zcenter);
 				BPArgs.emplace_back(&d_V);
 			}
 			BPArgs.emplace_back(&inputScalars.nColsD);
@@ -2332,7 +2148,7 @@ public:
 		CUresult status = CUDA_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
-				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt], sizeof(float) * length[kk]);
+				status = cuMemcpyHtoD(d_scat[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt], sizeof(float) * length[kk]);
 				CUDA_CHECK(status, "\n", -1);
 			}
 		}
@@ -2346,21 +2162,18 @@ public:
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
 	inline int setDynamicKernelData(scalarStruct& inputScalars, Weighting& w_vec) {
-		CUresult status = CUDA_SUCCESS;
 		if (inputScalars.attenuation_correction && !inputScalars.CT && inputScalars.CTAttenuation) {
 			if ((inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3 || inputScalars.FPType == 4)) {
 				if (inputScalars.useBuffers)
 					FPArgs.emplace_back(&d_attenB);
 				else
 					FPArgs.emplace_back(&d_attenIm);
-                CUDA_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.BPType == 4) {
 				if (inputScalars.useBuffers)
 					BPArgs.emplace_back(&d_attenB);
 				else
 					BPArgs.emplace_back(&d_attenIm);
-                CUDA_CHECK(status, "\n", -1);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
 						SensArgs.emplace_back(&d_attenB);
@@ -2473,7 +2286,11 @@ public:
 			mexPrintBase("osa_iter = %u\n", osa_iter);
 			mexEval();
 		}
-
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		status = cuCtxSynchronize();
 		CUDA_CHECK(status, "\n", -1);
 		if (inputScalars.FPType == 4) {
@@ -2657,7 +2474,11 @@ public:
 			kTemp.emplace_back(&osa_iter);
 			kTemp.emplace_back(&ii);
 		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelFP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch forward projection kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Forward projection kernel launched successfully\n");
@@ -2684,8 +2505,13 @@ public:
 				getErrorString(status);
 			}
 		}
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Forward projection completed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("Forward projection completed in %f seconds\n", milliseconds);
+		}
 		return 0;
 	}
 
@@ -2708,6 +2534,11 @@ public:
 			kernelApu = kernelBP;
 			kernelBP = kernelSensList;
 			kTemp = SensArgs;
+		}
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
 		}
 
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
@@ -2755,7 +2586,6 @@ public:
 				mexPrintBase("no_norm = %u\n", no_norm);
 				mexPrintBase("compSens = %u\n", compSens);
 				mexEval();
-				//mexEvalString("pause(2);");
 			}
 
 			// Set kernelBP arguments
@@ -2858,24 +2688,6 @@ public:
 		else {
 			if (inputScalars.CT) {
 
-				//arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
-				//arr3DDesc.NumChannels = 1;
-				//arr3DDesc.Height = inputScalars.Nx[0];
-				//arr3DDesc.Width = inputScalars.Ny[0];
-				//arr3DDesc.Depth = inputScalars.Nz[0];
-				//status = cuArray3DCreate(&uRefArray, &arr3DDesc);
-				//CUDA_MEMCPY3D cpy3d;
-				//std::memset(&cpy3d, 0, sizeof(cpy3d));
-				//cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_HOST;
-				//cpy3d.srcHost = w_vec.NLM_ref;
-				//cpy3d.srcPitch = inputScalars.Ny[0] * sizeof(float);
-				//cpy3d.srcHeight = inputScalars.Nx[0];
-				//cpy3d.dstMemoryType = CUmemorytype::CU_MEMORYTYPE_ARRAY;
-				//cpy3d.dstArray = uRefArray;
-				//cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
-				//cpy3d.Height = inputScalars.Nx[0];
-				//cpy3d.Depth = inputScalars.Nz[0];
-				//status = cuMemcpy3D(&cpy3d);
 				if (!inputScalars.useBuffers) {
 					std::memset(&arr3DDesc, 0, sizeof(arr3DDesc));
 					arr3DDesc.Format = CUarray_format::CU_AD_FORMAT_FLOAT;
@@ -3096,7 +2908,6 @@ public:
 					mexPrintBase("no_norm = %u\n", no_norm);
 					mexPrintBase("osa_iter = %u\n", osa_iter);
 					mexEval();
-					//mexEvalString("pause(2);");
 				}
 				kTemp.emplace_back(&d_N[ii]);
 				kTemp.emplace_back(&b[ii]);
@@ -3175,14 +2986,17 @@ public:
 				kTemp.emplace_back(&osa_iter);
 			}
 			kTemp.emplace_back(&ii);
-			//mexPrint("7!!!!\n");
 		}
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelBP, global[0], global[1], global[2], local[0], local[1], local[2], 0, CLCommandQueue[0], kTemp.data(), 0);
 		CUDA_CHECK(status, "Failed to launch backprojection kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Backprojection kernel launched successfully\n");
 		}
 		status = cuCtxSynchronize();
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Synchronization failed after backprojection\n", -1);
 		if ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5) {
 			if (!inputScalars.useBuffers) {
@@ -3199,8 +3013,13 @@ public:
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
 		}
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Backprojection computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("Backprojection completed in %f seconds\n", milliseconds);
+		}
 		return 0;
 	}
 
@@ -3218,9 +3037,6 @@ public:
 		if (inputScalars.size_scat > 1 && inputScalars.scatter == 1U) {
 			d_scatFull.clear();
 		}
-		//if (inputScalars.precompute) {
-		//	d_lorFull.clear();
-		//}
 	}
 
 	/// <summary>
@@ -3253,6 +3069,11 @@ public:
 	inline int computeMRP(const scalarStruct& inputScalars, const uint64_t global_size[]) {
 		std::vector<void*> kArgs;
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		unsigned int gSize[3];
 		unsigned int erotus[2];
 		erotus[0] = localPrior[0] - (global_size[0] % localPrior[0]);
@@ -3269,13 +3090,24 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelMed, gSize[0], gSize[1], gSize[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the Median filter kernel\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Median kernel launched successfully\n");
 		}
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Synchronize failed after MRP kernel\n", -1);
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA MRP kernel completed in %f seconds\n", milliseconds);
+		}
 		return 0;
 	}
 
@@ -3287,17 +3119,37 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
-	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, float beta) {
+	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, float beta, const int kk = 0) {
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA NLM gradient computation");
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
-		const int3 searchWindow = { static_cast<int>(w_vec.Ndx) , static_cast<int>(w_vec.Ndy) , static_cast<int>(w_vec.Ndz) };
-		const int3 patchWindow = { static_cast<int>(w_vec.Nlx) , static_cast<int>(w_vec.Nly) , static_cast<int>(w_vec.Nlz) };
+		//const int3 searchWindow = { static_cast<int>(w_vec.Ndx) , static_cast<int>(w_vec.Ndy) , static_cast<int>(w_vec.Ndz) };
+		//const int3 patchWindow = { static_cast<int>(w_vec.Nlx) , static_cast<int>(w_vec.Nly) , static_cast<int>(w_vec.Nlz) };
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -3315,6 +3167,11 @@ public:
 			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
 			mexPrintBase("localPrior[2] = %u\n", localPrior[2]);
 			mexPrintBase("w_vec.h2 = %f\n", w_vec.h2);
+			mexPrintBase("Nz = %u\n", Nz);
+			mexPrintBase("kk = %u\n", kk);
+			mexPrintBase("nOffset.x = %u\n", nOffset.x);
+			mexPrintBase("nOffset.y = %u\n", nOffset.y);
+			mexPrintBase("d_N[0].z = %u\n", d_N[0].z);
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
 			mexEval();
@@ -3351,8 +3208,14 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		//Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelNLM, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the NLM kernel\n", status);
 
 		status = cuCtxSynchronize();
@@ -3367,8 +3230,15 @@ public:
 				getErrorString(status);
 			}
 		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA NLM gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA NLM gradient completed in %f seconds\n", milliseconds);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3381,14 +3251,34 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, float gamma, float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+	inline int computeRDP(const scalarStruct& inputScalars, float gamma, const Weighting& w_vec, float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA RDP gradient computation");
 		std::vector<void*> kArgs;
 		float apu = inputScalars.epps;
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, NzOrig };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
+		else if (inputScalars.largeDim)
+			nOffset = { Nz - NzOrig, Nz };
 		status = cuCtxSynchronize();
 		if (DEBUG) {
 			mexPrintBase("inputScalars.epps = %.9f\n", inputScalars.epps);
@@ -3425,8 +3315,14 @@ public:
 				else
 					kArgs.emplace_back(reinterpret_cast<void*>(&d_RDPref));
 		}
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelRDP, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -3447,8 +3343,15 @@ public:
 				}
 			}
 		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA RDP gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA RDP gradient completed in %f seconds\n", milliseconds);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3463,12 +3366,32 @@ public:
 	/// <param name="c constant controlling the approximate threshold of transition between low and high contrast regions"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int computeGGMRF(const scalarStruct& inputScalars, float p, float q, float c, float pqc, float beta) {
+	inline int computeGGMRF(const scalarStruct& inputScalars, float p, float q, float c, float pqc, const Weighting& w_vec, float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA GGMRF gradient computation");
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
 		std::vector<void*> kArgs;
 		if (DEBUG) {
@@ -3500,8 +3423,14 @@ public:
 		kArgs.emplace_back(&beta);
 		if (inputScalars.maskBP || (inputScalars.useExtendedFOV && !inputScalars.multiResolution))
 			kArgs.emplace_back(&d_maskPrior);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelGGMRF, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -3516,8 +3445,15 @@ public:
 				getErrorString(status);
 			}
 		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA GGMRF gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA GGMRF gradient completed in %f seconds\n", milliseconds);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3877,12 +3813,32 @@ public:
 	/// <param name="sigma adjustable weighting parameter"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int hyperGradient(const scalarStruct& inputScalars, float sigma, float beta) {
+	inline int hyperGradient(const scalarStruct& inputScalars, float sigma, const Weighting& w_vec, float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA hyperbolic prior gradient computation");
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] = inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		status = cuCtxSynchronize();
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
@@ -3908,8 +3864,14 @@ public:
 			kArgs.emplace_back(&d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kArgs.emplace_back(&d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelHyper, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 
 		status = cuCtxSynchronize();
@@ -3924,8 +3886,15 @@ public:
 				getErrorString(status);
 			}
 		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA hyperbolic prior gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA hyperbolic prior gradient completed in %f seconds\n", milliseconds);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3938,13 +3907,33 @@ public:
 	/// <param name="sigma various adjustable parameters for some of the priors"></param>
 	/// <param name="smooth smoothing value that allows differentiation"></param>
 	/// <returns></returns>
-	inline int TVGradient(const scalarStruct& inputScalars, float sigma, float smooth, float beta, float C = 0.f, const int type = 0) {
+	inline int TVGradient(const scalarStruct& inputScalars, float sigma, float smooth, const Weighting& w_vec, float beta, const int kk = 0, float C = 0.f, const int type = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA TV gradient computation");
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		status = cuCtxSynchronize();
+		uint32_t Nz, NzOrig;
+		uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior[2] =  inputScalars.Nz[0];
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior[2] = Nz;
+			NzOrig = d_N[0].z;
+			d_N[0].z = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - 1 };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { 1, Nz - 1 };
+		else if (inputScalars.largeDim)
+			nOffset = { 1, Nz };
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("smooth = %f\n", smooth);
@@ -3972,8 +3961,14 @@ public:
 			kArgs.emplace_back(&C);
 		if (type > 0)
 			kArgs.emplace_back(reinterpret_cast<void*>(&d_refIm));
+		if (inputScalars.largeDim)
+			kArgs.emplace_back(&nOffset);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelTV, globalPrior[0], globalPrior[1], globalPrior[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
@@ -3987,8 +3982,15 @@ public:
 				getErrorString(status);
 			}
 		}
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA TV gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA TV gradient completed in %f seconds\n", milliseconds);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].z = NzOrig;
 		return 0;
 	}
 
@@ -3997,6 +3999,11 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA Poisson update (PKMA/MBSREM/BSREM) computation");
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		std::vector<void*> kArgs;
 		status = cuCtxSynchronize();
 		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
@@ -4028,13 +4035,22 @@ public:
 		kArgs.emplace_back(&alpha);
 		kArgs.emplace_back(&apu);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelPoisson, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
 		CUDA_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
 
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA Poisson update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA Poisson update completed in %f seconds\n", milliseconds);
+		}
 		return 0;
 	}
 
@@ -4042,6 +4058,11 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting CUDA PDHG update computation");
 		CUresult status = CUDA_SUCCESS;
+		CUevent tStart, tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventCreate(&tStart, CU_EVENT_DEFAULT);
+			cuEventCreate(&tEnd, CU_EVENT_DEFAULT);
+		}
 		std::vector<void*> kArgs;
 		global[0] = (inputScalars.Nx[ii] + erotusPDHG[0][ii]) / localPrior[0];
 		global[1] = (inputScalars.Ny[ii] + erotusPDHG[1][ii]) / localPrior[1];
@@ -4067,13 +4088,22 @@ public:
 		kArgs.emplace_back(&tau);
 		kArgs.emplace_back(&apu);
 		// Compute the kernel
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tStart, CLCommandQueue[0]);
 		status = cuLaunchKernel(kernelPDHG, global[0], global[1], global[2], localPrior[0], localPrior[1], localPrior[2], 0, CLCommandQueue[0], kArgs.data(), NULL);
+		if (DEBUG || inputScalars.verbose >= 3)
+			cuEventRecord(tEnd, CLCommandQueue[0]);
         CUDA_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
 
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("CUDA PDHG update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			cuEventSynchronize(tEnd);
+			float milliseconds = 0;
+			cuEventElapsedTime(&milliseconds, tStart, tEnd);
+			milliseconds /= 1000.f;
+			mexPrintBase("CUDA PDHG update completed in %f seconds\n", milliseconds);
+		}
 		return 0;
 	}
 
@@ -4125,7 +4155,7 @@ public:
 		return 0;
 	}
 
-	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input, const bool RDP = false) {
+	inline int transferTex(const scalarStruct& inputScalars, CUdeviceptr* input, const bool RDP = false, const uint32_t Nz = 1) {
 
 		CUresult status = CUDA_SUCCESS;
 		CUDA_TEXTURE_DESC texDesc;
@@ -4140,9 +4170,9 @@ public:
 		arr3DDesc.NumChannels = 1;
 		arr3DDesc.Height = inputScalars.Nx[0];
 		arr3DDesc.Width = inputScalars.Ny[0];
-		arr3DDesc.Depth = inputScalars.Nz[0];
+		arr3DDesc.Depth = Nz;
 		status = cuArray3DCreate(&imArray, &arr3DDesc);
-        CUDA_CHECK(status, "Failed to create NLM image array\n", -1);
+        CUDA_CHECK(status, "Failed to create image array\n", -1);
 		CUDA_MEMCPY3D cpy3d;
 		std::memset(&cpy3d, 0, sizeof(cpy3d));
 		cpy3d.srcMemoryType = CUmemorytype::CU_MEMORYTYPE_DEVICE;
@@ -4153,9 +4183,9 @@ public:
 		cpy3d.dstArray = imArray;
 		cpy3d.WidthInBytes = inputScalars.Ny[0] * sizeof(float);
 		cpy3d.Height = inputScalars.Nx[0];
-		cpy3d.Depth = inputScalars.Nz[0];
+		cpy3d.Depth = Nz;
 		status = cuMemcpy3D(&cpy3d);
-        CUDA_CHECK(status, "Failed to copy NLM image array\n", -1);
+        CUDA_CHECK(status, "Failed to copy image array\n", -1);
 		resDesc.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 		resDesc.res.array.hArray = imArray;
 		texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
@@ -4164,13 +4194,13 @@ public:
 		texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
 		viewDesc.height = inputScalars.Nx[0];
 		viewDesc.width = inputScalars.Ny[0];
-		viewDesc.depth = inputScalars.Nz[0];
+		viewDesc.depth = Nz;
 		viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
 		if (RDP)
 			status = cuTexObjectCreate(&d_RDPrefI, &resDesc, &texDesc, &viewDesc);
 		else
 			status = cuTexObjectCreate(&d_inputI, &resDesc, &texDesc, &viewDesc);
-        CUDA_CHECK(status, "NLM image copy failed\n", -1);
+        CUDA_CHECK(status, "Image copy failed\n", -1);
 		status = cuCtxSynchronize();
         CUDA_CHECK(status, "Synchronization failed\n", -1);
 		if (DEBUG)

@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 
-import os
-import ctypes
-import numpy as np
 
 def loadInveonData(options, store_coordinates = False):
+    import os
+    import ctypes
+    import numpy as np
     import tkinter as tk
     from tkinter.filedialog import askopenfilename
     
@@ -51,7 +51,11 @@ def loadInveonData(options, store_coordinates = False):
         SinoD = np.zeros(1, dtype=np.uint16, order='F')
     seg = np.cumsum(options.segment_table)
     
-    libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
+    fPath = os.path.dirname( __file__ )
+    if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
+        libdir = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')), "libs")
+    else:
+        libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
     if os.name == 'posix':
         libname = str(os.path.join(libdir,"inveon.so"))
     elif os.name == 'nt':

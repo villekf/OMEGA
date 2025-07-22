@@ -355,18 +355,20 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	size_t mDim = mxGetNumberOfElements(Sin) / static_cast<size_t>(inputScalars.Nt);
 
 	mxArray* cell_array_ptr, * FPptr, *resPtr;
-	if (CELL)
+	if (CELL && inputScalars.nMultiVolumes > 0)
 		cell_array_ptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.nMultiVolumes) + 1, 1);
 	else
 		cell_array_ptr = mxCreateNumericArray(5, dim, mxSINGLE_CLASS, mxREAL);
 	if (inputScalars.raw)
-		inputScalars.koko = numRows / 2;
+		inputScalars.kokoNonTOF = numRows / 2;
 	else {
-		if (inputScalars.listmode == 0)
-			inputScalars.koko = mDim / inputScalars.nBins;
+		if (inputScalars.listmode == 0) {
+			inputScalars.kokoNonTOF = mDim / inputScalars.nBins;
+		}
 		else
-			inputScalars.koko = mDim;
+			inputScalars.kokoNonTOF = mDim;
 	}
+	inputScalars.kokoTOF = mDim;
 	if (inputScalars.storeFP) {
 		FPptr = mxCreateCellMatrix(static_cast<mwSize>(inputScalars.subsets * inputScalars.Niter), 1);
 	}
@@ -405,7 +407,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
 	if (DEBUG) {
 		mexPrintBase("ind = %u\n", ind);
-		mexPrintBase("koko = %u\n", inputScalars.koko);
+		mexPrintBase("kokoNonTOF = %u\n", inputScalars.kokoNonTOF);
+		mexPrintBase("kokoTOF = %u\n", inputScalars.kokoTOF);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);
 		mexPrintBase("inputScalars.maskBP = %u\n", inputScalars.maskBP);
 		mexPrintBase("inputScalars.maskFP = %u\n", inputScalars.maskFP);
@@ -436,19 +439,29 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	inputScalars.Nxy = inputScalars.Nx[0] * inputScalars.Ny[0];
 	inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
 	if (inputScalars.multiResolution) {
-		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-			inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+		for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++) {
+			inputScalars.im_dim.emplace_back(static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]));
+			if (DEBUG) {
+				mexPrintBase("inputScalars.im_dim = %u\n", inputScalars.im_dim[ii]);
+				mexPrintBase("inputScalars.Nx = %u\n", inputScalars.Nx[ii]);
+				mexPrintBase("inputScalars.Ny = %u\n", inputScalars.Ny[ii]);
+				mexPrintBase("inputScalars.Nz = %u\n", inputScalars.Nz[ii]);
+				mexPrintBase("ii = %u\n", ii);
+				mexEval();
+			}
+		}
 	}
 
 	// Load the necessary data from the MATLAB input (options) and create the necessary variables
 	form_data_variables(w_vec, options, inputScalars, MethodList);
 
+	const float* randoms = getSingles(sc_ra, "solu");
 #if !defined MTYPE 
 	const float* Sino = getSingles(Sin, "solu");
-	const float* randoms = getSingles(sc_ra, "solu");
+	//const float* randoms = getSingles(sc_ra, "solu");
 #else
 	const uint16_t* Sino = getUint16s(Sin, "solu");
-	const uint16_t* randoms = getUint16s(sc_ra, "solu");
+	//const uint16_t* randoms = getUint16s(sc_ra, "solu");
 #endif
 	const float* extraCorr = getSingles(options, "ScatterC", 0);
 	const float* x0 = getSingles(options, "x0");

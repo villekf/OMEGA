@@ -4,13 +4,8 @@ Created on Thu Mar  7 13:50:49 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import time
 import numpy as np
 import ctypes
-import os
-from .prepass import prepassPhase
-from .prepass import parseInputs
-from .prepass import loadCorrections
 
 def transferData(options):
     options.param.use_raw_data = ctypes.c_uint8(options.use_raw_data)
@@ -347,6 +342,12 @@ def reconstructions_mainSPECT(options):
 def reconstructions_main(options):
     import tkinter as tk
     from tkinter.filedialog import askopenfilename
+    import time
+    import os
+    from .prepass import prepassPhase
+    from .prepass import parseInputs
+    from .prepass import loadCorrections
+    from .prepass import sinogramToX
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
@@ -380,7 +381,7 @@ def reconstructions_main(options):
                 options.SinM = np.array(var["SinM"],order='F')
             else:
                 options.SinM = np.array(var["raw_SinM"],order='F')
-        if options.randoms_correction and ~options.reconstruct_scatter and ~options.reconstruct_trues and options.SinDelayed.size < 1:
+        if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
             options.SinDelayed = np.array(var["SinDelayed"],order='F')
     elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npy':
         options.SinM = np.load(options.fpath)
@@ -402,9 +403,9 @@ def reconstructions_main(options):
     if options.CT and options.flat <= 0:
         print('No flat value input! Using the maximum value as the flat value. Alternatively, input the flat value into options.flat')
         options.flat = np.max(options.SinM).astype(dtype=np.float32)
-    if ~options.CT and ~options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
+    if not options.CT and not options.SPECT and not(options.SinM.size == options.Ndist * options.Nang * options.TotSinos) and options.listmode == 0:
         ValueError('The number of elements in the input data does not match the input number of angles, radial distances and total number of sinograms multiplied together!')
-    if ~options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
+    if not options.usingLinearizedData and (options.LSQR or options.CGLS or options.FISTA or options.FISTAL1 or options.PDHG or options.PDHGL1 or options.PDDY or options.FDK or options.SART or options.ASD_POCS) and not options.largeDim and options.CT:
         from .prepass import linearizeData
         linearizeData(options)
         options.usingLinearizedData = True
@@ -420,11 +421,9 @@ def reconstructions_main(options):
     if (options.quad or options.FMH or options.L or options.weighted_mean or options.Huber or options.GGMRF) and options.MAP:
         if hasattr(options, 'weights') and np.size(options.weights) > 0:
             weights_flat = np.array(options.weights).flatten()
-            expected_length = (
-                (options.Ndx * 2 + 1) * 
+            expected_length = ((options.Ndx * 2 + 1) * 
                 (options.Ndy * 2 + 1) * 
-                (options.Ndz * 2 + 1)
-            )
+                (options.Ndz * 2 + 1))
             if len(weights_flat) < expected_length:
                 raise ValueError(
                     f'Weights vector is too short, needs to be {expected_length} in length'
@@ -441,13 +440,13 @@ def reconstructions_main(options):
             options.empty_weight = True
     parseInputs(options, True)
     if not options.CT and (not options.LSQR and not options.CGLS):
-        options.SinM[options.SinM < 0.] = 0.
+        options.SinM[options.SinM < 0] = 0
     if options.FDK:
         options.precondTypeMeas[1] = True
     prepassPhase(options)
     options.tau = 2.5
     if options.use_32bit_atomics and options.use_64bit_atomics:
-        options.use_32bit_atomics = False
+        options.use_64bit_atomics = False
     if options.use_64bit_atomics and (options.useCPU or options.useCUDA):
         options.use_64bit_atomics = False
     if options.use_32bit_atomics and (options.useCPU or options.useCUDA):
@@ -466,14 +465,19 @@ def reconstructions_main(options):
         residual = np.zeros(options.Niter * options.subsets, dtype=np.float32)
     else:
         residual = np.zeros(1, dtype=np.float32)
-    options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
+    fPath = os.path.dirname( __file__ )
+    if os.path.exists(os.path.join(fPath, '..', 'util', 'usingPyPi.py')):
+        libdir = os.path.join(os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..')), "libs")
+        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', 'opencl')) + "/"
+    else:
+        libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
+        options.headerDir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', 'opencl')) + "/"
     transferData(options)
     inStr = options.headerDir.encode('utf-8')
-    libdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..'))
     # point_ptr = ctypes.pointer(options.param)
-    if not options.SinM.dtype == 'float32' and not options.largeDim:
+    if not options.SinM.dtype == 'float32' and not options.largeDim and options.loadTOF:
         options.SinM = options.SinM.astype(np.float32)
-    elif options.largeDim and not options.SinM.dtype == 'uint16':
+    elif not options.SinM.dtype == 'uint16':
         options.SinM = options.SinM.astype(np.float32)
     if options.SinM.ndim > 1:
         options.SinM = options.SinM.ravel('F')
@@ -515,9 +519,9 @@ def reconstructions_main(options):
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
-    if options.useMultiResolutionVolumes:
+    if options.useMultiResolutionVolumes and not options.storeMultiResolution:
         output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig), order = 'F')
-    else:
+    elif not options.storeMultiResolution:
         output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0]), order = 'F')
     if options.subsets == 1 and options.storeFP == True:
         FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')

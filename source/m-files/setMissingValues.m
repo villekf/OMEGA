@@ -2,11 +2,18 @@ function options = setMissingValues(options)
 %SETMISSINGVALUES Sets default values for variables that are missing
 %   Utility function
 
-if ~isfield(options, 'projector_type')
-    options.projector_type = 11;
-end
 if ~isfield(options, 'CT')
     options.CT = false;
+end
+if ~isfield(options, 'use_CPU')
+    options.use_CPU = false;
+end
+if ~isfield(options, 'projector_type')
+    if options.CT && ~options.use_CPU
+        options.projector_type = 4;
+    else
+        options.projector_type = 11;
+    end
 end
 if ~isfield(options, 'PET')
     options.PET = false;
@@ -50,9 +57,6 @@ end
 if ~isfield(options,'cryst_per_block')
     options.cryst_per_block = 0;
 end
-if ~isfield(options,'ring_difference')
-    options.ring_difference = 0;
-end
 if ~isfield(options,'linear_multip')
     options.linear_multip = 1;
 end
@@ -64,6 +68,41 @@ if ~isfield(options, 'dPitchX') && isfield(options, 'dPitch')
 end
 if ~isfield(options, 'dPitchY') && isfield(options, 'dPitch')
     options.dPitchY = options.dPitch;
+end
+if ~isfield(options, 'dPitchX')
+    options.dPitchX = 0;
+end
+if ~isfield(options, 'dPitchY')
+    if options.dPitchX > 0
+        options.dPitchY = options.dPitchX;
+    else
+        options.dPitchY = 0;
+    end
+end
+if ~isfield(options, 'cr_p')
+    if options.dPitchX > 0
+        options.cr_p = options.dPitchX;
+    else
+        options.cr_p = 0;
+    end
+end
+if ~isfield(options, 'cr_pz')
+    if options.dPitchY > 0
+        options.cr_pz = options.dPitchY;
+    else
+        if options.cr_p > 0
+            options.cr_pz = options.cr_p;
+        else
+            options.cr_pz = 0;
+        end
+    end
+end
+if ~isfield(options, 'axial_fov')
+    if options.dPitchY > 0
+        options.axial_fov = options.dPitchY;
+    else
+        options.axial_fov = options.cr_pz;
+    end
 end
 if ~isfield(options, 'custom')
     options.custom = false;
@@ -78,7 +117,11 @@ if ~isfield(options, 'TOF_bins') || options.TOF_bins == 0
     options.TOF_bins = 1;
 end
 if ~isfield(options, 'TOF_bins_used') || options.TOF_bins_used == 0
-    options.TOF_bins_used = 1;
+    if options.TOF_bins > 1
+        options.TOF_bins_used = options.TOF_bins;
+    else
+        options.TOF_bins_used = 1;
+    end
 end
 if ~isfield(options, 'TOF_FWHM')
     options.TOF_FWHM = 0;
@@ -147,7 +190,11 @@ if ~isfield(options, 'subsets')
     options.subsets = 1;
 end
 if ~isfield(options, 'subset_type')
-    options.subset_type = 8;
+    if isfield(options, 'subsetType')
+        options.subset_type = options.subsetType;
+    else
+        options.subset_type = 8;
+    end
 end
 if ~isfield(options, 'useMaskFP')
     options.useMaskFP = false;
@@ -225,6 +272,9 @@ end
 if ~isfield(options, 'use_psf')
     options.use_psf = false;
 end
+if ~isfield(options, 'FWHM')
+    options.FWHM = [options.dPitchX options.dPitchX options.dPitchY];
+end
 if ~isfield(options, 'save_iter')
     options.save_iter = false;
 end
@@ -234,14 +284,20 @@ end
 if ~isfield(options, 'deblurring')
     options.deblurring = false;
 end
+if ~isfield(options,'use_device')
+    options.use_device = uint32(0);
+end
+if ~isfield(options,'implementation')
+    options.implementation = 2;
+end
+if ~isfield(options,'platform')
+    options.platform = 0;
+end
 if ~isfield(options, 'use_64bit_atomics')
-    options.use_64bit_atomics = false;
+    options.use_64bit_atomics = true;
 end
 if ~isfield(options, 'use_CUDA')
-    options.use_CUDA = false;
-end
-if ~isfield(options, 'use_CPU')
-    options.use_CPU = false;
+    options.use_CUDA = checkCUDA(options.use_device);
 end
 if ~isfield(options, 'nRays')
     options.nRays = 1;
@@ -312,12 +368,6 @@ end
 if ~isfield(options,'powerIterations') || (isfield(options,'powerIterations') && isempty(options.powerIterations))
     options.powerIterations = 20;
 end
-if ~isfield(options,'use_device')
-    options.use_device = uint32(0);
-end
-if ~isfield(options,'platform')
-    options.platform = 0;
-end
 if ~isfield(options,'derivativeType')
     options.derivativeType = 0;
 end
@@ -385,19 +435,7 @@ if ~isfield(options,'sampling_raw')
     options.sampling_raw = 1;
 end
 if ~isfield(options,'nProjections')
-    options.nProjections = 0;
-end
-if ~isfield(options,'Ndist')
-    options.Ndist = 0;
-end
-if ~isfield(options,'Nang')
-    options.Nang = 0;
-end
-if ~isfield(options,'NSinos')
-    options.NSinos = 0;
-end
-if ~isfield(options,'TotSinos')
-    options.TotSinos = options.NSinos;
+    options.nProjections = 1;
 end
 if ~isfield(options,'oOffsetX')
     options.oOffsetX = 0;
@@ -408,17 +446,24 @@ end
 if ~isfield(options,'oOffsetZ')
     options.oOffsetZ = 0;
 end
+if ~isfield(options, 'FOVa_y')
+    if isfield(options, 'FOVa_x')
+        options.FOVa_y = options.FOVa_x;
+    else
+        options.FOVa_y = 0;
+    end
+end
 if ~isfield(options, 'FOVa_x')
     options.FOVa_x = 0;
 end
-if ~isfield(options, 'FOVa_y')
-    options.FOVa_y = 0;
+if ~isfield(options, 'Nz')
+    options.Nz = 1;
 end
-if ~isfield(options, 'axial_fov')
-    options.axial_fov = 0;
+if ~isfield(options, 'x0')
+    options.x0 = ones(options.Nx, options.Ny, options.Nz) * 1e-5;
 end
 if ~isfield(options, 'dL')
-    options.dL = options.FOVa_x / options.Nx / 1;
+    options.dL = 0;
 end
 if ~isfield(options, 'epps')
     options.epps = 1e-5;
@@ -443,12 +488,6 @@ if ~isfield(options, 'diameter')
 end
 if ~isfield(options, 'span')
     options.span = 3;
-end
-if ~isfield(options, 'cr_p')
-    options.cr_p = 1;
-end
-if ~isfield(options, 'cr_pz')
-    options.cr_pz = 1;
 end
 if ~isfield(options, 'binning')
     options.binning = 1;
@@ -475,7 +514,7 @@ if ~isfield(options, 'precompute_all')
     options.precompute_all = false;
 end
 if ~isfield(options, 'verbose')
-    options.verbose = false;
+    options.verbose = 1;
 end
 if ~isfield(options, 'tot_time')
     options.tot_time = inf;
@@ -596,12 +635,6 @@ end
 if ~isfield(options, 'fill_sinogram_gaps')
     options.fill_sinogram_gaps = false;
 end
-if ~isfield(options, 'rings')
-    options.rings = 1;
-end
-if ~isfield(options, 'ring_difference_raw')
-    options.ring_difference_raw = options.rings;
-end
 if ~isfield(options, 'obtain_trues')
     options.obtain_trues = false;
 end
@@ -626,11 +659,67 @@ end
 if ~isfield(options, 'pseudot')
     options.pseudot = [];
 end
+if ~isfield(options,'Ndist')
+    options.Ndist = 400;
+end
+if ~isfield(options, 'rings')
+    if isfield(options, 'cryst_per_block')
+        if isfield(options, 'linear_multip') && isfield(options, 'cryst_per_block')
+            options.rings = options.linear_multip * options.cryst_per_block;
+        elseif isfield(options, 'cryst_per_block')
+            options.rings = options.cryst_per_block;
+        end
+    else
+        options.rings = 1;
+    end
+end
+if ~isfield(options,'ring_difference')
+    options.ring_difference = options.rings - 1;
+end
+if ~isfield(options, 'ring_difference_raw')
+    options.ring_difference_raw = options.rings - 1;
+end
 if ~isfield(options, 'det_per_ring')
-    options.det_per_ring = options.Nang * options.Ndist;
+    if isfield(options, 'blocks_per_ring') && isfield(options, 'cryst_per_block')
+        options.det_per_ring = options.blocks_per_ring*options.cryst_per_block;
+    else
+        options.det_per_ring = options.Nang * 2 * options.Ndist;
+    end
 end
 if ~isfield(options, 'det_w_pseudo')
     options.det_w_pseudo = options.det_per_ring;
+end
+if ~isfield(options, 'detectors')
+    options.detectors = options.det_w_pseudo*options.rings;
+end
+if ~isfield(options,'Nang')
+    if isfield(options,'det_w_pseudo') && options.det_w_pseudo > 0 
+        options.Nang = options.det_w_pseudo / 2;
+    else
+        options.Nang = 1;
+    end
+end
+if ~isfield(options,'NSinos')
+    if isfield(options, 'TotSinos')
+        options.NSinos = options.TotSinos;
+    else
+        options.NSinos = 1;
+    end
+end
+if ~isfield(options, 'segment_table') && isfield(options, 'span') && options.span > 0
+    if options.span == 1
+        options.segment_table = options.rings^2;
+    else
+        options.segment_table = [options.Nz, options.Nz - (options.span + 1):-options.span*2:max(options.Nz - options.ring_difference*2, options.rings - options.ring_difference)];
+        if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
+            options.segment_table = [options.segment_table(1), repeat_elem(options.segment_table(2:end),2,1)];
+        else
+            options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
+        end
+    end
+end
+if ~isfield(options,'TotSinos')
+    options.TotSinos = options.NSinos;
 end
 if ~isfield(options, 'h')
     options.h = 2;
@@ -676,6 +765,9 @@ if ~isfield(options, 'weighted_center_weight')
 end
 if ~isfield(options, 'TVsmoothing')
     options.TVsmoothing = 1e-2;
+end
+if ~isfield(options, 'tau')
+    options.tau = 1e-8;
 end
 if ~isfield(options, 'TV_use_anatomical')
     options.TV_use_anatomical = false;
@@ -851,6 +943,9 @@ if isfield(options,'Ndist') && ~isfield(options,'nRowsD')
 end
 if isfield(options,'Nang') && ~isfield(options,'nColsD')
     options.nColsD = options.Nang;
+end
+if ~isfield(options,'nColsD')
+    options.nColsD = 1;
 end
 if ~isfield(options, 'derivType')
     options.derivType = 0;

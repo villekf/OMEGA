@@ -17,14 +17,14 @@ function varList = recNames(varargin)
 
 % Add Any MAP algorithm here (algorithms that can use gradient-based
 % priors)
-varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'ASD_POCS';'SAGA';'BB'};
+varMAP = {'OSL_OSEM';'BSREM';'MBSREM';'ROSEM_MAP';'OSL_RBI';'OSL_COSEM';'PKMA';'SPS';'PDHG';'PDHGKL';'PDHGL1';'CV';'PDDY';'SART';'ASD_POCS';'SAGA';'BB'};
 % Add any non-MAP/prior-based algorithm to this list (or algorithms with
 % fixed prior)
-OS = {'OSEM';'MRAMLA';'RAMLA';'ROSEM';'RBI';'DRAMA';'COSEM';'ECOSEM';'ACOSEM';'LSQR';'CGLS';'FISTA'; 'FISTAL1';'FDK';'SART'};
+OS = {'OSEM';'MRAMLA';'RAMLA';'ROSEM';'RBI';'DRAMA';'COSEM';'ECOSEM';'ACOSEM';'LSQR';'CGLS';'FISTA'; 'FISTAL1';'FDK'};
 % Algorithms that are not built into the OpenCL kernel of projector types
 % 1/2/3. This will automatically select e.g. projector_type = 11 instead of
 % projector_type = 1.
-varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA';'BB'};
+varProj1 = {'LSQR';'CGLS';'FISTA';'FISTAL1';'SPS';'PDHG';'PDHGKL';'PDHGL1';'PDDY';'SART';'ASD_POCS';'SAGA';'BB';'ASD_POCS'};
 % Algorithms that should not have positivity constraint
 varNeg = {'LSQR';'CGLS';'FDK';'SART'};
 % Algorithms that support image-based preconditioners

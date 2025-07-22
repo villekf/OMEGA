@@ -858,7 +858,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.im_dim[0] = static_cast<int64_t>(inputScalars.Nxy) * static_cast<int64_t>(inputScalars.Nz[0]);
     if (inputScalars.multiResolution) {
         for (int ii = 1; ii <= inputScalars.nMultiVolumes; ii++)
-            inputScalars.im_dim[ii] = static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]);
+            inputScalars.im_dim.emplace_back(static_cast<int64_t>(inputScalars.Nx[ii]) * static_cast<int64_t>(inputScalars.Ny[ii]) * static_cast<int64_t>(inputScalars.Nz[ii]));
     }
 	
     Ni = 1;
@@ -1023,7 +1023,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     }
 
     // The complete sensitivity image is computed
-    if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || (w_vec.precondTypeIm[0]
+    if (MethodList.RBI || MethodList.RBIOSL || MethodList.COSEM || MethodList.ACOSEM || MethodList.ECOSEM || MethodList.OSLCOSEM > 0 || (w_vec.precondTypeIm[0]
         || w_vec.precondTypeIm[1] || w_vec.precondTypeIm[2]))
         w_vec.computeD = true;
 
@@ -1329,7 +1329,7 @@ void device_to_host(const RecMethods& MethodList, AF_im_vectors& vec, int64_t& o
 		}
     }
     // Transfer data back to host
-    if (CELL) {
+    if (CELL && inputScalars.nMultiVolumes > 0) {
         for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
             if (DEBUG) {
                 mexPrintBase("inputScalars.Nx[ii] = %d\n", inputScalars.Nx[ii]);

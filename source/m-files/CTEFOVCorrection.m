@@ -176,13 +176,13 @@ if options.useEFOV
         options.axialEFOV = true;
     end
     if options.transaxialEFOV
-        nTransaxial = floor(options.Nx * eFOVLength) * 2;
-        options.NxOrig = options.Nx;
-        options.NyOrig = options.Ny;
-        options.Nx = options.Nx + nTransaxial;
-        options.Ny = options.Ny + nTransaxial;
         options.FOVxOrig = options.FOVa_x;
         options.FOVyOrig = options.FOVa_y;
+        options.NxOrig = options.Nx;
+        options.NyOrig = options.Ny;
+        nTransaxial = floor(options.Nx * eFOVLength) * 2;
+        options.Nx = options.Nx + nTransaxial;
+        options.Ny = options.Ny + nTransaxial;
         options.FOVa_x = options.FOVa_x + options.FOVa_x/options.NxOrig * nTransaxial;
         options.FOVa_y = options.FOVa_y + options.FOVa_y/options.NyOrig * nTransaxial;
     else
@@ -196,7 +196,6 @@ if options.useEFOV
         options.NzOrig = options.Nz;
         options.Nz = options.Nz + nAxial;
         options.axialFOVOrig = options.axial_fov;
-%         options.oOffsetZ = options.oOffsetZ - (options.axial_fov/options.NzOrig * nAxial);
         options.axial_fov = options.axial_fov + options.axial_fov/options.NzOrig * nAxial;
     else
         options.axialFOVOrig = options.axial_fov;

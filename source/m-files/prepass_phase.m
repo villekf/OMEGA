@@ -319,14 +319,14 @@ if options.precondTypeImage(4)
         end
         if ~isfield(options,'alphaPrecond') || numel(options.alphaPrecond) < options.Niter * options.subsets
             options.alphaPrecond = zeros(options.Niter * options.subsets,1);
-            if ~isfield(options,'rhoPrecond')
+            if ~isfield(options,'rhoPrecond') || options.rhoPrecond == 0
                 if isfield(options,'rho_PKMA')
                     options.rhoPrecond = options.rho_PKMA;
                 else
                     error('rhoPrecond value is missing!')
                 end
             end
-            if ~isfield(options,'delta1Precond')
+            if ~isfield(options,'delta1Precond') || options.delta1Precond == 0
                 if isfield(options,'delta_PKMA')
                     options.delta1Precond = options.delta_PKMA;
                 else
@@ -336,7 +336,7 @@ if options.precondTypeImage(4)
             oo = 1;
             for kk = 0 : options.Niter - 1
                 for ll = 1 : options.subsets
-                    options.alphaPrecond(oo) = (options.rhoPrecond * (kk * options.subsets + ll - 1)) / (kk * options.subsets + ll - 1 + options.delta1Precond);
+                    options.alphaPrecond(oo) = 1 + (options.rhoPrecond * (kk * options.subsets + ll - 1)) / (kk * options.subsets + ll - 1 + options.delta1Precond);
                     oo = oo + 1;
                 end
             end

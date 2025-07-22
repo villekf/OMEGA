@@ -17,7 +17,7 @@
 * You should have received a copy of the GNU General Public License
 * along with this program. If not, see <https://www.gnu.org/licenses/>.
 ***************************************************************************/
-
+#define MATLAB
 #include "mexFunktio.h"
 #include "saveSinogram.h"
 extern "C" mxArray * mxCreateSharedDataCopy(const mxArray * pr);

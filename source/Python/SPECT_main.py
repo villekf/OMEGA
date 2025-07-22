@@ -3,8 +3,8 @@
 ## Python codes for SPECT reconstruction from interfile data
 
 import numpy as np
-from omegatomo import proj
-from omegatomo.io.loadSPECTInterfile import loadSPECTInterfile
+from omegatomo.projector import proj
+from omegatomo.fileio.loadSPECTInterfile import loadSPECTInterfile
 from omegatomo.reconstruction import reconstructions_mainSPECT
 from pymatreader import read_mat
 import matplotlib as plt

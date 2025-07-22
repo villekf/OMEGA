@@ -12,7 +12,7 @@
 # NOTE: This example has no error checking!
 
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 import matplotlib as plt
 
 options = proj.projectorClass()

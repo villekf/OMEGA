@@ -8,38 +8,19 @@ if ~isfield(options,'compute_sensitivity_image')
 end
 fp = [];
 res = [];
-% if isempty(varargin)
-% type = 0;
-% else
-%     type = varargin{1};
-% end
 if options.use_32bit_atomics && options.use_64bit_atomics
-    options.use_32bit_atomics = false;
+    options.use_64bit_atomics = false;
 end
 if options.use_64bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
     options.use_64bit_atomics = false;
 end
-if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
-    options.use_32bit_atomics = false;
-end
-% if type <= 0
-%     rekot = varargin{2};
-%     if numel(varargin) >= 3 && ~isempty(varargin{3})
-%         pz = varargin{3};
-%     else
-%         pz = {[]};
-%     end
+% if options.use_32bit_atomics && (options.use_CPU || options.use_CUDA || options.projector_type == 6)
+%     options.use_32bit_atomics = false;
 % end
 options.use_device = uint32(options.use_device);
 if options.use_raw_data
-    % xy_index = uint32(0);
-    % z_index = uint16(0);
     TOFSize = int64(size(options.LL,1));
 else
-    % if isempty(pseudot)
-    %     pseudot = uint32(100000);
-    % end
-    % LL = uint16(0);
     TOFSize = int64(size(options.xy_index,1));
 end
 if (options.randoms_correction || options.scatter_correction) && options.corrections_during_reconstruction ...
@@ -77,48 +58,42 @@ else
     crystal_size_z = (options.tube_width_xy);
 end
 if options.projector_type == 1 || options.projector_type == 11 ...
-        || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33
+        || options.projector_type == 2 || options.projector_type == 3 || options.projector_type == 22 || options.projector_type == 33 ...
+        || options.projector_type == 13 || options.projector_type == 23 || options.projector_type == 12 || options.projector_type == 32 || options.projector_type == 31
     kernel_file = 'projectorType123.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
-    filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'projectorType123','');
-elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45
+elseif options.projector_type == 4 || options.projector_type == 41 || options.projector_type == 14 || options.projector_type == 45 ...
+        || options.projector_type == 42 || options.projector_type == 43 || options.projector_type == 24 || options.projector_type == 34
     kernel_file = 'projectorType4.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
-    filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'projectorType4','');
-elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54
+elseif options.projector_type == 5 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 54 ...
+         || options.projector_type == 52  || options.projector_type == 53  || options.projector_type == 35  || options.projector_type == 25
     kernel_file = 'projectorType5.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
-    filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'projectorType5','');
 elseif options.projector_type == 6
     kernel_file = 'projectorType123.cl';
     kernel_path = which(kernel_file);
     kernel_path = strrep(kernel_path, '\', '/');
     kernel_path = strrep(kernel_path, '.cl', '');
-    filename = 'OMEGA_matrix_free_OpenCL_binary_device';
     header_directory = strrep(kernel_path,'projectorType123','');
 else
     error('Invalid projector for OpenCL')
 end
-filename = [header_directory, filename];
-% if options.use_CUDA
-%     header_directory = strcat('-I"', header_directory);
-%     header_directory = strcat(header_directory,'"');
-% end
 if options.listmode > 0 && options.compute_sensitivity_image && ~options.useIndexBasedReconstruction
     options.use_raw_data = true;
     [x, ~, z_det, ~] = get_coordinates(options);
     options.use_raw_data = false;
 end
-if (~options.largeDim && ~isa(options.SinM,'single')) || (options.largeDim && isa(options.SinM,'uint32'))
+if (~options.largeDim && ~(~options.loadTOF && ~isa(options.SinM,'single'))) || (options.largeDim && isa(options.SinM,'uint32'))
     options.SinM = single(options.SinM);
 end
 if options.implementation == 2
@@ -126,7 +101,7 @@ if options.implementation == 2
         tStart = tic;
     end
     if options.use_CUDA
-        if options.largeDim && isa(options.SinM,'uint16')
+        if isa(options.SinM,'uint16')
             [pz,fp, res] = CUDA_matrixfree_uint16( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
                 z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
                 TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24
@@ -152,7 +127,7 @@ if options.implementation == 2
             options.x_center, options.y_center, options.z_center, options.SinDelayed, randoms, options.projector_type, n_rays, n_rays3D, ... % 42
             options, options.SinM, partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK); % 21
     else
-        if options.largeDim && isa(options.SinM,'uint16')
+        if isa(options.SinM,'uint16')
             [pz,fp, res] = OpenCL_matrixfree_uint16( options.Nx, options.Ny, options.Nz, options.dx, options.dy, options.dz, options.bx, options.by, options.bz, ...
                 z_det, x, options.nRowsD, options.verbose, options.LL, options.TOF, ... % 15
                 TOFSize, options.sigma_x, options.TOFCenter, options.TOF_bins, options.use_device, options.use_raw_data, options.use_psf, header_directory, options.vaimennus, ... % 24

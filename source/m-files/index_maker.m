@@ -218,7 +218,7 @@ if subsets > 1 && options.subset_type < 8
         pituus(subsets) = valEnd;
         index = {0};
     end
-elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || options.subset_type == 10 || options.subset_type == 11)) || (subsets == 1)
+elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || options.subset_type == 10 || options.subset_type == 11 || options.subset_type == 12)) || (subsets == 1)
     sProjections = floor(options.nProjections / subsets);
     pituus = zeros(subsets, 1, 'int64');
     index = cell(subsets, 1);
@@ -293,6 +293,12 @@ elseif (subsets > 1 && (options.subset_type == 8 || options.subset_type == 9 || 
             end
             ind1 = ind2 + 1;
             ind2 = ind2 + (floor(options.nProjections / subsets)) + uu;
+        end
+    elseif options.subset_type == 12 && subsets > 1
+        for kk = 1 : subsets
+            index{kk} = [(kk : subsets : options.nProjections/2);(kk + options.nProjections/2 : subsets : options.nProjections)];
+            index{kk} = index{kk}(:);
+            pituus(kk) = numel(index{kk});
         end
     else
         if options.use_raw_data

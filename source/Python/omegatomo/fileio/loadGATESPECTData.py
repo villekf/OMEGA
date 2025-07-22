@@ -4,13 +4,13 @@ Created on Thu Mar  7 13:34:05 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import numpy as np
-import os
-import tkinter as tk
-from tkinter.filedialog import askopenfilename
-from omegatomo.io.loadInterfile import loadInterfile
 
 def loadGATESPECTData(options):
+    import numpy as np
+    import os
+    import tkinter as tk
+    from tkinter.filedialog import askopenfilename
+    from omegatomo.fileio.loadInterfile import loadInterfile
     if not os.path.isfile(options.fpath):
         print("Specified file was not found! Please select first projection image")
         root = tk.Tk()

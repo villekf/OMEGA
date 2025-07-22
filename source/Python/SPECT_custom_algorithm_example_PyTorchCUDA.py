@@ -13,7 +13,7 @@ This example uses PyTorch and CuPy and thus requires CUDA (with CuPy and PyTorch
 """
 
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 import torch
 
 options = proj.projectorClass()
@@ -101,7 +101,7 @@ options.offangle = 0
 ###########################################################################
 
 if useProSpectaData:
-    from omegatomo.io.loadProSpectaData import loadProSpectaData
+    from omegatomo.fileio.loadProSpectaData import loadProSpectaData
     loadProSpectaData(options)
 else:
     # Gantry angles

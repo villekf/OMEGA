@@ -76,14 +76,16 @@ int omegaMain(inputStruct options, const char* header_directory, const float* Si
 		}
 		if (inputScalars.TOF)
 			w_vec.TOFIndices = options.TOFIndices;
-		inputScalars.koko = mDim;
+		inputScalars.kokoNonTOF = mDim;
 	}
 	else
-		inputScalars.koko = mDim / inputScalars.nBins;
+		inputScalars.kokoNonTOF = mDim / inputScalars.nBins;
+	inputScalars.kokoTOF = mDim;
 	
 	
 	if (DEBUG) {
-		mexPrintBase("koko = %u\n", inputScalars.koko);
+		mexPrintBase("kokoTOF = %u\n", inputScalars.kokoTOF);
+		mexPrintBase("kokoNonTOF = %u\n", inputScalars.kokoNonTOF);
 		mexPrintBase("size_z = %u\n", inputScalars.size_z);
 		mexPrintBase("inputScalars.largeDim = %u\n", inputScalars.largeDim);
 		mexPrintBase("inputScalars.maskBP = %u\n", inputScalars.maskBP);

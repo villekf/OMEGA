@@ -411,7 +411,7 @@ classdef projectorClass
             % Is TOF enabled?
             obj.param.TOF = obj.param.TOF_bins > 1 && (obj.param.projector_type == 1 || obj.param.projector_type == 11 || obj.param.projector_type == 3 || obj.param.projector_type == 33 ...
                 || obj.param.projector_type == 13 || obj.param.projector_type == 31 || obj.param.projector_type == 4 || obj.param.projector_type == 14 || obj.param.projector_type == 41 ...
-                || obj.param.projector_type == 44);
+                || obj.param.projector_type == 44|| obj.param.projector_type == 43 || obj.param.projector_type == 34);
             if ~obj.param.TOF && obj.param.TOF_bins_used > 1
                 warning('TOF selected, but not supported with the current options!')
             end
@@ -485,6 +485,14 @@ classdef projectorClass
             if ~isfield(obj.param, 'global_correction_factor') || isempty(obj.param.global_correction_factor)
                 obj.param.global_correction_factor = 1;
             end
+            if numel(obj.param.partitions) > 1
+                partitions = numel(obj.param.partitions);
+            else
+                partitions = obj.param.partitions;
+            end
+            if partitions > 1 && obj.param.subset_type == 3
+                error('Subset type 3 is not supported with dynamic data!')
+            end
             obj.param.tr_offsets = 0;
             list_mode_format = false;
             % TOF parameters
@@ -493,8 +501,8 @@ classdef projectorClass
                 if obj.param.TOF_bins_used ~= obj.param.TOF_bins
                     obj.param.sigma_x = 0;
                     TOFCenter = 0;
-                else
-                    c = 2.99792458e11;
+                elseif ~isfield(obj.param,'TOFCenter') || (isfield(obj.param,'TOFCenter') && ~isfield(obj.param,'sigma_x') && isfield(obj.param,'TOF_FWHM'))
+                    c = 2.99792458e11; % speed of light in mm/s
                     obj.param.sigma_x = (c*obj.param.TOF_FWHM/2) / (2 * sqrt(2 * log(2)));
                     edges_user = linspace(-obj.param.TOF_width * obj.param.TOF_bins/2, obj.param.TOF_width * obj.param.TOF_bins / 2, obj.param.TOF_bins + 1);
                     edges_user = edges_user(1:end-1) + obj.param.TOF_width/2; % the most probable value where annihilation occured
@@ -560,6 +568,9 @@ classdef projectorClass
                 warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
                 obj.param.subset_type = 0;
             end
+            if obj.param.listmode && (numel(obj.param.Nt) > 1 || obj.param.Nt > 1)
+                obj.param.loadTOF = false;
+            end
             [obj.index, obj.nMeas, obj.param.subsets] = index_maker(obj.param);
 
             obj.param = setUpCorrections(obj.param);
@@ -574,6 +585,11 @@ classdef projectorClass
                         [x_det, y, z_det, obj.param] = get_coordinates(obj.param, obj.param.rings, obj.param.pseudot);
                     end
                 else
+                    if obj.param.TOF
+                        if numel(obj.param.TOFIndices) ~= numel(obj.param.SinM)
+                            error('The number of TOF indices does not correspond to the number of events!')
+                        end
+                    end
                     if ~obj.param.useIndexBasedReconstruction
                         if size(obj.param.x,2) == 2
                             obj.param.x = [obj.param.x(:,1)'; obj.param.y(:,1)'; obj.param.z(:,1)';obj.param.x(:,2)'; obj.param.y(:,2)'; obj.param.z(:,2)'];

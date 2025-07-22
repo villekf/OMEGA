@@ -123,7 +123,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     IMAGE2D maskFP,
 #endif
 #endif
-#if defined(MASKBP) && defined(BP) && !defined(CT)
+#if defined(MASKBP) && (defined(BP) || defined(SENS)) && !defined(CT)
 #ifdef MASKBP3D
     IMAGE3D maskBP,
 #else
@@ -334,6 +334,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	float D = 0.f;
 	float DD = 0.f;
 	TOFDis(v, tStart, L, &D, &DD);
+	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 #endif
     const float tStep = DIVIDE(dL, L);
@@ -393,7 +394,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		temp *= global_factor;
 #endif
 #endif //////////////// END PET ////////////////
-    for (uint ii = 0; ii < NSTEPS; ii++) {
+    // for (uint ii = 0; ii < NSTEPS; ii++) {
+    while (t <= tEnd) {
 #ifndef USEMAD
         const float3 p = v * t + s;
 #else
@@ -403,12 +405,12 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f);
+			TOFSum = TOFLoop(DD, dL, TOFCenter, sigma_x, &D, 1e-6f, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #if defined(FP) //////////////// FORWARD PROJECTION ////////////////
 			denominator(ax, p, dL, d_OSEM
 #ifdef TOF //////////////// TOF ////////////////
-			, dL, TOFSum, DD, TOFCenter, sigma_x, &D
+			, dL, TOFSum, DD, sigma_x, &D, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -417,12 +419,6 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			, lor
 #endif
 			);
-    // if (idx == 0) {
-    //     printf("ax[0] = %f\n", ax[0]);
-    //     printf("dL = %f\n", dL);
-    //     printf("d_OSEM = %f\n", tex3D<float>(d_OSEM, p.x, p.y, p.z));
-    //     // printf("d_OSEM = %f\n", read_imagef(d_OSEM, samplerForw, (T4)(p, (typeTT)0)).w);
-    // }
 #endif  //////////////// END FORWARD PROJECTION ////////////////
 #if defined(BP) && !defined(CT) //////////////// BACKWARD PROJECTION ////////////////
             const uint local_ind = CUINT_rtz(p.x * CFLOAT(d_N.x)) + CUINT_rtz(p.y * CFLOAT(d_N.y)) * d_N.x + CUINT_rtz(p.z * CFLOAT(d_N.z)) * d_N.x * d_N.y;
@@ -454,7 +450,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 			rhs(dL * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, dL, sigma_x, &D, DD, TOFCenter, TOFSum
+			, dL, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -468,8 +464,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 			LL += dL;
 #endif
         t += tStep;
-        if (t > tEnd)
-            break;
+        // if (t > tEnd)
+        //     break;
     }
 #if !defined(TOTLENGTH) && !defined(CT) && defined(FP)
         if (LL == 0.f)
@@ -692,13 +688,21 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         if (no_norm == 0u)
             wSum[zz] = 0.f;
     }
-    float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
+    const float3 dV = CFLOAT3(i) * d_d + d_d / 2.f + b;
     const float2 koko = MFLOAT2(CFLOAT(d_size_x) * d_dPitch.x, CFLOAT(d_sizey) * d_dPitch.y );
     const float2 indeksi = MFLOAT2(CFLOAT(d_size_x) / 2.f, CFLOAT(d_sizey) / 2.f );
+#if STYPE == 12
+    for (int kk = 0; kk < d_nProjections; kk += 2) {
+    // for (int kk = 0; kk < d_nProjections / 2; kk++) {
+        // kk *= 2;
+#else
     for (int kk = 0; kk < d_nProjections; kk++) {
+#endif
         float3 d1, d2, d3;
         float3 s;
+#ifndef PARALLEL
         s = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+#endif
         d1 = CMFLOAT3(d_xyz[kk * 6 + 3], d_xyz[kk * 6 + 4], d_xyz[kk * 6 + 5]);
 #if defined(PITCH)
         const float3 apuX = CMFLOAT3(d_uv[kk * NA], d_uv[kk * NA + 1], d_uv[kk * NA + 2]) * indeksi.x;
@@ -712,6 +716,35 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
         const float3 normX = normalize(apuX) / koko.x;
         const float3 normY = normalize(apuY) / koko.y;
         const float3 cP = cross(d2, d3 - d1);
+        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
+        const float dApu = d_d.z * cP.z;
+#ifdef PARALLEL
+        const float apuXP = d_uv[kk * NA];
+        const float apuYP = d_uv[kk * NA + 1];
+        const float3 ss = CMFLOAT3(d_xyz[kk * 6], d_xyz[kk * 6 + 1], d_xyz[kk * 6 + 2]);
+        for (int xx = 0; xx < d_size_x; xx++) {
+            for (int yy = 0; yy < d_sizey; yy++) {
+                s = ss;
+	            const float2 indeksiP = MFLOAT2(CFLOAT(xx) - CFLOAT(d_size_x) / 2.f + .5f, CFLOAT(yy) - CFLOAT(d_sizey) / 2.f + .5f);
+                (s).x += indeksiP.x * apuXP;
+                (s).y += indeksiP.x * apuYP;
+                (s).z += indeksiP.y * d_dPitch.y;
+                float3 d4 = d1, d5 = d1;
+                (d4).x += (indeksiP.x + .5f) * apuXP;
+                (d4).y += (indeksiP.x + .5f) * apuYP;
+                (d4).z += (indeksiP.y + .5f) * d_dPitch.y;
+                (d5).x += (indeksiP.x - .5f) * apuXP;
+                (d5).y += (indeksiP.x - .5f) * apuYP;
+                (d5).z += (indeksiP.y - .5f) * d_dPitch.y;
+                const float3 d44 = d4 - d3;
+                const float3 d55 = d5 - d3;
+                const float d4x = dot(d44, normX);
+                const float d4y = dot(d44, normY);
+                const float d5x = dot(d55, normX);
+                const float d5y = dot(d55, normY);
+                float2 scale = MFLOAT2(1.f / CFLOAT(d_size_x), 1.f / CFLOAT(d_sizey));
+                scale /= 2.f;
+#endif
         const float upperPart = dot(cP, s - d1);
         float3 v = dV - s;
         float lowerPart = -dot(v, cP);
@@ -720,8 +753,35 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
 #else
         const float vApu = FMAD(v.x, v.x, v.y * v.y);
 #endif
-        const float dApu = d_d.z * cP.z;
-        const float pz = (CFLOAT(kk) + 0.5f) / CFLOAT(d_nProjections);
+#if STYPE == 12
+        float3 d1_2, d2_2, d3_2;
+        float3 s_2;
+        const int uu = kk + 1;
+        s_2 = CMFLOAT3(d_xyz[uu * 6], d_xyz[uu * 6 + 1], d_xyz[uu * 6 + 2]);
+        d1_2 = CMFLOAT3(d_xyz[uu * 6 + 3], d_xyz[uu * 6 + 4], d_xyz[uu * 6 + 5]);
+#if defined(PITCH)
+        const float3 apuX_2 = CMFLOAT3(d_uv[uu * NA], d_uv[uu * NA + 1], d_uv[uu * NA + 2]) * indeksi.x;
+        const float3 apuY_2 = CMFLOAT3(d_uv[uu * NA + 3], d_uv[uu * NA + 4], d_uv[uu * NA + 5]) * indeksi.y;
+#else
+        const float3 apuX_2 = MFLOAT3(indeksi.x * d_uv[uu * NA], indeksi.x * d_uv[uu * NA + 1], 0.f);
+        const float3 apuY_2 = MFLOAT3(0.f, 0.f, indeksi.y * d_dPitch.y);
+#endif
+        d2_2 = apuX_2 - apuY_2;
+        d3_2 = d1_2 - apuX_2 - apuY_2;
+        const float3 normX_2 = normalize(apuX_2) / koko.x;
+        const float3 normY_2 = normalize(apuY_2) / koko.y;
+        const float3 cP_2 = cross(d2_2, d3_2 - d1_2);
+        const float pz_2 = (CFLOAT(uu) + 0.5f) / CFLOAT(d_nProjections);
+        const float dApu_2 = d_d.z * cP_2.z;
+        const float upperPart_2 = dot(cP_2, s_2 - d1_2);
+        float3 v_2 = dV - s_2;
+        float lowerPart_2 = -dot(v_2, cP_2);
+#ifndef USEMAD
+        const float vApu_2 = v_2.x * v_2.x + v_2.y * v_2.y;
+#else
+        const float vApu_2 = FMAD(v_2.x, v_2.x, v_2.y * v_2.y);
+#endif
+#endif
 #ifndef __CUDACC__ 
 #pragma unroll NVOXELS
 #endif
@@ -737,6 +797,13 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             float3 p = FMAD3(t, v, s);
             const float l1 = FMAD(v.z, v.z, vApu);
 #endif
+// #ifdef PARALLEL
+//             if (p.x > d4.x || p.x < d5.x || p.y > d4.y || p.y < d5.y || p.z > d4.z || p.z < d5.z) {
+//                 v.z += d_d.z;
+//                 lowerPart -= dApu;
+//                 continue;
+//             }
+// #endif
 #ifdef FDK
             float weight = (DSC + dV.x * COSF(angle[kk]) - dV.y * SINF(angle[kk]));
             weight = (DSC * DSC) / (weight * weight) * (M_PI_F / (CFLOAT(d_nProjections) * d_dPitch.x));
@@ -747,6 +814,13 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
             p -= d3;
             float px = dot(p, normX);
             float py = dot(p, normY);
+#ifdef PARALLEL
+            if (px > d4x + scale.x || px < d5x - scale.x || py > d4y + scale.y || py < d5y - scale.y) {
+                v.z += d_d.z;
+                lowerPart -= dApu;
+                continue;
+            }
+#endif
             float yVar = 0.f;
 #ifdef USEIMAGES
 #ifdef CUDA
@@ -764,40 +838,113 @@ void projectorType4Backward(const uint d_size_x, const uint d_sizey,
                 yVar = d_forw[indX + indY + indZ];
             }
 #endif
+#if STYPE == 12
+            const float t_2 = DIVIDE(upperPart_2, lowerPart_2);
+#ifndef USEMAD
+            float3 p_2 = s_2 + v_2 * t_2;
+            const float l1_2 = vApu_2 + v_2.z * v_2.z;
+#else
+            float3 p_2 = FMAD3(t_2, v_2, s_2);
+            const float l1_2 = FMAD(v_2.z, v_2.z, vApu_2);
+#endif
+            const float L_2 = distance(p_2, s_2);
+            const float weight_2 = (L_2 * L_2 * L_2) / (l1_2)*kerroin;
+            p_2 -= d3_2;
+            float px_2 = dot(p_2, normX_2);
+            float py_2 = dot(p_2, normY_2);
+            float yVar_2 = 0.f;
+#ifdef USEIMAGES
+#ifdef CUDA
+            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+                yVar_2 = tex3D<float>(d_forw, px_2, py_2, pz_2);
+#else
+            if (px_2 <= 1.f && py_2 <= 1.f && pz_2 <= 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f)
+                yVar_2 = read_imagef(d_forw, samplerIm, CFLOAT4(px_2, py_2, pz_2, 0.f)).w;
+#endif
+#else
+            if (px_2 < 1.f && py_2 < 1.f && pz_2 < 1.f && px_2 >= 0.f && py_2 >= 0.f && pz_2 >= 0.f) {
+                const LONG indX = CLONG_rtz(px_2 * CFLOAT(d_size_x));
+                const LONG indY = CLONG_rtz(py_2 * CFLOAT(d_sizey)) * CLONG_rtz(d_size_x);
+                const LONG indZ = CLONG_rtz(pz_2 * CFLOAT(d_nProjections)) * CLONG_rtz(d_sizey) * CLONG_rtz(d_size_x);
+                yVar_2 = d_forw[indX + indY + indZ];
+            }
+#endif
+#endif
 #ifdef OFFSET
             float TT;
             float Tloc = T[kk];
             if (Tloc > koko.x / 2.f) {
                 px = fabs(px - 1.f);
+                // px = (1.f - px);
                 TT = koko.x - Tloc;
             }
             else
                 TT = Tloc;
+            // if (px < 0.5f)
+                // px = fabs(px - 1.f);
+                // px = (1.f - px);
+            // TT *= 2.0f;
             px *= koko.x;
             px -= TT;
+#if STYPE == 12
+            float TT_2;
+            float Tloc_2 = T[uu];
+            if (Tloc_2 > koko.x / 2.f) {
+                px_2 = fabs(px_2 - 1.f);
+                TT_2 = koko.x - Tloc_2;
+            }
+            else
+                TT_2 = Tloc_2;
+            // TT_2 *= .5f;
+            px_2 *= koko.x;
+            px_2 -= TT_2;
 #endif
+#endif
+            float w = 1.f;
+#if STYPE == 12
+            float w_2 = 1.f;
+            if (yVar != 0.f || yVar_2 != 0.f) {
+#else
             if (yVar != 0.f) {
+#endif
 #ifdef OFFSET
+#if STYPE == 12
+                if (px_2 <= TT_2 && px_2 >= -TT_2) {
+                    w_2 = .5f * (1.f + SINF(M_PI_F * px_2 / (TT_2 * 2.f)));
+                }
+                else if (px_2 < -TT_2) {
+                    w_2 = 0.f;
+                }
+#endif
                 if (px <= TT && px >= -TT) {
-                    float w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
-                    temp[zz] += w * yVar * weight;
-                    if (no_norm == 0u)
-                        wSum[zz] += w * weight;
+                    w = .5f * (1.f + SINF(M_PI_F * px / (TT * 2.f)));
+                    // w = (.5f * (SINF((M_PI_F * atan2(px, R)) / (2.f * atan2(TT, R))) + 1.f));
                 }
                 else if (px < -TT) {
+                    w = 0.f;
                 }
-                else {
 #endif
-                    temp[zz] += yVar * weight;
-                    if (no_norm == 0u)
-                        wSum[zz] += weight;
-#ifdef OFFSET
-                }
+#if STYPE == 12
+                temp[zz] += ((w * yVar * weight + w_2 * yVar_2 * weight_2) / (w + w_2));
+                if (no_norm == 0u)
+                    wSum[zz] += (w * weight + w_2 * weight_2) / (w + w_2);
+#else
+                temp[zz] += w * yVar * weight;
+                if (no_norm == 0u)
+                    wSum[zz] += w * weight;
 #endif
             }
             v.z += d_d.z;
             lowerPart -= dApu;
+#if STYPE == 12
+            v_2.z += d_d.z;
+            lowerPart_2 -= dApu_2;
+#endif
         }
+#ifdef PARALLEL
+        }
+    }
+#endif
     }
     for (int zz = 0; zz < NVOXELS; zz++) {
         const uint ind = i.z + zz;

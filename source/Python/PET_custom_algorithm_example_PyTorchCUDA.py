@@ -14,7 +14,7 @@ of these algorithms.
 This example uses PyTorch and CuPy and thus requires CUDA (and CuPy and PyTorch)!
 """
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 import matplotlib as plt
 
 options = proj.projectorClass()

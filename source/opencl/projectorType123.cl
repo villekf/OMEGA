@@ -398,6 +398,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #ifdef TOF //////////////// TOF ////////////////
 	float D = 0.f;
 	float DD = 0.f;
+	float TOFWeights[NBINS];
 #endif //////////////// END TOF ////////////////
 	float local_ele = 0.f;
 
@@ -607,7 +608,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps);
+				const float TOFSum = TOFLoop(DD, d_in, TOFCenter, sigma_x, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
 				//const float xcenter = b1 + d1 * CFLOAT(ii) + d1 / 2.f;
@@ -623,7 +624,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, d_d2, sigma_x, &D, DD, TOFCenter, TOFSum
+				, d_d2, sigma_x, &D, DD, TOFSum, TOFWeights
 #if defined(LISTMODE)
 				, TOFid
 #endif
@@ -649,7 +650,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 				denominator(ax, local_ind, d_in, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-				, d_in, TOFSum, DD, TOFCenter, sigma_x, &D
+				, d_in, TOFSum, DD, sigma_x, &D, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -677,7 +678,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END MASKBP ////////////////
 				rhs(temp * d_in, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF //////////////// TOF ////////////////
-				, d_in, sigma_x, &D, DD, TOFCenter, TOFSum
+				, d_in, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -1002,7 +1003,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 // #endif
 			local_ind = compute_ind(tempj, tempi * d_N2, tempk, d_N3, d_Nxy);
 			localInd = CMINT3(tempi, tempj, tempk);
-#if defined(ATN) && (defined(FP) || defined(SPECT)) //////////////// ATTENUATION ////////////////
+#if (defined(ATN) && (defined(FP) || defined(SPECT))) || (defined(TOF) && defined(ORTH))//////////////// ATTENUATION ////////////////
 #ifdef USEIMAGES
 			int3 localInd2 = CMINT3(tempi, tempj, tempk);
 #else
@@ -1129,7 +1130,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			}
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			TOFSum = TOFLoop(DD, local_ele2, TOFCenter, sigma_x, &D, d_epps);
+			TOFSum = TOFLoop(DD, local_ele2, TOFCenter, sigma_x, &D, d_epps, TOFWeights);
 #endif //////////////// END TOF ////////////////
 #ifdef ORTH //////////////// ORTH/VOL ////////////////
             if (ii == 0) {
@@ -1149,7 +1150,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+                        , local_ele2, sigma_x, &D, DD, TOFSum, TOFWeights
 #if defined(LISTMODE)
 						, TOFid
 #endif
@@ -1186,7 +1187,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
                             no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-                        , local_ele2, sigma_x, &D, DD, TOFCenter, TOFSum
+                        , local_ele2, sigma_x, &D, DD, TOFSum, TOFWeights
 #if defined(LISTMODE)
 						, TOFid
 #endif
@@ -1223,7 +1224,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					no_norm, d_Summ, d_output 
 #endif //////////////// END FP/BP ////////////////
 #ifdef TOF //////////////// TOF ////////////////
-				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
 #if defined(LISTMODE)
 				, TOFid
 #endif
@@ -1253,7 +1254,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 			denominator(ax, local_ind, local_ele, d_OSEM
 #endif
 #ifdef TOF //////////////// TOF ////////////////
-			, local_ele, TOFSum, DD, TOFCenter, sigma_x, &D
+			, local_ele, TOFSum, DD, sigma_x, &D, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -1281,7 +1282,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 #endif //////////////// END MASKBP ////////////////
 			rhs(local_ele * temp, ax, local_ind, d_output, no_norm, d_Summ
 #ifdef TOF
-			, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+			, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 			, TOFid
 #endif
@@ -1347,7 +1348,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif
@@ -1386,7 +1387,7 @@ void projectorType123(const float global_factor, const float d_epps, const uint 
 					no_norm, d_Summ, d_output 
 #endif
 #ifdef TOF
-				, local_ele, sigma_x, &D, DD, TOFCenter, TOFSum
+				, local_ele, sigma_x, &D, DD, TOFSum, TOFWeights
 #ifdef LISTMODE
 				, TOFid
 #endif

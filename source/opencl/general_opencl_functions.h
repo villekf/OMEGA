@@ -154,7 +154,7 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define DIVIDE(a,b) fdividef(a,b)
 #define DIVIDE3(a,b) fdividef3(a,b)
 #define CFLOAT(a) (float)(a)
-#define CFLOAT3(a) make_int3_float3(a)
+#define CFLOAT3(a) convert_float3(a)
 #define CUINT(a) (unsigned int)(a)
 #define CUINT_rtp(a) __float2uint_ru(a)
 #define CUINT_rtz(a) __float2uint_rd(a)
@@ -417,6 +417,11 @@ inline __device__ float3 fabs(float3 v) {
 inline __device__ float2 fabs(float2 v) {
     return make_float2(fabs(v.x), fabs(v.y));
 }
+
+template<typename T>
+inline __device__ float3 convert_float3(const T& a) {
+    return make_float3(static_cast<float>(a.x), static_cast<float>(a.y), static_cast<float>(a.z));
+}
 #endif
 
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
@@ -547,6 +552,7 @@ DEVICE void TOFDis(const float3 diff, const float tc, const float LL, float* D, 
 DEVICE float TOFWeight(const float element, const float sigma_x, const float D, const float DD, const float TOFCenter, float dX) {
 	float output = normPDF(D, TOFCenter, sigma_x);
 	dX *= sign(DD);
+#pragma unroll
 	for (int tr = 1; tr < CINT(TRAPZ_BINS) - 1; tr++)
 #ifdef USEMAD
 		output += (normPDF(FMAD(-dX, CFLOAT(tr), D), TOFCenter, sigma_x) * 2.f);
@@ -559,15 +565,15 @@ DEVICE float TOFWeight(const float element, const float sigma_x, const float D, 
 }
 
 
-DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCenter, const float sigma_x, float* D, const float epps) {
+DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCenter, const float sigma_x, float* D, const float epps, float* TOFWeights) {
 	float TOFSum = 0.f;
 	const float dX = element / (TRAPZ_BINS - 1.f);
 #ifndef __CUDACC__ 
 #pragma unroll NBINS
 #endif
 	for (int to = 0; to < NBINS; to++) {
-		const float apu = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
-		TOFSum += apu;
+		TOFWeights[to] = TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX;
+		TOFSum += TOFWeights[to];
 	}
 	if (TOFSum < epps)
 		TOFSum = epps;
@@ -611,7 +617,8 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 #endif
 #else
 #ifdef PTYPE4
-	*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
+    if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
+		*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
 #else
 #ifdef USEIMAGES
 	*ax = (local_ele * read_imagef(d_OSEM, samplerSiddon, (T4)(local_ind, (typeTT)0)).w);
@@ -626,7 +633,7 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 // Includes TOF-specific weighting
 DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
-	, const float element, const float TOFSum, const float DD, CONSTANT float* TOFCenter, const float sigma_x, float* D
+	, const float element, const float TOFSum, const float DD, const float sigma_x, float* D, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
@@ -638,7 +645,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 	float apu = 0.f;
 	forwardProject(local_ele, &apu, localInd, d_OSEM);
 #ifdef TOF
-	const float dX = element / (TRAPZ_BINS - 1.f);
+	const float dX = apu / TOFSum;
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
 #else
@@ -647,11 +654,11 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 #endif
 	for (int to = 0; to < NBINS; to++) {
 #endif
-		const float joku = (TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX);
+		const float joku = TOFWeights[to] * dX;
 #ifdef N_RAYS
-		ax[to + NBINS * lor] += apu * joku / TOFSum;
+		ax[to + NBINS * lor] += joku;
 #else
-		ax[to] += apu * joku / TOFSum;
+		ax[to] += joku;
 #endif
 #if !defined(LISTMODE) || defined(SENS)
 	}
@@ -670,7 +677,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 // Compute the backprojection
 DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
-	, const float element, const float sigma_x, float* D, const float DD, CONSTANT float* TOFCenter, const float TOFSum
+	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
 	, const int TOFIndex
 #endif
@@ -678,8 +685,7 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 ) {
 #ifdef TOF
 	float val = 0.f;
-	const float dX = element / (TRAPZ_BINS - 1.f);
-
+	const float dX = local_ele / TOFSum;
 	float yaxTOF = 0.f;
 #if defined(LISTMODE) && !defined(SENS)
 	int to = TOFIndex;
@@ -689,9 +695,9 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #endif
 	for (int to = 0; to < NBINS; to++) {
 #endif
-		const float apu = local_ele * ((TOFWeight(element, sigma_x, *D, DD, TOFCenter[to], dX) * dX) / TOFSum);
+		const float apu = dX * TOFWeights[to];
 		val += apu;
-		yaxTOF += apu * ax[to];
+		yaxTOF += (apu * ax[to]);
 #if !defined(LISTMODE) || defined(SENS)
 	}
 #endif

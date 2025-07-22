@@ -5,10 +5,10 @@ Created on Thu Mar  7 14:01:49 2024
 @author: Ville-Veikko Wettenhovi
 """
 
-import numpy as np
 
     
 def rampFilt(N, ww, c, sigma, use2D = False):
+    import numpy as np
     filt = np.linspace(0, N, int(N) // 2 + 1, dtype=np.float32) / N
     w = 2 * np.pi * np.arange(filt.shape[0]) / N
     

@@ -44,11 +44,15 @@ function [varargout] = load_data_Vision(options)
 % along with this program. If not, see <https://www.gnu.org/licenses/>.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-if nargout > 4
+if nargout > 7
     error('Too many output arguments')
 end
 if nargout >= 3
-    store_coordinates = true;
+    if ~options.useIndexBasedReconstruction
+        store_coordinates = true;
+    else
+        store_coordinates = false;
+    end
 else
     store_coordinates = false;
 end
@@ -66,22 +70,29 @@ if ~isfield(options,'TOF_bins') || options.TOF_bins == 0
 end
 
 
+if numel(options.partitions) > 1
+    partitions = numel(options.partitions);
+elseif isempty(options.partitions)
+    partitions = 1;
+else
+    partitions = options.partitions;
+end
 alku = double(options.start);
 loppu = options.end;
 if isinf(loppu)
     loppu = 1e9;
 end
-vali = double((loppu - alku)/options.partitions);
+vali = double((loppu - alku)/partitions);
 % tot_time = options.tot_time;
 
-if numel(options.partitions) == 1 && options.partitions > 1
+if isscalar(partitions) && partitions > 1
     if isinf(options.end)
         error('End time is infinity, but more than one time-step selected. Use either one time-step or input a finite end time.')
     end
-    options.partitions = repmat(vali, options.partitions, 1);
+    partitions = repmat(vali, partitions, 1);
 end
 
-Nt = numel(options.partitions);
+Nt = numel(partitions);
 
 disp('Beginning data load')
 
@@ -113,7 +124,7 @@ if options.use_machine == 1
     sinoSize = uint64(options.Ndist * options.Nang * totSinos);
     pseudoD = options.det_per_ring < options.det_w_pseudo;
     
-    partitions = options.partitions;
+    % partitions = options.partitions;
     
     % loppu = options.end * 1e3;
     % alku = options.start * 1e3;
@@ -133,7 +144,12 @@ if options.use_machine == 1
     %     save_string_raw = [machine_name '_measurements_' name '_static_raw_listmode.mat'];
     % end
     
-    
+    Rcoordinate = [];
+    coordinate = [];
+    axIndices = [];
+    trIndices = [];
+    DaxIndices = [];
+    DtrIndices = [];
     f = dir(nimi);
     v_size = uint64(f.bytes / 8);
     if v_size == 0
@@ -144,9 +160,9 @@ if options.use_machine == 1
         disp('Data load started')
     end
     
-    [raw_SinM, SinD, LL1, LL2, tpoints, DD1, DD2] = visionToSinogram(nimi, partitions, alku, loppu, logical(options.randoms_correction), v_size, store_coordinates, ...
+    [raw_SinM, SinD, LL1, LL2, tpoints, DD1, DD2, TOFIndex] = visionToSinogram(nimi, partitions, alku, loppu, logical(options.randoms_correction), v_size, store_coordinates, ...
         uint32(options.det_w_pseudo), sinoSize, uint32(options.Ndist), uint32(options.Nang), uint32(options.ring_difference), uint32(options.span), uint32(cumsum(options.segment_table)), ...
-        Nt, sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), pseudoD);
+        Nt, sinoSize * uint64(options.TOF_bins), int32(options.ndist_side), pseudoD, options.useIndexBasedReconstruction);
     clear mex
     
 
@@ -211,6 +227,21 @@ if options.use_machine == 1
                 Rcoordinate = [x(ring_pos1)'; y(ring_pos1)'; z(ring_number1)'; x(ring_pos2)'; y(ring_pos2)'; z(ring_number2)'];
             end
             clear ring_pos1 ring_pos2 ring_number1 ring_number2
+        end
+    elseif options.useIndexBasedReconstruction
+        LL1(LL1==0) = [];
+        LL2(LL2==0) = [];
+        trIndices = reshape(LL1 - 1, 2, []);
+        axIndices = reshape(LL2 - 1, 2, []);
+        if options.randoms_correction
+            DD1(DD1==0) = [];
+            DD2(DD2==0) = [];
+            DtrIndices = reshape(DD1 - 1, 2, []);
+            DaxIndices = reshape(DD2 - 1, 2, []);
+        end
+        if options.TOF_bins > 1
+            TOFIndex(TOFIndex == 0) = [];
+            TOFIndex = TOFIndex - 1;
         end
     end
     %     TOF(TOF == 0) = [];
@@ -287,7 +318,7 @@ if options.use_machine == 1
     % end
     
     
-    if ~options.use_raw_data
+    if ~options.useIndexBasedReconstruction && ~store_coordinates
         if size(raw_SinM,1) == numel(raw_SinM)
             raw_SinM = reshape(raw_SinM, options.Ndist, options.Nang, totSinos, options.TOF_bins, Nt);
         end
@@ -402,12 +433,33 @@ if options.use_machine == 1
             varargout{2} = [];
         end
         if nargout >= 3
-            varargout{3} = coordinate;
+            if store_coordinates
+                varargout{3} = coordinate;
+            else
+                varargout{3} = trIndices;
+            end
         end
-        if nargout >= 4 && options.randoms_correction
+        if nargout >= 4 && options.randoms_correction && ~options.useIndexBasedReconstruction
             varargout{4} = Rcoordinate;
         elseif nargout >= 4
-            varargout{4} = [];
+            if options.useIndexBasedReconstruction
+                varargout{4} = axIndices;
+            else
+                varargout{4} = [];
+            end
+        end
+        if nargout >= 5 && options.randoms_correction && options.useIndexBasedReconstruction
+            varargout{5} = DtrIndices;
+        elseif nargout >= 5
+                varargout{5} = [];
+        end
+        if nargout >= 6 && options.randoms_correction && options.useIndexBasedReconstruction
+            varargout{6} = DaxIndices;
+        elseif nargout >= 6
+                varargout{6} = [];
+        end
+        if nargout >= 7
+            varargout{7} = TOFIndex;
         end
     % end
     if options.verbose

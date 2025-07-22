@@ -21,8 +21,8 @@ You can use https://doi.org/10.5281/zenodo.12744181 as example data
 """
 
 import numpy as np
-from omegatomo import proj
-from omegatomo.io import loadSkyscanData
+from omegatomo.projector import proj
+from omegatomo.fileio import loadSkyscanData
 from omegatomo.reconstruction import reconstructions_mainCT
 import matplotlib as plt
 

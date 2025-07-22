@@ -4,11 +4,11 @@ Created on Thu Mar  7 13:36:22 2024
 
 @author: Ville-Veikko Wettenhovi
 """
-import re
-import numpy as np
-import os
 
 def loadInterfile(filename):
+    import re
+    import numpy as np
+    import os
     with open(filename, 'r') as f:
         lines = f.readlines()
 

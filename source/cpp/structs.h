@@ -60,9 +60,8 @@ typedef struct AF_im_vectors_ {
 	af::array C_co, dU;
 	af::array rCGLS, meanFP, meanBP, apu, pPrevCP, p0CP2, fpCP2, p0CP, adapTypeA;
 	std::vector<af::array> im_os, im_os_blurred, rhs_os, pCP, qProxTGV, vProxTGV, qProxTV, qProx, SAGASum;
-	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS;
+	std::vector<af::array> wLSQR, fLSQR, uCP, uFISTA, fCGLS, rhsCP, fpCP, f0POCS, gradBB, imBB;
 	std::vector<std::vector<af::array>> Summ, stochasticHelper;
-	af::array gradBB, imBB;
 } AF_im_vectors;
 #endif
 
@@ -84,7 +83,7 @@ typedef struct Weighting_ {
 	uint8_t* maskFP = nullptr, * maskBP = nullptr, * eFOVIndices = nullptr, *maskPrior = nullptr, *maskOffset = nullptr, *TOFIndices = nullptr;
 	uint16_t* axIndex = nullptr, * trIndex = nullptr;
 	float epsilon_mramla = 0.f, U = 1000000.f, h_ACOSEM = 1.f, TimeStepAD, KAD, w_sum = 0.f, h2 = 1.f, huber_delta = 0.f, ACOSEM_rhs = 0.f, h_ACOSEM_2 = 1.f, RDP_gamma = 1.f,
-		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
+		dPitchX, dPitchY, betaLSQR = 0.f, alphaLSQR = 0.f, thetaLSQR = 0.f, rhoLSQR = 0.f, phiLSQR = 0.f, gammaCGLS = 0.f, gammaTempCGLS = 0.f, alphaCGLS = 0.f, nuIEM = 0.f, alphaCPTV = 1.f,
 		gradV1 = 0.f, gradV2 = 0.f, betaReg = 0.f, alpha0CPTGV = 1.f, alpha1CPTGV = 1.f, betaFISTA = 1.f, tFISTA = 1.f, tNFista = 1.f, GGMRF_p = 0.f, GGMRF_q = 0.f, GGMRF_c = 0.f, GGMRF_pqc = 0.f,
 		beta = 0.f, dtvg = 0.f, alphaPOCS = 0.2f, rMaxPOCS = 0.95f, POCSepps = 1e-4f, POCSalphaRed = 0.95f, NLAdaptiveConstant = 1e-5f;
 	uint32_t alku_fmh = 0u, mean_type = 0u, powerIterations = 0, derivType = 0, gradInitIter = 0, filterIter = 0, gradFinalIter = 0;
@@ -98,8 +97,8 @@ typedef struct Weighting_ {
 	std::vector<int32_t> mIt;
 	std::vector<float> alphaCP, LCP, LCP2;
 	float *rayShiftsDetector = nullptr, *rayShiftsSource = nullptr;
-    float *swivelAngles = nullptr;
-	float alphaBB=1e-4f;
+	std::vector<float> alphaBB;
+
 } Weighting;
 
 // Struct for boolean operators indicating whether a certain method is selected
@@ -116,6 +115,7 @@ typedef struct RecMethods_ {
 	bool CPType = false;
 	bool OSL = false;
 	bool FDK = false;
-	bool BB=false;
+	bool BB = false;
+	bool prior = false;
 	uint32_t OSLCOSEM = 0u, MAPCOSEM = 0u;
 } RecMethods;

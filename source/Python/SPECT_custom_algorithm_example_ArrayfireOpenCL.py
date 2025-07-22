@@ -13,7 +13,7 @@ This example uses Arrayfire with PyOpenCL and thus requires OpenCL (with PyOpenC
 """
 
 import numpy as np
-from omegatomo import proj
+from omegatomo.projector import proj
 import arrayfire as af
 
 options = proj.projectorClass()
@@ -95,7 +95,7 @@ options.offangle = 0
 ###########################################################################
 
 if useProSpectaData:
-    from omegatomo.io.loadProSpectaData import loadProSpectaData
+    from omegatomo.fileio.loadProSpectaData import loadProSpectaData
     loadProSpectaData(options)
 else:
     # Gantry angles

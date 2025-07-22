@@ -1,7 +1,7 @@
 /*******************************************************************************************************************************************
-* Class object for forward and backward projections.
+* Class object for forward and backward projections. OpenCL version.
 *
-* Copyright (C) 2022-2024 Ville-Veikko Wettenhovi, Niilo Saarlemo
+* Copyright (C) 2022-2025 Ville-Veikko Wettenhovi, Niilo Saarlemo
 *
 * This program is free software: you can redistribute it and/or modify  it under the terms of the GNU General Public License as published by
 * the Free Software Foundation, either version 3 of the License, or  (at your option) any later version.
@@ -84,13 +84,15 @@ class ProjectorClass {
 		devices.push_back(devices2[usedDevices[0]]);
 		if (DEBUG) {
 			mexPrintBase("devices.size() = %u\n", devices.size());
+			mexPrintBase("devices[0] = %u\n", devices[0]);
 			mexEval();
 		}
 
 		// Create the command queues
 		// Enable out of order execution (devices can compute kernels at the same time)
 		for (size_t i = 0; i < devices.size(); i++) {
-			commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
+			//commandQueues.push_back(cl::CommandQueue(context, devices[i], CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &status));
+			commandQueues.push_back(cl::CommandQueue(context, devices[i], 0, &status));
 			OCL_CHECK(status, "\n", status);
 		}
 		if (DEBUG) {
@@ -374,7 +376,8 @@ class ProjectorClass {
 				options += " -cl-fast-relaxed-math";
 				options += " -DUSEMAD";
 			}
-			
+			if (inputScalars.largeDim)
+				options += " -DLARGEDIM";
 			if (inputScalars.useImages)
 				options += " -DUSEIMAGES";
 			if (inputScalars.useExtendedFOV)
@@ -590,7 +593,7 @@ class ProjectorClass {
 		else {
 			options += " -DCAST=float";
 		}
-		if (DEBUG || verbose >= 2)
+		if (DEBUG || verbose >= 3)
 			mexPrintBase("%s\n", options.c_str());
 		if (atomic_64bit) {
 			cl::string apu = CLDeviceID.getInfo<CL_DEVICE_EXTENSIONS>();
@@ -607,7 +610,7 @@ class ProjectorClass {
 				cl::Program::Sources source(testi);
 				program = cl::Program(CLContext, source);
 				status = program.build(options.c_str());
-				if (status == CL_SUCCESS && (DEBUG || verbose >= 2)) {
+				if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 					mexPrint("OpenCL program (64-bit atomics) built\n");
 				}
 				else if (status != CL_SUCCESS) {
@@ -641,7 +644,7 @@ class ProjectorClass {
 			cl::Program::Sources source(testi);
 			program = cl::Program(CLContext, source);
 			status = program.build(options.c_str());
-			if (status == CL_SUCCESS && (DEBUG || verbose >= 2)) {
+			if (status == CL_SUCCESS && (DEBUG || verbose >= 3)) {
 				mexPrint("OpenCL program built\n");
 			}
 			else if (status != CL_SUCCESS) {
@@ -686,7 +689,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 4) {
 				kernelFP = cl::Kernel(programFP, "projectorType4Forward", &status);
                 OCL_CHECK(status, "Failed to create projector type 4 FP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 4 FP successfully created\n");
 				}
 			}
@@ -698,7 +701,7 @@ class ProjectorClass {
 				else
 					kernelBP = cl::Kernel(programBP, "projectorType4Backward", &status);
                 OCL_CHECK(status, "Failed to create projector type 4 BP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 4 BP successfully created\n");
 				}
 			}
@@ -707,7 +710,7 @@ class ProjectorClass {
 			if (inputScalars.FPType == 5) {
 				kernelFP = cl::Kernel(programFP, "projectorType5Forward", &status);
                 OCL_CHECK(status, "Failed to create projector type 5 FP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 5 FP successfully created\n");
 				}
 			}
@@ -717,7 +720,7 @@ class ProjectorClass {
 				else //if (inputScalars.BPType == 5)
 					kernelBP = cl::Kernel(programBP, "projectorType5Backward", &status);
                 OCL_CHECK(status, "Failed to create projector type 5 BP kernel\n", -1);
-				if (DEBUG || inputScalars.verbose >= 2) {
+				if (DEBUG || inputScalars.verbose >= 3) {
 					mexPrint("OpenCL kernel for projector type 5 BP successfully created\n");
 				}
 			}
@@ -728,7 +731,7 @@ class ProjectorClass {
 			if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3)
 				kernelBP = cl::Kernel(programBP, "projectorType123", &status);
             OCL_CHECK(status, "Failed to create OS-methods kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("OpenCL kernel successfully created\n");
 			}
 		}
@@ -736,56 +739,56 @@ class ProjectorClass {
 		if (MethodList.NLM) {
 			kernelNLM = cl::Kernel(programAux, "NLM", &status);
             OCL_CHECK(status, "Failed to create NLM kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("NLM kernel successfully created\n");
 			}
 		}
 		if (MethodList.MRP) {
 			kernelMed = cl::Kernel(programAux, "medianFilter3D", &status);
             OCL_CHECK(status, "Failed to create Median kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Median kernel successfully created\n");
 			}
 		}
 		if (MethodList.RDP) {
 			kernelRDP = cl::Kernel(programAux, "RDPKernel", &status);
             OCL_CHECK(status, "Failed to create RDP kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("RDP kernel successfully created\n");
 			}
 		}
 		if (MethodList.GGMRF) {
 			kernelGGMRF = cl::Kernel(programAux, "GGMRFKernel", &status);
             OCL_CHECK(status, "Failed to create GGMRF kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
 		if (MethodList.TV || MethodList.APLS) {
 			kernelTV = cl::Kernel(programAux, "TVKernel", &status);
             OCL_CHECK(status, "Failed to create TV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("TV kernel successfully created\n");
 			}
 		}
 		if (MethodList.hyperbolic) {
 			kernelHyper = cl::Kernel(programAux, "hyperbolicKernel", &status);
             OCL_CHECK(status, "Failed to create hyperbolic prior kernel\n", -1);
-		    if (DEBUG || inputScalars.verbose >= 2) {
+		    if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Hyperbolic prior kernel successfully created\n");
 			}
 		}
 		if (MethodList.PKMA || MethodList.BSREM || MethodList.MBSREM || MethodList.MRAMLA || MethodList.RAMLA) {
 			kernelPoisson = cl::Kernel(programAux, "PoissonUpdate", &status);
             OCL_CHECK(status, "Failed to create Poisson Update kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Poisson Update kernel successfully created\n");
 			}
 		}
 		if (MethodList.CPType) {
 			kernelPDHG = cl::Kernel(programAux, "PDHGUpdate", &status);
             OCL_CHECK(status, "Failed to create PDHG Update kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("PDHG Update kernel successfully created\n");
 			}
 		}
@@ -794,7 +797,7 @@ class ProjectorClass {
 			kernelProxTVDiv = cl::Kernel(programAux, "ProxTVDivergence", &status);
 			kernelProxTVGrad = cl::Kernel(programAux, "ProxTVGradient", &status);
             OCL_CHECK(status, "Failed to create CPTV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("CPTV kernel successfully created\n");
 			}
 		}
@@ -803,7 +806,7 @@ class ProjectorClass {
 			kernelProxRDP = cl::Kernel(programAux, "ProxRDP", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
             OCL_CHECK(status, "Failed to create proximal RDP kernel\n", -1);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal RDP kernel successfully created\n");
 			}
 		}
@@ -812,7 +815,7 @@ class ProjectorClass {
 			kernelProxNLM = cl::Kernel(programAux, "ProxNLM", &status);
 			kernelProxTrans = cl::Kernel(programAux, "ProxTrans", &status);
             OCL_CHECK(status, "Failed to create proximal NLM kernel\n", -1);
-            if (DEBUG || inputScalars.verbose >= 2) {
+            if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Proximal NLM kernel successfully created\n");
 			}
 		}
@@ -824,19 +827,19 @@ class ProjectorClass {
 			kernelProxTGVDiv = cl::Kernel(programAux, "ProxTGVDivergence", &status);
 			kernelProxTGVSymmDeriv = cl::Kernel(programAux, "ProxTGVSymmDeriv", &status);
             OCL_CHECK(status, "Failed to create CPTGV kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("CPTGV kernel successfully created\n");
 			}
 		}
 		if (w_vec.precondTypeMeas[1] || w_vec.precondTypeIm[5]) {
 			kernelElementMultiply = cl::Kernel(programAux, "vectorElementMultiply", &status);
             OCL_CHECK(status, "Failed to create element-wise multiplication kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 			kernelElementDivision = cl::Kernel(programAux, "vectorElementDivision", &status);
             OCL_CHECK(status, "Failed to create element-wise division kernel\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Element-wise kernels successfully created\n");
 			}
 		}
@@ -851,7 +854,7 @@ class ProjectorClass {
 				kernelPSF = cl::Kernel(programAux, "Convolution3D", &status);
 			}
             OCL_CHECK(status, "Failed to create implementation 3 kernels\n", -1);
-			if (DEBUG || inputScalars.verbose >= 2) {
+			if (DEBUG || inputScalars.verbose >= 3) {
 				mexPrint("Implementation 3 kernels successfully created\n");
 			}
 		}
@@ -899,6 +902,8 @@ public:
 	cl::Buffer d_outputCT, d_maskBPB, d_attenB;
 	cl::Buffer d_rayShiftsDetector, d_rayShiftsSource; // SPECT
 	size_t memSize = 0ULL;
+	std::chrono::steady_clock::time_point tStartLocal, tStartGlobal;
+	std::chrono::steady_clock::time_point tEndLocal, tEndGlobal;
 	// Distance from the origin to the corner of the image, voxel size and distance from the origin to the opposite corner of the image
 	std::vector<cl_float3> b, d, bmax;
 	std::vector<cl_int3> d_N;
@@ -1002,13 +1007,13 @@ public:
 
 		status = createProgram(CLContext, CLDeviceID[0], programFP, programBP, programAux, programSens, header_directory, inputScalars, MethodList, w_vec, local_size, type);
         OCL_CHECK(status, "Error while creating program\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("OpenCL programs successfully created\n");
 		}
 
 		status = createKernels(kernelFP, kernelBP, kernelNLM, kernelMed, kernelRDP, kernelGGMRF, programFP, programBP, programAux, programSens, MethodList, w_vec, inputScalars, type);
         OCL_CHECK(status, "Failed to create kernels\n", -1);
-		if (DEBUG || inputScalars.verbose >= 2) {
+		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("OpenCL kernels successfully created\n");
 		}
 		format.image_channel_order = CL_A;
@@ -1123,7 +1128,7 @@ public:
 	/// <param name="sc_ra randoms and/or scatter data (for additive scatter correction or for randoms correction)"></param>
 	/// <returns></returns>
 	inline cl_int createAndWriteBuffers(const std::vector<int64_t>& length, const float* x, const float* z_det, const uint32_t* xy_index,
-		const uint16_t* z_index, const uint16_t* L,const int64_t* pituus, const float* atten, const float* norm, const float* extraCorr, 
+		const uint16_t* z_index, const uint16_t* L, const int64_t* pituus, const float* atten, const float* norm, const float* extraCorr,
 		const scalarStruct& inputScalars, const Weighting& w_vec, const RecMethods& MethodList) {
 		cl_int status = CL_SUCCESS;
 		size_t vecSize = 1;
@@ -1140,9 +1145,9 @@ public:
 			OCL_CHECK(status, "\n", -1);
 		}
 		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
-			if (inputScalars.useImages) {
+			if (inputScalars.useImages && !inputScalars.largeDim) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
-                OCL_CHECK(status, "Failed to create prior image\n", -1);
+				OCL_CHECK(status, "Failed to create prior image\n", -1);
 			}
 		}
 		if (MethodList.RDP && w_vec.RDPLargeNeighbor && w_vec.RDP_anatomical) {
@@ -1170,7 +1175,7 @@ public:
 				d_maskPrior3 = cl::Image3D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, imZ, 0, 0, NULL, &status);
 			else
 				d_maskPrior = cl::Image2D(CLContext, CL_MEM_READ_ONLY, formatMask, imX, imY, 0, NULL, &status);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 		}
 		if (inputScalars.projector_type != 6) {
 			if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -1188,7 +1193,7 @@ public:
 				//d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x / 2, NULL, &status));
 				else
 					d_xFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_of_x, NULL, &status));
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			// Attenuation data for image-based attenuation
 			if (inputScalars.attenuation_correction && inputScalars.CTAttenuation) {
@@ -1197,7 +1202,7 @@ public:
 					d_attenB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 				else
 					d_attenIm = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, imX, imY, imZ, 0, 0, NULL, &status);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.maskFP || inputScalars.maskBP) {
 				if (inputScalars.useBuffers) {
@@ -1207,7 +1212,7 @@ public:
 								d_maskFPB.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD * length[kk], NULL, &status));
 						}
 						else
-							d_maskFPB.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t)* inputScalars.nRowsD * inputScalars.nColsD, NULL, &status));
+							d_maskFPB.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.nRowsD * inputScalars.nColsD, NULL, &status));
 					}
 					if (inputScalars.maskBP)
 						d_maskBPB = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(uint8_t) * inputScalars.Nx[0] * inputScalars.Ny[0] * inputScalars.maskBPZ, NULL, &status);
@@ -1266,7 +1271,7 @@ public:
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
 				else
 					d_zFull.emplace_back(cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status));
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 				if (DEBUG) {
@@ -1280,7 +1285,7 @@ public:
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
 					else
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 2, NULL, &status);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 				}
 				else {
 					if (inputScalars.PET && inputScalars.listmode == 0)
@@ -1292,7 +1297,7 @@ public:
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.size_z, NULL, &status);
 					else
 						d_z[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float), NULL, &status);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
 					d_T[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk], NULL, &status);
@@ -1301,7 +1306,7 @@ public:
 				if ((inputScalars.CT || inputScalars.SPECT) || (inputScalars.listmode > 0 && !inputScalars.indexBased)) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF || ((inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0))
 						d_x[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * 6, NULL, &status);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.size_norm > 1 && inputScalars.normalization_correction) {
 					d_norm[kk] = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * length[kk] * vecSize, NULL, &status);
@@ -1342,7 +1347,7 @@ public:
 				}
 			}
 		}
-        OCL_CHECK(status, "Buffer creation failed\n", -1);
+		OCL_CHECK(status, "Buffer creation failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer creation succeeded\n");
 		}
@@ -1394,7 +1399,7 @@ public:
 					}
 					else
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskFP, CL_FALSE, origin, region, 0, 0, w_vec.maskFP);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(bool) * inputScalars.nRowsD * inputScalars.nColsD) / 1048576ULL;
 				}
 				if (inputScalars.maskBP) {
@@ -1411,7 +1416,7 @@ public:
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP3, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
 					else
 						status = CLCommandQueue[0].enqueueWriteImage(d_maskBP, CL_FALSE, origin, region, 0, 0, w_vec.maskBP);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
 				}
 			}
@@ -1424,7 +1429,7 @@ public:
 					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior3, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
 				else
 					status = CLCommandQueue[0].enqueueWriteImage(d_maskPrior, CL_FALSE, origin, region, 0, 0, w_vec.maskPrior);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(bool) * inputScalars.Nx[0] * inputScalars.Ny[0]) / 1048576ULL;
 			}
 		}
@@ -1523,7 +1528,7 @@ public:
 				else if (inputScalars.listmode > 0 && !inputScalars.indexBased) {
 					if (kk < inputScalars.TOFsubsets || inputScalars.loadTOF)
 						status = CLCommandQueue[0].enqueueWriteBuffer(d_x[kk], CL_FALSE, 0, sizeof(float) * length[kk] * 6, &w_vec.listCoord[pituus[kk] * 6]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					memSize += (sizeof(float) * length[kk] * 6) / 1048576ULL;
 				}
 				if (inputScalars.offset && ((inputScalars.BPType == 4 && inputScalars.CT) || inputScalars.BPType == 5)) {
@@ -1592,7 +1597,7 @@ public:
 				OCL_CHECK(status, "\n", -1);
 			}
 		}
-        OCL_CHECK(status, "Buffer write failed\n", -1);
+		OCL_CHECK(status, "Buffer write failed\n", -1);
 		if (DEBUG || inputScalars.verbose >= 3) {
 			mexPrint("Buffer write succeeded\n");
 		}
@@ -1847,7 +1852,7 @@ public:
 		cl_int status = CL_SUCCESS;
 		for (uint32_t kk = inputScalars.osa_iter0; kk < inputScalars.subsetsUsed; kk++) {
 			if (inputScalars.scatter == 1u) {
-				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.koko * tt]);
+				status = CLCommandQueue[0].enqueueWriteBuffer(d_scat[kk], CL_TRUE, 0, sizeof(float) * length[kk], &extraCorr[pituus[kk] + inputScalars.kokoNonTOF * tt]);
 				OCL_CHECK(status, "\n", -1);
 				memSize += (sizeof(float) * length[kk]) / 1048576ULL;
 			}
@@ -1989,24 +1994,13 @@ public:
 		if (erotusF > 0)
 			erotusF = localF[0] - erotusF;
 		global = { static_cast<cl::size_type>(global[0] + erotusF), 1, 1 };
-		//else {
-			//erotus[0] = length[osa_iter] % local_size[0];
-
-			//if (erotus[0] > 0)
-			//	erotus[0] = (local_size[0] - erotus[0]);
-			//global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
-			//global = { static_cast<cl::size_type>(length[osa_iter]), 1, 1 };
-		//}
 		if (DEBUG) {
 			mexPrintBase("global[0] = %u\n", global[0]);
-			//mexPrintBase("local[0] = %u\n", local[0]);
-			//mexPrintBase("local[1] = %u\n", local[1]);
 			mexPrintBase("global[1] = %u\n", global[1]);
 			mexPrintBase("global[2] = %u\n", global[2]);
 			mexPrintBase("erotus[0] = %u\n", erotus[0]);
 			mexPrintBase("erotus[1] = %u\n", erotus[1]);
 			mexPrintBase("global.dimensions() = %u\n", global.dimensions());
-			//mexPrintBase("local.dimensions() = %u\n", local.dimensions());
 			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
 			mexPrintBase("listmode = %u\n", inputScalars.listmode);
 			mexEval();
@@ -2042,9 +2036,6 @@ public:
 		kernelEstimate.setArg(kernelInd++, inputScalars.epps);
 		kernelEstimate.setArg(kernelInd++, d_N[ii]);
 		kernelEstimate.setArg(kernelInd++, no_norm);
-		//if (inputScalars.use_psf) {
-		//	kernelEstimate.setArg(kernelInd++, d_g);
-		//}
 		if (inputScalars.CT)
 			kernelEstimate.setArg(kernelInd++, inputScalars.flat);
 		status = CLCommandQueue[0].enqueueNDRangeKernel(kernelEstimate, cl::NDRange(), global, localPrior, NULL);
@@ -2071,7 +2062,7 @@ public:
 	/// <param name="length the number of measurements/projection/sinograms per subset"></param>
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <returns></returns>
-	inline int forwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const std::vector<int64_t>&length, const uint64_t m_size, const int32_t ii = 0, const int uu = 0) {
+	inline int forwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, const std::vector<int64_t>& length, const uint64_t m_size, const int32_t ii = 0, const int uu = 0) {
 		if (inputScalars.verbose >= 3 || DEBUG)
 			mexPrintVar("Starting forward projection for projector type = ", inputScalars.FPType);
 		kernelIndFPSubIter = kernelIndFP;
@@ -2086,6 +2077,11 @@ public:
 			if (erotus[0] > 0)
 				erotus[0] = (local_size[0] - erotus[0]);
 			global = { static_cast<cl::size_type>(length[osa_iter] + erotus[0]), 1, 1 };
+		}
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
 		}
 
 		if (DEBUG) {
@@ -2169,12 +2165,12 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			if ((inputScalars.CT || inputScalars.PET || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.maskFP) {
 				if (inputScalars.useBuffers) {
 					int subset = 0;
@@ -2187,7 +2183,7 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
@@ -2220,7 +2216,7 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_scat[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, no_norm);
 			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<cl_ulong>(m_size));
@@ -2234,7 +2230,7 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			OCL_CHECK(status, "\n", -1);
 			status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os);
@@ -2259,7 +2255,7 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]));
 		}
@@ -2280,7 +2276,7 @@ public:
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP3[osa_iter]);
 					else
 						status = kernelFP.setArg(kernelIndFPSubIter++, d_maskFP);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0) {
 				status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
@@ -2290,12 +2286,12 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[0]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_x[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[osa_iter]);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, d_z[inputScalars.osa_iter0]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.normalization_correction)
 				kernelFP.setArg(kernelIndFPSubIter++, d_norm[osa_iter]);
 			if (inputScalars.scatter)
@@ -2337,7 +2333,7 @@ public:
 				status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_im);
 			else
 				status = kernelFP.setArg(kernelIndFPSubIter++, vec_opencl.d_image_os);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_output));
 			getErrorString(kernelFP.setArg(kernelIndFPSubIter++, no_norm));
 			status = kernelFP.setArg(kernelIndFPSubIter++, static_cast<cl_ulong>(m_size));
@@ -2353,8 +2349,11 @@ public:
 		}
 		status = CLCommandQueue[0].finish();
 		OCL_CHECK(status, "\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("Forward projection completed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("Forward projection completed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2368,7 +2367,7 @@ public:
 	/// <param name="m_size for projector types 1-3, the total number of LORs"></param>
 	/// <param name="compSens if true, computes the sensitivity image as well"></param>
 	/// <returns></returns>
-	inline int backwardProjection(const scalarStruct & inputScalars, Weighting & w_vec, const uint32_t osa_iter, const std::vector<int64_t>&length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0, 
+	inline int backwardProjection(const scalarStruct& inputScalars, Weighting& w_vec, const uint32_t osa_iter, const std::vector<int64_t>& length, const uint64_t m_size, const bool compSens = false, const int32_t ii = 0, const int uu = 0,
 		int ee = -1) {
 		if (inputScalars.verbose >= 3)
 			mexPrintVar("Starting backprojection for projector type = ", inputScalars.BPType);
@@ -2381,14 +2380,19 @@ public:
 			kernelBP = kernelSensList;
 			kernelIndBPSubIter = kernelIndSens;
 		}
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 			if ((inputScalars.CT || inputScalars.SPECT || inputScalars.PET) && inputScalars.listmode == 0)
 				global = { inputScalars.nRowsD + erotus[0], inputScalars.nColsD + erotus[1], static_cast<size_t>(length[osa_iter]) };
 			else if (inputScalars.listmode > 0 && compSens)
 				if (inputScalars.nLayers > 1)
-					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], 
-					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers)};
+					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1],
+					static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.nLayers) };
 				else
 					global = { static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[0], static_cast<size_t>(inputScalars.det_per_ring) + erotusSens[1], static_cast<size_t>(inputScalars.rings) * static_cast<size_t>(inputScalars.rings) };
 			else {
@@ -2448,7 +2452,7 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP3[osa_iter]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 				}
 				if (inputScalars.maskBP) {
 					if (inputScalars.useBuffers)
@@ -2458,26 +2462,17 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-                    OCL_CHECK(status, "\n", -1);
-					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-						if (inputScalars.useBuffers)
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
-						else
-							if (inputScalars.maskBPZ > 1)
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-							else
-								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-                        OCL_CHECK(status, "\n", -1);
-					}
+					OCL_CHECK(status, "\n", -1);
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
-            OCL_CHECK(status, "\n", -1);
+			OCL_CHECK(status, "\n", -1);
 			if (compSens) {
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
 				OCL_CHECK(status, "\n", -1);
-				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
+				OCL_CHECK(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]), "\n", -1);
+				//getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]));
 				getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
 			}
 			else {
@@ -2485,7 +2480,7 @@ public:
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 				else
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 				if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 				else if (inputScalars.indexBased && inputScalars.listmode > 0)
@@ -2562,7 +2557,7 @@ public:
 					status = CLCommandQueue[0].enqueueCopyBufferToImage(d_output, d_inputImage, 0, origin, region);
 					OCL_CHECK(status, "Image copy failed\n", -1);
 					status = CLCommandQueue[0].finish();
-                    OCL_CHECK(status, "Queue finish failed after image copy\n", -1);
+					OCL_CHECK(status, "Queue finish failed after image copy\n", -1);
 				}
 				if (inputScalars.BPType == 4)
 					if (!inputScalars.largeDim)
@@ -2628,7 +2623,7 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_output);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_inputImage);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					if (inputScalars.CT && inputScalars.DSC > 0.f) {
 						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_angle));
 						getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.DSC));
@@ -2642,12 +2637,12 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					if (compSens)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 					OCL_CHECK(status, "\n", -1);
 				}
@@ -2659,12 +2654,12 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					if (compSens)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_inputImage);
 					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, vec_opencl.d_rhs_os[uu]);
@@ -2738,7 +2733,7 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[0]);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_x[osa_iter]);
-                    OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 					if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT || (inputScalars.listmode > 0 && !inputScalars.indexBased)))
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[osa_iter]);
 					else if (inputScalars.indexBased && inputScalars.listmode > 0)
@@ -2777,7 +2772,7 @@ public:
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_norm[osa_iter]);
 				if (inputScalars.scatter)
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_scat[osa_iter]);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 				status = kernelBP.setArg(kernelIndBPSubIter++, d_Summ[ee]);
 				OCL_CHECK(status, "\n", -1);
 			}
@@ -2791,7 +2786,7 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 					else
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-                OCL_CHECK(status, "\n", -1);
+				OCL_CHECK(status, "\n", -1);
 				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
 					if (inputScalars.useBuffers)
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
@@ -2800,7 +2795,7 @@ public:
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
 						else
 							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-                OCL_CHECK(status, "\n", -1);
+					OCL_CHECK(status, "\n", -1);
 				}
 			}
 			if (inputScalars.CT)
@@ -2823,8 +2818,11 @@ public:
 		if (inputScalars.listmode > 0 && compSens) {
 			kernelBP = kernelApu;
 		}
-		if (DEBUG || inputScalars.verbose >= 3)
-			mexPrint("Backprojection computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("Backprojection completed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2875,6 +2873,11 @@ public:
 		cl_uint kernelIndMed = 0U;
 		uint64_t erotus[2] = { gSize[0] % localPrior[0], gSize[1] % localPrior[1] };
 		cl::NDRange global_size(gSize[0] + (localPrior[0] - erotus[0]), gSize[1] + (localPrior[1] - erotus[1]), gSize[2]);
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		if (DEBUG) {
 			mexPrintBase("global_size[0] = %d\n", global_size[0]);
@@ -2904,8 +2907,11 @@ public:
 		}
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after MRP kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL median kernel computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL MRP kernel computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -2917,17 +2923,36 @@ public:
 	/// <param name="inputScalars various scalar parameters defining the build parameters and what features to use"></param>
 	/// <param name="w_vec specifies some of the special options/parameters used"></param>
 	/// <returns></returns>
-	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, const float beta) {
+	inline int computeNLM(const scalarStruct& inputScalars, Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL NLM gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		const cl_int3 searchWindow = { static_cast<cl_int>(w_vec.Ndx) , static_cast<cl_int>(w_vec.Ndy) , static_cast<cl_int>(w_vec.Ndz) };
 		const cl_int3 patchWindow = { static_cast<cl_int>(w_vec.Nlx) , static_cast<cl_int>(w_vec.Nly) , static_cast<cl_int>(w_vec.Nlz) };
-		//const cl_int3 N = { static_cast<cl_int>(inputScalars.Nx), static_cast<cl_int>(inputScalars.Ny), static_cast<cl_int>(inputScalars.Nz) };
 		cl_uint kernelIndNLM = 0ULL;
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
 		if (inputScalars.largeDim)
-			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz - w_vec.Nlz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Nlz + w_vec.Ndz, Nz };
 		if (DEBUG) {
 			mexPrintBase("w_vec.Ndx = %u\n", w_vec.Ndx);
 			mexPrintBase("w_vec.Ndy = %u\n", w_vec.Ndy);
@@ -2944,6 +2969,11 @@ public:
 			mexPrintBase("localPrior[0] = %u\n", localPrior[0]);
 			mexPrintBase("localPrior[1] = %u\n", localPrior[1]);
 			mexPrintBase("localPrior[2] = %u\n", localPrior[2]);
+			mexPrintBase("Nz = %u\n", Nz);
+			mexPrintBase("kk = %u\n", kk);
+			mexPrintBase("nOffset.x = %u\n", nOffset.s0);
+			mexPrintBase("nOffset.y = %u\n", nOffset.s1);
+			mexPrintBase("d_N[0].z = %u\n", d_N[0].s2);
 			mexPrintBase("w_vec.h2 = %f\n", w_vec.h2);
 			mexPrintBase("w_vec.RDP_gamma = %f\n", w_vec.RDP_gamma);
 			mexPrintBase("useImages = %d\n", inputScalars.useImages);
@@ -2983,13 +3013,20 @@ public:
 				kernelNLM.setArg(kernelIndNLM++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelNLM.setArg(kernelIndNLM++, d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kernelNLM.setArg(kernelIndNLM++, nOffset);
 		 //Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelNLM, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the NLM kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed after NLM kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL NLM gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL NLM gradient computed in %f seconds\n", tDiff);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3002,13 +3039,35 @@ public:
 	/// <param name="gamma controls the shape of the prior"></param>
 	/// <param name="weights_RDP (UNUSED) the voxel weights for RDP"></param>
 	/// <returns></returns>
-	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const float beta, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
+	inline int computeRDP(const scalarStruct& inputScalars, const float gamma, const Weighting& w_vec, const float beta, const int kk = 0, const bool RDPLargeNeighbor = false, const bool useRDPRef = false) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL RDP gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed before RDP kernel\n", -1);
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, NzOrig };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { (Nz - NzOrig) / 2, (Nz + NzOrig) / 2 };
+		else if (inputScalars.largeDim)
+			nOffset = { Nz - NzOrig, Nz };
 		cl_uint kernelIndRDP = 0ULL;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
@@ -3053,13 +3112,20 @@ public:
 				else
 					kernelRDP.setArg(kernelIndRDP++, d_RDPref);
 		}
+		if (inputScalars.largeDim)
+			kernelRDP.setArg(kernelIndRDP++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelRDP, cl::NullRange, globalPrior, localPrior);
 		OCL_CHECK(status, "Failed to launch the RDP kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
 		OCL_CHECK(status, "Queue finish failed after RDP kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL RDP gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL RDP gradient computed in %f seconds\n", tDiff);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3074,11 +3140,33 @@ public:
 	/// <param name="c constant controlling the approximate threshold of transition between low and high contrast regions"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const float beta) {
+	inline int computeGGMRF(const scalarStruct& inputScalars, const float p, const float q, const float c, const float pqc, const Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL GGMRF gradient computation");
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		CLCommandQueue[0].finish();
 		cl_int status = CL_SUCCESS;
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		cl_uint kernelIndGGMRF = 0ULL;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
@@ -3116,13 +3204,20 @@ public:
 				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior3);
 			else
 				kernelGGMRF.setArg(kernelIndGGMRF++, d_maskPrior);
+		if (inputScalars.largeDim)
+			kernelGGMRF.setArg(kernelIndGGMRF++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelGGMRF, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the GGMRF kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after GGMRF kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL GGMRF gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL GGMRF gradient computed in %f seconds\n", tDiff);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3478,18 +3573,40 @@ public:
 	/// <param name="sigma adjustable weighting parameter"></param>
 	/// <param name="beta regularization parameter"></param>
 	/// <returns></returns>
-	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const float beta) {
+	inline int hyperGradient(const scalarStruct& inputScalars, const float sigma, const Weighting& w_vec, const float beta, const int kk = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL hyperbolic prior gradient computation");
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		if (DEBUG) {
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("beta = %f\n", beta);
 			mexEval();
 		}
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - w_vec.Ndz };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz - w_vec.Ndz };
+		else if (inputScalars.largeDim)
+			nOffset = { w_vec.Ndz, Nz };
 		cl_uint kernelIndHyper = 0ULL;
 		kernelHyper.setArg(kernelIndHyper++, d_W);
 		if (inputScalars.useImages) {
@@ -3511,13 +3628,20 @@ public:
 				kernelHyper.setArg(kernelIndHyper++, d_maskPrior);
 		if (inputScalars.eFOV && !inputScalars.multiResolution)
 			kernelHyper.setArg(kernelIndHyper++, d_eFOVIndices);
+		if (inputScalars.largeDim)
+			kernelHyper.setArg(kernelIndHyper++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelHyper, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the hyperbolic prior gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after hyperbolic prior gradient kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL hyperbolic prior gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL hyperbolic prior gradient computed in %f seconds\n", tDiff);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3530,12 +3654,17 @@ public:
 	/// <param name="sigma various adjustable parameters for some of the priors"></param>
 	/// <param name="smooth smoothing value that allows differentiation"></param>
 	/// <returns></returns>
-	inline int TVGradient(const scalarStruct& inputScalars, const float sigma, const float smooth, const float beta, const float C = 0.f, const int type = 0) {
+	inline int TVGradient(const scalarStruct& inputScalars, const float sigma, const float smooth, const Weighting& w_vec, const float beta, const int kk = 0, const float C = 0.f, const int type = 0) {
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL TV gradient computation");
 		cl_int status = CL_SUCCESS;
 		if (inputScalars.largeDim)
 			globalPrior = { globalPrior[0], globalPrior[1], inputScalars.Nz[0] };
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		//cl::detail::size_t_array region = { inputScalars.Nx[0], inputScalars.Ny[0], inputScalars.Nz[0] * inputScalars.nRekos };
 		if (DEBUG) {
@@ -3544,6 +3673,23 @@ public:
 			mexPrintBase("beta = %f\n", beta);
 			mexEval();
 		}
+		uint32_t Nz, NzOrig;
+		cl_uint2 nOffset;
+		if (inputScalars.largeDim)
+			Nz = inputScalars.lDimStruct.NzPr[kk];
+		else
+			Nz = inputScalars.Nz[0];
+		if (inputScalars.largeDim) {
+			globalPrior = { globalPrior[0], globalPrior[1], Nz };
+			NzOrig = d_N[0].s2;
+			d_N[0].s2 = Nz;
+		}
+		if (kk == 0 && inputScalars.largeDim)
+			nOffset = { 0, Nz - 1 };
+		else if (kk < inputScalars.subsetsUsed - 1 && kk > 0 && inputScalars.largeDim)
+			nOffset = { 1, Nz - 1 };
+		else if (inputScalars.largeDim)
+			nOffset = { 1, Nz };
 		cl_uint kernelIndTV = 0ULL;
 		kernelTV.setArg(kernelIndTV++, d_W);
 		if (inputScalars.useImages) {
@@ -3568,13 +3714,20 @@ public:
 			kernelTV.setArg(kernelIndTV++, C);
 		if (type > 0)
 			kernelTV.setArg(kernelIndTV++, d_refIm);
+		if (inputScalars.largeDim)
+			kernelTV.setArg(kernelIndTV++, nOffset);
 		// Compute the kernel
 		status = (CLCommandQueue[0]).enqueueNDRangeKernel(kernelTV, cl::NullRange, globalPrior, localPrior);
         OCL_CHECK(status, "Failed to launch the TV gradient kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after TV gradient kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL TV gradient computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL TV gradient computed in %f seconds\n", tDiff);
+		}
+		if (inputScalars.largeDim)
+			d_N[0].s2 = NzOrig;
 		return 0;
 	}
 
@@ -3583,6 +3736,11 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL Poisson update (PKMA/MBSREM/BSREM) computation");
 		cl_int status = CL_SUCCESS;
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
 		status = (CLCommandQueue[0]).finish();
 		cl_uint kernelIndPoisson = 0ULL;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
@@ -3609,8 +3767,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the Poisson update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after Poisson update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL Poisson update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL Poisson update computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
@@ -3618,6 +3779,12 @@ public:
 		if (inputScalars.verbose >= 3)
 			mexPrint("Starting OpenCL PDHG update computation");
 		cl_int status = CL_SUCCESS;
+		std::chrono::steady_clock::time_point tStart;
+		std::chrono::steady_clock::time_point tEnd;
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tStart = std::chrono::steady_clock::now();
+		}
+		status = (CLCommandQueue[0]).finish();
 		cl_uint kernelIndPDHG = 0ULL;
 		global = { inputScalars.Nx[ii] + erotusPDHG[0][ii], inputScalars.Ny[ii] + erotusPDHG[1][ii], inputScalars.Nz[ii] };
 		if (DEBUG) {
@@ -3644,8 +3811,11 @@ public:
 		OCL_CHECK(status, "Failed to launch the PDHG update kernel\n", -1);
 		status = (CLCommandQueue[0]).finish();
         OCL_CHECK(status, "Queue finish failed after PDHG update kernel\n", -1);
-		if (inputScalars.verbose >= 3)
-			mexPrint("OpenCL PDHG update computed");
+		if (DEBUG || inputScalars.verbose >= 3) {
+			tEnd = std::chrono::steady_clock::now();
+			const std::chrono::duration<double> tDiff = tEnd - tStart;
+			mexPrintBase("OpenCL PDHG update computed in %f seconds\n", tDiff);
+		}
 		return 0;
 	}
 
