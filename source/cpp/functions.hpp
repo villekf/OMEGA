@@ -2078,7 +2078,7 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 // The initialization steps for LSQR, CGLS, CP and FISTA algorithms
 // Apply PSF blurring if applicable
 inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars,
-	std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, 
+	std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, 
 	const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
 
 	if (MethodList.FISTA || MethodList.FISTAL1) {
@@ -2118,7 +2118,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					mDataApu = mData;
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -2163,7 +2163,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -2199,7 +2199,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mDataApu, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mDataApu, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}

@@ -1165,7 +1165,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Initialize some algorithms, such as the initial steps of LSQR
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					status = initializationStep(w_vec, mData[subIter], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, g, osa_iter, ii);
+					status = initializationStep(w_vec, mData[subIter], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, g, osa_iter, ii);
 					if (status != 0)
 						return -1;
 				}
