@@ -436,7 +436,7 @@ end
 if options.sampling > 1 && ~options.use_raw_data && ~options.precompute_lor
     options.Ndist = options.Ndist / options.sampling;
 end
-if (options.PKMA || options.MBSREM || options.SPS || options.RAMLA || options.BSREM || options.ROSEM || options.ROSEM_MAP || options.MRAMLA) && (options.precondTypeMeas(2) || options.precondTypeImage(6))
+if (options.PKMA || options.MBSREM || options.SPS || options.RAMLA || options.BSREM || options.ROSEM || options.ROSEM_MAP || options.MRAMLA || options.SAGA) && (options.precondTypeMeas(2) || options.precondTypeImage(6))
     if ~isfield(options,'lambdaFiltered')
         options.lambdaFiltered = options.lambda;
     end
