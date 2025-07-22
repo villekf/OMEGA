@@ -33,6 +33,8 @@ def initProjector(self):
     self.NVOXELSFP = 8
     if np.size(self.weights) > 0:
         self.empty_weight = False
+    if self.TOF_bins_used == 0:
+        self.TOF_bins_used = 1
     mDataFound = self.SinM.size > 0
     loadCorrections(self)
     parseInputs(self, mDataFound)
