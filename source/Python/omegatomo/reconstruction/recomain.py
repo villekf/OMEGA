@@ -347,7 +347,6 @@ def reconstructions_main(options):
     from .prepass import prepassPhase
     from .prepass import parseInputs
     from .prepass import loadCorrections
-    from .prepass import sinogramToX
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
