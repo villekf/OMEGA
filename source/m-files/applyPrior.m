@@ -95,6 +95,9 @@ elseif (options.GGMRF)
     %     end
     %     status = proxNLM(vec.im_os[0], options, vec, proj, dU, w_vec, beta);
 end
+if isempty(dU)
+    dU = zeros(size(recApu(:)), options.cType);
+end
 if (options.verbose >= 3 && (options.MRP || options.quad || options.Huber || options.L || options.FMH || options.TV ...
         || options.weighted_mean || options.AD || options.APLS || options.TGV || options.NLM || options.RDP ...
         || options.ProxTV || options.GGMRF))

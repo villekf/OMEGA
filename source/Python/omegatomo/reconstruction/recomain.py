@@ -166,6 +166,7 @@ def transferData(options):
     options.param.useIndexBasedReconstruction = ctypes.c_bool(options.useIndexBasedReconstruction)
     options.param.stochasticSubsetSelection = ctypes.c_bool(options.stochasticSubsetSelection)
     options.param.useTotLength = ctypes.c_bool(options.useTotLength)
+    options.param.useParallelBeam = ctypes.c_bool(options.useParallelBeam)
     options.param.OSEM = ctypes.c_bool(options.OSEM)
     options.param.LSQR = ctypes.c_bool(options.LSQR)
     options.param.CGLS = ctypes.c_bool(options.CGLS)
@@ -456,8 +457,12 @@ def reconstructions_main(options):
         output = np.zeros(options.NxOrig * options.NyOrig * options.NzOrig * options.Nt, dtype=np.float32, order = 'F')
     else:
         output = np.zeros(options.Nx[0].item() * options.Ny[0].item() * options.Nz[0].item() * options.Nt, dtype=np.float32, order = 'F')
+    if options.saveNIter.size > 0:
+        output = np.tile(output, options.saveNIter.size + 1)
+    elif options.save_iter:
+        output = np.tile(output, options.Niter + 1)
     if options.storeFP:
-        FPOutput = np.zeros(options.SinM.size, dtype=np.float32, order = 'F')
+        FPOutput = np.zeros(options.SinM.size * options.Niter, dtype=np.float32, order = 'F')
     else:
         FPOutput = np.empty(0, dtype=np.float32)
     if options.storeResidual:
@@ -518,16 +523,20 @@ def reconstructions_main(options):
     FPOutputP = FPOutput.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
     c_lib = ctypes.CDLL(libname)
     c_lib.omegaMain(options.param, ctypes.c_char_p(inStr), SinoP, outputP, FPOutputP, residualP)
-    if options.useMultiResolutionVolumes and not options.storeMultiResolution:
-        output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig), order = 'F')
-    elif not options.storeMultiResolution:
-        output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0]), order = 'F')
-    if options.subsets == 1 and options.storeFP == True:
-        FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
-    toc = time.perf_counter()
-    if (options.verbose > 0):
-        print(f"Reconstruction took {toc - tic:0.4f} seconds")
-    if options.storeResidual:
-        return output, FPOutput, residual
-    else:
-        return output, FPOutput
+    try:
+        if options.useMultiResolutionVolumes and not options.storeMultiResolution:
+            output = output.reshape((options.NxOrig, options.NyOrig, options.NzOrig, -1), order = 'F')
+        elif not options.storeMultiResolution and options.Nt == 1:
+            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], -1), order = 'F')
+        else:
+            output = output.reshape((options.Nx[0], options.Ny[0], options.Nz[0], options.Nt), order = 'F')
+        if options.subsets == 1 and options.storeFP == True:
+            FPOutput = FPOutput.reshape((options.nRowsD, options.nColsD, options.nProjections, options.TOF_bins), order = 'F')
+    finally:
+        toc = time.perf_counter()
+        if (options.verbose > 0):
+            print(f"Reconstruction took {toc - tic:0.4f} seconds")
+        if options.storeResidual:
+            return output, FPOutput, residual
+        else:
+            return output, FPOutput

@@ -23,6 +23,11 @@ if ~isfield(options, 'eFOVLength')
 else
     eFOVLength = options.eFOVLength;
 end
+if ~isfield(options, 'useExtrapolationWeighting')
+    weighting = false;
+else
+    weighting = options.useExtrapolationWeighting;
+end
 if options.useEFOV
     if ~isfield(options, 'transaxialEFOV') || ~options.transaxialEFOV
         if ~isfield(options, 'axialEFOV') || ~options.axialEFOV
@@ -60,10 +65,10 @@ if options.useExtrapolation
             testi = apu(21:end-20,21:end-20);
             testi(testi == 0) = NaN;
             apu(21:end-20,21:end-20) = testi;
-%             apuG = gpuArray(apu);
-%             tic
+            %             apuG = gpuArray(apu);
+            %             tic
             testi2 = inpaint_nans(apu,1);
-%             toc
+            %             toc
             testi2(testi2 < 0) = 0;
             testi2(Pn + 1 : size(options.SinM,1) + Pn, Pn + 1 : size(options.SinM,2) + Pn) = log(options.flat ./ options.SinM(:,:,kk));
             Vq(:,:,kk) = testi2;
@@ -90,36 +95,44 @@ if options.useExtrapolation
         newProj(1 + erotus1 / 2 : size(options.SinM,1) + erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2,:) = options.SinM;
         if options.transaxialExtrapolation
             apu = repmat(options.SinM(1,:,:), erotus1 / 2, 1, 1);
-            apu = log(single(options.flat) ./ apu);
-            pituus = round(size(apu,1) / (6/6));
-            pituus2 = size(apu,1) - pituus;
-            % apu = apu .* sin(linspace(0, pi/2, size(apu,1)))';
-            apu = apu .* [zeros(pituus2, 1, class(apu));log(linspace(1, exp(1), pituus))'];
-            apu = single(options.flat) ./ exp(apu);
-            % apu = flipud(options.SinM(1:erotus1/2,:,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                pituus = round(size(apu,1) / (6/6));
+                pituus2 = size(apu,1) - pituus;
+                % apu = apu .* sin(linspace(0, pi/2, size(apu,1)))';
+                apu = apu .* [zeros(pituus2, 1, class(apu));log(linspace(1, exp(1), pituus))'];
+                apu = single(options.flat) ./ exp(apu);
+                % apu = flipud(options.SinM(1:erotus1/2,:,:));
+            end
             newProj(1: erotus1 / 2, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
             apu = repmat(options.SinM(end,:,:), erotus1 / 2, 1, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
-            apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
-            apu = single(options.flat) ./ exp(apu);
-            % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
+                apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
+                apu = single(options.flat) ./ exp(apu);
+                % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+            end
             newProj(size(options.SinM,1) + erotus1 / 2 + 1 : end, 1 + erotus2 / 2 : size(options.SinM,2) + erotus2 / 2, :) = apu;
         end
         if options.axialExtrapolation
             apu = repmat(newProj(:,erotus2 / 2 + 1,:), 1, erotus2 / 2, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(0, pi/2, size(apu,2)));
-            apu = apu .* log(linspace(1, exp(1), size(apu,2)));
-            apu = single(options.flat) ./ exp(apu);
-            % apu = fliplr(newProj(:,erotus2/2 + 1 : erotus2,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(0, pi/2, size(apu,2)));
+                apu = apu .* log(linspace(1, exp(1), size(apu,2)));
+                apu = single(options.flat) ./ exp(apu);
+                % apu = fliplr(newProj(:,erotus2/2 + 1 : erotus2,:));
+            end
             newProj(:, 1: erotus2 / 2, :) = apu;
             apu = repmat(newProj(:,size(options.SinM,2) + erotus2 / 2,:), 1, erotus2 / 2, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(pi/2, 0, size(apu,2)));
-            apu = apu .* log(linspace(exp(1), 1, size(apu,2)));
-            apu = single(options.flat) ./ exp(apu);
-            % apu = fliplr(newProj(:,size(newProj,2) - erotus2 + 1:size(newProj,2) - erotus2/2,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(pi/2, 0, size(apu,2)));
+                apu = apu .* log(linspace(exp(1), 1, size(apu,2)));
+                apu = single(options.flat) ./ exp(apu);
+                % apu = fliplr(newProj(:,size(newProj,2) - erotus2 + 1:size(newProj,2) - erotus2/2,:));
+            end
             newProj(:, size(options.SinM,2) + erotus2 / 2 + 1 : end, :) = apu;
         end
     end
@@ -134,36 +147,44 @@ if options.useExtrapolation
         newProj(1 + erotus1 / 2 : size(options.ScatterC,1) + erotus1 / 2, 1 + erotus2 / 2 : size(options.ScatterC,2) + erotus2 / 2,:) = options.ScatterC;
         if options.transaxialExtrapolation
             apu = repmat(options.ScatterC(1,:,:), erotus1 / 2, 1, 1);
-            apu = log(single(options.flat) ./ apu);
-            pituus = round(size(apu,1) / (6/6));
-            pituus2 = size(apu,1) - pituus;
-            % apu = apu .* sin(linspace(0, pi/2, size(apu,1)))';
-            apu = apu .* [zeros(pituus2, 1, class(apu));log(linspace(1, exp(1), pituus))'];
-            apu = single(options.flat) ./ exp(apu);
-            % apu = flipud(options.SinM(1:erotus1/2,:,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                pituus = round(size(apu,1) / (6/6));
+                pituus2 = size(apu,1) - pituus;
+                % apu = apu .* sin(linspace(0, pi/2, size(apu,1)))';
+                apu = apu .* [zeros(pituus2, 1, class(apu));log(linspace(1, exp(1), pituus))'];
+                apu = single(options.flat) ./ exp(apu);
+                % apu = flipud(options.SinM(1:erotus1/2,:,:));
+            end
             newProj(1: erotus1 / 2, 1 + erotus2 / 2 : size(options.ScatterC,2) + erotus2 / 2, :) = apu;
             apu = repmat(options.ScatterC(end,:,:), erotus1 / 2, 1, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
-            apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
-            apu = single(options.flat) ./ exp(apu);
-            % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(pi/2, 0, size(apu,1)))';
+                apu = apu .* [log(linspace(exp(1), 1, pituus))';zeros(pituus2, 1, class(apu))];
+                apu = single(options.flat) ./ exp(apu);
+                % apu = flipud(options.SinM(size(options.SinM,1) - erotus1/2 + 1:end,:,:));
+            end
             newProj(size(options.ScatterC,1) + erotus1 / 2 + 1 : end, 1 + erotus2 / 2 : size(options.ScatterC,2) + erotus2 / 2, :) = apu;
         end
         if options.axialExtrapolation
             apu = repmat(newProj(:,erotus2 / 2 + 1,:), 1, erotus2 / 2, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(0, pi/2, size(apu,2)));
-            apu = apu .* log(linspace(1, exp(1), size(apu,2)));
-            apu = single(options.flat) ./ exp(apu);
-            % apu = fliplr(newProj(:,erotus2/2 + 1 : erotus2,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(0, pi/2, size(apu,2)));
+                apu = apu .* log(linspace(1, exp(1), size(apu,2)));
+                apu = single(options.flat) ./ exp(apu);
+                % apu = fliplr(newProj(:,erotus2/2 + 1 : erotus2,:));
+            end
             newProj(:, 1: erotus2 / 2, :) = apu;
             apu = repmat(newProj(:,size(options.ScatterC,2) + erotus2 / 2,:), 1, erotus2 / 2, 1);
-            apu = log(single(options.flat) ./ apu);
-            % apu = apu .* sin(linspace(pi/2, 0, size(apu,2)));
-            apu = apu .* log(linspace(exp(1), 1, size(apu,2)));
-            apu = single(options.flat) ./ exp(apu);
-            % apu = fliplr(newProj(:,size(newProj,2) - erotus2 + 1:size(newProj,2) - erotus2/2,:));
+            if weighting
+                apu = log(single(options.flat) ./ apu);
+                % apu = apu .* sin(linspace(pi/2, 0, size(apu,2)));
+                apu = apu .* log(linspace(exp(1), 1, size(apu,2)));
+                apu = single(options.flat) ./ exp(apu);
+                % apu = fliplr(newProj(:,size(newProj,2) - erotus2 + 1:size(newProj,2) - erotus2/2,:));
+            end
             newProj(:, size(options.ScatterC,2) + erotus2 / 2 + 1 : end, :) = apu;
         end
         options.ScatterC = newProj;

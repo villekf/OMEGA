@@ -11,8 +11,12 @@
   - Should be more memory efficient than the previous version
   
 - Most new features will be restricted to implementation 2 now and in the future (for Python this is the only one available)
+  - All other implementations will only be partially supported from now on
+  - This means that testing will be limited, but potential issues will be fixed
   
 ### New features
+
+- OMEGA can now be installed in Python through pip using `pip install omegatomo`
 
 - Added support for projector type 2 for SPECT
 
@@ -162,6 +166,8 @@
 - If the multi-resolution volumes were previously extracted (by setting CELL true), but no multi-resolution volumes were present an error was thrown. Now the volumes are extracted only if they exist
 
 - ASD-POCS should now work in all cases
+
+- Fixed OSL-COSEM and OSL-ACOSEM when using implementation 2
 
 ## OMEGA v2.0.0
 

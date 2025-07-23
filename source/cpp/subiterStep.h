@@ -202,7 +202,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 			}
 			float uu;
 			vec.im_os[ii] = COSEM(vec.im_os[ii], vec.C_co, w_vec.D[ii], w_vec.h_ACOSEM, 1u);
-			status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, g);
+			status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, pituus, g);
 			if (inputScalars.CT)
 				vec.im_os[ii] *= (w_vec.ACOSEM_rhs / uu);
 			else
@@ -267,7 +267,7 @@ inline int computeOSEstimates(AF_im_vectors& vec, Weighting& w_vec, const RecMet
 				vec.im_os[ii] = COSEM(vec.im_os[ii], vec.C_co, w_vec.D[ii], w_vec.h_ACOSEM, MethodList.OSLCOSEM);
 			if (MethodList.OSLCOSEM == 1u) {
 				float uu = 0.f;
-				status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, g);
+				status = computeACOSEMWeight(inputScalars, length, uu, osa_iter, mData, m_size, w_vec, vec, proj, subSum, pituus, g);
 				if (status != 0)
 					return -1;
 				if (DEBUG) {

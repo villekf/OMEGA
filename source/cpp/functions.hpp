@@ -737,14 +737,13 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	if (status != 0) {
 		return -1;
 	}
-	 if (DEBUG)
+	if (DEBUG)
 		mexPrint("Backprojection output transfered\n");
 #ifndef CPU
 	if (inputScalars.meanBP && inputScalars.BPType == 5)
 		proj.d_meanBP = transferAF(meanBP);
 	status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, compSens, ii);
 #else
-
 	 status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, pituus, compSens, ii);
 #endif
 	vec.rhs_os[ii].unlock();
@@ -2085,7 +2084,7 @@ inline void deblur(af::array& vec, const af::array& g, const scalarStruct& input
 // The initialization steps for LSQR, CGLS, CP and FISTA algorithms
 // Apply PSF blurring if applicable
 inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors& vec, ProjectorClass& proj, scalarStruct& inputScalars,
-	std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, 
+	std::vector<int64_t> length, uint64_t m_size, const RecMethods& MethodList, uint32_t curIter, af::array& meanBP, const int64_t* pituus, 
 	const af::array& g = af::constant(0.f, 1, 1), const uint32_t subIter = 0, const int ii = 0) {
 
 	if (MethodList.FISTA || MethodList.FISTAL1) {
@@ -2125,7 +2124,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 					mDataApu = mData;
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -2170,7 +2169,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mData, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mData, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -2206,7 +2205,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 				if (inputScalars.BPType == 5) {
 					computeIntegralImage(inputScalars, w_vec, length[0], mDataApu, meanBP);
 				}
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mDataApu, 0, length, m_size, meanBP, g, proj, false, ii);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, mDataApu, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 				if (status != 0) {
 					return -1;
 				}
@@ -2268,7 +2267,7 @@ inline int initializationStep(Weighting& w_vec, af::array& mData, AF_im_vectors&
 
 // Compute the specific weight needed by ACOSEM
 inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>& length, float& uu, uint32_t osa_iter, const af::array& mData,
-	uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const int64_t subSum, const af::array& g = af::constant(0.f, 1, 1)) {
+	uint64_t m_size, Weighting& w_vec, AF_im_vectors& vec, ProjectorClass& proj, const int64_t subSum, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1)) {
 	if (inputScalars.verbose >= 3)
 		mexPrint("Computing ACOSEM weight");
 	int status = 0;
@@ -2280,7 +2279,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 		else
 			outputFP = af::constant(0.f, m_size);
 		af::sync();
-		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj);
+		status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, g, m_size, proj, 0, pituus);
 		af::sync();
 		if (status != 0)
 			return -1;
@@ -2300,7 +2299,7 @@ inline int computeACOSEMWeight(scalarStruct& inputScalars, std::vector<int64_t>&
 
 // The power method
 inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector<int64_t>& length, ProjectorClass& proj,
-	AF_im_vectors& vec, const RecMethods& MethodList, const af::array& g = af::constant(0.f, 1, 1), float* F = nullptr, const float* atten = nullptr) {
+	AF_im_vectors& vec, const RecMethods& MethodList, const int64_t* pituus, const af::array& g = af::constant(0.f, 1, 1), float* F = nullptr, const float* atten = nullptr) {
 	int status = 0;
 	std::vector<af::array> Summ;
 	af::array meanBP;
@@ -2343,7 +2342,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					outputFP = af::constant(0.f, m_size);
 				else
 					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
-				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
+				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0, pituus);
 			}
 			af::sync();
 			if (status != 0)
@@ -2359,7 +2358,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			if (inputScalars.projector_type == 6)
 				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, 0);
 			else
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0, pituus);
 			af::sync();
 			if (status != 0)
 				return -1;
@@ -2397,7 +2396,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
+						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii, pituus);
 					}
 					af::sync();
 					if (status != 0)
@@ -2415,7 +2414,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (inputScalars.projector_type == 6)
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
 					else
-						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, ii);
+						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 					af::sync();
 					if (status != 0)
 						return -1;
@@ -2459,7 +2458,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 				}
 				else
 					vec.im_os[0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost);
-				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
+				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0, pituus);
 				if (status != 0)
 					return -1;
 				af::sync();
@@ -2472,7 +2471,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			for (int ii = 0; ii < inputScalars.subsets; ii++) {
 				largeDimFirst(inputScalars, proj, ii);
 				vec.im_os[0] = af::array(inputScalars.lDimStruct.imDim[ii], &F[inputScalars.lDimStruct.cumDim[ii]], afHost);
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0, pituus);
 				af::sync();
 				if (status != 0)
 					return -1;
@@ -2531,7 +2530,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					outputFP = af::constant(0.f, m_size);
 				else
 					outputFP = af::constant(0.f, m_size * inputScalars.nBins);
-				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0);
+				status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, 0, pituus);
 			}
 			af::sync();
 			if (status != 0)
@@ -2548,7 +2547,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 			if (inputScalars.projector_type == 6)
 				backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, 0);
 			else
-				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0);
+				status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, 0, pituus);
 			af::sync();
 			if (status != 0)
 				return -1;
@@ -2583,7 +2582,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 						outputFP = af::flat(outputFP);
 					}
 					else {
-						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii);
+						status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, g, m_size, proj, ii, pituus);
 					}
 					af::sync();
 					if (status != 0)
@@ -2602,7 +2601,7 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 					if (inputScalars.projector_type == 6)
 						backprojectionType6(outputFP, w_vec, vec, inputScalars, length[0], 0, proj, 0, 0, 0, 0, ii);
 					else
-						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, ii);
+						status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, 0, length, m_size, meanBP, g, proj, false, ii, pituus);
 					af::sync();
 					if (status != 0)
 						return -1;

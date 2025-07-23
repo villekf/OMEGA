@@ -308,6 +308,7 @@ struct inputStruct {
     bool stochasticSubsetSelection = false;
     // Use the total ray length when computing probability in PET and SPECT
     bool useTotLength = true;
+    bool useParallelBeam = false;
     // Compute the selected algorithm/prior
     bool OSEM = false;
     bool LSQR = false;
@@ -820,6 +821,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.useExtendedFOV = options.useEFOV;
     if (inputScalars.useExtendedFOV)
         inputScalars.eFOV = options.eFOV > 1;
+    inputScalars.useParallelBeam = options.useParallelBeam;
     inputScalars.NxOrig = options.NxOrig;
     inputScalars.NyOrig = options.NyOrig;
     inputScalars.NzOrig = options.NzOrig;

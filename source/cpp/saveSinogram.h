@@ -23,13 +23,13 @@
 #include <thread>
 
 inline void mexPrint(const char* str) {
-#ifdef MATLAB
-	mexPrintf("%s\n", str);
-	mexEvalString("pause(.0001);");
-#else
+//#ifdef MATLAB
+//	mexPrintf("%s\n", str);
+//	mexEvalString("pause(.0001);");
+//#else
 	fprintf(stdout, "%s\n", str);
 	fflush(stdout);
-#endif
+//#endif
 }
 
 
@@ -189,7 +189,7 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 			detWPseudo, rings, binN, nDistSide, swap, tPoint, layer, nLayers);
 		if (indeksi >= TOFSize * nLayers * Nt) {
 			mexPrint("Sinogram index is larger than the maximum possible! Aborting!");
-			break;
+			continue;
 		}
 		if (indeksi >= 0) {
 			// Trues

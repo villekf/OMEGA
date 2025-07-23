@@ -882,7 +882,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			}
 			// Use power method to compute the tau/primal value, if necessary
 			if ((MethodList.CPType || MethodList.FISTA || MethodList.FISTAL1) && w_vec.tauCP[0] == 0.f)
-				status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, g, apuF);
+				status = powerMethod(inputScalars, w_vec, length, proj, vec, MethodList, pituus, g, apuF);
 			if (status != 0) {
 				return -1;
 			}
@@ -1165,7 +1165,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 
 				// Initialize some algorithms, such as the initial steps of LSQR
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-					status = initializationStep(w_vec, mData[subIter], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, g, osa_iter, ii);
+					status = initializationStep(w_vec, mData[subIter], vec, proj, inputScalars, length, m_size, MethodList, iter, meanBP, pituus, g, osa_iter, ii);
 					if (status != 0)
 						return -1;
 				}
