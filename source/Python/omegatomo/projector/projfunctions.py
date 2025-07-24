@@ -94,11 +94,21 @@ def forwardProjection(self, f, subset = -1):
                 else:
                     apuArr = af.data.moddims(f, self.Nx[ii].item(), self.Ny[ii].item(), self.Nz[ii].item())
                 for kk in range(self.nProjSubset[subset].item()):
-                    kuvaRot = af.image.rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR) # [128, 128, 96]
-                    kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [96, 128, 128]
-                    kuvaRot = af.signal.convolve2(kuvaRot, self.d_gFilter[:, :, :, u1]) # [96, 128, 128]
-                    kuvaRot = kuvaRot[:, :, self.blurPlanes[u1].item():] # [96, 128, 90]
+                    # 1. Rotate the image
+                    kuvaRot = af.image.rotate(apuArr, (-self.swivelAngles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR)
+                    
+                    # 2. Translate the image
+                    
+                    # 3. Process and apply attenuation image
+                    
+                    # 4. Convolve with detector PSF
+                    PSF = af.shift(self.d_gFilter, 0, 0, self.blurPlanes[u1].item())
+                    PSF = PSF[:, :, :self.Nx[ii].item()]
                     kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
+                    kuvaRot = af.signal.convolve2(kuvaRot, PSF)
+                    kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
+                
+                    # 5. Sum
                     kuvaRot = af.data.reorder(af.algorithm.sum(kuvaRot, 0), 1, 2, 0) # [1, 128, 96] -->  [128, 96]
                     y[:, :, kk] += kuvaRot
                     u1 += 1
@@ -120,16 +130,32 @@ def forwardProjection(self, f, subset = -1):
                     else:
                         apuArr = torch.reshape(f, (self.Nz[ii].item(), self.Ny[ii].item(), self.Nx[ii].item()))
                     for kk in range(self.nProjSubset[subset].item()):
-                        kuvaRot = rotate(apuArr, (180-self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
-                        kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
-                        kuvaRot = kuvaRot.unsqueeze(0)
-                        kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2), groups=kuvaRot.shape[1])
+                        # 1. Rotate the image
+                        kuvaRot = rotate(apuArr, (-self.swivelAngles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
+                        kuvaRot = torch.permute(kuvaRot, (2,1,0))
+                        
+                        # 2. Translate the image
+                        
+                        # 3. Process and apply attenuation image
+                        
+                        # 4. Convolve with detector PSF
+                        PSF = self.d_gFilter
+                        PSF = torch.roll(PSF, shifts=(0, 0, self.blurPlanes[u1].item()), dims=(0, 1, 2))
+                        PSF = PSF[:,:,:self.Nx[ii].item()]
+                        PSF = torch.permute(PSF, (2, 0, 1))
+                        PSF = PSF.unsqueeze(1)
+
+                        kuvaRot = kuvaRot.permute((2,0,1)).unsqueeze(0)
+                        kuvaRot = F.conv2d(kuvaRot, PSF, padding=(PSF.shape[2] // 2, PSF.shape[3] // 2), groups=self.Nx[ii].item())
                         kuvaRot = kuvaRot.squeeze(0)
-                        kuvaRot = kuvaRot[self.blurPlanes[u1].item():, :, :]
+                        kuvaRot = torch.permute(kuvaRot, (1, 2, 0))
+                        
+                        # 5. Sum
                         kuvaRot = torch.sum(kuvaRot, 0)
                         kuvaRot = torch.permute(kuvaRot, (1, 0))
                         y[kk, :, :] += kuvaRot
                         u1 += 1
+
                 y = y.ravel()
     else:
         if self.useCUDA:
@@ -731,18 +757,35 @@ def backwardProjection(self, y, subset = -1):
                 else:
                     f = af.data.constant(0, self.Nx[ii].item() * self.Ny[ii].item() * self.Nz[ii].item(), d1 = self.nProjSubset[subset].item())
                 for kk in range(self.nProjSubset[subset].item()):
-                    fApu = af.data.constant(0, self.Nx[ii].item(), d1=self.Ny[ii].item(), d2=self.Nz[ii].item()) # [128, 128, 96]
                     kuvaRot = fProj[:,:,kk] # [128, 96]
-                    kuvaRot = af.data.reorder(kuvaRot, 1, 0, 2) # [96, 128]
-                    kuvaRot = af.signal.convolve2(kuvaRot, self.d_gFilter[:, :, :, u1]) # [96, 128, 128]
-                    kuvaRot = kuvaRot[:,:, self.blurPlanes[u1].item():] # [96, 128, 90]
+                    kuvaRot = af.data.reorder(kuvaRot, 1, 0)
+                    
+                    # 1. Smear the input FP across the image volume
+                    kuvaRot = af.tile(kuvaRot, 1, 1, self.Nx[ii].item())
+                    
+                    # 2. Attenuation correction
+                    # 2.1. Rotate attenuation map
+                    # 2.2. Translate attenuation map
+                    # 2.3. Accumulate attenuation
+                    # 2.4. Multiply each accumulated element by voxel size and exponentiate attenuation
+                    # 2.5. Pointwise multiply with kuvaRot
+                    
+                    # 3. Convolve with detector PSF
+                    PSF = af.shift(self.d_gFilter, 0, 0, self.blurPlanes[u1].item())
+                    PSF = PSF[:, :, :self.Nx[ii].item()]
                     kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
-                    fApu[self.blurPlanes[u1].item():,:,:] = kuvaRot
-                    fApu = af.image.rotate(fApu, (180+self.angles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR)
+                    kuvaRot = af.signal.convolve2(kuvaRot, PSF)
+                    kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
+                    
+                    # 4. Translate the image
+                    
+                    # 5. Rotate the image
+                    kuvaRot = af.data.reorder(kuvaRot, 2, 1, 0) # [90, 128, 96]
+                    kuvaRot = af.image.rotate(kuvaRot, (self.swivelAngles[u1].item())*np.pi/180, method=af.INTERP.BILINEAR)
                     if isinstance(f, list):
-                        f[ii][:, kk] = af.flat(fApu)
+                        f[ii][:, kk] = af.flat(kuvaRot)
                     else:
-                        f[:, kk] = af.flat(fApu)
+                        f[:, kk] = af.flat(kuvaRot)
                     u1 += 1
                 if isinstance(f, list):
                     f[ii] = af.sum(f[ii], 1)
@@ -766,20 +809,42 @@ def backwardProjection(self, y, subset = -1):
                     else:
                         f = torch.zeros((self.nProjSubset[subset].item(), self.Nx[ii].item() * self.Ny[ii].item() * self.Nz[ii].item()), dtype=torch.float32).cuda()
                     for kk in range(self.nProjSubset[subset].item()):
-                        fApu = torch.zeros((self.Nz[ii].item(), self.Ny[ii].item(), self.Nx[ii].item()), dtype=torch.float32).cuda()
                         kuvaRot = fProj[kk,:,:]
-                        kuvaRot = torch.permute(kuvaRot, (1, 0)).unsqueeze(0).unsqueeze(0)
-                        kuvaRot = F.conv2d(kuvaRot, self.d_gFilter[:, :, :, :, u1], padding=(self.d_gFilter.shape[2] // 2, self.d_gFilter.shape[3] // 2))
+                        kuvaRot = torch.permute(kuvaRot, (1, 0))
+                        
+                        # 1. Smear the input FP across the image volume
+                        kuvaRot = kuvaRot.unsqueeze(-1)
+                        kuvaRot = kuvaRot.repeat((1, 1, self.Nx[ii].item()))
+                        kuvaRot = torch.permute(kuvaRot, (1,0,2))
+
+                        # 2. Attenuation correction
+                        # 2.1. Rotate attenuation map
+                        # 2.2. Translate attenuation map
+                        # 2.3. Accumulate attenuation
+                        # 2.4. Multiply each accumulated element by voxel size and exponentiate attenuation
+                        # 2.5. Pointwise multiply with kuvaRot
+                        
+                        ## 3. Convolve with detector PSF
+                        PSF = self.d_gFilter
+                        PSF = torch.roll(PSF, shifts=(0, 0, self.blurPlanes[u1].item()), dims=(0, 1, 2))
+                        PSF = PSF[:,:,:self.Nx[ii].item()]
+                        PSF = torch.permute(PSF, (2, 0, 1))
+                        PSF = PSF.unsqueeze(1)
+
+                        kuvaRot = kuvaRot.permute((2,0,1)).unsqueeze(0)
+                        kuvaRot = F.conv2d(kuvaRot, PSF, padding=(PSF.shape[2] // 2, PSF.shape[3] // 2), groups=self.Nx[ii].item())
                         kuvaRot = kuvaRot.squeeze(0)
-                        kuvaRot = kuvaRot[self.blurPlanes[u1].item():, :,:]
-                        kuvaRot = torch.permute(kuvaRot, (2, 1, 0))
-                        # kuvaRot = cp.transpose(kuvaRot, (2, 1, 0))
-                        fApu[:,:,self.blurPlanes[u1].item():] = kuvaRot
-                        fApu = rotate(fApu, (180+self.angles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
+                        kuvaRot = torch.permute(kuvaRot, (1, 2, 0))
+                        
+                        # 4. Translate the image
+                        
+                        # 5. Rotate the image
+                        kuvaRot = rotate(kuvaRot, (self.swivelAngles[u1].item())*np.pi/180, InterpolationMode.BILINEAR)
+                        
                         if isinstance(f, list):
-                            f[ii][kk,:] = torch.ravel(fApu)
+                            f[ii][kk,:] = torch.ravel(kuvaRot)
                         else:
-                            f[kk,:] = torch.ravel(fApu)
+                            f[kk,:] = torch.ravel(kuvaRot)
                         u1 += 1
                     if isinstance(f, list):
                         f[ii] = torch.sum(f[ii], 0),

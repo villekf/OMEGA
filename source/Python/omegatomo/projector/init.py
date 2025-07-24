@@ -240,7 +240,7 @@ def initProjector(self):
             bOpt += ('-DINDEXBASED',)
         if self.listmode > 0 and ~self.useIndexBasedReconstruction:
             bOpt += ('-DUSEGLOBAL',)
-        if (self.FPType == 1 or self.BPType == 1 or self.FPType == 4 or self.BPType == 4) and self.n_rays_transaxial * self.n_rays_axial > 1:
+        if (((self.FPType == 1 or self.BPType == 1 or self.FPType == 4 or self.BPType == 4) and self.n_rays_transaxial * self.n_rays_axial > 1) or self.SPECT):
             bOpt += ('-DN_RAYS=' + str(self.n_rays_transaxial * self.n_rays_axial),)
             bOpt += ('-DN_RAYS2D=' + str(self.n_rays_transaxial),)
             bOpt += ('-DN_RAYS3D=' + str(self.n_rays_axial),)
@@ -317,11 +317,12 @@ def initProjector(self):
     else:
         if self.useCUDA:
             if self.useTorch:
-                self.gFilter = np.ascontiguousarray(self.gFilter)
-                self.gFilter = np.transpose(self.gFilter, (1, 0, 2, 3))
+                #self.gFilter = np.ascontiguousarray(self.gFilter)
+                #self.gFilter = np.transpose(self.gFilter, (1, 0, 2))
                 self.d_gFilter = torch.tensor(self.gFilter, device='cuda')
                 self.angles = np.degrees(self.angles)
-                self.d_gFilter = self.d_gFilter.permute(2, 0, 1, 3).unsqueeze(1)
+                self.swivelAngles = np.degrees(self.swivelAngles)
+                #self.d_gFilter = self.d_gFilter.permute(2, 0, 1).unsqueeze(1)
         else:
             self.d_gFilter = af.interop.np_to_af_array(self.gFilter)
         self.uu = 0

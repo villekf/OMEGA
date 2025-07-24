@@ -226,6 +226,9 @@ options.projector_type = 1
 # used.
 options.useImages = True
 
+# This has to be True if you want to use the filtering-based preconditioner
+options.PDHG = True
+
 ###########################################################################
 ###########################################################################
 ###########################################################################
