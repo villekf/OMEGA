@@ -188,7 +188,7 @@ void openMPSino(const T* ringPos1, const T* ringPos2, const T* ringNumber1, cons
 		const int64_t indeksi = saveSinogram(ring_pos1, ring_pos2, ring_number1, ring_number2, sinoSize, Ndist, Nang, ring_difference, span, seg, TOFSize,
 			detWPseudo, rings, binN, nDistSide, swap, tPoint, layer, nLayers);
 		if (indeksi >= TOFSize * nLayers * Nt) {
-			mexPrint("Sinogram index is larger than the maximum possible! Aborting!");
+			mexPrint("Sinogram index is larger than the maximum possible or outside the sinogram FOV! Skipping!");
 			continue;
 		}
 		if (indeksi >= 0) {
