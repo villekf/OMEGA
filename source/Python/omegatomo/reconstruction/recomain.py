@@ -351,6 +351,8 @@ def reconstructions_main(options):
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
+    if options.builtin == False:
+        raise ValueError('No reconstruction method selected, aborting.')
     if np.size(options.weights) > 0:
         options.empty_weight = False
     fname, suffix = os.path.splitext(options.fpath)
