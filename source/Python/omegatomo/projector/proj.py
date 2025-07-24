@@ -211,7 +211,7 @@ class projectorClass:
     rotateAttImage = 0.
     flipAttImageXY = False
     flipAttImageZ = False
-    NSinos = 1
+    NSinos = 0
     TotSinos = NSinos
     V = np.empty(0, dtype = np.float32)
     uu = 0
@@ -485,6 +485,7 @@ class projectorClass:
     useTotLength = True
     TOFIndices = np.empty(0, dtype = np.uint8)
     useParallelBeam = False
+    builtin = True
 
     def __init__(self):
         # C-struct
@@ -630,9 +631,13 @@ class projectorClass:
         if self.segment_table.size == 0 and self.span > 0 and self.rings > 0:
             self.segment_table = np.concatenate((np.array(self.rings*2-1,ndmin=1), np.arange(self.rings*2-1 - (self.span + 1), max(self.Nz - self.ring_difference*2, self.rings - self.ring_difference), -self.span*2)))
             self.segment_table = np.insert(np.repeat(self.segment_table[1:], 2), 0, self.segment_table[0])
+        if self.Nang == 1 and self.det_per_ring > 1:
+            self.Nang = self.det_per_ring // 2
         if self.span == 1:
             self.TotSinos = self.rings**2
             self.NSinos = self.TotSinos
+        elif self.NSinos == 0:
+            self.NSinos = np.sum(self.segment_table)
         self.OMEGAErrorCheck()
         self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
                                                       or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 
@@ -984,7 +989,8 @@ class projectorClass:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
         
         if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
-            raise ValueError(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})!")
+            print(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})! Setting the total number of sinograms to that of sinograms used!")
+            self.TotSinos = self.NSinos
         
         if not self.CT and not self.SPECT and (self.ndist_side > 1 and self.Ndist % 2 == 0 or self.ndist_side < -1 and self.Ndist % 2 == 0) and not self.use_raw_data:
             raise ValueError("ndist_side can be either 1 or -1!")
@@ -1136,6 +1142,8 @@ class projectorClass:
         
         if self.precondTypeMeas[1] and (self.subsetType < 8 and not(self.subsetType == 4) and not(self.subsetType == 0)):
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
+        if self.useCPU and self.ECOSEM:
+            raise ValueError('ECOSEM is not supported with CPU!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -1221,7 +1229,8 @@ class projectorClass:
                 
                 # Check how many are True
                 if len(enabled_algorithms) == 0:
-                    raise ValueError("No reconstruction method selected!")
+                    print("No reconstruction method selected! If you are using custom reconstruction, ignore this warning")
+                    self.builtin = False
                 elif len(enabled_algorithms) > 1:
                     raise ValueError(f"Multiple reconstruction algorithms selected: {enabled_algorithms}")
                 else:
@@ -1761,18 +1770,17 @@ class projectorClass:
         from omegatomo.projector.init import initProjector
         initProjector(self)
                 
-                
     def computeConvolution(self, f, ii = 0):
         from omegatomo.projector.projfunctions import conv3D
-        conv3D(self, f, ii)
+        return conv3D(self, f, ii)
         
     def forwardProject(self, f, subset = -1):
         from omegatomo.projector.projfunctions import forwardProjection
-        forwardProjection(self, f, subset)
+        return forwardProjection(self, f, subset)
         
     def backwardProject(self, y, subset = -1):
         from omegatomo.projector.projfunctions import backwardProjection
-        backwardProjection(self, y, subset)
+        return backwardProjection(self, y, subset)
     
     
     def T(self):
