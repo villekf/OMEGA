@@ -113,6 +113,11 @@
   - Now a specific length of the gap can be input instead of the number of gaps
   - The gap lengths need to be input for each gap
   
+- Added randoms/scatter smoothing and randoms/scatter variance reduction in Python
+  - Also added arc correction, but it is not particularly recommended
+  
+- Added an example Python script for GATE 10 PET simulation reconstruction
+  
 ### Bug fixes and enhancements
 
 - Hybrid projector 45 wasn't using the correct interpolation length before, this has been fixed
@@ -168,6 +173,11 @@
 - ASD-POCS should now work in all cases
 
 - Fixed OSL-COSEM and OSL-ACOSEM when using implementation 2
+
+- Fixed PSF blurring with ECOSEM when using implementation 2
+
+- Fixed arc correction and increasing the sampling rate of sinograms
+  - Arc correction is not particularly recommended though
 
 ## OMEGA v2.0.0
 
