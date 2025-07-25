@@ -674,8 +674,10 @@ inline int updateInputs(AF_im_vectors& vec, const scalarStruct& inputScalars, Pr
 inline int forwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputScalars, Weighting& w_vec, af::array& outputFP, uint32_t osa_iter,
 	const std::vector<int64_t>& length, const af::array& g, uint64_t m_size, ProjectorClass& proj, const int ii = 0, const int64_t* pituus = nullptr) {
 	int status = 0;
-	if (inputScalars.use_psf)
-		vec.im_os_blurred[ii] = computeConvolution(vec.im_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);
+	if (inputScalars.use_psf) {
+		const int nRekos = vec.im_os[ii].elements() / (inputScalars.im_dim[ii]);
+		vec.im_os_blurred[ii] = computeConvolution(vec.im_os[ii], g, inputScalars, w_vec, nRekos, ii);
+	}
 	if (DEBUG) {
 		mexPrintBase("outputFP.dims(0) = %d\n", outputFP.dims(0));
 		mexPrintBase("outputFP.dims(1) = %d\n", outputFP.dims(1));
@@ -759,8 +761,10 @@ inline int backwardProjectionAFOpenCL(AF_im_vectors& vec, scalarStruct& inputSca
 	else if (inputScalars.atomic_32bit)
 		vec.rhs_os[ii] = vec.rhs_os[ii].as(f32) / TH32;
 #endif
-	if (inputScalars.use_psf)
-		vec.rhs_os[ii] = computeConvolution(vec.rhs_os[ii], g, inputScalars, w_vec, inputScalars.nRekos2, ii);
+	if (inputScalars.use_psf) {
+		const int nRekos = vec.rhs_os[ii].elements() / (inputScalars.im_dim[ii]);
+		vec.rhs_os[ii] = computeConvolution(vec.rhs_os[ii], g, inputScalars, w_vec, nRekos, ii);
+	}
 	vec.rhs_os[ii].eval();
 	outputFP.eval();
 	return status;
