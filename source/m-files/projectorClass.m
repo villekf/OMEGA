@@ -849,7 +849,7 @@ classdef projectorClass
         end
 
         function obj = initCorrections(obj)
-            [~, ~, obj.param] = loadCorrections(obj.param, [], []);
+            [obj.param] = loadCorrections(obj.param, [], []);
         end
 
 

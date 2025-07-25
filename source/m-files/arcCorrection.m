@@ -1,4 +1,4 @@
-function [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram)
+function [x, y, options] = arcCorrection(options, interpolateSinogram)
 %ARCCORRECTION Performs arc correction on the detector coordinates
 %   This function outputs the arc corrected detector coordinates and
 %   sinogram. Works only with sinogram data and without precomputation.
@@ -21,6 +21,7 @@ function [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % mashing = options.det_w_pseudo / options.Nang / 2;
+[~, ~, xp, yp] = detector_coordinates(options);
 orig_xp = xp;
 orig_yp = yp;
 [x_o, y_o] = sinogram_coordinates_2D(options, orig_xp, orig_yp);
@@ -85,6 +86,8 @@ end
 
 new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4) + options.diameter/2;
 new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4) + options.diameter/2;
+% new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4);
+% new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4);
 
 new_yp(kk + 1: kk * 2) = flip(new_yp(1: kk));
 diffi = diff([flip(new_yp(1 : kk)) ; options.diameter/2]);
@@ -105,6 +108,9 @@ else
     xp = circshift(xp, options.offangle + options.cryst_per_block / 2);
     yp = circshift(yp, options.offangle + options.cryst_per_block / 2);
 end
+
+% xp = xp - options.diameter / 2;
+% yp = yp - options.diameter / 2;
 
 [x, y] = sinogram_coordinates_2D(options, xp, yp);
 
@@ -129,6 +135,7 @@ alkux = linspace(eka, vika, options.Ndist);
 
 % Determine the y-coordinates
 alkuy = sqrt((options.diameter/2)^2 - (alkux - options.diameter/2).^2) + options.diameter/2;
+% alkuy = sqrt((options.diameter/2)^2 - (alkux).^2);
 
 alku = [alkux; alkuy];
 
@@ -179,6 +186,9 @@ xx2_o = reshape(x_o(:,2),options.Ndist,options.Nang);
 yy1_o = reshape(y_o(:,1),options.Ndist,options.Nang);
 yy2_o = reshape(y_o(:,2),options.Ndist,options.Nang);
 
+x = x - options.diameter / 2;
+y = y - options.diameter / 2;
+
 if interpolateSinogram
     
     
@@ -194,8 +204,10 @@ if interpolateSinogram
     
     
     % Orthogonal distances
-    x0 = options.diameter/2;
-    y0 = options.diameter/2;
+    % x0 = options.diameter/2;
+    % y0 = options.diameter/2;
+    x0 = 0;
+    y0 = 0;
     distance_o = ((abs((y_o(:,1)-y_o(:,2))*x0 - (x_o(:,1) - x_o(:,2))*y0 + x_o(:,1).*y_o(:,2) - y_o(:,1).*x_o(:,2))./sqrt((y_o(:,1)-y_o(:,2)).^2 + (x_o(:,1)-x_o(:,2)).^2)));
     distance_o = reshape(distance_o, options.Ndist, options.Nang);
     distance_o(options.Ndist/2 + 1 : end,:) = -distance_o(options.Ndist/2 + 1 : end,:);
@@ -205,6 +217,7 @@ if interpolateSinogram
     distance(options.Ndist/2 + 1 : end,:) = -distance(options.Ndist/2 + 1 : end,:);
     distance = [distance(:,1), distance, distance(:,1)];
     
+    
     % Interpolate the sinogram
     if iscell(options.SinM)
         if numel(options.SinM{1}) == size(options.SinM{1},1)
@@ -213,8 +226,8 @@ if interpolateSinogram
             end
         end
     else
-        if numel(options.SinM) == size(options.SinM,1)
-            options.SinM = reshape(options.SinM, options.Ndist, options.Nang, numel(options.SinM)/(options.Ndist * options.Nang));
+        if numel(options.SinM) == size(options.SinM,1) && ~isscalar(options.SinM)
+            options.SinM = reshape(options.SinM, options.Ndist, options.Nang, options.NSinos, []);
         end
     end
     tic

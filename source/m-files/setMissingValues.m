@@ -623,6 +623,9 @@ end
 if ~isfield(options, 'corrections_during_reconstruction')
     options.corrections_during_reconstruction = true;
 end
+if ~isfield(options, 'ordinaryPoisson')
+    options.ordinaryPoisson = options.corrections_during_reconstruction;
+end
 if ~isfield(options, 'ndist_side')
     options.ndist_side = 1;
 end

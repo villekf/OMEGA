@@ -414,15 +414,19 @@ if options.TOF_bins_used > 1 && options.use_raw_data && ~options.CT && ~options.
     error('TOF data is only available with sinogram data. Disable raw data (options.use_raw_data = false).')
 end
 if options.corrections_during_reconstruction && (options.scatter_correction || options.randoms_correction) && (options.PDHG || options.PDHGL1 || options.FISTA || options.LSQR || options.CGLS || options.FISTAL1)
-    warning('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
-    options.randoms_correction = false;
-    options.scatter_correction = false;
+    warning('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Attempting precorrection!')
+    options.ordinaryPoisson = false;
+    % options.randoms_correction = false;
+    % options.scatter_correction = false;
 end
 if options.useIndexBasedReconstruction && (options.randoms_correction || options.scatter_correction) && options.TOF_bins > 1
     error('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
 end
 if isfield(options,'maskFP') && options.subset_type == 3 && numel(options.maskFP) > 1
     error('Forward projection mask is not supported with subset type 3!')
+end
+if options.implementation == 2 && options.use_CPU && options.ECOSEM
+    error('ECOSEM is not supported with implementation 2 when using CPU!')
 end
 % Print various options that were selected if verbosity has been enabled
 if options.verbose > 0

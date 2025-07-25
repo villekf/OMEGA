@@ -52,6 +52,9 @@ subsets = options.subsets;
 Ndist = options.Ndist;
 Nang = options.Nang;
 NSinos = options.NSinos;
+if options.sampling > 1
+    Ndist = Ndist * options.sampling;
+end
 if options.use_raw_data
     pituus = int64(options.detectors^2/2 + options.detectors/2);
 else

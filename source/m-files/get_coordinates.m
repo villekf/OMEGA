@@ -45,7 +45,7 @@ end
 if nargin >= 4 && ~isempty(varargin{3})
     interpolateSinogram = varargin{3};
 else
-    interpolateSinogram = true;
+    interpolateSinogram = false;
 end
 
 if (isfield(options,'x') && isfield(options,'y') && (isfield(options,'z') || isfield(options,'z_det'))) && ~options.listmode
@@ -89,7 +89,7 @@ else
         end
 
         if options.arc_correction && ~options.precompute_lor
-            [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);
+            [x, y, options] = arcCorrection(options, interpolateSinogram);
         end
         if options.sampling > 1 && ~options.precompute_lor
             [x, y, options] = increaseSampling(options, x, y, interpolateSinogram);

@@ -49,6 +49,10 @@ if options.use_raw_data
         end
     end
 else
+    if isempty(x)
+        [~, ~, x, y] = detector_coordinates(options);
+        [x, y] = sinogram_coordinates_2D(options, x, y);
+    end
     % Sinogram data
     
     xx1 = reshape(x(:,1),options.Ndist,options.Nang);
@@ -95,6 +99,10 @@ else
     yy(:,2) = joku(:);
     x = xx;
     y = yy;
+
+
+    % x = x - options.diameter / 2;
+    % y = y - options.diameter / 2;
     
     % Interpolate the sinogram
     if interpolateSinogram
@@ -111,6 +119,7 @@ else
             end
         end
         options.SinM = interpolateSinog(options.SinM, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
+        options.Ndist = options.Ndist * options.sampling;
         if options.verbose
             disp(['Sinogram sampling increased by ' num2str(options.sampling) 'x'])
         end
