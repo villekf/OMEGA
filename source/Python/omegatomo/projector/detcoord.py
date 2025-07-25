@@ -158,6 +158,10 @@ def getCoordinates(options):
                 koko = x.size / 2
             else:
                 x, y = sinogramCoordinates2D(options, x, y)
+                
+            if options.arc_correction:
+                from omegatomo.util.arcCorrection import arc_correction
+                x, y, options = arc_correction(options, False);
     
             # if options.arc_correction and ~options.precompute_lor
             #     [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);

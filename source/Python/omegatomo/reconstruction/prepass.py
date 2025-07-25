@@ -74,8 +74,6 @@ def linearizeData(options):
 
 def loadCorrections(options):
     import os
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     if options.attenuation_correction == 1:
         if options.vaimennus.size == 0:
             if len(options.attenuation_datafile) > 0 and options.attenuation_datafile[len(options.attenuation_datafile)-3:len(options.attenuation_datafile)+1:1] == 'mhd':
@@ -106,6 +104,8 @@ def loadCorrections(options):
                 variables = list(apu.keys())
                 options.vaimennus = apu[variables[0]]
             else:
+                import tkinter as tk
+                from tkinter.filedialog import askopenfilename
                 root = tk.Tk()
                 root.withdraw()
                 nimi = askopenfilename(title='Select attenuation datafile',filetypes=(('MHD, NPY, NPZ and MAT files','*.mhd *.mat *.npy *.npz'),('All','*.*')))
@@ -158,7 +158,7 @@ def loadCorrections(options):
                 atn = np.flip(atn,2);
                 options.vaimennus = atn
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
-    if (options.normalization_correction and options.corrections_during_reconstruction):
+    if options.normalization_correction:
         if options.normalization.size == 0:
             normdir = os.path.abspath(os.path.join(os.path.dirname( __file__ ), '..', '..', '..', '..', 'mat-files')) + "/" +  options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat'
             if os.path.exists(normdir):
@@ -169,6 +169,8 @@ def loadCorrections(options):
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             else:
+                import tkinter as tk
+                from tkinter.filedialog import askopenfilename
                 root = tk.Tk()
                 root.withdraw()
                 nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
@@ -191,9 +193,37 @@ def loadCorrections(options):
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if ~options.use_raw_data and options.NSinos != options.TotSinos:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
-        options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
-    elif (options.normalization_correction and not options.corrections_during_reconstruction):
-        options.normalization_correction = False
+        if not options.corrections_during_reconstruction:
+            options.normalization = np.reshape(options.normalization, options.SinM.shape, order='F')
+            options.SinM *= options.normalization
+            options.normalization_correction = False
+        else:
+            options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
+    if options.randoms_correction == True and options.ordinaryPoisson == True and options.variance_reduction == True:
+        from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
+        options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
+    if options.randoms_correction == True and options.ordinaryPoisson == True and options.randoms_smoothing == True:
+        from omegatomo.util.smoothing import randoms_smoothing
+        options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+    if options.scatter_correction == True and options.ordinaryPoisson == True and options.scatter_smoothing == True:
+        from omegatomo.util.smoothing import randoms_smoothing
+        options.ScatterC = randoms_smoothing(options.ScatterC, options)
+    if (options.randoms_correction == True or options.scatter_correction == True) and options.ordinaryPoisson == False:
+        if options.randoms_correction == True and options.SinDelayed.size > 0 and options.randoms_smoothing == True:
+            from omegatomo.util.smoothing import randoms_smoothing
+            options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        if options.scatter_correction == True and options.ScatterC.size > 0 and options.scatter_smoothing == True:
+            from omegatomo.util.smoothing import randoms_smoothing
+            options.ScatterC = randoms_smoothing(options.ScatterC, options)
+        if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction == True and options.subtract_scatter:
+            options.SinM = options.SinM - options.SinDelayed - options.ScatterC
+        elif options.scatter_correction and options.ScatterC.size > 0 and options.randoms_correction == False and options.subtract_scatter:
+            options.SinM -= options.ScatterC
+        elif options.SinDelayed.size > 0 and options.randoms_correction == True:
+            options.SinM -= options.SinDelayed
+    if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
+        options.additionalCorrection = True
+        options.corrVector = options.ScatterC
         
 def parseInputs(options, mDataFound = False):
     if options.subsets > 1 and options.subsetType > 0:
@@ -268,22 +298,12 @@ def parseInputs(options, mDataFound = False):
             else:
                 options.normalization = options.normalization[options.index]
         
-        if options.additionalCorrection and hasattr(options, 'corrVector'):
+        if options.additionalCorrection and hasattr(options, 'corrVector') and options.corrVector.size > 0:
             if options.subsetType >= 8:
-                # if isinstance(options.corrVector, list):
-                #     for kk in range(len(options.corrVector)):
-                #         options.corrVector[kk] = np.reshape(options.corrVector[kk], (options.Ndist, options.Nang, -1))
-                #         options.corrVector[kk] = options.corrVector[kk][:, :, index, :]
-                #         options.corrVector[kk] = options.corrVector[kk].ravel()
-                # else:
                 options.corrVector = np.reshape(options.corrVector, (options.Ndist, options.Nang, options.nProjections, -1), order='F')
                 options.corrVector = options.corrVector[:, :, options.index, :]
                 options.corrVector = options.corrVector.ravel(order='F')
             else:
-                # if isinstance(options.corrVector, list):
-                #     for kk in range(len(options.corrVector)):
-                #         options.corrVector[kk] = options.corrVector[kk][index]
-                # else:
                 options.corrVector = np.reshape(options.corrVector, (options.Ndist * options.Nang * options.nProjections, -1), order='F')
                 options.corrVector = options.corrVector[options.index,:]
                 options.corrVector = options.corrVector.ravel(order='F').astype(dtype=np.float32)

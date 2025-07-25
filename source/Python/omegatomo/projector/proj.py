@@ -190,7 +190,8 @@ class projectorClass:
     normalization_scatter_correction = False
     use_user_normalization = False
     arc_correction = False
-    corrections_during_reconstruction = False
+    corrections_during_reconstruction = True
+    ordinaryPoisson = None
     multiResolutionScale = .25
     name = ""
     voxel_radius = 1.
@@ -223,6 +224,7 @@ class projectorClass:
     flatFieldScaling = 1.
     CT_attenuation = True
     scatter_correction = 0
+    subtract_scatter = True
     useCUDA = False
     useCPU = False
     NxFull = 1
@@ -486,6 +488,7 @@ class projectorClass:
     TOFIndices = np.empty(0, dtype = np.uint8)
     useParallelBeam = False
     builtin = True
+    precorrect = False
 
     def __init__(self):
         # C-struct
@@ -591,7 +594,6 @@ class projectorClass:
             self.arc_correction = False
             self.det_w_pseudo = self.det_per_ring
             self.cryst_per_block = self.nColsD * self.nRowsD
-            self.arc_correction = False
             self.span = 3
             self.Ndist = self.nRowsD
             self.Nang = self.nColsD
@@ -638,6 +640,8 @@ class projectorClass:
             self.NSinos = self.TotSinos
         elif self.NSinos == 0:
             self.NSinos = np.sum(self.segment_table)
+        if self.TotSinos == 0:
+            self.TotSinos = self.NSinos
         self.OMEGAErrorCheck()
         self.TOF = self.TOF_bins > 1 and (self.projector_type == 1 or self.projector_type == 11 or self.projector_type == 3 or self.projector_type == 33 
                                                       or self.projector_type == 13 or self.projector_type == 31 or self.projector_type == 4 
@@ -666,6 +670,8 @@ class projectorClass:
                 self.TOFCenter = np.float32(self.TOFCenter)
         else:
             self.sigma_x = 0.
+        if self.ordinaryPoisson == None:
+            self.ordinaryPoisson = self.corrections_during_reconstruction
         if self.maskFP.size > 1 and ((not(self.maskFP.size == (self.nRowsD * self.nColsD)) and not(self.maskFP.size == (self.nRowsD * self.nColsD * self.nProjections)) 
                                       and (self.CT == True or self.SPECT == True)) or (not(self.maskFP.size == (self.Nang * self.Ndist)) and not(self.maskFP.size == (self.Nang * self.Ndist * self.NSinos)) and self.CT == False)):
             if self.CT == True or self.SPECT == True:
@@ -988,7 +994,7 @@ class projectorClass:
         if not self.CT and not self.SPECT and self.Nang > self.det_w_pseudo / 2 and not self.use_raw_data and self.Nang > 1:
             raise ValueError(f"Number of sinogram angles can be at most the number of detectors per ring divided by two ({self.det_w_pseudo / 2})!")
         
-        if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data:
+        if not self.CT and not self.SPECT and self.TotSinos < self.NSinos and not self.use_raw_data and self.TotSinos > 0:
             print(f"The number of sinograms used ({self.NSinos}) is larger than the total number of sinograms ({self.TotSinos})! Setting the total number of sinograms to that of sinograms used!")
             self.TotSinos = self.NSinos
         
@@ -1132,9 +1138,10 @@ class projectorClass:
             raise ValueError('TOF enabled, but the TOF FWHM (self.TOF_FWHM) is zero. FWHM must be nonzero.')
         
         if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1):
-            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Disabling both!')
-            self.scatter_correction = False
-            self.randoms_correction = False     
+            print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Attempting precorrection!')
+            self.ordinaryPoisson = False
+            # self.scatter_correction = False
+            # self.randoms_correction = False     
         if self.useIndexBasedReconstruction and (self.randoms_correction or self.scatter_correction) and self.TOF_bins > 1:
             raise ValueError('Randoms and/or scatter correction cannot be used with index-based reconstruction with TOF data!')
         if self.subsetType == 3 and self.maskFP.size > 1:
