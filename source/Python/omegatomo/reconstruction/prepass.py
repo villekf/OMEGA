@@ -224,6 +224,22 @@ def loadCorrections(options):
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         options.additionalCorrection = True
         options.corrVector = options.ScatterC
+    if options.arc_correction:
+        from omegatomo.util.arcCorrection import arc_correction
+        x, y, options = arc_correction(options, True);
+    if options.sampling > 1:
+        if options.corrections_during_reconstruction:
+            from omegatomo.util.sampling import interpolateSinog
+            if options.normalization_correction:
+                options.normalization = interpolateSinog(options.normalization, options.sampling, options.Ndist, options.Nang, options.sampling_interpolation_method)
+            if options.randoms_correction:
+                options.SinDelayed = interpolateSinog(options.SinDelayed, options.sampling, options.Ndist, options.Nang, options.sampling_interpolation_method)
+            if options.additionalCorrection:
+                options.corrVector = interpolateSinog(options.corrVector, options.sampling, options.Ndist, options.Nang, options.sampling_interpolation_method)
+        from omegatomo.util.sampling import increaseSampling
+        x, y, options = increaseSampling(options, None, None, True)
+                
+        
         
 def parseInputs(options, mDataFound = False):
     if options.subsets > 1 and options.subsetType > 0:

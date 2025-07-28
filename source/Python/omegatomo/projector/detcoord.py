@@ -162,6 +162,9 @@ def getCoordinates(options):
             if options.arc_correction:
                 from omegatomo.util.arcCorrection import arc_correction
                 x, y, options = arc_correction(options, False);
+            if options.sampling > 1:
+                from omegatomo.util.sampling import increaseSampling
+                x, y, options = increaseSampling(options, x, y, False);
     
             # if options.arc_correction and ~options.precompute_lor
             #     [x, y, options] = arcCorrection(options, xp, yp, interpolateSinogram);

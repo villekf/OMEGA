@@ -3,6 +3,8 @@ import numpy as np
    
 def indexMaker(options):
     subsets = options.subsets;
+    if options.sampling > 1:
+        options.Ndist = options.Ndist * options.sampling;
     Ndist = options.Ndist;
     Nang = options.Nang;
     NSinos = options.NSinos;
@@ -197,6 +199,8 @@ def indexMaker(options):
                 options.nMeas[0] = options.Nang * options.Ndist * options.NSinos
     elif options.subsetType > 11:
         raise ValueError('Invalid subset type!')
+    if options.sampling > 1:
+        options.Ndist = int(options.Ndist / options.sampling)
     options.subsets = subsets
     
 def ind2sub(index, dims):
@@ -211,6 +215,8 @@ def sub2ind(dims, I, J, K):
 
 
 def formSubsetIndices(options):
+    if options.sampling > 1:
+        options.Ndist = options.Ndist * options.sampling;
     if options.listmode > 0 and options.subsetType < 8 and options.subsets > 1:
         if options.subsetType > 0:
             if options.useIndexBasedReconstruction:
@@ -268,6 +274,5 @@ def formSubsetIndices(options):
     else:
         options.xy_index = np.empty(0, dtype=np.uint32)
         options.z_index = np.empty(0, dtype=np.uint16)
-    if options.sampling > 1 and not options.use_raw_data and not options.precompute_lor:
-        options.Ndist = options.Ndist / options.sampling;
-        
+    if options.sampling > 1:
+        options.Ndist = int(options.Ndist / options.sampling)
