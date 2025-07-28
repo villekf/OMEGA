@@ -59,50 +59,27 @@ else
     xx2 = reshape(x(:,2),options.Ndist,options.Nang);
     yy1 = reshape(y(:,1),options.Ndist,options.Nang);
     yy2 = reshape(y(:,2),options.Ndist,options.Nang);
-    
-    
-    % Form the new detector coordinates
-    if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(xx1,options.sampling);
-    else
-        joku = repelem(xx1,options.sampling,1);
-    end
-%     % Gaps between detectors
-    vali = [zeros(1, options.Nang);diff(xx1)];
-    joku(1:options.sampling:end,:) = xx1 - (vali / options.sampling);
-    xx = zeros(length(joku(:)), 2);
-    xx(:,1) = joku(:);
-    if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(xx2,options.sampling);
-    else
-        joku = repelem(xx2,options.sampling,1);
-    end
-    vali = [zeros(1, options.Nang);diff(xx2)];
-    joku(1:options.sampling:end,:) = xx2 - (vali / options.sampling);
-    xx(:,2) = joku(:);
-    if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(yy1,options.sampling);
-    else
-        joku = repelem(yy1,options.sampling,1);
-    end
-    vali = [zeros(1, options.Nang);diff(yy1)];
-    joku(1:options.sampling:end,:) = yy1 - (vali / options.sampling);
-    yy = zeros(length(joku(:)), 2);
-    yy(:,1) = joku(:);
-    if exist('OCTAVE_VERSION','builtin') == 0 && exist('repelem', 'builtin') == 0
-        joku = repeat_elem(yy2,options.sampling);
-    else
-        joku = repelem(yy2,options.sampling,1);
-    end
-    vali = [zeros(1, options.Nang);diff(yy2)];
-    joku(1:options.sampling:end,:) = yy2 - (vali / options.sampling);
-    yy(:,2) = joku(:);
-    x = xx;
-    y = yy;
 
+    [X,Y] = meshgrid(1:options.Nang, 1:options.sampling:options.Ndist*options.sampling+1);
+    [Xq,Yq] = meshgrid(1:options.Nang, 1:options.Ndist*options.sampling+1);
 
-    % x = x - options.diameter / 2;
-    % y = y - options.diameter / 2;
+    if strcmp(options.sampling_interpolation_method,'spline') || strcmp(options.sampling_interpolation_method, 'makima')
+        x1 = interp2(X(1:end-1,:), Y(1:end-1,:) ,double(xx1), Xq(1:end-1,:), Yq(1:end-1,:), options.sampling_interpolation_method);
+        x2 = interp2(X(1:end-1,:), Y(1:end-1,:) ,double(xx2), Xq(1:end-1,:), Yq(1:end-1,:), options.sampling_interpolation_method);
+        y1 = interp2(X(1:end-1,:), Y(1:end-1,:) ,double(yy1), Xq(1:end-1,:), Yq(1:end-1,:), options.sampling_interpolation_method);
+        y2 = interp2(X(1:end-1,:), Y(1:end-1,:) ,double(yy2), Xq(1:end-1,:), Yq(1:end-1,:), options.sampling_interpolation_method);
+    else
+        x1 = interp2(X, Y,double([xx1;xx1(end-1,:)]), Xq, Yq, options.sampling_interpolation_method);
+        x1 = x1(1:end-1,:);
+        x2 = interp2(X, Y,double([xx2;xx2(end-1,:)]), Xq, Yq, options.sampling_interpolation_method);
+        x2 = x2(1:end-1,:);
+        y1 = interp2(X, Y,double([yy1;yy1(end-1,:)]), Xq, Yq, options.sampling_interpolation_method);
+        y1 = y1(1:end-1,:);
+        y2 = interp2(X, Y,double([yy2;yy2(end-1,:)]), Xq, Yq, options.sampling_interpolation_method);
+        y2 = y2(1:end-1,:);
+    end
+    x = [x1(:),x2(:)];
+    y = [y1(:),y2(:)];
     
     % Interpolate the sinogram
     if interpolateSinogram
@@ -120,6 +97,7 @@ else
         end
         options.SinM = interpolateSinog(options.SinM, options.sampling, options.Ndist, options.partitions, options.sampling_interpolation_method);
         options.Ndist = options.Ndist * options.sampling;
+        options.nRowsD = options.nRowsD * options.sampling;
         if options.verbose
             disp(['Sinogram sampling increased by ' num2str(options.sampling) 'x'])
         end
