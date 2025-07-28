@@ -4,7 +4,7 @@ function [x, y, options] = arcCorrection(options, interpolateSinogram)
 %   sinogram. Works only with sinogram data and without precomputation.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% Copyright (C) 2020 Ville-Veikko Wettenhovi
+% Copyright (C) 2020-2025 Ville-Veikko Wettenhovi
 %
 % This program is free software: you can redistribute it and/or modify it
 % under the terms of the GNU General Public License as published by the
@@ -86,8 +86,6 @@ end
 
 new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4) + options.diameter/2;
 new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4) + options.diameter/2;
-% new_xp(1 : length(xp) / 4) = new_xp(1 : length(xp) / 4);
-% new_yp(1 : length(yp) / 4) = new_yp(1 : length(yp) / 4);
 
 new_yp(kk + 1: kk * 2) = flip(new_yp(1: kk));
 diffi = diff([flip(new_yp(1 : kk)) ; options.diameter/2]);
@@ -108,9 +106,6 @@ else
     xp = circshift(xp, options.offangle + options.cryst_per_block / 2);
     yp = circshift(yp, options.offangle + options.cryst_per_block / 2);
 end
-
-% xp = xp - options.diameter / 2;
-% yp = yp - options.diameter / 2;
 
 [x, y] = sinogram_coordinates_2D(options, xp, yp);
 
@@ -135,7 +130,6 @@ alkux = linspace(eka, vika, options.Ndist);
 
 % Determine the y-coordinates
 alkuy = sqrt((options.diameter/2)^2 - (alkux - options.diameter/2).^2) + options.diameter/2;
-% alkuy = sqrt((options.diameter/2)^2 - (alkux).^2);
 
 alku = [alkux; alkuy];
 
@@ -216,6 +210,10 @@ if interpolateSinogram
     distance = reshape(distance, options.Ndist, options.Nang);
     distance(options.Ndist/2 + 1 : end,:) = -distance(options.Ndist/2 + 1 : end,:);
     distance = [distance(:,1), distance, distance(:,1)];
+    testi = diff(distance);
+    if round(min(testi(:)),3) ~= round(max(testi(:)),3)
+        warning('Arc correction failed to make all the LORs equidistant.')
+    end
     
     
     % Interpolate the sinogram
