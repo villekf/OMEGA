@@ -178,7 +178,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 	if (idx >= m_size)
 #else
     size_t idx = GID0 + GID1 * GSIZE0 + GID2 * GSIZE1 * GSIZE0;
+#if STYPE == 3 || STYPE == 6 || STYPE == 7
+    if (idx >= m_size)
+#else
     if (i.x >= d_size_x || idx >= m_size)
+#endif
 #endif
         return; 
 #ifdef MASKFP
