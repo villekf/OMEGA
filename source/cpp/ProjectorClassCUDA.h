@@ -1619,6 +1619,9 @@ public:
 							viewDesc.depth = inputScalars.maskBPZ;
 							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						}
+						if (inputScalars.BPType == 4 && !inputScalars.CT) {
+							texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+						}
 						status = cuTexObjectCreate(&d_maskBP, &resDesc, &texDesc, &viewDesc);
 						CUDA_CHECK(status, "\n", -1);
 					}
@@ -2322,20 +2325,18 @@ public:
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
-			if (inputScalars.maskFP || inputScalars.maskBP) {
-				if (inputScalars.maskFP) {
-					if (inputScalars.useBuffers) {
-						int subset = 0;
-						if (inputScalars.maskFPZ > 1)
-							subset = osa_iter;
-						kTemp.emplace_back(&d_maskFPB[subset]);
-					}
-					else
-						if (inputScalars.maskFPZ > 1)
-							kTemp.emplace_back(&d_maskFP3[osa_iter]);
-						else
-							kTemp.emplace_back(&d_maskFP);
+			if (inputScalars.maskFP) {
+				if (inputScalars.useBuffers) {
+					int subset = 0;
+					if (inputScalars.maskFPZ > 1)
+						subset = osa_iter;
+					kTemp.emplace_back(&d_maskFPB[subset]);
 				}
+				else
+					if (inputScalars.maskFPZ > 1)
+						kTemp.emplace_back(&d_maskFP3[osa_iter]);
+					else
+						kTemp.emplace_back(&d_maskFP);
 			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
@@ -2934,6 +2935,33 @@ public:
 					else
 						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
 				}
+				if (inputScalars.maskFP || inputScalars.maskBP) {
+					if (inputScalars.maskFP) {
+						if (inputScalars.useBuffers) {
+							int subset = 0;
+							if (inputScalars.maskFPZ > 1)
+								subset = osa_iter;
+							kTemp.emplace_back(&d_maskFPB[subset]);
+						}
+						else
+							if (inputScalars.maskFPZ > 1)
+								kTemp.emplace_back(&d_maskFP3[osa_iter]);
+							else
+								kTemp.emplace_back(&d_maskFP);
+					}
+					if (inputScalars.maskBP) {
+						if (inputScalars.useBuffers)
+							kTemp.emplace_back(&d_maskBPB);
+						else
+							kTemp.emplace_back(&d_maskBP);
+						if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+							if (inputScalars.useBuffers)
+								kTemp.emplace_back(&d_maskBPB);
+							else
+								kTemp.emplace_back(&d_maskBP);
+						}
+					}
+				}
 				kTemp.emplace_back(&length[osa_iter]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 					kTemp.emplace_back(&d_xyindex[osa_iter]);
@@ -2968,18 +2996,6 @@ public:
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);
-			if (inputScalars.maskBP) {
-				if (inputScalars.useBuffers)
-					kTemp.emplace_back(&d_maskBPB);
-				else
-					kTemp.emplace_back(&d_maskBP);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						kTemp.emplace_back(&d_maskBPB);
-					else
-						kTemp.emplace_back(&d_maskBP);
-				}
-			}
 			if (inputScalars.CT)
 				kTemp.emplace_back(&length[osa_iter]);
 			else {

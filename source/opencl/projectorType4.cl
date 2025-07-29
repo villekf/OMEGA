@@ -440,9 +440,9 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
 #else
 #ifdef MASKBP3D
-		        maskVal = read_imageui(maskBP, sampler_MASK, (int4)(p.x, p.y, p.z, 0)).w;
+		        maskVal = read_imageui(maskBP, sampler_MASK4, (float4)(p.x, p.y, p.z, 0)).w;
 #else
-		        maskVal = read_imageui(maskBP, sampler_MASK, (int2)(p.x, p.y)).w;
+		        maskVal = read_imageui(maskBP, sampler_MASK4, (float2)(p.x, p.y)).w;
 #endif
 #endif
             }

@@ -2747,6 +2747,42 @@ public:
 						status = kernelBP.setArg(kernelIndBPSubIter++, d_z[inputScalars.osa_iter0]);
 				}
 				OCL_CHECK(status, "\n", -1);
+				if (inputScalars.maskFP || inputScalars.maskBP) {
+					if (inputScalars.maskFP) {
+						if (inputScalars.useBuffers) {
+							int subset = 0;
+							if (inputScalars.maskFPZ > 1)
+								subset = osa_iter;
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFPB[subset]);
+						}
+						else
+							if (inputScalars.maskFPZ > 1)
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP3[osa_iter]);
+							else
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskFP);
+						OCL_CHECK(status, "\n", -1);
+					}
+					if (inputScalars.maskBP) {
+						if (inputScalars.useBuffers)
+							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+						else
+							if (inputScalars.maskBPZ > 1)
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+							else
+								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+						OCL_CHECK(status, "\n", -1);
+						//if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+						//	if (inputScalars.useBuffers)
+						//		status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+						//	else
+						//		if (inputScalars.maskBPZ > 1)
+						//			status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+						//		else
+						//			status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+						//	OCL_CHECK(status, "\n", -1);
+						//}
+					}
+				}
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
 					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
@@ -2783,26 +2819,6 @@ public:
 			}
 			status = kernelBP.setArg(kernelIndBPSubIter++, no_norm);
 			OCL_CHECK(status, "\n", -1);
-			if (inputScalars.maskBP) {
-				if (inputScalars.useBuffers)
-					status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
-				else
-					if (inputScalars.maskBPZ > 1)
-						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-					else
-						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-				OCL_CHECK(status, "\n", -1);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
-					else
-						if (inputScalars.maskBPZ > 1)
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-						else
-							status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-					OCL_CHECK(status, "\n", -1);
-				}
-			}
 			if (inputScalars.CT)
 				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[osa_iter]));
 			else {
