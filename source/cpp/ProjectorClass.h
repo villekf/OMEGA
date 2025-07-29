@@ -1787,11 +1787,11 @@ public:
 				}
 			}
 		}
+		if (DEBUG) {
+			mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
+			mexEval();
+		}
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-			if (DEBUG) {
-				mexPrintBase("inputScalars.nBins = %u\n", inputScalars.nBins);
-				mexEval();
-			}
 			if (inputScalars.TOF) {
 				status = kernelFP.setArg(kernelIndFP++, d_TOFCenter);
 			}
@@ -2192,8 +2192,10 @@ public:
 			}
 			status = kernelFP.setArg(kernelIndFPSubIter++, length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
-				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]));
-				getErrorString(kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]));
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_xyindex[osa_iter]);
+				OCL_CHECK(status, "\n", -1);
+				status = kernelFP.setArg(kernelIndFPSubIter++, d_zindex[osa_iter]);
+				OCL_CHECK(status, "\n", -1);
 			}
 			if (inputScalars.listmode > 0 && inputScalars.indexBased) {
 				if (!inputScalars.loadTOF) {
@@ -2785,8 +2787,8 @@ public:
 				}
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
-					kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]);
-					kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]);
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_xyindex[osa_iter]));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, d_zindex[osa_iter]));
 				}
 				if (inputScalars.listmode > 0 && inputScalars.indexBased && !compSens) {
 					if (!inputScalars.loadTOF) {
