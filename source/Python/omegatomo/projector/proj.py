@@ -682,6 +682,7 @@ class projectorClass:
             self.useMaskFP = True
             if (self.maskFP.ndim == 3):
                 self.maskFPZ = self.maskFP.shape[2]
+            self.maskFP = np.asfortranarray(self.maskFP)
         else:
             self.useMaskFP = False
         
@@ -691,6 +692,7 @@ class projectorClass:
             self.useMaskBP = True
             if (self.maskBP.ndim == 3):
                 self.maskBPZ = self.maskBP.shape[2]
+            self.maskBP = np.asfortranarray(self.maskBP)
         else:
             self.useMaskBP = False
         list_mode_format = False

@@ -197,9 +197,9 @@ def loadCorrections(options):
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if ~options.use_raw_data and options.NSinos != options.TotSinos:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
-        if not options.corrections_during_reconstruction:
+        if not options.corrections_during_reconstruction and options.precorrect:
             options.normalization = np.reshape(options.normalization, options.SinM.shape, order='F')
-            options.SinM *= options.normalization
+            options.SinM = options.SinM.astype(np.float32) / options.normalization
             options.normalization_correction = False
         else:
             options.normalization = options.normalization.ravel('F').astype(dtype=np.float32)
@@ -216,15 +216,19 @@ def loadCorrections(options):
         if options.randoms_correction == True and options.SinDelayed.size > 0 and options.randoms_smoothing == True:
             from omegatomo.util.smoothing import randoms_smoothing
             options.SinDelayed = randoms_smoothing(options.SinDelayed, options)
+        if options.randoms_correction == True and options.SinDelayed.size > 0 and options.variance_reduction == True:
+            from omegatomo.util.Randoms_variance_reduction import Randoms_variance_reduction
+            options.SinDelayed = Randoms_variance_reduction(options.SinDelayed, options)
         if options.scatter_correction == True and options.ScatterC.size > 0 and options.scatter_smoothing == True:
             from omegatomo.util.smoothing import randoms_smoothing
             options.ScatterC = randoms_smoothing(options.ScatterC, options)
-        if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction == True and options.subtract_scatter:
-            options.SinM = options.SinM - options.SinDelayed - options.ScatterC
-        elif options.scatter_correction and options.ScatterC.size > 0 and options.randoms_correction == False and options.subtract_scatter:
-            options.SinM -= options.ScatterC
-        elif options.SinDelayed.size > 0 and options.randoms_correction == True:
-            options.SinM -= options.SinDelayed
+        if options.precorrect:
+            if options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 0 and options.randoms_correction == True and options.subtract_scatter:
+                options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) - options.ScatterC.astype(np.float32)
+            elif options.scatter_correction and options.ScatterC.size > 0 and options.randoms_correction == False and options.subtract_scatter:
+                options.SinM = options.SinM.astype(np.float32) - options.ScatterC.astype(np.float32) 
+            elif options.SinDelayed.size > 0 and options.randoms_correction == True:
+                options.SinM = options.SinM.astype(np.float32) - options.SinDelayed.astype(np.float32) 
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         options.additionalCorrection = True
         options.corrVector = options.ScatterC

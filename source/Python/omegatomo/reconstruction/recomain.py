@@ -382,7 +382,14 @@ def reconstructions_main(options):
             options.SinM = np.array(var["SinScatter"],order='F')
         else:
             if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
-                options.SinM = np.array(var["SinM"],order='F')
+                if not options.precorrect:
+                    try:
+                        options.SinM = np.array(var["SinM"],order='F')
+                    except KeyError:
+                        options.SinM = np.array(var["raw_SinM"],order='F')
+                        options.precorrect = True
+                else:
+                    options.SinM = np.array(var["raw_SinM"],order='F')
             else:
                 options.SinM = np.array(var["raw_SinM"],order='F')
         if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
@@ -395,11 +402,14 @@ def reconstructions_main(options):
     elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
         varList = np.load(options.fpath)
         if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
-            try:
-                options.SinM = varList['SinM']
-            except KeyError:
+            if not options.precorrect:
+                try:
+                    options.SinM = varList['SinM']
+                except KeyError:
+                    options.SinM = varList['raw_SinM']
+                    options.precorrect = True
+            else:
                 options.SinM = varList['raw_SinM']
-                options.precorrect = True
         else:
             options.SinM = varList['raw_SinM']
         if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
@@ -407,6 +417,8 @@ def reconstructions_main(options):
                 options.SinDelayed = varList['SinDelayed']
             except KeyError:
                 print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+    elif options.corrections_during_reconstruction == False and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
+        print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
     if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
         import tkinter as tk
         from tkinter.filedialog import askopenfilename
