@@ -144,7 +144,11 @@ def loadCorrections(options):
         if options.CT_attenuation:
             if not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item()):
                 if options.vaimennus.shape[0] != options.N[0]:
-                    ValueError('Error: Attenuation data is of different size than the reconstructed image')
+                    print('Error: Attenuation data is of different size than the reconstructed image. Attempting resize!')
+                    from scipy.ndimage import zoom
+                    options.vaimennus = zoom(options.vaimennus, (options.Nx[0] / options.vaimennus.shape[0], options.Ny[0] / options.vaimennus.shape[1], options.Nz[0] / options.vaimennus.shape[2]))
+                    if (not(options.vaimennus.shape[0] == options.Nx[0]) or not(options.vaimennus.shape[1] == options.Ny[0].item()) or not(options.vaimennus.shape[2] == options.Nz[0].item())) and not options.vaimennus.size == options.N[0]:
+                        raise ValueError('Error: Attenuation data is of different size than the reconstructed image. Automatic resize failed.')
             if options.rotateAttImage != 0:
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
                 atn = np.rot90(atn,options.rotateAttImage);
