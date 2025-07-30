@@ -1226,8 +1226,8 @@ class projectorClass:
                     print('Selected device number is ' + str(self.deviceNum))
                     
                 algorithms = [
-                    "OSEM", "MRAMLA", "RAMLA", "ROSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
-                    "OSL_OSEM", "MBSREM", "BSREM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA",
+                    "OSEM", "MRAMLA", "RAMLA", "RBI", "ROSEM", "DRAMA", "COSEM", "ECOSEM", "ACOSEM", "LSQR", "CGLS", "FDK", "FISTA", "FISTAL1",
+                    "OSL_OSEM", "MBSREM", "BSREM", "OSL_RBI", "OSL_COSEM", "ROSEM_MAP", "PKMA", "SART", "ASD_POCS", "SAGA",
                     "PDHG", "PDHGL1", "PDDY", "PDHGKL", "CV" ]
                 
                 
