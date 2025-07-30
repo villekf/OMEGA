@@ -290,7 +290,6 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::vector<const char*> os_options = options;
-			os_options.push_back("-DAF");
 			os_options.push_back("-DSIDDON");
 			os_options.push_back("-DATOMICF");
 			std::vector<const char*> os_optionsFP = os_options;
@@ -2053,8 +2052,8 @@ public:
 			}
 
 			BPArgs.emplace_back(&dPitch);
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				if (inputScalars.FPType == 2)
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+				if (inputScalars.BPType == 2)
 					BPArgs.emplace_back(&inputScalars.tube_width);
 				else
 					BPArgs.emplace_back(&inputScalars.cylRadiusProj3);
@@ -2069,8 +2068,8 @@ public:
 				SensArgs.emplace_back(&inputScalars.det_per_ring);
 				SensArgs.emplace_back(&inputScalars.sigma_x);
 				SensArgs.emplace_back(&dPitch);
-				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-					if (inputScalars.FPType == 2)
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+					if (inputScalars.BPType == 2)
 						SensArgs.emplace_back(&inputScalars.tube_width);
 					else
 						SensArgs.emplace_back(&inputScalars.cylRadiusProj3);
@@ -2101,7 +2100,7 @@ public:
 					mexEval();
 				}
 			}
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				BPArgs.emplace_back(&d_V);
 			}
 			BPArgs.emplace_back(&inputScalars.nColsD);
@@ -2109,7 +2108,7 @@ public:
 				if (inputScalars.TOF) {
 					SensArgs.emplace_back(&d_TOFCenter);
 				}
-				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					SensArgs.emplace_back(&d_V);
 				}
 				SensArgs.emplace_back(&inputScalars.nColsD);
