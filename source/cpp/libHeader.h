@@ -571,6 +571,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     MethodList.FDK = options.FDK;
 
+    if (DEBUG) {
+        mexPrint("Algorithms input");
+    }
+
     // Primal-dual algorithms
     if (MethodList.PDHG || MethodList.PDHGKL || MethodList.PDHGL1 || MethodList.CV || MethodList.PDDY)
         MethodList.CPType = true;
@@ -625,6 +629,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
 
     inputScalars.verbose = options.verbose;
 
+    if (DEBUG) {
+        mexPrint("Step 2");
+    }
+
     // Is TOF data used?
     inputScalars.TOF = options.TOF;
 
@@ -652,6 +660,10 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
     inputScalars.subsets = options.subsets;
 
     inputScalars.epps = options.epps;
+
+    if (DEBUG) {
+        mexPrint("Step 3");
+    }
 
 
     inputScalars.tube_width = options.tube_width_z;
@@ -767,9 +779,7 @@ void copyStruct(inputStruct& options, structForScalars& inputScalars, Weighting&
         inputScalars.meanFP = options.meanFP;
         inputScalars.meanBP = options.meanBP;
     }
-    if (inputScalars.BPType == 5 || inputScalars.BPType == 4) {
-        inputScalars.maskBP = options.useMaskBP;
-    }
+    inputScalars.maskBP = options.useMaskBP;
     inputScalars.maskFP = options.useMaskFP;
     inputScalars.offset = options.offsetCorrection;
     if (inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {

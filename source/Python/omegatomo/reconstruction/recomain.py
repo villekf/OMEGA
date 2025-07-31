@@ -341,8 +341,6 @@ def reconstructions_mainSPECT(options):
         return pz, FPOutputP
 
 def reconstructions_main(options):
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     import time
     import os
     from .prepass import prepassPhase
@@ -351,10 +349,14 @@ def reconstructions_main(options):
     tic = time.perf_counter()
     options.addProjector()
     print('Preparing for reconstruction...')
+    if options.builtin == False:
+        raise ValueError('No reconstruction method selected, aborting.')
     if np.size(options.weights) > 0:
         options.empty_weight = False
     fname, suffix = os.path.splitext(options.fpath)
     if options.SinM.size < 1 and (len(options.fpath) == 0 or len(suffix) == 0):
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
         root = tk.Tk()
         root.withdraw()
         options.fpath = askopenfilename(title='Select measurement datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
@@ -366,6 +368,8 @@ def reconstructions_main(options):
             var = read_mat(options.fpath)
         except OSError:
             print('File not found, please select the measurement data file')
+            import tkinter as tk
+            from tkinter.filedialog import askopenfilename
             root = tk.Tk()
             root.withdraw()
             options.fpath = askopenfilename(title='Select measurement datafile',filetypes=(('MAT files','*.mat'),('All','*.*')))
@@ -378,19 +382,68 @@ def reconstructions_main(options):
             options.SinM = np.array(var["SinScatter"],order='F')
         else:
             if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
-                options.SinM = np.array(var["SinM"],order='F')
+                if not options.precorrect:
+                    try:
+                        options.SinM = np.array(var["SinM"],order='F')
+                    except KeyError:
+                        options.SinM = np.array(var["raw_SinM"],order='F')
+                        options.precorrect = True
+                else:
+                    options.SinM = np.array(var["raw_SinM"],order='F')
             else:
                 options.SinM = np.array(var["raw_SinM"],order='F')
         if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
-            options.SinDelayed = np.array(var["SinDelayed"],order='F')
+            try:
+                options.SinDelayed = np.array(var["SinDelayed"],order='F')
+            except KeyError:
+                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
     elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npy':
         options.SinM = np.load(options.fpath)
     elif options.SinM.size < 1 and options.fpath[len(options.fpath)-3:len(options.fpath)+1:1] == 'npz':
         varList = np.load(options.fpath)
         if ((options.randoms_correction or options.scatter_correction or options.normalization_correction) and options.corrections_during_reconstruction == False):
-            options.SinM = varList.files[varList.files.index['SinM']]
+            if not options.precorrect:
+                try:
+                    options.SinM = varList['SinM']
+                except KeyError:
+                    options.SinM = varList['raw_SinM']
+                    options.precorrect = True
+            else:
+                options.SinM = varList['raw_SinM']
         else:
-            options.SinM = varList.files[varList.files.index['raw_SinM']]
+            options.SinM = varList['raw_SinM']
+        if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
+            try:
+                options.SinDelayed = varList['SinDelayed']
+            except KeyError:
+                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed')
+    elif options.corrections_during_reconstruction == False and not options.precorrect and (options.randoms_correction or options.scatter_correction or options.normalization_correction):
+        print('Corrections selected and measurement data found. The input measurement data WILL NOT BE PRECORRECTED!!!!!! If you wish to have OMEGA-based precorrection, make sure options.precorrect = True')
+    if options.randoms_correction and not options.reconstruct_scatter and not options.reconstruct_trues and options.SinDelayed.size < 1:
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
+        root = tk.Tk()
+        root.withdraw()
+        fpath = askopenfilename(title='Select randoms datafile',filetypes=(('NPY, NPZ and MAT files','*.mat *.npy *.npz'),('All','*.*')))
+        if len(options.fpath) == 0:
+            print('No file selected, disabling randoms correction')
+            options.randoms_correction = False
+        if fpath[len(fpath)-3:len(fpath)+1:1] == 'mat' and options.randoms_correction:
+            from pymatreader import read_mat
+            var = read_mat(fpath)
+            try:
+                options.SinDelayed = np.array(var["SinDelayed"],order='F')
+            except KeyError:
+                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
+                options.randoms_correction = False
+        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npy':
+            options.SinDelayed = np.load(fpath)
+        elif fpath[len(fpath)-3:len(fpath)+1:1] == 'npz':
+            varList = np.load(fpath)
+            try:
+                options.SinDelayed = varList['SinDelayed']
+            except KeyError:
+                print('Randoms correction selected but no randoms data found. The randoms data should be saved as SinDelayed. Disabling randoms correction')
     if options.TOF and options.TOF_bins_used == 1:
         options.TOF_bins = options.TOF_bins_used
         options.SinM = np.sum(options.SinM, axis=3)

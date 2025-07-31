@@ -290,7 +290,6 @@ class ProjectorClass {
 		// Build projector program
 		if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
 			std::vector<const char*> os_options = options;
-			os_options.push_back("-DAF");
 			os_options.push_back("-DSIDDON");
 			os_options.push_back("-DATOMICF");
 			std::vector<const char*> os_optionsFP = os_options;
@@ -1620,6 +1619,9 @@ public:
 							viewDesc.depth = inputScalars.maskBPZ;
 							texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						}
+						if (inputScalars.BPType == 4 && !inputScalars.CT) {
+							texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+						}
 						status = cuTexObjectCreate(&d_maskBP, &resDesc, &texDesc, &viewDesc);
 						CUDA_CHECK(status, "\n", -1);
 					}
@@ -2051,8 +2053,8 @@ public:
 			}
 
 			BPArgs.emplace_back(&dPitch);
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-				if (inputScalars.FPType == 2)
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+				if (inputScalars.BPType == 2)
 					BPArgs.emplace_back(&inputScalars.tube_width);
 				else
 					BPArgs.emplace_back(&inputScalars.cylRadiusProj3);
@@ -2067,8 +2069,8 @@ public:
 				SensArgs.emplace_back(&inputScalars.det_per_ring);
 				SensArgs.emplace_back(&inputScalars.sigma_x);
 				SensArgs.emplace_back(&dPitch);
-				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
-					if (inputScalars.FPType == 2)
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
+					if (inputScalars.BPType == 2)
 						SensArgs.emplace_back(&inputScalars.tube_width);
 					else
 						SensArgs.emplace_back(&inputScalars.cylRadiusProj3);
@@ -2099,7 +2101,7 @@ public:
 					mexEval();
 				}
 			}
-			if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 				BPArgs.emplace_back(&d_V);
 			}
 			BPArgs.emplace_back(&inputScalars.nColsD);
@@ -2107,7 +2109,7 @@ public:
 				if (inputScalars.TOF) {
 					SensArgs.emplace_back(&d_TOFCenter);
 				}
-				if (inputScalars.FPType == 2 || inputScalars.FPType == 3) {
+				if (inputScalars.BPType == 2 || inputScalars.BPType == 3) {
 					SensArgs.emplace_back(&d_V);
 				}
 				SensArgs.emplace_back(&inputScalars.nColsD);
@@ -2323,20 +2325,18 @@ public:
 				kTemp.emplace_back(&d_z[osa_iter]);
 			else
 				kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
-			if (inputScalars.maskFP || inputScalars.maskBP) {
-				if (inputScalars.maskFP) {
-					if (inputScalars.useBuffers) {
-						int subset = 0;
-						if (inputScalars.maskFPZ > 1)
-							subset = osa_iter;
-						kTemp.emplace_back(&d_maskFPB[subset]);
-					}
-					else
-						if (inputScalars.maskFPZ > 1)
-							kTemp.emplace_back(&d_maskFP3[osa_iter]);
-						else
-							kTemp.emplace_back(&d_maskFP);
+			if (inputScalars.maskFP) {
+				if (inputScalars.useBuffers) {
+					int subset = 0;
+					if (inputScalars.maskFPZ > 1)
+						subset = osa_iter;
+					kTemp.emplace_back(&d_maskFPB[subset]);
 				}
+				else
+					if (inputScalars.maskFPZ > 1)
+						kTemp.emplace_back(&d_maskFP3[osa_iter]);
+					else
+						kTemp.emplace_back(&d_maskFP);
 			}
 			kTemp.emplace_back((void*)&length[osa_iter]);
 			if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
@@ -2935,6 +2935,33 @@ public:
 					else
 						kTemp.emplace_back(&d_z[inputScalars.osa_iter0]);
 				}
+				if (inputScalars.maskFP || inputScalars.maskBP) {
+					if (inputScalars.maskFP) {
+						if (inputScalars.useBuffers) {
+							int subset = 0;
+							if (inputScalars.maskFPZ > 1)
+								subset = osa_iter;
+							kTemp.emplace_back(&d_maskFPB[subset]);
+						}
+						else
+							if (inputScalars.maskFPZ > 1)
+								kTemp.emplace_back(&d_maskFP3[osa_iter]);
+							else
+								kTemp.emplace_back(&d_maskFP);
+					}
+					if (inputScalars.maskBP) {
+						if (inputScalars.useBuffers)
+							kTemp.emplace_back(&d_maskBPB);
+						else
+							kTemp.emplace_back(&d_maskBP);
+						if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
+							if (inputScalars.useBuffers)
+								kTemp.emplace_back(&d_maskBPB);
+							else
+								kTemp.emplace_back(&d_maskBP);
+						}
+					}
+				}
 				kTemp.emplace_back(&length[osa_iter]);
 				if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsets > 1 && inputScalars.listmode == 0) {
 					kTemp.emplace_back(&d_xyindex[osa_iter]);
@@ -2969,18 +2996,6 @@ public:
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);
-			if (inputScalars.maskBP) {
-				if (inputScalars.useBuffers)
-					kTemp.emplace_back(&d_maskBPB);
-				else
-					kTemp.emplace_back(&d_maskBP);
-				if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-					if (inputScalars.useBuffers)
-						kTemp.emplace_back(&d_maskBPB);
-					else
-						kTemp.emplace_back(&d_maskBP);
-				}
-			}
 			if (inputScalars.CT)
 				kTemp.emplace_back(&length[osa_iter]);
 			else {

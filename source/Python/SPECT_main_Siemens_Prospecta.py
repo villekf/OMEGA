@@ -685,7 +685,7 @@ options.APLSsmoothing = 1e-5
 # attenuation correction above). As before, this can also be a variable
 # instead.
 # NOTE: For APSL, the reference image is required.
-options.APLS_reference_image = 'reference_image.mat'
+options.APLS_ref_image = 'reference_image.mat'
 
 
 ########################## HYPERBOLIC PROPERTIES ##########################

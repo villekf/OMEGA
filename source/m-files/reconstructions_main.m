@@ -160,13 +160,13 @@ end
 
 if ~options.param.listmode
     % Load correction data
-    [options.param.normalization_correction, options.param.randoms_correction, options.param] = loadCorrections(options.param, RandProp, ScatterProp);
+    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 else
     % list-mode does not support corrections
     % options.param.normalization_correction = false;
     options.param.randoms_correction = false;
     options.param.additionalCorrection = false;
-    [options.param.normalization_correction, options.param.randoms_correction, options.param] = loadCorrections(options.param, RandProp, ScatterProp);
+    [options.param] = loadCorrections(options.param, RandProp, ScatterProp);
 end
 
 options.param = parseInputData(options.param, options.index);

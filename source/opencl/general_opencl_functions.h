@@ -136,7 +136,11 @@ __constant sampler_t samplerForw = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_LINEA
 #endif
 __constant sampler_t samplerSiddon = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 
+#if defined(MASKBP) && defined(PTYPE4) && !defined(CT) && defined(BP)
+__constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
+#else
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
+#endif
 #elif defined(CUDA)
 #define M_PI_F 3.141593f
 #define M_PI_2_F 1.570796f

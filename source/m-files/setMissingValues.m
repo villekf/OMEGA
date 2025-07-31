@@ -623,6 +623,9 @@ end
 if ~isfield(options, 'corrections_during_reconstruction')
     options.corrections_during_reconstruction = true;
 end
+if ~isfield(options, 'ordinaryPoisson')
+    options.ordinaryPoisson = options.corrections_during_reconstruction;
+end
 if ~isfield(options, 'ndist_side')
     options.ndist_side = 1;
 end
@@ -699,13 +702,6 @@ if ~isfield(options,'Nang')
         options.Nang = 1;
     end
 end
-if ~isfield(options,'NSinos')
-    if isfield(options, 'TotSinos')
-        options.NSinos = options.TotSinos;
-    else
-        options.NSinos = 1;
-    end
-end
 if ~isfield(options, 'segment_table') && isfield(options, 'span') && options.span > 0
     if options.span == 1
         options.segment_table = options.rings^2;
@@ -716,6 +712,15 @@ if ~isfield(options, 'segment_table') && isfield(options, 'span') && options.spa
         else
             options.segment_table = [options.segment_table(1), repelem(options.segment_table(2:end),2)];
         end
+    end
+end
+if ~isfield(options,'NSinos')
+    if isfield(options, 'TotSinos')
+        options.NSinos = options.TotSinos;
+    elseif isfield(options, 'segment_table')
+        options.NSinos = sum(options.segment_table);
+    else
+        options.NSinos = 1;
     end
 end
 if ~isfield(options,'TotSinos')

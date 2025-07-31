@@ -487,6 +487,8 @@ classdef projectorClass
             end
             if numel(obj.param.partitions) > 1
                 partitions = numel(obj.param.partitions);
+            elseif isempty(obj.param.partitions)
+                partitions = 1;
             else
                 partitions = obj.param.partitions;
             end
@@ -568,7 +570,7 @@ classdef projectorClass
                 warning('Only subset types 0, 1, and 3 are supported with list-mode/custom detector data! Switching to subset type 0.')
                 obj.param.subset_type = 0;
             end
-            if obj.param.listmode && (numel(obj.param.Nt) > 1 || obj.param.Nt > 1)
+            if obj.param.listmode && (numel(partitions) > 1 || partitions > 1)
                 obj.param.loadTOF = false;
             end
             [obj.index, obj.nMeas, obj.param.subsets] = index_maker(obj.param);
@@ -849,7 +851,7 @@ classdef projectorClass
         end
 
         function obj = initCorrections(obj)
-            [~, ~, obj.param] = loadCorrections(obj.param, [], []);
+            [obj.param] = loadCorrections(obj.param, [], []);
         end
 
 

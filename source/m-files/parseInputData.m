@@ -130,7 +130,7 @@ if options.subsets > 1 && options.subset_type > 0
             options.normalization = options.normalization(index);
         end
     end
-    if options.additionalCorrection && isfield(options,'corrVector')
+    if options.additionalCorrection && isfield(options,'corrVector') && numel(options.corrVector) > 1
         if options.subset_type >= 8
             if iscell(options.corrVector)
                 for kk = 1 : numel(options.corrVector)
@@ -221,5 +221,7 @@ if options.subsets > 1 && options.subset_type > 0
     end
     if options.useMaskFP && options.maskFPZ > 1 && options.subset_type >= 8
         options.maskFP = options.maskFP(:,:,index);
+    elseif options.useMaskFP && options.subset_type == 3
+        error('Forward projection mask is not supported with subset type 3!')
     end
 end
