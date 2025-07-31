@@ -494,7 +494,7 @@ class projectorClass:
         # C-struct
         self.param = self.parameters()
     def addProjector(self):
-        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV:
+        if self.OSL_OSEM or self.MBSREM or self.ROSEM_MAP or self.OSL_RBI or self.OSL_COSEM > 0 or self.PKMA or self.SPS or self.PDHG or self.PDHGKL or self.PDHGL1 or self.PDDY or self.CV or self.SAGA or self.SART or self.ASD_POCS:
             self.MAP = True
         if hasattr(self, 'dPitch') and self.dPitch > 0 and self.dPitchX == 0.:
             self.dPitchX = self.dPitch
@@ -1073,7 +1073,7 @@ class projectorClass:
             raise ValueError('Using TV type = 2, but no anatomical reference set. Use options.TVtype = 1 if anatomical weighting is not used!')
         if self.projector_type not in [1, 2, 3, 4, 5, 6, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44, 45, 51, 15, 54, 55]:
             raise ValueError('The selected projector type is not supported!')
-        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP:
+        if self.APLS and not os.path.exists(self.APLS_ref_image) and self.MAP and not type(self.APLS_ref_image) == np.ndarray:
             raise FileNotFoundError('APLS selected, but the anatomical reference image was not found on path!')
         if self.epps <= 0:
             print('Epsilon value is zero or less than zero; must be a positive value. Using the default value (1e-6).')
@@ -1153,6 +1153,8 @@ class projectorClass:
             raise ValueError('Filtering-based preconditioner only works with subset types 0, 4 and 8-11!')
         if self.useCPU and self.ECOSEM:
             raise ValueError('ECOSEM is not supported with CPU!')
+        if self.NLM_use_anatomical and self.useCPU and self.NLM:
+            raise ValueError('Reference image weighting for NLM is not supported with CPU!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
