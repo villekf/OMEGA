@@ -161,6 +161,7 @@ def loadCorrections(options):
                 atn = np.reshape(options.vaimennus, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
                 atn = np.flip(atn,2);
                 options.vaimennus = atn
+        options.vaimennus = np.asfortranarray(options.vaimennus)
         options.vaimennus = options.vaimennus.ravel('F').astype(dtype=np.float32)
     if options.normalization_correction:
         if options.normalization.size == 0:
@@ -173,27 +174,36 @@ def loadCorrections(options):
                 except ModuleNotFoundError:
                     print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
             else:
-                import tkinter as tk
-                from tkinter.filedialog import askopenfilename
-                root = tk.Tk()
-                root.withdraw()
-                nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
-                if len(nimi) == 0:
-                    raise ValueError("No file selected!")
-                if nimi[len(nimi)-3:len(nimi)+1:1] == 'nrm':
-                    options.normalization = np.fromfile(nimi, dtype=np.float32)
-                    if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and ~options.use_raw_data:
-                        ValueError('Size mismatch between the current data and the normalization data file')
-                elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
-                    from pymatreader import read_mat
-                    var = read_mat(nimi)
-                    options.normalization = np.array(var["normalization"])
-                elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
-                    apu = np.load(nimi, allow_pickle=True)
-                    variables = list(apu.keys())
-                    options.normalization = apu[variables[0]]
+                normdir = os.path.join(os.path.dirname(options.fpath), options.machine_name + '_normalization_' + str(options.Ndist) + 'x' + str(options.Nang) + '_span' + str(options.span) + '.mat')
+                if os.path.exists(normdir):
+                    try:
+                        from pymatreader import read_mat
+                        var = read_mat(normdir)
+                        options.normalization = np.array(var["normalization"],order='F')
+                    except ModuleNotFoundError:
+                        print('pymatreader package not found! Mat-files cannot be loaded. You can install pymatreader package with "pip install pymatreader".')
                 else:
-                    ValueError('Unsupported datatype!')
+                    import tkinter as tk
+                    from tkinter.filedialog import askopenfilename
+                    root = tk.Tk()
+                    root.withdraw()
+                    nimi = askopenfilename(title='Select normalization datafile',filetypes=(('NRM, NPY, NPZ and MAT files','*.nrm *.mat *.npy *.npz'),('All','*.*')))
+                    if len(nimi) == 0:
+                        raise ValueError("No file selected!")
+                    if nimi[len(nimi)-3:len(nimi)+1:1] == 'nrm':
+                        options.normalization = np.fromfile(nimi, dtype=np.float32)
+                        if options.normalization.size != options.Ndist * options.Nang * options.TotSinos and ~options.use_raw_data:
+                            ValueError('Size mismatch between the current data and the normalization data file')
+                    elif nimi[len(nimi)-3:len(nimi)+1:1] == 'mat':
+                        from pymatreader import read_mat
+                        var = read_mat(nimi)
+                        options.normalization = np.array(var["normalization"])
+                    elif (nimi[len(nimi)-3:len(nimi)+1:1] == 'npy' or nimi[len(nimi)-3:len(nimi)+1:1] == 'npz'):
+                        apu = np.load(nimi, allow_pickle=True)
+                        variables = list(apu.keys())
+                        options.normalization = apu[variables[0]]
+                    else:
+                        ValueError('Unsupported datatype!')
             options.normalization = 1. / options.normalization.ravel('F').astype(dtype=np.float32)
             if ~options.use_raw_data and options.NSinos != options.TotSinos:
                 options.normalization = options.normalization[0 : options.Ndist * options.Nang * options.NSinos]
@@ -438,6 +448,7 @@ def parseInputs(options, mDataFound = False):
             
     
     if mDataFound and not options.largeDim and options.loadTOF:
+        options.SinM = np.asfortranarray(options.SinM)
         options.SinM = options.SinM.ravel(order='F').astype(dtype=np.float32)
 
 
@@ -445,15 +456,15 @@ def TVPrepass(options):
     from skimage.transform import resize #scikit-image
     def assembleS(alkuarvo,T,Ny,Nx,Nz):
         S = np.zeros((Nx * Ny * Nz * 3, 3),order='F',dtype=np.float32)
-        f = -np.diff(alkuarvo, axis=1, append=0)
+        f = -np.diff(alkuarvo, axis=1)
         f = np.concatenate((f, np.zeros((Nx, 1, Nz),order='F',dtype=np.float32)), axis=1)
-        f = f.reshape(-1)
-        g = -np.diff(alkuarvo, axis=0, append=0)
+        f = f.ravel('F')
+        g = -np.diff(alkuarvo, axis=0)
         g = np.concatenate((g, np.zeros((1, Ny, Nz),order='F',dtype=np.float32)), axis=0)
-        g = g.reshape(-1)
-        h = -np.diff(alkuarvo, axis=2, append=0)
+        g = g.ravel('F')
+        h = -np.diff(alkuarvo, axis=2)
         h = np.concatenate((h, np.zeros((Nx, Ny, 1),order='F',dtype=np.float32)), axis=2)
-        h = h.reshape(-1)
+        h = h.ravel('F')
         
         gradvec = np.vstack((f, g, h))
         
@@ -493,17 +504,19 @@ def TVPrepass(options):
                 options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()))
                 if koko_apu != options.Nx[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
                     if options.Nz[0].item() > 1:
+                        print('Resizing reference image')
                         options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
         else:
             if options.TV_referenceImage.shape[1] != options.Ny[0].item() or options.TV_referenceImage.shape[2] != options.Nz[0].item():
                 if options.Nz[0].item() > 1:
+                    print('Resizing reference image')
                     options.TV_referenceImage = resize(options.TV_referenceImage, (options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()))
         options.TV_referenceImage = options.TV_referenceImage.astype(dtype=np.float32)
         options.TV_referenceImage = options.TV_referenceImage - np.min(options.TV_referenceImage)
         options.TV_referenceImage = options.TV_referenceImage / np.max(options.TV_referenceImage)
         if options.TVtype == 1:
-            options.TV_referenceImage = options.TV_referenceImage.reshape((koko_apu, koko_apu, options.Nz[0].item()),order='F')
-            S = assembleS(options.TV_referenceImage, options.B, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
+            options.TV_referenceImage = options.TV_referenceImage.reshape((options.Nx[0].item(), options.Ny[0].item(), options.Nz[0].item()),order='F')
+            S = assembleS(options.TV_referenceImage, options.T, options.Ny[0].item(), options.Nx[0].item(), options.Nz[0].item())
             S = S.astype(dtype=np.float32)
             s1 = S[0::3, 0]
             s2 = S[0::3, 1]
@@ -514,7 +527,8 @@ def TVPrepass(options):
             s7 = S[2::3, 0]
             s8 = S[2::3, 1]
             s9 = S[2::3, 2]
-            options.s = np.concatenate((s1.flatten(), s2.flatten(), s3.flatten(), s4.flatten(), s5.flatten(), s6.flatten(), s7.flatten(), s8.flatten(), s9.flatten()))
+            options.s = np.asfortranarray(np.concatenate((s1.flatten(), s2.flatten(), s3.flatten(), s4.flatten(), s5.flatten(), s6.flatten(), s7.flatten(), s8.flatten(), s9.flatten())))
+        options.TV_referenceImage = np.asfortranarray(options.TV_referenceImage)
         options.TV_referenceImage = options.TV_referenceImage.ravel('F').astype(dtype=np.float32)
         
 def APLSPrepass(options):
@@ -534,18 +548,21 @@ def APLSPrepass(options):
             apu = np.load(options.APLS_ref_image, allow_pickle=True)
             variables = list(apu.keys())
             options.APLS_ref_image = apu[variables[0]]
-    if options.APLS_ref_image.shape[1] == 1:
+    if options.APLS_ref_image.ndim == 1 or options.APLS_ref_image.shape[1] == 1:
         koko_apu = np.sqrt(np.size(options.APLS_ref_image) / options.Nz[0])
         if koko_apu != np.floor(koko_apu):
-            raise ValueError('Reference image has to be square')
+            raise ValueError('Reference image has to be 2D/3D if different size than reconstruction size!')
         else:
-            options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]))
+            options.APLS_ref_image = options.APLS_ref_image.reshape((koko_apu, koko_apu, options.Nz[0]), order = 'F')
             if koko_apu != options.Nx[0] or options.APLS_ref_image.shape[2] != options.Nz[0]:
+                print('Resizing reference image')
                 options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
     else:
         if options.APLS_ref_image.shape[1] != options.Ny or options.APLS_ref_image.shape[2] != options.Nz:
+            print('Resizing reference image')
             options.APLS_ref_image = resize(options.APLS_ref_image, (options.Nx[0], options.Ny[0], options.Nz[0]))
     options.APLS_ref_image = options.APLS_ref_image.astype(dtype=np.float32)
+    options.APLS_ref_image = np.asfortranarray(options.APLS_ref_image)
     options.APLS_ref_image = options.APLS_ref_image.ravel('F')
 
 def computeWeights(options, GGMRF):
@@ -657,6 +674,11 @@ def NLMPrepass(options):
                 apu = np.load(options.NLM_referenceImage, allow_pickle=True)
                 variables = list(apu.keys())
                 options.NLM_referenceImage = apu[variables[0]]
+        if options.NLM_referenceImage.ndim > 1 and options.NLM_referenceImage.shape[1] != options.Ny or options.NLM_referenceImage.shape[2] != options.Nz:
+            from skimage.transform import resize #scikit-image
+            print('Resizing reference image')
+            options.NLM_referenceImage = resize(options.NLM_referenceImage, (options.Nx[0], options.Ny[0], options.Nz[0]))
+        options.NLM_referenceImage = np.asfortranarray(options.NLM_referenceImage)
         options.NLM_referenceImage = options.NLM_referenceImage.ravel('F').astype(dtype=np.float32)
 
 def prepassPhase(options):
@@ -690,6 +712,11 @@ def prepassPhase(options):
                     options.referenceImage = apu[variables[0]]
                 else:
                     options.referenceImage = apu;
+        if options.referenceImage.ndim > 1 and options.referenceImage.shape[1] != options.Ny or options.referenceImage.shape[2] != options.Nz:
+            from skimage.transform import resize #scikit-image
+            print('Resizing reference image')
+            options.referenceImage = resize(options.referenceImage, (options.Nx[0], options.Ny[0], options.Nz[0]))
+        options.referenceImage = np.asfortranarray(options.referenceImage)
         options.referenceImage = options.referenceImage.ravel('F').astype(dtype=np.float32)
         if np.size(options.referenceImage) == round((options.NxFull - options.NxOrig) * options.multiResolutionScale) * \
             round((options.NyFull - options.NyOrig) * options.multiResolutionScale) * \
