@@ -1787,15 +1787,15 @@ DEVICE float sqrtVal(const float3 input, const float epps
 ) {
 #ifdef TVW1
 #ifdef USEMAD
-	return sqrt(FMAD(w.x, input.x * input.x, FMAD(w.y, input.y * input.y, FMAD(w.z, input.z * input.z, epps))));
+	return SQRT(FMAD(w.x, input.x * input.x, FMAD(w.y, input.y * input.y, FMAD(w.z, input.z * input.z, epps))));
 #else
-	return sqrt(w.x * input.x * input.x + w.y * input.y * input.y + w.z * input.z * input.z + epps);
+	return SQRT(w.x * input.x * input.x + w.y * input.y * input.y + w.z * input.z * input.z + epps);
 #endif
 #else
 #ifdef USEMAD
-	return sqrt(FMAD(input.x, input.x, FMAD(input.y, input.y, FMAD(input.z, input.z, epps))));
+	return SQRT(FMAD(input.x, input.x, FMAD(input.y, input.y, FMAD(input.z, input.z, epps))));
 #else
-	return sqrt(input.x * input.x + input.y * input.y + input.z * input.z + epps);
+	return SQRT(input.x * input.x + input.y * input.y + input.z * input.z + epps);
 #endif
 #endif
 }
@@ -1996,13 +1996,13 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	for (int kk = 0; kk < 9; kk++)
 		s[kk] = S[n + NN * kk];
 	const float3 val = uijkP - uijk;
-	const float pvalijk = sqrt(val.x * val.x * s[0] + val.y * val.y * s[4] + val.z * val.z * s[8] + s[1] * (val.x) * (val.y) + s[3] * (val.x) * (val.y) + s[2] * (val.x) * (val.z) + s[6] * (val.x) * (val.z) + 
+	const float pvalijk = SQRT(val.x * val.x * s[0] + val.y * val.y * s[4] + val.z * val.z * s[8] + s[1] * (val.x) * (val.y) + s[3] * (val.x) * (val.y) + s[2] * (val.x) * (val.z) + s[6] * (val.x) * (val.z) + 
 		s[5] * (val.y) * (val.z) + s[7] * (val.y) * (val.z) + epps);
-	const float pvalijkX = sqrt(u1.x * u1.x * s[0] + u1.y * u1.y * s[4] + u1.z * u1.z * s[8] + s[1] * (u1.x) * (u1.y) + s[3] * (u1.x) * (u1.y) + s[2] * (u1.x) * (u1.z) + s[6] * (u1.x) * (u1.z) + 
+	const float pvalijkX = SQRT(u1.x * u1.x * s[0] + u1.y * u1.y * s[4] + u1.z * u1.z * s[8] + s[1] * (u1.x) * (u1.y) + s[3] * (u1.x) * (u1.y) + s[2] * (u1.x) * (u1.z) + s[6] * (u1.x) * (u1.z) + 
 		s[5] * (u1.y) * (u1.z) + s[7] * (u1.y) * (u1.z) + epps);
-	const float pvalijkY = sqrt(u2.x * u2.x * s[0] + u2.y * u2.y * s[4] + u2.z * u2.z * s[8] + s[1] * (u2.x) * (u2.y) + s[3] * (u2.x) * (u2.y) + s[2] * (u2.x) * (u2.z) + s[6] * (u2.x) * (u2.z) + 
+	const float pvalijkY = SQRT(u2.x * u2.x * s[0] + u2.y * u2.y * s[4] + u2.z * u2.z * s[8] + s[1] * (u2.x) * (u2.y) + s[3] * (u2.x) * (u2.y) + s[2] * (u2.x) * (u2.z) + s[6] * (u2.x) * (u2.z) + 
 		s[5] * (u2.y) * (u2.z) + s[7] * (u2.y) * (u2.z) + epps);
-	const float pvalijkZ = sqrt(u3.x * u3.x * s[0] + u3.y * u3.y * s[4] + u3.z * u3.z * s[8] + s[1] * (u3.x) * (u3.y) + s[3] * (u3.x) * (u3.y) + s[2] * (u3.x) * (u3.z) + s[6] * (u3.x) * (u3.z) + 
+	const float pvalijkZ = SQRT(u3.x * u3.x * s[0] + u3.y * u3.y * s[4] + u3.z * u3.z * s[8] + s[1] * (u3.x) * (u3.y) + s[3] * (u3.x) * (u3.y) + s[2] * (u3.x) * (u3.z) + s[6] * (u3.x) * (u3.z) + 
 		s[5] * (u3.y) * (u3.z) + s[7] * (u3.y) * (u3.z) + epps);
 	const float dx = s[0] * (2.f * (uijk - uijkM.x)) + s[3] * u1.y + s[2] * u1.z + s[6] * u1.z + s[1] * u1.y;
 	const float dy = s[4] * (2.f * (uijk - uijkM.y)) + s[5] * u2.z + s[3] * u2.x + s[1] * u2.x + s[7] * u2.z;
@@ -2024,7 +2024,7 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 		uijkR.z = S[(xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
 	const float3 apuS = (uijkR - S[n]);
 	const float3 apu = uijkP - uijk;
-	const float pvalijk = native_sqrt(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
+	const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z + C * (apuS.x * apuS.x + apuS.y * apuS.y + apuS.z * apuS.z) + epps);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * ((3.f * uijk - uijkP.x - uijkP.y - uijkP.z) / pvalijk + (uijk - uijkM.x) / sqrtVal(u1, epps) + (uijk - uijkM.y) / sqrtVal(u2, epps) + (uijk - uijkM.z) / sqrtVal(u3, epps) + 1e-7f);
@@ -2040,16 +2040,16 @@ void TVKernel(CLGLOBAL float* CLRESTRICT grad, const CLGLOBAL float* CLRESTRICT 
 	if (xyz.z < N.z - 1)
 		uijkR.z = S[(xyz.x) + (xyz.y) * N.x + (xyz.z + 1) * N.x * N.y];
 	float3 epsilon = (uijkR - S[n]);
-	epsilon = epsilon / native_sqrt(epsilon.x * epsilon.x + epsilon.y * epsilon.y + epsilon.z * epsilon.z + C * C);
+	epsilon = epsilon / SQRT(epsilon.x * epsilon.x + epsilon.y * epsilon.y + epsilon.z * epsilon.z + C * C);
 	const float3 apu = uijkP - uijk;
 	const float apuR = uijkR.x * apu.x + uijkR.y * apu.y + uijkR.z * apu.z;
-	const float pvalijk = native_sqrt(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z - apuR * apuR + epps);
+	const float pvalijk = SQRT(apu.x * apu.x + apu.y * apu.y + apu.z * apu.z - apuR * apuR + epps);
 	float apuRXYZ = uijkR.x * u1.x + uijkR.y * u1.y + uijkR.z * u1.z;
-	const float pvalijkX = native_sqrt(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + apuRXYZ * apuRXYZ + epps);
+	const float pvalijkX = SQRT(u1.x * u1.x + u1.y * u1.y + u1.z * u1.z + apuRXYZ * apuRXYZ + epps);
 	apuRXYZ = uijkR.x * u2.x + uijkR.y * u2.y + uijkR.z * u2.z;
-	const float pvalijkY = native_sqrt(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + apuRXYZ * apuRXYZ + epps);
+	const float pvalijkY = SQRT(u2.x * u2.x + u2.y * u2.y + u2.z * u2.z + apuRXYZ * apuRXYZ + epps);
 	apuRXYZ = uijkR.x * u3.x + uijkR.y * u3.y + uijkR.z * u3.z;
-	const float pvalijkZ = native_sqrt(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
+	const float pvalijkZ = SQRT(u3.x * u3.x + u3.y * u3.y + u3.z * u3.z + apuRXYZ * apuRXYZ + epps);
 #ifdef LARGEDIM
 	if (xyz.z >= nOffset.x && xyz.z < nOffset.y)
 		grad[n - N.x * N.y * nOffset.x] += beta * .5f * ((6.f * uijk - 2.f * uijkP.x - 2.f * uijkP.y - 2.f * uijkP.z + 2.f * (epsilon.x*(uijk - uijkP.x) + epsilon.y*(uijk - uijkP.y) + epsilon.z*(uijk - uijkP.z)) * (epsilon.x + epsilon.y + epsilon.z)) / pvalijk + 
