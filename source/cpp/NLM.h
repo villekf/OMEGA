@@ -16,7 +16,8 @@
 template <typename T>
 void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32_t search_window_x, const int32_t search_window_y,
 	const int32_t search_window_z, const int32_t patch_window_x, const int32_t patch_window_y, const int32_t patch_window_z, const uint32_t Nx, 
-	const uint32_t Ny, const uint32_t Nz, const int32_t Nxy, const T h, const int32_t type, const T gamma, const T epps, const T p = (T)0., const T q = (T)0., const T c = (T)0.) {
+	const uint32_t Ny, const uint32_t Nz, const int32_t Nxy, const T h, const int32_t type, const T gamma, const T epps, const T p = (T)0., const T q = (T)0., const T c = (T)0., 
+	const bool anatomical = false) {
 
 	setThreads();
 
@@ -75,10 +76,17 @@ void NLMFunc(T* grad, const T* u_ref, const T* u, const T* gaussian, const int32
 								const T gg = gaussian[dim_g++];
 								const int x_k = x_n + px;
 								const int dim_k = z_k + y_k + x_k;
-								const T Pj = u_ref[dim_k];
+								T Pj, Pk;
+								if (anatomical)
+									Pj = u_ref[dim_k];
+								else
+									Pj = u[dim_k];
 								const int x_j = x + px;
 								const int dim_j = z_j + y_j + x_j;
-								const T Pk = u_ref[dim_j];
+								if (anatomical)
+									Pk = u_ref[dim_j];
+								else
+									Pk = u[dim_j];
 								distance += gg * (Pj - Pk) * (Pj - Pk);
 							}
 						}

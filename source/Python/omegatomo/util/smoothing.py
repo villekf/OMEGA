@@ -5,11 +5,11 @@ Created on Thu Jul 24 16:27:43 2025
 @author: Ville-Veikko Wettenhovi
 """
 
-from scipy.ndimage import convolve
-from omegatomo.util.padding import padding
 import numpy as np
 
 def randoms_smoothing(randoms: np.ndarray, options):
+    from omegatomo.util.padding import padding
+    from scipy.ndimage import convolve
     """
     Performs a moving mean smoothing on randoms or scatter data.
 

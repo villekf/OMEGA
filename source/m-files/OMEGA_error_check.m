@@ -326,6 +326,9 @@ end
 if PRIOR_summa > 1 && MAP
     error('Only one prior at a time can be used!')
 end
+if options.NLM_use_anatomical && options.useCPU && options.implementation == 2 && options.NLM
+    error('Reference image weighting for NLM is not supported with CPU!')
+end
 if OS_I4_summa > 1
     dispi = [];
     reko = recNames(0);

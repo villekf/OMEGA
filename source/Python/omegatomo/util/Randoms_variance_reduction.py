@@ -6,10 +6,10 @@ Created on Thu Jul 24 17:37:24 2025
 """
 
 import numpy as np
-from omegatomo.projector.detcoord import detectorCoordinates, sinogramCoordinates2D, sinogramCoordinates3D
 
 def Randoms_variance_reduction(Randoms, options):
     """Applies 3D fan-sum variance reduction to input randoms."""
+    from omegatomo.projector.detcoord import detectorCoordinates, sinogramCoordinates2D, sinogramCoordinates3D
     if options.verbose > 0:
         print("Starting Randoms variance reduction")
 
@@ -41,7 +41,7 @@ def Randoms_variance_reduction(Randoms, options):
 
         for d in range(len(detectors_x)):
             if np.linalg.norm([x[u, 0] - detectors_x[d], y[u, 0] - detectors_y[d]]) < 1e-3:
-                det_num[i, j, 0] = d + 1  # MATLAB-style indexing
+                det_num[i, j, 0] = d + 1
                 break
         for d in range(len(detectors_x)):
             if np.linalg.norm([x[u, 1] - detectors_x[d], y[u, 1] - detectors_y[d]]) < 1e-3:
@@ -74,15 +74,6 @@ def Randoms_variance_reduction(Randoms, options):
     # Combine results
     randoms_det[:size] = randoms_det1 + randoms_det2
     hits_det[:size] = hits_det1 + hits_det2
-    # size = max(np.max(testi1), np.max(testi2)) + 1
-
-    # randoms_det = np.zeros(size, dtype=np.float32, order='F')
-    # hits_det = np.zeros(size, dtype=np.float32, order='F')
-
-    # np.add.at(randoms_det, testi1.flatten('F'), randoms_flat)
-    # np.add.at(randoms_det, testi2.flatten('F'), randoms_flat)
-    # np.add.at(hits_det, testi1.flatten('F'), 1)
-    # np.add.at(hits_det, testi2.flatten('F'), 1)
 
     with np.errstate(divide='ignore', invalid='ignore'):
         randoms_det = np.divide(randoms_det, hits_det, out=np.zeros_like(randoms_det), where=hits_det > 0)
@@ -92,7 +83,6 @@ def Randoms_variance_reduction(Randoms, options):
     coeffs_detectors = np.zeros_like(randoms_det)
     coeffs_detectors[hits_det > 0] = mean_det / randoms_det[hits_det > 0]
 
-    # Assign coefficients back to sinogram
     for k in range(sino_amount):
         r1 = ring[k, 0]
         r2 = ring[k, 1]

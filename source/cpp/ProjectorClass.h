@@ -484,7 +484,7 @@ class ProjectorClass {
 					options += " -DANATOMICAL1";
 				else if (w_vec.data.TVtype == 2)
 					options += " -DANATOMICAL2";
-				else if (w_vec.data.TVtype == 5)
+				else if (w_vec.data.TVtype == 5 || MethodList.APLS)
 					options += " -DANATOMICAL3";
 				if (w_vec.derivType > 0)
 					options += (" -DDIFFTYPE=" + std::to_string(w_vec.derivType));
@@ -1004,6 +1004,13 @@ public:
 
 		if ((inputScalars.size_of_x + inputScalars.size_z) * sizeof(float) >= constantBufferSize)
 			constantBuffer = true;
+		if (DEBUG) {
+			mexPrintBase("CL_DEVICE_MAX_CONSTANT_BUFFER_SIZE = %u\n", constantBufferSize);
+			mexPrintBase("(inputScalars.size_of_x + inputScalars.size_z) * sizeof(float) = %u\n", (inputScalars.size_of_x + inputScalars.size_z) * sizeof(float));
+			mexPrintBase("inputScalars.size_of_x = %u\n", inputScalars.size_of_x);
+			mexPrintBase("inputScalars.size_z = %u\n",inputScalars.size_z);
+			mexEval();
+		}
 
 		cl::Program programFP, programBP, programAux, programSens;
 
@@ -1146,7 +1153,7 @@ public:
 				d_uref = cl::Buffer(CLContext, CL_MEM_READ_ONLY, sizeof(float) * inputScalars.im_dim[0], NULL, &status);
 			OCL_CHECK(status, "\n", -1);
 		}
-		if (MethodList.NLM || MethodList.RDP || (MethodList.TV && !w_vec.data.TV_use_anatomical) || MethodList.GGMRF || MethodList.hyperbolic || inputScalars.projector_type == 6) {
+		if (MethodList.NLM || MethodList.RDP || MethodList.TV || MethodList.GGMRF || MethodList.APLS || MethodList.hyperbolic || inputScalars.projector_type == 6) {
 			if (inputScalars.useImages && !inputScalars.largeDim) {
 				d_inputI = cl::Image3D(CLContext, CL_MEM_READ_ONLY, format, region[0], region[1], region[2], 0, 0, NULL, &status);
 				OCL_CHECK(status, "Failed to create prior image\n", -1);
@@ -3691,6 +3698,8 @@ public:
 			mexPrintBase("sigma = %f\n", sigma);
 			mexPrintBase("smooth = %f\n", smooth);
 			mexPrintBase("beta = %f\n", beta);
+			if (type == 2 || type == 3)
+				mexPrintBase("C = %f\n", C);
 			mexEval();
 		}
 		uint32_t Nz, NzOrig;
