@@ -561,13 +561,14 @@ DEVICE void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const 
 DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_ind, IMTYPE d_OSEM) {
 #ifdef CUDA
 #ifdef USEIMAGES
-	*ax = (local_ele * tex3D<float>(d_OSEM, local_ind.x, local_ind.y, local_ind.z));
+    // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
+		*ax = (local_ele * tex3D<float>(d_OSEM, local_ind.x, local_ind.y, local_ind.z));
 #else
 	*ax = (local_ele * d_OSEM[local_ind]);
 #endif
 #else
 #ifdef PTYPE4
-    if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
+    // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
 		*ax = (local_ele * read_imagef(d_OSEM, samplerForw, (T4)(local_ind, (typeTT)0)).w);
 #else
 #ifdef USEIMAGES
@@ -723,8 +724,12 @@ DEVICE void getDetectorCoordinatesListmode(const CLGLOBAL float* d_xyz, float3* 
 
 // Detector coordinates for CT data
 #if defined(CT) && !defined(SPECTMASK)
-DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x,
-	const uint d_sizey, const float2 d_dPitch
+#if !defined(USEGLOBAL)
+DEVICE void getDetectorCoordinatesCT(CONSTANT float* d_xyz, 
+#else
+DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz, 
+#endif
+	CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch
 #ifdef PROJ5
 	, float3* dR, float3* dL, float3* dU, float3* dD
 #endif
@@ -940,7 +945,11 @@ DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i
 DEVICE void compute_attenuation(const float val, const typeT ind, IMTYPE d_atten, float* jelppi, const int ii) {
 	if (ii == 0) {
 #ifdef CUDA
+#ifdef USEIMAGES
 		*jelppi += (val * -tex3D<float>(d_atten, ind.x, ind.y, ind.z));
+#else
+		*jelppi += (val * -d_atten[ind]);
+#endif
 #else
 #if defined(PTYPE4)
 		*jelppi += (val * -read_imagef(d_atten, samplerForw, (float4)(ind.x, ind.y, ind.z, 0.f)).w);

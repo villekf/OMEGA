@@ -8,10 +8,10 @@ Created on Thu Mar  7 13:34:05 2024
 def loadGATESPECTData(options):
     import numpy as np
     import os
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
-    from omegatomo.fileio.loadInterfile import loadInterfile
+    from omegatomo.io.loadInterfile import loadInterfile
     if not os.path.isfile(options.fpath):
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
         print("Specified file was not found! Please select first projection image")
         root = tk.Tk()
         root.withdraw()

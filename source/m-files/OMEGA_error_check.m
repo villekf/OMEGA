@@ -219,9 +219,7 @@ if options.projector_type > 6 && options.projector_type ~= 11 && options.project
         && options.projector_type ~= 24 && options.projector_type ~= 34 && options.projector_type ~= 35 && options.projector_type ~= 25
     error('The selected projector type is not supported!')
 end
-if options.use_CPU && (options.projector_type == 5 || options.projector_type == 4 || options.projector_type == 14 || options.projector_type == 41 || options.projector_type == 45 ...
-        || options.projector_type == 54 || options.projector_type == 51 || options.projector_type == 15 || options.projector_type == 42 || options.projector_type == 43 ...
-        || options.projector_type == 24 || options.projector_type == 34)
+if options.use_CPU && options.projector_type ~= 1
     error('Selected projector type is not supported with CPU implementation!')
 end
 if sum(options.precondTypeImage) == 0 && (options.PKMA || options.MRAMLA || options.MBSREM)
@@ -264,7 +262,8 @@ if ~options.CT && ~options.SPECT && options.use_machine == 2 && options.use_raw_
     warning('Sinogram data cannot be used when raw data is set to true, using list-mode data instead')
     options.use_machine = 1;
 end
-if options.useIndexBasedReconstruction && options.projector_type > 4
+if options.useIndexBasedReconstruction && (options.projector_type == 5 || options.projector_type == 45 || options.projector_type == 54 || options.projector_type == 51 ...
+        || options.projector_type == 15 || options.projector_type == 6)
     error('Index-based reconstruction only supports projector types 1-4!')
 end
 if ~options.CT && ~options.SPECT && options.reconstruct_trues && options.reconstruct_scatter
@@ -328,6 +327,9 @@ if PRIOR_summa > 1 && MAP
 end
 if options.NLM_use_anatomical && options.useCPU && options.implementation == 2 && options.NLM
     error('Reference image weighting for NLM is not supported with CPU!')
+end
+if options.useIndexBasedReconstruction && options.implementation == 2 && options.use_CPU
+    error('Index-based reconstruction is not supported on CPU!')
 end
 if OS_I4_summa > 1
     dispi = [];

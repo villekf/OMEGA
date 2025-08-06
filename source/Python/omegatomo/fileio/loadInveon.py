@@ -5,10 +5,10 @@ def loadInveonData(options, store_coordinates = False):
     import os
     import ctypes
     import numpy as np
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     
     if len(options.fpath) == 0:
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
         root = tk.Tk()
         root.withdraw()
         nimi = askopenfilename(title='Select Inveon list-mode datafile',filetypes=([('lst Files','*.lst')]))
@@ -18,6 +18,8 @@ def loadInveonData(options, store_coordinates = False):
         if os.path.exists(options.fpath):
             nimi = options.fpath
         else:
+            import tkinter as tk
+            from tkinter.filedialog import askopenfilename
             root = tk.Tk()
             root.withdraw()
             nimi = askopenfilename(title='Select Inveon list-mode datafile',filetypes=([('lst Files','*.lst')]))
@@ -170,6 +172,8 @@ def loadInveonData(options, store_coordinates = False):
                 Rcoordinate = np.array([x[ring_pos1], y[ring_pos1], z[ring_number1], x[ring_pos2], y[ring_pos2], z[ring_number2]], order='F')
             del DD1, DD2
     elif options.useIndexBasedReconstruction:
+        LL1 = LL1[LL1 != 0]
+        LL2 = LL2[LL2 != 0]
         ring_number1 = np.uint16(np.floor_divide(LL1 - 1, options.det_per_ring))
         ring_number2 = np.uint16(np.floor_divide(LL2 - 1, options.det_per_ring))
         ring_pos1 = np.uint16(np.mod(LL1 - 1, options.det_per_ring))
@@ -181,6 +185,8 @@ def loadInveonData(options, store_coordinates = False):
         coordinate = np.asfortranarray(np.concatenate((ring_pos1.T, ring_pos2.T), axis = 0))
         Rcoordinate = np.asfortranarray(np.concatenate((ring_number1.T, ring_number2.T), axis = 0))
         if options.randoms_correction:
+            DD1 = DD1[DD1 != 0]
+            DD2 = DD2[DD2 != 0]
             ring_number1 = np.uint16(np.floor_divide(DD1 - 1, options.det_per_ring))
             ring_number2 = np.uint16(np.floor_divide(DD2 - 1, options.det_per_ring))
             ring_pos1 = np.uint16(np.mod(DD1 - 1, options.det_per_ring))

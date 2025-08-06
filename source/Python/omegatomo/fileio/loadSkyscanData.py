@@ -4,12 +4,12 @@
 def loadSkyscanData(options):
     import numpy as np
     import os
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     from omegatomo.fileio.loadProjectionImages import loadProjectionImages
     def select_file():
     
         if len(options.fpath) == 0:
+            import tkinter as tk
+            from tkinter.filedialog import askopenfilename
             root = tk.Tk()
             root.withdraw()
             nimi = askopenfilename(title='Select Skyscan log file',filetypes=([('log Files','*.log')]))
@@ -17,6 +17,8 @@ def loadSkyscanData(options):
                 raise ValueError('No file was selected')
         else:
             if not os.path.exists(options.fpath):
+                import tkinter as tk
+                from tkinter.filedialog import askopenfilename
                 print('Specified file was not found! Please select Nikon xtekct file')
                 root = tk.Tk()
                 root.withdraw()

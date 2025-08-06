@@ -39,9 +39,12 @@ def conv3D(self, f, ii = 0):
             self.knlPSF.set_arg(kInd, f.data)
     if self.useCUDA:
         if self.useCuPy:
-            fD = cp.asarray(f)
-            outputD = cp.asarray(output)
-            self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 16), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
+            if self.useTorch:
+                fD = cp.asarray(f)
+                outputD = cp.asarray(output)
+                self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(fD, outputD, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
+            else:
+                self.knlPSF((globalSize[0] // 16, globalSize[1] // 16, globalSize[2] // 1), (16,16,1),(f, output, self.d_gaussPSF, cp.int32(self.g_dim_x), cp.int32(self.g_dim_y), cp.int32(self.g_dim_z)))
         else:
             if self.useTorch:
                 class Holder(cuda.driver.PointerHolderBase):
@@ -265,6 +268,11 @@ def forwardProjection(self, f, subset = -1):
                             kIndLoc += (self.d_z[subset],)
                         else:
                             kIndLoc += (self.d_z[0],)
+                        if self.useMaskFP:
+                            if self.maskFPZ > 1:
+                                kIndLoc += (self.d_maskFP[subset],)
+                            else:
+                                kIndLoc += (self.d_maskFP,)
                         kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
                         if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
                             kIndLoc += (self.d_xyindex[subset],)
@@ -289,9 +297,19 @@ def forwardProjection(self, f, subset = -1):
                             kIndLoc += (yD,)
                         else:
                             kIndLoc += (y,)
+                        if self.useMaskFP:
+                            if self.maskFPZ > 1:
+                                kIndLoc += (self.d_maskFP[subset],)
+                            else:
+                                kIndLoc += (self.d_maskFP,)
                         kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
                         # if self.meanFP:
                     elif self.FPType in [1, 2, 3]:
+                        if self.useMaskFP:
+                            if self.maskFPZ > 1:
+                                kIndLoc += (self.d_maskFP[subset],)
+                            else:
+                                kIndLoc += (self.d_maskFP,)
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
                         if (((self.listmode == 0 and not (self.CT or self.SPECT)) or self.useIndexBasedReconstruction)) or (not self.loadTOF and self.listmode > 0):
@@ -355,7 +373,10 @@ def forwardProjection(self, f, subset = -1):
                                 chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
                                 array = cp.cuda.texture.CUDAarray(chl, self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item())
                                 if self.useTorch:
-                                    array.copy_from(fD.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())))
+                                    apuArray = fD.reshape((self.Nx[0].item(), self.Ny[0].item(), self.Nz[0].item()), order='F')
+                                    apuArray = np.transpose(apuArray, (2, 1, 0))
+                                    array.copy_from(apuArray)
+                                    # array.copy_from(fD.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())))
                                 else:
                                     array.copy_from(f.reshape((self.Nz[0].item(), self.Ny[0].item(), self.Nx[0].item())))
                                 res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
@@ -378,86 +399,7 @@ def forwardProjection(self, f, subset = -1):
                         kIndLoc += (cp.int32(k),)
                     self.knlF((self.globalSizeFP[subset][0] // self.localSizeFP[0], self.globalSizeFP[subset][1] // self.localSizeFP[1], self.globalSizeFP[subset][2]), (self.localSizeFP[0], self.localSizeFP[1], 1),kIndLoc)
             else:
-                import pycuda as cuda
-                if self.useTorch:
-                    import torch
-                    class Holder(cuda.driver.PointerHolderBase):
-                        def __init__(self, t):
-                            super(Holder, self).__init__()
-                            self.t = t
-                            self.gpudata = t.data_ptr()
-                        def get_pointer(self):
-                            return self.t.data_ptr()
-                    if self.subsetType > 7 or self.subsets == 1:
-                        y = torch.zeros(self.nRowsD * self.nColsD * self.nProjSubset[subset].item(), dtype=torch.float32, device='cuda')
-                    else:
-                        y = torch.zeros(self.nMeasSubset[subset].item(), dtype=torch.float32, device='cuda')
-                    yD = Holder(y)
-                else:
-                    if self.subsetType > 7 or self.subsets == 1:
-                        y = cuda.gpuarray.zeros(self.nRowsD * self.nColsD * self.nProjSubset[subset].item(), dtype=np.float32)
-                    else:
-                        y = cuda.gpuarray.zeros(self.nMeasSubset[subset].item(), dtype=np.float32)
-                for k in range(self.nMultiVolumes + 1):
-                    if isinstance(f,list):
-                        if self.use_psf:
-                            f[k] = self.computeConvolution(f[k])
-                    else:
-                        if self.use_psf:
-                            f = self.computeConvolution(f)
-                    if self.useTorch:
-                        fD = Holder(f)
-                    kIndLoc = self.kIndF
-                    if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
-                        if (self.attenuation_correction and not self.CTAttenuation):
-                            kIndLoc += (self.d_atten[subset].gpudata,)
-                    if self.FPType in [1, 2, 3]:
-                        if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
-                            kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                        if (self.listmode == 0 and not (self.CT or self.SPECT)):
-                            kIndLoc += (self.d_x[0].gpudata,)
-                        else:
-                            kIndLoc += (self.d_x[subset].gpudata, )
-                        if (self.CT or self.PET or self.SPECT or self.listmode > 0):
-                            kIndLoc += (self.d_z[subset].gpudata,)
-                        else:
-                            kIndLoc += (self.d_z[0].gpudata,)
-                        if (self.normalization_correction):
-                            kIndLoc += (self.d_norm[subset].gpudata,)
-                        elif (self.additionalCorrection):
-                            kIndLoc += (self.d_corr[subset].gpudata,)
-                        kIndLoc += (self.d_Sens.gpudata,)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['x'].item()),)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['y'].item()),)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['z'].item()),)
-                        if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
-                            kIndLoc += (self.d_xyindex[subset].gpudata,)
-                            kIndLoc += (self.d_zindex[subset].gpudata,)
-                        if self.useTorch:
-                            kIndLoc += (fD,)
-                        else:
-                            if isinstance(f,list):
-                                kIndLoc += (f[k].gpudata,)
-                            else:
-                                kIndLoc += (f.gpudata,)
-                        if self.useTorch:
-                            kIndLoc += (yD,)
-                        else:
-                            kIndLoc += (y.gpudata,)
-                        kIndLoc += (np.uint8(self.no_norm),)
-                        kIndLoc += (np.uint64(self.nMeasSubset[subset].item()),)
-                        kIndLoc += (np.uint32(subset),)
-                        kIndLoc += (np.int32(k),)
-                        self.knlF(*kIndLoc, grid=(self.globalSizeFP[subset][0] // self.localSizeFP[0], self.globalSizeFP[subset][1] // self.localSizeFP[1], self.globalSizeFP[subset][2]), block=(self.localSizeFP[0], self.localSizeFP[1], 1))
+                raise ValueError('Unsupported selection. Note that PyCUDA is no longer supported!')
             if self.useTorch:
                 torch.cuda.synchronize()
             #     if self.useAF:
@@ -492,84 +434,92 @@ def forwardProjection(self, f, subset = -1):
             imformat = cl.ImageFormat(cl.channel_order.A, cl.channel_type.FLOAT)
             mf = cl.mem_flags
             for k in range(self.nMultiVolumes + 1):
-                if self.FPType < 5:
-                    d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
+                if self.useImages:
+                    if self.FPType < 5:
+                        d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()))
+                    else:
+                        d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
+                        d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
+                    if isinstance(f,list):
+                        if self.use_psf:
+                            f[k] = self.computeConvolution(f[k])
+                        if self.useAF:
+                            if self.FPType < 5:
+                                fPtr = f[k].raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
+                                af.device.unlock_array(f[k])
+                            else:
+                                intIm = af.data.constant(0., self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item())
+                                if self.meanFP:
+                                    im = af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0)
+                                    d_meanFP = af.data.constant(0., self.Nx[k].item() + self.Ny[k].item())
+                                    d_meanFP[0:self.Nx[k].item()] = af.flat(af.mean(af.mean(im, dim=0), dim=1))
+                                    im -= af.tile(d_meanFP[0:self.Nx[k].item()], d0=im.shape[0], d1=im.shape[1], d3=1)
+                                    intIm[1:,1:,:] = af.sat(im)
+                                    af.eval(im)
+                                else:
+                                    intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0))
+                                af.eval(intIm)
+                                intIm = af.flat(intIm)
+                                fPtr = intIm.raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_imInt, fD, offset=(0), origin=(0,0,0), region=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()));
+                                af.device.unlock_array(intIm)
+                                intIm = af.data.constant(0., self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item())
+                                intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=0, d1=2, d2=1))
+                                af.eval(intIm)
+                                intIm = af.flat(intIm)
+                                fPtr = intIm.raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()));
+                                af.device.unlock_array(intIm)
+                        else:
+                            cl.enqueue_copy(self.queue, d_im, f[k].data, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
+                    else:
+                        if self.use_psf:
+                            f = self.computeConvolution(f)
+                        if self.useAF:
+                            if self.FPType < 5:
+                                fPtr = f.raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
+                                af.device.unlock_array(f)
+                            else:
+                                intIm = af.data.constant(0., self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item())
+                                if self.meanFP:
+                                    im = af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0)
+                                    d_meanFP = af.data.constant(0., self.Nx[k].item() + self.Ny[k].item())
+                                    d_meanFP[0:self.Nx[k].item()] = af.flat(af.mean(af.mean(im, dim=0), dim=1))
+                                    im -= af.tile(d_meanFP[0:self.Nx[k].item()], d0=im.shape[0], d1=im.shape[1], d3=1)
+                                    intIm[1:,1:,:] = af.sat(im)
+                                    af.eval(im)
+                                else:
+                                    intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0))
+                                af.eval(intIm)
+                                intIm = af.flat(intIm)
+                                fPtr = intIm.raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_imInt, fD, offset=(0), origin=(0,0,0), region=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()));
+                                af.device.unlock_array(intIm)
+                                intIm = af.data.constant(0., self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item())
+                                intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=0, d1=2, d2=1))
+                                af.eval(intIm)
+                                intIm = af.flat(intIm)
+                                af.sync()
+                                fPtr = intIm.raw_ptr()
+                                fD = cl.MemoryObject.from_int_ptr(fPtr)
+                                cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()));
+                                af.device.unlock_array(intIm)
+                        else:
+                            cl.enqueue_copy(self.queue, d_im, f.data, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
                 else:
-                    d_imInt = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()))
-                    d_im = cl.Image(self.clctx, mf.READ_ONLY, imformat, shape=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()))
-                if isinstance(f,list):
-                    if self.use_psf:
-                        f[k] = self.computeConvolution(f[k])
                     if self.useAF:
-                        if self.FPType < 5:
+                        if isinstance(f,list):
                             fPtr = f[k].raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
-                            af.device.unlock_array(f[k])
                         else:
-                            intIm = af.data.constant(0., self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item())
-                            if self.meanFP:
-                                im = af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0)
-                                d_meanFP = af.data.constant(0., self.Nx[k].item() + self.Ny[k].item())
-                                d_meanFP[0:self.Nx[k].item()] = af.flat(af.mean(af.mean(im, dim=0), dim=1))
-                                im -= af.tile(d_meanFP[0:self.Nx[k].item()], d0=im.shape[0], d1=im.shape[1], d3=1)
-                                intIm[1:,1:,:] = af.sat(im)
-                                im.eval()
-                            else:
-                                intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0))
-                            intIm.eval()
-                            intIm = af.flat(intIm)
-                            fPtr = intIm.raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_imInt, fD, offset=(0), origin=(0,0,0), region=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()));
-                            af.device.unlock_array(intIm)
-                            intIm = af.data.constant(0., self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item())
-                            intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f[k], self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=0, d1=2, d2=1))
-                            intIm.eval()
-                            intIm = af.flat(intIm)
-                            fPtr = intIm.raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()));
-                            af.device.unlock_array(intIm)
-                    else:
-                        cl.enqueue_copy(self.queue, d_im, f[k].data, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
-                else:
-                    if self.use_psf:
-                        f = self.computeConvolution(f)
-                    if self.useAF:
-                        if self.FPType < 5:
                             fPtr = f.raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
-                            af.device.unlock_array(f)
-                        else:
-                            intIm = af.data.constant(0., self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item())
-                            if self.meanFP:
-                                im = af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0)
-                                d_meanFP = af.data.constant(0., self.Nx[k].item() + self.Ny[k].item())
-                                d_meanFP[0:self.Nx[k].item()] = af.flat(af.mean(af.mean(im, dim=0), dim=1))
-                                im -= af.tile(d_meanFP[0:self.Nx[k].item()], d0=im.shape[0], d1=im.shape[1], d3=1)
-                                intIm[1:,1:,:] = af.sat(im)
-                                af.eval(im)
-                            else:
-                                intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=1, d1=2, d2=0))
-                            af.eval(intIm)
-                            intIm = af.flat(intIm)
-                            fPtr = intIm.raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_imInt, fD, offset=(0), origin=(0,0,0), region=(self.Ny[k].item() + 1, self.Nz[k].item() + 1, self.Nx[k].item()));
-                            af.device.unlock_array(intIm)
-                            intIm = af.data.constant(0., self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item())
-                            intIm[1:,1:,:] = af.sat(af.reorder(af.moddims(f, self.Nx[k].item(), d1=self.Ny[k].item(), d2=self.Nz[k].item()), d0=0, d1=2, d2=1))
-                            af.eval(intIm)
-                            intIm = af.flat(intIm)
-                            af.sync()
-                            fPtr = intIm.raw_ptr()
-                            fD = cl.MemoryObject.from_int_ptr(fPtr)
-                            cl.enqueue_copy(self.queue, d_im, fD, offset=(0), origin=(0,0,0), region=(self.Nx[k].item() + 1, self.Nz[k].item() + 1, self.Ny[k].item()));
-                            af.device.unlock_array(intIm)
-                    else:
-                        cl.enqueue_copy(self.queue, d_im, f.data, offset=(0), origin=(0,0,0), region=(self.Nx[k].item(), self.Ny[k].item(), self.Nz[k].item()));
+                        d_im = cl.MemoryObject.from_int_ptr(fPtr)
                 kIndLoc = self.kIndF
                 if self.FPType == 1 or self.FPType == 2 or self.FPType == 3 or self.FPType == 4:
                     if (self.attenuation_correction and not self.CTAttenuation):
@@ -596,6 +546,8 @@ def forwardProjection(self, f, subset = -1):
                         self.knlF.set_arg(kIndLoc, self.d_Scale4[k])
                         kIndLoc += 1
                 if self.FPType == 4:
+                    if not self.useImages:
+                        raise ValueError('Projector type 4 forward projection only works with images!')
                     self.knlF.set_arg(kIndLoc, d_im)
                     kIndLoc += 1
                     if self.useAF:
@@ -613,6 +565,12 @@ def forwardProjection(self, f, subset = -1):
                     else:
                         self.knlF.set_arg(kIndLoc, self.d_z[0].data)
                     kIndLoc += 1
+                    if self.useMaskFP:
+                        if self.maskFPZ > 1:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP[subset])
+                        else:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP)
+                        kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                     kIndLoc += 1
                     if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
@@ -647,9 +605,21 @@ def forwardProjection(self, f, subset = -1):
                     else:
                         self.knlF.set_arg(kIndLoc, y.data)
                     kIndLoc += 1
+                    if self.useMaskFP:
+                        if self.maskFPZ > 1:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP[subset])
+                        else:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP)
+                        kIndLoc += 1
                     self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                     # if self.meanFP:
                 elif self.FPType in [1, 2, 3]:
+                    if self.useMaskFP:
+                        if self.maskFPZ > 1:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP[subset])
+                        else:
+                            self.knlF.set_arg(kIndLoc, self.d_maskFP)
+                        kIndLoc += 1
                     if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                         self.knlF.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
                         kIndLoc += 1
@@ -695,7 +665,10 @@ def forwardProjection(self, f, subset = -1):
                             kIndLoc += 1
                             self.knlF.set_arg(kIndLoc, self.d_axIndex[subset].data)
                             kIndLoc += 1
-                    self.knlF.set_arg(kIndLoc, d_im)
+                    if not self.useImages and not self.useAF:
+                        self.knlF.set_arg(kIndLoc, f.data)
+                    else:
+                        self.knlF.set_arg(kIndLoc, d_im)
                     kIndLoc += 1
                     if self.useAF:
                         self.knlF.set_arg(kIndLoc, yD)
@@ -713,6 +686,8 @@ def forwardProjection(self, f, subset = -1):
                 self.queue.finish()
         if self.useAF:
             af.device.unlock_array(y)
+            if not self.useImages:
+                af.device.unlock_array(f)
     return y
 
 def backwardProjection(self, y, subset = -1):
@@ -818,6 +793,13 @@ def backwardProjection(self, y, subset = -1):
                     if self.BPType in [1, 2, 3]:
                         if (self.attenuation_correction and not self.CTAttenuation):
                             kIndLoc += (self.d_atten[subset],)
+                        if self.useMaskFP:
+                            if self.maskFPZ > 1:
+                                kIndLoc += (self.d_maskFP[subset],)
+                            else:
+                                kIndLoc += (self.d_maskFP,)
+                        if self.useMaskBP:
+                            kIndLoc += (self.d_maskBP,)
                         if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                             kIndLoc += ((self.nProjSubset[subset].item()),)
                         if ((self.listmode == 0 or self.useIndexBasedReconstruction) and not (self.CT or self.SPECT)) or (not self.loadTOF and self.listmode > 0):
@@ -972,23 +954,10 @@ def backwardProjection(self, y, subset = -1):
                             #     kIndLoc += (yD,)
                             #     kIndLoc += (fD,)
                             # else:
-                            if self.useImages:
-                                chl = cp.cuda.texture.ChannelFormatDescriptor(32,0,0,0, cp.cuda.runtime.cudaChannelFormatKindFloat)
-                                array = cp.cuda.texture.CUDAarray(chl, self.nRowsD, self.nColsD, self.nProjSubset[subset].item())
-                                if self.useTorch:
-                                    array.copy_from(yD.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
-                                else:
-                                    array.copy_from(y.reshape((self.nProjSubset[subset].item(), self.nColsD, self.nRowsD)))
-                                res = cp.cuda.texture.ResourceDescriptor(cp.cuda.runtime.cudaResourceTypeArray, cuArr=array)
-                                tdes= cp.cuda.texture.TextureDescriptor(addressModes=(cp.cuda.runtime.cudaAddressModeClamp, cp.cuda.runtime.cudaAddressModeClamp,cp.cuda.runtime.cudaAddressModeClamp), 
-                                                                        filterMode=cp.cuda.runtime.cudaFilterModeLinear, normalizedCoords=1)
-                                yy = cp.cuda.texture.TextureObject(res, tdes)
-                                kIndLoc += (yy,)
+                            if self.useTorch:
+                                kIndLoc += (yD,)
                             else:
-                                if self.useTorch:
-                                    kIndLoc += (yD,)
-                                else:
-                                    kIndLoc += (y,)
+                                kIndLoc += (y,)
                             if self.useTorch:
                                 kIndLoc += (fD,)
                             else:
@@ -1004,17 +973,26 @@ def backwardProjection(self, y, subset = -1):
                                 kIndLoc += (self.d_z[subset],)
                             else:
                                 kIndLoc += (self.d_z[0],)
+                            if self.useMaskFP:
+                                if self.maskFPZ > 1:
+                                    kIndLoc += (self.d_maskFP[subset],)
+                                else:
+                                    kIndLoc += (self.d_maskFP,)
+                            if self.useMaskBP:
+                                kIndLoc += (self.d_maskBP,)
                             kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
                             if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
                                 kIndLoc += (self.d_xyindex[subset],)
                                 kIndLoc += (self.d_zindex[subset],)
                             if (self.normalization_correction):
                                 kIndLoc += (self.d_norm[subset],)
-                            elif (self.additionalCorrection):
+                            if (self.additionalCorrection):
                                 kIndLoc += (self.d_corr[subset],)
                             kIndLoc += (self.d_Sens,)
                         kIndLoc += (cp.uint8(self.no_norm),)
                         if self.CT:
+                            if self.useMaskBP:
+                                kIndLoc += (self.d_maskBP,)
                             kIndLoc += (cp.int64(self.nProjSubset[subset].item()),)
                         else:
                             kIndLoc += (cp.uint64(self.nMeasSubset[subset].item()),)
@@ -1022,186 +1000,7 @@ def backwardProjection(self, y, subset = -1):
                         kIndLoc += (cp.int32(k),)
                     self.knlB((self.globalSizeBP[subset][k][0] // self.localSizeBP[0], self.globalSizeBP[subset][k][1] // self.localSizeBP[1], self.globalSizeBP[subset][k][2]), (self.localSizeBP[0], self.localSizeBP[1], 1), kIndLoc)
             else:
-                import pycuda as cuda
-                if self.useTorch:
-                    import torch
-                    class Holder(cuda.driver.PointerHolderBase):
-                        def __init__(self, t):
-                            super(Holder, self).__init__()
-                            self.t = t
-                            self.gpudata = t.data_ptr()
-                        def get_pointer(self):
-                            return self.t.data_ptr()
-                    yD = Holder(y)
-                for k in range(self.nMultiVolumes + 1):
-                    if self.useTorch:
-                        if self.nMultiVolumes > 0:
-                            f[k] = torch.zeros(self.N[k].item(), dtype=torch.float32, device='cuda')
-                            fD = Holder(f[k])
-                        else:
-                            f = torch.zeros(self.N[k].item(), dtype=torch.float32, device='cuda')
-                            fD = Holder(f)
-                    else:
-                        if self.nMultiVolumes > 0:
-                            f[k] = cuda.gpuarray.zeros(self.N[k].item(), dtype=np.float32)
-                        else:
-                            f = cuda.gpuarray.zeros(self.N[k].item(), dtype=np.float32)
-                    kIndLoc = self.kIndB
-                    if self.BPType in [1, 2, 3]:
-                        if (self.attenuation_correction and not self.CTAttenuation):
-                            kIndLoc += (self.d_atten[subset].gpudata,)
-                        if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
-                            kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                        if (self.listmode == 0 and not (self.CT or self.SPECT)):
-                            kIndLoc += (self.d_x[0].gpudata,)
-                        else:
-                            kIndLoc += (self.d_x[subset].gpudata,)
-                        if (self.CT or self.PET or self.SPECT or self.listmode > 0):
-                            kIndLoc += (self.d_z[subset].gpudata,)
-                        else:
-                            kIndLoc += (self.d_z[0].gpudata,)
-                        if (self.normalization_correction):
-                            kIndLoc += (self.d_norm[subset].gpudata,)
-                        if (self.additionalCorrection):
-                            kIndLoc += (self.d_corr[subset].gpudata,)
-                        kIndLoc += (self.d_Sens.gpudata,)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['x'].item()),)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['y'].item()),)
-                        kIndLoc += (np.uint32(self.d_Nxyz[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_d[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_b[k]['z'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['x'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['y'].item()),)
-                        kIndLoc += (np.float32(self.d_bmax[k]['z'].item()),)
-                        if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
-                            kIndLoc += (self.d_xyindex[subset].gpudata,)
-                            kIndLoc += (self.d_zindex[subset].gpudata,)
-                        if self.useTorch:
-                            kIndLoc += (yD,)
-                            kIndLoc += (fD,)
-                        else:
-                            kIndLoc += (y.gpudata,)
-                            if self.nMultiVolumes > 0:
-                                kIndLoc += (f[k].gpudata,)
-                            else:
-                                kIndLoc += (f.gpudata,)
-                        kIndLoc += (np.uint8(self.no_norm),)
-                        kIndLoc += (np.uint64(self.nMeasSubset[subset].item()),)
-                        kIndLoc += (np.uint32(subset),)
-                        kIndLoc += (np.int32(k),)
-                    else:
-                        if self.CT:
-                            if self.OffsetLimit.size > 0:
-                                kIndLoc += (self.d_T[subset].gpudata,)
-                            if self.BPType == 5 or self.BPType == 4:
-                                kIndLoc += (np.uint32(self.d_Nxyz[k]['x'].item()),)
-                                kIndLoc += (np.uint32(self.d_Nxyz[k]['y'].item()),)
-                                kIndLoc += (np.uint32(self.d_Nxyz[k]['z'].item()),)
-                                kIndLoc += (np.float32(self.d_b[k]['x'].item()),)
-                                kIndLoc += (np.float32(self.d_b[k]['y'].item()),)
-                                kIndLoc += (np.float32(self.d_b[k]['z'].item()),)
-                                kIndLoc += (np.float32(self.d_d[k]['x'].item()),)
-                                kIndLoc += (np.float32(self.d_d[k]['y'].item()),)
-                                kIndLoc += (np.float32(self.d_d[k]['z'].item()),)
-                                if self.BPType == 5:
-                                    kIndLoc += (np.float32(self.dScaleX[k].item()),)
-                                    kIndLoc += (np.float32(self.dScaleY[k].item()),)
-                                    kIndLoc += (np.float32(self.dScaleZ[k].item()),)
-                                    kIndLoc += (np.float32(self.dSizeXBP),)
-                                    kIndLoc += (np.float32(self.dSizeZBP),)
-                                else:
-                                    kIndLoc += (np.float32(self.kerroin[k].item()),)
-                            if self.BPType == 4:
-                                if self.useTorch:
-                                    kIndLoc += (yD,)
-                                    kIndLoc += (fD,)
-                                else:
-                                    kIndLoc += (y.gpudata,)
-                                    if isinstance(f, list):
-                                        kIndLoc += (f[k].gpudata,)
-                                    else:
-                                        kIndLoc += (f.gpudata,)
-                                kIndLoc += (self.d_x[subset].gpudata,)
-                                kIndLoc += (self.d_z[subset].gpudata,)
-                                kIndLoc += (self.d_Sens.gpudata,)
-                            else:
-                                kIndLoc += (self.d_x[subset].gpudata,)
-                                kIndLoc += (self.d_z[subset].gpudata,)
-                                if self.useTorch:
-                                    kIndLoc += (yD,)
-                                    kIndLoc += (fD,)
-                                else:
-                                    kIndLoc += (y.gpudata,)
-                                    if isinstance(f, list):
-                                        kIndLoc += (f[k].gpudata,)
-                                    else:
-                                        kIndLoc += (f.gpudata,)
-                                kIndLoc += (self.d_Sens.gpudata,)
-                                # if self.meanBP:
-                                #     kIndLoc += (dMeanBP)
-                        else:
-                            kIndLoc += (np.uint32(self.d_Nxyz[k]['x'].item()),)
-                            kIndLoc += (np.uint32(self.d_Nxyz[k]['y'].item()),)
-                            kIndLoc += (np.uint32(self.d_Nxyz[k]['z'].item()),)
-                            kIndLoc += (np.float32(self.d_b[k]['x'].item()),)
-                            kIndLoc += (np.float32(self.d_b[k]['y'].item()),)
-                            kIndLoc += (np.float32(self.d_b[k]['z'].item()),)
-                            kIndLoc += (np.float32(self.d_bmax[k]['x'].item()),)
-                            kIndLoc += (np.float32(self.d_bmax[k]['y'].item()),)
-                            kIndLoc += (np.float32(self.d_bmax[k]['z'].item()),)
-                            kIndLoc += (np.float32(self.d_Scale4[k]['x'].item()),)
-                            kIndLoc += (np.float32(self.d_Scale4[k]['y'].item()),)
-                            kIndLoc += (np.float32(self.d_Scale4[k]['z'].item()),)
-                            if self.useTorch:
-                                kIndLoc += (yD,)
-                                kIndLoc += (fD,)
-                            else:
-                                kIndLoc += (y.gpudata,)
-                                if isinstance(f, list):
-                                    kIndLoc += (f[k].gpudata,)
-                                else:
-                                    kIndLoc += (f.gpudata,)
-                            if self.listmode == 0 and not self.CT:
-                                kIndLoc += (self.d_x[0].gpudata,)
-                            else:
-                                kIndLoc += (self.d_x[subset].gpudata,)
-                            if (self.CT or self.PET or self.listmode > 0):
-                                kIndLoc += (self.d_z[subset].gpudata,)
-                            else:
-                                kIndLoc += (self.d_z[0].gpudata,)
-                            kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                            if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
-                                kIndLoc += (self.d_xyindex[subset].gpudata,)
-                                kIndLoc += (self.d_zindex[subset].gpudata,)
-                            if (self.normalization_correction):
-                                kIndLoc += (self.d_norm[subset].gpudata,)
-                            elif (self.additionalCorrection):
-                                kIndLoc += (self.d_corr[subset].gpudata,)
-                            kIndLoc += (self.d_Sens.gpudata,)
-                        kIndLoc += (np.uint8(self.no_norm),)
-                        if self.CT:
-                            kIndLoc += (np.int64(self.nProjSubset[subset].item()),)
-                        else:
-                            kIndLoc += (np.uint64(self.nMeasSubset[subset].item()),)
-                            kIndLoc += (np.uint32(subset),)
-                        kIndLoc += (np.int32(k),)
-                    self.knlB(*kIndLoc, grid=(self.globalSizeBP[subset][k][0] // self.localSizeBP[0], self.globalSizeBP[subset][k][1] // self.localSizeBP[1], self.globalSizeBP[subset][k][2]), block=(self.localSizeBP[0], self.localSizeBP[1], 1))
-                # if self.useAF:
-                #     if self.nMultiVolumes > 0:
-                #         af.device.unlock_array(f[k])
-                #     else:
-                #         af.device.unlock_array(f)
-                #     af.device.unlock_array(y)
-                
-                if self.use_psf:
-                    if self.nMultiVolumes > 0:
-                        f[k] = self.computeConvolution(f[k])
-                    else:
-                        f = self.computeConvolution(f)
+                raise ValueError('Unsupported type. PyCUDA is no longer supported! Use CuPy instead.')
             if self.useTorch:
                 torch.cuda.synchronize()
         else:
@@ -1262,6 +1061,15 @@ def backwardProjection(self, y, subset = -1):
                 if self.BPType in [1, 2, 3]:
                     if (self.attenuation_correction and not self.CTAttenuation):
                         self.knlB.set_arg(kIndLoc, self.d_atten[subset].data)
+                        kIndLoc += 1
+                    if self.useMaskFP:
+                        if self.maskFPZ > 1:
+                            self.knlB.set_arg(kIndLoc, self.d_maskFP[subset])
+                        else:
+                            self.knlB.set_arg(kIndLoc, self.d_maskFP)
+                        kIndLoc += 1
+                    if self.useMaskBP:
+                        self.knlB.set_arg(kIndLoc, self.d_maskBP)
                         kIndLoc += 1
                     if (self.CT or self.PET or self.SPECT) and self.listmode == 0:
                         self.knlB.set_arg(kIndLoc, (cl.cltypes.long)(self.nProjSubset[subset].item()))
@@ -1421,6 +1229,15 @@ def backwardProjection(self, y, subset = -1):
                         else:
                             self.knlB.set_arg(kIndLoc, self.d_z[0].data)
                         kIndLoc += 1
+                        if self.useMaskFP:
+                            if self.maskFPZ > 1:
+                                self.knlB.set_arg(kIndLoc, self.d_maskFP[subset])
+                            else:
+                                self.knlB.set_arg(kIndLoc, self.d_maskFP)
+                            kIndLoc += 1
+                        if self.useMaskBP:
+                            self.knlB.set_arg(kIndLoc, self.d_maskBP)
+                            kIndLoc += 1
                         self.knlB.set_arg(kIndLoc, (cl.cltypes.ulong)(self.nProjSubset[subset].item()))
                         kIndLoc += 1
                         if ((self.subsetType == 3 or self.subsetType == 6 or self.subsetType == 7) and self.subsets > 1 and self.listmode == 0):
@@ -1439,6 +1256,9 @@ def backwardProjection(self, y, subset = -1):
                     self.knlB.set_arg(kIndLoc, (cl.cltypes.uchar)(self.no_norm))
                     kIndLoc += 1
                     if self.CT:
+                        if self.useMaskBP:
+                            self.knlB.set_arg(kIndLoc, self.d_maskBP)
+                            kIndLoc += 1
                         self.knlB.set_arg(kIndLoc, (cl.cltypes.ulong)(self.nProjSubset[subset].item()))
                         kIndLoc += 1
                     else:
@@ -1477,9 +1297,9 @@ def backwardProjection(self, y, subset = -1):
                             f[k] = f[k].astype(cl.cltypes.float) / self.TH32
                         else:
                             f = f.astype(cl.cltypes.float) / self.TH32
-                if self.use_psf:
-                    if self.nMultiVolumes > 0:
-                        f[k] = self.computeConvolution(f[k])
-                    else:
-                        f = self.computeConvolution(f)
+        if self.use_psf:
+            if self.nMultiVolumes > 0:
+                f[k] = self.computeConvolution(f[k])
+            else:
+                f = self.computeConvolution(f)
     return f

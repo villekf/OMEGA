@@ -242,6 +242,12 @@ def loadCorrections(options):
     if options.scatter_correction and options.ScatterC.size > 0 and not options.subtract_scatter:
         options.additionalCorrection = True
         options.corrVector = options.ScatterC
+    elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size <= 1 and options.subtract_scatter and options.ordinaryPoisson:
+        options.SinDelayed = np.asfortranarray(options.ScatterC.astype(np.float32))
+        options.scatter_correction = False
+        options.randoms_correction = True
+    elif options.scatter_correction and options.ScatterC.size > 0 and options.SinDelayed.size > 1 and options.subtract_scatter and options.ordinaryPoisson:
+        options.SinDelayed += np.asfortranarray(options.ScatterC.astype(np.float32))
     if options.arc_correction:
         from omegatomo.util.arcCorrection import arc_correction
         x, y, options = arc_correction(options, True);
@@ -301,7 +307,7 @@ def parseInputs(options, mDataFound = False):
                     else:
                         options.SinM[:,:,:,ff - 1] = temp
             else:
-                if not options.use_raw_data:
+                if not options.use_raw_data and options.listmode == 0:
                     if options.NSinos != options.TotSinos:
                         options.SinM = options.SinM[:, :, :options.NSinos, :]
                 # else:

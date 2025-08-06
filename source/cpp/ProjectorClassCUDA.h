@@ -844,7 +844,7 @@ class ProjectorClass {
 				mexPrint("GGMRF kernel successfully created\n");
 			}
 		}
-		if (MethodList.TV) {
+		if (MethodList.TV || MethodList.APLS) {
 			status = cuModuleGetFunction(&kernelTV, programAux, "TVKernel");
             CUDA_CHECK(status, "Failed to create TV kernel\n", status);
 			if (DEBUG || inputScalars.verbose >= 3) {
@@ -2611,12 +2611,6 @@ public:
 						kTemp.emplace_back(&d_maskBPB);
 					else
 						kTemp.emplace_back(&d_maskBP);
-					if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-						if (inputScalars.useBuffers)
-							kTemp.emplace_back(&d_maskBPB);
-						else
-							kTemp.emplace_back(&d_maskBP);
-					}
 				}
 			}
 			if ((inputScalars.CT || inputScalars.PET || inputScalars.SPECT) && inputScalars.listmode == 0)
@@ -2743,19 +2737,15 @@ public:
 					viewDesc.format = CUresourceViewFormat::CU_RES_VIEW_FORMAT_FLOAT_1X32;
 					resDescIm.resType = CUresourcetype::CU_RESOURCE_TYPE_ARRAY;
 					resDescIm.res.array.hArray = BPArray;
+					texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
+					texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
 					if (inputScalars.BPType == 4) {
-						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_POINT;
-						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
+						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
 					}
 					else {
-						texDesc.addressMode[0] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[1] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
-						texDesc.addressMode[2] = CUaddress_mode::CU_TR_ADDRESS_MODE_CLAMP;
 						texDesc.filterMode = CUfilter_mode::CU_TR_FILTER_MODE_LINEAR;
-						texDesc.flags = CU_TRSF_NORMALIZED_COORDINATES;
 						viewDesc.height++;
 						viewDesc.width++;
 					}
@@ -2953,12 +2943,6 @@ public:
 							kTemp.emplace_back(&d_maskBPB);
 						else
 							kTemp.emplace_back(&d_maskBP);
-						if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-							if (inputScalars.useBuffers)
-								kTemp.emplace_back(&d_maskBPB);
-							else
-								kTemp.emplace_back(&d_maskBP);
-						}
 					}
 				}
 				kTemp.emplace_back(&length[osa_iter]);
@@ -2995,6 +2979,12 @@ public:
 				kTemp.emplace_back(reinterpret_cast<void*>(&d_Summ[uu]));
 			}
 			kTemp.emplace_back(&no_norm);
+			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+				if (inputScalars.useBuffers)
+					kTemp.emplace_back(&d_maskBPB);
+				else
+					kTemp.emplace_back(&d_maskBP);
+			}
 			if (inputScalars.CT)
 				kTemp.emplace_back(&length[osa_iter]);
 			else {

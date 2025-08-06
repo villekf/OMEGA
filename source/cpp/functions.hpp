@@ -2446,7 +2446,6 @@ inline int powerMethod(scalarStruct& inputScalars, Weighting& w_vec, std::vector
 		}
 	}
 	else {
-
 		for (int kk = 0; kk < w_vec.powerIterations; kk++) {
 			tauCP[0] = 0.f;
 			af::array outputFP = af::constant(0.f, m_size * inputScalars.nBins);

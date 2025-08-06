@@ -61,7 +61,7 @@ def indexMaker(options):
             generator = np.random.default_rng()
             apu = generator.permutation(totalLength).astype(tyyppi)
             for i in range(subsets):
-                if i == subsets:
+                if i == subsets - 1:
                     index1 = apu[port * i : -1]
                 else:
                     index1 = apu[port * i : port * (i + 1)]
