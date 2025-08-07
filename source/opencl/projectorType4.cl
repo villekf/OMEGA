@@ -440,7 +440,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
             if (aa == 0) {
 #ifdef CUDA
 #ifdef MASKBP3D
-		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y. p.z);
+		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y, p.z);
 #else
 		        maskVal = tex2D<unsigned char>(maskBP, p.x, p.y);
 #endif
