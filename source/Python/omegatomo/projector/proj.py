@@ -679,7 +679,7 @@ class projectorClass:
                 raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single projection image [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ']  or full stack of [' + str(self.nRowsD) + ' ' + str(self.nColsD) + ' ' + str(self.nProjections) + ']')
             else:
                 raise ValueError('Incorrect size for the forward projection mask! Must be the size of a single sinogram image [' + str(self.Nang) + ' ' + str(self.Ndist) + '] or 3D stack [' + str(self.Nang) + ' ' + str(self.Ndist) + ' ' + str(self.NSinos) + ']')
-        elif self.maskFP.size > 1 and self.maskFP.size == (self.nRowsD * self.nColsD):
+        elif self.maskFP.size > 1 and (self.maskFP.size == (self.nRowsD * self.nColsD) or self.maskFP.size == (self.nRowsD * self.nColsD * self.nProjections)):
             self.useMaskFP = True
             if (self.maskFP.ndim == 3):
                 self.maskFPZ = self.maskFP.shape[2]
@@ -689,7 +689,7 @@ class projectorClass:
         
         if self.maskBP.size > 1 and not(self.maskBP.size == self.Nx * self.Ny) and not(self.maskBP.size == self.Nx * self.Ny * self.Nz):
             raise ValueError('Incorrect size for the backward projection mask! Must be the size of a single image [' + str(self.Nx) + ' ' + str(self.Ny) + '] or 3D stack [' + str(self.Nx) + ' ' + str(self.Ny) + ' ' + str(self.Nz) + ']')
-        elif self.maskBP.size == self.Nx * self.Ny:
+        elif self.maskBP.size == self.Nx * self.Ny or self.maskBP.size == self.Nx * self.Ny * self.Nz:
             self.useMaskBP = True
             if (self.maskBP.ndim == 3):
                 self.maskBPZ = self.maskBP.shape[2]
@@ -924,6 +924,8 @@ class projectorClass:
             self.x = self.x.astype(dtype=np.float32)
             if self.x.flags.f_contiguous:
                 self.x = self.x.ravel('F')
+            else:
+                self.x = np.asfortranarray(self.x)
         # Compute PSF kernel
         self.PSFKernel()
         self.N = self.Nx.astype(np.uint64) * self.Ny.astype(np.uint64) * self.Nz.astype(np.uint64)
@@ -933,17 +935,17 @@ class projectorClass:
             self.FOVa_y = np.array(self.FOVa_y, dtype=np.float32, ndmin=1)
         if not isinstance(self.axial_fov, np.ndarray):
             self.axial_fov = np.array(self.axial_fov, dtype=np.float32, ndmin=1)
-        if self.projector_type in [2, 3, 22, 33]:
-            if self.projector_type in [3, 33]:
+        if self.projector_type in [2, 3, 22, 33, 13, 12, 31, 32, 21, 23, 42, 43, 34, 24]:
+            if self.projector_type in [3, 33, 13, 31, 32, 23, 43, 34]:
                 self.orthTransaxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_xy > 0 or self.SPECT):
+            elif (self.projector_type in [2, 22, 12, 21, 24, 42]) and (self.tube_width_xy > 0 or self.SPECT):
                 self.orthTransaxial = True
             else:
                 self.orthTransaxial = False
-        if self.projector_type in [2, 3, 22, 33]:
-            if self.projector_type in [3, 33]:
+        if self.projector_type in [2, 3, 22, 33, 13, 12, 31, 32, 21, 23, 42, 43, 34, 24]:
+            if self.projector_type in [3, 33, 13, 31, 32, 23, 43, 34]:
                 self.orthAxial = True
-            elif (self.projector_type in [2, 22]) and (self.tube_width_z > 0 or self.SPECT):
+            elif (self.projector_type in [2, 22, 12, 21, 24, 42]) and (self.tube_width_z > 0 or self.SPECT):
                 self.orthAxial = True
             else:
                 self.orthAxial = False
@@ -1006,7 +1008,7 @@ class projectorClass:
         
         if not self.CT and not self.SPECT and self.ndist_side == 0 and self.Ndist % 2 == 0 and not self.use_raw_data:
             raise ValueError("ndist_side cannot be 0 when Ndist is even!")
-        if self.useIndexBasedReconstruction and self.projector_type > 4:
+        if self.useIndexBasedReconstruction and self.projector_type not in [1, 2, 3, 4, 11, 14, 12, 13, 21, 22, 23, 24, 31, 32, 33, 34, 41, 42, 43, 44]:
             raise ValueError('Index-based reconstruction only supports projector types 1-4!')
         
         if self.Nt < 1:
@@ -1098,7 +1100,7 @@ class projectorClass:
         
         if np.sum(self.precondTypeImage) == 0 and (self.PKMA or self.MRAMLA or self.MBSREM):
             print('No image-based preconditioner selected with PKMA/MRAMLA/MBSREM. EM preconditioner is highly recommended!')
-        if self.useCPU and (self.projector_type == 5 or self.projector_type == 45 or self.projector_type == 54 or self.projector_type == 51 or self.projector_type == 15):
+        if self.useCPU and self.projector_type in [2, 3, 4, 5, 15, 25, 35, 45, 21, 22, 23, 24, 31, 32, 33, 34, 35, 41, 42, 43, 44, 45, 51, 52, 53, 54, 55, 14, 12, 13]:
             raise ValueError('Selected projector type is not supported with CPU implementation!')
         if self.projector_type == 2 and self.CT:
             raise ValueError('Orthogonal distance-based projector is NOT supported when using CT data!')
@@ -1140,7 +1142,7 @@ class projectorClass:
         if self.TOF_bins_used > 1 and self.TOF_FWHM == 0 and not self.CT and not self.SPECT:
             raise ValueError('TOF enabled, but the TOF FWHM (self.TOF_FWHM) is zero. FWHM must be nonzero.')
         
-        if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1):
+        if self.corrections_during_reconstruction and (self.scatter_correction or self.randoms_correction) and (self.PDHG or self.PDHGL1 or self.FISTA or self.LSQR or self.CGLS or self.FISTAL1 or self.PDDY):
             print('Randoms/scatter correction cannot be applied during the reconstruction with the selected algorithm! Attempting precorrection!')
             self.ordinaryPoisson = False
             # self.scatter_correction = False
@@ -1156,6 +1158,8 @@ class projectorClass:
             raise ValueError('ECOSEM is not supported with CPU!')
         if self.NLM_use_anatomical and self.useCPU and self.NLM:
             raise ValueError('Reference image weighting for NLM is not supported with CPU!')
+        if self.useIndexBasedReconstruction and self.useCPU:
+            raise ValueError('Index-based reconstruction is not supported on CPU!')
             
         varNeg = ['LSQR','CGLS','FDK','SART']
         neg = [name for name in varNeg if getattr(self, name, False)]
@@ -1214,7 +1218,7 @@ class projectorClass:
                 except ModuleNotFoundError:
                     print('ArrayFire package not found! ArrayFire features are not supported. You can install ArrayFire package with "pip install arrayfire".')
                     AFinstalled = False
-                if AFinstalled:
+                if AFinstalled and not self.useCPU:
                     if not self.useCUDA and af.get_active_backend() != 'opencl':
                         af.set_backend('opencl')
                     dispaus = f"Using implementation {self.implementation} with "
@@ -1225,6 +1229,8 @@ class projectorClass:
                     loc2 = info[loc:].find('(Compute')
                     dispaus += info[loc + 4 : loc + loc2 - 1]
                     print(dispaus)
+                elif self.useCPU:
+                    print('Using CPU-based reconstruction')
                 else:
                     print('Selected device number is ' + str(self.deviceNum))
                     
@@ -2002,8 +2008,8 @@ class projectorClass:
             ('PDHG', ctypes.c_bool),
             ('PDHGKL', ctypes.c_bool),
             ('PDHGL1', ctypes.c_bool),
-            ('CV', ctypes.c_bool),
             ('PDDY', ctypes.c_bool),
+            ('CV', ctypes.c_bool),
             ('POCS', ctypes.c_bool),
             ('FDK', ctypes.c_bool),
             ('SAGA', ctypes.c_bool),

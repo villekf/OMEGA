@@ -343,8 +343,8 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
 #endif
     const float tStep = DIVIDE(dL, L);
 
-    s = (s - bmin) * d_scale;
-    v *= d_scale;
+    // s = (s - bmin) * d_scale;
+    // v *= d_scale;
     float temp = 0.f;
 
     float t = tStart;
@@ -352,10 +352,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     for (uint ii = 0; ii < NSTEPS; ii++) {
 #if (defined(ATN) && defined(BP))
 #ifndef USEMAD
-        const float3 p = t * v + s;
+        float3 p = t * v + s;
 #else
-        const float3 p = FMAD3(t, v, s);
+        float3 p = FMAD3(t, v, s);
 #endif
+        p = (p - bmin) * d_scale;
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #else
         LL += dL;
@@ -364,7 +365,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
         if (t >= tEnd)
             break;
     }
-    t = tStart;
+    t = tStart + tStep / 10.f;
 #endif
 #if !defined(CT) //////////////// PET ////////////////
 #if defined(TOTLENGTH) //////////////// TOTLENGTH ////////////////
@@ -401,10 +402,11 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
     // for (uint ii = 0; ii < NSTEPS; ii++) {
     while (t <= tEnd) {
 #ifndef USEMAD
-        const float3 p = v * t + s;
+        float3 p = v * t + s;
 #else
-        const float3 p = FMAD3(t, v, s);
+        float3 p = FMAD3(t, v, s);
 #endif
+        p = (p - bmin) * d_scale;
 #if defined(ATN) && defined(FP)
 		compute_attenuation(dL, p, d_atten, &jelppi, aa);
 #endif
@@ -438,7 +440,7 @@ void projectorType4Forward(const uint d_size_x, const uint d_sizey,
             if (aa == 0) {
 #ifdef CUDA
 #ifdef MASKBP3D
-		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y. p.z);
+		        maskVal = tex3D<unsigned char>(maskBP, p.x, p.y, p.z);
 #else
 		        maskVal = tex2D<unsigned char>(maskBP, p.x, p.y);
 #endif

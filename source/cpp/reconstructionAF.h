@@ -497,16 +497,16 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 						af::array oneInput;
 						if (inputScalars.use_psf) {
-							vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+							vec.im_os_blurred[ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
 						}
-						vec.im_os[ii] = af::constant(1.f, inputScalars.im_dim[ii]);
+						vec.im_os[ii] = af::constant(1.f, inputScalars.im_dim[ii], af_dtype::f32);
 						if (inputScalars.projector_type == 6) {
-							oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[ll]);
+							oneInput = af::constant(1.f, inputScalars.nRowsD, inputScalars.nColsD, length[ll], af_dtype::f32);
 							forwardProjectionType6(oneInput, w_vec, vec, inputScalars, length[ll], uu, proj, ii, atten);
 							uu += length[ll];
 						}
 						else {
-							oneInput = af::constant(1.f, lengthFull[ll] * nBins, 1);
+							oneInput = af::constant(1.f, lengthFull[ll] * nBins, 1, af_dtype::f32);
 							status = forwardProjectionAFOpenCL(vec, inputScalars, w_vec, oneInput, ll, length, g, lengthFull[ll], proj, ii, pituus);
 							if (status != 0) {
 								return -1;
@@ -560,13 +560,13 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 					for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 						int64_t alku = 0;
 						for (uint32_t subIter = 0; subIter < inputScalars.subsetsUsed; subIter++) {
-							af::array inputM = E(af::seq(alku, alku + lengthFull[subIter] * nBins - 1));
+							af::array inputM = E(af::seq(alku, alku + lengthFull[subIter] * nBins - 1), af_dtype::f32);
 							computeIntegralImage(inputScalars, w_vec, length[subIter], inputM, meanBP);
 							af::sync();
 							if (inputScalars.projector_type == 6)
 								backprojectionType6(inputM, w_vec, vec, inputScalars, length[subIter], uu, proj, subIter, 0, 0, 0, ii, atten);
 							else {
-								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, length, lengthFull[subIter], meanBP, g, proj, false, ii, pituus);
+								status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, inputM, subIter, length, lengthFull[subIter], meanBP, g, proj, true, ii, pituus);
 								if (status != 0) {
 									return -1;
 								}
@@ -1235,10 +1235,6 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 						for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
 							if (ii == 0 && inputScalars.adaptiveType == 2 && MethodList.CPType)
 								vec.adapTypeA = outputFP.copy();
-							if (compute_norm_matrix == 1u)
-								transferSensitivityImage(vec.Summ[ii][0], proj);
-							else if (compute_norm_matrix == 2u)
-								transferSensitivityImage(vec.Summ[ii][osa_iter], proj);
 
 							if (inputScalars.CT && (MethodList.ACOSEM || MethodList.OSLCOSEM > 0 || MethodList.OSEM || MethodList.COSEM || MethodList.ECOSEM ||
 								MethodList.ROSEM || MethodList.OSLOSEM || MethodList.ROSEMMAP)) {
@@ -1258,6 +1254,10 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 								}
 							}
 							af::sync();
+							if (compute_norm_matrix == 1u)
+								transferSensitivityImage(vec.Summ[ii][0], proj);
+							else if (compute_norm_matrix == 2u)
+								transferSensitivityImage(vec.Summ[ii][osa_iter], proj);
 
 							status = backwardProjectionAFOpenCL(vec, inputScalars, w_vec, outputFP, osa_iter, length, m_size, meanBP, g, proj, false, ii, pituus);
 							if (status != 0) {
@@ -1535,7 +1535,7 @@ int reconstructionAF(const float* z_det, const float* x, const F* Sin, const R* 
 			if (break_iter)
 				break;
 		}
-
+		//vec.im_os[0] = vec.Summ[0][0];
 		if (!inputScalars.largeDim) {
 #ifdef MATLAB
 			// Transfer the device data to host MATLAB mxarray

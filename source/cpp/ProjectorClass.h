@@ -353,6 +353,10 @@ class ProjectorClass {
 			os_options += " -DBP";
 			os_options += " -DATOMICF";
 			os_options += " -DSENS";
+			if (inputScalars.BPType == 3)
+				os_options += " -DVOL";
+			if (inputScalars.BPType == 2 || inputScalars.BPType == 3)
+				os_options += " -DORTH";
 			if (inputScalars.BPType == 4) {
 				os_options += " -DPTYPE4";
 				os_options += (" -DNVOXELS=" + std::to_string(NVOXELS));
@@ -1712,8 +1716,9 @@ public:
 			status = kernelBP.setArg(kernelIndBP++, inputScalars.global_factor);
 			OCL_CHECK(status, "\n", -1);
 			if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-				kernelSensList.setArg(kernelIndSens++, inputScalars.dL);
+				getErrorString(kernelSensList.setArg(kernelIndSens++, inputScalars.dL));
 				status = kernelSensList.setArg(kernelIndSens++, inputScalars.global_factor);
+				OCL_CHECK(status, "\n", -1);
 			}
 		}
 		if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
@@ -2736,8 +2741,9 @@ public:
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_xFull[0]);
 					OCL_CHECK(status, "\n", -1);
 					status = kernelBP.setArg(kernelIndBPSubIter++, d_zFull[0]);
-					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings);
-					kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring);
+					OCL_CHECK(status, "\n", -1);
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.rings));
+					getErrorString(kernelBP.setArg(kernelIndBPSubIter++, inputScalars.det_per_ring));
 				}
 				else {
 					if (((inputScalars.listmode == 0 || inputScalars.indexBased) && !(inputScalars.CT || inputScalars.SPECT)) || (!inputScalars.loadTOF && inputScalars.listmode > 0))
@@ -2777,16 +2783,6 @@ public:
 							else
 								status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
 						OCL_CHECK(status, "\n", -1);
-						//if (inputScalars.listmode > 0 && inputScalars.computeSensImag) {
-						//	if (inputScalars.useBuffers)
-						//		status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
-						//	else
-						//		if (inputScalars.maskBPZ > 1)
-						//			status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
-						//		else
-						//			status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
-						//	OCL_CHECK(status, "\n", -1);
-						//}
 					}
 				}
 				status = kernelBP.setArg(kernelIndBPSubIter++, length[osa_iter]);
@@ -2825,6 +2821,16 @@ public:
 			}
 			status = kernelBP.setArg(kernelIndBPSubIter++, no_norm);
 			OCL_CHECK(status, "\n", -1);
+			if (inputScalars.CT && inputScalars.maskBP && (inputScalars.BPType == 4 || inputScalars.BPType == 5)) {
+				if (inputScalars.useBuffers)
+					status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBPB);
+				else
+					if (inputScalars.maskBPZ > 1)
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP3);
+					else
+						status = kernelBP.setArg(kernelIndBPSubIter++, d_maskBP);
+				OCL_CHECK(status, "\n", -1);
+			}
 			if (inputScalars.CT)
 				kernelBP.setArg(kernelIndBPSubIter++, static_cast<cl_long>(length[osa_iter]));
 			else {

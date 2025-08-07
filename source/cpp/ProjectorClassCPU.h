@@ -182,14 +182,15 @@ public:
 		if ((inputScalars.PET || inputScalars.CT || inputScalars.SPECT) && inputScalars.listmode == 0)
 			vecSize = static_cast<size_t>(inputScalars.nRowsD) * static_cast<size_t>(inputScalars.nColsD);
 		int64_t nMeas = length[osa_iter] * vecSize;
-		if (compSens)
-			nMeas = inputScalars.det_per_ring * inputScalars.det_per_ring * inputScalars.rings;
+		if (compSens && param.listMode > 0)
+			nMeas = inputScalars.det_per_ring * inputScalars.det_per_ring * inputScalars.rings * inputScalars.rings;
 		if (DEBUG) {
 			mexPrintBase("nMeas = %u\n", nMeas);
 			mexPrintBase("no_norm = %u\n", no_norm);
 			mexPrintBase("compSens = %u\n", compSens);
 			mexPrintBase("vecSize = %u\n", vecSize);
 			mexPrintBase("osa_iter = %u\n", osa_iter);
+			mexPrintBase("length[osa_iter] = %u\n", length[osa_iter]);
 			mexEval();
 		}
 		param.Nx = inputScalars.Nx[ii];

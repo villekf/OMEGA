@@ -386,7 +386,7 @@ inline void get_detector_coordinates(const T* x, const T* z, const uint32_t size
 	const uint16_t* z_index, const size_t oo, const int subsetType, const uint32_t subsets, const int64_t ix, const int64_t iy, const int64_t iz,
 	const uint16_t n_rays, const uint16_t n_rays3D, const int lorZ, const int lorXY, const T crz, const T crxy, const bool nLayers = false) {
 	// Sinogram data
-	if (subsetType >= 8 || subsets == 1 || subsetType == 1 || subsetType == 2 || subsetType == 4 || subsetType == 5) {
+	if (subsetType >= 8 || subsets == 1 || subsetType == 1 || subsetType == 2 || subsetType == 4 || subsetType == 5 || subsetType == 0) {
 		const int64_t id = (ix + iy * size_x) * 4LL;
 		if (nLayers) {
 			const int64_t idz = iz * 3LL;
@@ -1427,6 +1427,10 @@ void projectorType123Implementation4(paramStruct<T>& param, const int64_t nMeas,
 		else if (param.computeSensIm && param.listMode > 0) {
 			for (int64_t to = 0LL; to < param.nBins; to++)
 				ax[to] = (T)1.;
+		}
+		else if (fp == 2) {
+			for (int64_t to = 0LL; to < param.nBins; to++)
+				ax[to] = input[lo + to * nMeas];
 		}
 		T local_norm = (T)0.;
 		T local_scat = (T)0.;

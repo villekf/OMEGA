@@ -4,13 +4,13 @@
 def loadProjectionImages(nProjections, binning = 1, fpath = ''):
     import numpy as np
     import os
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     from imageio import imread
     def select_file(fpath):
         file = None
     
         if len(fpath) == 0:
+            import tkinter as tk
+            from tkinter.filedialog import askopenfilename
             root = tk.Tk()
             root.withdraw()
             nimi = askopenfilename(title='Select first projection image',filetypes=([('Image Files','*.bmp *.tif *.tiff')]))
@@ -18,6 +18,8 @@ def loadProjectionImages(nProjections, binning = 1, fpath = ''):
                 raise ValueError('No file was selected')
         else:
             if not os.path.exists(fpath):
+                import tkinter as tk
+                from tkinter.filedialog import askopenfilename
                 print('Specified file was not found! Please select first projection image')
                 root = tk.Tk()
                 root.withdraw()

@@ -11,8 +11,6 @@ def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes 
     import numpy as np
     import os
     import glob
-    import tkinter as tk
-    from tkinter.filedialog import askopenfilename
     import re
     if dims == None:
         dims = np.zeros(3, dtype=np.uint64)
@@ -27,6 +25,8 @@ def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes 
         '''
         return [ atoi(c) for c in re.split(r'(\d+)', text) ]
     if len(fpath) == 0:
+        import tkinter as tk
+        from tkinter.filedialog import askopenfilename
         root = tk.Tk()
         root.withdraw()
         fpath = askopenfilename(title='Select projection image')
@@ -34,6 +34,8 @@ def loadProjectionData(ftype, fpath = '', dims = None, binning = 1, headerBytes 
             raise ValueError('No file was selected')
     else:
         if not os.path.exists(fpath):
+            import tkinter as tk
+            from tkinter.filedialog import askopenfilename
             print('Specified file was not found! Please select (first) projection image')
             root = tk.Tk()
             root.withdraw()
