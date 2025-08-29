@@ -50,7 +50,7 @@
 #ifdef USEIMAGES
 #define typeT int3
 #else
-#ifdef OPENCL
+#if defined(OPENCL) || defined(METAL)
 #define typeT long
 #else
 #define typeT long long
@@ -59,7 +59,144 @@
 #define T4 int4
 #define typeTT int
 #endif
+
+#ifdef METAL
+#define UNPACK_METAL_PARAMS(params) \
+    float global_factor = params.global_factor; \
+    float d_epps = params.d_epps; \
+	uint d_size_x = params.d_size_x; \
+	uint d_det_per_ring = params.d_det_per_ring; \
+	float sigma_x = params.sigma_x; \
+	float coneOfResponseStdCoeffA = params.coneOfResponseStdCoeffA; \
+    float coneOfResponseStdCoeffB = params.coneOfResponseStdCoeffB; \
+    float coneOfResponseStdCoeffC = params.coneOfResponseStdCoeffC; \
+	float crystalSizeX = params.crystalSizeX; \
+	float crystalSizeY = params.crystalSizeY; \
+	float orthWidth = params.orthWidth; \
+	float bmin = params.bmin; \
+	float bmax = params.bmax; \
+	float Vmax = params.Vmax; \
+	uint d_sizey = params.d_sizey; \
+	long d_nProjections = params.d_nProjections; \
+	uint d_Nx = params.d_Nx; \
+	uint d_Ny = params.d_Ny; \
+	uint d_Nz = params.d_Nz; \
+	float d_dx = params.d_dx; \
+	float d_dy = params.d_dy; \
+	float d_dz = params.d_dz; \
+	float bx = params.bx; \
+	float by = params.by; \
+	float bz = params.bz; \
+	float d_bmaxx = params.d_bmaxx; \
+	float d_bmaxy = params.d_bmaxy; \
+	float d_bmaxz = params.d_bmaxz; \
+	unsigned char no_norm = params.no_norm; \
+	unsigned long m_size = params.m_size; \
+	uint currentSubset = params.currentSubset; \
+	int aa = params.aa; 
+
+struct ScalarParams { // These scalars are constant for each subiteration. For OpenCL, these are set in initializeKernel.
+    float global_factor;
+	float d_epps;
+	uint d_size_x;
+	uint d_det_per_ring;
+	float sigma_x;
+	float coneOfResponseStdCoeffA;
+    float coneOfResponseStdCoeffB;
+    float coneOfResponseStdCoeffC;
+	float crystalSizeX;
+	float crystalSizeY;
+	float orthWidth;
+	float bmin;
+	float bmax;
+	float Vmax;
+	uint d_sizey;
+	long d_nProjections;
+	uint d_Nx;
+	uint d_Ny;
+	uint d_Nz;
+	float d_dx;
+	float d_dy;
+	float d_dz;
+	float bx;
+	float by;
+	float bz;
+	float d_bmaxx;
+	float d_bmaxy;
+	float d_bmaxz;
+	unsigned char no_norm;
+	unsigned long m_size;
+	uint currentSubset;
+	int aa;
+};
+
+#define DEVICE inline
+#define CLGLOBAL device
+#define CLRESTRICT 
+#define CONSTANT   constant
+#define LOCAL      threadgroup
+#define PTR_DEV  device
+#define PTR_THR  thread
+#define PTR_CONST constant
+#define PTR_TG   threadgroup
+#define KERNEL kernel
+#define CAST float
+#define FABS metal::fabs
+#define MIN metal::min
+#define LENGTH metal::length
+#define CLONG_rtz(a) static_cast<long>(a)
+#define CFLOAT(a) static_cast<float>(a)
+#define CINT(a)   static_cast<int>(a)
+#define LONG long
+#define FMIN metal::fmin
+#define FMAX metal::fmax
+#define ALL metal::all
+#define ANY metal::any
+#define ISNAN metal::isnan
+#define ISINF metal::isinf
+#define MFLOAT2(a,b) float2((a), (b))
+#define CMFLOAT3(x,y,z) float3((x), (y), (z))
+#define CUINT_sat_rtz(a) static_cast<uint>(metal::clamp(metal::trunc((a)), 0.0f, 4294967295.0f))
+#define CUINT_rtp(a)     static_cast<uint>(metal::ceil((a)))
+#define CLAMP3(a,b,c) metal::clamp((a),(b),(c))
+#define DIVIDE3(a,b) ((a) / (b))
+#define CFLOAT3(a) float3(a)
+#define FMAD3(a,b,c) metal::fma((a),(b),(c))
+#define CINT3_rtz(a) static_cast<int3>(a)
+#define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
+#define MINT3(a,b,c) int3((a),(b),(c))
+#define CMINT3(a,b,c) int3((a),(b),(c))
+#define make_float2(a,b)   float2((a),(b))
+#define make_float3(a,b,c) float3((a),(b),(c))
+#define make_uint2(a,b)    uint2((a),(b))
+#define make_uint3(a,b,c)  uint3((a),(b),(c))
+#define make_int2(a,b)     int2((a),(b))
+#define make_int3(a,b,c)   int3((a),(b),(c))
+
+#include <metal_stdlib>
+#include <metal_atomic>
+
+
+inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
+{
+    atomic_fetch_add_explicit(addr, val, metal::memory_order_relaxed);
+}
+
+
+#endif
 #ifdef OPENCL
+#define PTR_DEV  device // Metal requires address space qualifier for pointers
+#define PTR_THR  thread
+#define PTR_CONST constant
+#define PTR_TG   threadgroup
+#define MIN min
+#define FABS fabs
+#define FMIN fmin
+#define FMAX fmax
+#define ALL all
+#define ANY any
+#define ISNAN isnan
+#define ISINF isinf
 #define LONG long
 #define ULONG ulong
 #define CLGLOBAL __global
@@ -142,6 +279,19 @@ __constant sampler_t sampler_MASK4 = CLK_NORMALIZED_COORDS_TRUE | CLK_FILTER_NEA
 __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEAREST | CLK_ADDRESS_CLAMP_TO_EDGE;
 #endif
 #elif defined(CUDA)
+#define PTR_DEV  device // Metal requires address space qualifier for pointers
+#define PTR_THR  thread
+#define PTR_CONST constant
+#define PTR_TG   threadgroup
+#define MIN min
+#define FABS fabs
+#define LENGTH length
+#define FMIN fmin
+#define FMAX fmax
+#define ALL all
+#define ANY any
+#define ISNAN isnan
+#define ISINF isinf
 #define M_PI_F 3.141593f
 #define M_PI_2_F 1.570796f
 #define M_SQRT1_2_F 0.7071068f
@@ -473,9 +623,10 @@ DEVICE void getIndex(int3* i, const uint d_size_x, const uint d_sizey, const uin
     #define IMTYPE const CLGLOBAL float* CLRESTRICT 
     #define MASKBPTYPE const CLGLOBAL uchar* CLRESTRICT 
     #define MASKFPTYPE const CLGLOBAL uchar* CLRESTRICT 
+
 #endif
 
-
+#ifdef MASKBP
 DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
     return 
     #ifdef USEIMAGES
@@ -496,7 +647,9 @@ DEVICE int readMaskBP(MASKBPTYPE maskBP, typeT ind) {
         maskBP[ind];
     #endif
 }
+#endif
 
+#ifdef MASKFP
 DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
     return
 #ifdef USEIMAGES
@@ -517,6 +670,7 @@ DEVICE int readMaskFP(MASKFPTYPE maskFP, typeT ind) {
         maskFP[ind];
 #endif
 }
+#endif
 
 // This function was taken from: https://streamhpc.com/blog/2016-02-09/atomic-operations-for-floats-in-opencl-improved/
 // Computes the atomic_add for floats
@@ -586,7 +740,7 @@ DEVICE float TOFLoop(const float DD, const float element, CONSTANT float* TOFCen
 #endif //////////////// END TOF ////////////////
 
 #if defined(N_RAYS)
-DEVICE void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const float cr) {
+DEVICE void multirayCoordinateShiftXY(PTR_THR float3 *s, PTR_THR float3 *d, const int lor, const float cr) {
 	float interval = cr / (CFLOAT(N_RAYS2D * 2));
 	(*s).x += (interval - cr / 2.f);
 	(*d).x += (interval - cr / 2.f);
@@ -599,7 +753,7 @@ DEVICE void multirayCoordinateShiftXY(float3* s, float3* d, const int lor, const
 	(*d).y += interval * lor;
 }
 
-DEVICE void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const float cr) {
+DEVICE void multirayCoordinateShiftZ(PTR_THR float3 *s, PTR_THR float3 *d, const int lor, const float cr) {
 	float interval = cr / (CFLOAT(N_RAYS3D * 2));
 	(*s).z += (interval - cr / 2.f);
 	(*d).z += (interval - cr / 2.f);
@@ -612,7 +766,7 @@ DEVICE void multirayCoordinateShiftZ(float3* s, float3* d, const int lor, const 
 #if defined(FP) && !defined(PROJ5)
 // Computes the forward projection
 // Separate cases for the Siddon and interpolated projectors
-DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_ind, IMTYPE d_OSEM) {
+DEVICE void forwardProject(const float local_ele, PTR_THR float *ax, const typeT local_ind, IMTYPE d_OSEM) {
 #ifdef CUDA
 #ifdef USEIMAGES
     // if (local_ind.x <= 1.f && local_ind.y <= 1.f && local_ind.z <= 1.f && local_ind.x >= 0.f && local_ind.y >= 0.f && local_ind.z >= 0.f)
@@ -636,7 +790,7 @@ DEVICE void forwardProject(const float local_ele, float* ax, const typeT local_i
 
 // Computes the forward projection
 // Includes TOF-specific weighting
-DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
+DEVICE void denominator(PTR_THR float *ax, const typeT localInd, float local_ele, IMTYPE d_OSEM
 #ifdef TOF
 	, const float element, const float TOFSum, const float DD, const float sigma_x, float* D, float* TOFWeights
 #ifdef LISTMODE
@@ -680,7 +834,7 @@ DEVICE void denominator(float* ax, const typeT localInd, float local_ele, IMTYPE
 
 #if defined(BP) && !defined(PROJ5) && (defined(ATOMIC) || defined(ATOMIC32) || defined(ATOMICF))
 // Compute the backprojection
-DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
+DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local_ind, CLGLOBAL CAST* d_rhs_OSEM, const uchar no_norm, CLGLOBAL CAST* d_Summ
 #ifdef TOF
 	, const float element, const float sigma_x, float* D, const float DD, const float TOFSum, float* TOFWeights
 #ifdef LISTMODE
@@ -715,7 +869,8 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #elif defined(ATOMIC32)
 	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
 #else
-	atomicAdd(&d_rhs_OSEM[local_ind], (yaxTOF));
+	&d_rhs_osem[local_ind] += yaxTOF;
+	//atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
 #endif
 	if (no_norm == 0u)
 #ifdef ATOMIC
@@ -723,7 +878,7 @@ DEVICE void rhs(const float local_ele, const float* ax, const LONG local_ind, CL
 #elif defined(ATOMIC32)
 		atomic_add(&d_Summ[local_ind], CINT(val * TH));
 #else
-		atomicAdd(&d_Summ[local_ind], val);
+		atomicAdd((volatile device metal::atomic_float*)&d_Summ[local_ind], val);
 #endif
 }
 #endif
@@ -851,11 +1006,11 @@ DEVICE void getDetectorCoordinatesCT(const CLGLOBAL float* CLRESTRICT d_xyz,
 #elif defined(SPECT)
 DEVICE void getDetectorCoordinatesSPECT(
 #if defined(USEGLOBAL)
-	const CLGLOBAL float* d_xyz,
+	const CLGLOBAL float *d_xyz,
 #else
-	CONSTANT float* d_xyz, 
+	CONSTANT float *d_xyz, 
 #endif
-    CONSTANT float* d_uv, float3* s, float3* d, const int3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
+    CONSTANT float *d_uv, PTR_THR float3 *s, PTR_THR float3 *d, const uint3 i, const uint d_size_x, const uint d_sizey, const float2 d_dPitch, const CLGLOBAL float* d_rayShiftsDetector, const CLGLOBAL float* d_rayShiftsSource, int lorXY, size_t idx) {
 	uint id = i.z * 6;
 	*s = CMFLOAT3(d_xyz[id], d_xyz[id + 1], d_xyz[id + 2]);
 	*d = CMFLOAT3(d_xyz[id + 3], d_xyz[id + 4], d_xyz[id + 5]);
@@ -912,7 +1067,7 @@ DEVICE void getDetectorCoordinatesRaw(
 #if !defined(RAW) && !defined(LISTMODE) && !defined(CT) && !defined(SPECT) && !defined(PET)
 // Get the detector coordinates for the current sinogram bin (index-based subsets)
 DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBAL ushort *d_zindex, const size_t idx,
-	float3* s, float3* d, 
+	PTR_THR float3* s, PTR_THR float3* d, 
 #if defined(CT) || !defined(USEGLOBAL)
 	CONSTANT float *d_xy, 
 #else
@@ -957,7 +1112,7 @@ DEVICE void getDetectorCoordinates(const CLGLOBAL uint *d_xyindex, const CLGLOBA
 
 #if !defined(SUBSETS) && !defined(CT)
 // Get the detector coordinates for the current measurement (no subsets or using full sinogram subsets)
-DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, float3* s, float3* d, 
+DEVICE void getDetectorCoordinatesFullSinogram(const uint d_size_x, const int3 i, PTR_THR float3* s, PTR_THR float3* d, 
 #if defined(USEGLOBAL)
 	const CLGLOBAL float* d_xy,
 #else
@@ -1027,7 +1182,7 @@ DEVICE int perpendicular_start(const float d_b, const float d, const float d_d, 
 
 // Compute the probability for the perpendicular elements
 DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint d_N1, const float d, const float d_d2, const uint d_N2, 
-	float* templ_ijk, int3* tempi, LONG* z_loop, const uint d_N, const uint d_NN, 
+	PTR_THR float* templ_ijk, PTR_THR int3* tempi, PTR_THR LONG *z_loop, const uint d_N, const uint d_NN, 
 	const size_t idx, const float global_factor, const float local_scat, 
 #if !defined(CT) && defined(ATN) && !defined(ATNM)
 	IMTYPE d_atten, const int ii, 
@@ -1101,7 +1256,7 @@ DEVICE void perpendicular_elements(const float d_b, const float d_d1, const uint
 
 #if defined(SIDDON)
 // Compute functions (9) and (29) (detector larger than source)
-DEVICE void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+DEVICE void d_g_s_precomp(const float tmin, const float t_min, const float tmax, const float t_max, PTR_THR uint *v_min, PTR_THR uint *v_max, PTR_THR float *t_0, PTR_THR int *v_u, 
 	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
@@ -1129,7 +1284,7 @@ DEVICE void d_g_s_precomp(const float tmin, const float t_min, const float tmax,
 }
 
 // Compute functions (9) and (29) (source larger than detector)
-DEVICE void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, uint* v_min, uint* v_max, float* t_0, int* v_u, 
+DEVICE void s_g_d_precomp(const float tmin, const float t_min, const float tmax, const float t_max, PTR_THR uint *v_min, PTR_THR uint *v_max, PTR_THR float *t_0, PTR_THR int *v_u, 
 	const float diff, const float b, const float d, const float s, const uint N) {
 
 	if (tmin == t_min)
@@ -1168,7 +1323,7 @@ DEVICE float voxelValue(const float t0, const float tc, const float L) {
 
 // #ifdef SIDDON
 // compute the distance that the ray traverses in the current voxel
-DEVICE float compute_element(float* t0, float* tc, const float L, const float tu, const int u, int* temp_ijk) {
+DEVICE float compute_element(PTR_THR float *t0, PTR_THR float *tc, const float L, const float tu, const int u, PTR_THR int *temp_ijk) {
 	float local_ele = voxelValue(*t0, *tc, L);
 	*temp_ijk += u;
 	*tc = *t0;
@@ -1182,8 +1337,8 @@ DEVICE int voxel_index(const float pt, const float diff, const float d, const fl
 }
 
 DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1, const float diff2, const float max1, const float max2,
-	const float d1, const float d2, const uint N1, const uint N2, int* temp1, int* temp2, float* t1u, float* t2u, uint* Np,
-	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, float* tc, int* u1, int* u2, float* t10, float* t20, bool* xy) {
+	const float d1, const float d2, const uint N1, const uint N2, PTR_THR int *temp1, PTR_THR int *temp2, PTR_THR float *t1u, PTR_THR float *t2u, PTR_THR uint *Np,
+	const int TYYPPI, const float ys, const float xs, const float yd, const float xd, PTR_THR float *tc, PTR_THR int *u1, PTR_THR int *u2, PTR_THR float *t10, PTR_THR float *t20, PTR_THR bool *xy) {
 	// If neither x- nor y-directions are perpendicular
 // Correspond to the equations (9) and (10) from reference [2]
 	const float apu_tx = b1 - xs;
@@ -1194,14 +1349,14 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	const float tyback = (max2 - ys) / (diff2);
 
 	// Equations (5-8)
-	const float txmin = fmin(*t10, txback);
-	const float txmax = fmax(*t10, txback);
-	const float tymin = fmin(*t20, tyback);
-	const float tymax = fmax(*t20, tyback);
+	const float txmin = FMIN(*t10, txback);
+	const float txmax = FMAX(*t10, txback);
+	const float tymin = FMIN(*t20, tyback);
+	const float tymax = FMAX(*t20, tyback);
 
 	// (3-4)
-	*tc = fmax(txmin, tymin);
-	const float tmax = fmin(txmax, tymax);
+	*tc = FMAX(txmin, tymin);
+	const float tmax = FMIN(txmax, tymax);
 #ifdef ORTH
 	if (*tc == *t10 || *tc == txback)
 		*xy = true;
@@ -1232,7 +1387,7 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 		*Np = imax + 1u + jmax + 1u - imin - jmin;
 
 	// (2) and (19)
-	const float pt = ((fmin(*t10, *t20) + *tc) / 2.f);
+	const float pt = ((FMIN(*t10, *t20) + *tc) / 2.f);
 
 	// (26)
 	*temp1 = voxel_index(pt, diff1, d1, apu_tx);
@@ -1240,8 +1395,8 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	*temp2 = voxel_index(pt, diff2, d2, apu_ty);
 
 	// (28)
-	*t1u = d1 / fabs(diff1);
-	*t2u = d2 / fabs(diff2);
+	*t1u = d1 / FABS(diff1);
+	*t2u = d2 / FABS(diff2);
 
 	if (TYYPPI == 0) {
 		if (*temp1 < 0 || *temp2 < 0 || *temp1 >= N1 || *temp2 >= N2)
@@ -1251,26 +1406,26 @@ DEVICE bool siddon_pre_loop_2D(const float b1, const float b2, const float diff1
 	return false;
 }
 
-DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, const float3 dd, const uint3 N, int* tempi, int* tempj, int* tempk, 
-    float* txu, float* tyu, float* tzu, uint* Np, const int TYYPPI, const float3 s, const float3 d, float* tc, int* i, int* j, int* k, float* tx0, 
-	float* ty0, float* tz0, bool* xy, const int3 ii) {
+DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 max, const float3 dd, const uint3 N, PTR_THR int *tempi, PTR_THR int *tempj, PTR_THR int *tempk, 
+    PTR_THR float *txu, PTR_THR float *tyu, PTR_THR float *tzu, PTR_THR uint *Np, const int TYYPPI, const float3 s, const float3 d, PTR_THR float *tc, PTR_THR int *i, PTR_THR int *j, PTR_THR int *k, PTR_THR float *tx0, 
+	PTR_THR float *ty0, PTR_THR float *tz0, PTR_THR bool *xy, const uint3 ii) {
 
 	const float3 apuT = b - s;
 	const float3 t0 = apuT / diff;
 	const float3 tBack = DIVIDE3(max - s, diff);
 
-	const float3 tMin = fmin(t0, tBack);
-	const float3 tMax = fmax(t0, tBack);
+	const float3 tMin = FMIN(t0, tBack);
+	const float3 tMax = FMAX(t0, tBack);
 
-	*tc = fmax(fmax(tMin.x, tMin.z), tMin.y);
-	const float tmax = fmin(fmin(tMax.x, tMax.z), tMax.y);
+	*tc = FMAX(FMAX(tMin.x, tMin.z), tMin.y);
+	const float tmax = FMIN(FMIN(tMax.x, tMax.z), tMax.y);
 	*tx0 = t0.x;
 	*ty0 = t0.y;
 	*tz0 = t0.z;
 #ifdef ORTH
 	const float pituus = d.x - s.x;
 	const float pituusY = d.y - s.y;
-	const float angle = fabs(ACOS((pituus) / SQRT(pituus * pituus + pituusY * pituusY)));
+	const float angle = FABS(ACOS((pituus) / SQRT(pituus * pituus + pituusY * pituusY)));
 	if ((angle < 0.785398f && angle > 0.f) || (angle > 2.35619f && angle < 3.92699f) || (angle > 5.497787f))
 		*xy = true;
 	else
@@ -1300,7 +1455,7 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 
 		*Np = (kmax - kmin + 1) + (jmax - jmin + 1) + (imax - imin + 1);
 
-	const float pt = ((fmin(fmin(*tz0, *ty0), *tx0) + *tc) / 2.f);
+	const float pt = ((FMIN(FMIN(*tz0, *ty0), *tx0) + *tc) / 2.f);
 
 	const float3 tempijkF = CLAMP3(FMAD3(pt, diff, -apuT) / dd, 0.f, CFLOAT3(N - 1));
 	const int3 tempijk = CINT3_rtz(tempijkF);
@@ -1308,16 +1463,16 @@ DEVICE bool siddon_pre_loop_3D(const float3 b, const float3 diff, const float3 m
 	*tempj = tempijk.y;
 	*tempk = tempijk.z;
 
-	*txu = dd.x / fabs(diff.x);
-	*tyu = dd.y / fabs(diff.y);
-	*tzu = dd.z / fabs(diff.z);
+	*txu = dd.x / FABS(diff.x);
+	*tyu = dd.y / FABS(diff.y);
+	*tzu = dd.z / FABS(diff.z);
 
 	return false;
 }
 #endif
 
 #if defined(FP) && !defined(PROJ5)
-DEVICE void forwardProjectAF(CLGLOBAL float* output, float* ax, size_t idx, const float temp, const int kk) {
+DEVICE void forwardProjectAF(CLGLOBAL float* output, PTR_THR float *ax, size_t idx, const float temp, const int kk) {
     output[idx] += ax[kk]
 #ifndef CT
 	* temp
