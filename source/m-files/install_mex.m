@@ -291,7 +291,7 @@ if ispc
     if isempty(cuda_path)
         cuda_path = getenv('CUDA_PATH');
     end
-else
+elseif ~ismac % Linux
     if isempty(cuda_path)
         cuda_path = '/usr/local/cuda';
     end
@@ -391,6 +391,8 @@ else
             opencl_lib_path = '/usr/lib/x86_64-linux-gnu/';
         end
     end
+else % Apple silicon
+
 end
 
 if ispc && (isempty(opencl_include_path) || isempty(opencl_lib_path))
@@ -425,7 +427,7 @@ end
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% MATLAB %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-if exist('OCTAVE_VERSION','builtin') == 0
+if (exist('OCTAVE_VERSION','builtin') == 0) && ~ismac
     cc = mex.getCompilerConfigurations('C++','Selected');
     if isempty(cc)
         error('No C++ compiler selected! Use mex -setup C++ to select a C++ compiler')
@@ -995,7 +997,7 @@ if exist('OCTAVE_VERSION','builtin') == 0
     end
 
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OCTAVE %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-else
+elseif ~ismac
     joku = getenv('CXXFLAGS');
     if ismac
         cxxflags = '-std=c++11 -Xpreprocessor -fopenmp -fPIC';
@@ -1362,4 +1364,11 @@ else
             end
         end
     end
+else % Apple silicon MATLAB/Octave
+    folderMetal = strcat(folder, '/metal');
+    compiler = '';
+    complexFlag = '';
+    ldflags = 'LDFLAGS="\$LDFLAGS -framework Metal -framework Foundation"';
+    cxxflags = 'CXXFLAGS="\$CXXFLAGS -std=c++17 -fobjc-arc"';
+    mex(compiler, complexFlag, '-outdir', folderMetal, ldflags, cxxflags, '-DMATLAB', ['-I' folder], ['-I' folderMetal], [folderMetal '/Metal_matrixfree.mm'])
 end
