@@ -150,6 +150,8 @@ struct ScalarParams { // These scalars are constant for each subiteration. For O
 #define LONG long
 #define FMIN metal::fmin
 #define FMAX metal::fmax
+#define MIN metal::min
+#define MAX metal::max
 #define ALL metal::all
 #define ANY metal::any
 #define ISNAN metal::isnan
@@ -166,15 +168,26 @@ struct ScalarParams { // These scalars are constant for each subiteration. For O
 #define CINT_rtz(a) static_cast<int>(metal::trunc((a)))
 #define MINT3(a,b,c) int3((a),(b),(c))
 #define CMINT3(a,b,c) int3((a),(b),(c))
+#define dot metal::dot
+#define pow metal::pow
+#define SQRT metal::sqrt
+//#define sqrt metal::sqrt
+#define ACOS metal::acos
+#define EXP(a) metal::exp(a)
+#define LOG(a) metal::log(a)
+#define CUINT(a) (uint)(a)
+#define MUINT3(a, b, c) uint3(a, b, c)
 #define make_float2(a,b)   float2((a),(b))
 #define make_float3(a,b,c) float3((a),(b),(c))
 #define make_uint2(a,b)    uint2((a),(b))
 #define make_uint3(a,b,c)  uint3((a),(b),(c))
 #define make_int2(a,b)     int2((a),(b))
 #define make_int3(a,b,c)   int3((a),(b),(c))
-
-#include <metal_stdlib>
-#include <metal_atomic>
+#define FMAD(a,b,c) metal::fma(a,b,c)
+#define POWR pow
+#define DIVIDE(a,b) ((a) / (b))
+//#include <metal_stdlib>
+//#include <metal_atomic>
 
 
 inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
@@ -193,6 +206,8 @@ inline void atomicAdd(volatile device metal::atomic_float* addr, float val)
 #define FABS fabs
 #define FMIN fmin
 #define FMAX fmax
+#define MIN min
+#define MAX max
 #define ALL all
 #define ANY any
 #define ISNAN isnan
@@ -288,6 +303,8 @@ __constant sampler_t sampler_MASK = CLK_NORMALIZED_COORDS_FALSE | CLK_FILTER_NEA
 #define LENGTH length
 #define FMIN fmin
 #define FMAX fmax
+#define MIN min
+#define MAX max
 #define ALL all
 #define ANY any
 #define ISNAN isnan
@@ -869,8 +886,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #elif defined(ATOMIC32)
 	atomic_add(&d_rhs_OSEM[local_ind], CINT(yaxTOF * TH));
 #else
-	&d_rhs_osem[local_ind] += yaxTOF;
-	//atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
+#ifdef METAL
+	atomicAdd((volatile device metal::atomic_float*)(&d_rhs_OSEM[local_ind]), yaxTOF);
+#else
+	atomicAdd((&d_rhs_OSEM[local_ind]), yaxTOF);
+#endif
 #endif
 	if (no_norm == 0u)
 #ifdef ATOMIC
@@ -878,7 +898,11 @@ DEVICE void rhs(const float local_ele, PTR_THR const float *ax, const LONG local
 #elif defined(ATOMIC32)
 		atomic_add(&d_Summ[local_ind], CINT(val * TH));
 #else
+#ifdef METAL
 		atomicAdd((volatile device metal::atomic_float*)&d_Summ[local_ind], val);
+#else
+		atomicAdd((&d_Summ[local_ind]), val);
+#endif
 #endif
 }
 #endif

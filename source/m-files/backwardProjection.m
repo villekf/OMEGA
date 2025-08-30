@@ -267,12 +267,12 @@ elseif options.implementation == 2 || options.implementation == 3 || options.imp
         options.x_center, options.y_center, options.z_center, single(0), 0, options.projector_type, n_rays, n_rays3D, ... % 42
         options, input, options.partitions, options.use_64bit_atomics, options.bmin, options.bmax, options.Vmax, options.V, options.gaussK, 2, noSensIm); % 51
     end
-    if options.use_64bit_atomics
+    if options.use_64bit_atomics && ~ismac % Metal supports float atomics
         output = single(output) / 99999997952;
         if ~isempty(sensIm) && numel(sensIm) > 1
             sensIm = single(sensIm) / 99999997952;
         end
-    elseif options.use_32bit_atomics
+    elseif options.use_32bit_atomics && ~ismac % Metal supports float atomics
         output = single(output) / 100000;
         if ~isempty(sensIm) && numel(sensIm) > 1
             sensIm = single(sensIm) / 100000;

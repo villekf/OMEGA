@@ -131,7 +131,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     auto &inputScalars = *static_cast<scalarStruct *>(inputScalarsBox.ptr);
     auto &w_vec = *static_cast<Weighting *>(wVec.ptr);
     //auto const &methods = *static_cast<RecMethods const *>(methodList.ptr);
-    mexPrintf("test1.1\n");
     // ---- Metal setup ----
     _device = MTLCreateSystemDefaultDevice();
     if (!_device) {
@@ -143,17 +142,29 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     // TODO: projector types, different FP/BP programs
     NSString *base = [headerDirectory stringByStandardizingPath];
     NSString *headerPath = [base stringByAppendingPathComponent:@"general_opencl_functions.h"];
+    NSString *orth3DHeaderPath= [base stringByAppendingPathComponent:@"opencl_functions_orth3D.h"];
     NSString *kernelPath = [base stringByAppendingPathComponent:@"projectorType123.cl"];
     NSError *err = nil; 
+
     NSString *headerSrc = ReadUTF8(headerPath, &err);
     if (!headerSrc) { NSLog(@"Failed to read header: %@", err.localizedDescription); return -2; }
+
     NSString *kernelSrc = ReadUTF8(kernelPath, &err);
     if (!kernelSrc) { NSLog(@"Failed to read kernel: %@", err.localizedDescription); return -3; }
-    NSString *src = [NSString stringWithFormat:@"%@\n\n%@", headerSrc, kernelSrc];
+
+    NSString *orth3DSrc = @"";
+
+    if (inputScalars.FPType == 2 || inputScalars.BPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 3) {
+        NSString *h3 = ReadUTF8(orth3DHeaderPath, &err);
+        if (!h3) { NSLog(@"Failed to read orth3D header: %@", err.localizedDescription); return -2; }
+        orth3DSrc = h3;
+    }
+
+    NSString *src = [@[headerSrc, orth3DSrc, kernelSrc] componentsJoinedByString:@"\n\n"];
 
     // https://developer.apple.com/documentation/metal/mtlcompileoptions/preprocessormacros
-    MTLCompileOptions *optsFP = [MTLCompileOptions new]; // TODO preprocessor macros
-    MTLCompileOptions *optsBP = [MTLCompileOptions new]; // TODO preprocessor macros
+    MTLCompileOptions *optsFP = [MTLCompileOptions new];
+    MTLCompileOptions *optsBP = [MTLCompileOptions new];
 
     NSMutableDictionary *macros = [@{
         @"METAL": @""
@@ -181,14 +192,22 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
         macros[@"NSUBSETS"] = @(inputScalars.subsets);
     }
 
+    if (inputScalars.FPType == 2 || inputScalars.BPType == 2 || inputScalars.FPType == 3 || inputScalars.BPType == 3) {
+        if (inputScalars.orthXY)
+            macros[@"CRYSTXY"] = @"";
+        if (inputScalars.orthZ)
+            macros[@"CRYSTZ"] = @"";
+    }
+
     NSMutableDictionary *macrosFP = macros;
     NSMutableDictionary *macrosBP = macros;
-    
+
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3 || inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
         macrosFP[@"SIDDON"] = @"";
         macrosFP[@"ATOMICF"] = @"";
         macrosBP[@"SIDDON"] = @"";
         macrosBP[@"ATOMICF"] = @"";
+
         if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3)
             macrosFP[@"FP"] = @"";
         if (inputScalars.FPType == 3)
@@ -204,8 +223,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
             macrosBP[@"ORTH"] = @"";
     }
 
-
-    // END todo
     optsFP.preprocessorMacros = macrosFP;
     optsBP.preprocessorMacros = macrosBP;
 
@@ -221,7 +238,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     _libBP = [_device newLibraryWithSource:src options:optsBP error:&err];
     if (!_libBP) {
         NSString *errStr = err.localizedDescription;
-        mexPrintf(errStr.UTF8String);
+        //mexPrintf(errStr.UTF8String);
         NSLog(@"Metal shader compile failed: %@", err.localizedDescription);
         return -2;
     }
@@ -375,12 +392,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     _globalX = inputScalars.nRowsD + _erotus[0];
     _globalY = inputScalars.nColsD + _erotus[1];
     _globalZ = static_cast<size_t>(length[osa_iter]);
-    mexPrintf("fp1.1\n");
 
     _commandBufferFP = [_queueFP commandBuffer];
     _encFP = [_commandBufferFP computeCommandEncoder];
     [_encFP setComputePipelineState:_psoFP];
-    mexPrintf("fp1.2\n");
 
     ParamsConst params = {}; // Move params to struct
     params.global_factor = inputScalars.global_factor;
@@ -420,7 +435,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 	params.m_size = m_size;
 	params.currentSubset = osa_iter;
 	params.aa = ii;
-    mexPrintf("fp1.3\n");
 
     if (inputScalars.FPType == 1 || inputScalars.FPType == 2 || inputScalars.FPType == 3) {
         [_encFP setBytes:&params length:sizeof(params) atIndex:0];
@@ -434,9 +448,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
     [_encFP setBuffer:_d_x[osa_iter] offset:0 atIndex:5];
     [_encFP setBuffer:_d_z[osa_iter] offset:0 atIndex:6];
-    mexPrintf("fp1.4\n");
     [_encFP setBuffer:_d_Summ[uu] offset:0 atIndex:7];
-    mexPrintf("fp1.5\n");
+
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
         //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
         //[_enc setBuffer:_d_zindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
@@ -467,9 +480,7 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     [_encFP dispatchThreadgroups:threadgroupsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
     
     [_encFP endEncoding];
-    mexPrintf("fp1.6\n");
     [_commandBufferFP commit];
-    mexPrintf("fp1.7\n");
     [_commandBufferFP waitUntilCompleted];
 
     return 0;
@@ -492,14 +503,10 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     _globalX = inputScalars.nRowsD + _erotus[0];
     _globalY = inputScalars.nColsD + _erotus[1];
     _globalZ = static_cast<size_t>(length[osa_iter]);
-    mexPrintf("bp1.1\n");
 
     _commandBufferBP = [_queueBP commandBuffer];
-    mexPrintf("bp1.11\n");
     _encBP = [_commandBufferBP computeCommandEncoder];
-    mexPrintf("bp1.12\n");
     [_encBP setComputePipelineState:_psoBP];
-    mexPrintf("bp1.2\n");
 
     ParamsConst params = {}; // Move params to struct
     params.global_factor = inputScalars.global_factor;
@@ -539,7 +546,6 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
 	params.m_size = m_size;
 	params.currentSubset = osa_iter;
 	params.aa = ii;
-    mexPrintf("bp1.3\n");
 
     if (inputScalars.BPType == 1 || inputScalars.BPType == 2 || inputScalars.BPType == 3) {
         [_encBP setBytes:&params length:sizeof(params) atIndex:0];
@@ -553,9 +559,8 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     }
     [_encBP setBuffer:_d_x[osa_iter] offset:0 atIndex:5];
     [_encBP setBuffer:_d_z[osa_iter] offset:0 atIndex:6];
-    mexPrintf("bp1.4\n");
     [_encBP setBuffer:_d_Summ[uu] offset:0 atIndex:7];
-    mexPrintf("bp1.5\n");
+
     if ((inputScalars.subsetType == 3 || inputScalars.subsetType == 6 || inputScalars.subsetType == 7) && inputScalars.subsetsUsed > 1 && inputScalars.listmode == 0) {
         //[_enc setBuffer:_d_xyindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
         //[_enc setBuffer:_d_zindex[osa_iter] offset:0 atIndex:_kernelIndFP++];
@@ -567,15 +572,16 @@ static NSString *ReadUTF8(NSString *path, NSError **err) {
     [_encBP setBuffer:_d_rhs_os[uu] offset:0 atIndex:9];   
 
     // --- Build Metal sizes that exactly match CL's parameters ---
+    MTLSize threads = MTLSizeMake(_globalX, _globalY, _globalZ);
     MTLSize threadsPerThreadgroup = MTLSizeMake(_localX, _localY, _localZ);
-    MTLSize threadgroupsPerGrid = MTLSizeMake(_globalX / _localX, _globalY / _localY, _globalZ / _localZ);
-    
-    [_encBP dispatchThreadgroups:threadgroupsPerGrid threadsPerThreadgroup:threadsPerThreadgroup];
-    
+
+    mexPrintf("grid = %zu x %zu x %zu, tptg = %zu x %zu x %zu\n",
+          (size_t)_globalX, (size_t)_globalY, (size_t)_globalZ,
+          (size_t)_localX, (size_t)_localY, (size_t)_localZ);
+
+    [_encBP dispatchThreads:threads threadsPerThreadgroup:threadsPerThreadgroup];
     [_encBP endEncoding];
-    mexPrintf("bp1.6\n");
     [_commandBufferBP commit];
-    mexPrintf("bp1.7\n");
     [_commandBufferBP waitUntilCompleted];
 
     return 0;

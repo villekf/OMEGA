@@ -54,7 +54,12 @@ inline void reconstruction_metal(const float* z_det, const float* x,
         status = [proj allocateOutput:bytesOutput]; // TODO replace with proj.d_output = ...
 	}
 	if (type == 2) {
-        status = [proj setOutput:bytesOutput data:meas]; // TODO replace with proj.d_output = ...
+        id<MTLBuffer> buf = [proj.device newBufferWithBytes:meas length:bytesOutput options:MTLResourceStorageModeShared];
+        proj.d_output = buf;
+
+        if (!proj.d_rhs_os) {
+            proj.d_rhs_os = [NSMutableArray arrayWithCapacity:inputScalars.nMultiVolumes + 1];
+        }
 
 		for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
             NSUInteger len = sizeof(float) * inputScalars.im_dim[ii];
@@ -83,7 +88,7 @@ inline void reconstruction_metal(const float* z_det, const float* x,
             else if (type == 1) {
                 size_t uu = 0;
 				for (int ii = 0; ii <= inputScalars.nMultiVolumes; ii++) {
-                    NSInteger bytesIm = inputScalars.im_dim[ii] * sizeof(float); // im_dim = Nx*Ny*Nz ???????
+                    NSInteger bytesIm = inputScalars.im_dim[ii] * sizeof(float);
                     const float *src = im + uu;
                     proj.d_im = [proj.device newBufferWithBytes:src length:bytesIm options:MTLResourceStorageModeShared];
 
@@ -110,7 +115,6 @@ inline void reconstruction_metal(const float* z_det, const float* x,
                                 computeSens:false
                                 ii:ii
                                 uu:uu];
-                        //status = proj.backwardProjection(inputScalars, w_vec, osa_iter, length, m_size, false, ii, uu);
                     }
                     if (type == 0) {}
                 }
@@ -124,25 +128,17 @@ inline void reconstruction_metal(const float* z_det, const float* x,
         size_t byteCount = sizeof(float) * m_size * inputScalars.nBins;
         void *src = proj.d_output.contents;            // id<MTLBuffer>
         memcpy(output, src, byteCount);                // copy into your CPU array
-        //status = proj.CLCommandQueue[0].enqueueReadBuffer(proj.d_output, CL_FALSE, 0, sizeof(float) * m_size * inputScalars.nBins, output);
     }
     if (type == 2) {
-        size_t uuElems = 0; // offset in float elements
-        for (int ii = 0; ii < inputScalars.nMultiVolumes; ++ii) {
+        size_t uuElems = 0;
+        for (int ii = 0; ii <= inputScalars.nMultiVolumes; ++ii) {
             const size_t elemCount = inputScalars.im_dim[ii];
             const size_t byteCount = elemCount * sizeof(float);
 
-            id<MTLBuffer> src = proj.d_rhs_os[ii];
-            float* srcPtr = (float*)src.contents;   // valid if Shared/Managed with sync
+            const void *src = proj.d_rhs_os[ii].contents; // Shared buffer
+            memcpy(output + uuElems, src, byteCount);
 
-            // Copy directly into the correct spot in the float array
-            memcpy(output + uuElems, srcPtr, byteCount);
-
-            if (proj.no_norm == 0) {
-                // normalization or post-processing here
-            }
-
-            uuElems += elemCount; // advance in float elements
+            uuElems += elemCount;
         }
     }
     

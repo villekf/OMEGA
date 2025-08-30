@@ -18,7 +18,7 @@
    @property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *d_Summ;
    @property (atomic, strong) id<MTLBuffer> d_output; // 2D/3D output
    @property (nonatomic, strong) id<MTLBuffer> d_im; // 3D volume
-   @property (atomic, strong) NSMutableArray<id<MTLBuffer>> *d_rhs_os;
+   @property (nonatomic, strong) NSMutableArray<id<MTLBuffer>> *d_rhs_os;
 
 - (NSInteger)addProjector:(ScalarStructBox *)inputScalars
                            weighting:(WeightingBox *)wVec

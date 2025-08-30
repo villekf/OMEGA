@@ -376,52 +376,18 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	}
 	mxArray* array_ptr = nullptr;
 	mxArray* sens_ptr = nullptr;
-	if (type == 1) {
-		array_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
-		sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
-	}
-	else if (type == 2 && (inputScalars.atomic_32bit || inputScalars.atomic_64bit)) {
-		if (no_norm == 0)
-			if (inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT32_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
-		else
-			if (inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, d, mxINT32_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, d, mxINT64_CLASS, mxREAL);
-		if (inputScalars.atomic_32bit)
-			array_ptr = mxCreateNumericArray(1, mDim, mxINT32_CLASS, mxREAL);
-		else
-			array_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
-	}
-	else {
-		array_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
-		if (no_norm == 0 && type == 2)
-			sens_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
-		else
-			if (type == 0 && inputScalars.atomic_32bit)
-				sens_ptr = mxCreateNumericArray(1, d, mxINT32_CLASS, mxREAL);
-			else if (type == 0 && inputScalars.atomic_64bit)
-				sens_ptr = mxCreateNumericArray(1, mDim, mxINT64_CLASS, mxREAL);
-			else
-				sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
-	}
 
+	array_ptr = mxCreateNumericArray(1, mDim, mxSINGLE_CLASS, mxREAL);
+	sens_ptr = mxCreateNumericArray(1, d, mxSINGLE_CLASS, mxREAL);
 	if (DEBUG) {
 		mexPrint("Output vector set");
 	}
 
-	// Create a struct containing the reconstruction methods used
-	RecMethods MethodList;
-
-	// Struct containing the necessary variables for the priors
-	Weighting w_vec;
+	RecMethods MethodList; 	// Create a struct containing the reconstruction methods used
+	Weighting w_vec; // Struct containing the necessary variables for the priors
 
 	if (type == 0) {
-		// Obtain the reconstruction methods used
-		get_rec_methods(options, MethodList);
+		get_rec_methods(options, MethodList); // Obtain the reconstruction methods used
 	}
 	// Load the necessary data from the MATLAB input (options) and create the necessary variables
 	form_data_variables(w_vec, options, inputScalars, MethodList);
@@ -436,65 +402,19 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 	const float* randoms = getSingles(sc_ra, "solu");
 	const float* extraCorr = getSingles(options, "ScatterC", 0);
 	const float* x0 = getSingles(options, "x0");
-	if (DEBUG) {
-		mexPrintBase("x0[0] = %f\n", x0[0]);
-		mexPrintBase("x0.dim = %u\n", mxGetNumberOfElements(mxGetField(options, 0, "x0")));
-		mexEval();
-	}
 
 	if (DEBUG) {
 		mexPrint("Pointers set");
 	}
-	if (inputScalars.atomic_32bit && (type == 2)) {
-		int32_t* output = getInt32s(array_ptr, "solu");
-		int32_t* sensIm = getInt32s(sens_ptr, "solu");
-		reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
-		else
-			mxDestroyArray(sens_ptr);
-	}
-	else if (inputScalars.atomic_64bit && (type == 2)) {
-		int64_t* output = getInt64s(array_ptr, "solu");
-		int64_t* sensIm = getInt64s(sens_ptr, "solu");
-		reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
-		else
-			mxDestroyArray(sens_ptr);
-	}
-	else if (inputScalars.atomic_64bit && (type == 0)) {
-		float* output = getSingles(array_ptr, "solu");
-		int64_t* sensIm = getInt64s(sens_ptr, "solu");
-		reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
-		else
-			mxDestroyArray(sens_ptr);
-	}
-	else if (inputScalars.atomic_32bit && (type == 0)) {
-		float* output = getSingles(array_ptr, "solu");
-		int32_t* sensIm = getInt32s(sens_ptr, "solu");
-		reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
-		else
-			mxDestroyArray(sens_ptr);
-	}
-	else {
-		float* output = getSingles(array_ptr, "solu");
-		float* sensIm = getSingles(sens_ptr, "solu");
-		reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
-		plhs[0] = array_ptr;
-		if (nlhs > 1)
-			plhs[1] = sens_ptr;
-		else
-			mxDestroyArray(sens_ptr);
-	}
+	
+	float* output = getSingles(array_ptr, "solu");
+	float* sensIm = getSingles(sens_ptr, "solu");
+	reconstruction_metal(z_det, x, inputScalars, w_vec, MethodList, pituus, header_directory, Sino, x0, output, sensIm, type, no_norm, randoms, atten, norm, extraCorr, size_gauss, xy_index, z_index, L);
+	plhs[0] = array_ptr;
+	if (nlhs > 1)
+		plhs[1] = sens_ptr;
+	else
+		mxDestroyArray(sens_ptr);
 
 	return;
 }

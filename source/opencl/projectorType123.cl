@@ -246,6 +246,11 @@ void projectorType123(
 #else
 	int3 i = MINT3(GID0, GID1, GID2);
 #endif
+/*#if defined(BP)
+	if (!(i.x == 0 && i.y == 0 && i.z == 0)) return;
+	d_output[0] = 333.333f;
+    d_output[1] = 444.444f;
+#endif*/
 #if STYPE == 1 || STYPE == 2 || STYPE == 4 || STYPE == 5
 	getIndex(&i, d_size_x, d_sizey, currentSubset);
 #endif

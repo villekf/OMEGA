@@ -40,7 +40,7 @@ DEVICE float compute_element_orth_3D(
 	const float y1 = diff.z * x0 - l.y;
 	const float z1 = -diff.x * x0 + l.z;
 #endif
-	const float norm1 = length(CMFLOAT3(l.x, y1, z1));
+	const float norm1 = LENGTH(CMFLOAT3(l.x, y1, z1));
     return 
 #if !defined(VOL) && !defined(SPECT)
     1.f - 
@@ -79,7 +79,7 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
     const float3 s,
     const float3 l,
 	const float3 diff, 
-    const float orth_ray_length, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const float temp, 
+    const float orth_ray_length, const float3 center, const float bmin, const float bmax, const float Vmax, CONSTANT float* V, const bool XY, PTR_THR float *ax, const float temp, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -131,11 +131,11 @@ DEVICE bool orthogonalHelper3D(const int tempi, const int uu, const uint d_N2, c
         return false;
     }
     float d_orth = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
-#ifdef USEMAD
+//#ifdef USEMAD
     float CORstd = DIVIDE(SQRT(FMAD(1.f, POWR(FMAD(coneOfResponseStdCoeffA, d_parallel, coneOfResponseStdCoeffB), 2.f), POWR(coneOfResponseStdCoeffC, 2.f))), (2.f*SQRT(2.f*LOG(2.f))));
-#else
-    float CORstd = sqrt(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)) / (2.f*sqrt(2.f*log(2.f)));
-#endif
+//#else
+//    float CORstd = SQRT(pow(coneOfResponseStdCoeffA*d_parallel+coneOfResponseStdCoeffB, 2.f)+pow(coneOfResponseStdCoeffC, 2.f)) / (2.f*sqrt(2.f*log(2.f)));
+//#endif
     float local_ele = normPDF2(d_orth, 0.f, CORstd);
 #else ////////////////////// NOT SPECT ////////////////////
 	float local_ele = compute_element_orth_3D(s, l, diff, center, orth_ray_length);
@@ -202,7 +202,7 @@ DEVICE int orthDistance3D(const int tempi,
     const float b2, const float d2, const float bz, const float dz, const float temp, int temp2, const int tempk, 
 	const uint d_Nxy, const float orth_ray_length,
 	const uint d_N1, const uint d_N2, const uint d_N3, const uint d_Nz, const float bmin, 
-	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, float* ax, const bool preStep, int* k, const int ku, 
+	const float bmax, const float Vmax, CONSTANT float* V, const bool XY, PTR_THR float *ax, const bool preStep, PTR_THR int *k, const int ku, 
 #if defined(FP)
 	IMTYPE d_OSEM
 #else
@@ -417,9 +417,9 @@ DEVICE int orthDistance3D(const int tempi,
 	}
 	if (preStep) {
 		if (ku < 0)
-			*k = max(*k, zz) - 1;
+			*k = MAX(*k, zz) - 1;
 		else
-			*k = min(*k, zz) + 1;
+			*k = MIN(*k, zz) + 1;
 	}
 #endif
 	return uu;
